@@ -108,7 +108,7 @@ const SuperAdmin = () => {
     <div className="space-y-4">
       <div>
         <h1 className="font-display text-2xl text-primary">Super Admin</h1>
-        <p className="text-xs text-muted-foreground">Full system control for VinBacker.</p>
+        <p className="text-xs text-muted-foreground">Full system control for VBacker.</p>
       </div>
 
       <Tabs defaultValue="tournaments">

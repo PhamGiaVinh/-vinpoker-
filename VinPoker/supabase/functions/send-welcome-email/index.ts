@@ -13,8 +13,8 @@ const APP_URL = "https://vinpoker.live";
 const RESEND_DOMAIN_VERIFIED = false;
 const SANDBOX_TEST_EMAIL = "zadvietnam2010@gmail.com";
 const FROM = RESEND_DOMAIN_VERIFIED
-  ? "VinBacker <noreply@vinpoker.live>"
-  : "VinBacker <onboarding@resend.dev>";
+  ? "VBacker <noreply@vinpoker.live>"
+  : "VBacker <onboarding@resend.dev>";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: FROM,
         to: [user.email],
-        subject: "Chào mừng đến với VinBacker Staking",
+        subject: "Chào mừng đến với VBacker Staking",
         html,
       }),
     });
@@ -98,12 +98,12 @@ function welcomeHtml(opts: { name: string; email: string }) {
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#11151c;border:1px solid #1f2632;border-radius:14px;overflow:hidden;">
         <tr><td style="padding:20px 24px;border-bottom:1px solid #1f2632;">
-          <div style="font-size:18px;font-weight:800;color:#fff;letter-spacing:.3px;">VinBacker <span style="color:#22c55e;">Staking</span></div>
+          <div style="font-size:18px;font-weight:800;color:#fff;letter-spacing:.3px;">VBacker <span style="color:#22c55e;">Staking</span></div>
         </td></tr>
         <tr><td style="padding:24px;">
           <h1 style="margin:0 0 12px;color:#fff;font-size:22px;">Chào mừng ${escapeHtml(opts.name)}! 🎉</h1>
           <p style="margin:0 0 14px;color:#c5cbd6;font-size:14px;line-height:1.6;">
-            Cảm ơn bạn đã tham gia <b>VinBacker</b> — nền tảng kết nối Player & Backer trong cộng đồng poker Việt Nam.
+            Cảm ơn bạn đã tham gia <b>VBacker</b> — nền tảng kết nối Player & Backer trong cộng đồng poker Việt Nam.
           </p>
           <p style="margin:0 0 14px;color:#c5cbd6;font-size:14px;line-height:1.6;">
             <b>Bước tiếp theo:</b>
@@ -121,7 +121,7 @@ function welcomeHtml(opts: { name: string; email: string }) {
           </p>
         </td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #1f2632;color:#6b7280;font-size:11px;text-align:center;">
-          Email gửi tới ${escapeHtml(opts.email)}. © VinBacker
+          Email gửi tới ${escapeHtml(opts.email)}. © VBacker
         </td></tr>
       </table>
     </td></tr>

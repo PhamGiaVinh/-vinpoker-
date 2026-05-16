@@ -44,7 +44,7 @@ export const Layout = () => {
           <NavLink to="/" className="flex items-center gap-2 shrink-0">
             <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg object-cover" />
             <div className="font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
-              VINBACKER
+              VBacker
             </div>
           </NavLink>
 

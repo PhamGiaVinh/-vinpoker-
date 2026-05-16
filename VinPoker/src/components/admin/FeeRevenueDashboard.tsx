@@ -217,7 +217,7 @@ const FeeRevenueDashboard = () => {
         { header: "THÀNH TÍCH (₫)", get: (r) => r.prize },
         { header: "PHÍ LƯU TRỮ HỒ SƠ (₫)", get: (r) => r.archiveCollected },
         { header: "TRẠNG THÁI LƯU TRỮ", get: (r) => (r.archiveEligible ? "Đã thu" : r.deal.status === "completed" ? "Không phát sinh" : "Chưa đủ điều kiện") },
-        { header: "TỔNG PHÍ VINBACKER (₫)", get: (r) => r.totalCollected },
+        { header: "TỔNG PHÍ VBacker (₫)", get: (r) => r.totalCollected },
       ],
       `bao-cao-phi-chi-tiet_${from}_${to}`,
       "CHI TIẾT PHIẾU",

@@ -1,7 +1,7 @@
 {
-  "name": "VinBacker",
-  "short_name": "VinBacker",
-  "description": "VinBacker — Lịch giải đấu, club, đặt stack online, quản lý bankroll và luyện GTO.",
+  "name": "VBacker",
+  "short_name": "VBacker",
+  "description": "VBacker — Lịch giải đấu, club, đặt stack online, quản lý bankroll và luyện GTO.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -131,7 +131,7 @@ export const SupportFloatingButton = () => {
           </TabsContent>
 
           <TabsContent value="chat" className="space-y-3 mt-4">
-            <p className="text-sm text-muted-foreground">Mở chat 1-1 với <b className="text-foreground">VinBacker Support</b>. Nếu offline, chúng tôi sẽ phản hồi trong vòng 24 giờ.</p>
+            <p className="text-sm text-muted-foreground">Mở chat 1-1 với <b className="text-foreground">VBacker Support</b>. Nếu offline, chúng tôi sẽ phản hồi trong vòng 24 giờ.</p>
             <Button onClick={openChat} className="w-full gradient-gold text-primary-foreground border-0">
               <MessageCircle className="w-4 h-4 mr-2" /> Mở chat hỗ trợ
             </Button>

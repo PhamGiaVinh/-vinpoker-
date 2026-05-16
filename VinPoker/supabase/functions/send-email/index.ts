@@ -9,7 +9,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const FROM = "VinBacker Staking <onboarding@resend.dev>";
+const FROM = "VBacker Staking <onboarding@resend.dev>";
 
 const Email = z.string().email().max(320);
 const BodySchema = z.object({

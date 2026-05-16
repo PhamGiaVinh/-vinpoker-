@@ -39,8 +39,8 @@ test.describe("PWA update flow", () => {
     const overlay = page.getByText("Đang cập nhật phiên bản mới...");
     await expect(overlay).toBeVisible({ timeout: 5_000 });
 
-    // The VinBacker logo SVG should be inside the overlay region.
-    const logo = page.getByRole("status").getByLabel("VinBacker");
+    // The VBacker logo SVG should be inside the overlay region.
+    const logo = page.getByRole("status").getByLabel("VBacker");
     await expect(logo).toBeVisible();
   });
 

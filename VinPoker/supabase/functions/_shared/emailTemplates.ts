@@ -14,7 +14,7 @@ function layout(opts: { title: string; intro: string; rows: Array<[string, strin
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#11151c;border:1px solid #1f2632;border-radius:14px;overflow:hidden;">
         <tr><td style="padding:20px 24px;border-bottom:1px solid #1f2632;">
-          <div style="font-size:18px;font-weight:800;color:#fff;letter-spacing:.3px;">VinBacker <span style="color:#22c55e;">Staking</span></div>
+          <div style="font-size:18px;font-weight:800;color:#fff;letter-spacing:.3px;">VBacker <span style="color:#22c55e;">Staking</span></div>
         </td></tr>
         <tr><td style="padding:24px;">
           <h1 style="margin:0 0 8px;color:#fff;font-size:20px;">${opts.title}</h1>
@@ -28,7 +28,7 @@ function layout(opts: { title: string; intro: string; rows: Array<[string, strin
           </p>
         </td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #1f2632;color:#6b7280;font-size:11px;text-align:center;">
-          Đây là email tự động, vui lòng không trả lời. © VinBacker
+          Đây là email tự động, vui lòng không trả lời. © VBacker
         </td></tr>
       </table>
     </td></tr>
@@ -114,7 +114,7 @@ export function fundingConfirmedBackerEmail(opts: {
       title: "Đã ghi nhận hỗ trợ chi phí",
       intro: `CLB đã xác nhận nhận được khoản hỗ trợ chi phí của bạn cho phiếu <b>#${opts.dealShortId}</b>.`,
       rows,
-      nextStep: "VinBacker là phần mềm quản lý thông tin. Thanh toán do các bên tự thực hiện.",
+      nextStep: "VBacker là phần mềm quản lý thông tin. Thanh toán do các bên tự thực hiện.",
       cta: { label: "Xem chi tiết", href: opts.ctaUrl ?? `${APP_URL}/staking/portfolio` },
     }),
   };

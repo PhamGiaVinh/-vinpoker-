@@ -1,4 +1,4 @@
-# VinBacker
+# VBacker
 
 A poker tournament discovery, staking, and bankroll-management web app built
 on React + Vite + Lovable Cloud.

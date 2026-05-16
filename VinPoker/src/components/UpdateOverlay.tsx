@@ -36,7 +36,7 @@ export const UpdateOverlay = () => {
           <svg
             viewBox="0 0 102 124"
             xmlns="http://www.w3.org/2000/svg"
-            aria-label="VinBacker"
+            aria-label="VBacker"
             className="relative w-24 h-auto animate-pulse"
             style={{ filter: "drop-shadow(0 0 24px rgba(59, 130, 246, 0.6))" }}
           >

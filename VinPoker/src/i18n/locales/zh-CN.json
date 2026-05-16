@@ -149,7 +149,7 @@
     "tournaments": "赛事",
     "lookingForBacker": "寻找资金支持者",
     "viewProfile": "查看资料",
-    "disclaimer": "本页仅用于发现选手。所有股份交易必须通过「股份认购」页面进行(VinBacker 资金托管保管资金)。"
+    "disclaimer": "本页仅用于发现选手。所有股份交易必须通过「股份认购」页面进行(VBacker 资金托管保管资金)。"
   },
   "backingProfile": {
     "title": "资金支持档案",
@@ -232,7 +232,7 @@
     "eventName": "赛事名称 *",
     "eventNamePh": "例如:Royal Special Tournament",
     "venue": "举办地点",
-    "venuePh": "例如:VinBacker 河内",
+    "venuePh": "例如:VBacker 河内",
     "eventDate": "赛事日期 *",
     "buyInVnd": "参赛费用 (VND)",
     "sellingLabel": "出售 {{n}}% 股份",
@@ -410,7 +410,7 @@
   },
   "marketplace": {
     "title": "股份认购",
-    "subtitle": "购买单场赛事的股份。VinBacker 资金托管保管资金,仅在多重签名确认后才会发放。想长期关注某位选手?请访问",
+    "subtitle": "购买单场赛事的股份。VBacker 资金托管保管资金,仅在多重签名确认后才会发放。想长期关注某位选手?请访问",
     "findPlayerLink": "选手",
     "myDealsBtn": "我的项目",
     "createDealBtn": "出售股份 — 创建项目",
@@ -469,7 +469,7 @@
   },
   "stakingNew": {
     "title": "创建新股份认购项目",
-    "infoBanner": "项目创建后将由超级管理员审核,通过后才会出现在市场上。资金支持人的资金由 VinBacker 资金托管保管,仅在多重签名确认后才会发放。",
+    "infoBanner": "项目创建后将由超级管理员审核,通过后才会出现在市场上。资金支持人的资金由 VBacker 资金托管保管,仅在多重签名确认后才会发放。",
     "tournamentLbl": "赛事 *",
     "tournamentPh": "选择即将开始的赛事",
     "customOption": "自定义赛事(不在列表中)",
@@ -628,9 +628,9 @@
     "processing": "处理中...",
     "createAccount": "创建账户",
     "backHome": "← 返回首页",
-    "tosTitle": "我确认 VinBacker 仅是",
+    "tosTitle": "我确认 VBacker 仅是",
     "tosTechPlatform": "技术连接平台",
-    "tosBody": "用于连接选手与资金支持人。VinBacker 不是金融机构,不代为保管资金,不提供支付服务。所有资金交易均在平台外通过越南合法方式完成。VinBacker 不对各方之间的内容、时间和付款方式承担任何责任。我承诺遵守越南法律,并同意",
+    "tosBody": "用于连接选手与资金支持人。VBacker 不是金融机构,不代为保管资金,不提供支付服务。所有资金交易均在平台外通过越南合法方式完成。VBacker 不对各方之间的内容、时间和付款方式承担任何责任。我承诺遵守越南法律,并同意",
     "tosTermsLink": "服务条款",
     "tosAnd": "与",
     "tosPrivacyLink": "隐私政策",
@@ -655,18 +655,18 @@
   "terms": {
     "title": "服务条款",
     "updated": "更新日期:2026/05/02",
-    "h1": "1. VinBacker 的性质",
-    "p1a": "VinBacker 仅是",
+    "h1": "1. VBacker 的性质",
+    "p1a": "VBacker 仅是",
     "p1aBold": "技术连接平台",
     "p1aTail": ",用于在越南合法的扑克认购活动中连接选手与资金支持人。",
-    "p1b": "VinBacker 不是金融机构,不代为保管用户资金,不提供支付服务,不发行加密货币。",
+    "p1b": "VBacker 不是金融机构,不代为保管用户资金,不提供支付服务,不发行加密货币。",
     "h2": "2. 各方责任",
     "p2a": "选手、资金支持人与俱乐部之间的所有资金交易均在平台外直接进行,通过越南合法的支付方式完成(银行转账、现金、各方个人钱包中的 USDT TRC-20)。",
-    "p2b": "VinBacker 不对各方之间的内容、时间、付款方式以及任何资金争议承担责任。",
+    "p2b": "VBacker 不对各方之间的内容、时间、付款方式以及任何资金争议承担责任。",
     "h3": "3. 法律合规",
-    "p3": "用户在使用本平台时承诺遵守越南法律。VinBacker 有权在发现违规行为时暂停或终止账户。",
+    "p3": "用户在使用本平台时承诺遵守越南法律。VBacker 有权在发现违规行为时暂停或终止账户。",
     "h4": "4. 责任限制",
-    "p4": "VinBacker 按 \"现状\" 提供服务。我们不保证服务始终不中断或无错误。"
+    "p4": "VBacker 按 \"现状\" 提供服务。我们不保证服务始终不中断或无错误。"
   },
   "privacy": {
     "title": "隐私政策",
@@ -679,7 +679,7 @@
     "h2": "2. 我们如何使用数据",
     "p2": "数据仅用于运营选手与资金支持人的连接平台、按用户设置显示公开信息,以及在必要时处理争议。",
     "h3": "3. 数据共享",
-    "p3": "VinBacker 不向第三方出售个人数据。数据仅与基础设施供应商(数据库、邮件)共享以支持运营。",
+    "p3": "VBacker 不向第三方出售个人数据。数据仅与基础设施供应商(数据库、邮件)共享以支持运营。",
     "h4": "4. 用户权利",
     "p4": "您有权通过 Zalo/Telegram 客服联系管理员,请求查看、更正或删除您的个人数据。",
     "h5": "5. 安全性",
@@ -897,7 +897,7 @@
     }
   },
   "layout": {
-    "logoAlt": "VinBacker 标志",
+    "logoAlt": "VBacker 标志",
     "inbox": "收件箱",
     "clubAdmin": "俱乐部管理",
     "staking": "股份认购",
@@ -948,7 +948,7 @@
     "rank": "名次",
     "verifyBtn": "验证",
     "unverifyBtn": "取消验证",
-    "stakingActivity": "VinBacker 投资活动",
+    "stakingActivity": "VBacker 投资活动",
     "verifiedBadge": "✓ 已验证",
     "verifyPlayer": "验证玩家",
     "unverifyPlayer": "取消验证玩家",
@@ -970,7 +970,7 @@
     "reviewCount": "{{n}} 条评价",
     "noReviews": "暂无投资人评价。",
     "backer": "投资人",
-    "disclaimer": "VinBacker 仅提供联系信息,所有财务协议均在应用外完成。"
+    "disclaimer": "VBacker 仅提供联系信息,所有财务协议均在应用外完成。"
   },
   "portfolio": {
     "title": "我的资金支持组合",

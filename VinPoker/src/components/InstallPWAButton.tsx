@@ -61,7 +61,7 @@ export const InstallPWAButton = () => {
     <>
       <button
         onClick={handleInstall}
-        aria-label="Cài app VinBacker"
+        aria-label="Cài app VBacker"
         className="fixed z-50 right-3 md:right-6 bottom-[calc(88px+env(safe-area-inset-bottom))] md:bottom-6 inline-flex items-center gap-1.5 rounded-full gradient-neon text-primary-foreground border border-primary-foreground/20 shadow-neon px-3.5 h-10 text-xs font-bold tracking-wider uppercase hover:opacity-90 active:scale-95 transition-all animate-fade-in"
       >
         <Download className="w-4 h-4" />
@@ -71,7 +71,7 @@ export const InstallPWAButton = () => {
       <Dialog open={iosHelpOpen} onOpenChange={setIosHelpOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Cài VinBacker lên màn hình</DialogTitle>
+            <DialogTitle>Cài VBacker lên màn hình</DialogTitle>
             <DialogDescription>
               {ios
                 ? "Safari không có nút cài tự động. Hãy làm theo:"
@@ -126,7 +126,7 @@ export const InstallPWAButton = () => {
               <li>
                 Chọn <strong>"Cài đặt ứng dụng"</strong> hoặc <strong>"Add to Home Screen-Thêm vào màn hình chính"</strong>.
               </li>
-              <li>Xác nhận để thêm VinBacker vào màn hình chính.</li>
+              <li>Xác nhận để thêm VBacker vào màn hình chính.</li>
             </ol>
           )}
           <Button onClick={() => setIosHelpOpen(false)} className="w-full">Đã hiểu</Button>

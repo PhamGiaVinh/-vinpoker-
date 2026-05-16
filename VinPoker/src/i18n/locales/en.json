@@ -149,7 +149,7 @@
     "tournaments": "Events",
     "lookingForBacker": "Looking for backer",
     "viewProfile": "View profile",
-    "disclaimer": "This page is for player discovery only. All share transactions must go through the STAKE page (VinBacker escrow holds funds)."
+    "disclaimer": "This page is for player discovery only. All share transactions must go through the STAKE page (VBacker escrow holds funds)."
   },
   "backingProfile": {
     "title": "Backing Profile",
@@ -232,7 +232,7 @@
     "eventName": "Event name *",
     "eventNamePh": "e.g. Royal Special Tournament",
     "venue": "Venue",
-    "venuePh": "e.g. VinBacker Hanoi",
+    "venuePh": "e.g. VBacker Hanoi",
     "eventDate": "Event date *",
     "buyInVnd": "Buy-in (VND)",
     "sellingLabel": "Selling {{n}}% action",
@@ -410,7 +410,7 @@
   },
   "marketplace": {
     "title": "STAKE",
-    "subtitle": "Buy a share of a single tournament. VinBacker escrow holds the funds and only releases them with multi-signature confirmation. Want to follow a player long-term? Visit",
+    "subtitle": "Buy a share of a single tournament. VBacker escrow holds the funds and only releases them with multi-signature confirmation. Want to follow a player long-term? Visit",
     "findPlayerLink": "PLAYERS",
     "myDealsBtn": "My Deals",
     "createDealBtn": "Sell Action — Create Deal",
@@ -469,7 +469,7 @@
   },
   "stakingNew": {
     "title": "Create New Staking Deal",
-    "infoBanner": "Once created, the deal goes through Super Admin review before appearing on the marketplace. Backer funds are held in VinBacker escrow and only released with multi-signature confirmation.",
+    "infoBanner": "Once created, the deal goes through Super Admin review before appearing on the marketplace. Backer funds are held in VBacker escrow and only released with multi-signature confirmation.",
     "tournamentLbl": "Tournament *",
     "tournamentPh": "Pick an upcoming tournament",
     "customOption": "Custom event (not in the list)",
@@ -619,9 +619,9 @@
     "processing": "Processing...",
     "createAccount": "Create Account",
     "backHome": "← Back to home",
-    "tosTitle": "I confirm VinBacker is a",
+    "tosTitle": "I confirm VBacker is a",
     "tosTechPlatform": "technology connection platform",
-    "tosBody": "between Player and Backer. VinBacker is NOT a financial institution, does NOT hold funds, does NOT provide payment services. All monetary transactions are executed off-platform via lawful means in Vietnam. VinBacker is not responsible for the content, timing or method of payment between parties. I commit to comply with Vietnamese law and agree to the",
+    "tosBody": "between Player and Backer. VBacker is NOT a financial institution, does NOT hold funds, does NOT provide payment services. All monetary transactions are executed off-platform via lawful means in Vietnam. VBacker is not responsible for the content, timing or method of payment between parties. I commit to comply with Vietnamese law and agree to the",
     "tosTermsLink": "Terms of Service",
     "tosAnd": "and",
     "tosPrivacyLink": "Privacy Policy",
@@ -646,18 +646,18 @@
   "terms": {
     "title": "Terms of Service",
     "updated": "Updated: 02/05/2026",
-    "h1": "1. Nature of VinBacker",
-    "p1a": "VinBacker is solely a",
+    "h1": "1. Nature of VBacker",
+    "p1a": "VBacker is solely a",
     "p1aBold": "technology connection platform",
     "p1aTail": "between Player and Backer for lawful poker staking activities in Vietnam.",
-    "p1b": "VinBacker is NOT a financial institution, does NOT hold user funds, does NOT provide payment services, does NOT issue cryptocurrency.",
+    "p1b": "VBacker is NOT a financial institution, does NOT hold user funds, does NOT provide payment services, does NOT issue cryptocurrency.",
     "h2": "2. Responsibility of the Parties",
     "p2a": "All monetary transactions among Player, Backer and Club are executed directly off-platform via lawful payment methods in Vietnam (bank transfer, cash, USDT TRC-20 on the parties' own wallets).",
-    "p2b": "VinBacker is not responsible for the content, timing, payment method, or any financial dispute among the parties.",
+    "p2b": "VBacker is not responsible for the content, timing, payment method, or any financial dispute among the parties.",
     "h3": "3. Legal Compliance",
-    "p3": "Users commit to complying with Vietnamese law when using the platform. VinBacker reserves the right to suspend or terminate accounts upon detecting violations.",
+    "p3": "Users commit to complying with Vietnamese law when using the platform. VBacker reserves the right to suspend or terminate accounts upon detecting violations.",
     "h4": "4. Limitation of Liability",
-    "p4": "VinBacker provides the service on an \"as-is\" basis. We do not guarantee the service will always be uninterrupted or error-free."
+    "p4": "VBacker provides the service on an \"as-is\" basis. We do not guarantee the service will always be uninterrupted or error-free."
   },
   "privacy": {
     "title": "Privacy Policy",
@@ -670,7 +670,7 @@
     "h2": "2. How We Use Your Data",
     "p2": "Data is only used to operate the Player-Backer connection platform, display public information per user settings, and handle disputes when needed.",
     "h3": "3. Data Sharing",
-    "p3": "VinBacker does NOT sell personal data to third parties. Data is only shared with infrastructure providers (database, email) for operations.",
+    "p3": "VBacker does NOT sell personal data to third parties. Data is only shared with infrastructure providers (database, email) for operations.",
     "h4": "4. User Rights",
     "p4": "You have the right to request access, correction, or deletion of your personal data by contacting Admin via Zalo/Telegram support.",
     "h5": "5. Security",
@@ -888,7 +888,7 @@
     }
   },
   "layout": {
-    "logoAlt": "VinBacker logo",
+    "logoAlt": "VBacker logo",
     "inbox": "Inbox",
     "clubAdmin": "CLUB ADMIN",
     "staking": "STAKING",
@@ -939,7 +939,7 @@
     "rank": "Place",
     "verifyBtn": "Verify",
     "unverifyBtn": "Unverify",
-    "stakingActivity": "VinBacker Staking activity",
+    "stakingActivity": "VBacker Staking activity",
     "verifiedBadge": "✓ Verified",
     "verifyPlayer": "Verify Player",
     "unverifyPlayer": "Unverify player",
@@ -961,7 +961,7 @@
     "reviewCount": "{{n}} review",
     "noReviews": "No reviews from backers yet.",
     "backer": "Backer",
-    "disclaimer": "VinBacker only provides connection info. All financial agreements are made outside the app."
+    "disclaimer": "VBacker only provides connection info. All financial agreements are made outside the app."
   },
   "portfolio": {
     "title": "My backing portfolio",

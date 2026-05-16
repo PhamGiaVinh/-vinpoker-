@@ -149,7 +149,7 @@
     "tournaments": "Giải",
     "lookingForBacker": "Đang tìm người hỗ trợ",
     "viewProfile": "Xem profile",
-    "disclaimer": "Trang này chỉ để khám phá người tập huấn. Mọi giao dịch phần hợp tác phải đi qua trang STAKE (cam kết tạm tính VinBacker giữ tiền)."
+    "disclaimer": "Trang này chỉ để khám phá người tập huấn. Mọi giao dịch phần hợp tác phải đi qua trang STAKE (cam kết tạm tính VBacker giữ tiền)."
   },
   "backingProfile": {
     "title": "Hồ sơ Backing",
@@ -232,7 +232,7 @@
     "eventName": "Tên giải *",
     "eventNamePh": "Vd: Royal Special Tournament",
     "venue": "Địa điểm",
-    "venuePh": "Vd: VinBacker Hà Nội",
+    "venuePh": "Vd: VBacker Hà Nội",
     "eventDate": "Ngày diễn ra *",
     "buyInVnd": "Lệ phí tập huấn (VND)",
     "sellingLabel": "Bán {{n}}% action",
@@ -410,7 +410,7 @@
   },
   "marketplace": {
     "title": "STAKE",
-    "subtitle": "Mua phần hợp tác từng giải, cam kết tạm tính VinBacker giữ tiền và chỉ thanh toán hợp tác khi có xác nhận đa chữ ký. Muốn xem profile người tập huấn để theo dõi lâu dài? Vào",
+    "subtitle": "Mua phần hợp tác từng giải, cam kết tạm tính VBacker giữ tiền và chỉ thanh toán hợp tác khi có xác nhận đa chữ ký. Muốn xem profile người tập huấn để theo dõi lâu dài? Vào",
     "findPlayerLink": "Tìm Người tập huấn",
     "myDealsBtn": "Phiếu đăng ký của tôi",
     "createDealBtn": "Tạo phiếu đăng ký bán action",
@@ -469,7 +469,7 @@
   },
   "stakingNew": {
     "title": "Tạo Phiếu đăng ký Hợp tác chi phí Mới",
-    "infoBanner": "Sau khi tạo, phiếu đăng ký sẽ được xét duyệt trước khi xuất hiện trên Sàn. Điểm của người hỗ trợ được giữ qua cam kết tạm tính của VinBacker và chỉ thanh toán hợp tác khi đa chữ ký xác nhận.",
+    "infoBanner": "Sau khi tạo, phiếu đăng ký sẽ được xét duyệt trước khi xuất hiện trên Sàn. Điểm của người hỗ trợ được giữ qua cam kết tạm tính của VBacker và chỉ thanh toán hợp tác khi đa chữ ký xác nhận.",
     "tournamentLbl": "Giải tập huấn *",
     "tournamentPh": "Chọn giải tập huấn sắp tới",
     "customOption": "Sự kiện riêng (không có trong danh sách)",
@@ -619,9 +619,9 @@
     "processing": "Đang xử lý...",
     "createAccount": "Tạo tài khoản",
     "backHome": "← Về trang chủ",
-    "tosTitle": "Tôi xác nhận VinBacker chỉ là",
+    "tosTitle": "Tôi xác nhận VBacker chỉ là",
     "tosTechPlatform": "nền tảng công nghệ kết nối",
-    "tosBody": "giữa Người tập huấn và Người hỗ trợ. VinBacker KHÔNG phải tổ chức tài chính, KHÔNG giữ tiền hộ, KHÔNG cung cấp dịch vụ thanh toán. Mọi giao dịch tiền tệ được thực hiện trực tiếp ngoài nền tảng qua phương tiện hợp pháp tại Việt Nam. VinBacker không chịu trách nhiệm về nội dung, thời điểm và phương thức thanh toán giữa các bên. Tôi cam kết tuân thủ pháp luật Việt Nam và đồng ý với",
+    "tosBody": "giữa Người tập huấn và Người hỗ trợ. VBacker KHÔNG phải tổ chức tài chính, KHÔNG giữ tiền hộ, KHÔNG cung cấp dịch vụ thanh toán. Mọi giao dịch tiền tệ được thực hiện trực tiếp ngoài nền tảng qua phương tiện hợp pháp tại Việt Nam. VBacker không chịu trách nhiệm về nội dung, thời điểm và phương thức thanh toán giữa các bên. Tôi cam kết tuân thủ pháp luật Việt Nam và đồng ý với",
     "tosTermsLink": "Điều khoản dịch vụ",
     "tosAnd": "và",
     "tosPrivacyLink": "Chính sách bảo mật",
@@ -646,18 +646,18 @@
   "terms": {
     "title": "Điều khoản dịch vụ",
     "updated": "Cập nhật: 02/05/2026",
-    "h1": "1. Bản chất của VinBacker",
-    "p1a": "VinBacker chỉ là",
+    "h1": "1. Bản chất của VBacker",
+    "p1a": "VBacker chỉ là",
     "p1aBold": "nền tảng công nghệ kết nối thông tin",
     "p1aTail": "giữa Người tập huấn và Người hỗ trợ trong các hoạt động hợp tác chi phí giải poker hợp pháp tại Việt Nam.",
-    "p1b": "VinBacker KHÔNG phải là tổ chức tài chính, KHÔNG giữ tiền hộ người dùng, KHÔNG cung cấp dịch vụ thanh toán, KHÔNG phát hành tiền điện tử.",
+    "p1b": "VBacker KHÔNG phải là tổ chức tài chính, KHÔNG giữ tiền hộ người dùng, KHÔNG cung cấp dịch vụ thanh toán, KHÔNG phát hành tiền điện tử.",
     "h2": "2. Trách nhiệm của các bên",
     "p2a": "Mọi giao dịch tiền tệ giữa Người tập huấn, Người hỗ trợ và Câu lạc bộ được thực hiện trực tiếp ngoài nền tảng thông qua phương tiện thanh toán hợp pháp tại Việt Nam (chuyển khoản ngân hàng, tiền mặt, USDT TRC-20 trên ví cá nhân của các bên).",
-    "p2b": "VinBacker không chịu trách nhiệm về nội dung, thời điểm, phương thức thanh toán, cũng như các tranh chấp tài chính phát sinh giữa các bên.",
+    "p2b": "VBacker không chịu trách nhiệm về nội dung, thời điểm, phương thức thanh toán, cũng như các tranh chấp tài chính phát sinh giữa các bên.",
     "h3": "3. Tuân thủ pháp luật",
-    "p3": "Người dùng cam kết tuân thủ pháp luật Việt Nam khi sử dụng nền tảng. VinBacker có quyền tạm khóa hoặc chấm dứt tài khoản nếu phát hiện hành vi vi phạm.",
+    "p3": "Người dùng cam kết tuân thủ pháp luật Việt Nam khi sử dụng nền tảng. VBacker có quyền tạm khóa hoặc chấm dứt tài khoản nếu phát hiện hành vi vi phạm.",
     "h4": "4. Giới hạn trách nhiệm",
-    "p4": "VinBacker cung cấp dịch vụ trên cơ sở \"as-is\". Chúng tôi không bảo đảm dịch vụ luôn không gián đoạn hoặc không có lỗi."
+    "p4": "VBacker cung cấp dịch vụ trên cơ sở \"as-is\". Chúng tôi không bảo đảm dịch vụ luôn không gián đoạn hoặc không có lỗi."
   },
   "privacy": {
     "title": "Chính sách bảo mật",
@@ -670,7 +670,7 @@
     "h2": "2. Cách chúng tôi sử dụng dữ liệu",
     "p2": "Dữ liệu chỉ được dùng để vận hành nền tảng kết nối Người tập huấn-Người hỗ trợ, hiển thị thông tin công khai theo thiết lập của người dùng, và xử lý tranh chấp khi cần.",
     "h3": "3. Chia sẻ dữ liệu",
-    "p3": "VinBacker không bán dữ liệu cá nhân cho bên thứ ba. Dữ liệu chỉ được chia sẻ với nhà cung cấp hạ tầng (database, email) phục vụ vận hành.",
+    "p3": "VBacker không bán dữ liệu cá nhân cho bên thứ ba. Dữ liệu chỉ được chia sẻ với nhà cung cấp hạ tầng (database, email) phục vụ vận hành.",
     "h4": "4. Quyền của người dùng",
     "p4": "Bạn có quyền yêu cầu xem, chỉnh sửa hoặc xóa dữ liệu cá nhân của mình bằng cách liên hệ Admin qua Zalo/Telegram hỗ trợ.",
     "h5": "5. Bảo mật",
@@ -888,7 +888,7 @@
     }
   },
   "layout": {
-    "logoAlt": "Logo VinBacker",
+    "logoAlt": "Logo VBacker",
     "inbox": "Hộp thư",
     "clubAdmin": "QUẢN LÝ CLB",
     "staking": "STAKING",
@@ -939,7 +939,7 @@
     "rank": "Hạng",
     "verifyBtn": "Verify",
     "unverifyBtn": "Bỏ verify",
-    "stakingActivity": "Hoạt động VinBacker Staking",
+    "stakingActivity": "Hoạt động VBacker Staking",
     "verifiedBadge": "✓ Đã xác minh",
     "verifyPlayer": "Verify Player",
     "unverifyPlayer": "Bỏ verify player",
@@ -961,7 +961,7 @@
     "reviewCount": "{{n}} review",
     "noReviews": "Chưa có review từ backer.",
     "backer": "Backer",
-    "disclaimer": "VinBacker chỉ cung cấp thông tin kết nối. Mọi thỏa thuận tài chính được thực hiện ngoài app."
+    "disclaimer": "VBacker chỉ cung cấp thông tin kết nối. Mọi thỏa thuận tài chính được thực hiện ngoài app."
   },
   "portfolio": {
     "title": "Danh mục backing của tôi",

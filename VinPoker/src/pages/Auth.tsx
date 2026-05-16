@@ -72,9 +72,9 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
       <div className="flex items-center gap-3 mb-8">
-        <img src={appLogo} alt="VinBacker" className="w-12 h-12 rounded-xl object-cover shadow-gold" />
+        <img src={appLogo} alt="VBacker" className="w-12 h-12 rounded-xl object-cover shadow-gold" />
         <div>
-          <div className="font-display text-2xl text-gold">VinBacker</div>
+          <div className="font-display text-2xl text-gold">VBacker</div>
           <div className="text-xs text-muted-foreground">{t("auth.brandTagline")}</div>
         </div>
       </div>

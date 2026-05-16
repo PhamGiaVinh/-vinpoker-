@@ -23,7 +23,7 @@ export const RootErrorFallback = ({ error, resetErrorBoundary }: FallbackProps) 
         <div className="flex justify-center">
           <img
             src={appLogo}
-            alt="VinBacker"
+            alt="VBacker"
             className="w-16 h-16 rounded-2xl object-cover drop-shadow-[0_0_18px_hsl(var(--primary)/0.55)]"
           />
         </div>
