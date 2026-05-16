@@ -1,0 +1,5 @@
+e2e/
+tests/
+docs/
+*.md
+public/pdf-viewer/

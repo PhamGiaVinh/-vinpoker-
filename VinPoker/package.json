@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "analyze": "vite build --mode analyze",
-    "postinstall": "playwright install chromium || echo '⚠️  Playwright browser install skipped — run npx playwright install --with-deps chromium manually if you plan to run E2E tests.'"
+    "postinstall": "node -e \"if(!process.env.VERCEL){require('child_process').execSync('npx playwright install chromium',{stdio:'inherit'})}\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
