@@ -2636,6 +2636,7 @@ export type Database = {
           location: string | null
           minutes_per_level: number
           name: string
+          schedule_upload_id: string | null
           start_time: string
           starting_stack: number
           status: Database["public"]["Enums"]["tournament_status"]
@@ -2657,6 +2658,7 @@ export type Database = {
           location?: string | null
           minutes_per_level?: number
           name: string
+          schedule_upload_id?: string | null
           start_time: string
           starting_stack: number
           status?: Database["public"]["Enums"]["tournament_status"]

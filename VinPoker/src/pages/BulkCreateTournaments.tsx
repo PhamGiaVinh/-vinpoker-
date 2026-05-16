@@ -147,6 +147,7 @@ export default function BulkCreateTournaments() {
     if (invalid) { toast.error("Mỗi dòng phải có tên, ngày giờ và club"); return; }
 
     setCreating(true);
+    const scheduleUploadId = crypto.randomUUID();
     const payload = rows.map(r => ({
       name: r.name.trim(),
       start_time: new Date(r.start_time).toISOString(),
@@ -155,6 +156,7 @@ export default function BulkCreateTournaments() {
       game_type: r.game_type,
       location: r.venue ?? null,
       club_id: r.club_id,
+      schedule_upload_id: scheduleUploadId,
     }));
     const { error } = await supabase.from("tournaments").insert(payload);
     setCreating(false);

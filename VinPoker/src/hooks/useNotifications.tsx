@@ -14,7 +14,10 @@ export type NotificationType =
   | "result_disputed"
   | "release_requested"
   | "payout_executed"
-  | "system_announcement";
+  | "system_announcement"
+  | "schedule_updated"
+  | "registration_confirmed"
+  | "chat_message";
 
 export interface NotificationRow {
   id: string;
@@ -39,6 +42,9 @@ const ROUTE_FOR: Record<NotificationType, (data: any) => string> = {
   release_requested: () => "/staking/portfolio",
   payout_executed: () => "/staking/portfolio",
   system_announcement: () => "/",
+  schedule_updated: () => "/tournaments",
+  registration_confirmed: () => "/tournaments",
+  chat_message: (data) => `/chat/groups/${data?.group_id ?? ""}`,
 };
 
 export const ICON_FOR: Record<NotificationType, string> = {
@@ -53,6 +59,9 @@ export const ICON_FOR: Record<NotificationType, string> = {
   release_requested: "🔐",
   payout_executed: "🎉",
   system_announcement: "📣",
+  schedule_updated: "📅",
+  registration_confirmed: "🎫",
+  chat_message: "💬",
 };
 
 export function routeForNotification(n: Pick<NotificationRow, "type" | "data">) {

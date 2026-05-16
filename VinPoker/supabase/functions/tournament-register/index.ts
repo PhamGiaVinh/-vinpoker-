@@ -129,6 +129,18 @@ Deno.serve(async (req) => {
       .single();
     if (insErr) return j({ error: insErr.message }, 500);
 
+    try {
+      await admin.from("notifications").insert({
+        user_id: uid,
+        type: "registration_confirmed",
+        title: "Đăng ký giải thành công",
+        body: `Bạn đã đăng ký giải "${tour.name}" thành công.`,
+        data: { tournament_id: tour.id, club_id: tour.club_id },
+      });
+    } catch (_) {
+      // non-critical; don't fail registration
+    }
+
     return j({
       success: true,
       registration_id: ins.id,
