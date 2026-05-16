@@ -1,0 +1,160 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Coins, Layers, MapPin, Calendar, Users, Loader2 } from "lucide-react";
+import { formatVND, formatStack, formatDateTime } from "@/lib/format";
+import { LiveStateBanner } from "@/components/LiveStateBanner";
+import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
+import { LivestreamPlayer } from "@/components/LivestreamPlayer";
+
+
+const TournamentDetail = () => {
+  const { t: tr } = useTranslation();
+  const { id } = useParams();
+  const [sp] = useSearchParams();
+  const livestreamMode = sp.get("from") === "livestream";
+  const nav = useNavigate();
+  const { user } = useAuth();
+  const [t, setT] = useState<any>(null);
+  const [count, setCount] = useState(0);
+  const [myReg, setMyReg] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [myReg2, setMyReg2] = useState<any>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from("tournaments")
+      .select("*, club:clubs(id,name,region,address)")
+      .eq("id", id!).maybeSingle();
+    setT(data);
+    const { count: c } = await supabase.from("stack_registrations")
+      .select("*", { count: "exact", head: true })
+      .eq("tournament_id", id!).in("status", ["pending", "confirmed"]);
+    setCount(c ?? 0);
+    if (user) {
+      const { data: r } = await supabase.from("stack_registrations")
+        .select("*").eq("tournament_id", id!).eq("user_id", user.id).maybeSingle();
+      setMyReg(r);
+      const { data: r2 } = await supabase.from("tournament_registrations")
+        .select("id, status, reference_code, total_pay")
+        .eq("tournament_id", id!).eq("player_id", user.id)
+        .in("status", ["pending", "confirmed"])
+        .maybeSingle();
+      setMyReg2(r2);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [id, user?.id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`tournament-${id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tournaments", filter: `id=eq.${id}` }, (payload) => {
+        setT((prev: any) => prev ? { ...prev, ...payload.new } : prev);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "stack_registrations", filter: `tournament_id=eq.${id}` }, () => {
+        supabase.from("stack_registrations").select("*", { count: "exact", head: true })
+          .eq("tournament_id", id).in("status", ["pending", "confirmed"])
+          .then(({ count: c }) => setCount(c ?? 0));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
+
+  const openChat = () => {
+    if (!user) { nav("/auth"); return; }
+    nav(`/chat/${id}`);
+  };
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  if (!t) return <p className="text-center py-20 text-muted-foreground">{tr("tournamentDetail.notFound")}</p>;
+
+  return (
+    <div className={livestreamMode ? "space-y-4 pb-32 md:pb-4" : "space-y-4 pb-40 md:pb-4"}>
+      <button onClick={() => nav(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="w-4 h-4" /> {tr("tournamentDetail.back")}
+      </button>
+
+      <Card className="gradient-card border-gold p-5 shadow-gold">
+        <div className="text-xs text-gold/80 uppercase tracking-widest">{t.club?.name}</div>
+        <h1 className="font-display text-2xl mt-1">{t.name}</h1>
+        <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+          <Calendar className="w-4 h-4" /> {formatDateTime(t.start_time)}
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-4">
+          <Info icon={Coins} label={tr("tournamentDetail.buyIn")} value={formatVND(t.buy_in)} />
+          <Info icon={Layers} label={tr("tournamentDetail.startingStack")} value={formatStack(t.starting_stack)} />
+          <Info icon={MapPin} label={tr("tournamentDetail.location")} value={t.location || t.club?.address || "—"} />
+          <Info icon={Users} label={tr("tournamentDetail.registered")} value={tr("tournamentDetail.players", { n: Math.max(t.current_players ?? 0, count) })} />
+        </div>
+      </Card>
+
+      <LivestreamPlayer tournamentId={t.id} />
+
+      {t.description && (
+        <Card className="p-4">
+          <h3 className="font-semibold mb-2 text-gold">{tr("tournamentDetail.description")}</h3>
+          <p className="text-sm text-muted-foreground whitespace-pre-line">{t.description}</p>
+        </Card>
+      )}
+
+      <Card className="p-4">
+        <Link to={`/club/${t.club?.id}`} className="text-sm hover:text-primary">
+          {tr("tournamentDetail.viewClub")} <span className="text-gold">{t.club?.name}</span> →
+        </Link>
+      </Card>
+
+      {!livestreamMode && (
+        <div className="fixed inset-x-0 z-30 px-4 pb-3 pt-2 bg-gradient-to-t from-background via-background/95 to-transparent bottom-[calc(88px+env(safe-area-inset-bottom))] md:bottom-4">
+          <div className="mx-auto max-w-3xl space-y-2">
+            {myReg2?.status === "confirmed" ? (
+              <Button disabled size="lg" className="w-full" variant="secondary">
+                ✅ Đã đăng ký · Vui lòng đến check-in
+              </Button>
+            ) : myReg2?.status === "pending" ? (
+              <Button onClick={() => setRegisterOpen(true)} size="lg" className="w-full gradient-gold text-primary-foreground border-0">
+                ⏳ Tiếp tục thanh toán đăng ký
+              </Button>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Button onClick={openChat} variant="outline" size="lg">
+                  💬 Chat với CLB
+                </Button>
+                <Button onClick={() => { user ? setRegisterOpen(true) : nav("/auth"); }} disabled={submitting} size="lg" className="gradient-gold text-primary-foreground border-0 shadow-gold">
+                  Đăng ký giải
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <TournamentRegisterModal
+        tournamentId={t.id}
+        tournamentName={t.name}
+        open={registerOpen}
+        onClose={() => { setRegisterOpen(false); load(); }}
+        onCompleted={() => load()}
+      />
+    </div>
+  );
+};
+
+const Info = ({ icon: Icon, label, value }: any) => (
+  <div className="rounded-lg bg-muted/40 px-3 py-2 border border-border/50">
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase">
+      <Icon className="w-3 h-3" />{label}
+    </div>
+    <div className="font-medium text-sm mt-0.5">{value}</div>
+  </div>
+);
+
+export default TournamentDetail;

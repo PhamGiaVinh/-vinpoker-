@@ -1,0 +1,1 @@
+alter table public.documents add column if not exists subtitle_url text;

@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PokerVN — Stitch dark design system. All colors HSL. */
+
+@layer base {
+  :root {
+    /* Surfaces (#111417 base, layered) */
+    --background: 210 13% 8%;        /* #111417 */
+    --foreground: 220 11% 89%;       /* #e1e2e7 */
+
+    --card: 213 9% 12%;              /* #1d2023 */
+    --card-foreground: 220 11% 89%;
+
+    --popover: 210 12% 10%;
+    --popover-foreground: 220 11% 89%;
+
+    /* Neon green = primary (#00ff88) */
+    --primary: 152 100% 50%;         /* #00ff88 */
+    --primary-foreground: 210 20% 6%;
+    --primary-glow: 152 100% 60%;
+
+    /* Secondary surface */
+    --secondary: 213 9% 16%;         /* surface-container-high */
+    --secondary-foreground: 220 11% 89%;
+
+    --muted: 213 9% 14%;             /* surface-container-low */
+    --muted-foreground: 90 6% 65%;
+
+    --accent: 152 100% 50%;
+    --accent-foreground: 210 20% 6%;
+
+    --destructive: 6 100% 70%;
+    --destructive-foreground: 358 100% 21%;
+
+    --success: 152 100% 50%;
+    --success-foreground: 210 20% 6%;
+
+    --warning: 38 92% 65%;
+    --warning-foreground: 210 20% 6%;
+
+    --border: 213 9% 22%;
+    --input: 213 9% 16%;
+    --ring: 152 100% 50%;
+
+    --radius: 0.875rem;
+
+    --gradient-neon: linear-gradient(135deg, hsl(152 100% 50%), hsl(152 100% 40%));
+    --gradient-felt: linear-gradient(180deg, hsl(210 13% 7%), hsl(210 13% 4%));
+    --gradient-card: linear-gradient(150deg, hsl(213 9% 13%) 0%, hsl(213 9% 9%) 100%);
+    --shadow-neon: 0 0 24px -4px hsl(152 100% 50% / 0.55);
+    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.55);
+
+    --sidebar-background: 213 9% 11%;
+    --sidebar-foreground: 220 11% 89%;
+    --sidebar-primary: 152 100% 50%;
+    --sidebar-primary-foreground: 210 20% 6%;
+    --sidebar-accent: 213 9% 16%;
+    --sidebar-accent-foreground: 220 11% 89%;
+    --sidebar-border: 213 9% 22%;
+    --sidebar-ring: 152 100% 50%;
+
+    /* GTO action palette */
+    --gto-fold: 217 91% 60%;   /* blue */
+    --gto-call: 142 71% 36%;   /* green */
+    --gto-raise: 0 74% 50%;    /* red */
+    --gto-allin: 0 73% 35%;    /* dark red */
+  }
+}
+
+/* Map digits + separators to Times New Roman via unicode-range trick.
+   Letters fall through to Playfair Display. */
+@font-face {
+  font-family: 'AppDigits';
+  src: local('Times New Roman'), local('TimesNewRomanPSMT'), local('Times');
+  unicode-range: U+0030-0039, U+002C, U+002E, U+003A, U+0025, U+002B, U+002D, U+0028, U+0029, U+0020;
+  font-display: swap;
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { color-scheme: dark; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    background: var(--gradient-felt);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  :lang(zh), :lang(zh-CN) {
+    word-break: keep-all;
+    line-break: strict;
+  }
+  h1, h2, h3 {
+    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    letter-spacing: -0.01em;
+    font-weight: 700;
+  }
+  h4, h5, h6 {
+    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    font-weight: 600;
+  }
+  .font-display {
+    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif !important;
+    letter-spacing: -0.01em;
+  }
+  input, textarea, select, button, table {
+    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+  }
+}
+
+@layer utilities {
+  .gradient-neon { background: var(--gradient-neon); }
+  .gradient-gold { background: var(--gradient-neon); } /* alias kept for legacy */
+  .gradient-card { background: var(--gradient-card); }
+  .text-gold { color: hsl(var(--primary)); }
+  .text-neon { color: hsl(var(--primary)); }
+  .border-gold { border-color: hsl(var(--primary) / 0.4); }
+  .border-neon { border-color: hsl(var(--primary) / 0.4); }
+  .shadow-gold { box-shadow: var(--shadow-neon); }
+  .shadow-neon { box-shadow: var(--shadow-neon); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .neon-glow { box-shadow: 0 0 12px 0 hsl(121 100% 70% / 0.4); }
+}
+
+/* Staking scope: kept for backward compat, now inherits primary (neon green) from theme */
+.staking-scope {
+  /* No override — uses global primary (neon green) for visual consistency */
+}
+

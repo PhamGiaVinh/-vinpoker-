@@ -1,0 +1,483 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, Trophy, Search, ChevronLeft, ChevronRight, Download, ShieldCheck } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { exportToExcel } from "@/lib/exportExcel";
+import PlayerHistoryDialog from "@/components/PlayerHistoryDialog";
+import { useAuth } from "@/hooks/useAuth";
+
+const PAGE_SIZE = 20;
+
+const Leaderboard = () => {
+  const { t } = useTranslation();
+  const { isAdmin } = useAuth();
+  const [entries, setEntries] = useState<any[]>([]);
+  const [allTime, setAllTime] = useState<any[]>([]);
+  const [clubMoney, setClubMoney] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, any>>({});
+  const [clubs, setClubs] = useState<any[]>([]);
+  const [clubFilter, setClubFilter] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<"overall" | "club" | "trusted">("overall");
+
+  // Trusted tab
+  const [trustedResults, setTrustedResults] = useState<any[]>([]);
+  const [timeFilter, setTimeFilter] = useState<"week" | "month" | "all">("all");
+  const [sortBy, setSortBy] = useState<"total" | "played" | "avg">("total");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyPlayer, setHistoryPlayer] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date>(new Date());
+
+  const load = async () => {
+    setLoading(true);
+    const cutoff = (() => {
+      const d = new Date();
+      if (timeFilter === "week") d.setDate(d.getDate() - 7);
+      else if (timeFilter === "month") d.setMonth(d.getMonth() - 1);
+      else return null;
+      return d.toISOString().slice(0, 10);
+    })();
+
+    let trustedQuery = supabase.from("player_results").select("*").eq("verified_by_admin", true);
+    if (cutoff) trustedQuery = trustedQuery.gte("event_date", cutoff);
+
+    const [{ data: e }, { data: c }, { data: at }, { data: cm }, { data: tr }] = await Promise.all([
+      supabase.from("leaderboard_entries").select("*"),
+      supabase.from("clubs").select("id,name").eq("status", "approved"),
+      supabase.from("all_time_money_list").select("*").order("total_winnings", { ascending: false }),
+      supabase.from("club_money_list").select("*").order("total_winnings", { ascending: false }),
+      trustedQuery,
+    ]);
+    setEntries(e ?? []);
+    setClubs(c ?? []);
+    setAllTime(at ?? []);
+    setClubMoney(cm ?? []);
+    setTrustedResults(tr ?? []);
+    const ids = Array.from(new Set([
+      ...((e ?? []).map((x: any) => x.player_id)),
+      ...((at ?? []).map((x: any) => x.player_id).filter(Boolean)),
+      ...((cm ?? []).map((x: any) => x.player_id).filter(Boolean)),
+      ...((tr ?? []).map((x: any) => x.player_id).filter(Boolean)),
+    ]));
+    if (ids.length) {
+      const { data: profs } = await supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", ids);
+      setProfiles(Object.fromEntries((profs ?? []).map((p: any) => [p.user_id, p])));
+    }
+    setLoadedAt(new Date());
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    const ch = supabase.channel("lb").on("postgres_changes",
+      { event: "*", schema: "public", table: "leaderboard_entries" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "all_time_money_list" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "club_money_list" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "player_results" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter]);
+
+  const aggregate = useMemo(() => {
+    const filtered = clubFilter === "all" ? entries : entries.filter(e => e.club_id === clubFilter);
+    const map: Record<string, { player_id: string; winnings: number; cashout: number }> = {};
+    for (const e of filtered) {
+      if (!map[e.player_id]) map[e.player_id] = { player_id: e.player_id, winnings: 0, cashout: 0 };
+      map[e.player_id].winnings += Number(e.winnings) || 0;
+      map[e.player_id].cashout += Number(e.cashout) || 0;
+    }
+    return Object.values(map).sort((a, b) => b.winnings - a.winnings);
+  }, [entries, clubFilter]);
+
+  const trustedAgg = useMemo(() => {
+    const map: Record<string, {
+      player_id: string;
+      played: number;
+      cashed: number;
+      total: number;
+      biggest: number;
+    }> = {};
+    for (const r of trustedResults) {
+      const id = r.player_id;
+      if (!id) continue;
+      if (!map[id]) map[id] = { player_id: id, played: 0, cashed: 0, total: 0, biggest: 0 };
+      map[id].played += 1;
+      const prize = Number(r.prize || 0);
+      if (prize > 0) {
+        map[id].cashed += 1;
+        map[id].total += prize;
+        if (prize > map[id].biggest) map[id].biggest = prize;
+      }
+    }
+    const arr = Object.values(map);
+    arr.sort((a, b) => {
+      if (sortBy === "played") return b.played - a.played;
+      if (sortBy === "avg") {
+        const av = a.cashed ? a.total / a.cashed : 0;
+        const bv = b.cashed ? b.total / b.cashed : 0;
+        return bv - av;
+      }
+      return b.total - a.total;
+    });
+    return arr;
+  }, [trustedResults, sortBy]);
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+
+  const fmt = (n: number) => "$" + n.toLocaleString("en-US");
+  const fmtVnd = (n: number) => "₫" + Math.round(n).toLocaleString("vi-VN");
+
+  const isOverall = tab === "overall";
+  const isTrusted = tab === "trusted";
+  const stripVN = (s: string) => (s ?? "").replace(/vietnam/gi, "").replace(/\s+/g, " ").trim();
+  const overallList = allTime.map((a, i) => ({
+    key: a.id ?? `at-${i}`,
+    rank: i + 1,
+    name: stripVN((a.player_id && profiles[a.player_id]?.display_name) || a.display_name || ""),
+    avatar_url: a.player_id ? profiles[a.player_id]?.avatar_url ?? null : null,
+    winnings: Number(a.total_winnings) || 0,
+    cashout: null as number | null,
+    linked: !!a.player_id,
+  }));
+  const clubMoneyForSelected = (clubFilter !== "all")
+    ? clubMoney.filter((m) => m.club_id === clubFilter)
+    : [];
+  const clubList = clubMoneyForSelected.length > 0
+    ? clubMoneyForSelected.map((a, i) => ({
+        key: a.id ?? `cm-${i}`,
+        rank: i + 1,
+        name: stripVN((a.player_id && profiles[a.player_id]?.display_name) || a.display_name || ""),
+        avatar_url: a.player_id ? profiles[a.player_id]?.avatar_url ?? null : null,
+        winnings: Number(a.total_winnings) || 0,
+        cashout: null as number | null,
+        linked: !!a.player_id,
+      }))
+    : aggregate.map((p, i) => ({
+        key: p.player_id ?? `cl-${i}`,
+        rank: i + 1,
+        name: profiles[p.player_id]?.display_name ?? "Player",
+        avatar_url: profiles[p.player_id]?.avatar_url ?? null,
+        winnings: p.winnings,
+        cashout: p.cashout as number | null,
+        linked: true,
+      }));
+
+  // Trusted list
+  const q = search.trim().toLowerCase();
+  const trustedList = trustedAgg.map((p, i) => {
+    const prof = profiles[p.player_id];
+    return {
+      key: p.player_id,
+      rank: i + 1,
+      player_id: p.player_id,
+      name: prof?.display_name ?? "Player",
+      avatar_url: prof?.avatar_url ?? null,
+      played: p.played,
+      cashed: p.cashed,
+      total: p.total,
+      avg: p.cashed ? p.total / p.cashed : 0,
+      biggest: p.biggest,
+    };
+  });
+  const filteredTrusted = q ? trustedList.filter((p) => p.name.toLowerCase().includes(q)) : trustedList;
+  const trustedPages = Math.max(1, Math.ceil(filteredTrusted.length / PAGE_SIZE));
+  const trustedSafePage = Math.min(page, trustedPages);
+  const trustedPageItems = filteredTrusted.slice((trustedSafePage - 1) * PAGE_SIZE, trustedSafePage * PAGE_SIZE);
+
+  const fullList = isOverall ? overallList : clubList;
+  const filteredList = q ? fullList.filter((p) => p.name.toLowerCase().includes(q)) : fullList;
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageItems = filteredList.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const handleExportTrusted = () => {
+    exportToExcel(
+      filteredTrusted,
+      [
+        { header: "#", get: (r) => r.rank, width: 6 },
+        { header: "Người chơi", get: (r) => r.name },
+        { header: "Số giải", get: (r) => r.played },
+        { header: "Đã cashed", get: (r) => r.cashed },
+        { header: "Tổng cashout (VND)", get: (r) => Math.round(r.total) },
+        { header: "TB/giải (VND)", get: (r) => Math.round(r.avg) },
+        { header: "Giải lớn nhất (VND)", get: (r) => Math.round(r.biggest) },
+      ],
+      "nguoi-choi-uy-tin",
+      "Trusted",
+    );
+  };
+
+  const openHistory = (p: { player_id: string; name: string; avatar_url: string | null }) => {
+    setHistoryPlayer({ id: p.player_id, name: p.name, avatar: p.avatar_url });
+    setHistoryOpen(true);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Trophy className="w-6 h-6 text-gold" />
+        <h1 className="font-display text-2xl text-gold">{t("leaderboardPage.title")}</h1>
+      </div>
+
+      <Tabs
+        value={tab}
+        onValueChange={(v) => {
+          setTab(v as any);
+          setPage(1);
+          setSearch("");
+          if (v === "overall") setClubFilter("all");
+          else if (v === "club" && clubFilter === "all" && clubs[0]) setClubFilter(clubs[0].id);
+        }}
+      >
+        <TabsList className="grid grid-cols-3 w-full">
+          <TabsTrigger value="overall">{t("leaderboardPage.overall")}</TabsTrigger>
+          <TabsTrigger value="club">{t("leaderboardPage.byClub")}</TabsTrigger>
+          <TabsTrigger value="trusted" className="gap-1">
+            <ShieldCheck className="w-3.5 h-3.5" /> {t("leaderboardPage.trustedTab")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overall" className="mt-3">
+          <div className="text-xs text-muted-foreground">{t("leaderboardPage.allTimeSubtitle", { n: overallList.length })}</div>
+        </TabsContent>
+
+        <TabsContent value="club" className="mt-3">
+          <Select value={clubFilter !== "all" ? clubFilter : ""} onValueChange={(v) => { setClubFilter(v); setPage(1); }}>
+            <SelectTrigger><SelectValue placeholder={t("leaderboardPage.selectClub")} /></SelectTrigger>
+            <SelectContent>
+              {clubs.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {clubFilter !== "all" && (
+            <div className="text-xs text-muted-foreground mt-2">
+              {t("leaderboardPage.club")}: <span className="text-gold">{clubs.find(c => c.id === clubFilter)?.name}</span>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="trusted" className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={timeFilter} onValueChange={(v: any) => { setTimeFilter(v); setPage(1); }}>
+              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">{t("leaderboardPage.timeWeek")}</SelectItem>
+                <SelectItem value="month">{t("leaderboardPage.timeMonth")}</SelectItem>
+                <SelectItem value="all">{t("leaderboardPage.timeAll")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(v: any) => { setSortBy(v); setPage(1); }}>
+              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="total">{t("leaderboardPage.sortByTotal")}</SelectItem>
+                <SelectItem value="played">{t("leaderboardPage.sortByPlayed")}</SelectItem>
+                <SelectItem value="avg">{t("leaderboardPage.sortByAvg")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={handleExportTrusted} className="gap-1">
+                <Download className="w-4 h-4" /> {t("leaderboardPage.exportExcel")}
+              </Button>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3 text-primary" />
+            {t("leaderboardPage.trustedNote")}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          placeholder={t("leaderboardPage.searchPlaceholder")}
+          className="pl-9"
+        />
+      </div>
+
+      {isTrusted ? (
+        <>
+          {filteredTrusted.length === 0 ? (
+            <Card className="p-6 text-center text-sm text-muted-foreground">
+              {q ? t("leaderboardPage.noPlayers") : t("leaderboardPage.trustedEmpty")}
+            </Card>
+          ) : (
+            <>
+              {/* Desktop table */}
+              <Card className="hidden md:block overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>{t("leaderboardPage.colPlayer")}</TableHead>
+                      <TableHead className="text-right">{t("leaderboardPage.colTournaments")}</TableHead>
+                      <TableHead className="text-right">{t("leaderboardPage.colTotal")}</TableHead>
+                      <TableHead className="text-right">{t("leaderboardPage.colAvg")}</TableHead>
+                      <TableHead className="text-right">{t("leaderboardPage.colBiggest")}</TableHead>
+                      <TableHead className="text-right">{t("leaderboardPage.colDetail")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {trustedPageItems.map((p) => {
+                      const rank = p.rank;
+                      const rankStyle =
+                        rank === 1 ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background"
+                        : rank === 2 ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background"
+                        : rank === 3 ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background"
+                        : "bg-muted text-muted-foreground";
+                      return (
+                        <TableRow key={p.key} className="even:bg-muted/30">
+                          <TableCell>
+                            <span className={`inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold ${rankStyle}`}>{rank}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {p.avatar_url && <img src={p.avatar_url} alt={p.name} className="w-7 h-7 rounded-full object-cover border border-border" />}
+                              <span className="font-medium">{p.name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{p.played}</TableCell>
+                          <TableCell className="text-right text-gold font-display">{fmtVnd(p.total)}</TableCell>
+                          <TableCell className="text-right">{fmtVnd(p.avg)}</TableCell>
+                          <TableCell className="text-right">{fmtVnd(p.biggest)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button size="sm" variant="outline" onClick={() => openHistory(p)}>{t("leaderboardPage.view")}</Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-2">
+                {trustedPageItems.map((p) => {
+                  const rank = p.rank;
+                  const rankStyle =
+                    rank === 1 ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background"
+                    : rank === 2 ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background"
+                    : rank === 3 ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background"
+                    : "bg-muted text-muted-foreground";
+                  return (
+                    <Card key={p.key} className="p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold ${rankStyle}`}>{rank}</span>
+                        {p.avatar_url && <img src={p.avatar_url} alt={p.name} className="w-8 h-8 rounded-full object-cover border border-border" />}
+                        <span className="font-medium flex-1 truncate">{p.name}</span>
+                      </div>
+                      <div className="font-display text-xl text-gold">{fmtVnd(p.total)}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {t("leaderboardPage.playedCount", { n: p.played })} · {fmtVnd(p.avg)}
+                      </div>
+                      <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => openHistory(p)}>{t("leaderboardPage.viewDetail")}</Button>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {trustedPages > 1 && (
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={trustedSafePage <= 1}>
+                <ChevronLeft className="w-4 h-4" /> {t("leaderboardPage.prev")}
+              </Button>
+              <div className="text-xs text-muted-foreground">
+                {t("leaderboardPage.page")} {trustedSafePage} / {trustedPages} · {filteredTrusted.length}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(trustedPages, p + 1))} disabled={trustedSafePage >= trustedPages}>
+                {t("leaderboardPage.next")} <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
+          <div className="text-[11px] text-muted-foreground text-center">
+            {t("leaderboardPage.updatedAt", { t: loadedAt.toLocaleTimeString() })}
+          </div>
+        </>
+      ) : (
+        <>
+          <Card className="divide-y divide-border/50 overflow-hidden">
+            {filteredList.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">
+                {q ? t("leaderboardPage.noPlayers") : isOverall ? t("leaderboardPage.emptyOverall") : t("leaderboardPage.emptyClub")}
+              </div>
+            ) : pageItems.map((p) => {
+              const rank = p.rank;
+              const rankStyle =
+                rank === 1
+                  ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background shadow-[0_0_18px_hsl(45_90%_55%/0.7)] ring-2 ring-yellow-300 animate-scale-in"
+                  : rank === 2
+                  ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background shadow-[0_0_14px_hsl(0_0%_75%/0.6)] ring-2 ring-slate-200 animate-scale-in"
+                  : rank === 3
+                  ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background shadow-[0_0_14px_hsl(30_70%_45%/0.6)] ring-2 ring-amber-600 animate-scale-in"
+                  : rank <= 10
+                  ? "bg-gradient-to-br from-primary/70 to-primary text-primary-foreground shadow-[0_0_10px_hsl(var(--primary)/0.5)] ring-1 ring-primary/60"
+                  : "bg-muted/50 text-muted-foreground";
+              const nameStyle =
+                rank === 1 ? "text-yellow-300 font-bold drop-shadow-[0_0_6px_hsl(45_90%_55%/0.6)]"
+                : rank === 2 ? "text-slate-200 font-semibold"
+                : rank === 3 ? "text-amber-500 font-semibold"
+                : rank <= 10 ? "text-primary font-medium" : "";
+              return (
+                <div key={p.key} className="flex items-center gap-3 p-3 hover-scale animate-fade-in">
+                  <div className={`min-w-[2.25rem] h-9 px-2 rounded-full flex items-center justify-center font-display font-bold text-sm transition-all ${rankStyle}`}>
+                    {rank}
+                  </div>
+                  {p.avatar_url && (
+                    <div className="w-9 h-9 rounded-full overflow-hidden bg-muted/40 border border-border shrink-0">
+                      <img src={p.avatar_url} alt={p.name} className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className={`truncate ${nameStyle || "font-medium"}`}>{p.name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">{t("leaderboardPage.winnings")}</div>
+                    <div className="font-display text-primary">{fmt(p.winnings)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>
+                <ChevronLeft className="w-4 h-4" /> {t("leaderboardPage.prev")}
+              </Button>
+              <div className="text-xs text-muted-foreground">
+                {t("leaderboardPage.page")} {safePage} / {totalPages} · {filteredList.length} {t("leaderboardPage.playersCount")}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}>
+                {t("leaderboardPage.next")} <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      <PlayerHistoryDialog
+        playerId={historyPlayer?.id ?? null}
+        playerName={historyPlayer?.name}
+        avatarUrl={historyPlayer?.avatar ?? null}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
+    </div>
+  );
+};
+
+export default Leaderboard;

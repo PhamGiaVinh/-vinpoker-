@@ -1,0 +1,96 @@
+# CI workflow
+#
+# Jobs:
+#  1. test-and-build — always runs: unit tests + production build.
+#  2. e2e            — optional Playwright E2E tests. Skips gracefully unless the
+#                      following repository secrets are configured:
+#                        - E2E_EMAIL
+#                        - E2E_PASSWORD
+#                      Add them at: GitHub repo → Settings → Secrets and
+#                      variables → Actions → New repository secret.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run unit tests (Vitest)
+        run: npm test
+
+      - name: Build production bundle
+        run: npm run build
+
+  e2e:
+    name: Playwright E2E (optional)
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    timeout-minutes: 20
+    steps:
+      - name: Check for E2E secrets
+        id: check-secrets
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: |
+          if [ -n "$E2E_EMAIL" ] && [ -n "$E2E_PASSWORD" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+            echo "✅ E2E credentials present — running Playwright tests."
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  E2E_EMAIL / E2E_PASSWORD not set — skipping E2E job (this is OK)."
+          fi
+
+      - name: Checkout
+        if: steps.check-secrets.outputs.has_creds == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.check-secrets.outputs.has_creds == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.check-secrets.outputs.has_creds == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Install Playwright browsers
+        if: steps.check-secrets.outputs.has_creds == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        if: steps.check-secrets.outputs.has_creds == 'true'
+        env:
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure() && steps.check-secrets.outputs.has_creds == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

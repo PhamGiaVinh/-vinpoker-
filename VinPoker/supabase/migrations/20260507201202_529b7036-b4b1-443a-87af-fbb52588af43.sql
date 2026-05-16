@@ -1,0 +1,1 @@
+DELETE FROM public.gto_spot_ranges WHERE spot_key = 'UTG_OPEN_50bb';

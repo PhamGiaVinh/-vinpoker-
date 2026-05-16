@@ -1,0 +1,2 @@
+ALTER TABLE public.platform_bank_accounts ADD COLUMN IF NOT EXISTS club_id uuid REFERENCES public.clubs(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_platform_bank_accounts_club_id ON public.platform_bank_accounts(club_id);
