@@ -4,9 +4,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { formatVND } from "@/lib/format";
+import { formatVND, formatStack } from "@/lib/format";
 import { compressImage } from "@/lib/compressImage";
-import { CheckCircle2, Copy, Loader2, Upload } from "lucide-react";
+import { CheckCircle2, Copy, Loader2, Upload, Sparkles } from "lucide-react";
 
 interface RegInfo {
   registration_id: string;
@@ -22,6 +22,8 @@ interface RegInfo {
   transfer_proof_url?: string | null;
   transfer_proof_submitted?: boolean;
   already_registered?: boolean;
+  free_rake_applied?: boolean;
+  savings?: number;
 }
 
 interface Props {
@@ -164,12 +166,29 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
         ) : (
           <div className="space-y-4">
 
+            {/* Free rake banner */}
+            {info.free_rake_applied && (
+              <div className="rounded-xl border border-success/30 bg-success/5 p-3 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                <div className="text-xs text-success font-semibold">
+                  🎉 Bạn được miễn phí dịch vụ CLB (tiết kiệm {formatStack(info.savings ?? 0)}).
+                  Vui lòng thanh toán trong 5 phút để giữ ưu đãi.
+                </div>
+              </div>
+            )}
+
             {/* Breakdown */}
             <div className="rounded-xl border border-border bg-card/40 p-3 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Lệ phí tập huấn</span><span className="font-mono">{formatVND(info.breakdown.buy_in)}</span></div>
+              {info.savings && info.savings > 0 && (
+                <div className="flex justify-between text-success">
+                  <span className="text-xs">Miễn phí dịch vụ CLB</span>
+                  <span className="font-mono text-xs">-{formatStack(info.savings)}</span>
+                </div>
+              )}
               <div className="flex justify-between pt-2 border-t border-border/60">
                 <span className="font-semibold">Tổng thanh toán</span>
-                <span className="font-mono font-bold text-primary text-base">{formatVND(info.breakdown.buy_in)}</span>
+                <span className="font-mono font-bold text-primary text-base">{formatVND(info.total_pay)}</span>
               </div>
             </div>
 

@@ -40,12 +40,24 @@ Deno.serve(async (req) => {
     // Tournament + club
     const { data: tour, error: tErr } = await admin
       .from("tournaments")
-      .select("id, name, buy_in, start_time, status, club_id")
+      .select("id, name, buy_in, start_time, status, club_id, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used")
       .eq("id", body.tournament_id)
       .maybeSingle();
     if (tErr || !tour) return j({ error: "Tournament not found" }, 404);
     if (tour.start_time && new Date(tour.start_time as string).getTime() < Date.now() - 60 * 60 * 1000) {
       return j({ error: "Giải đã bắt đầu hoặc kết thúc." }, 400);
+    }
+
+    // Try consume a free_rake slot (atomic)
+    let freeRakeApplied = false;
+    const rakeAmount = Number(tour.rake_amount ?? 0);
+    if (tour.free_rake_enabled) {
+      const { data: consume, error: consumeErr } = await admin.rpc("try_consume_free_rake_slot", {
+        _tournament_id: tour.id,
+      });
+      if (!consumeErr && consume === true) {
+        freeRakeApplied = true;
+      }
     }
 
     // Already-registered guard
@@ -102,12 +114,15 @@ Deno.serve(async (req) => {
         transfer_proof_url: existing.transfer_proof_image_url,
         transfer_proof_submitted: existing.transfer_proof_submitted,
         committed_at: existing.committed_at,
+        free_rake_applied: existing.used_free_rake ?? false,
+        savings: existing.used_free_rake ? rakeAmount : 0,
       });
     }
 
     // Tournament buy-in does NOT include platform fee
+    // If free_rake applied, player only pays buy_in (rake waived)
     const fixedFee = 0;
-    const totalPay = Number(tour.buy_in);
+    const totalPay = freeRakeApplied ? Number(tour.buy_in) : Number(tour.buy_in) + rakeAmount;
 
     const refCode = "VINReg" +
       String(tour.id).replace(/-/g, "").slice(0, 4).toUpperCase() +
@@ -124,6 +139,7 @@ Deno.serve(async (req) => {
         total_pay: totalPay,
         reference_code: refCode,
         status: "pending",
+        used_free_rake: freeRakeApplied,
       })
       .select("id")
       .single();
@@ -153,6 +169,8 @@ Deno.serve(async (req) => {
       account_holder: bank.account_holder,
       qr_code_url: bank.qr_code_url,
       committed_at: new Date().toISOString(),
+      free_rake_applied: freeRakeApplied,
+      savings: freeRakeApplied ? rakeAmount : 0,
     });
   } catch (e: any) {
     return j({ error: e?.message ?? "internal" }, 500);

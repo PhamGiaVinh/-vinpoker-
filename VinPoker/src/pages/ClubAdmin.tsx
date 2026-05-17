@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles } from "lucide-react";
+import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -212,7 +213,8 @@ const ClubAdmin = () => {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold truncate">{t2.name}</div>
-                    <div className="text-xs text-muted-foreground">{formatDateTime(t2.start_time)} · {formatVND(t2.buy_in)}</div>
+                    <div className="text-xs text-muted-foreground">{formatDateTime(t2.start_time)}</div>
+                    <div className="mt-0.5"><FomoPrice tournament={t2} /></div>
                     <div className="text-[11px] text-muted-foreground">{t("clubAdmin.stack")}: {t2.starting_stack?.toLocaleString?.() ?? t2.starting_stack}{t2.location ? ` · 📍 ${t2.location}` : ""}</div>
                   </div>
                   <div className="flex gap-1">

@@ -7,6 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Coins, Layers, MapPin, Calendar, Users, Loader2 } from "lucide-react";
 import { formatVND, formatStack, formatDateTime } from "@/lib/format";
+import { FomoPrice } from "@/components/FomoPrice";
+import { getTournamentPrice } from "@/lib/tournament";
 import { LiveStateBanner } from "@/components/LiveStateBanner";
 import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
 import { LivestreamPlayer } from "@/components/LivestreamPlayer";
@@ -90,12 +92,20 @@ const TournamentDetail = () => {
           <Calendar className="w-4 h-4" /> {formatDateTime(t.start_time)}
         </p>
         <div className="grid grid-cols-2 gap-2 mt-4">
-          <Info icon={Coins} label={tr("tournamentDetail.buyIn")} value={formatVND(t.buy_in)} />
+          <Info icon={Coins} label={tr("tournamentDetail.buyIn")} value={<FomoPrice tournament={t} />} />
           <Info icon={Layers} label={tr("tournamentDetail.startingStack")} value={formatStack(t.starting_stack)} />
           <Info icon={MapPin} label={tr("tournamentDetail.location")} value={t.location || t.club?.address || "—"} />
           <Info icon={Users} label={tr("tournamentDetail.registered")} value={tr("tournamentDetail.players", { n: Math.max(t.current_players ?? 0, count) })} />
         </div>
       </Card>
+
+      {getTournamentPrice(t).hasDiscount && (
+        <Card className="p-4 border-success/30 bg-success/5">
+          <p className="text-sm text-success font-semibold flex items-center gap-2">
+            🎉 Giải này đang miễn phí DV CLB cho {getTournamentPrice(t).remainingSlots} suất đầu tiên. Đăng ký ngay để nhận ưu đãi!
+          </p>
+        </Card>
+      )}
 
       <LivestreamPlayer tournamentId={t.id} />
 

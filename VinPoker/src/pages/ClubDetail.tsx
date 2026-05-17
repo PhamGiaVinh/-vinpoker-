@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, MapPin, Star, Calendar, Loader2, Spade } from "lucide-react";
 import { formatDateTime, formatVND } from "@/lib/format";
+import { FomoPrice } from "@/components/FomoPrice";
 import royalPokerLogo from "@/assets/royal-poker-logo.jpg";
 import { useTranslation } from "react-i18next";
 
@@ -94,7 +95,7 @@ const ClubDetail = () => {
                       <div className="font-semibold">{t.name}</div>
                       <div className="text-xs text-muted-foreground">{formatDateTime(t.start_time)}</div>
                     </div>
-                    <div className="text-gold font-semibold text-sm">{formatVND(t.buy_in)}</div>
+                    <FomoPrice tournament={t} />
                   </div>
                 </Card>
               </Link>

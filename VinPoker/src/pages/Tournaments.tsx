@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatBuyInShort, formatShortDate, formatTime } from "@/lib/format";
+import { FomoPrice } from "@/components/FomoPrice";
 import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { LivestreamSection } from "@/components/LivestreamSection";
@@ -24,6 +25,10 @@ interface Tournament {
   name: string;
   start_time: string;
   buy_in: number;
+  rake_amount?: number;
+  free_rake_enabled?: boolean;
+  free_rake_slots?: number;
+  free_rake_used?: number;
   starting_stack: number;
   current_players: number;
   current_blinds: string | null;
@@ -82,7 +87,7 @@ const Tournaments = () => {
       const [{ data: t }, { data: bs }, { data: vb }, { data: sr }, { data: cs }] = await Promise.all([
         supabase
           .from("tournaments")
-          .select("id,name,start_time,buy_in,starting_stack,current_players,current_blinds,live_status,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)")
+          .select("id,name,start_time,buy_in,rake_amount,free_rake_enabled,free_rake_slots,free_rake_used,starting_stack,current_players,current_blinds,live_status,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)")
           .order("buy_in", { ascending: false }),
         supabase.from("app_settings").select("value").eq("key", "banners").maybeSingle(),
         supabase.from("app_settings").select("value").eq("key", "vip_banner").maybeSingle(),
@@ -564,7 +569,7 @@ const Tournaments = () => {
                                   </div>
                                 )}
                               </td>
-                              <td className="text-left px-3 py-4 font-display font-bold whitespace-nowrap">{formatBuyInShort(t.buy_in)}</td>
+                              <td className="text-left px-3 py-4 font-display font-bold whitespace-nowrap"><FomoPrice tournament={t} compact formatter={formatBuyInShort} /></td>
                               <td className="text-left px-3 py-4 hidden md:table-cell">
                                 <span className="text-primary font-bold">{t.current_players}</span>
                                 <span className="text-muted-foreground text-xs"> {tr("tournamentsPage.entries")}</span>

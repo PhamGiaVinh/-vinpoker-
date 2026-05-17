@@ -228,16 +228,20 @@ function OverviewPanel({ clubIds, onJump }: { clubIds: string[]; onJump: (s: Sec
 function StakingPanel({ clubIds }: { clubIds: string[] }) {
   return (
     <Tabs defaultValue="pending" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
+      <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto">
         <TabsTrigger value="pending">Chờ xác nhận</TabsTrigger>
         <TabsTrigger value="checkin">Check-in</TabsTrigger>
         <TabsTrigger value="result">Kết quả & Giải ngân</TabsTrigger>
         <TabsTrigger value="history">Lịch sử</TabsTrigger>
+        <TabsTrigger value="refund">Hoàn tiền</TabsTrigger>
+        <TabsTrigger value="refund-history">Lịch sử hoàn tiền</TabsTrigger>
       </TabsList>
       <TabsContent value="pending" className="mt-4"><PendingConfirmTab clubIds={clubIds} /></TabsContent>
       <TabsContent value="checkin" className="mt-4"><CashierCounter /></TabsContent>
       <TabsContent value="result" className="mt-4"><ResultPayoutTab clubIds={clubIds} /></TabsContent>
       <TabsContent value="history" className="mt-4"><HistoryTab clubIds={clubIds} /></TabsContent>
+      <TabsContent value="refund" className="mt-4"><RefundTab clubIds={clubIds} /></TabsContent>
+      <TabsContent value="refund-history" className="mt-4"><RefundHistoryTab clubIds={clubIds} /></TabsContent>
     </Tabs>
   );
 }
@@ -868,6 +872,224 @@ function ReportsPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] 
       <p className="text-[11px] text-muted-foreground">
         Báo cáo gồm tất cả deals trong khoảng thời gian đã chọn của các CLB bạn phụ trách. Phí giải ngân được snapshot per-deal theo cấu hình tại thời điểm tạo.
       </p>
+    </Card>
+  );
+}
+
+/* ============================================================== */
+/* REFUND                                                          */
+/* ============================================================== */
+
+function RefundTab({ clubIds }: { clubIds: string[] }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [refundFor, setRefundFor] = useState<any | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+
+  const load = useCallback(async () => {
+    setRows(null);
+    let q = supabase.from("staking_deals")
+      .select(`id, custom_event_name, club_id, buy_in_amount_vnd, filled_percent, percentage_sold, status, player_id, created_at,
+               tournament:tournament_id(name, start_time)`)
+      .in("status", ["funded", "locked", "result_entered", "result_verified"])
+      .order("created_at", { ascending: false });
+    if (clubIds.length) q = q.in("club_id", clubIds);
+    const { data, error } = await q;
+    if (error) { toast.error(error.message); setRows([]); return; }
+    const arr = data ?? [];
+    const ids = Array.from(new Set(arr.map((r: any) => r.player_id).filter(Boolean)));
+    let pmap: Record<string, any> = {};
+    if (ids.length) {
+      const { data: ps } = await supabase.from("profiles").select("user_id, display_name").in("user_id", ids);
+      pmap = Object.fromEntries((ps ?? []).map((p: any) => [p.user_id, p]));
+    }
+    setRows(arr.map((r: any) => ({ ...r, player: pmap[r.player_id] ?? null })));
+  }, [clubIds]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const doRefund = async () => {
+    if (!refundFor || !refundReason.trim()) return;
+    setBusy(refundFor.id);
+    const { data, error } = await supabase.functions.invoke("staking-process-refund", {
+      body: { deal_id: refundFor.id, reason: refundReason.trim() },
+    });
+    setBusy(null);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error ?? error?.message ?? "Lỗi hoàn tiền");
+      return;
+    }
+    toast.success("✅ Đã hoàn trả phí hỗ trợ tập huấn cho tất cả backer.");
+    setRefundFor(null);
+    setRefundReason("");
+    load();
+  };
+
+  if (rows === null) return <Skeleton className="h-40 rounded-xl" />;
+
+  return (
+    <>
+      <Card className="p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-semibold">Deals đã funded — có thể hoàn tiền ({rows.length})</div>
+          <Button size="sm" variant="outline" onClick={load}><RefreshCw className="w-3.5 h-3.5" /></Button>
+        </div>
+        <p className="text-[11px] text-warning mb-3">
+          ⚠️ Hoàn tiền sẽ trả lại toàn bộ số tiền backer đã góp, trừ phí nền tảng (nếu có). Hành động này không thể hoàn tác.
+        </p>
+        {rows.length === 0 ? (
+          <div className="text-center text-sm text-muted-foreground py-10">Không có deal nào đã funded</div>
+        ) : (
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sự kiện</TableHead>
+                  <TableHead>Player</TableHead>
+                  <TableHead>Buy-in</TableHead>
+                  <TableHead>Đã bán</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="text-right">Hành động</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.custom_event_name ?? r.tournament?.name ?? "—"}</TableCell>
+                    <TableCell>{r.player?.display_name ?? "—"}</TableCell>
+                    <TableCell className="font-mono">{formatVND(r.buy_in_amount_vnd)}</TableCell>
+                    <TableCell>{r.filled_percent}% / {r.percentage_sold}%</TableCell>
+                    <TableCell><Badge variant="outline">{r.status}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="destructive"
+                        onClick={() => { setRefundFor(r); setRefundReason(""); }}>
+                        Hoàn tiền
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </Card>
+
+      <Dialog open={!!refundFor} onOpenChange={(o) => !o && setRefundFor(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận hoàn tiền</DialogTitle>
+            <DialogDescription>
+              Hoàn trả phí hỗ trợ tập huấn cho tất cả backer của deal <b>{refundFor?.custom_event_name ?? refundFor?.tournament?.name ?? ""}</b>.
+              <br />Số tiền: <b>{refundFor?.buy_in_amount_vnd ? formatVND(refundFor.buy_in_amount_vnd) : "—"}</b>
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea placeholder="Lý do hoàn tiền (bắt buộc)"
+            value={refundReason} onChange={(e) => setRefundReason(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefundFor(null)}>Huỷ</Button>
+            <Button variant="destructive" disabled={!refundReason.trim() || busy === refundFor?.id}
+              onClick={doRefund}>
+              {busy === refundFor?.id ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Xác nhận hoàn tiền
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function RefundHistoryTab({ clubIds }: { clubIds: string[] }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [search, setSearch] = useState("");
+
+  const load = useCallback(async () => {
+    setRows(null);
+    let q = supabase.from("staking_deals")
+      .select(`id, custom_event_name, status, created_at, refund_reason, refunded_at, refunded_by, buy_in_amount_vnd, filled_percent, club_id, player_id,
+               tournament:tournament_id(name)`)
+      .eq("status", "deal_refunded")
+      .order("refunded_at", { ascending: false })
+      .limit(500);
+    if (clubIds.length) q = q.in("club_id", clubIds);
+    const { data, error } = await q;
+    if (error) { toast.error(error.message); setRows([]); return; }
+    const arr = data ?? [];
+    const ids = Array.from(new Set(arr.map((r: any) => r.player_id).filter(Boolean)));
+    let pmap: Record<string, any> = {};
+    if (ids.length) {
+      const { data: ps } = await supabase.from("profiles").select("user_id, display_name").in("user_id", ids);
+      pmap = Object.fromEntries((ps ?? []).map((p: any) => [p.user_id, p]));
+    }
+    setRows(arr.map((r: any) => ({ ...r, player: pmap[r.player_id] ?? null })));
+  }, [clubIds]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    const s = search.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((r) =>
+      (r.custom_event_name ?? "").toLowerCase().includes(s) ||
+      (r.player?.display_name ?? "").toLowerCase().includes(s) ||
+      (r.refund_reason ?? "").toLowerCase().includes(s));
+  }, [rows, search]);
+
+  const exportXlsx = () => {
+    exportToExcel(filtered, [
+      { header: "Deal ID", get: (r: any) => r.id.slice(0, 8) },
+      { header: "Sự kiện", get: (r: any) => r.custom_event_name ?? r.tournament?.name ?? "" },
+      { header: "Player", get: (r: any) => r.player?.display_name ?? "" },
+      { header: "Buy-in", get: (r: any) => r.buy_in_amount_vnd ?? 0 },
+      { header: "% lấp đầy", get: (r: any) => r.filled_percent },
+      { header: "Lý do", get: (r: any) => r.refund_reason ?? "" },
+      { header: "Ngày hoàn", get: (r: any) => formatExcelDate(r.refunded_at) },
+    ], "lich-su-hoan-tien", "RefundHistory");
+  };
+
+  if (rows === null) return <Skeleton className="h-40 rounded-xl" />;
+
+  return (
+    <Card className="p-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <Input placeholder="Tìm theo player / sự kiện / lý do"
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs" />
+        <Button size="sm" variant="outline" onClick={load}><RefreshCw className="w-3.5 h-3.5" /></Button>
+        <Button size="sm" onClick={exportXlsx} disabled={filtered.length === 0}>
+          <Download className="w-3.5 h-3.5 mr-1" /> Excel
+        </Button>
+        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} dòng</span>
+      </div>
+      <div className="overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Sự kiện</TableHead>
+              <TableHead>Player</TableHead>
+              <TableHead>Buy-in</TableHead>
+              <TableHead>%</TableHead>
+              <TableHead>Lý do</TableHead>
+              <TableHead>Ngày hoàn</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Không có dữ liệu</TableCell></TableRow>
+            ) : filtered.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell className="font-medium">{r.custom_event_name ?? r.tournament?.name ?? "—"}</TableCell>
+                <TableCell>{r.player?.display_name ?? "—"}</TableCell>
+                <TableCell className="font-mono">{r.buy_in_amount_vnd ? formatVND(r.buy_in_amount_vnd) : "—"}</TableCell>
+                <TableCell>{r.filled_percent}%</TableCell>
+                <TableCell className="text-xs max-w-[200px] truncate">{r.refund_reason ?? "—"}</TableCell>
+                <TableCell className="text-xs">{r.refunded_at ? formatDateTime(r.refunded_at) : "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </Card>
   );
 }

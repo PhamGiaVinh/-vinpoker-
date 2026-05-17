@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2 } from "lucide-react";
+import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2, Sparkles } from "lucide-react";
+import { FomoPrice } from "@/components/FomoPrice";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { BackingReviewQueue } from "@/components/BackingReviewQueue";
@@ -143,7 +144,7 @@ const SuperAdmin = () => {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate">{t.name}</div>
                   <div className="text-xs text-muted-foreground">{t.club?.name} · {formatDateTime(t.start_time)}</div>
-                  <div className="text-xs text-neon mt-0.5">Buy-in: {formatVND(t.buy_in)} · Stack: {t.starting_stack.toLocaleString()}</div>
+                  <div className="text-xs text-neon mt-0.5"><FomoPrice tournament={t} /> · Stack: {t.starting_stack.toLocaleString()}</div>
                   {t.location && <div className="text-xs text-muted-foreground">📍 {t.location}</div>}
                 </div>
                 <div className="flex gap-1">

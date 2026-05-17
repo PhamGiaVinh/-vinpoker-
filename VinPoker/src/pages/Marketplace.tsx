@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
 import { Search, TrendingUp, AlertCircle, Sparkles, X, ExternalLink, Users, CheckCircle2, Clock } from "lucide-react";
+import { FomoPrice } from "@/components/FomoPrice";
 import { TransferInstructions } from "@/components/TransferInstructions";
 
 interface DealRow {
@@ -39,7 +40,7 @@ interface DealRow {
   registration_deadline: string | null;
   custom_event_date: string | null;
   player?: { display_name: string | null; avatar_url: string | null };
-  tournament?: { name: string; start_time: string; club_id: string } | null;
+  tournament?: { name: string; start_time: string; club_id: string; buy_in: number; rake_amount?: number; free_rake_enabled?: boolean; free_rake_slots?: number; free_rake_used?: number } | null;
 }
 
 interface PlayerStats {
@@ -116,7 +117,7 @@ const Marketplace = () => {
         ? supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", playerIds)
         : Promise.resolve({ data: [], error: null } as any),
       tournamentIds.length
-        ? supabase.from("tournaments").select("id, name, start_time, club_id").in("id", tournamentIds)
+        ? supabase.from("tournaments").select("id, name, start_time, club_id, buy_in, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used").in("id", tournamentIds)
         : Promise.resolve({ data: [], error: null } as any),
       playerIds.length
         ? supabase.from("player_stats").select("player_id, itm_rate, roi_percentage, tournaments_played, total_profit_loss, verified").in("player_id", playerIds)
@@ -636,7 +637,14 @@ const DealDetailDialog = ({
                       <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(142_76%_45%)]" /> {t("marketplace.confirmedCount", { n: breakdown?.funded_count ?? 0 })}</span>
                       <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(38_92%_55%)]" /> {t("marketplace.pendingCount", { n: breakdown?.pending_count ?? 0 })}</span>
                     </div>
-                    <Row k={t("marketplace.buyIn")} v={formatVND(deal.buy_in_amount_vnd)} />
+                    {deal.tournament && 'buy_in' in deal.tournament && deal.tournament.buy_in != null ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">{t("marketplace.buyIn")}</span>
+                        <FomoPrice tournament={deal.tournament} compact />
+                      </div>
+                    ) : (
+                      <Row k={t("marketplace.buyIn")} v={formatVND(deal.buy_in_amount_vnd)} />
+                    )}
                     <Row k={t("marketplace.markupLabel")} v={`${Number(deal.markup).toFixed(2)}x`} />
                     <Row k={t("marketplace.pricePer1")} v={formatVND(Math.round(pricePer1Pct))} />
                   </div>

@@ -17,12 +17,18 @@ import { formatVND, formatStack } from "@/lib/format";
 import { computeAskingPrice, computeStakingPayouts } from "@/lib/stakingMath";
 import { AlertCircle, Sparkles, Info, Lock } from "lucide-react";
 import { getLateRegCloseTime } from "@/lib/tournamentLive";
+import { FomoPrice } from "@/components/FomoPrice";
+import { getTournamentPrice } from "@/lib/tournament";
 
 interface TournamentOpt {
   id: string;
   name: string;
   start_time: string;
   buy_in: number;
+  rake_amount?: number;
+  free_rake_enabled?: boolean;
+  free_rake_slots?: number;
+  free_rake_used?: number;
   club_id: string | null;
   minutes_per_level: number | null;
   late_reg_close_level: number | null;
@@ -106,7 +112,7 @@ const StakingNew = () => {
       const [{ data: tData }, { data: cData }] = await Promise.all([
         supabase
           .from("tournaments")
-          .select("id, name, start_time, buy_in, club_id, minutes_per_level, late_reg_close_level")
+          .select("id, name, start_time, buy_in, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level")
           .gt("start_time", new Date().toISOString())
           .order("start_time", { ascending: true })
           .limit(80),
@@ -319,7 +325,7 @@ const StakingNew = () => {
               <SelectContent>
                 {tournaments.map((tt) => (
                   <SelectItem key={tt.id} value={tt.id}>
-                    {tt.name} · {formatVND(tt.buy_in)}
+                    {tt.name} · <FomoPrice tournament={tt} compact />
                   </SelectItem>
                 ))}
                 <SelectItem value="__custom__">{t("stakingNew.customOption")}</SelectItem>
@@ -493,6 +499,7 @@ const StakingNew = () => {
           percentage={percentage}
           markup={markup}
           askingPrice={askingPrice}
+          selectedTournament={selectedTournament}
         />
       </div>
     </div>
@@ -500,11 +507,18 @@ const StakingNew = () => {
 };
 
 const SimulationPreview = ({
-  buyIn, percentage, markup, askingPrice,
-}: { buyIn: number; percentage: number; markup: number; askingPrice: number }) => {
+  buyIn, percentage, markup, askingPrice, selectedTournament,
+}: { buyIn: number; percentage: number; markup: number; askingPrice: number; selectedTournament?: TournamentOpt | null }) => {
   const { t } = useTranslation();
+  const fp = selectedTournament ? getTournamentPrice(selectedTournament) : null;
   return (
     <aside className="space-y-3 p-5 rounded-xl border border-primary/30 bg-card/40 sticky top-20 h-fit">
+      {fp?.hasDiscount && (
+        <div className="rounded-lg border border-success/30 bg-success/5 p-2.5 text-xs text-success font-semibold">
+          🎉 Giải này đang có ưu đãi miễn phí DV CLB cho {fp.remainingSlots} suất đầu tiên. Còn {fp.remainingSlots} suất.
+        </div>
+      )}
+
       <div className="text-[11px] uppercase tracking-[0.2em] text-primary font-bold">{t("stakingNew.previewInfo")}</div>
       <div className="space-y-1.5 text-sm">
         <Row k="Lệ phí tập huấn" v={formatVND(buyIn)} />
