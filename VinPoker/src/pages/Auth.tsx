@@ -61,7 +61,7 @@ const Auth = () => {
     }
     const { error } = await supabase.auth.signUp({
       email, password,
-      options: { emailRedirectTo: "https://vinpoker.live/", data: { display_name: dn } },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback`, data: { display_name: dn } },
     });
     setSubmitting(false);
     if (error) return toast.error(error.message);

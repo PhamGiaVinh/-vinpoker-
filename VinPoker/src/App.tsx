@@ -60,6 +60,7 @@ const InternationalEvents = lazy(() => import("./pages/InternationalEvents"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -102,10 +103,11 @@ const App = () => (
           <PushNotificationPrompt />
           <Suspense fallback={<RouteLoader />}>
             <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+<Route path="/auth" element={<Auth />} />
+<Route path="/auth/callback" element={<AuthCallback />} />
+<Route path="/verify-email" element={<VerifyEmail />} />
+<Route path="/forgot-password" element={<ForgotPassword />} />
+<Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/setup-davinci" element={<SetupDavinci />} />

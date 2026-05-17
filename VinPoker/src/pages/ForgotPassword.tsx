@@ -20,7 +20,7 @@ const ForgotPassword = () => {
     if (!r.success) return toast.error(r.error.errors[0].message);
     setBusy(true);
     const { error } = await supabase.auth.resetPasswordForEmail(r.data, {
-      redirectTo: "https://vinpoker.live/reset-password",
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     setBusy(false);
     if (error) return toast.error(error.message);

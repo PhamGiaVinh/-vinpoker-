@@ -20,7 +20,7 @@ const VerifyEmail = () => {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: user.email,
-      options: { emailRedirectTo: "https://vinpoker.live/" },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
     setBusy(false);
     if (error) toast.error(error.message);
