@@ -637,8 +637,10 @@ function VerificationRequestsTab({ clubIds, clubs }: { clubIds: string[]; clubs:
 
   const act = async (id: string, action: "approve" | "reject", reason?: string) => {
     setBusy(id);
-    const { data, error } = await supabase.functions.invoke("approve-reject-verification", {
-      body: { request_id: id, action, rejection_reason: reason },
+    const { data, error } = await supabase.rpc("approve_verification", {
+      p_request_id: id,
+      p_action: action,
+      p_rejection_reason: reason ?? null,
     });
     setBusy(null);
     if (error || (data as any)?.error) { toast.error(error?.message ?? (data as any).error); return; }
