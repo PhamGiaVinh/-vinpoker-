@@ -15,6 +15,8 @@ export default {
         display: ['AppDigits', 'Playfair Display', 'Georgia', 'serif'],
         sans: ['Inter', 'AppDigits', 'Playfair Display', 'Georgia', 'serif'],
         mono: ['Inter', 'AppDigits', 'Playfair Display', 'Georgia', 'serif'],
+        bebas: ['Bebas Neue', 'sans-serif'],
+        jetbrains: ['JetBrains Mono', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

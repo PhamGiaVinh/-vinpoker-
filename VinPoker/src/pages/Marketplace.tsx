@@ -6,19 +6,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
-import { Search, TrendingUp, AlertCircle, Sparkles, X, ExternalLink, Users, CheckCircle2, Clock } from "lucide-react";
-import { FomoPrice } from "@/components/FomoPrice";
+import { Search, TrendingUp, Sparkles, X, Users, ExternalLink, Clock, ChevronRight } from "lucide-react";
 import { TransferInstructions } from "@/components/TransferInstructions";
 
 interface DealRow {
@@ -26,6 +22,7 @@ interface DealRow {
   player_id: string;
   tournament_id: string | null;
   custom_event_name: string | null;
+  custom_event_date: string | null;
   buy_in_amount_vnd: number;
   percentage_sold: number;
   filled_percent: number;
@@ -38,9 +35,9 @@ interface DealRow {
   escrow_bank_reference: string;
   created_at: string;
   registration_deadline: string | null;
-  custom_event_date: string | null;
-  player?: { display_name: string | null; avatar_url: string | null };
-  tournament?: { name: string; start_time: string; club_id: string; buy_in: number; rake_amount?: number; free_rake_enabled?: boolean; free_rake_slots?: number; free_rake_used?: number } | null;
+  player_checked_in: boolean;
+  player?: { display_name: string | null; avatar_url: string | null; verification_status: string | null };
+  tournament?: { name: string; start_time: string; club_id: string; buy_in: number } | null;
 }
 
 interface PlayerStats {
@@ -61,6 +58,11 @@ interface DealBreakdown {
 
 interface TournamentOpt { id: string; name: string }
 
+const TWO_HOURS = 2 * 60 * 60 * 1000;
+const THIRTY_MIN = 30 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
+
 const Marketplace = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -69,13 +71,22 @@ const Marketplace = () => {
   const playerFilter = searchParams.get("player");
   const [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<DealRow[]>([]);
+  const [allDeals, setAllDeals] = useState<DealRow[]>([]);
   const [tournaments, setTournaments] = useState<TournamentOpt[]>([]);
   const [statsByPlayer, setStatsByPlayer] = useState<Record<string, PlayerStats>>({});
   const [breakdownByDeal, setBreakdownByDeal] = useState<Record<string, DealBreakdown>>({});
   const [search, setSearch] = useState("");
   const [tournamentFilter, setTournamentFilter] = useState<string>("all");
-  const [markupRange, setMarkupRange] = useState<[number, number]>([1.0, 1.5]);
+  const [markupRange, setMarkupRange] = useState<[number, number]>([1.0, 2.0]);
+  const [verifFilter, setVerifFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("closing");
   const [selected, setSelected] = useState<DealRow | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const playerFilterName = useMemo(() => {
     if (!playerFilter) return null;
@@ -91,13 +102,13 @@ const Marketplace = () => {
 
   const load = async () => {
     setLoading(true);
-    // Auto-close any deals whose registration deadline has passed before listing
-    try { await supabase.rpc("auto_close_expired_deals" as any); } catch {}
+    try { await supabase.rpc("auto_close_expired_deals" as any); } catch { /* noop */ }
+
     const { data, error } = await supabase
       .from("staking_deals")
       .select("*")
       .eq("admin_review_status", "approved")
-      .in("status", ["listing", "committing"])
+      .in("status", ["listing", "committing", "funded"])
       .eq("early_closed", false)
       .eq("player_checked_in", false)
       .order("created_at", { ascending: false });
@@ -114,10 +125,10 @@ const Marketplace = () => {
 
     const [profilesRes, tourRes, statsRes] = await Promise.all([
       playerIds.length
-        ? supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", playerIds)
+        ? supabase.from("profiles").select("user_id, display_name, avatar_url, verification_status").in("user_id", playerIds)
         : Promise.resolve({ data: [], error: null } as any),
       tournamentIds.length
-        ? supabase.from("tournaments").select("id, name, start_time, club_id, buy_in, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used").in("id", tournamentIds)
+        ? supabase.from("tournaments").select("id, name, start_time, club_id, buy_in").in("id", tournamentIds)
         : Promise.resolve({ data: [], error: null } as any),
       playerIds.length
         ? supabase.from("player_stats").select("player_id, itm_rate, roi_percentage, tournaments_played, total_profit_loss, verified").in("player_id", playerIds)
@@ -135,18 +146,12 @@ const Marketplace = () => {
       tournament: d.tournament_id ? tourMap.get(d.tournament_id) ?? null : null,
     }));
 
-    setDeals(enriched);
-    setStatsByPlayer(sMap);
+    setAllDeals(enriched);
 
-    // Fetch purchase breakdown via security-definer RPC (so non-participants also see pending pct)
-    const dealIds = rows.map((d) => d.id);
     const bMap: Record<string, DealBreakdown> = {};
+    const dealIds = rows.map((d) => d.id);
     if (dealIds.length) {
-      const { data: pData, error: pErr } = await supabase
-        .rpc("get_deal_purchase_breakdown", { _deal_ids: dealIds });
-      if (pErr) {
-        console.error("get_deal_purchase_breakdown error", pErr);
-      }
+      const { data: pData } = await supabase.rpc("get_deal_purchase_breakdown", { _deal_ids: dealIds });
       (pData ?? []).forEach((row: any) => {
         bMap[row.deal_id] = {
           funded_pct: Number(row.funded_pct ?? 0),
@@ -156,8 +161,10 @@ const Marketplace = () => {
         };
       });
     }
+
     setBreakdownByDeal(bMap);
-    // Tournament filter options from currently approved upcoming
+    setStatsByPlayer(sMap);
+
     const { data: allT } = await supabase
       .from("tournaments")
       .select("id, name")
@@ -170,7 +177,6 @@ const Marketplace = () => {
 
   useEffect(() => { load(); }, []);
 
-  // Realtime: refresh on any change to listing deals or purchases
   useEffect(() => {
     const ch = supabase
       .channel("marketplace-deals")
@@ -180,61 +186,89 @@ const Marketplace = () => {
     return () => { supabase.removeChannel(ch); };
   }, []);
 
+  const { availableDeals, soldDeals } = useMemo(() => {
+    const avail: DealRow[] = [];
+    const sold: DealRow[] = [];
+    const cutoff = now - DAY_MS;
+    for (const d of allDeals) {
+      const remaining = (d.percentage_sold ?? 0) - (d.filled_percent ?? 0);
+      const eventTime = d.tournament?.start_time ?? d.custom_event_date ?? null;
+      if (eventTime && new Date(eventTime).getTime() < cutoff) continue;
+      if (remaining <= 0) { sold.push(d); continue; }
+      avail.push(d);
+    }
+    return { availableDeals: avail, soldDeals: sold };
+  }, [allDeals, now]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return deals.filter((d) => {
-      const remaining = (d.percentage_sold ?? 0) - (d.filled_percent ?? 0);
-      if (remaining <= 0) return false;
-      // Hide deals whose linked tournament (or custom event) is past 24h — buy-in closed
-      const eventTime = d.tournament?.start_time ?? d.custom_event_date ?? null;
-      if (eventTime && new Date(eventTime).getTime() < cutoff) return false;
+    return availableDeals.filter((d) => {
       if (playerFilter && d.player_id !== playerFilter) return false;
       if (tournamentFilter !== "all" && d.tournament_id !== tournamentFilter) return false;
       const mk = Number(d.markup);
       if (mk < markupRange[0] - 0.001 || mk > markupRange[1] + 0.001) return false;
+      const verified = d.player?.verification_status === "verified";
+      if (verifFilter === "verified" && !verified) return false;
+      if (verifFilter === "unverified" && verified) return false;
       if (q) {
         const name = (d.player?.display_name ?? "").toLowerCase();
         if (!name.includes(q)) return false;
       }
       return true;
+    }).sort((a, b) => {
+      if (sortBy === "roi") {
+        const aRoi = statsByPlayer[a.player_id]?.roi_percentage ?? 0;
+        const bRoi = statsByPlayer[b.player_id]?.roi_percentage ?? 0;
+        return bRoi - aRoi;
+      }
+      const aDeadline = resolveDeadline(a);
+      const bDeadline = resolveDeadline(b);
+      return (aDeadline?.getTime() ?? Infinity) - (bDeadline?.getTime() ?? Infinity);
     });
-  }, [deals, search, tournamentFilter, markupRange, playerFilter]);
+  }, [availableDeals, search, tournamentFilter, markupRange, verifFilter, sortBy, playerFilter, statsByPlayer]);
 
   return (
-    <div className="staking-scope space-y-6">
-      <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            <h1 className="text-2xl md:text-3xl font-display font-bold">{t("marketplace.title")}</h1>
-          </div>
-          <p className="text-sm text-muted-foreground max-w-2xl">
+    <div className="space-y-6">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="font-bebas text-4xl md:text-5xl tracking-[0.05em] text-primary leading-none">
+            {t("marketplace.title")}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-xl font-sans">
             {t("marketplace.subtitle")}{" "}
-            <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80">{t("marketplace.findPlayerLink")}</button>.
+            <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80">
+              {t("marketplace.findPlayerLink")}
+            </button>.
           </p>
+          {/* Chronograph divider */}
+          <div className="flex items-center gap-2 mt-4">
+            <div className="flex-1 h-[1px] bg-[#10B981]" />
+            <div className="w-2 h-2 bg-[#10B981] rotate-45 shrink-0" />
+            <div className="flex-1 h-[1px] bg-[#10B981]" />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           <Button
             variant="outline"
             onClick={() => nav(user ? "/staking/my-deals" : "/auth")}
-            className="border-primary/40 text-primary hover:bg-primary/10"
+            className="border-[#1F1F1F] text-foreground hover:bg-[#1F1F1F] hover:text-primary font-sans rounded-none h-10 px-5"
           >
             {t("marketplace.myDealsBtn")}
           </Button>
           <Button
             onClick={() => nav(user ? "/staking/new" : "/auth")}
-            className="gradient-neon text-primary-foreground font-bold tracking-wide shadow-neon"
+            className="bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none h-10 px-5"
           >
             {t("marketplace.createDealBtn")}
           </Button>
         </div>
       </header>
 
-      {/* Filters */}
-      <div className="grid gap-3 md:grid-cols-[1fr_220px_260px_auto] md:items-end p-4 rounded-xl border border-border bg-card/40">
+      {/* Filter bar */}
+      <div className="grid gap-3 md:grid-cols-[1fr_180px_200px_160px_140px] items-end bg-[#121212] border border-[#1F1F1F] p-4">
         <div>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
             {t("marketplace.filterSearchLabel")}
           </label>
           <div className="relative mt-1">
@@ -243,46 +277,74 @@ const Marketplace = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("marketplace.filterSearchPh")}
-              className="pl-9"
+              className="pl-9 bg-transparent border-[#1F1F1F] rounded-none h-9 text-sm font-sans"
             />
           </div>
         </div>
         <div>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
             {t("marketplace.filterTournament")}
           </label>
           <Select value={tournamentFilter} onValueChange={setTournamentFilter}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("marketplace.filterAllTournaments")}</SelectItem>
+            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
+              <SelectItem value="all" className="font-sans">{t("marketplace.filterAllTournaments")}</SelectItem>
               {tournaments.map((t) => (
-                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                <SelectItem key={t.id} value={t.id} className="font-sans">{t.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
         <div>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
             {t("marketplace.filterMarkup", { from: markupRange[0].toFixed(2), to: markupRange[1].toFixed(2) })}
           </label>
           <Slider
             value={markupRange}
             min={1.0}
-            max={1.5}
+            max={2.0}
             step={0.05}
             onValueChange={(v) => setMarkupRange([v[0], v[1]] as [number, number])}
             className="mt-3"
           />
         </div>
-        <Button variant="outline" onClick={() => { setSearch(""); setTournamentFilter("all"); setMarkupRange([1.0, 1.5]); }}>
-          {t("marketplace.clearFilters")}
-        </Button>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
+            {t("marketplace.filterVerified")}
+          </label>
+          <Select value={verifFilter} onValueChange={setVerifFilter}>
+            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
+              <SelectItem value="all" className="font-sans">{t("marketplace.filterAllVerified")}</SelectItem>
+              <SelectItem value="verified" className="font-sans">{t("marketplace.filterVerifiedOnly")}</SelectItem>
+              <SelectItem value="unverified" className="font-sans">{t("marketplace.filterUnverifiedOnly")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
+            {t("marketplace.filterSort")}
+          </label>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
+              <SelectItem value="closing" className="font-sans">{t("marketplace.sortClosing")}</SelectItem>
+              <SelectItem value="roi" className="font-sans">{t("marketplace.sortRoi")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Player filter banner */}
       {playerFilter && (
-        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-primary/40 bg-primary/10">
-          <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center justify-between gap-3 p-3 border border-[#1F1F1F] bg-[#121212]">
+          <div className="flex items-center gap-2 text-sm font-sans">
             <Users className="w-4 h-4 text-primary" />
             <span>
               {t("marketplace.viewingDealsOf")}{" "}
@@ -294,34 +356,92 @@ const Marketplace = () => {
               )}
             </span>
           </div>
-          <Button size="sm" variant="ghost" onClick={clearPlayerFilter}>
+          <Button size="sm" variant="ghost" onClick={clearPlayerFilter} className="font-sans">
             <X className="w-3.5 h-3.5 mr-1" /> {t("marketplace.removeFilter")}
           </Button>
         </div>
       )}
 
-      {/* Deal list */}
+      {/* Loading skeleton */}
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-44 rounded-xl" />
+            <div key={i} className="bg-[#121212] border border-[#1F1F1F] p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-full bg-[#1F1F1F] animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-[#1F1F1F] animate-pulse w-2/3" />
+                  <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/2" />
+                </div>
+              </div>
+              <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/4 mb-3" />
+              <div className="h-2 bg-[#1F1F1F] animate-pulse mb-3" />
+              <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/3 mb-4" />
+              <div className="h-10 bg-[#1F1F1F] animate-pulse" />
+            </div>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState onDiscover={() => nav("/find-backer")} hasPlayerFilter={!!playerFilter} />
+      ) : filtered.length === 0 && soldDeals.length === 0 ? (
+        <div className="text-center py-20 border border-dashed border-[#1F1F1F] bg-[#121212] space-y-3">
+          <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground" />
+          <h3 className="font-semibold font-sans">
+            {playerFilter ? t("marketplace.emptyPlayerNoDeals") : t("marketplace.emptyNoMatch")}
+          </h3>
+          <p className="text-sm text-muted-foreground font-sans">
+            {playerFilter ? t("marketplace.emptyPlayerNoDealsHint") : t("marketplace.emptyNoMatchHint")}
+          </p>
+          {!playerFilter && (
+            <Button onClick={() => nav("/find-backer")} variant="outline" size="sm" className="mt-2 border-[#1F1F1F] rounded-none font-sans">
+              <Users className="w-4 h-4 mr-1.5" /> {t("marketplace.discoverPlayers")}
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((d) => (
-            <DealCard
-              key={d.id}
-              deal={d}
-              stats={statsByPlayer[d.player_id]}
-              breakdown={breakdownByDeal[d.id]}
-              onClick={() => setSelected(d)}
-              onViewProfile={() => nav(`/player/${d.player_id}`)}
-            />
-          ))}
-        </div>
+        <>
+          {/* Active deals grid */}
+          {filtered.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((d) => (
+                <DealCard
+                  key={d.id}
+                  deal={d}
+                  stats={statsByPlayer[d.player_id]}
+                  breakdown={breakdownByDeal[d.id]}
+                  onClick={() => setSelected(d)}
+                  onViewProfile={() => nav(`/player/${d.player_id}`)}
+                  now={now}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Sold-out section */}
+          {soldDeals.length > 0 && (
+            <div className="space-y-4 pt-6 border-t border-[#1F1F1F]">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-[1px] bg-muted-foreground/30" />
+                <h2 className="font-bebas text-xl tracking-[0.04em] text-muted-foreground">
+                  {t("marketplace.soldOutSection")}
+                </h2>
+                <div className="flex-1 h-[1px] bg-muted-foreground/30" />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {soldDeals.slice(0, 6).map((d) => (
+                  <DealCard
+                    key={d.id}
+                    deal={d}
+                    stats={statsByPlayer[d.player_id]}
+                    breakdown={breakdownByDeal[d.id]}
+                    onClick={() => {}}
+                    onViewProfile={() => nav(`/player/${d.player_id}`)}
+                    sold
+                    now={now}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <DealDetailDialog
@@ -337,161 +457,134 @@ const Marketplace = () => {
   );
 };
 
-const EmptyState = ({
-  onDiscover,
-  hasPlayerFilter,
-}: {
-  onDiscover: () => void;
-  hasPlayerFilter: boolean;
-}) => {
-  const { t } = useTranslation();
-  return (
-    <div className="text-center py-20 rounded-xl border border-dashed border-border bg-card/30 space-y-3">
-      <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground" />
-      <h3 className="font-semibold">
-        {hasPlayerFilter ? t("marketplace.emptyPlayerNoDeals") : t("marketplace.emptyNoMatch")}
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        {hasPlayerFilter ? t("marketplace.emptyPlayerNoDealsHint") : t("marketplace.emptyNoMatchHint")}
-      </p>
-      <Button onClick={onDiscover} variant="outline" size="sm" className="mt-2">
-        <Users className="w-4 h-4 mr-1.5" /> &nbsp;{t("marketplace.discoverPlayers")}
-      </Button>
-    </div>
-  );
-};
+function resolveDeadline(deal: DealRow): Date | null {
+  if (deal.registration_deadline) return new Date(deal.registration_deadline);
+  if (deal.tournament?.start_time) return new Date(new Date(deal.tournament.start_time).getTime() - ONE_HOUR);
+  return new Date(new Date(deal.created_at).getTime() + DAY_MS);
+}
 
 const DealCard = ({
-  deal, stats, breakdown, onClick, onViewProfile,
-}: { deal: DealRow; stats?: PlayerStats; breakdown?: DealBreakdown; onClick: () => void; onViewProfile: () => void }) => {
+  deal, stats, breakdown, onClick, onViewProfile, sold,
+}: {
+  deal: DealRow; stats?: PlayerStats; breakdown?: DealBreakdown; onClick: () => void;
+  onViewProfile: () => void; sold?: boolean; now: number;
+}) => {
   const { t } = useTranslation();
   const initials = (deal.player?.display_name ?? "P").slice(0, 2).toUpperCase();
   const tournamentName = deal.tournament?.name ?? deal.custom_event_name ?? t("marketplace.customEvent");
-  const showStats = !!stats?.verified && stats.tournaments_played > 0;
-  const sold = Math.max(1, deal.percentage_sold);
-  const filled = Math.min(deal.filled_percent ?? 0, sold);
-  const remaining = sold - filled;
-  // Per-1% price guidance
+  const soldPct = deal.percentage_sold;
+  const filledPct = Math.min(deal.filled_percent ?? 0, soldPct);
+  const remaining = soldPct - filledPct;
   const pricePer1Pct = (Number(deal.buy_in_amount_vnd) / 100) * Number(deal.markup);
+  const verified = deal.player?.verification_status === "verified";
+
+  const fundedPct = Math.min(breakdown?.funded_pct ?? 0, soldPct);
+  const pendingPct = Math.min(breakdown?.pending_pct ?? 0, soldPct - fundedPct);
+  const fundedW = Math.round((fundedPct / Math.max(1, soldPct)) * 100);
+  const pendingW = Math.round((pendingPct / Math.max(1, soldPct)) * 100);
+
+  const deadline = resolveDeadline(deal);
+  const remainingMs = deadline ? deadline.getTime() - now : null;
+  const showCountdown = remainingMs !== null && remainingMs > 0 && remainingMs <= TWO_HOURS;
+  const isCritical = remainingMs !== null && remainingMs < THIRTY_MIN;
+  const isUrgent = remainingMs !== null && remainingMs < TWO_HOURS && remainingMs >= THIRTY_MIN;
+
+  const totalSec = remainingMs !== null ? Math.floor(remainingMs / 1000) : 0;
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
   return (
     <div
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-      className="cursor-pointer text-left rounded-xl border border-border bg-card hover:border-primary/60 hover:shadow-neon transition-all p-4 flex flex-col gap-3"
+      onClick={sold ? undefined : onClick}
+      className={`bg-[#121212] border ${sold ? "border-[#1F1F1F] opacity-50" : "border-[#1F1F1F] hover:border-[#333] hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] cursor-pointer"} transition-all p-5 flex flex-col gap-3`}
     >
+      {/* Player row */}
       <div className="flex items-center gap-3">
-        <Avatar className="w-10 h-10 ring-2 ring-primary/30">
-          <AvatarImage src={deal.player?.avatar_url ?? undefined} />
-          <AvatarFallback>{initials}</AvatarFallback>
-        </Avatar>
+        <div className="w-11 h-11 rounded-full overflow-hidden border border-[#1F1F1F] bg-[#1F1F1F] shrink-0">
+          {deal.player?.avatar_url ? (
+            <img src={deal.player.avatar_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs font-bold text-muted-foreground">
+              {initials}
+            </div>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onViewProfile(); }}
-            className="font-semibold truncate text-left hover:text-primary transition-colors inline-flex items-center gap-1 max-w-full"
-            title={t("marketplace.viewProfileTitle")}
-          >
-            <span className="truncate">{deal.player?.display_name ?? t("marketplace.playerLabel")}</span>
-            <ExternalLink className="w-3 h-3 opacity-60 shrink-0" />
-          </button>
-          <div className="text-xs text-muted-foreground truncate">{tournamentName}</div>
-        </div>
-        <span className="w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_hsl(var(--success))]" title={t("marketplace.openSelling")} />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className="bg-primary text-primary-foreground hover:bg-primary/90">
-          {t("marketplace.soldTotal", { n: deal.percentage_sold })}
-        </Badge>
-        <Badge variant="outline" className="border-primary/40 text-primary">
-          {t("marketplace.markupX", { n: Number(deal.markup).toFixed(2) })}
-        </Badge>
-        {stats?.verified ? (
-          <Badge variant="outline" className="border-success/40 text-success">{t("marketplace.verified")}</Badge>
-        ) : (
-          <Badge variant="outline" className="border-muted-foreground/40 text-muted-foreground">{t("marketplace.unverified")}</Badge>
-        )}
-      </div>
-
-      {/* Multi-backer progress: 2-color (funded green + pending amber) */}
-      {(() => {
-        const funded = Math.min(breakdown?.funded_pct ?? 0, sold);
-        const pending = Math.min(breakdown?.pending_pct ?? 0, sold - funded);
-        const fundedW = Math.round((funded / sold) * 100);
-        const pendingW = Math.round((pending / sold) * 100);
-        const fCount = breakdown?.funded_count ?? 0;
-        const pCount = breakdown?.pending_count ?? 0;
-        return (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{t("marketplace.soldFraction")} <span className="font-semibold text-foreground">{filled}%</span> / {sold}%</span>
-              <span className="text-success font-semibold">{t("marketplace.remaining", { n: remaining })}</span>
-            </div>
-            <div className="flex h-2 rounded-full bg-muted/60 overflow-hidden" aria-label={`Funded ${fundedW}%, pending ${pendingW}%`}>
-              <div className="h-full bg-[hsl(142_76%_45%)] transition-all" style={{ width: `${fundedW}%` }} />
-              <div className="h-full bg-[hsl(38_92%_55%)] transition-all" style={{ width: `${pendingW}%` }} />
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[hsl(142_76%_45%)]" /> {t("marketplace.confirmedCount", { n: fCount })}</span>
-              <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[hsl(38_92%_55%)]" /> {t("marketplace.pendingCount", { n: pCount })}</span>
-            </div>
-            <div className="text-[10px] text-muted-foreground">
-              {t("marketplace.minPurchaseHint", { min: deal.min_purchase_percent ?? 5, price: formatVND(Math.round(pricePer1Pct * (deal.min_purchase_percent ?? 5))) })}
-            </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onViewProfile(); }}
+              className="font-bebas text-lg leading-none truncate text-left hover:text-primary transition-colors"
+            >
+              {deal.player?.display_name ?? t("marketplace.playerLabel")}
+            </button>
+            {verified && (
+              <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" title={t("marketplace.verified")} />
+            )}
+            {!verified && (
+              <span className="w-2 h-2 rounded-full bg-muted-foreground/40 shrink-0" title={t("marketplace.unverified")} />
+            )}
           </div>
-        );
-      })()}
-
-      {showStats && (
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span>ITM <span className="text-foreground font-semibold">{Number(stats!.itm_rate).toFixed(1)}%</span></span>
-          <span>•</span>
-          <span>ROI <span className="text-foreground font-semibold">{Number(stats!.roi_percentage).toFixed(1)}%</span></span>
-          <span>•</span>
-          <span>{stats!.tournaments_played} {t("marketplace.tournaments")}</span>
+          <div className="text-xs text-muted-foreground truncate font-sans mt-0.5">{tournamentName}</div>
         </div>
-      )}
-
-      {deal.registration_deadline && (
-        <RegistrationCountdown deadline={deal.registration_deadline} />
-      )}
-
-      <div className="mt-auto flex items-end justify-between pt-2 border-t border-border/60">
-        <div>
-          <div className="text-[11px] text-muted-foreground">{t("marketplace.pricePer1")}</div>
-          <div className="text-lg font-bold text-primary">{formatVND(Math.round(pricePer1Pct))}</div>
-        </div>
-        <span className="text-[11px] text-primary font-semibold underline-offset-2 group-hover:underline">
-          {t("marketplace.pickPercent")}
-        </span>
       </div>
-    </div>
 
-  );
-};
+      {/* Markup tag */}
+      <div className="inline-flex self-start items-center gap-1 border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
+        <span className="font-jetbrains text-sm text-emerald-400">{Number(deal.markup).toFixed(2)}x</span>
+        <span className="text-[10px] text-emerald-400/70 font-sans">{t("marketplace.markupLabel")}</span>
+      </div>
 
-const RegistrationCountdown = ({ deadline }: { deadline: string }) => {
-  const { t } = useTranslation();
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const target = new Date(deadline).getTime();
-  const remaining = target - now;
-  if (remaining <= 0) return null;
-  const TWO_HOURS = 2 * 60 * 60 * 1000;
-  if (remaining > TWO_HOURS) return null;
-  const totalSec = Math.floor(remaining / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  const urgent = remaining < 30 * 60 * 1000;
-  return (
-    <div className={`text-[11px] font-semibold flex items-center gap-1.5 px-2 py-1 rounded-md ${urgent ? "bg-destructive/10 text-destructive" : "bg-warning/10 text-warning"}`}>
-      <Clock className="w-3 h-3" />
-      {t("marketplace.regClosesIn")} {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
+      {/* Progress bar */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs font-jetbrains text-muted-foreground">
+          <span>{t("marketplace.sold")}: <span className="text-foreground font-semibold">{filledPct}%</span></span>
+          <span className="text-[#10B981]">{t("marketplace.remaining")}: {remaining}%</span>
+        </div>
+        <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
+          <div className="h-full bg-[#10B981] transition-all" style={{ width: `${fundedW}%` }} />
+          <div className="h-full bg-amber-500/60 transition-all" style={{ width: `${pendingW}%` }} />
+        </div>
+      </div>
+
+      {/* Key metrics */}
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1F1F1F]">
+        <div className="text-center">
+          <div className="font-jetbrains text-xs text-foreground">{filledPct}%</div>
+          <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.sold")}</div>
+        </div>
+        <div className="text-center">
+          <div className="font-jetbrains text-xs text-foreground">{remaining}%</div>
+          <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.remaining")}</div>
+        </div>
+        <div className="text-center">
+          <div className="font-jetbrains text-xs text-[#10B981]">{formatVND(Math.round(pricePer1Pct))}</div>
+          <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.pricePer1")}</div>
+        </div>
+      </div>
+
+      {/* Countdown */}
+      {showCountdown && (
+        <div className={`font-jetbrains text-xs text-center py-1.5 border ${isCritical ? "bg-red-500/10 border-red-500/20 text-red-400" : isUrgent ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-muted/10 border-[#1F1F1F] text-muted-foreground"}`}>
+          <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />
+          {t("marketplace.regClosesIn")} {String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+        </div>
+      )}
+
+      {/* CTA */}
+      {sold ? (
+        <div className="w-full py-2.5 text-center text-xs font-jetbrains tracking-wider text-muted-foreground border border-[#1F1F1F]">
+          {t("marketplace.soldOut")}
+        </div>
+      ) : (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          className="w-full bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider py-2.5 text-sm transition-colors"
+        >
+          {t("marketplace.buyActionShort")} <ChevronRight className="w-4 h-4 inline -mt-0.5" />
+        </button>
+      )}
     </div>
   );
 };
@@ -529,7 +622,6 @@ const DealDetailDialog = ({
       return;
     }
     setPercent(Math.min(remaining, Math.max(effectiveMin, Math.min(10, remaining))) || effectiveMin);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deal?.id]);
 
   if (!deal) return null;
@@ -538,12 +630,16 @@ const DealDetailDialog = ({
   const tournamentName = deal.tournament?.name ?? deal.custom_event_name ?? t("marketplace.customEvent");
   const pricePer1Pct = (Number(deal.buy_in_amount_vnd) / 100) * Number(deal.markup);
   const totalToPay = Math.round(pricePer1Pct * percent);
-  const canBuy = remaining > 0;
+  const canBuy = remaining > 0 && !isOwn;
   const isLastSlice = remaining < minP && remaining > 0;
+
+  const fundedPct = Math.min(breakdown?.funded_pct ?? 0, sold);
+  const pendingPct = Math.min(breakdown?.pending_pct ?? 0, Math.max(0, sold - fundedPct));
+  const fundedW = Math.round((fundedPct / Math.max(1, sold)) * 100);
+  const pendingW = Math.round((pendingPct / Math.max(1, sold)) * 100);
 
   const handleBuy = async () => {
     if (!currentUser) { onAuthRequired(); return; }
-    if (isOwn) { toast.error(t("marketplace.cantBuyOwn")); return; }
     if (percent < effectiveMin || percent > remaining) {
       toast.error(t("marketplace.pickRange", { min: effectiveMin, max: remaining })); return;
     }
@@ -591,70 +687,77 @@ const DealDetailDialog = ({
 
   return (
     <Dialog open={!!deal} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="staking-scope max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-[#0A0A0A] border border-[#1F1F1F] max-w-lg max-h-[90vh] overflow-y-auto">
         {!committed ? (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Avatar className="w-9 h-9 ring-2 ring-primary/30">
-                  <AvatarImage src={deal.player?.avatar_url ?? undefined} />
-                  <AvatarFallback>{(deal.player?.display_name ?? "P").slice(0,2).toUpperCase()}</AvatarFallback>
-                </Avatar>
+              <DialogTitle className="flex items-center gap-3 font-bebas text-2xl tracking-[0.03em]">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-[#1F1F1F] bg-[#1F1F1F] shrink-0">
+                  {deal.player?.avatar_url ? (
+                    <img src={deal.player.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs font-bold text-muted-foreground">
+                      {(deal.player?.display_name ?? "P").slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
                 <span>{deal.player?.display_name ?? t("marketplace.playerLabel")}</span>
               </DialogTitle>
-              <DialogDescription>{tournamentName}</DialogDescription>
+              <DialogDescription className="font-sans text-muted-foreground">{tournamentName}</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <div className="space-y-4 font-sans">
+              {/* Stats */}
               {stats?.verified && stats.tournaments_played > 0 ? (
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <Stat label="ITM" value={`${Number(stats.itm_rate).toFixed(1)}%`} />
-                  <Stat label="ROI" value={`${Number(stats.roi_percentage).toFixed(1)}%`} />
-                  <Stat label={t("marketplace.tournamentCount")} value={String(stats.tournaments_played)} />
+                  <div className="border border-[#1F1F1F] p-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">ITM</div>
+                    <div className="font-semibold font-jetbrains">{Number(stats.itm_rate).toFixed(1)}%</div>
+                  </div>
+                  <div className="border border-[#1F1F1F] p-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">ROI</div>
+                    <div className="font-semibold font-jetbrains">{Number(stats.roi_percentage).toFixed(1)}%</div>
+                  </div>
+                  <div className="border border-[#1F1F1F] p-2">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">{t("marketplace.tournamentCount")}</div>
+                    <div className="font-semibold font-jetbrains">{stats.tournaments_played}</div>
+                  </div>
                 </div>
               ) : (
-                <div className="text-xs text-muted-foreground p-3 rounded-lg bg-muted/40 border border-border">
+                <div className="text-xs text-muted-foreground p-3 border border-[#1F1F1F] bg-[#0A0A0A] font-sans">
                   {t("marketplace.noVerifiedStats")}
                 </div>
               )}
 
-              {(() => {
-                const fundedPct = Math.min(breakdown?.funded_pct ?? 0, sold);
-                const pendingPct = Math.min(breakdown?.pending_pct ?? 0, Math.max(0, sold - fundedPct));
-                const fW = Math.round((fundedPct / Math.max(1, sold)) * 100);
-                const pW = Math.round((pendingPct / Math.max(1, sold)) * 100);
-                return (
-                  <div className="rounded-xl border border-border p-4 bg-card/40 space-y-3 text-sm">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{t("marketplace.soldFraction")} <b className="text-foreground">{filled}%</b> / {sold}%</span>
-                      <span className="text-success font-semibold">{t("marketplace.remaining", { n: remaining })}</span>
-                    </div>
-                    <div className="flex h-2 rounded-full bg-muted/60 overflow-hidden">
-                      <div className="h-full bg-[hsl(142_76%_45%)]" style={{ width: `${fW}%` }} />
-                      <div className="h-full bg-[hsl(38_92%_55%)]" style={{ width: `${pW}%` }} />
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(142_76%_45%)]" /> {t("marketplace.confirmedCount", { n: breakdown?.funded_count ?? 0 })}</span>
-                      <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(38_92%_55%)]" /> {t("marketplace.pendingCount", { n: breakdown?.pending_count ?? 0 })}</span>
-                    </div>
-                    {deal.tournament && 'buy_in' in deal.tournament && deal.tournament.buy_in != null ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">{t("marketplace.buyIn")}</span>
-                        <FomoPrice tournament={deal.tournament} compact />
-                      </div>
-                    ) : (
-                      <Row k={t("marketplace.buyIn")} v={formatVND(deal.buy_in_amount_vnd)} />
-                    )}
-                    <Row k={t("marketplace.markupLabel")} v={`${Number(deal.markup).toFixed(2)}x`} />
-                    <Row k={t("marketplace.pricePer1")} v={formatVND(Math.round(pricePer1Pct))} />
-                  </div>
-                );
-              })()}
+              {/* Deal breakdown */}
+              <div className="border border-[#1F1F1F] p-4 space-y-3">
+                <div className="flex justify-between text-xs text-muted-foreground font-sans">
+                  <span>{t("marketplace.soldFraction")} <strong className="text-foreground font-jetbrains">{filled}%</strong> / {sold}%</span>
+                  <span className="text-[#10B981] font-semibold font-jetbrains">{t("marketplace.remaining", { n: remaining })}</span>
+                </div>
+                <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
+                  <div className="h-full bg-[#10B981]" style={{ width: `${fundedW}%` }} />
+                  <div className="h-full bg-amber-500/60" style={{ width: `${pendingW}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-xs font-jetbrains">
+                  <span className="text-muted-foreground">{t("marketplace.markupLabel")}</span>
+                  <span className="font-semibold text-emerald-400">{Number(deal.markup).toFixed(2)}x</span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-jetbrains">
+                  <span className="text-muted-foreground">{t("marketplace.pricePer1")}</span>
+                  <span className="font-semibold">{formatVND(Math.round(pricePer1Pct))}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-jetbrains">
+                  <span className="text-muted-foreground">{t("marketplace.buyIn")}</span>
+                  <span className="font-semibold">{formatVND(deal.buy_in_amount_vnd)}</span>
+                </div>
+              </div>
 
-              {canBuy && !isOwn && (
-                <div className="rounded-xl border border-primary/40 p-4 bg-primary/5 space-y-3">
+              {/* Buy section */}
+              {canBuy && (
+                <div className="border border-[#10B981]/30 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold font-sans">
                       {t("marketplace.buyHowMany")}
                     </label>
                     <div className="flex items-center gap-1">
@@ -667,10 +770,10 @@ const DealDetailDialog = ({
                           const v = Math.floor(Number(e.target.value));
                           if (Number.isFinite(v)) setPercent(Math.max(effectiveMin, Math.min(remaining, v)));
                         }}
-                        className="w-20 text-right font-bold"
+                        className="w-20 text-right font-bold font-jetbrains bg-transparent border-[#1F1F1F] rounded-none h-9 text-sm"
                         disabled={isLastSlice}
                       />
-                      <span className="text-sm font-semibold">%</span>
+                      <span className="text-sm font-semibold font-jetbrains">%</span>
                     </div>
                   </div>
                   {!isLastSlice && (
@@ -682,62 +785,56 @@ const DealDetailDialog = ({
                       onValueChange={(v) => setPercent(v[0])}
                     />
                   )}
-                  <div className="flex justify-between items-center pt-2 border-t border-primary/20">
-                    <span className="text-xs text-muted-foreground">{t("marketplace.youPay")}</span>
-                    <span className="text-xl font-bold text-primary">{formatVND(totalToPay)}</span>
+                  <div className="flex justify-between items-center pt-2 border-t border-[#10B981]/20">
+                    <span className="text-xs text-muted-foreground font-sans">{t("marketplace.youPay")}</span>
+                    <span className="text-xl font-bold font-jetbrains text-[#10B981]">{formatVND(totalToPay)}</span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {isLastSlice
-                      ? t("marketplace.lastSliceMust", { n: remaining })
-                      : t("marketplace.minMaxHint", { min: effectiveMin, max: remaining })}
-                  </div>
-                </div>
-              )}
-
-              {deal.description && (
-                <div className="text-sm text-muted-foreground italic border-l-2 border-primary/40 pl-3">
-                  "{deal.description}"
-                </div>
-              )}
-
-              {!canBuy ? (
-                <Button disabled className="w-full" size="lg">
-                  {t("marketplace.soldOut")}
-                </Button>
-              ) : !confirming ? (
-                <Button
-                  className="w-full gradient-neon text-primary-foreground font-bold tracking-wide shadow-neon"
-                  size="lg"
-                  disabled={!!isOwn}
-                  onClick={() => isOwn ? toast.error(t("marketplace.cantBuyOwn")) : setConfirming(true)}
-                >
-                  {isOwn ? t("marketplace.yourOwnDeal") : t("marketplace.buyAction", { pct: percent, price: formatVND(totalToPay) })}
-                </Button>
-              ) : (
-                <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-3">
-                  <div className="flex items-start gap-2 text-sm">
-                    <AlertCircle className="w-4 h-4 mt-0.5 text-warning shrink-0" />
-                    <span>
-                      <Trans
-                        i18nKey="marketplace.confirmBuyText"
-                        values={{ pct: percent, price: formatVND(totalToPay) }}
-                        components={{ b: <b /> }}
-                      />
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setConfirming(false)} disabled={submitting}>
-                      {t("marketplace.cancel")}
-                    </Button>
+                  {deal.description && (
+                    <div className="text-xs text-muted-foreground italic border-l-2 border-[#10B981]/40 pl-3 font-sans">
+                      &ldquo;{deal.description}&rdquo;
+                    </div>
+                  )}
+                  {!confirming ? (
                     <Button
-                      className="flex-1 gradient-neon text-primary-foreground font-bold"
-                      onClick={handleBuy}
-                      disabled={submitting}
+                      className="w-full bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none h-11"
+                      onClick={() => setConfirming(true)}
                     >
-                      {submitting ? t("marketplace.processing") : t("marketplace.confirmReserve")}
+                      {t("marketplace.buyAction", { pct: percent, price: formatVND(totalToPay) })}
                     </Button>
-                  </div>
+                  ) : (
+                    <div className="border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                      <div className="flex items-start gap-2 text-sm font-sans">
+                        <Sparkles className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" />
+                        <span>
+                          <Trans
+                            i18nKey="marketplace.confirmBuyText"
+                            values={{ pct: percent, price: formatVND(totalToPay) }}
+                            components={{ b: <b /> }}
+                          />
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1 border-[#1F1F1F] rounded-none font-sans" onClick={() => setConfirming(false)} disabled={submitting}>
+                          {t("marketplace.cancel")}
+                        </Button>
+                        <Button
+                          className="flex-1 bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none"
+                          onClick={handleBuy}
+                          disabled={submitting}
+                        >
+                          {submitting ? t("marketplace.processing") : t("marketplace.confirmReserve")}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* Sold out state */}
+              {(!canBuy || isOwn) && (
+                <Button disabled className="w-full bg-[#1F1F1F] text-muted-foreground font-sans rounded-none h-11 cursor-not-allowed border border-[#1F1F1F]">
+                  {isOwn ? t("marketplace.yourOwnDeal") : t("marketplace.soldOut")}
+                </Button>
               )}
             </div>
           </>
@@ -756,20 +853,5 @@ const DealDetailDialog = ({
     </Dialog>
   );
 };
-
-const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-lg border border-border p-2">
-    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-    <div className="font-semibold">{value}</div>
-  </div>
-);
-
-const Row = ({ k, v }: { k: string; v: string }) => (
-  <div className="flex items-center justify-between">
-    <span className="text-muted-foreground">{k}</span>
-    <span className="font-medium">{v}</span>
-  </div>
-);
-
 
 export default Marketplace;
