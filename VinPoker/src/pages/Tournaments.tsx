@@ -18,6 +18,9 @@ import { getCurrentLevel, getLevelEndsIn, isLateRegClosed, formatCountdown } fro
 import { useTranslation } from "react-i18next";
 import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
 import News from "./News";
+import { useTournamentPackages } from "@/hooks/useTournamentPackages";
+import PackageCard from "@/components/packages/PackageCard";
+import PackageCardSkeleton from "@/components/packages/PackageCardSkeleton";
 
 
 interface Tournament {
@@ -69,7 +72,7 @@ const Tournaments = () => {
   const [scheduleClubs, setScheduleClubs] = useState<{ id: string; name: string; region: string; daily_schedule_image_url: string | null; weekly_schedule_image_url: string | null; schedule_sort_order: number }[]>([]);
   const [reordering, setReordering] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"daily" | "weekly" | "news" | "series" | "livestream">("weekly");
+  const [view, setView] = useState<"daily" | "weekly" | "news" | "series" | "livestream" | "packages">("weekly");
   const [buyInRange, setBuyInRange] = useState("all");
   const [statusUpcoming, setStatusUpcoming] = useState(true);
   const [statusLateReg, setStatusLateReg] = useState(true);
@@ -191,7 +194,7 @@ const Tournaments = () => {
         </div>
 
         <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:inline-flex rounded-xl bg-card border border-border p-1">
-          {(["weekly", "daily", "news", "series", "livestream"] as const).map((v) => (
+          {(["weekly", "daily", "news", "series", "livestream", "packages"] as const).map((v) => (
             <button
               key={v}
               onClick={() => { setView(v); setPage(1); }}
@@ -206,11 +209,13 @@ const Tournaments = () => {
             >
               {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
               {v === "news" && <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
+              {v === "packages" && <span className="material-symbols-outlined text-sm sm:text-base shrink-0">redeem</span>}
               <span className="truncate">
                 {v === "daily" ? tr("tournamentsPage.daily")
                   : v === "weekly" ? tr("tournamentsPage.weekly")
                   : v === "series" ? tr("tournamentsPage.series")
                   : v === "livestream" ? tr("tournamentsPage.livestream")
+                  : v === "packages" ? tr("tournamentsPage.packages")
                   : tr("tournamentsPage.news")}
               </span>
             </button>
@@ -222,6 +227,8 @@ const Tournaments = () => {
         <LivestreamSection />
       ) : view === "news" ? (
         <News />
+      ) : view === "packages" ? (
+        <PackagesSection />
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
         <aside className="space-y-4">
@@ -342,10 +349,17 @@ const Tournaments = () => {
                   )}
                   {banner.subtitle && <div className="text-sm md:text-base text-primary mt-2">{banner.subtitle}</div>}
                   {banner.cta_url && (
-                    <a href={banner.cta_url} target="_blank" rel="noopener noreferrer"
+                    banner.cta_url.startsWith("/") ? (
+                      <Link to={banner.cta_url}
                        className="mt-4 inline-flex items-center gap-2 self-start gradient-neon text-primary-foreground font-bold tracking-wider rounded-full px-5 h-9 shadow-neon hover:opacity-90 text-xs">
-                      {tr("tournamentsPage.learnMore")} <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                        {tr("tournamentsPage.learnMore")} <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : (
+                      <a href={banner.cta_url} target="_blank" rel="noopener noreferrer"
+                       className="mt-4 inline-flex items-center gap-2 self-start gradient-neon text-primary-foreground font-bold tracking-wider rounded-full px-5 h-9 shadow-neon hover:opacity-90 text-xs">
+                        {tr("tournamentsPage.learnMore")} <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )
                   )}
                 </div>
                 {banners.length > 1 && (
@@ -646,5 +660,46 @@ const PageBtn = ({ children, active, disabled, onClick }: any) => (
     {children}
   </button>
 );
+
+const PackagesSection = () => {
+  const { data: packages, isLoading } = useTournamentPackages();
+  const navigate = useNavigate();
+  const { t: tr } = useTranslation();
+
+  const featured = isLoading ? [] : (packages || []).slice(0, 3);
+
+  return (
+    <Card className="border border-border bg-card overflow-hidden p-0">
+      {isLoading ? (
+        <div className="space-y-4 p-5">
+          <PackageCardSkeleton />
+          <PackageCardSkeleton />
+          <PackageCardSkeleton />
+        </div>
+      ) : featured.length === 0 ? (
+        <div className="px-5 py-16 text-center text-muted-foreground text-sm">
+          Chưa có gói giải đấu nào
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {featured.map((pkg, i) => (
+            <PackageCard key={pkg.id} pkg={pkg} index={i} />
+          ))}
+        </div>
+      )}
+      {!isLoading && packages && packages.length > 0 && (
+        <div className="border-t border-border px-5 py-3">
+          <Link
+            to="/packages"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-400 transition-colors hover:text-emerald-300"
+          >
+            Xem tất cả gói giải đấu
+            <span className="material-symbols-outlined text-base">arrow_forward</span>
+          </Link>
+        </div>
+      )}
+    </Card>
+  );
+};
 
 export default Tournaments;

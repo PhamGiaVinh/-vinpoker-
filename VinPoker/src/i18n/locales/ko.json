@@ -166,16 +166,16 @@
       "HCM": "호치민시",
       "DN": "다낭"
     },
-    "itm": "ITM",
+    "itm": "상금이 있는 순위에 도달",
     "anyItm": "모든 ITM",
-    "itmGt": "ITM > {{n}}%",
+    "itmGt": "상금이 있는 순위에 도달 > {{n}}%",
     "sortBy": "정렬 기준",
     "sortRoi": "최고 ROI",
     "sortItm": "최고 ITM",
     "sortStreak": "연속 승리",
     "sortPlayed": "플레이한 토너먼트",
     "sortNewest": "최신",
-    "positiveRoi": "ROI +",
+    "positiveRoi": "성공률 +",
     "verifiedOnly": "인증된 플레이어만",
     "unverifiedBadge": "미인증",
     "unverifiedHint": "관리자가 아직 인증하지 않은 통계 — 숨김.",
@@ -317,7 +317,8 @@
     "live": "라이브",
     "searchPlaceholder": "이름 또는 바이인으로 검색...",
     "filtersActive": "필터 {{count}}개 활성",
-    "news": "뉴스"
+    "news": "뉴스",
+    "packages": "토너먼트 패키지"
   },
   "backingProfile": {
     "title": "백킹 프로필",
@@ -1126,7 +1127,7 @@
     "loading": "로딩 중…",
     "refTitle": "거래 참조 코드",
     "refHint": "Tx Hash가 누락된 경우 관리자가 대조할 수 있도록 이 코드를 저장하세요.",
-    "txHashTitle": "USDT Tx Hash",
+    "txHashTitle": "Tx 해시 USDT",
     "txRequired": "(필수)",
     "txHowTo": "Binance → 출금 내역 → TxID에서 복사합니다. 64자리의 16진수입니다.",
     "txPh": "예: 6f8a2b… (64자)",
@@ -1244,7 +1245,7 @@
     "colType": "유형",
     "colBuyin": "바이인",
     "colPrize": "상금",
-    "colPL": "P/L",
+    "colPL": "이익/손실",
     "typeMTT": "MTT",
     "typeCash": "캐시",
     "riskTitle": "위험 및 분산 분석",
@@ -1483,7 +1484,13 @@
   "languagePrompt": {
     "titleKo": "한국어로 전환하시겠습니까?",
     "descriptionKo": "브라우저 언어가 한국어로 감지되었습니다. 한국어 인터페이스로 전환할까요?",
-    "switchKo": "한국어로 전환"
+    "switchKo": "한국어로 전환",
+    "titleJa": "일본어로 전환하시겠습니까?",
+    "descriptionJa": "브라우저 언어가 일본어로 감지되었습니다. 일본어 인터페이스로 전환할까요?",
+    "switchJa": "일본어로 전환",
+    "titleTh": "태국어로 전환하시겠습니까?",
+    "descriptionTh": "브라우저 언어가 태국어로 감지되었습니다. 태국어 인터페이스로 전환할까요?",
+    "switchTh": "태국어로 전환"
   },
   "pushNotifications": {
     "promptTitle": "푸시 알림 켜기",

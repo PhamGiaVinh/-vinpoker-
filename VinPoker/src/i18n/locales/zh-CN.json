@@ -128,16 +128,16 @@
       "HCM": "胡志明市",
       "DN": "岘港"
     },
-    "itm": "ITM",
+    "itm": "获得奖励名次",
     "anyItm": "任何 ITM",
-    "itmGt": "ITM > {{n}}%",
+    "itmGt": "获得奖励名次 > {{n}}%",
     "sortBy": "排序方式",
     "sortRoi": "ROI 最高",
     "sortItm": "ITM 最高",
     "sortStreak": "连胜",
     "sortPlayed": "参赛场次",
     "sortNewest": "最新",
-    "positiveRoi": "ROI +",
+    "positiveRoi": "成功率 +",
     "verifiedOnly": "仅已核实选手",
     "unverifiedBadge": "未核实",
     "unverifiedHint": "成绩尚未由管理员核实 — 已隐藏。",
@@ -309,7 +309,7 @@
     "cancelled": "已取消",
     "confirmedRegs": "已确认 Stack 报名",
     "noPaidRegs": "暂无已付款报名。请使用上方的预订请求确认付款。",
-    "stack": "Stack"
+    "stack": "筹码"
   },
   "tournamentsPage": {
     "title": "赛事赛程",
@@ -342,7 +342,8 @@
     "live": "进行中",
     "searchPlaceholder": "按赛事名称或买入搜索...",
     "filtersActive": "已选 {{count}} 项",
-    "news": "新闻"
+    "news": "新闻",
+    "packages": "赛事套餐"
   },
   "clubsPage": {
     "title": "俱乐部",
@@ -616,7 +617,13 @@
     "keep": "保持当前语言",
     "titleKo": "切换到韩语?",
     "descriptionKo": "检测到您的浏览器使用韩语。是否切换到韩语界面?",
-    "switchKo": "切换到韩语"
+    "switchKo": "切换到韩语",
+    "titleJa": "切换到日语?",
+    "descriptionJa": "检测到您的浏览器使用日语。是否切换到日语界面?",
+    "switchJa": "切换到日语",
+    "titleTh": "切换到泰语?",
+    "descriptionTh": "检测到您的浏览器使用泰语。是否切换到泰语界面?",
+    "switchTh": "切换到泰语"
   },
   "auth": {
     "brandTagline": "\n",
@@ -1065,7 +1072,7 @@
     "editArticle": "编辑文章",
     "title": "标题",
     "bodySchedule": "内容 / 赛程",
-    "bodyPh": "Day 1: Event #1 NLH $1,500 @ 12:00...",
+    "bodyPh": "第1天：事件 #1 NLH $1,500 @ 12:00...",
     "imgUrl": "图片 URL",
     "imgUrlPh": "https://… 或上传",
     "order": "排序",
@@ -1269,7 +1276,7 @@
     "streak": "{{n}} 连胜",
     "played": "参赛场数",
     "itm": "ITM 率",
-    "roi": "ROI",
+    "roi": "投资回报率",
     "avgFinish": "平均名次",
     "totalPnl": "总盈亏",
     "biggestCash": "最大奖金",
@@ -1324,7 +1331,7 @@
       "brushHint": "选择一个动作，再点击手牌格子进行分配",
       "resetGto": "重置为 GTO",
       "clearAll": "清空 → 弃牌",
-      "combos": "combos"
+      "combos": "组合"
     },
     "ev": {
       "title": "EV 分析",
@@ -1341,15 +1348,15 @@
       },
       "col": {
         "action": "动作",
-        "ev": "EV (BB)",
+        "ev": "期望值 (BB)",
         "freq": "频率"
       }
     },
     "compare": {
       "title": "范围对比",
       "heuristic": "基于范围宽度的近似 equity（仅参考，非真实 solver）。",
-      "hero": "Hero",
-      "villain": "Villain",
+      "hero": "英雄",
+      "villain": "反派",
       "tie": "平局",
       "random": "随机"
     }

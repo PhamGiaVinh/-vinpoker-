@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, Search, Users as UsersIcon, IdCard, Phone, ExternalLink, Coins } from "lucide-react";
+import { Loader2, Search, Users as UsersIcon, IdCard, Phone, ExternalLink, Coins, ChevronDown, ChevronRight, History } from "lucide-react";
 import { formatVND } from "@/lib/format";
 
 type ClubRow = { id: string; name: string };
@@ -31,13 +31,15 @@ export default function UnifiedLookupTab({ clubIds, clubs }: { clubIds: string[]
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<MemberHit[] | null>(null);
   const [dealsByUser, setDealsByUser] = useState<Record<string, any[]>>({});
+  const [profileLogsByUser, setProfileLogsByUser] = useState<Record<string, any[]>>({});
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
   const clubName = (id?: string) => clubs.find((c) => c.id === id)?.name ?? "—";
 
   const search = async () => {
     const s = term.trim();
     if (s.length < 2) { toast.error("Nhập ít nhất 2 ký tự"); return; }
-    setBusy(true); setResults(null); setDealsByUser({});
+    setBusy(true); setResults(null); setDealsByUser({}); setProfileLogsByUser({});
     const like = `%${s}%`;
 
     // 1) club_members scoped to cashier's clubs
@@ -75,11 +77,17 @@ export default function UnifiedLookupTab({ clubIds, clubs }: { clubIds: string[]
       ...(profs ?? []).map((p) => p.user_id),
     ]));
     const dealMap: Record<string, any[]> = {};
+    const logMap: Record<string, any[]> = {};
     await Promise.all(userIds.map(async (uid) => {
-      const { data, error } = await supabase.functions.invoke("cashier-lookup-player", { body: { user_id: uid } });
-      if (!error && (data as any)?.deals) dealMap[uid] = (data as any).deals;
+      const [dealRes, logRes] = await Promise.all([
+        supabase.functions.invoke("cashier-lookup-player", { body: { user_id: uid } }),
+        supabase.from("profile_update_log").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(5),
+      ]);
+      if (!dealRes.error && (dealRes.data as any)?.deals) dealMap[uid] = (dealRes.data as any).deals;
+      if (logRes.data) logMap[uid] = logRes.data;
     }));
     setDealsByUser(dealMap);
+    setProfileLogsByUser(logMap);
   };
 
   const nav = useNavigate();
@@ -168,6 +176,39 @@ export default function UnifiedLookupTab({ clubIds, clubs }: { clubIds: string[]
                         )}
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {userId && (profileLogsByUser[userId]?.length ?? 0) > 0 && (
+                  <div className="border-t pt-2">
+                    <button
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+                      onClick={() => {
+                        const key = userId;
+                        setExpandedLogs((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(key)) next.delete(key); else next.add(key);
+                          return next;
+                        });
+                      }}
+                    >
+                      {expandedLogs.has(userId) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      <History className="w-3 h-3" /> Lịch sử cập nhật hồ sơ ({profileLogsByUser[userId].length})
+                    </button>
+                    {expandedLogs.has(userId) && (
+                      <div className="mt-1.5 space-y-1">
+                        {profileLogsByUser[userId].map((log: any) => (
+                          <div key={log.id} className="text-[11px] bg-muted/30 rounded p-1.5">
+                            <span className="text-muted-foreground">{new Date(log.created_at).toLocaleDateString("vi-VN")}</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {(log.changed_fields as string[]).map((f: string) => (
+                                <span key={f} className="text-[10px] px-1 rounded bg-primary/10 text-primary">{f}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

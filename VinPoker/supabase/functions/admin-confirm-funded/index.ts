@@ -153,6 +153,65 @@ Deno.serve(async (req) => {
       },
     });
 
+    // === IN-APP NOTIFICATIONS ===
+    try {
+      const pct = Number(purchase.percent);
+      const vnd = Number(purchase.amount_vnd);
+      const label = deal.custom_event_name ?? `Deal #${String(deal.id).slice(0, 6)}`;
+
+      // 1. Notify backer: funding confirmed
+      await admin.from("notifications").insert({
+        user_id: purchase.backer_id,
+        type: "deal_funded",
+        title: "Đã xác nhận nạp tiền",
+        body: `Khoản đầu tư ${pct}% deal "${label}" (${vnd.toLocaleString()} VND) đã được xác nhận.`,
+        data: { deal_id: deal.id, purchase_id: purchase.id, percent: pct },
+      });
+
+      // 2. Notify player: someone funded
+      await admin.from("notifications").insert({
+        user_id: deal.player_id,
+        type: "purchase_funded",
+        title: "Có người hỗ trợ mới đã nạp tiền",
+        body: `Backer vừa nạp ${pct}% deal "${label}". Tổng đã funded: ${totalFunded}/${deal.percentage_sold}%.`,
+        data: { deal_id: deal.id, backer_id: purchase.backer_id, total_funded: totalFunded },
+      });
+
+      // 3. Notify cashiers + club owner
+      if (deal.club_id) {
+        const { data: cashiers } = await admin
+          .from("club_cashiers")
+          .select("user_id")
+          .eq("club_id", deal.club_id);
+        if (cashiers) {
+          const cNotis = cashiers
+            .filter((c: any) => c.user_id !== uid && c.user_id !== purchase.backer_id)
+            .map((c: any) => ({
+              user_id: c.user_id,
+              type: "purchase_funded",
+              title: "Giao dịch mới đã nạp tiền",
+              body: `Backer đã nạp ${pct}% deal "${label}" (${vnd.toLocaleString()} VND).`,
+              data: { deal_id: deal.id, club_id: deal.club_id, purchase_id: purchase.id },
+            }));
+          if (cNotis.length) await admin.from("notifications").insert(cNotis);
+        }
+        const { data: club } = await admin
+          .from("clubs")
+          .select("owner_id")
+          .eq("id", deal.club_id)
+          .maybeSingle();
+        if (club?.owner_id && club.owner_id !== uid && club.owner_id !== purchase.backer_id) {
+          await admin.from("notifications").insert({
+            user_id: club.owner_id,
+            type: "purchase_funded",
+            title: "Giao dịch mới đã nạp tiền tại CLB của bạn",
+            body: `Backer đã nạp ${pct}% deal "${label}".`,
+            data: { deal_id: deal.id, club_id: deal.club_id },
+          });
+        }
+      }
+    } catch (_) { /* non-critical */ }
+
     // Best-effort emails: backer + player on every successful funding confirmation
     try {
       const { fundingConfirmedBackerEmail, fundingConfirmedPlayerEmail, sendEmailViaFunction } =

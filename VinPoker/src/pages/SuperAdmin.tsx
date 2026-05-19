@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2, Sparkles } from "lucide-react";
+import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2, Sparkles, History, ChevronDown, ChevronRight } from "lucide-react";
 import { FomoPrice } from "@/components/FomoPrice";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -34,6 +34,8 @@ const SuperAdmin = () => {
   const [clubs, setClubs] = useState<any[]>([]);
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [regs, setRegs] = useState<any[]>([]);
+  const [profileLogs, setProfileLogs] = useState<any[]>([]);
+  const [profileClubFilter, setProfileClubFilter] = useState<string>("all");
 
   const load = async () => {
     if (!initialLoaded) setBusy(true);
@@ -63,6 +65,22 @@ const SuperAdmin = () => {
         profileMap = Object.fromEntries((profs ?? []).map((p: any) => [p.user_id, p]));
       }
       setRegs(r.map((x: any) => ({ ...x, profile: profileMap[x.user_id] })));
+
+      // Profile update logs
+      const { data: plogs } = await supabase
+        .from("profile_update_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (plogs) {
+        const plUserIds = Array.from(new Set(plogs.map((l: any) => l.user_id)));
+        let plMap: Record<string, any> = {};
+        if (plUserIds.length) {
+          const { data: plProfs } = await supabase.from("profiles").select("user_id, display_name, phone").in("user_id", plUserIds);
+          plMap = Object.fromEntries((plProfs ?? []).map((p: any) => [p.user_id, p]));
+        }
+        setProfileLogs(plogs.map((l: any) => ({ ...l, profile: plMap[l.user_id] })));
+      }
     } catch (e: any) {
       console.error("SuperAdmin load failed", e);
       toast.error("Lỗi tải Admin: " + (e?.message ?? String(e)));
@@ -113,7 +131,7 @@ const SuperAdmin = () => {
       </div>
 
       <Tabs defaultValue="tournaments">
-        <TabsList className="flex w-full overflow-x-auto justify-start md:grid md:grid-cols-9">
+        <TabsList className="flex w-full overflow-x-auto justify-start md:grid md:grid-cols-12">
           <TabsTrigger value="tournaments">Tournaments</TabsTrigger>
           <TabsTrigger value="series">Series</TabsTrigger>
           <TabsTrigger value="registrations">Registrations</TabsTrigger>
@@ -122,7 +140,10 @@ const SuperAdmin = () => {
           <TabsTrigger value="banners">Banners</TabsTrigger>
           <TabsTrigger value="pnl">P&L Spread</TabsTrigger>
           <TabsTrigger value="streams">Livestream</TabsTrigger>
+          <TabsTrigger value="rates">Tỷ giá</TabsTrigger>
+          <TabsTrigger value="packages">Packages</TabsTrigger>
           <TabsTrigger value="support">Hỗ trợ</TabsTrigger>
+          <TabsTrigger value="profiles"><History className="w-3.5 h-3.5 mr-1" />Hồ sơ</TabsTrigger>
         </TabsList>
 
 
@@ -234,8 +255,46 @@ const SuperAdmin = () => {
           <AdminStreamManager />
         </TabsContent>
 
+        <TabsContent value="rates" className="mt-4">
+          <CurrencyRatesEditor />
+        </TabsContent>
+        <TabsContent value="packages" className="mt-4">
+          <PackagesEditor />
+        </TabsContent>
         <TabsContent value="support" className="mt-4">
           <AdminSupportTab />
+        </TabsContent>
+
+        {/* PROFILE UPDATE LOGS */}
+        <TabsContent value="profiles" className="space-y-3 mt-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Lịch sử cập nhật hồ sơ người dùng.</p>
+            <Select value={profileClubFilter} onValueChange={setProfileClubFilter}>
+              <SelectTrigger className="w-48 h-8 text-xs"><SelectValue placeholder="Tất cả CLB" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả CLB</SelectItem>
+                <SelectItem value="none">Không có CLB</SelectItem>
+                {clubs.map((c: any) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {profileLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Chưa có cập nhật nào.</p>
+          ) : (
+            <div className="space-y-2">
+              {profileLogs
+                .filter((log) => {
+                  if (profileClubFilter === "all") return true;
+                  if (profileClubFilter === "none") return !log.club_id;
+                  return log.club_id === profileClubFilter;
+                })
+                .map((log) => (
+                  <ProfileUpdateRow key={log.id} log={log} />
+                ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
@@ -878,6 +937,423 @@ export const SeriesEditor = () => {
           </div>
         </DialogContent>
       </Dialog>
+    </Card>
+  );
+};
+
+const CurrencyRatesEditor = () => {
+  const [rates, setRates] = useState({ usd: 0, cny: 0, krw: 0 });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("app_settings").select("value").eq("key", "currency_rates").maybeSingle();
+      if (data?.value) setRates({ usd: 0, cny: 0, krw: 0, ...(data.value as any) });
+      setLoading(false);
+    })();
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("app_settings")
+      .upsert({ key: "currency_rates", value: rates as any, updated_at: new Date().toISOString() });
+    setSaving(false);
+    if (error) toast.error(error.message); else toast.success("Tỷ giá đã được cập nhật");
+  };
+
+  if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
+
+  return (
+    <Card className="p-4 gradient-card space-y-4">
+      <div>
+        <h3 className="font-display text-lg">Tỷ giá quy đổi</h3>
+        <p className="text-xs text-muted-foreground">
+          Nhập số VND tương đương với 1 đơn vị ngoại tệ. Ví dụ: 1 USD = 25,000 VND thì nhập 25000.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="space-y-1">
+          <Label>1 USD → VND</Label>
+          <Input type="number" value={rates.usd || ""} onChange={(e) => setRates({ ...rates, usd: +e.target.value })} placeholder="25000" />
+        </div>
+        <div className="space-y-1">
+          <Label>1 CNY → VND</Label>
+          <Input type="number" value={rates.cny || ""} onChange={(e) => setRates({ ...rates, cny: +e.target.value })} placeholder="3500" />
+        </div>
+        <div className="space-y-1">
+          <Label>1 KRW → VND</Label>
+          <Input type="number" value={rates.krw || ""} onChange={(e) => setRates({ ...rates, krw: +e.target.value })} placeholder="18" />
+        </div>
+      </div>
+      <Button onClick={save} disabled={saving} className="gradient-neon text-primary-foreground border-0">
+        <Save className="w-4 h-4 mr-1" />{saving ? "Đang lưu..." : "Lưu tỷ giá"}
+      </Button>
+    </Card>
+  );
+};
+
+type PkgRow = {
+  id: string; name: string; name_en: string; description: string | null; description_en: string | null;
+  price_vnd: number; original_price_vnd: number | null; early_bird_end: string | null;
+  max_participants: number | null; registered_count: number; benefits: any[];
+  image_url: string | null; sort_order: number; status: string; created_at: string;
+  tournaments?: { id: string; name: string }[];
+};
+
+const PackagesEditor = () => {
+  const [items, setItems] = useState<PkgRow[]>([]);
+  const [tours, setTours] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<PkgRow | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const [pkgRes, tourRes] = await Promise.all([
+      supabase.from("tournament_packages").select("*").order("sort_order", { ascending: true }),
+      supabase.from("tournaments").select("id,name").is("deleted_at", null).order("start_time", { ascending: false }),
+    ]);
+    if (pkgRes.error) toast.error(pkgRes.error.message);
+    if (tourRes.error) toast.error(tourRes.error.message);
+
+    const pkgs = (pkgRes.data ?? []) as any[];
+    const tourMap = new Map((tourRes.data ?? []).map((t: any) => [t.id, t]));
+
+    const pkgIds = pkgs.map(p => p.id);
+    let junction: any[] = [];
+    if (pkgIds.length) {
+      const { data: jd } = await supabase.from("package_tournaments").select("package_id, tournament_id").in("package_id", pkgIds);
+      junction = jd ?? [];
+    }
+    const pkgTourMap = new Map<string, { id: string; name: string }[]>();
+    for (const j of junction) {
+      if (!pkgTourMap.has(j.package_id)) pkgTourMap.set(j.package_id, []);
+      const t = tourMap.get(j.tournament_id);
+      if (t) pkgTourMap.get(j.package_id)!.push({ id: t.id, name: t.name });
+    }
+
+    setItems(pkgs.map(p => ({ ...p, tournaments: pkgTourMap.get(p.id) ?? [] })));
+    setTours(Array.from(tourMap.values()));
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const remove = async (id: string) => {
+    if (!confirm("Xoá package này?")) return;
+    const { error } = await supabase.from("tournament_packages").delete().eq("id", id);
+    if (error) toast.error(error.message); else { toast.success("Đã xoá"); load(); }
+  };
+
+  return (
+    <Card className="p-4 gradient-card space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-display text-lg">Tournament Packages</h3>
+          <p className="text-xs text-muted-foreground">Gói giải đấu Early Bird.</p>
+        </div>
+        <Button size="sm" onClick={() => { setEditing(null); setOpen(true); }} className="gradient-neon text-primary-foreground border-0">
+          <Plus className="w-4 h-4 mr-1" />New Package
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-6 text-center">No packages yet.</p>
+      ) : items.map((p) => (
+        <Card key={p.id} className="p-3 bg-background/50 flex items-start gap-3">
+          {p.image_url && (
+            <div className="w-14 h-14 rounded bg-muted overflow-hidden shrink-0">
+              <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold truncate">{p.name}</span>
+              {p.early_bird_end && (
+                <span className="badge-early-bird text-[10px] px-1.5 py-0.5">Early Bird</span>
+              )}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${p.status === 'active' ? 'bg-success/15 text-success border-success/30' : 'bg-destructive/15 text-destructive border-destructive/30'}`}>
+                {p.status}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {new Intl.NumberFormat('vi-VN').format(p.price_vnd)}₫
+              {p.original_price_vnd ? ` (gốc ${new Intl.NumberFormat('vi-VN').format(p.original_price_vnd)}₫)` : ""}
+              {p.max_participants ? ` · ${p.registered_count}/${p.max_participants}` : ""}
+            </div>
+            {p.tournaments && p.tournaments.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {p.tournaments.map(t => (
+                  <span key={t.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">{t.name}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <Button variant="ghost" size="icon" onClick={() => { setEditing(p); setOpen(true); }}><Pencil className="w-4 h-4 text-primary" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => remove(p.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+          </div>
+        </Card>
+      ))}
+
+      <PackageFormDialog open={open} onOpenChange={setOpen} editing={editing} tours={tours} onSaved={() => { setOpen(false); load(); }} />
+    </Card>
+  );
+};
+
+type FormState = {
+  name: string; name_en: string; description: string; description_en: string;
+  price_vnd: string; original_price_vnd: string; early_bird_end: string;
+  max_participants: string; sort_order: string; status: string; image_url: string;
+  benefits: { icon: string; label: string; label_en: string }[];
+  tournament_ids: string[];
+};
+
+const emptyForm = (): FormState => ({
+  name: "", name_en: "", description: "", description_en: "",
+  price_vnd: "", original_price_vnd: "", early_bird_end: "",
+  max_participants: "", sort_order: "0", status: "active", image_url: "",
+  benefits: [{ icon: "check_circle", label: "", label_en: "" }],
+  tournament_ids: [],
+});
+
+const PackageFormDialog = ({ open, onOpenChange, editing, tours, onSaved }: {
+  open: boolean; onOpenChange: (v: boolean) => void;
+  editing: PkgRow | null; tours: { id: string; name: string }[];
+  onSaved: () => void;
+}) => {
+  const [f, setF] = useState<FormState>(emptyForm());
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (editing) {
+      setF({
+        name: editing.name, name_en: editing.name_en,
+        description: editing.description ?? "", description_en: editing.description_en ?? "",
+        price_vnd: String(editing.price_vnd), original_price_vnd: editing.original_price_vnd ? String(editing.original_price_vnd) : "",
+        early_bird_end: editing.early_bird_end ? new Date(editing.early_bird_end).toISOString().slice(0, 16) : "",
+        max_participants: editing.max_participants ? String(editing.max_participants) : "",
+        sort_order: String(editing.sort_order), status: editing.status, image_url: editing.image_url ?? "",
+        benefits: (editing.benefits && editing.benefits.length > 0)
+          ? editing.benefits.map((b: any) => ({ icon: b.icon ?? "", label: b.label ?? "", label_en: b.label_en ?? "" }))
+          : [{ icon: "check_circle", label: "", label_en: "" }],
+        tournament_ids: (editing.tournaments ?? []).map(t => t.id),
+      });
+    } else {
+      setF(emptyForm());
+    }
+  }, [editing, open]);
+
+  const update = (patch: Partial<FormState>) => setF(prev => ({ ...prev, ...patch }));
+
+  const addBenefit = () => setF(prev => ({ ...prev, benefits: [...prev.benefits, { icon: "check_circle", label: "", label_en: "" }] }));
+  const removeBenefit = (i: number) => setF(prev => ({ ...prev, benefits: prev.benefits.filter((_, idx) => idx !== i) }));
+  const updateBenefit = (i: number, patch: Partial<{ icon: string; label: string; label_en: string }>) =>
+    setF(prev => ({ ...prev, benefits: prev.benefits.map((b, idx) => idx === i ? { ...b, ...patch } : b) }));
+
+  const toggleTour = (id: string) =>
+    setF(prev => ({
+      ...prev,
+      tournament_ids: prev.tournament_ids.includes(id)
+        ? prev.tournament_ids.filter(x => x !== id)
+        : [...prev.tournament_ids, id],
+    }));
+
+  const upload = async (file: File) => {
+    if (!file.type.startsWith("image/")) return toast.error("Image only");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Max 5MB");
+    setUploading(true);
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `packages/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("app-assets").upload(path, file, { upsert: true });
+    if (error) { setUploading(false); return toast.error(error.message); }
+    const { data } = supabase.storage.from("app-assets").getPublicUrl(path);
+    update({ image_url: data.publicUrl });
+    setUploading(false);
+  };
+
+  const submit = async () => {
+    if (!f.name || !f.price_vnd || +f.price_vnd <= 0) return toast.error("Name and price are required");
+    setSaving(true);
+
+    const payload = {
+      name: f.name, name_en: f.name_en, description: f.description || null, description_en: f.description_en || null,
+      price_vnd: +f.price_vnd, original_price_vnd: f.original_price_vnd ? +f.original_price_vnd : null,
+      early_bird_end: f.early_bird_end ? new Date(f.early_bird_end).toISOString() : null,
+      max_participants: f.max_participants ? +f.max_participants : null,
+      sort_order: +f.sort_order, status: f.status, image_url: f.image_url || null,
+      benefits: f.benefits.filter(b => b.label || b.label_en),
+    };
+
+    const { error: pkgErr, data: pkgData } = editing
+      ? await supabase.from("tournament_packages").update(payload).eq("id", editing.id).select()
+      : await supabase.from("tournament_packages").insert(payload).select();
+
+    if (pkgErr) { setSaving(false); return toast.error(pkgErr.message); }
+
+    const pkgId = editing ? editing.id : (pkgData![0] as any).id;
+
+    // Update tournament associations
+    const { error: delErr } = await supabase.from("package_tournaments").delete().eq("package_id", pkgId);
+    if (delErr) { setSaving(false); return toast.error(delErr.message); }
+
+    if (f.tournament_ids.length > 0) {
+      const inserts = f.tournament_ids.map(tid => ({ package_id: pkgId, tournament_id: tid }));
+      const { error: insErr } = await supabase.from("package_tournaments").insert(inserts);
+      if (insErr) { setSaving(false); return toast.error(insErr.message); }
+    }
+
+    setSaving(false);
+    toast.success("Package saved");
+    onSaved();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>{editing ? "Edit Package" : "New Package"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Name (VI) *</Label><Input value={f.name} onChange={e => update({ name: e.target.value })} /></div>
+            <div><Label>Name (EN)</Label><Input value={f.name_en} onChange={e => update({ name_en: e.target.value })} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Description (VI)</Label><Textarea rows={2} value={f.description} onChange={e => update({ description: e.target.value })} /></div>
+            <div><Label>Description (EN)</Label><Textarea rows={2} value={f.description_en} onChange={e => update({ description_en: e.target.value })} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Price (VND) *</Label><Input type="number" value={f.price_vnd} onChange={e => update({ price_vnd: e.target.value })} /></div>
+            <div><Label>Original price (VND)</Label><Input type="number" value={f.original_price_vnd} onChange={e => update({ original_price_vnd: e.target.value })} /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div><Label>Early bird ends</Label><Input type="datetime-local" value={f.early_bird_end} onChange={e => update({ early_bird_end: e.target.value })} /></div>
+            <div><Label>Max participants</Label><Input type="number" value={f.max_participants} onChange={e => update({ max_participants: e.target.value })} /></div>
+            <div><Label>Sort order</Label><Input type="number" value={f.sort_order} onChange={e => update({ sort_order: e.target.value })} /></div>
+          </div>
+          <div><Label>Status</Label>
+            <Select value={f.status} onValueChange={v => update({ status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Image */}
+          <div className="space-y-1">
+            <Label>Image URL</Label>
+            <Input value={f.image_url} onChange={e => update({ image_url: e.target.value })} placeholder="https://... or upload" />
+            {f.image_url && <img src={f.image_url} alt="preview" className="w-full max-h-32 object-contain rounded-md border border-border mt-1" />}
+            <label>
+              <input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
+              <Button asChild variant="outline" size="sm" className="border-primary/40 text-primary cursor-pointer">
+                <span><Upload className="w-4 h-4 mr-1" />{uploading ? "Uploading..." : "Upload image"}</span>
+              </Button>
+            </label>
+          </div>
+
+          {/* Benefits */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Benefits</Label>
+              <Button size="sm" variant="outline" onClick={addBenefit} className="h-7 text-xs"><Plus className="w-3 h-3 mr-1" />Add</Button>
+            </div>
+            {f.benefits.map((b, i) => (
+              <div key={i} className="flex items-start gap-1 p-2 rounded-lg bg-background/50 border border-border">
+                <div className="flex-1 space-y-1">
+                  <div className="grid grid-cols-3 gap-1">
+                    <Input placeholder="Icon name" value={b.icon} onChange={e => updateBenefit(i, { icon: e.target.value })} className="h-7 text-xs" />
+                    <Input placeholder="Label (VI)" value={b.label} onChange={e => updateBenefit(i, { label: e.target.value })} className="h-7 text-xs" />
+                    <Input placeholder="Label (EN)" value={b.label_en} onChange={e => updateBenefit(i, { label_en: e.target.value })} className="h-7 text-xs" />
+                  </div>
+                  {b.icon && <span className="material-symbols-outlined text-base text-emerald-400">{b.icon}</span>}
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeBenefit(i)}>
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          {/* Tournaments */}
+          <div className="space-y-1">
+            <Label>Tournaments</Label>
+            <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+              {tours.length === 0 && <p className="text-xs text-muted-foreground">No tournaments available.</p>}
+              {tours.map(t => (
+                <label key={t.id} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-white/5 rounded px-1 py-0.5">
+                  <input type="checkbox" checked={f.tournament_ids.includes(t.id)} onChange={() => toggleTour(t.id)} className="accent-emerald-500" />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <Button onClick={submit} disabled={saving} className="w-full gradient-neon text-primary-foreground border-0">
+            <Save className="w-4 h-4 mr-1" />{saving ? "Saving..." : "Save Package"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  bank_name: "Ngân hàng",
+  bank_account_number: "Số tài khoản",
+  bank_account_holder: "Chủ tài khoản",
+  phone: "Số điện thoại",
+  display_name: "Tên hiển thị",
+  bio: "Giới thiệu",
+  avatar_url: "Ảnh đại diện",
+};
+
+const ProfileUpdateRow = ({ log }: { log: any }) => {
+  const [expanded, setExpanded] = useState(false);
+  const fields = log.changed_fields as string[];
+  const oldVals = log.old_values as Record<string, any>;
+  const newVals = log.new_values as Record<string, any>;
+
+  return (
+    <Card className="p-3 border-primary/20">
+      <button className="w-full text-left flex items-start justify-between gap-2" onClick={() => setExpanded(!expanded)}>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-muted-foreground">{formatDateTime(log.created_at)}</div>
+          <div className="font-semibold text-sm truncate">{log.profile?.display_name || "Người dùng"}</div>
+          {log.profile?.phone && <div className="text-[11px] text-muted-foreground">{log.profile.phone}</div>}
+          <div className="flex flex-wrap gap-1 mt-1">
+            {fields.map((f: string) => (
+              <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                {FIELD_LABELS[f] ?? f}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="text-muted-foreground shrink-0 mt-1">
+          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1 border-t border-primary/10 pt-2">
+          {fields.map((f: string) => {
+            const label = FIELD_LABELS[f] ?? f;
+            const oldVal = oldVals[f] ?? "(trống)";
+            const newVal = newVals[f] ?? "(trống)";
+            return (
+              <div key={f} className="text-xs grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                <span className="text-muted-foreground truncate">{label}:</span>
+                <span className="text-destructive line-through truncate">{String(oldVal)}</span>
+                <span className="text-success truncate">{String(newVal)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 };

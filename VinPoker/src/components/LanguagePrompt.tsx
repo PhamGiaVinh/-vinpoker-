@@ -7,7 +7,7 @@ const PROMPT_KEY = "vinpoker.lang.prompted";
 const MANUAL_KEY = "vinpoker.lang.manual";
 const STORED_KEY = "vinpoker.lang";
 
-type Target = "zh-CN" | "ko" | null;
+type Target = "zh-CN" | "ko" | "ja" | "th" | null;
 
 export const LanguagePrompt = () => {
   const { i18n, t } = useTranslation();
@@ -26,6 +26,10 @@ export const LanguagePrompt = () => {
         setTarget("zh-CN");
       } else if (all.some((l) => l.startsWith("ko")) && !cur.startsWith("ko")) {
         setTarget("ko");
+      } else if (all.some((l) => l.startsWith("ja")) && !cur.startsWith("ja")) {
+        setTarget("ja");
+      } else if (all.some((l) => l.startsWith("th")) && !cur.startsWith("th")) {
+        setTarget("th");
       }
     } catch {}
   }, [i18n.language]);
@@ -43,15 +47,26 @@ export const LanguagePrompt = () => {
   };
 
   const open = target !== null;
-  const isKo = target === "ko";
-  const title = isKo
+  const title = target === "ko"
     ? t("languagePrompt.titleKo", "한국어로 전환하시겠습니까?")
+    : target === "ja"
+    ? t("languagePrompt.titleJa", "日本語に切り替えますか？")
+    : target === "th"
+    ? t("languagePrompt.titleTh", "เปลี่ยนเป็นภาษาไทย?")
     : t("languagePrompt.title", "切换到简体中文?");
-  const desc = isKo
+  const desc = target === "ko"
     ? t("languagePrompt.descriptionKo", "브라우저 언어가 한국어로 감지되었습니다. 한국어 인터페이스로 전환할까요?")
+    : target === "ja"
+    ? t("languagePrompt.descriptionJa", "ブラウザの言語が日本語に設定されています。日本語のインターフェースに切り替えますか？")
+    : target === "th"
+    ? t("languagePrompt.descriptionTh", "เบราว์เซอร์ของคุณใช้ภาษาไทย เปลี่ยนเป็นอินเทอร์เฟซภาษาไทยหรือไม่?")
     : t("languagePrompt.description", "检测到您的浏览器使用中文。是否切换到简体中文界面?");
-  const switchLabel = isKo
+  const switchLabel = target === "ko"
     ? t("languagePrompt.switchKo", "한국어로 전환")
+    : target === "ja"
+    ? t("languagePrompt.switchJa", "日本語に切り替え")
+    : target === "th"
+    ? t("languagePrompt.switchTh", "เปลี่ยนเป็นภาษาไทย")
     : t("languagePrompt.switch", "切换到简体中文");
 
   return (

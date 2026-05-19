@@ -11,6 +11,8 @@ const normalize = (lng?: string) => {
   const l = lng.toLowerCase();
   if (l.startsWith("zh")) return "zh-CN";
   if (l.startsWith("ko")) return "ko";
+  if (l.startsWith("ja")) return "ja";
+  if (l.startsWith("th")) return "th";
   if (l.startsWith("en")) return "en";
   return "vi";
 };
@@ -40,6 +42,8 @@ export const LanguageSwitcher = ({ variant = "compact" }: Props) => {
         <SelectItem value="en">🇺🇸 ENG</SelectItem>
         <SelectItem value="zh-CN">🇨🇳 中文</SelectItem>
         <SelectItem value="ko">🇰🇷 KOR</SelectItem>
+        <SelectItem value="ja">🇯🇵 JPN</SelectItem>
+        <SelectItem value="th">🇹🇭 THA</SelectItem>
       </SelectContent>
     </Select>
   );

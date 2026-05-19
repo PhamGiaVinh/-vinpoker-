@@ -342,7 +342,8 @@
     "live": "LIVE",
     "searchPlaceholder": "Search by name or buy-in...",
     "filtersActive": "{{count}} active",
-    "news": "NEWS"
+    "news": "NEWS",
+    "packages": "PACKAGES"
   },
   "clubsPage": {
     "title": "Clubs",
@@ -1483,7 +1484,13 @@
   "languagePrompt": {
     "titleKo": "Switch to Korean?",
     "descriptionKo": "Your browser language is Korean. Switch to the Korean interface?",
-    "switchKo": "Switch to Korean"
+    "switchKo": "Switch to Korean",
+    "titleJa": "Switch to Japanese?",
+    "descriptionJa": "Your browser language is Japanese. Switch to the Japanese interface?",
+    "switchJa": "Switch to Japanese",
+    "titleTh": "Switch to Thai?",
+    "descriptionTh": "Your browser language is Thai. Switch to the Thai interface?",
+    "switchTh": "Switch to Thai"
   },
   "pushNotifications": {
     "promptTitle": "Turn on push notifications",

@@ -342,7 +342,8 @@
     "live": "LIVE",
     "searchPlaceholder": "Tìm theo tên giải hoặc lệ phí...",
     "filtersActive": "{{count}} đang dùng",
-    "news": "TIN TỨC"
+    "news": "TIN TỨC",
+    "packages": "GÓI GIẢI ĐẤU"
   },
   "clubsPage": {
     "title": "Câu lạc bộ",
@@ -1483,7 +1484,13 @@
   "languagePrompt": {
     "titleKo": "Chuyển sang tiếng Hàn?",
     "descriptionKo": "Phát hiện trình duyệt của bạn dùng tiếng Hàn. Chuyển sang giao diện tiếng Hàn?",
-    "switchKo": "Chuyển sang tiếng Hàn"
+    "switchKo": "Chuyển sang tiếng Hàn",
+    "titleJa": "Chuyển sang tiếng Nhật?",
+    "descriptionJa": "Phát hiện trình duyệt của bạn dùng tiếng Nhật. Chuyển sang giao diện tiếng Nhật?",
+    "switchJa": "Chuyển sang tiếng Nhật",
+    "titleTh": "Chuyển sang tiếng Thái?",
+    "descriptionTh": "Phát hiện trình duyệt của bạn dùng tiếng Thái. Chuyển sang giao diện tiếng Thái?",
+    "switchTh": "Chuyển sang tiếng Thái"
   },
   "pushNotifications": {
     "promptTitle": "Bật thông báo đẩy",

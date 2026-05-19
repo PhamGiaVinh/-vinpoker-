@@ -5,12 +5,16 @@ import en from "./locales/en.json";
 import vi from "./locales/vi.json";
 import zhCN from "./locales/zh-CN.json";
 import ko from "./locales/ko.json";
+import ja from "./locales/ja.json";
+import th from "./locales/th.json";
 
 const normalizeLng = (lng?: string | null): string => {
   if (!lng) return "vi";
   const l = lng.toLowerCase();
   if (l.startsWith("zh")) return "zh-CN";
   if (l.startsWith("ko")) return "ko";
+  if (l.startsWith("ja")) return "ja";
+  if (l.startsWith("th")) return "th";
   if (l.startsWith("en")) return "en";
   if (l.startsWith("vi")) return "vi";
   return "vi";
@@ -34,9 +38,11 @@ i18n
       vi: { translation: vi },
       "zh-CN": { translation: zhCN },
       ko: { translation: ko },
+      ja: { translation: ja },
+      th: { translation: th },
     },
     fallbackLng: "vi",
-    supportedLngs: ["vi", "en", "zh-CN", "ko"],
+    supportedLngs: ["vi", "en", "zh-CN", "ko", "ja", "th"],
     nonExplicitSupportedLngs: false,
     load: "all",
     lowerCaseLng: false,

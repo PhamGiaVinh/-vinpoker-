@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
 import { formatDateTime, formatVND } from "@/lib/format";
@@ -34,6 +34,7 @@ const ClubAdmin = () => {
   const [tours, setTours] = useState<any[]>([]);
   const [regs, setRegs] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
+  const [profileLogs, setProfileLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadClubs = async () => {
@@ -74,6 +75,23 @@ const ClubAdmin = () => {
       pmap = Object.fromEntries((profs ?? []).map((p: any) => [p.user_id, p]));
     }
     setBookings((bc ?? []).map((b: any) => ({ ...b, player: pmap[b.player_id], tournament: tourMap[b.tournament_id] })));
+
+    // Profile update logs for this club
+    const { data: logs } = await supabase
+      .from("profile_update_log")
+      .select("*")
+      .eq("club_id", clubId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (logs) {
+      const logPlayerIds = Array.from(new Set(logs.map((l: any) => l.user_id)));
+      let lpmap: Record<string, any> = {};
+      if (logPlayerIds.length) {
+        const { data: lprofs } = await supabase.from("profiles").select("user_id,display_name,phone").in("user_id", logPlayerIds);
+        lpmap = Object.fromEntries((lprofs ?? []).map((p: any) => [p.user_id, p]));
+      }
+      setProfileLogs(logs.map((l: any) => ({ ...l, player: lpmap[l.user_id] })));
+    }
   };
 
   useEffect(() => { if (!authLoading) loadClubs(); }, [user?.id, authLoading]);
@@ -266,6 +284,22 @@ const ClubAdmin = () => {
               </Card>
             ))}
           </section>
+
+          {/* Profile update logs */}
+          {activeClub && (
+            <section>
+              <h3 className="font-display text-primary mb-2">Lịch sử cập nhật hồ sơ</h3>
+              {profileLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Chưa có cập nhật nào.</p>
+              ) : (
+                <div className="space-y-2">
+                  {profileLogs.map((log) => (
+                    <ProfileUpdateRow key={log.id} log={log} />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>
@@ -539,6 +573,60 @@ const PaymentExport = ({ bookings, tournaments, regs }: { bookings: any[]; tourn
         </div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+const ProfileUpdateRow = ({ log }: { log: any }) => {
+  const [expanded, setExpanded] = useState(false);
+  const fields = log.changed_fields as string[];
+  const oldVals = log.old_values as Record<string, any>;
+  const newVals = log.new_values as Record<string, any>;
+
+  const FIELD_LABELS: Record<string, string> = {
+    bank_name: "Ngân hàng",
+    bank_account_number: "Số tài khoản",
+    bank_account_holder: "Chủ tài khoản",
+    phone: "Số điện thoại",
+    display_name: "Tên hiển thị",
+    bio: "Giới thiệu",
+    avatar_url: "Ảnh đại diện",
+  };
+
+  return (
+    <Card className="p-3 border-primary/20">
+      <button className="w-full text-left flex items-start justify-between gap-2" onClick={() => setExpanded(!expanded)}>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-muted-foreground">{formatDateTime(log.created_at)}</div>
+          <div className="font-semibold text-sm truncate">{log.player?.display_name || "Người dùng"}</div>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {fields.map((f: string) => (
+              <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                {FIELD_LABELS[f] ?? f}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="text-muted-foreground shrink-0 mt-1">
+          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1 border-t border-primary/10 pt-2">
+          {fields.map((f: string) => {
+            const label = FIELD_LABELS[f] ?? f;
+            const oldVal = oldVals[f] ?? "(trống)";
+            const newVal = newVals[f] ?? "(trống)";
+            return (
+              <div key={f} className="text-xs grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                <span className="text-muted-foreground truncate">{label}:</span>
+                <span className="text-destructive line-through truncate">{String(oldVal)}</span>
+                <span className="text-success truncate">{String(newVal)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 };
 

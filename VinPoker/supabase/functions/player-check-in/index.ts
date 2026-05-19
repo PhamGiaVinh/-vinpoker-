@@ -96,13 +96,49 @@ Deno.serve(async (req) => {
     if (backerIds.length > 0) {
       const rows = backerIds.map((uid) => ({
         user_id: uid,
-        type: "deal_funded", // reuse existing notification type
+        type: "player_checked_in",
         title: "Player đã check-in tại CLB",
         body: `${playerName} đã thanh toán phần còn thiếu và sẵn sàng thi đấu deal "${label}".`,
         data: { deal_id: dealId, label, kind: "player_checked_in" },
       }));
       await admin.from("notifications").insert(rows);
     }
+
+    // === Notify cashiers + club owner ===
+    try {
+      if (deal.club_id) {
+        const { data: cashiers } = await admin
+          .from("club_cashiers")
+          .select("user_id")
+          .eq("club_id", deal.club_id);
+        if (cashiers) {
+          const cNotis = cashiers
+            .filter((c: any) => c.user_id !== callerId)
+            .map((c: any) => ({
+              user_id: c.user_id,
+              type: "player_checked_in",
+              title: "Người thi đấu đã check-in",
+              body: `${playerName} đã check-in deal "${label}" tại CLB.`,
+              data: { deal_id: dealId, club_id: deal.club_id },
+            }));
+          if (cNotis.length) await admin.from("notifications").insert(cNotis);
+        }
+        const { data: club } = await admin
+          .from("clubs")
+          .select("owner_id")
+          .eq("id", deal.club_id)
+          .maybeSingle();
+        if (club?.owner_id && club.owner_id !== callerId) {
+          await admin.from("notifications").insert({
+            user_id: club.owner_id,
+            type: "player_checked_in",
+            title: "Người thi đấu đã check-in tại CLB của bạn",
+            body: `${playerName} đã check-in deal "${label}".`,
+            data: { deal_id: dealId, club_id: deal.club_id },
+          });
+        }
+      }
+    } catch (_) { /* non-critical */ }
 
     // Audit
     await admin.from("staking_audit_logs").insert({

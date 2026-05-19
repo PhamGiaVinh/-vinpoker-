@@ -65,6 +65,8 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const RangeEditor = lazy(() => import("./components/RangeEditor"));
+const PackageListing = lazy(() => import("./pages/PackageListing"));
+const PackageDetail = lazy(() => import("./pages/PackageDetail"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +139,8 @@ const App = () => (
                 <Route path="/news" element={<News />} />
                 <Route path="/news/:slug" element={<NewsDetail />} />
                 <Route path="/international" element={<InternationalEvents />} />
+                <Route path="/packages" element={<PackageListing />} />
+                <Route path="/packages/:packageId" element={<PackageDetail />} />
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
                 <Route path="/cashier" element={<CashierDashboard />} />

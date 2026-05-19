@@ -1,14 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { playAlertSound } from "@/lib/notifySound";
+import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, playAlertSound } from "@/lib/notifySound";
 
 export type NotificationType =
   | "deal_committed"
   | "deal_funded"
+  | "purchase_funded"
   | "deal_auto_cancelled"
   | "deal_auto_closed"
   | "deal_expiring_soon"
+  | "deal_refunded"
+  | "player_checked_in"
   | "result_entered"
   | "result_verified"
   | "result_disputed"
@@ -16,8 +19,13 @@ export type NotificationType =
   | "payout_executed"
   | "system_announcement"
   | "schedule_updated"
+  | "club_schedule_updated"
   | "registration_confirmed"
-  | "chat_message";
+  | "tournament_created"
+  | "stream_live"
+  | "chat_message"
+  | "verification_approved"
+  | "verification_rejected";
 
 export interface NotificationRow {
   id: string;
@@ -33,9 +41,12 @@ export interface NotificationRow {
 const ROUTE_FOR: Record<NotificationType, (data: any) => string> = {
   deal_committed: () => "/staking/my-deals",
   deal_funded: () => "/staking/my-deals",
+  purchase_funded: () => "/staking/my-deals",
   deal_auto_cancelled: () => "/staking/my-deals",
   deal_auto_closed: () => "/staking/my-deals",
   deal_expiring_soon: () => "/staking/portfolio",
+  deal_refunded: () => "/staking/my-deals",
+  player_checked_in: () => "/staking/portfolio",
   result_entered: () => "/admin/staking",
   result_verified: () => "/staking/portfolio",
   result_disputed: () => "/staking/my-deals",
@@ -43,16 +54,24 @@ const ROUTE_FOR: Record<NotificationType, (data: any) => string> = {
   payout_executed: () => "/staking/portfolio",
   system_announcement: () => "/",
   schedule_updated: () => "/tournaments",
+  club_schedule_updated: () => "/tournaments",
   registration_confirmed: () => "/tournaments",
+  tournament_created: () => "/tournaments",
+  stream_live: () => "/",
   chat_message: (data) => `/chat/groups/${data?.group_id ?? ""}`,
+  verification_approved: () => "/account",
+  verification_rejected: () => "/account",
 };
 
 export const ICON_FOR: Record<NotificationType, string> = {
   deal_committed: "🤝",
   deal_funded: "💰",
+  purchase_funded: "💰",
   deal_auto_cancelled: "⏰",
   deal_auto_closed: "🚪",
   deal_expiring_soon: "⏳",
+  deal_refunded: "💸",
+  player_checked_in: "🎯",
   result_entered: "📝",
   result_verified: "✅",
   result_disputed: "⚠️",
@@ -60,8 +79,35 @@ export const ICON_FOR: Record<NotificationType, string> = {
   payout_executed: "🎉",
   system_announcement: "📣",
   schedule_updated: "📅",
+  club_schedule_updated: "📅",
   registration_confirmed: "🎫",
+  tournament_created: "🏆",
+  stream_live: "🔴",
   chat_message: "💬",
+  verification_approved: "🆔",
+  verification_rejected: "❌",
+};
+
+export const SOUND_FOR: Record<string, () => void> = {
+  deal_committed: playSuccessSound,
+  deal_funded: playSuccessSound,
+  purchase_funded: playSuccessSound,
+  payout_executed: playSuccessSound,
+  verification_approved: playSuccessSound,
+  player_checked_in: playSuccessSound,
+  result_verified: playSuccessSound,
+  deal_auto_cancelled: playErrorSound,
+  deal_auto_closed: playErrorSound,
+  deal_refunded: playErrorSound,
+  verification_rejected: playErrorSound,
+  result_disputed: playErrorSound,
+  deal_expiring_soon: playWarningSound,
+  release_requested: playWarningSound,
+  result_entered: playInfoSound,
+  system_announcement: playAlertSound,
+  club_schedule_updated: playInfoSound,
+  tournament_created: playInfoSound,
+  stream_live: playAlertSound,
 };
 
 export function routeForNotification(n: Pick<NotificationRow, "type" | "data">) {
@@ -110,7 +156,11 @@ export function useNotifications(limit = 20) {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => { playAlertSound(); fetchAll(); },
+        (payload) => {
+          const newType = payload.new?.type as string;
+          (SOUND_FOR[newType] ?? playAlertSound)();
+          fetchAll();
+        },
       )
       .on(
         "postgres_changes",

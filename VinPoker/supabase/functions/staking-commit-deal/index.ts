@@ -180,6 +180,42 @@ Deno.serve(async (req) => {
       data: { deal_id: deal.id, percent, filled_percent: newFilled },
     });
 
+    // === Notify cashiers + club owner ===
+    try {
+      if (deal.club_id) {
+        const { data: cashiers } = await admin
+          .from("club_cashiers")
+          .select("user_id")
+          .eq("club_id", deal.club_id);
+        if (cashiers) {
+          const cNotis = cashiers
+            .filter((c: any) => c.user_id !== uid)
+            .map((c: any) => ({
+              user_id: c.user_id,
+              type: "deal_committed",
+              title: "Có cam kết mới chờ xác nhận nạp tiền",
+              body: `Backer vừa mua ${percent}% deal "${deal.custom_event_name ?? "Deal"}". Số tiền: ${amountVnd.toLocaleString()} VND.`,
+              data: { deal_id: deal.id, club_id: deal.club_id, percent, amount_vnd: amountVnd },
+            }));
+          if (cNotis.length) await admin.from("notifications").insert(cNotis);
+        }
+        const { data: club } = await admin
+          .from("clubs")
+          .select("owner_id")
+          .eq("id", deal.club_id)
+          .maybeSingle();
+        if (club?.owner_id) {
+          await admin.from("notifications").insert({
+            user_id: club.owner_id,
+            type: "deal_committed",
+            title: "Có cam kết mới tại CLB của bạn",
+            body: `Backer vừa mua ${percent}% deal "${deal.custom_event_name ?? "Deal"}".`,
+            data: { deal_id: deal.id, club_id: deal.club_id, percent },
+          });
+        }
+      }
+    } catch (_) { /* non-critical */ }
+
     return j({
       success: true,
       purchase_id: ins.id,
