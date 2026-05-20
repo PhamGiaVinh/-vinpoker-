@@ -23,6 +23,7 @@ import ClubQrScanDialog from "@/components/ClubQrScanDialog";
 import UnifiedLookupTab from "@/components/cashier/UnifiedLookupTab";
 import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
+import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
@@ -89,7 +90,7 @@ export default function CashierDashboard() {
     { key: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { key: "staking", label: "Staking", icon: Coins },
     { key: "members", label: "Thành viên", icon: UsersIcon },
-    { key: "reports", label: "Báo cáo", icon: FileBarChart },
+    { key: "reports", label: "Doanh thu", icon: FileBarChart },
   ];
 
   return (
@@ -803,79 +804,7 @@ function CardReissueTab() {
 /* ============================================================== */
 
 function ReportsPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
-  const today = new Date();
-  const ago = new Date(today.getTime() - 30 * 86400000);
-  const [from, setFrom] = useState(ago.toISOString().slice(0, 10));
-  const [to, setTo] = useState(today.toISOString().slice(0, 10));
-  const [clubFilter, setClubFilter] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-
-  const run = async () => {
-    setLoading(true);
-    let q = supabase.from("staking_deals")
-      .select(`id, custom_event_name, status, created_at, buy_in_amount_vnd, result_prize_vnd,
-               filled_percent, platform_fixed_fee, platform_percent_fee, platform_archive_fee, club_id, player_id`)
-      .gte("created_at", from + "T00:00:00")
-      .lte("created_at", to + "T23:59:59")
-      .order("created_at", { ascending: false })
-      .limit(2000);
-    const ids = clubFilter ? [clubFilter] : clubIds;
-    if (ids.length) q = q.in("club_id", ids);
-    const { data, error } = await q;
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    if (!data || data.length === 0) { toast.message("Không có dữ liệu trong khoảng đã chọn"); return; }
-    const playerIds = Array.from(new Set(data.map((r: any) => r.player_id).filter(Boolean)));
-    let pmap: Record<string, any> = {};
-    if (playerIds.length) {
-      const { data: ps } = await supabase.from("profiles").select("user_id, display_name").in("user_id", playerIds);
-      pmap = Object.fromEntries((ps ?? []).map((p: any) => [p.user_id, p]));
-    }
-    const enriched = data.map((r: any) => ({ ...r, player: pmap[r.player_id] ?? null }));
-    exportToExcel(enriched, [
-      { header: "Deal ID", get: (r: any) => r.id.slice(0, 8) },
-      { header: "Sự kiện", get: (r: any) => r.custom_event_name ?? "" },
-      { header: "Player", get: (r: any) => r.player?.display_name ?? "" },
-      { header: "Ngày tạo", get: (r: any) => formatExcelDate(r.created_at) },
-      { header: "Buy-in", get: (r: any) => r.buy_in_amount_vnd ?? 0 },
-      { header: "Prize", get: (r: any) => r.result_prize_vnd ?? 0 },
-      { header: "% lấp đầy", get: (r: any) => r.filled_percent },
-      { header: "Phí cố định", get: (r: any) => r.platform_fixed_fee ?? 0 },
-      { header: "Phí %", get: (r: any) => r.platform_percent_fee ?? 0 },
-      { header: "Trạng thái", get: (r: any) => r.status },
-    ], `bao-cao-staking-${from}-${to}`, "Report");
-  };
-
-  return (
-    <Card className="p-4 space-y-4">
-      <div className="font-semibold">Báo cáo & Xuất Excel</div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground">Từ ngày</label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Đến ngày</label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
-        <div className="md:col-span-2">
-          <label className="text-xs text-muted-foreground">Câu lạc bộ</label>
-          <select className="w-full h-10 rounded-md border bg-background px-2 text-sm"
-            value={clubFilter} onChange={(e) => setClubFilter(e.target.value)}>
-            <option value="">— Tất cả CLB phụ trách —</option>
-            {clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <Button onClick={run} disabled={loading}>
-        {loading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Download className="w-4 h-4 mr-1" />}
-        Xuất Excel
-      </Button>
-      <p className="text-[11px] text-muted-foreground">
-        Báo cáo gồm tất cả deals trong khoảng thời gian đã chọn của các CLB bạn phụ trách. Phí giải ngân được snapshot per-deal theo cấu hình tại thời điểm tạo.
-      </p>
-    </Card>
-  );
+  return <RevenueReportTab clubIds={clubIds} clubs={clubs} />;
 }
 
 /* ============================================================== */

@@ -39,7 +39,7 @@ export const playNotifySound = () => {
     if (ac.state === "suspended") ac.resume().catch(() => {});
 
     const now = ac.currentTime;
-    const tone = (freq: number, start: number, dur = 0.18, vol = 0.18) => {
+    const tone = (freq: number, start: number, dur = 0.18, vol = 0.6) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = "sine";
@@ -67,7 +67,7 @@ export const playAlertSound = () => {
     if (ac.state === "suspended") ac.resume().catch(() => {});
 
     const now = ac.currentTime;
-    const tone = (freq: number, start: number, dur = 0.25, vol = 0.2) => {
+    const tone = (freq: number, start: number, dur = 0.25, vol = 0.6) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = "triangle";
@@ -88,7 +88,7 @@ export const playAlertSound = () => {
   }
 };
 
-// Cheerful upward arpeggio for success toasts.
+// Cheerful upward arpeggio for success toasts — C6→E6→G6 bright chime
 export const playSuccessSound = () => {
   try {
     const ac = getCtx();
@@ -96,7 +96,7 @@ export const playSuccessSound = () => {
     if (ac.state === "suspended") ac.resume().catch(() => {});
 
     const now = ac.currentTime;
-    const tone = (freq: number, start: number, dur = 0.16, vol = 0.16) => {
+    const tone = (freq: number, start: number, dur = 0.16, vol = 0.6) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = "sine";
@@ -109,8 +109,8 @@ export const playSuccessSound = () => {
       osc.stop(now + start + dur + 0.02);
     };
 
-    tone(784, 0);        // G5
-    tone(1047, 0.09);    // C6
+    tone(1047, 0);       // C6
+    tone(1319, 0.09);    // E6
     tone(1568, 0.18, 0.22); // G6
   } catch {
     // ignore
@@ -125,7 +125,7 @@ export const playErrorSound = () => {
     if (ac.state === "suspended") ac.resume().catch(() => {});
 
     const now = ac.currentTime;
-    const tone = (freq: number, start: number, dur = 0.22, vol = 0.18) => {
+    const tone = (freq: number, start: number, dur = 0.22, vol = 0.6) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = "square";
@@ -158,7 +158,7 @@ export const playInfoSound = () => {
     osc.type = "sine";
     osc.frequency.setValueAtTime(660, now);
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+    gain.gain.linearRampToValueAtTime(0.4, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
     osc.connect(gain).connect(ac.destination);
     osc.start(now);
@@ -176,7 +176,7 @@ export const playWarningSound = () => {
     if (ac.state === "suspended") ac.resume().catch(() => {});
 
     const now = ac.currentTime;
-    const tone = (freq: number, start: number, dur = 0.18, vol = 0.16) => {
+    const tone = (freq: number, start: number, dur = 0.18, vol = 0.5) => {
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.type = "triangle";

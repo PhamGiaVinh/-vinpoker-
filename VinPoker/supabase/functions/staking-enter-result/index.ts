@@ -87,20 +87,27 @@ Deno.serve(async (req) => {
       computed_at: new Date().toISOString(),
     };
 
+    const updateFields: Record<string, any> = {
+      result_prize_vnd: prize,
+      placement: body.placement.trim(),
+      result_proof_url: body.proof_url,
+      result_data,
+      result_entered_at: new Date().toISOString(),
+      result_entered_by: uid,
+      player_payout_vnd: p.player,
+      backer_payout_vnd: p.backer,
+      platform_fee_vnd: p.fee,
+      status: "result_entered",
+    };
+
+    // If prize is 0 (busted), auto-mark player as busted
+    if (prize === 0) {
+      updateFields.player_busted_out = true;
+    }
+
     const { error: updErr } = await admin
       .from("staking_deals")
-      .update({
-        result_prize_vnd: prize,
-        placement: body.placement.trim(),
-        result_proof_url: body.proof_url,
-        result_data,
-        result_entered_at: new Date().toISOString(),
-        result_entered_by: uid,
-        player_payout_vnd: p.player,
-        backer_payout_vnd: p.backer,
-        platform_fee_vnd: p.fee,
-        status: "result_entered",
-      })
+      .update(updateFields)
       .eq("id", body.deal_id)
       .eq("player_id", uid)
       .eq("status", "funded");

@@ -31,6 +31,9 @@ BEGIN
     WHEN 'schedule_updated' THEN '/tournaments'
     WHEN 'registration_confirmed' THEN '/tournaments'
     WHEN 'chat_message' THEN '/chat/groups/' || COALESCE(NEW.data->>'group_id', '')
+    WHEN 'player_busted_out' THEN '/staking/my-deals'
+    WHEN 'package_purchase_paid' THEN '/packages'
+    WHEN 'profile_updated' THEN '/account'
     ELSE COALESCE(NEW.data->>'url', '/')
   END;
 

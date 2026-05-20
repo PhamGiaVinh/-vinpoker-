@@ -25,7 +25,10 @@ export type NotificationType =
   | "stream_live"
   | "chat_message"
   | "verification_approved"
-  | "verification_rejected";
+  | "verification_rejected"
+  | "package_purchase_paid"
+  | "player_busted_out"
+  | "profile_updated";
 
 export interface NotificationRow {
   id: string;
@@ -61,6 +64,9 @@ const ROUTE_FOR: Record<NotificationType, (data: any) => string> = {
   chat_message: (data) => `/chat/groups/${data?.group_id ?? ""}`,
   verification_approved: () => "/account",
   verification_rejected: () => "/account",
+  package_purchase_paid: () => "/packages",
+  player_busted_out: () => "/staking/my-deals",
+  profile_updated: () => "/account",
 };
 
 export const ICON_FOR: Record<NotificationType, string> = {
@@ -86,6 +92,9 @@ export const ICON_FOR: Record<NotificationType, string> = {
   chat_message: "💬",
   verification_approved: "🆔",
   verification_rejected: "❌",
+  package_purchase_paid: "🎫",
+  player_busted_out: "💥",
+  profile_updated: "📝",
 };
 
 export const SOUND_FOR: Record<string, () => void> = {
@@ -108,6 +117,9 @@ export const SOUND_FOR: Record<string, () => void> = {
   club_schedule_updated: playInfoSound,
   tournament_created: playInfoSound,
   stream_live: playAlertSound,
+  package_purchase_paid: playSuccessSound,
+  player_busted_out: playErrorSound,
+  profile_updated: playInfoSound,
 };
 
 export function routeForNotification(n: Pick<NotificationRow, "type" | "data">) {
