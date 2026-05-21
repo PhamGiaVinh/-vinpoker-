@@ -3,7 +3,7 @@
     "schedule": "配信予定",
     "clubs": "クラブ",
     "marketplace": "STAKE",
-    "backer": "プレイヤー",
+    "backer": "Marketplace",
     "ranking": "ランキング",
     "documents": "ドキュメント",
     "account": "アカウント",
@@ -149,7 +149,13 @@
     "tournaments": "トーナメント",
     "lookingForBacker": "支援者を探しています",
     "viewProfile": "プロフィールを見る",
-    "disclaimer": "このページはトレーナーを探求するためのものです。すべてのパートナーシップ取引はSTAKEページを通じて行う必要があります（VBackerが資金を保持する一時的なコミットメント）。"
+    "disclaimer": "このページはトレーナーを探求するためのものです。すべてのパートナーシップ取引はSTAKEページを通じて行う必要があります（VBackerが資金を保持する一時的なコミットメント）。",
+    "myPortfolio": "マイポートフォリオ",
+    "currentlyBacked": "現在のバッキング",
+    "findPlayers": "プレイヤーを探す",
+    "noActiveBacking": "アクティブなバッキングはありません",
+    "backerCount": "{{n}} バッカー",
+    "activeDeals": "{{n}} アクティブディール"
   },
   "backingProfile": {
     "title": "バッキングプロフィール",

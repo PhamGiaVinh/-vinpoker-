@@ -2,8 +2,8 @@
   "nav": {
     "schedule": "Schedule",
     "clubs": "Clubs",
-    "marketplace": " STAKE",
-    "backer": "PLAYERS",
+    "marketplace": " STAKE",
+    "backer": "Marketplace",
     "ranking": "Ranking",
     "documents": "Docs",
     "account": "Account",
@@ -149,7 +149,13 @@
     "tournaments": "Events",
     "lookingForBacker": "Looking for backer",
     "viewProfile": "View profile",
-    "disclaimer": "This page is for player discovery only. All share transactions must go through the STAKE page (VBacker escrow holds funds)."
+    "disclaimer": "This page is for player discovery only. All share transactions must go through the STAKE page (VBacker escrow holds funds).",
+    "myPortfolio": "My Portfolio",
+    "currentlyBacked": "Currently Backed",
+    "findPlayers": "Find Players",
+    "noActiveBacking": "You have no active backing deals",
+    "backerCount": "{{n}} backer(s)",
+    "activeDeals": "{{n}} active deal(s)"
   },
   "backingProfile": {
     "title": "Backing Profile",

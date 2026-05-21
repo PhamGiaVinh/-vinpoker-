@@ -19,7 +19,7 @@ const tabsData = [
   { to: "/", labelKey: "schedule", icon: Calendar, end: true, label: "Lịch giải" },
   { to: "/clubs", labelKey: "clubs", icon: Building2, label: "CLB" },
   { to: "/marketplace", labelKey: "marketplace", icon: Sparkles, label: " STAKE" },
-  { to: "/find-backer", labelKey: "backer", icon: TrendingUp, label: "Tìm backer" },
+  { to: "/find-backer", labelKey: "backer", icon: Sparkles, label: "Marketplace" },
   { to: "/documents", labelKey: "documents", icon: BookOpen, label: "Tài liệu" },
   { to: "/leaderboard", labelKey: "ranking", icon: Trophy, label: "Xếp hạng" },
   { to: "/account", labelKey: "account", icon: User, label: "Tài khoản" },

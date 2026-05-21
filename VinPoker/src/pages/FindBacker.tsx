@@ -1,15 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Sparkles, Search, ShieldCheck, ShieldAlert, ArrowRight } from "lucide-react";
+import { formatVND, formatDateTime } from "@/lib/format";
+import { Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, ShieldAlert, ArrowRight, Wallet, Users, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { LineChart, Line, ResponsiveContainer, YAxis } from "recharts";
+
+/* ============================================================== *
+ * Types                                                          *
+ * ============================================================== */
 
 interface Row {
   player_id: string;
@@ -30,7 +38,355 @@ interface Row {
   created_at?: string;
 }
 
+interface PortfolioItem {
+  id: string;
+  deal_id: string;
+  percent: number;
+  amount: number;
+  status: string;
+  created_at: string;
+  deal: {
+    id: string;
+    custom_event_name: string | null;
+    buy_in_amount_vnd: number;
+    markup: number;
+    filled_percent: number;
+    status: string;
+    player_id: string;
+    result_prize_vnd: number | null;
+    backer_payout_vnd: number | null;
+    player_checked_in: boolean;
+    player_busted_out: boolean;
+    result_entered_at: string | null;
+    payout_executed_at: string | null;
+    player?: { display_name: string | null };
+  } | null;
+}
+
+/* ============================================================== *
+ * Main Component                                                 *
+ * ============================================================== */
+
 const FindBacker = () => {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const [section, setSection] = useState<string>("players");
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Sparkles className="w-7 h-7 text-primary" /> Marketplace
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 max-w-3xl">{t("findBacker.subtitle")}</p>
+        </div>
+      </div>
+
+      <Tabs value={section} onValueChange={setSection} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 h-auto">
+          <TabsTrigger value="portfolio">{t("findBacker.myPortfolio")}</TabsTrigger>
+          <TabsTrigger value="backed">{t("findBacker.currentlyBacked")}</TabsTrigger>
+          <TabsTrigger value="players">{t("findBacker.findPlayers")}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="portfolio" className="mt-4">
+          {user ? <PortfolioSection userId={user.id} /> : <LoginPrompt />}
+        </TabsContent>
+
+        <TabsContent value="backed" className="mt-4">
+          {user ? <CurrentlyBackedSection userId={user.id} /> : <LoginPrompt />}
+        </TabsContent>
+
+        <TabsContent value="players" className="mt-4">
+          <FindPlayersSection />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+/* ============================================================== *
+ * Login Prompt                                                    *
+ * ============================================================== */
+
+function LoginPrompt() {
+  const { t } = useTranslation();
+  const nav = useNavigate();
+  return (
+    <Card className="p-10 text-center">
+      <Wallet className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+      <p className="text-muted-foreground">{t("account.notSignedIn")}</p>
+      <Button className="mt-4 gradient-neon" onClick={() => nav("/auth")}>
+        {t("account.signIn")}
+      </Button>
+    </Card>
+  );
+}
+
+/* ============================================================== *
+ * Section A: Portfolio                                            *
+ * ============================================================== */
+
+function PortfolioSection({ userId }: { userId: string }) {
+  const { t } = useTranslation();
+  const nav = useNavigate();
+  const [items, setItems] = useState<PortfolioItem[] | null>(null);
+  const [filter, setFilter] = useState<string>("all");
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from("staking_purchases")
+      .select(`id, deal_id, percent, amount, status, created_at,
+        deal:staking_deals(
+          id, custom_event_name, buy_in_amount_vnd, markup, filled_percent,
+          status, player_id, result_prize_vnd, backer_payout_vnd,
+          player_checked_in, player_busted_out, result_entered_at, payout_executed_at
+        )`)
+      .eq("backer_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!data) { setItems([]); return; }
+
+    const playerIds = Array.from(new Set(data.map((r: any) => r.deal?.player_id).filter(Boolean)));
+    let pmap: Record<string, any> = {};
+    if (playerIds.length) {
+      const { data: ps } = await supabase.from("profiles").select("user_id, display_name").in("user_id", playerIds);
+      pmap = Object.fromEntries((ps ?? []).map((p: any) => [p.user_id, p]));
+    }
+    setItems(data.map((r: any) => ({
+      ...r,
+      deal: r.deal ? { ...r.deal, player: pmap[r.deal.player_id] ?? null } : null,
+    })));
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    if (!items) return [];
+    if (filter === "active") return items.filter((i) => i.deal && ["funded", "result_entered", "result_verified", "release_requested"].includes(i.deal.status));
+    if (filter === "completed") return items.filter((i) => i.deal && ["completed", "released"].includes(i.deal.status));
+    return items;
+  }, [items, filter]);
+
+  if (items === null) return <Skeleton className="h-40 rounded-xl" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {t("activeDeals", { n: items.filter((i) => i.status === "funded").length })}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant={filter === "all" ? "default" : "outline"} onClick={() => setFilter("all")}>
+            {t("common.all")}
+          </Button>
+          <Button size="sm" variant={filter === "active" ? "default" : "outline"} onClick={() => setFilter("active")}>
+            {t("myDeals.tabC")}
+          </Button>
+          <Button size="sm" variant={filter === "completed" ? "default" : "outline"} onClick={() => setFilter("completed")}>
+            {t("myDeals.tabE")}
+          </Button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card className="p-10 text-center text-muted-foreground">
+          <Wallet className="w-10 h-10 mx-auto mb-2" />
+          <p>{t("findBacker.noActiveBacking")}</p>
+          <Button size="sm" className="mt-3" onClick={() => nav("/marketplace")}>
+            {t("marketplace.title")} <ExternalLink className="w-3.5 h-3.5 ml-1" />
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((item) => (
+            <Card key={item.id} className="bg-[#121212] border border-[#1F1F1F] rounded-none hover:border-primary/40 transition-colors">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold truncate">
+                    {item.deal?.custom_event_name ?? "—"}
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">
+                    {item.deal?.status ?? item.status}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">{t("myDeals.pctSold")}:</span>
+                    <span className="ml-1 font-mono">{item.percent}%</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("stakingNew.markupLbl", { n: "" })}:</span>
+                    <span className="ml-1 font-mono">{item.deal?.markup ?? "—"}x</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("marketplace.buyIn")}:</span>
+                    <span className="ml-1 font-mono">{item.deal ? formatVND(item.deal.buy_in_amount_vnd) : "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("portfolio.youPay")}:</span>
+                    <span className="ml-1 font-mono">{formatVND(item.amount)}</span>
+                  </div>
+                </div>
+                {item.deal?.status === "completed" || item.deal?.status === "released" ? (
+                  <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
+                    <span className="text-xs text-muted-foreground">P&L:</span>
+                    <span className={`text-sm font-bold font-mono ${(item.deal?.backer_payout_vnd ?? 0) >= item.amount ? "text-green-500" : "text-red-500"}`}>
+                      {item.deal?.backer_payout_vnd ? formatVND(item.deal.backer_payout_vnd - item.amount) : "—"}
+                    </span>
+                  </div>
+                ) : item.deal?.player_busted_out ? (
+                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-red-400">
+                    {t("notifications.player_busted_out")}
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-muted-foreground">
+                    {item.deal?.player_checked_in
+                      ? `✅ ${t("portfolio.checkedIn")}`
+                      : `⏳ ${t("myDeals.waitCheckIn")}`}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================== *
+ * Section B: Currently Backed                                      *
+ * ============================================================== */
+
+function CurrentlyBackedSection({ userId }: { userId: string }) {
+  const { t } = useTranslation();
+  const nav = useNavigate();
+  const [deals, setDeals] = useState<any[] | null>(null);
+
+  const load = useCallback(async () => {
+    const { data: purchases } = await supabase
+      .from("staking_purchases")
+      .select("deal_id, percent, amount, deal:staking_deals!inner(id, club_id, status, player_checked_in, admin_review_status)")
+      .eq("backer_id", userId)
+      .eq("status", "funded");
+    if (!purchases || purchases.length === 0) { setDeals([]); return; }
+
+    const dealIds = purchases.map((p: any) => p.deal_id);
+    const { data: dealsData } = await supabase
+      .from("staking_deals")
+      .select(`id, custom_event_name, club_id, buy_in_amount_vnd, markup, filled_percent, status,
+        player_id, result_prize_vnd, backer_payout_vnd, player_checked_in, player_busted_out,
+        result_entered_at, payout_executed_at,
+        player:profiles!staking_deals_player_id_fkey(display_name)`)
+      .in("id", dealIds)
+      .in("status", ["funded", "result_entered", "result_verified", "release_requested"])
+      .eq("player_checked_in", true)
+      .eq("admin_review_status", "approved");
+
+    if (!dealsData) { setDeals([]); return; }
+
+    const pMap = Object.fromEntries(purchases.map((p: any) => [p.deal_id, p]));
+    setDeals(dealsData.map((d: any) => ({ ...d, purchase: pMap[d.id] ?? null })));
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel("backed-deals")
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "staking_deals" },
+        () => load())
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "staking_purchases", filter: `backer_id=eq.${userId}` },
+        () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [userId, load]);
+
+  if (deals === null) return <Skeleton className="h-40 rounded-xl" />;
+
+  if (deals.length === 0) {
+    return (
+      <Card className="p-10 text-center text-muted-foreground">
+        <Users className="w-10 h-10 mx-auto mb-2" />
+        <p>{t("findBacker.noActiveBacking")}</p>
+        <Button size="sm" className="mt-3" onClick={() => nav("/marketplace")}>
+          {t("marketplace.title")} <ExternalLink className="w-3.5 h-3.5 ml-1" />
+        </Button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {deals.map((deal) => {
+        const pnl = deal.backer_payout_vnd != null ? deal.backer_payout_vnd - (deal.purchase?.amount ?? 0) : null;
+        return (
+          <Card key={deal.id} className="bg-[#121212] border border-[#1F1F1F] rounded-none hover:border-primary/40 transition-colors">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold truncate">
+                  {deal.custom_event_name ?? "—"}
+                </div>
+                <Badge variant="outline" className="text-[10px]">{deal.status}</Badge>
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                {t("playerProfile.asPlayer")}: {deal.player?.display_name ?? "—"}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">{t("marketplace.buyIn")}:</span>
+                  <span className="ml-1 font-mono">{formatVND(deal.buy_in_amount_vnd)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t("marketplace.soldFraction")}:</span>
+                  <span className="ml-1 font-mono">{deal.filled_percent}%</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t("portfolio.ownPct")}:</span>
+                  <span className="ml-1 font-mono">{deal.purchase?.percent ?? "—"}%</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{t("myDeals.backerPays")}:</span>
+                  <span className="ml-1 font-mono">{deal.purchase ? formatVND(deal.purchase.amount) : "—"}</span>
+                </div>
+              </div>
+
+              {deal.player_busted_out ? (
+                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-red-400">
+                  {t("notifications.player_busted_out")}
+                </div>
+              ) : pnl !== null ? (
+                <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
+                  <span className="text-xs text-muted-foreground">P&L:</span>
+                  <span className={`text-sm font-bold font-mono ${pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                    {pnl >= 0 ? "+" : ""}{formatVND(pnl)}
+                  </span>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-muted-foreground">
+                  ✅ {t("portfolio.checkedIn")}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================== *
+ * Section C: Find Players (existing code)                          *
+ * ============================================================== */
+
+function FindPlayersSection() {
   const { t } = useTranslation();
   const nav = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
@@ -51,7 +407,6 @@ const FindBacker = () => {
         .eq("backing_status", "approved");
       let ids = (stats ?? []).map((s: any) => s.player_id);
 
-      // Hide players already checked-in to a live deal
       if (ids.length) {
         const { data: liveDeals } = await supabase
           .from("staking_deals")
@@ -107,7 +462,6 @@ const FindBacker = () => {
       .filter((r) => (r.verified ? r.itm_rate >= Number(minItm) : true))
       .filter((r) => (positiveRoi ? r.verified && r.roi_percentage > 0 : true))
       .sort((a, b) => {
-        // Unverified players always sort after verified ones
         if (a.verified !== b.verified) return a.verified ? -1 : 1;
         if (sortBy === "newest")
           return (b.created_at ?? "").localeCompare(a.created_at ?? "");
@@ -120,14 +474,7 @@ const FindBacker = () => {
   }, [rows, search, region, minItm, positiveRoi, verifiedOnly, sortBy]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Sparkles className="w-7 h-7 text-primary" /> {t("findBacker.title")}
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1 max-w-3xl">{t("findBacker.subtitle")}</p>
-      </div>
-
+    <div className="space-y-4">
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
           <div className="md:col-span-2 relative h-10 self-start">
@@ -206,7 +553,11 @@ const FindBacker = () => {
       </div>
     </div>
   );
-};
+}
+
+/* ============================================================== *
+ * Player Card (unchanged)                                         *
+ * ============================================================== */
 
 const PlayerCard = ({
   row,

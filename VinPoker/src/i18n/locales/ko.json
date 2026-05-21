@@ -187,13 +187,19 @@
     "tournaments": "이벤트",
     "lookingForBacker": "백커를 찾는 중",
     "viewProfile": "프로필 보기",
-    "disclaimer": "이 페이지는 플레이어 검색 전용입니다. 모든 지분 거래는 STAKE 페이지(VBacker 에스크로가 자금 보유)를 통해 이루어져야 합니다."
+    "disclaimer": "이 페이지는 플레이어 검색 전용입니다. 모든 지분 거래는 STAKE 페이지(VBacker 에스크로가 자금 보유)를 통해 이루어져야 합니다.",
+    "myPortfolio": "내 포트폴리오",
+    "currentlyBacked": "현재 백킹 중",
+    "findPlayers": "플레이어 찾기",
+    "noActiveBacking": "활성 백킹 딜이 없습니다",
+    "backerCount": "백커 {{n}}명",
+    "activeDeals": "활성 딜 {{n}}개"
   },
   "nav": {
     "schedule": "일정",
     "clubs": "클럽",
     "marketplace": "스테이킹",
-    "backer": "플레이어",
+    "backer": "Marketplace",
     "ranking": "랭킹",
     "documents": "문서",
     "account": "계정",

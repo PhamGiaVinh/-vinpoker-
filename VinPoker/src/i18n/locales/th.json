@@ -3,7 +3,7 @@
     "schedule": "ตารางแข่งขัน",
     "clubs": "คลับ",
     "marketplace": "STAKE",
-    "backer": "ผู้เล่น",
+    "backer": "Marketplace",
     "ranking": "อันดับ",
     "documents": "เอกสาร",
     "account": "บัญชี",
@@ -149,7 +149,13 @@
     "tournaments": "การแข่งขัน",
     "lookingForBacker": "กำลังมองหาผู้สนับสนุน",
     "viewProfile": "ดูโปรไฟล์",
-    "disclaimer": "หน้านี้ใช้เพื่อค้นหาผู้ฝึกสอน การทำธุรกรรมส่วนร่วมทั้งหมดต้องผ่านหน้า STAKE (การรับประกันชั่วคราว VBacker เก็บเงิน)."
+    "disclaimer": "หน้านี้ใช้เพื่อค้นหาผู้ฝึกสอน การทำธุรกรรมส่วนร่วมทั้งหมดต้องผ่านหน้า STAKE (การรับประกันชั่วคราว VBacker เก็บเงิน).",
+    "myPortfolio": "พอร์ตโฟลิโอของฉัน",
+    "currentlyBacked": "กำลังสนับสนุน",
+    "findPlayers": "ค้นหาผู้เล่น",
+    "noActiveBacking": "คุณไม่มีดีลที่กำลังสนับสนุน",
+    "backerCount": "{{n}} แบ็คเกอร์",
+    "activeDeals": "{{n}} ดีลที่กำลังดำเนินการ"
   },
   "backingProfile": {
     "title": "โปรไฟล์การสนับสนุน",

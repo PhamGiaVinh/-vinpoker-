@@ -3,7 +3,7 @@
     "schedule": "赛程",
     "clubs": "俱乐部",
     "marketplace": "股份认购",
-    "backer": "选手",
+    "backer": "Marketplace",
     "ranking": "排行榜",
     "documents": "资料",
     "account": "账户",
@@ -149,7 +149,13 @@
     "tournaments": "赛事",
     "lookingForBacker": "寻找资金支持者",
     "viewProfile": "查看资料",
-    "disclaimer": "本页仅用于发现选手。所有股份交易必须通过「股份认购」页面进行(VBacker 资金托管保管资金)。"
+    "disclaimer": "本页仅用于发现选手。所有股份交易必须通过「股份认购」页面进行(VBacker 资金托管保管资金)。",
+    "myPortfolio": "我的投资组合",
+    "currentlyBacked": "当前支持",
+    "findPlayers": "寻找选手",
+    "noActiveBacking": "您暂无活跃的支持项目",
+    "backerCount": "{{n}} 位赞助者",
+    "activeDeals": "{{n}} 个活跃交易"
   },
   "backingProfile": {
     "title": "资金支持档案",

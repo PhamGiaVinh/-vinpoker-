@@ -2,8 +2,8 @@
   "nav": {
     "schedule": "Lịch giải",
     "clubs": "CLB",
-    "marketplace": " STAKE",
-    "backer": "Tìm Người tập huấn",
+    "marketplace": " STAKE",
+    "backer": "Marketplace",
     "ranking": "Xếp hạng",
     "documents": "Tài liệu",
     "account": "Tài khoản",
@@ -149,7 +149,13 @@
     "tournaments": "Giải",
     "lookingForBacker": "Đang tìm người hỗ trợ",
     "viewProfile": "Xem profile",
-    "disclaimer": "Trang này chỉ để khám phá người tập huấn. Mọi giao dịch phần hợp tác phải đi qua trang STAKE (cam kết tạm tính VBacker giữ tiền)."
+    "disclaimer": "Trang này chỉ để khám phá người tập huấn. Mọi giao dịch phần hợp tác phải đi qua trang STAKE (cam kết tạm tính VBacker giữ tiền).",
+    "myPortfolio": "Danh mục của tôi",
+    "currentlyBacked": "Đang hỗ trợ",
+    "findPlayers": "Tìm người chơi",
+    "noActiveBacking": "Bạn chưa hỗ trợ deal nào",
+    "backerCount": "{{n}} backer",
+    "activeDeals": "{{n}} deal đang hoạt động"
   },
   "backingProfile": {
     "title": "Hồ sơ Backing",
