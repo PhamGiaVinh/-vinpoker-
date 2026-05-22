@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs, useTours,
+  useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig } from "@/hooks/useDealerSwing";
 import { exportToExcel } from "@/lib/exportExcel";
@@ -25,6 +25,20 @@ import {
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
+type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string };
+
+function useTours(clubIds: string[]) {
+  const [data, setData] = useState<Tour[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    if (!clubIds.length) { setData([]); return; }
+    setLoading(true);
+    const { data: d } = await supabase.from("dealer_shifts").select("*").in("club_id", clubIds).order("start_time");
+    setData(d ?? []); setLoading(false);
+  }, [clubIds.join(",")]);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, refetch: load };
+}
 
 /* ==============================================================
    SWING PANEL — Main 3-Column Layout
