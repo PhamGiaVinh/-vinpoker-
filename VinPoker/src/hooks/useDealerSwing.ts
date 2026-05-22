@@ -63,35 +63,6 @@ export interface AuditLog {
   created_at: string;
 }
 
-export interface Tour {
-  id: string;
-  club_id: string;
-  tour_name: string;
-  start_time: string;
-  end_time: string;
-}
-
-export function useTours(clubIds: string[]) {
-  const [data, setData] = useState<Tour[] | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!clubIds.length) { setData([]); return; }
-    setLoading(true);
-    const { data: d } = await supabase
-      .from("dealer_shifts")
-      .select("*")
-      .in("club_id", clubIds)
-      .order("start_time");
-    setData(d ?? []);
-    setLoading(false);
-  }, [clubIds.join(",")]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return { data, loading, refetch: load };
-}
-
 export function useCheckedInDealers(clubIds: string[], shiftId?: string) {
   const [data, setData] = useState<DealerAttendance[] | null>(null);
   const [loading, setLoading] = useState(false);
