@@ -24,13 +24,15 @@ import UnifiedLookupTab from "@/components/cashier/UnifiedLookupTab";
 import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
+import SwingPanel from "@/components/cashier/DealerSwingTab";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
+  Table2,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "swing";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -39,6 +41,7 @@ export default function CashierDashboard() {
   const section = (params.get("tab") as SectionKey) || "overview";
 
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
+  const [dealerClubIds, setDealerClubIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (loading) return;
@@ -57,6 +60,10 @@ export default function CashierDashboard() {
       const { data: cs } = await supabase
         .from("clubs").select("id,name").in("id", idArr);
       setClubs((cs ?? []) as ClubRow[]);
+
+      // Fetch dealer control club IDs for swing feature
+      const { data: dcIds } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
+      setDealerClubIds((dcIds ?? []).map((r: any) => (typeof r === "string" ? r : r.dealer_control_club_ids ?? r)));
     })();
   }, [user]);
 
@@ -91,6 +98,7 @@ export default function CashierDashboard() {
     { key: "staking", label: "Staking", icon: Coins },
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
+    ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
   ];
 
   return (
@@ -141,6 +149,7 @@ export default function CashierDashboard() {
           {section === "staking" && <StakingPanel clubIds={clubIds} />}
           {section === "members" && <MembersPanel clubIds={clubIds} clubs={clubs} />}
           {section === "reports" && <ReportsPanel clubIds={clubIds} clubs={clubs} />}
+          {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
         </main>
       </div>
     </div>

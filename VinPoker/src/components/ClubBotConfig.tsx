@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { Bot, ImagePlus, Loader2, Save, Trash2 } from "lucide-react";
+import { Bot, ImagePlus, Loader2, Save, Trash2, Send, HelpCircle } from "lucide-react";
 
 const DEFAULT_MSG =
   "Đây là mã QR thanh toán phí tập huấn bên CLB, anh/chị thanh toán xong vui lòng gửi lại hình ảnh thanh toán thành công!";
@@ -15,6 +17,7 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
   const [enabled, setEnabled] = useState<boolean>(!!club?.bot_enabled);
   const [qrUrl, setQrUrl] = useState<string>(club?.bot_qr_url ?? "");
   const [msg, setMsg] = useState<string>(club?.bot_welcome_message ?? DEFAULT_MSG);
+  const [telegramChatId, setTelegramChatId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -23,6 +26,16 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
     setEnabled(!!club?.bot_enabled);
     setQrUrl(club?.bot_qr_url ?? "");
     setMsg(club?.bot_welcome_message ?? DEFAULT_MSG);
+    // Load telegram chat ID from club_settings
+    (async () => {
+      if (!club?.id) return;
+      const { data } = await supabase
+        .from("club_settings")
+        .select("telegram_chat_id")
+        .eq("club_id", club.id)
+        .maybeSingle();
+      setTelegramChatId((data as any)?.telegram_chat_id ?? "");
+    })();
   }, [club?.id]);
 
   const upload = async (file: File) => {
@@ -45,7 +58,7 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
 
   const save = async () => {
     setSaving(true);
-    const { error } = await supabase
+    const { error: e1 } = await supabase
       .from("clubs")
       .update({
         bot_enabled: enabled,
@@ -53,9 +66,16 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
         bot_welcome_message: msg.trim() || DEFAULT_MSG,
       })
       .eq("id", club.id);
+    if (e1) { setSaving(false); return toast.error(e1.message); }
+
+    // Upsert telegram chat ID into club_settings
+    const { error: e2 } = await supabase
+      .from("club_settings")
+      .upsert({ club_id: club.id, telegram_chat_id: telegramChatId.trim() || null }, { onConflict: "club_id" });
+    if (e2) { setSaving(false); return toast.error(e2.message); }
+
     setSaving(false);
-    if (error) return toast.error(error.message);
-    toast.success("Đã lưu cấu hình chatbot");
+    toast.success("Đã lưu cấu hình");
     onSaved?.();
   };
 
@@ -112,6 +132,33 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
       <div className="space-y-2">
         <Label className="text-xs">Lời chào của bot</Label>
         <Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} />
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-3 mt-2">
+        <div className="flex items-center gap-1">
+          <Send className="w-3.5 h-3.5 text-primary" />
+          <Label className="text-xs">Telegram Chat ID</Label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-64 text-xs">
+                Nhập Chat ID của group Telegram để nhận thông báo swing. 
+                Thêm bot @VBACKERBOT vào group, gửi /id để lấy Chat ID.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <Input
+          value={telegramChatId}
+          onChange={(e) => setTelegramChatId(e.target.value)}
+          placeholder="-100xxxxxxxxxx"
+          className="font-mono text-xs"
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Bot sẽ gửi thông báo đổi ca, hết giờ nghỉ, và cảnh báo thiếu dealer vào group này.
+        </p>
       </div>
 
       <Button onClick={save} disabled={saving} className="w-full gradient-neon text-primary-foreground border-0">
