@@ -46,6 +46,7 @@ function useTours(clubIds: string[]) {
 export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = clubFilter ? [clubFilter] : clubIds;
+  const [selectedTour, setSelectedTour] = useState<string | null>(null);
 
   const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds, selectedTour ?? undefined);
   const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
@@ -65,7 +66,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [checkinDealers, setCheckinDealers] = useState<any[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutAttendanceId, setCheckoutAttendanceId] = useState("");
-  const [selectedTour, setSelectedTour] = useState<string | null>(null);
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableType, setNewTableType] = useState("cash");
