@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
+  useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs, useTours,
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig } from "@/hooks/useDealerSwing";
 import { exportToExcel } from "@/lib/exportExcel";
@@ -33,11 +33,12 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = clubFilter ? [clubFilter] : clubIds;
 
-  const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
+  const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds, selectedTour ?? undefined);
   const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
-  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
+  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds, selectedTour ?? undefined);
   const swingConfigs = useSwingConfigs(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
+  const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
 
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
@@ -50,6 +51,10 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [checkinDealers, setCheckinDealers] = useState<any[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutAttendanceId, setCheckoutAttendanceId] = useState("");
+  const [selectedTour, setSelectedTour] = useState<string | null>(null);
+  const [createTableOpen, setCreateTableOpen] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [newTableType, setNewTableType] = useState("cash");
 
   const { user } = useAuth();
 
@@ -114,6 +119,14 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       });
       if (error) { toast.error(error.message); return; }
       toast.success("Đã gán dealer");
+      // Telegram notification
+      const table = (tables ?? []).find((t) => t.id === modalTable);
+      const tableName = table?.table_name ?? "";
+      const dealerName = forceDealerId
+        ? (dealers ?? []).find((d) => d.dealer_id === forceDealerId)?.dealers?.full_name ?? ""
+        : (suggestions ?? [])[0]?.dealer_name ?? "";
+      const tourName = getTourName();
+      sendTelegram(`🔵 ${dealerName} được assign vào ${tableName}${tourName ? ` (Tour: ${tourName})` : ""}`);
       setModalTable(null);
       refetchAssignments();
       refetchDealers();
@@ -133,6 +146,12 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       });
       if (error) { toast.error(error.message); return; }
       toast.success("Đã gửi dealer đi nghỉ");
+      // Telegram notification
+      const breakDealer = (dealers ?? []).find((d) => d.id === attendanceId);
+      const breakName = breakDealer?.dealers?.full_name ?? "";
+      const breakEnd = new Date(Date.now() + 15 * 60000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+      const tourName = getTourName();
+      sendTelegram(`☕ ${breakName} bắt đầu nghỉ${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`);
       refetchAssignments();
       refetchDealers();
     } catch (e: any) {
@@ -151,6 +170,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       });
       if (error) { toast.error(error.message); return; }
       toast.success("Dealer đã quay lại");
+      // Telegram notification
+      const backDealer = (dealers ?? []).find((d) => d.id === attendanceId);
+      const backName = backDealer?.dealers?.full_name ?? "";
+      const tourName = getTourName();
+      sendTelegram(`✅ ${backName} đã quay lại từ break${tourName ? ` (Tour: ${tourName})` : ""}.`);
       refetchAssignments();
       refetchDealers();
     } catch (e: any) {
@@ -158,6 +182,23 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     } finally {
       setProcessing(null);
     }
+  };
+
+  // Send Telegram notification
+  const sendTelegram = async (message: string) => {
+    const clubId = clubFilter ?? filteredClubIds[0];
+    if (!clubId) return;
+    const { error } = await supabase.functions.invoke("telegram-swing-notifier", {
+      body: { chat_id: "__club__", message, club_id: clubId },
+    });
+    if (error) toast.error("Không gửi được Telegram, vui lòng kiểm tra kết nối.");
+  };
+
+  // Get current tour name
+  const getTourName = () => {
+    if (!selectedTour) return "";
+    const tour = (tours ?? []).find((t) => t.id === selectedTour);
+    return tour ? tour.tour_name : "";
   };
 
   // Load dealers for manual check-in
@@ -283,6 +324,26 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         </Button>
       </div>
 
+      {/* Tour Filter Bar */}
+      <div className="sticky top-0 z-10 bg-background pb-2 border-b border-border">
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className="text-xs font-semibold text-muted-foreground mr-1">Tour:</span>
+          <button onClick={() => setSelectedTour(null)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === null ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
+            Tổng thể
+          </button>
+          {(tours ?? []).map((t) => (
+            <button key={t.id} onClick={() => setSelectedTour(t.id)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
+              {t.tour_name} ({t.start_time?.slice(0, 5)}-{t.end_time?.slice(0, 5)})
+            </button>
+          ))}
+        </div>
+        {(tours ?? []).length === 0 && selectedTour === null && (
+          <div className="text-xs text-amber-500 mt-1">Chưa có tour nào cho hôm nay. Vui lòng tạo tour trong Club Admin.</div>
+        )}
+      </div>
+
       {loading ? (
         <Skeleton className="h-96 rounded-none" />
       ) : (
@@ -310,6 +371,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               processing={processing}
               onAssign={openAssignModal}
               onSendToBreak={(attId) => sendToBreak(attId)}
+              selectedTour={selectedTour}
+              onCreateTable={() => setCreateTableOpen(true)}
             />
           </div>
 
@@ -428,6 +491,55 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Table Creation Dialog */}
+      <Dialog open={createTableOpen} onOpenChange={setCreateTableOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Tạo bàn mới</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Tên bàn</Label>
+              <Input value={newTableName} onChange={(e) => setNewTableName(e.target.value)} placeholder="VD: T25" />
+            </div>
+            <div>
+              <Label className="text-xs">Loại bàn</Label>
+              <Select value={newTableType} onValueChange={setNewTableType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="tournament">Tournament</SelectItem>
+                  <SelectItem value="vip">VIP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateTableOpen(false)}>Huỷ</Button>
+            <Button disabled={!newTableName.trim() || processing === "create_table"}
+              onClick={async () => {
+                setProcessing("create_table");
+                const clubId = clubFilter ?? filteredClubIds[0];
+                if (!clubId || !newTableName.trim()) { setProcessing(null); return; }
+                const { error } = await supabase.from("game_tables").insert({
+                  club_id: clubId,
+                  table_name: newTableName.trim(),
+                  table_type: newTableType,
+                  status: "active",
+                });
+                setProcessing(null);
+                if (error) { toast.error(error.message); return; }
+                toast.success("Đã tạo bàn mới");
+                setCreateTableOpen(false);
+                setNewTableName("");
+                setNewTableType("cash");
+                refetchTables();
+                setSelectedTour(null); // auto-switch to "Tổng thể" so new table is visible
+              }}>
+              {processing === "create_table" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Tạo bàn"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -538,7 +650,7 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, swingConfigs, processing, onAssign, onSendToBreak,
+  tables, tableAssignmentMap, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -546,20 +658,44 @@ function TableGrid({
   processing: string | null;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
+  selectedTour: string | null;
+  onCreateTable: () => void;
 }) {
+  const deactivateTable = async (tableId: string) => {
+    const { error } = await supabase.from("game_tables").update({ status: "inactive" }).eq("id", tableId);
+    if (error) toast.error(error.message);
+    else toast.success("Đã vô hiệu hoá bàn");
+  };
+
+  // Filter tables based on selected tour
+  const filteredTables = useMemo(() => {
+    if (!selectedTour) return tables;
+    // Show tables that have an active assignment linked to the selected tour
+    return tables.filter((t) => {
+      const a = tableAssignmentMap[t.id];
+      if (!a) return false;
+      return (a as any).dealer_attendance?.shift_id === selectedTour;
+    });
+  }, [tables, tableAssignmentMap, selectedTour]);
+
   return (
     <Card className="p-3 h-full">
       <div className="flex items-center gap-2 mb-3">
         <Table2 className="w-4 h-4 text-primary" />
         <span className="font-display text-sm tracking-wider">BẢN ĐỒ CHIẾN TRƯỜNG</span>
-        <Badge variant="outline" className="ml-auto text-xs">{tables.length} bàn</Badge>
+        <Badge variant="outline" className="ml-auto text-xs">{filteredTables.length} bàn</Badge>
+        <Button size="sm" variant="outline" className="text-xs h-7" onClick={onCreateTable}>
+          + Tạo bàn mới
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-        {tables.length === 0 ? (
-          <div className="col-span-full text-xs text-muted-foreground text-center py-6">Chưa có bàn nào.</div>
+        {filteredTables.length === 0 ? (
+          <div className="col-span-full text-xs text-muted-foreground text-center py-6">
+            {selectedTour ? "Chưa có bàn nào trong tour này. Hãy tạo bàn mới hoặc assign dealer." : "Chưa có bàn nào."}
+          </div>
         ) : (
-          tables.map((t) => {
+          filteredTables.map((t) => {
             const a = tableAssignmentMap[t.id];
             const config = swingConfigs?.find((c) => c.table_type === t.table_type);
             const swingDuration = config?.swing_duration_minutes ?? 45;
@@ -578,10 +714,16 @@ function TableGrid({
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
 
             return (
-              <div key={t.id} className="p-3 bg-muted/10 border border-border rounded-none">
+              <div key={t.id} className="p-3 bg-muted/10 border border-border rounded-none animate-in fade-in slide-in-from-bottom-1 duration-300">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-semibold text-sm">{t.table_name}</div>
-                  <TableTypeBadge type={t.table_type} />
+                  <div className="flex items-center gap-1">
+                    <TableTypeBadge type={t.table_type} />
+                    <button className="text-muted-foreground hover:text-destructive text-xs ml-1" title="Vô hiệu hoá bàn"
+                      onClick={() => deactivateTable(t.id)}>
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 {/* Dealer info */}
