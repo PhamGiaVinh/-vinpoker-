@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
 import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
@@ -35,6 +35,7 @@ const ClubAdmin = () => {
   const [regs, setRegs] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [profileLogs, setProfileLogs] = useState<any[]>([]);
+  const [dealerShifts, setDealerShifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadClubs = async () => {
@@ -92,6 +93,14 @@ const ClubAdmin = () => {
       }
       setProfileLogs(logs.map((l: any) => ({ ...l, player: lpmap[l.user_id] })));
     }
+
+    // Dealer shifts (tours) for this club
+    const { data: shifts } = await supabase
+      .from("dealer_shifts")
+      .select("*")
+      .eq("club_id", clubId)
+      .order("start_time");
+    setDealerShifts(shifts ?? []);
   };
 
   useEffect(() => { if (!authLoading) loadClubs(); }, [user?.id, authLoading]);
@@ -186,6 +195,43 @@ const ClubAdmin = () => {
                 loadClubs();
               }}
             />
+          )}
+
+          {activeClub && (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-display text-primary">Dealer Tour (Ca làm việc)</h3>
+                <NewDealerShiftDialog clubId={activeClub.id} onCreated={() => loadClubData(activeClub.id)} />
+              </div>
+              {dealerShifts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Chưa có tour nào.</p>
+              ) : (
+                <div className="space-y-2">
+                  {dealerShifts.map((s) => (
+                    <Card key={s.id} className="p-3 flex items-center justify-between border-primary/20">
+                      <div>
+                        <div className="font-semibold text-sm">{s.tour_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {s.start_time?.slice(0, 5)} - {s.end_time?.slice(0, 5)}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          if (!confirm("Xoá tour này?")) return;
+                          const { error } = await supabase.from("dealer_shifts").delete().eq("id", s.id);
+                          if (error) toast.error(error.message);
+                          else { toast.success("Đã xoá tour"); loadClubData(activeClub.id); }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
 
           {activeClub && (
@@ -627,6 +673,57 @@ const ProfileUpdateRow = ({ log }: { log: any }) => {
         </div>
       )}
     </Card>
+  );
+};
+
+const NewDealerShiftDialog = ({ clubId, onCreated }: { clubId: string; onCreated: () => void }) => {
+  const [open, setOpen] = useState(false);
+  const [tourName, setTourName] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!tourName.trim() || !startTime || !endTime) return toast.error("Vui lòng điền đầy đủ thông tin");
+    setSaving(true);
+    const { error } = await supabase.from("dealer_shifts").insert({
+      club_id: clubId,
+      tour_name: tourName.trim(),
+      start_time: startTime,
+      end_time: endTime,
+    });
+    setSaving(false);
+    if (error) toast.error(error.message);
+    else { toast.success("Đã tạo tour mới"); setOpen(false); setTourName(""); setStartTime(""); setEndTime(""); onCreated(); }
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild><Button size="sm" variant="outline" className="border-primary/50 text-primary"><Plus className="w-4 h-4" />Tạo tour</Button></DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Tạo tour mới</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Tên tour</Label>
+            <Input value={tourName} onChange={e => setTourName(e.target.value)} placeholder="VD: Tour Sáng" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Giờ bắt đầu</Label>
+              <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Giờ kết thúc</Label>
+              <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Huỷ</Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Tạo tour"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

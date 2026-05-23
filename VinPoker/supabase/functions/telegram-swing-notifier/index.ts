@@ -24,8 +24,20 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
 
     const body = await req.json().catch(() => ({}));
-    const { chat_id, message, parse_mode, club_id, audit_actor_id } = body ?? {};
+    let { chat_id, message, parse_mode, club_id, audit_actor_id } = body ?? {};
     if (!chat_id || !message) return json({ error: "chat_id and message required" }, 400);
+
+    // Resolve __club__ placeholder to actual telegram_chat_id from club_settings
+    if (chat_id === "__club__" && club_id) {
+      const { data: cs } = await admin
+        .from("club_settings")
+        .select("telegram_chat_id")
+        .eq("club_id", club_id)
+        .maybeSingle();
+      const resolved = (cs as any)?.telegram_chat_id;
+      if (!resolved) return json({ error: "CLUB_TELEGRAM_CHAT_NOT_CONFIGURED" }, 400);
+      chat_id = resolved;
+    }
 
     const tgRes = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",

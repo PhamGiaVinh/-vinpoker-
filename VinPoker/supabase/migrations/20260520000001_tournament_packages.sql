@@ -45,13 +45,17 @@ CREATE TABLE IF NOT EXISTS public.package_tournaments (
 ALTER TABLE public.tournament_packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.package_tournaments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "packages_read_all" ON public.tournament_packages;
 CREATE POLICY "packages_read_all" ON public.tournament_packages
   FOR SELECT USING (status IN ('active', 'sold_out'));
+DROP POLICY IF EXISTS "packages_write_admin" ON public.tournament_packages;
 CREATE POLICY "packages_write_admin" ON public.tournament_packages
   FOR ALL USING (auth.uid() IN (SELECT user_id FROM public.user_roles WHERE role = 'super_admin'));
 
+DROP POLICY IF EXISTS "pt_read_all" ON public.package_tournaments;
 CREATE POLICY "pt_read_all" ON public.package_tournaments
   FOR SELECT USING (true);
+DROP POLICY IF EXISTS "pt_write_admin" ON public.package_tournaments;
 CREATE POLICY "pt_write_admin" ON public.package_tournaments
   FOR ALL USING (auth.uid() IN (SELECT user_id FROM public.user_roles WHERE role = 'super_admin'));
 

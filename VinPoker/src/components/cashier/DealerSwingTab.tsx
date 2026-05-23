@@ -22,6 +22,7 @@ import { exportToExcel } from "@/lib/exportExcel";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   Send, FileSpreadsheet, DollarSign, Loader2, Clock, AlertTriangle,
+  Plus, MessageCircle, Save,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
@@ -50,7 +51,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds, selectedTour ?? undefined);
   const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
-  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds, selectedTour ?? undefined);
+  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
   const swingConfigs = useSwingConfigs(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
@@ -69,6 +70,18 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableType, setNewTableType] = useState("cash");
+
+  // Telegram config state
+  const [telegramOpen, setTelegramOpen] = useState(false);
+  const [telegramClubId, setTelegramClubId] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState("");
+  const [telegramSaving, setTelegramSaving] = useState(false);
+
+  // Create tour state
+  const [createTourOpen, setCreateTourOpen] = useState(false);
+  const [newTourName, setNewTourName] = useState("");
+  const [newTourStartTime, setNewTourStartTime] = useState("");
+  const [newTourEndTime, setNewTourEndTime] = useState("");
 
   const { user } = useAuth();
 
@@ -111,7 +124,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
         body: { table_id: tableId, requested_by: user?.id, return_suggestions_only: true },
       });
-      if (error) { toast.error(error.message); return; }
+      if (error) { toast.error(`Lỗi gợi ý: ${error.message}`); return; }
       setSuggestions((data as any)?.suggestions ?? []);
     } catch (e: any) {
       toast.error(e.message);
@@ -131,7 +144,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           idempotency_key: `assign-${modalTable}-${Date.now()}`,
         },
       });
-      if (error) { toast.error(error.message); return; }
+      if (error) { toast.error(`Lỗi gán: ${error.message}`); return; }
+      if ((data as any)?.error) { toast.error((data as any).error); return; }
       toast.success("Đã gán dealer");
       // Telegram notification
       const table = (tables ?? []).find((t) => t.id === modalTable);
@@ -336,6 +350,17 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Button size="sm" variant="outline" onClick={() => { refetchDealers(); refetchTables(); refetchAssignments(); }}>
           <RefreshCw className="w-3.5 h-3.5 mr-1" /> Làm mới
         </Button>
+        <Button size="sm" variant="outline" onClick={() => {
+          const cid = clubFilter || filteredClubIds[0] || "";
+          setTelegramClubId(cid);
+          (async () => {
+            const { data } = await supabase.from("club_settings").select("telegram_chat_id").eq("club_id", cid).maybeSingle();
+            setTelegramChatId((data as any)?.telegram_chat_id ?? "");
+          })();
+          setTelegramOpen(true);
+        }}>
+          <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram
+        </Button>
       </div>
 
       {/* Tour Filter Bar */}
@@ -354,7 +379,10 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           ))}
         </div>
         {(tours ?? []).length === 0 && selectedTour === null && (
-          <div className="text-xs text-amber-500 mt-1">Chưa có tour nào cho hôm nay. Vui lòng tạo tour trong Club Admin.</div>
+          <div className="text-xs text-amber-500 mt-1 flex items-center gap-2">
+            <span>Chưa có tour nào. </span>
+            <button onClick={() => setCreateTourOpen(true)} className="underline hover:text-amber-400">Tạo tour mới</button>
+          </div>
         )}
       </div>
 
@@ -547,9 +575,109 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 setNewTableName("");
                 setNewTableType("cash");
                 refetchTables();
-                setSelectedTour(null); // auto-switch to "Tổng thể" so new table is visible
+                // table stays in current tour view (empty tables are visible in all tours)
               }}>
               {processing === "create_table" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Tạo bàn"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Telegram Config Dialog */}
+      <Dialog open={telegramOpen} onOpenChange={setTelegramOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Cài đặt Telegram</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {clubs.length > 1 && (
+              <div>
+                <Label className="text-xs">Câu lạc bộ</Label>
+                <Select value={telegramClubId} onValueChange={async (v) => {
+                  setTelegramClubId(v);
+                  const { data } = await supabase.from("club_settings").select("telegram_chat_id").eq("club_id", v).maybeSingle();
+                  setTelegramChatId((data as any)?.telegram_chat_id ?? "");
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {clubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs">Telegram Chat ID</Label>
+              <Input
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                placeholder="-100xxxxxxxxxx"
+                className="font-mono text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Thêm bot @VBACKERBOT vào group, gửi /id để lấy Chat ID.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTelegramOpen(false)}>Huỷ</Button>
+            <Button onClick={async () => {
+              setTelegramSaving(true);
+              const { error } = await supabase.from("club_settings").upsert(
+                { club_id: telegramClubId, telegram_chat_id: telegramChatId.trim() || null },
+                { onConflict: "club_id" }
+              );
+              setTelegramSaving(false);
+              if (error) { toast.error(error.message); return; }
+              toast.success("Đã lưu Telegram Chat ID");
+              setTelegramOpen(false);
+            }} disabled={telegramSaving}>
+              {telegramSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Save className="w-3.5 h-3.5 mr-1" />Lưu</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Tour Dialog */}
+      <Dialog open={createTourOpen} onOpenChange={setCreateTourOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Tạo tour mới</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Tên tour</Label>
+              <Input value={newTourName} onChange={(e) => setNewTourName(e.target.value)} placeholder="VD: Tour Sáng" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Giờ bắt đầu</Label>
+                <Input type="time" value={newTourStartTime} onChange={(e) => setNewTourStartTime(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Giờ kết thúc</Label>
+                <Input type="time" value={newTourEndTime} onChange={(e) => setNewTourEndTime(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateTourOpen(false)}>Huỷ</Button>
+            <Button disabled={!newTourName.trim() || !newTourStartTime || !newTourEndTime}
+              onClick={async () => {
+                setProcessing("create_tour");
+                const clubId = clubFilter ?? filteredClubIds[0];
+                if (!clubId || !newTourName.trim() || !newTourStartTime || !newTourEndTime) { setProcessing(null); return; }
+                const { error } = await supabase.from("dealer_shifts").insert({
+                  club_id: clubId,
+                  tour_name: newTourName.trim(),
+                  start_time: newTourStartTime,
+                  end_time: newTourEndTime,
+                });
+                setProcessing(null);
+                if (error) { toast.error(error.message); return; }
+                toast.success("Đã tạo tour mới");
+                setCreateTourOpen(false);
+                setNewTourName("");
+                setNewTourStartTime("");
+                setNewTourEndTime("");
+                refetchTours();
+              }}>
+              {processing === "create_tour" ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Plus className="w-3.5 h-3.5 mr-1" />Tạo tour</>}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -684,10 +812,10 @@ function TableGrid({
   // Filter tables based on selected tour
   const filteredTables = useMemo(() => {
     if (!selectedTour) return tables;
-    // Show tables that have an active assignment linked to the selected tour
+    // Show tables assigned to this tour + all empty tables (no dealer assigned)
     return tables.filter((t) => {
       const a = tableAssignmentMap[t.id];
-      if (!a) return false;
+      if (!a) return true;
       return (a as any).dealer_attendance?.shift_id === selectedTour;
     });
   }, [tables, tableAssignmentMap, selectedTour]);
@@ -818,7 +946,7 @@ function CommandCenter({
     if (!clubFilter) { toast.error("Vui lòng chọn CLB trước"); return; }
     const msg = `🧪 Test từ VBacker Swing Manager\nCLB: ${clubName[clubFilter] ?? clubFilter}\nThời gian: ${new Date().toLocaleString("vi-VN")}`;
     const { error } = await supabase.functions.invoke("telegram-swing-notifier", {
-      body: { chat_id: "__test__", message: msg, club_id: clubFilter },
+      body: { chat_id: "__club__", message: msg, club_id: clubFilter },
     });
     if (error) toast.error(error.message);
     else toast.success("Đã gửi test Telegram");
