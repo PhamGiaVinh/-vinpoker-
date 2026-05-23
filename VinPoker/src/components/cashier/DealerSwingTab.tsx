@@ -23,7 +23,7 @@ import { exportToExcel } from "@/lib/exportExcel";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   Send, FileSpreadsheet, DollarSign, Loader2, Clock, AlertTriangle,
-  Plus, MessageCircle, Save,
+  Plus, MessageCircle, Save, Settings,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
@@ -53,7 +53,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds, selectedTour ?? undefined);
   const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
-  const swingConfigs = useSwingConfigs(filteredClubIds);
+  const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
 
@@ -77,6 +77,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [telegramClubId, setTelegramClubId] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
   const [telegramSaving, setTelegramSaving] = useState(false);
+
+  // Swing config state
+  const [swingConfigOpen, setSwingConfigOpen] = useState(false);
 
   // Create tour state
   const [createTourOpen, setCreateTourOpen] = useState(false);
@@ -445,6 +448,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               swingAllBusy={swingAllBusy}
               clubFilter={clubFilter}
               clubs={clubs}
+              onOpenSwingConfig={() => setSwingConfigOpen(true)}
             />
           </div>
         </div>
@@ -651,6 +655,15 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Swing Config Dialog */}
+      <SwingConfigDialog
+        open={swingConfigOpen}
+        onOpenChange={setSwingConfigOpen}
+        clubId={clubFilter ?? filteredClubIds[0] ?? ""}
+        currentConfigs={swingConfigs ?? []}
+        onSaved={refetchSwingConfigs}
+      />
 
       {/* Create Tour Dialog */}
       <Dialog open={createTourOpen} onOpenChange={setCreateTourOpen}>
@@ -936,7 +949,7 @@ function TableGrid({
    COMMAND CENTER — Right Column
    ============================================================== */
 function CommandCenter({
-  auditLogs, onAutoSwing, onExportShift, onExportPayroll, swingAllBusy, clubFilter, clubs,
+  auditLogs, onAutoSwing, onExportShift, onExportPayroll, swingAllBusy, clubFilter, clubs, onOpenSwingConfig,
 }: {
   auditLogs: any[];
   onAutoSwing: () => void;
@@ -945,6 +958,7 @@ function CommandCenter({
   swingAllBusy: boolean;
   clubFilter: string | null;
   clubs: ClubRow[];
+  onOpenSwingConfig: () => void;
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
 
@@ -979,6 +993,9 @@ function CommandCenter({
         </Button>
         <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportPayroll}>
           <DollarSign className="w-3 h-3 mr-2" /> Xuất bảng lương
+        </Button>
+        <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onOpenSwingConfig}>
+          <Settings className="w-3 h-3 mr-2" /> Cấu hình Swing
         </Button>
       </div>
 
@@ -1068,6 +1085,156 @@ function TableTypeBadge({ type }: { type: string }) {
     <span className={`text-[10px] px-1.5 py-0.5 border font-semibold ${colors[type] ?? colors.cash} rounded-none`}>
       {labels[type] ?? type}
     </span>
+  );
+}
+
+/* ==============================================================
+   SWING CONFIG DIALOG
+   ============================================================== */
+function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  clubId: string;
+  currentConfigs: SwingConfig[];
+  onSaved: () => void;
+}) {
+  const defaultForm = useCallback(() => ({
+    cash: { swing_duration_minutes: 45, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
+    tournament: { swing_duration_minutes: 30, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
+    vip: { swing_duration_minutes: 45, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
+  }), []);
+
+  const [form, setForm] = useState<Record<string, typeof defaultForm.cash>>(defaultForm);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const next = defaultForm();
+    for (const cfg of currentConfigs) {
+      if (next[cfg.table_type]) {
+        next[cfg.table_type] = {
+          swing_duration_minutes: cfg.swing_duration_minutes,
+          break_duration_minutes: cfg.break_duration_minutes,
+          warn_at_minutes: cfg.warn_at_minutes,
+          crit_at_minutes: cfg.crit_at_minutes,
+          tournament_mode: (cfg as any).tournament_mode ?? "time",
+        };
+      }
+    }
+    setForm(next);
+  }, [open, currentConfigs, defaultForm]);
+
+  const update = (type: string, field: string, value: number | string) => {
+    setForm((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
+  };
+
+  const save = async () => {
+    if (!clubId) { toast.error("Vui lòng chọn CLB"); return; }
+    setSaving(true);
+    const types = ["cash", "tournament", "vip"];
+    for (const t of types) {
+      const vals = form[t];
+      if (!vals) continue;
+      const { error } = await supabase.from("swing_config").upsert({
+        club_id: clubId,
+        table_type: t,
+        swing_duration_minutes: vals.swing_duration_minutes,
+        break_duration_minutes: vals.break_duration_minutes,
+        warn_at_minutes: vals.warn_at_minutes,
+        crit_at_minutes: vals.crit_at_minutes,
+        tournament_mode: t === "tournament" ? vals.tournament_mode : "time",
+      }, { onConflict: "club_id, table_type" });
+      if (error) { toast.error(`Lỗi lưu ${t}: ${error.message}`); setSaving(false); return; }
+    }
+    setSaving(false);
+    toast.success("Đã lưu cấu hình Swing");
+    onSaved();
+    onOpenChange(false);
+  };
+
+  const section = (label: string, type: string) => {
+    const v = form[type];
+    if (!v) return null;
+    const isTournament = type === "tournament";
+    return (
+      <div key={type} className="mb-4">
+        <div className="text-xs font-display tracking-wider text-muted-foreground border-b border-border pb-1 mb-3 uppercase">
+          {label}
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+          <div>
+            <Label className="text-[11px]">Swing Duration (min)</Label>
+            <Input type="number" min={1} max={240}
+              className="h-8 font-mono text-xs"
+              value={v.swing_duration_minutes}
+              onChange={(e) => update(type, "swing_duration_minutes", Number(e.target.value))} />
+          </div>
+          <div>
+            <Label className="text-[11px]">Break Duration (min)</Label>
+            <Input type="number" min={1} max={120}
+              className="h-8 font-mono text-xs"
+              value={v.break_duration_minutes}
+              onChange={(e) => update(type, "break_duration_minutes", Number(e.target.value))} />
+          </div>
+          <div>
+            <Label className="text-[11px]">Warning Threshold (min)</Label>
+            <Input type="number" min={0} max={60}
+              className="h-8 font-mono text-xs"
+              value={v.warn_at_minutes}
+              onChange={(e) => update(type, "warn_at_minutes", Number(e.target.value))} />
+          </div>
+          <div>
+            <Label className="text-[11px]">Critical Threshold (min)</Label>
+            <Input type="number" min={0} max={60}
+              className="h-8 font-mono text-xs"
+              value={v.crit_at_minutes}
+              onChange={(e) => update(type, "crit_at_minutes", Number(e.target.value))} />
+          </div>
+          {isTournament && (
+            <div>
+              <Label className="text-[11px]">Tournament Mode</Label>
+              <Select value={v.tournament_mode} onValueChange={(val) => update(type, "tournament_mode", val)}>
+                <SelectTrigger className="h-8 text-xs font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time">Time (fixed minutes)</SelectItem>
+                  <SelectItem value="level">Level (per blind level)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const clubName = (() => {
+    // We don't have clubs prop here, just show "Cấu hình Swing" as title
+    return "";
+  })();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Cấu hình Swing</DialogTitle>
+          <DialogDescription>Điều chỉnh thông số swing cho từng loại bàn.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto pr-1">
+          {section("Cash", "cash")}
+          {section("Tournament", "tournament")}
+          {section("VIP", "vip")}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+            Lưu
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

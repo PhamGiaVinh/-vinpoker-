@@ -147,19 +147,22 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
 
 export function useSwingConfigs(clubIds: string[]) {
   const [data, setData] = useState<SwingConfig[] | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!clubIds.length) { setData([]); return; }
-    (async () => {
-      const { data: d } = await supabase
-        .from("swing_config")
-        .select("*")
-        .in("club_id", clubIds);
-      setData(d ?? []);
-    })();
+    setLoading(true);
+    const { data: d } = await supabase
+      .from("swing_config")
+      .select("*")
+      .in("club_id", clubIds);
+    setData(d ?? []);
+    setLoading(false);
   }, [clubIds.join(",")]);
 
-  return data;
+  useEffect(() => { load(); }, [load]);
+
+  return { data, loading, refetch: load };
 }
 
 export function useAuditLogs(clubIds: string[], limit = 20) {
