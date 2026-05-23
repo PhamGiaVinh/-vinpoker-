@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -85,6 +86,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   const { user } = useAuth();
 
+  const isSubmitting = useRef(false);
+
   // Map tables to their current assignment
   const tableAssignmentMap = useMemo(() => {
     const map: Record<string, DealerAssignment | null> = {};
@@ -122,7 +125,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setSuggestions(null);
     try {
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
-        body: { table_id: tableId, requested_by: user?.id, return_suggestions_only: true },
+        body: { table_id: tableId, requested_by: user?.id, return_suggestions_only: true, shift_id: selectedTour ?? undefined },
       });
       if (error) { toast.error(`Lỗi gợi ý: ${error.message}`); return; }
       setSuggestions((data as any)?.suggestions ?? []);
@@ -134,6 +137,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   // Confirm assignment
   const confirmAssign = async (forceDealerId?: string) => {
     if (!modalTable) return;
+    if (isSubmitting.current) return;
+    isSubmitting.current = true;
     setAssigning(true);
     try {
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
@@ -141,10 +146,20 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           table_id: modalTable,
           force_dealer_id: forceDealerId || undefined,
           requested_by: user?.id,
-          idempotency_key: `assign-${modalTable}-${Date.now()}`,
+          idempotency_key: crypto.randomUUID(),
+          shift_id: selectedTour ?? undefined,
         },
       });
-      if (error) { toast.error(`Lỗi gán: ${error.message}`); return; }
+      if (error) {
+        let detail = error.message;
+        if (error instanceof FunctionsHttpError) {
+          const body = await error.context.json().catch(() => null);
+          detail = body?.error ?? body?.message ?? detail;
+          console.error("[confirmAssign] edge function returned:", { status: error.context.status, body });
+        }
+        toast.error(`Lỗi gán: ${detail}`);
+        return;
+      }
       if ((data as any)?.error) { toast.error((data as any).error); return; }
       toast.success("Đã gán dealer");
       // Telegram notification
@@ -162,6 +177,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       toast.error(e.message);
     } finally {
       setAssigning(false);
+      isSubmitting.current = false;
     }
   };
 
@@ -250,6 +266,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       .from("dealer_shifts")
       .select("id")
       .in("club_id", filteredClubIds)
+      .order("start_time")
       .limit(1);
     const shiftId = (shifts ?? [])[0]?.id;
 

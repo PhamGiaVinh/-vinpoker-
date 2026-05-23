@@ -28,8 +28,10 @@ Deno.serve(async (req) => {
     const uid = u.user.id;
 
     const body = await req.json().catch(() => ({}));
-    const { table_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only } = body ?? {};
+    const { table_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only, shift_id } = body ?? {};
     if (!table_id) return json({ error: "table_id required" }, 400);
+
+    console.log(`[assign-dealer] table=${table_id} force=${force_dealer_id} shift=${shift_id} idemp=${idempotency_key}`);
 
     // Idempotency check
     if (idempotency_key) {
@@ -66,14 +68,32 @@ Deno.serve(async (req) => {
     const breakReturnPolicy = config?.break_return_policy ?? "fifo";
 
     if (force_dealer_id) {
-      const { data: attendance, error: ae } = await admin
+      const query = admin
         .from("dealer_attendance")
-        .select("id")
+        .select("id, shift_id")
         .eq("dealer_id", force_dealer_id)
         .eq("shift_date", new Date().toISOString().split("T")[0])
-        .eq("status", "checked_in")
-        .maybeSingle();
-      if (ae || !attendance) return json({ error: "DEALER_NOT_CHECKED_IN: Dealer hasn't checked in today" }, 400);
+        .eq("status", "checked_in");
+
+      if (shift_id) query.eq("shift_id", shift_id);
+
+      const { data: attendanceRows, error: ae } = await query
+        .order("check_in_time", { ascending: false })
+        .limit(1);
+
+      if (ae) return json({ error: `ATTENDANCE_QUERY_FAILED: ${ae.message}` }, 500);
+      if (!attendanceRows?.length) {
+        const countAll = await admin
+          .from("dealer_attendance")
+          .select("id", { count: "exact", head: true })
+          .eq("dealer_id", force_dealer_id)
+          .eq("shift_date", new Date().toISOString().split("T")[0])
+          .in("status", ["checked_in"]);
+        console.log(`[assign-dealer] dealer ${force_dealer_id} not found (total today: ${countAll.count})`);
+        return json({ error: "DEALER_NOT_CHECKED_IN: Dealer hasn't checked in today", dealer_id: force_dealer_id, shift_id }, 400);
+      }
+
+      const attendance = attendanceRows[0];
 
       const { data: assignment, error: ase } = await admin
         .from("dealer_assignments")
@@ -113,7 +133,7 @@ Deno.serve(async (req) => {
 
     return json({ suggestions });
   } catch (e) {
-    return json({ error: (e as Error).message }, 500);
+    return json({ error: `INTERNAL_ERROR: ${(e as Error).message}` }, 500);
   }
 });
 
@@ -195,15 +215,13 @@ async function fairRotation(
     // Tier scoring
     if (tableType === "vip") {
       if (dealer.tier === "A") score += 10;
-      else return null; // Only A-tier can deal VIP
+      else return null;
     } else if (tableType === "tournament") {
       if (dealer.tier === "A") score += 6;
       else if (dealer.tier === "B") score += 4;
       else score += 1;
-      // Tournament skill penalty
       if (!skills.includes("Tournament")) score -= 3;
     } else {
-      // Cash tables
       if (dealer.tier === "A") score += 4;
       else if (dealer.tier === "B") score += 3;
       else score += 2;
