@@ -14,6 +14,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
@@ -80,6 +83,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   // Swing config state
   const [swingConfigOpen, setSwingConfigOpen] = useState(false);
+
+  // Payroll modal state
+  const [payrollOpen, setPayrollOpen] = useState(false);
+  const [payrollData, setPayrollData] = useState<any[] | null>(null);
+  const [payrollClubSlug, setPayrollClubSlug] = useState("");
 
   // Create tour state
   const [createTourOpen, setCreateTourOpen] = useState(false);
@@ -248,15 +256,24 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return tour ? tour.tour_name : "";
   };
 
-  // Load dealers for manual check-in
+  // Load dealers for manual check-in (exclude already checked-in today)
   const loadCheckinDealers = async () => {
-    const { data } = await supabase
+    const { data: dealers } = await supabase
       .from("dealers")
       .select("id, full_name, tier")
       .in("club_id", filteredClubIds)
-      .eq("status", "active")
+      .eq("status", "scheduled")
       .order("full_name");
-    setCheckinDealers(data ?? []);
+    if (!dealers?.length) { setCheckinDealers([]); return; }
+    const today = new Date().toISOString().split("T")[0];
+    const { data: checkedIn } = await supabase
+      .from("dealer_attendance")
+      .select("dealer_id")
+      .eq("shift_date", today)
+      .eq("status", "checked_in")
+      .in("dealer_id", dealers.map((d) => d.id));
+    const checkedInIds = new Set((checkedIn ?? []).map((c) => c.dealer_id));
+    setCheckinDealers(dealers.filter((d) => !checkedInIds.has(d.id)));
   };
 
   // Manual check-in
@@ -288,10 +305,20 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     refetchDealers();
   };
 
-  // Manual check-out
+  // Manual check-out (only if currently checked_in)
   const doCheckout = async () => {
     if (!checkoutAttendanceId) return;
     setProcessing("checkout");
+    const { data: att } = await supabase
+      .from("dealer_attendance")
+      .select("status")
+      .eq("id", checkoutAttendanceId)
+      .single();
+    if (!att || att.status !== "checked_in") {
+      setProcessing(null);
+      toast.error("Dealer không trong trạng thái check-in");
+      return;
+    }
     const { error } = await supabase
       .from("dealer_attendance")
       .update({
@@ -325,19 +352,30 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     toast.success("Đã tải báo cáo ca");
   };
 
-  // Export payroll
-  const exportPayroll = async () => {
+  // Payroll: fetch data and open modal instead of direct export
+  const openPayroll = async () => {
     if (!clubFilter && clubIds.length > 1) {
-      toast.error("Vui lòng chọn một CLB trước khi xuất lương");
+      toast.error("Vui lòng chọn một CLB trước khi xem lương");
       return;
     }
     const today = new Date().toISOString().split("T")[0];
-    const { data } = await supabase.rpc("get_shift_payroll_summary", {
-      p_club_id: clubFilter ?? clubIds[0],
+    const clubId = clubFilter ?? clubIds[0];
+    const { data: rows } = await supabase.rpc("get_shift_payroll_summary", {
+      p_club_id: clubId,
       p_shift_date: today,
     });
-    if (!data?.length) { toast.error("Không có dữ liệu lương cho hôm nay"); return; }
-    exportToExcel(`payroll-${today}`, data.map((r: any) => ({
+    if (!rows?.length) { toast.error("Không có dữ liệu lương cho hôm nay"); return; }
+    // Get club slug for filename
+    const { data: club } = await supabase.from("clubs").select("slug").eq("id", clubId).single();
+    setPayrollData(rows as any[]);
+    setPayrollClubSlug((club as any)?.slug ?? "club");
+    setPayrollOpen(true);
+  };
+
+  const doExportPayrollCsv = () => {
+    if (!payrollData?.length) return;
+    const today = new Date().toISOString().split("T")[0];
+    exportToExcel(`bang-luong-${payrollClubSlug}-${today}`, payrollData.map((r: any) => ({
       "Dealer": r.dealer_name,
       "Hạng": r.tier,
       "Tổng phút": r.total_minutes,
@@ -380,6 +418,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           setTelegramOpen(true);
         }}>
           <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setSwingConfigOpen(true)}>
+          <Settings className="w-3.5 h-3.5 mr-1" />
+          Swing: {swingConfigs?.find((c) => (clubFilter ? c.club_id === clubFilter : true) && c.table_type === "cash")?.swing_duration_minutes ?? "—"}m
+          {" / "}Break: {swingConfigs?.find((c) => (clubFilter ? c.club_id === clubFilter : true) && c.table_type === "cash")?.break_duration_minutes ?? "—"}m
         </Button>
       </div>
 
@@ -444,7 +487,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
               onExportShift={exportShiftReport}
-              onExportPayroll={exportPayroll}
+              onExportPayroll={openPayroll}
               swingAllBusy={swingAllBusy}
               clubFilter={clubFilter}
               clubs={clubs}
@@ -665,6 +708,56 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         onSaved={refetchSwingConfigs}
       />
 
+      {/* Payroll Preview Dialog */}
+      <Dialog open={payrollOpen} onOpenChange={(o) => { if (!o) setPayrollOpen(false); }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Bảng lương — {payrollClubSlug}</DialogTitle>
+            <DialogDescription>
+              {new Date().toLocaleDateString("vi-VN")} · {payrollData?.length ?? 0} dealer
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Dealer</TableHead>
+                  <TableHead>Hạng</TableHead>
+                  <TableHead className="text-right">Tổng phút</TableHead>
+                  <TableHead className="text-right">OT phút</TableHead>
+                  <TableHead className="text-right">Số bàn</TableHead>
+                  <TableHead className="text-right">Số swing</TableHead>
+                  <TableHead className="text-right">Lương cơ bản</TableHead>
+                  <TableHead className="text-right">Lương OT</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(payrollData ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Không có dữ liệu</TableCell></TableRow>
+                ) : (payrollData ?? []).map((r: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{r.dealer_name}</TableCell>
+                    <TableCell>{r.tier}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.total_minutes}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.overtime_minutes}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.tables_served}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.swings_done}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.base_pay?.toLocaleString("vi-VN")}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{r.overtime_pay?.toLocaleString("vi-VN")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayrollOpen(false)}>Đóng</Button>
+            <Button onClick={doExportPayrollCsv}>
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1" /> Xuất CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Create Tour Dialog */}
       <Dialog open={createTourOpen} onOpenChange={setCreateTourOpen}>
         <DialogContent>
@@ -719,6 +812,22 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 /* ==============================================================
    ROSTER PANEL — Left Column
    ============================================================== */
+function DealerTimer({ startTime }: { startTime: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.floor((now - new Date(startTime).getTime()) / (1000 * 60));
+  const h = Math.floor(elapsed / 60);
+  const m = elapsed % 60;
+  return (
+    <span className="font-mono text-[10px]">
+      {h > 0 ? `${h}h ` : ""}{m}m
+    </span>
+  );
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
 }: {
@@ -731,74 +840,94 @@ function RosterPanel({
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
 }) {
-  // Compute dealer status
   const dealerStatuses = useMemo(() => {
-    const map: Record<string, { status: string; tableName?: string; workedTime: number }> = {};
+    const map: Record<string, { status: string; tableName?: string; checkInTime: string; timerStart: string }> = {};
     for (const d of dealers) {
       const a = assignments.find((a) => a.attendance_id === d.id);
-      const workedTime = d.check_in_time
-        ? Math.floor((Date.now() - new Date(d.check_in_time).getTime()) / (1000 * 60))
-        : 0;
+      const checkInTime = d.check_in_time ?? new Date().toISOString();
       if (a?.status === "assigned") {
-        map[d.id] = { status: "Đang bàn", tableName: (a as any).game_tables?.table_name, workedTime };
+        map[d.id] = { status: "Đang bàn", tableName: (a as any).game_tables?.table_name, checkInTime, timerStart: a.assigned_at };
       } else if (a?.status === "on_break") {
-        map[d.id] = { status: "Đang nghỉ", tableName: undefined, workedTime };
+        map[d.id] = { status: "Đang nghỉ", tableName: undefined, checkInTime, timerStart: a.released_at ?? checkInTime };
       } else {
-        map[d.id] = { status: "Sẵn sàng", tableName: undefined, workedTime };
+        map[d.id] = { status: "Sẵn sàng", tableName: undefined, checkInTime, timerStart: checkInTime };
       }
     }
     return map;
   }, [dealers, assignments]);
+
+  const sections = [
+    { key: "Sẵn sàng", icon: Users, color: "text-emerald-400" },
+    { key: "Đang bàn", icon: Table2, color: "text-blue-400" },
+    { key: "Đang nghỉ", icon: Clock, color: "text-amber-400" },
+  ] as const;
 
   return (
     <Card className="p-3 h-full">
       <div className="flex items-center gap-2 mb-3">
         <Users className="w-4 h-4 text-primary" />
         <span className="font-display text-sm tracking-wider">ĐỘI HÌNH CHIẾN BINH</span>
-        <Badge variant="outline" className="ml-auto text-xs">{dealers.length} sẵn sàng</Badge>
       </div>
 
-      <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+      <div className="space-y-3 max-h-[60vh] overflow-y-auto">
         {dealers.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center py-6">Chưa có dealer check-in hôm nay.</div>
         ) : (
-          dealers.map((d) => {
-            const dd = d.dealers;
-            const info = dealerStatuses[d.id];
-            const isBusy = processing === d.id;
-            const onBreak = info?.status === "Đang nghỉ";
-            const ready = info?.status === "Sẵn sàng";
+          sections.map((sec) => {
+            const group = dealers.filter((d) => dealerStatuses[d.id]?.status === sec.key);
+            if (!group.length) return null;
+            const Icon = sec.icon;
             return (
-              <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
-                <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                  {dd?.full_name?.charAt(0) ?? "?"}
+              <div key={sec.key}>
+                <div className="flex items-center gap-1.5 mb-2 sticky top-0 bg-card z-10 pb-1">
+                  <Icon className={`w-3 h-3 ${sec.color}`} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.key}</span>
+                  <Badge variant="outline" className="text-[10px] ml-auto">{group.length}</Badge>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate">{dd?.full_name ?? "—"}</div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <TierBadge tier={dd?.tier} />
-                    <StatusPill status={info?.status ?? "—"} />
-                    {info?.tableName && (
-                      <span className="text-[10px] text-muted-foreground truncate">· {info.tableName}</span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    <Clock className="w-3 h-3 inline mr-0.5" />
-                    {Math.floor(info?.workedTime ?? 0 / 60)}h{(info?.workedTime ?? 0) % 60}m
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {ready && (
-                    <Button size="icon" variant="ghost" className="h-6 w-6" title="Gửi nghỉ">
-                      <Clock className="w-3 h-3" />
-                    </Button>
-                  )}
-                  {onBreak && (
-                    <Button size="icon" variant="ghost" className="h-6 w-6" title="Kết thúc nghỉ"
-                      onClick={() => onEndBreak(d.id)} disabled={isBusy}>
-                      <Play className="w-3 h-3 text-primary" />
-                    </Button>
-                  )}
+                <div className="space-y-1.5">
+                  {group.map((d) => {
+                    const dd = d.dealers;
+                    const info = dealerStatuses[d.id];
+                    const isBusy = processing === d.id;
+                    const ready = sec.key === "Sẵn sàng";
+                    const onBreak = sec.key === "Đang nghỉ";
+                    return (
+                      <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
+                        <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                          {dd?.full_name?.charAt(0) ?? "?"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate">{dd?.full_name ?? "—"}</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <TierBadge tier={dd?.tier} />
+                            <StatusPill status={sec.key} />
+                            {info?.tableName && (
+                              <span className="text-[10px] text-muted-foreground truncate">· {info.tableName}</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                            <Clock className="w-3 h-3 inline mr-0.5" />
+                            {sec.key === "Đang nghỉ" ? "Nghỉ " : ""}
+                            <DealerTimer startTime={info?.timerStart ?? info?.checkInTime ?? new Date().toISOString()} />
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          {ready && (
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Gửi nghỉ"
+                              onClick={() => onSendToBreak(d.id)} disabled={isBusy}>
+                              <Clock className="w-3 h-3" />
+                            </Button>
+                          )}
+                          {onBreak && (
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Kết thúc nghỉ"
+                              onClick={() => onEndBreak(d.id)} disabled={isBusy}>
+                              <Play className="w-3 h-3 text-primary" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
