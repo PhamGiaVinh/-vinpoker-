@@ -20,8 +20,9 @@ import {
 import { toast } from "sonner";
 import {
   useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
+  useSwingMetrics, useBreakPolicies,
 } from "@/hooks/useDealerSwing";
-import type { DealerAssignment, DealerAttendance, SwingConfig } from "@/hooks/useDealerSwing";
+import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy } from "@/hooks/useDealerSwing";
 import { exportToExcel } from "@/lib/exportExcel";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
@@ -57,6 +58,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
+  const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
+  const breakPolicies = useBreakPolicies(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
 
@@ -464,6 +467,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
+              breakPolicies={breakPolicies ?? []}
             />
           </div>
 
@@ -492,6 +496,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               clubFilter={clubFilter}
               clubs={clubs}
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
+              dealers={dealers ?? []}
+              swingMetrics={swingMetrics ?? []}
+              breakPolicies={breakPolicies ?? []}
             />
           </div>
         </div>
@@ -512,20 +519,51 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             ) : (
               <>
                 <div className="text-xs font-semibold text-muted-foreground mb-2">Gợi ý hàng đầu:</div>
-                {suggestions.map((s: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-muted/20 border border-border rounded-none">
-                    <div>
-                      <div className="font-semibold">{s.dealer_name}</div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <TierBadge tier={s.tier} />
-                        <span className="text-xs text-muted-foreground">{s.reason}</span>
+                {suggestions.map((s: any, i: number) => {
+                  const bd = s.score_breakdown;
+                  return (
+                    <div key={i} className="flex items-center justify-between p-3 bg-muted/20 border border-border rounded-none group relative">
+                      <div>
+                        <div className="font-semibold">{s.dealer_name}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <TierBadge tier={s.tier} />
+                          <span className="text-xs text-muted-foreground">{s.reason}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative" title={`Điểm: ${s.score}`}>
+                          <span className="text-xs font-mono text-primary cursor-help border border-primary/30 px-1.5 py-0.5"
+                            onMouseEnter={(e) => {
+                              const el = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (el) el.style.display = "block";
+                            }}
+                            onMouseLeave={(e) => {
+                              const el = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (el) el.style.display = "none";
+                            }}>
+                            {s.score}
+                          </span>
+                          {bd && (
+                            <div className="hidden absolute bottom-full right-0 mb-1 z-50 bg-black border border-border p-2 rounded-none shadow-lg min-w-[140px]">
+                              <div className="text-[10px] text-muted-foreground space-y-0.5">
+                                <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
+                                <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.fairness}</span></div>
+                                {bd.no_back_to_back !== 0 && <div className="flex justify-between"><span>Tránh bàn cũ</span><span className="text-red-400">{bd.no_back_to_back}</span></div>}
+                                {bd.skill_bonus !== 0 && <div className="flex justify-between"><span>Kỹ năng</span><span className="text-emerald-400">+{bd.skill_bonus}</span></div>}
+                                <div className="border-t border-border pt-0.5 mt-0.5 flex justify-between font-semibold">
+                                  <span>Tổng</span><span className="text-primary">{s.score}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <Button size="sm" onClick={() => confirmAssign(s.dealer_id)} disabled={assigning}>
+                          {assigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Gán"}
+                        </Button>
                       </div>
                     </div>
-                    <Button size="sm" onClick={() => confirmAssign(s.dealer_id)} disabled={assigning}>
-                      {assigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Gán"}
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             )}
             <div className="border-t border-border pt-3 mt-3">
@@ -828,8 +866,18 @@ function DealerTimer({ startTime }: { startTime: string }) {
   );
 }
 
+function FatigueDot({ attendance }: { attendance: DealerAttendance }) {
+  const worked = attendance.worked_minutes_since_last_break ?? 0;
+  const priority = attendance.priority_break_flag ?? false;
+  let color: string;
+  if (priority || worked >= 90) color = "bg-red-500";
+  else if (worked >= 60) color = "bg-amber-500";
+  else color = "bg-emerald-500";
+  return <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} title={`Đã làm ${worked}p${priority ? " (ưu tiên nghỉ)" : ""}`} />;
+}
+
 function RosterPanel({
-  dealers, assignments, swingConfigs, processing, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
+  dealers, assignments, swingConfigs, processing, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen, breakPolicies,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -839,6 +887,7 @@ function RosterPanel({
   onEndBreak: (attendanceId: string) => void;
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
+  breakPolicies: ShiftBreakPolicy[];
 }) {
   const dealerStatuses = useMemo(() => {
     const map: Record<string, { status: string; tableName?: string; checkInTime: string; timerStart: string }> = {};
@@ -893,8 +942,11 @@ function RosterPanel({
                     const onBreak = sec.key === "Đang nghỉ";
                     return (
                       <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
-                        <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                          {dd?.full_name?.charAt(0) ?? "?"}
+                        <div className="relative">
+                          <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                            {dd?.full_name?.charAt(0) ?? "?"}
+                          </div>
+                          {sec.key === "Sẵn sàng" && <div className="absolute -top-1 -right-1"><FatigueDot attendance={d} /></div>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold truncate">{dd?.full_name ?? "—"}</div>
@@ -1079,6 +1131,7 @@ function TableGrid({
    ============================================================== */
 function CommandCenter({
   auditLogs, onAutoSwing, onExportShift, onExportPayroll, swingAllBusy, clubFilter, clubs, onOpenSwingConfig,
+  dealers, swingMetrics, breakPolicies,
 }: {
   auditLogs: any[];
   onAutoSwing: () => void;
@@ -1088,6 +1141,9 @@ function CommandCenter({
   clubFilter: string | null;
   clubs: ClubRow[];
   onOpenSwingConfig: () => void;
+  dealers: DealerAttendance[];
+  swingMetrics: SwingMetrics[];
+  breakPolicies: ShiftBreakPolicy[];
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
 
@@ -1126,6 +1182,60 @@ function CommandCenter({
         <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onOpenSwingConfig}>
           <Settings className="w-3 h-3 mr-2" /> Cấu hình Swing
         </Button>
+      </div>
+
+      {/* Break Balance Widget */}
+      <div className="mb-4 p-3 bg-muted/10 border border-border rounded-none">
+        <div className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">CÂN BẰNG BREAK</div>
+        <div className="space-y-2">
+          {(() => {
+            const totalActive = dealers.length;
+            const approaching = dealers.filter((d) => {
+              const w = d.worked_minutes_since_last_break ?? 0;
+              return w >= 60 && w < 90 && !d.priority_break_flag;
+            }).length;
+            const needsBreak = dealers.filter((d) => {
+              const w = d.worked_minutes_since_last_break ?? 0;
+              return w >= 90 || d.priority_break_flag;
+            }).length;
+            const totMetrics = swingMetrics.reduce((s, m) => s + m.total_swings, 0);
+            const okMetrics = swingMetrics.reduce((s, m) => s + m.successful_swings, 0);
+            const failMetrics = swingMetrics.reduce((s, m) => s + m.failed_swings, 0);
+            const successRate = totMetrics > 0 ? ((okMetrics / totMetrics) * 100).toFixed(0) : "—";
+            return (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Đang hoạt động</span>
+                  <span className="font-semibold font-mono">{totalActive}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-amber-500">Sắp đến giờ nghỉ</span>
+                  <span className="font-semibold font-mono text-amber-500">{approaching}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-red-500">Cần nghỉ ngay</span>
+                  <span className="font-semibold font-mono text-red-500">{needsBreak}</span>
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Swing hôm nay</span>
+                    <span className="font-mono">{totMetrics}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Tỉ lệ thành công</span>
+                    <span className="font-mono">{successRate}%</span>
+                  </div>
+                  {failMetrics > 0 && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-red-400">Thất bại</span>
+                      <span className="font-mono text-red-400">{failMetrics}</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Audit Log Feed */}

@@ -115,7 +115,7 @@ export function useCheckedInDealers(clubIds: string[], shiftId?: string) {
     const today = new Date().toISOString().split("T")[0];
     let q = supabase
       .from("dealer_attendance")
-      .select("id, dealer_id, shift_id, shift_date, status, check_in_time, check_out_time, overtime_minutes, dealers!inner(id, full_name, tier, status)")
+      .select("id, dealer_id, shift_id, shift_date, status, check_in_time, check_out_time, overtime_minutes, current_state, worked_minutes_since_last_break, priority_break_flag, dealers!inner(id, full_name, tier, status)")
       .eq("shift_date", today)
       .eq("status", "checked_in")
       .in("dealers.club_id", clubIds);
@@ -205,6 +205,45 @@ export function useSwingConfigs(clubIds: string[]) {
   useEffect(() => { load(); }, [load]);
 
   return { data, loading, refetch: load };
+}
+
+export function useSwingMetrics(clubIds: string[]) {
+  const [data, setData] = useState<SwingMetrics[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!clubIds.length) { setData([]); return; }
+    setLoading(true);
+    const today = new Date().toISOString().split("T")[0];
+    const { data: d } = await supabase
+      .from("swing_metrics")
+      .select("*")
+      .in("club_id", clubIds)
+      .eq("date", today);
+    setData(d ?? []);
+    setLoading(false);
+  }, [clubIds.join(",")]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { data, loading, refetch: load };
+}
+
+export function useBreakPolicies(clubIds: string[]) {
+  const [data, setData] = useState<ShiftBreakPolicy[] | null>(null);
+
+  useEffect(() => {
+    if (!clubIds.length) { setData([]); return; }
+    (async () => {
+      const { data: d } = await supabase
+        .from("shift_break_policies")
+        .select("*")
+        .in("club_id", clubIds);
+      setData(d ?? []);
+    })();
+  }, [clubIds.join(",")]);
+
+  return data;
 }
 
 export function useAuditLogs(clubIds: string[], limit = 20) {

@@ -137,12 +137,20 @@ Deno.serve(async (req) => {
   }
 });
 
+interface ScoreBreakdown {
+  tier_match: number;
+  fairness: number;
+  no_back_to_back: number;
+  skill_bonus: number;
+}
+
 interface ScoredDealer {
   attendance_id: string;
   dealer_id: string;
   dealer_name: string;
   tier: string;
   score: number;
+  score_breakdown: ScoreBreakdown;
   worked_minutes: number;
   reason: string;
 }
@@ -208,35 +216,38 @@ async function fairRotation(
   const scored: ScoredDealer[] = available.map((c: any) => {
     const dealer = c.dealers;
     let score = 0;
+    const breakdown: ScoreBreakdown = { tier_match: 0, fairness: 0, no_back_to_back: 0, skill_bonus: 0 };
     const workedMin = (workTimes ?? []).find((w: any) => w.dealer_id === dealer.id)?.total_minutes ?? 0;
     const lastTable = (lastTables ?? []).find((l: any) => l.dealer_id === dealer.id)?.table_id;
     const skills = skillsMap[dealer.id] ?? [];
 
     // Tier scoring
     if (tableType === "vip") {
-      if (dealer.tier === "A") score += 10;
+      if (dealer.tier === "A") { breakdown.tier_match = 10; score += 10; }
       else return null;
     } else if (tableType === "tournament") {
-      if (dealer.tier === "A") score += 6;
-      else if (dealer.tier === "B") score += 4;
-      else score += 1;
-      if (!skills.includes("Tournament")) score -= 3;
+      if (dealer.tier === "A") { breakdown.tier_match = 6; score += 6; }
+      else if (dealer.tier === "B") { breakdown.tier_match = 4; score += 4; }
+      else { breakdown.tier_match = 1; score += 1; }
+      if (!skills.includes("Tournament")) { breakdown.tier_match -= 3; score -= 3; }
     } else {
-      if (dealer.tier === "A") score += 4;
-      else if (dealer.tier === "B") score += 3;
-      else score += 2;
+      if (dealer.tier === "A") { breakdown.tier_match = 4; score += 4; }
+      else if (dealer.tier === "B") { breakdown.tier_match = 3; score += 3; }
+      else { breakdown.tier_match = 2; score += 2; }
     }
 
     // Fairness: less worked time = higher priority
-    score -= Math.floor(workedMin / 30);
+    const fairnessPenalty = Math.floor(workedMin / 30);
+    breakdown.fairness = -fairnessPenalty;
+    score -= fairnessPenalty;
 
     // Avoid same table back-to-back
-    if (lastTable === tableId) score -= 5;
+    if (lastTable === tableId) { breakdown.no_back_to_back = -5; score -= 5; }
 
     // Skill bonuses
-    if (tableType === "plo" && skills.includes("PLO")) score += 3;
-    if (tableType === "cash" && skills.includes("NLH")) score += 2;
-    if (tableType === "tournament" && skills.includes("Mixed")) score += 2;
+    if (tableType === "plo" && skills.includes("PLO")) { breakdown.skill_bonus += 3; score += 3; }
+    if (tableType === "cash" && skills.includes("NLH")) { breakdown.skill_bonus += 2; score += 2; }
+    if (tableType === "tournament" && skills.includes("Mixed")) { breakdown.skill_bonus += 2; score += 2; }
 
     const reasons: string[] = [];
     if (dealer.tier === "A" && tableType === "vip") reasons.push("Hạng A phù hợp bàn VIP");
@@ -252,6 +263,7 @@ async function fairRotation(
       dealer_name: dealer.full_name,
       tier: dealer.tier,
       score,
+      score_breakdown: breakdown,
       worked_minutes: workedMin,
       reason: reasons.length ? reasons.join(" · ") : "Sẵn sàng",
     };
