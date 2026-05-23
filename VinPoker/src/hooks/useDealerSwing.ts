@@ -19,6 +19,9 @@ export interface DealerAttendance {
   overtime_minutes: number;
   dealers: Dealer;
   shift_id?: string | null;
+  current_state?: 'available' | 'assigned' | 'on_break' | 'checked_out';
+  worked_minutes_since_last_break?: number;
+  priority_break_flag?: boolean;
 }
 
 export interface GameTable {
@@ -61,6 +64,45 @@ export interface AuditLog {
   entity_type: string;
   payload: any;
   created_at: string;
+}
+
+export interface ShiftBreakPolicy {
+  id: string;
+  club_id: string;
+  shift_type: 'default' | 'morning' | 'afternoon' | 'graveyard';
+  min_work_before_break_minutes: number;
+  max_work_before_mandatory_break_minutes: number;
+  target_break_duration_minutes: number;
+  max_break_time_variance_minutes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SwingAuditLog {
+  id: string;
+  club_id: string;
+  shift_id?: string | null;
+  assignment_id?: string | null;
+  old_dealer_id?: string | null;
+  new_dealer_id?: string | null;
+  table_id?: string | null;
+  action: string;
+  details?: any;
+  triggered_by: string;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export interface SwingMetrics {
+  id: string;
+  club_id: string;
+  date: string;
+  total_swings: number;
+  successful_swings: number;
+  failed_swings: number;
+  no_dealer_swings: number;
+  avg_processing_time_ms: number | null;
+  telegram_failures: number;
 }
 
 export function useCheckedInDealers(clubIds: string[], shiftId?: string) {

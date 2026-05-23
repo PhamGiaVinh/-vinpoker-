@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string };
+type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
 
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
