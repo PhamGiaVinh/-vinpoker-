@@ -861,15 +861,6 @@ function TableGrid({
             const warnAt = config?.warn_at_minutes ?? 5;
             const critAt = config?.crit_at_minutes ?? 1;
 
-            let timeLeft = swingDuration;
-            let timerColor = "text-primary";
-            if (a?.assigned_at) {
-              const elapsed = (Date.now() - new Date(a.assigned_at).getTime()) / (1000 * 60);
-              timeLeft = Math.max(0, swingDuration - elapsed);
-              if (timeLeft <= critAt) timerColor = "text-red-500";
-              else if (timeLeft <= warnAt) timerColor = "text-amber-500";
-            }
-
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
 
             return (
@@ -904,11 +895,9 @@ function TableGrid({
                   )}
                 </div>
 
-                {/* Countdown timer */}
+                {/* Countdown timer — self-updating via 1s interval */}
                 {a && (
-                  <div className={`font-mono text-lg font-bold ${timerColor}`}>
-                    <TimerDisplay minutes={timeLeft} />
-                  </div>
+                  <TimerCell assignedAt={a.assigned_at} swingDuration={swingDuration} warnAt={warnAt} critAt={critAt} />
                 )}
 
                 {/* Action buttons */}
@@ -1014,12 +1003,35 @@ function CommandCenter({
 }
 
 /* ==============================================================
-   TIMER DISPLAY
+   TIMER CELL — self-updating countdown (1s interval, no parent re-render)
    ============================================================== */
-function TimerDisplay({ minutes }: { minutes: number }) {
-  const m = Math.floor(minutes);
-  const s = Math.floor((minutes - m) * 60);
-  return <>{String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}</>;
+function TimerCell({ assignedAt, swingDuration, warnAt, critAt }: {
+  assignedAt: string;
+  swingDuration: number;
+  warnAt: number;
+  critAt: number;
+}) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsed = (now - new Date(assignedAt).getTime()) / (1000 * 60);
+  const timeLeft = Math.max(0, swingDuration - elapsed);
+  const m = Math.floor(timeLeft);
+  const s = Math.floor((timeLeft - m) * 60);
+
+  let color = "text-primary";
+  if (timeLeft <= critAt) color = "text-red-500";
+  else if (timeLeft <= warnAt) color = "text-amber-500";
+
+  return (
+    <div className={`font-mono text-lg font-bold ${color}`}>
+      {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
+    </div>
+  );
 }
 
 /* ==============================================================

@@ -135,14 +135,11 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Real-time subscription for live updates
+  // Polling every 30s instead of real-time subscription (reduces lag)
   useEffect(() => {
     if (!clubIds.length) return;
-    const ch = supabase
-      .channel("dealer_assignments_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "dealer_assignments" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
   }, [clubIds.join(","), shiftId]);
 
   return { data, loading, refetch: load };
