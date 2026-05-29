@@ -53,3 +53,22 @@ When `scripts/translate-i18n.mjs` is connected to OpenAI:
 
 - `LanguageSwitcher.tsx` — manual selection, stored in `localStorage` key `vinpoker.lang`
 - `LanguagePrompt.tsx` — auto-detects browser language (zh-CN/ko/ja/th) and prompts to switch
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout. See `docs/agents/domain.md`.

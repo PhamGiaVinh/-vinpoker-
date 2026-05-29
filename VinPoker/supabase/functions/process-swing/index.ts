@@ -1,539 +1,705 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  pickNextDealer,
+  fillEmptyTables,
+  computeSwingDuration,
+  evaluateBreakNeed,
+  getTableIdsForClub,
+} from "../_shared/dealer-utils.ts";
+import {
+  sendTelegramNotification,
+  getClubTelegramChatId,
+  formatPreAnnounceMessage,
+  notifyIncomingDealer,
+  notifyFloorManagerDM,
+} from "../_shared/telegram.ts";
+import { TelegramNotifier } from "../_shared/telegramNotifier.ts";
+import type {
+  SwingInEvent,
+  BreakStartEvent,
+  PreAssignEvent,
+} from "../_shared/telegramNotifier.ts";
+import {
+  calculateBatchSwingDuration,
+  resolveSwingConfig,
+  recomputeSwingDueAt,
+  type PoolSnapshot,
+  type SwingConfig,
+} from "./calculateBatchSwingDuration.ts";
 
-Deno.serve(async (req) => {
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const STALE_PRE_ASSIGN_MINUTES = 20; // must exceed max pre_announce_minutes + buffer
+const DEFAULT_PRE_ANNOUNCE_MINUTES = 6;
+const DEFAULT_PRE_ASSIGN_WINDOW_MINUTES = 4;
+const DEFAULT_MAX_WORK_MINUTES = 120;
+const DEFAULT_MIN_WORK_MINUTES = 60;
+const DEFAULT_SWING_DURATION_MINUTES = 30;
+const DEFAULT_BREAK_DURATION_MINUTES = 15;
+const SWING_WINDOW_BUFFER_MINUTES = 2;
+const MAX_SWING_RETRIES = 3;
+
+interface ClubSwingConfig {
+  swing_duration_minutes: number;
+  break_duration_minutes: number;
+  pre_announce_minutes: number;
+  warn_at_minutes: number;
+  crit_at_minutes: number;
+  auto_adjust_duration: boolean;
+  min_duration: number;
+  auto_swing_enabled: boolean;
+  // ── Extended fields for batch duration calculation ──
+  base_duration_minutes: number;
+  target_ratio: number;
+  max_duration_minutes: number;
+}
+
+async function fetchAllClubConfigs(
+  admin: ReturnType<typeof createClient>
+): Promise<Map<string, ClubSwingConfig>> {
+  const configMap = new Map<string, ClubSwingConfig>();
+
+  // Fetch swing configs
+  const { data: swingData, error } = await admin
+    .from("swing_config")
+    .select("*")
+    .eq("table_type", "tournament");
+
+  if (error) {
+    console.error("[process-swing] fetchAllClubConfigs error:", error.message);
+    return configMap;
+  }
+
+  // Fetch auto_swing_enabled from club_settings for all clubs
+  const { data: settingsData } = await admin
+    .from("club_settings")
+    .select("club_id, auto_swing_enabled");
+
+  const settingsMap = new Map<string, boolean>();
+  for (const s of settingsData ?? []) {
+    settingsMap.set(s.club_id, s.auto_swing_enabled ?? false);
+  }
+
+  for (const row of swingData ?? []) {
+    configMap.set(row.club_id, {
+      swing_duration_minutes: Math.max(30, row.swing_duration_minutes ?? DEFAULT_SWING_DURATION_MINUTES),
+      break_duration_minutes: row.break_duration_minutes ?? DEFAULT_BREAK_DURATION_MINUTES,
+      pre_announce_minutes: row.pre_announce_minutes ?? DEFAULT_PRE_ANNOUNCE_MINUTES,
+      warn_at_minutes: row.warn_at_minutes ?? 5,
+      crit_at_minutes: row.crit_at_minutes ?? 2,
+      auto_adjust_duration: row.auto_adjust_duration ?? false,
+      min_duration: Math.max(30, row.min_duration ?? 30),
+      auto_swing_enabled: settingsMap.get(row.club_id) ?? true,
+      base_duration_minutes: row.base_duration_minutes ?? row.swing_duration_minutes ?? 40,
+      target_ratio: row.target_ratio ?? 1.43,
+      max_duration_minutes: row.max_duration_minutes ?? 60,
+    });
+  }
+  return configMap;
+}
+
+function getClubConfig(
+  configMap: Map<string, ClubSwingConfig>,
+  clubId: string
+): ClubSwingConfig {
+  return (
+    configMap.get(clubId) ?? {
+      swing_duration_minutes: DEFAULT_SWING_DURATION_MINUTES,
+      break_duration_minutes: DEFAULT_BREAK_DURATION_MINUTES,
+      pre_announce_minutes: DEFAULT_PRE_ANNOUNCE_MINUTES,
+      warn_at_minutes: 5,
+      crit_at_minutes: 2,
+      auto_adjust_duration: false,
+      min_duration: 15,
+      auto_swing_enabled: false,
+      base_duration_minutes: DEFAULT_SWING_DURATION_MINUTES,
+      target_ratio: 1.43,
+      max_duration_minutes: 60,
+    }
+  );
+}
+
+async function acquireClubLock(
+  admin: ReturnType<typeof createClient>,
+  clubId: string
+): Promise<boolean> {
+  const { data } = await admin.rpc("try_acquire_club_lock", { p_club_id: clubId });
+  return data === true;
+}
+
+async function releaseClubLock(
+  admin: ReturnType<typeof createClient>,
+  clubId: string
+): Promise<void> {
+  await admin.rpc("release_club_lock", { p_club_id: clubId }).catch(() => {});
+}
+
+async function getClubLocalDate(
+  admin: ReturnType<typeof createClient>,
+  clubId: string
+): Promise<string> {
+  const clubIds = [clubId];
+  const { data } = await admin.rpc("club_local_date", { p_club_id: clubId });
+  return data ?? new Date().toISOString().split("T")[0];
+}
+
+Deno.serve(async (req: Request) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-    const defaultChatId = Deno.env.get("TELEGRAM_DEFAULT_CHAT_ID")!;
-    const admin = createClient(supabaseUrl, serviceKey);
-    const now = new Date();
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  if (!botToken) {
+    console.error(
+      "[process-swing] TELEGRAM_BOT_TOKEN is not set. " +
+        "Swings will execute but Telegram notifications will be skipped. " +
+        "Run: supabase secrets set TELEGRAM_BOT_TOKEN=<your_token>"
+    );
+  }
 
-    let clubId: string | null = null;
-    let shiftId: string | null = null;
-    let manualTrigger = false;
-    let dryRun = false;
-    try {
-      const body = await req.json();
-      clubId = body.club_id ?? null;
-      shiftId = body.shift_id ?? null;
-      manualTrigger = body.manual_trigger ?? false;
-      dryRun = body.dry_run ?? false;
-    } catch {
-      /* no body — full swing (cron) */
+  const body = await req.json().catch(() => ({}));
+  const {
+    club_id: clubId,
+    shift_id: shiftId,
+    force_all: forceAll = false,
+    dry_run: dryRun = false,
+    manual_trigger: manualTrigger = false,
+    required_game_types,
+  } = body;
+
+  const startTime = Date.now();
+  const allClubConfigs = await fetchAllClubConfigs(admin);
+
+  let clubIds: string[] = [];
+  if (clubId) {
+    clubIds = [clubId];
+  } else {
+    const { data: clubs } = await admin
+      .from("clubs")
+      .select("id")
+      .eq("status", "active");
+    clubIds = (clubs ?? []).map((c: { id: string }) => c.id);
+  }
+
+  const metricsPerClub: Record<
+    string,
+    { total: number; success: number; failed: number; no_dealer: number; tg_failed: number; skipped: number }
+  > = {};
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  Process each club independently with per-club lock
+  // ═══════════════════════════════════════════════════════════════════════════
+  for (const cid of clubIds) {
+    // Per-club distributed lock — prevents overlapping cron instances
+    if (!manualTrigger) {
+      const acquired = await acquireClubLock(admin, cid);
+      if (!acquired) {
+        console.log(`[process-swing] Club ${cid} lock held — skipping this tick`);
+        continue;
+      }
     }
 
-    const startTime = Date.now();
-    const results: any[] = [];
-    const errors: any[] = [];
+    try {
+      if (!metricsPerClub[cid]) {
+        metricsPerClub[cid] = { total: 0, success: 0, failed: 0, no_dealer: 0, tg_failed: 0, skipped: 0 };
+      }
+      const metrics = metricsPerClub[cid];
+      const clubCfg = getClubConfig(allClubConfigs, cid);
 
-    // Build query for due assignments
-    let q = admin
-      .from("dealer_assignments")
-      .select(`
-        id, table_id, attendance_id, assigned_at, version,
-        game_tables!inner(id, table_name, table_type, club_id),
-        dealer_attendance!inner(id, dealer_id, shift_id, status, check_in_time, current_state, worked_minutes_since_last_break,
-          dealers!inner(id, full_name, tier))
-      `)
-      .eq("status", "assigned")
-      .is("swing_processed_at", null);
+      // Skip if auto-swing is disabled (for cron/non-manual triggers only)
+      if (!manualTrigger && !clubCfg.auto_swing_enabled) {
+        console.log(`[process-swing] Club ${cid} auto-swing disabled — skipping`);
+        await releaseClubLock(admin, cid);
+        continue;
+      }
 
-    if (clubId) q = q.eq("game_tables.club_id", clubId);
-    if (shiftId) q = q.eq("dealer_attendance.shift_id", shiftId);
+      const cycleExcludedIds = new Set<string>();
 
-    const { data: dueAssignments, error: de } = await q;
-    if (de) return json({ error: de.message }, 500);
-
-    let successCount = 0;
-    let failCount = 0;
-    let noDealerCount = 0;
-
-    for (const assignment of dueAssignments ?? []) {
-      try {
-        const table = assignment.game_tables as any;
-        const da = assignment.dealer_attendance as any;
-        const dealer = da.dealers as any;
-        const assignedAt = new Date(assignment.assigned_at);
-
-        // Get swing config
-        const { data: config } = await admin
-          .from("swing_config")
-          .select("swing_duration_minutes, break_duration_minutes")
-          .eq("club_id", table.club_id)
-          .eq("table_type", table.table_type)
-          .maybeSingle();
-
-        const durationMinutes = config?.swing_duration_minutes ?? 45;
-        const swingDueAt = new Date(assignedAt.getTime() + durationMinutes * 60 * 1000);
-
-        if (now < swingDueAt) {
-          results.push({ id: assignment.id, status: "not_yet_due", due_at: swingDueAt.toISOString() });
-          continue;
+      // ── TelegramNotifier for this club cycle ────────────────────────────
+      let notifier: TelegramNotifier | null = null;
+      let clubZone: string | null = null;
+      if (botToken) {
+        const [chatId, zoneData] = await Promise.all([
+          getClubTelegramChatId(admin, cid),
+          admin.from("swing_config").select("club_zone").eq("club_id", cid).maybeSingle(),
+        ]);
+        if (chatId) {
+          notifier = new TelegramNotifier(botToken, chatId);
+          clubZone = (zoneData as any)?.club_zone ?? null;
         }
+      }
 
-        if (dryRun) {
-          results.push({ id: assignment.id, status: "would_swing", table_name: table.table_name, due_at: swingDueAt.toISOString() });
-          continue;
+      // ── PRE-PASS 1 — Batch swing duration from pool snapshot ──────────────
+      // Hướng B: compute ONE duration from a pool snapshot BEFORE the batch,
+      // then pass the same swing_due_at to every assign_dealer_to_table call.
+      // This avoids the per-row trigger anti-pattern where each INSERT sees
+      // a shrinking pool and produces variable durations.
+      let batchDurationMinutes = clubCfg.swing_duration_minutes;
+      let batchSwingDueAt: string | undefined;
+      if (!dryRun) {
+        try {
+          const { data: snapshotData } = await admin.rpc("get_dealer_pool_snapshot", {
+            p_club_id: cid,
+          });
+          if (snapshotData) {
+            const snapshot = snapshotData as PoolSnapshot;
+            const swingCfg: SwingConfig = resolveSwingConfig({
+              swing_duration_minutes: clubCfg.swing_duration_minutes,
+              auto_adjust_duration: clubCfg.auto_adjust_duration,
+              base_duration_minutes: clubCfg.base_duration_minutes,
+              target_ratio: clubCfg.target_ratio,
+              min_duration_minutes: clubCfg.min_duration,
+              max_duration_minutes: clubCfg.max_duration_minutes,
+            });
+            const batchResult = calculateBatchSwingDuration(swingCfg, snapshot);
+            batchDurationMinutes = batchResult.durationMinutes;
+            batchSwingDueAt = batchResult.swingDueAt;
+            console.log(`[process-swing] Batch swing duration for club ${cid}: ${batchResult.rationale}`);
+          }
+        } catch (err) {
+          console.warn(`[process-swing] Pool snapshot failed for club ${cid}, using config default:`, err);
         }
+      }
 
-        // CAS lock — only one wins
-        const { data: locked, error: lockError } = await admin
+      // Fallback: if snapshot failed, compute swingDueAt from config default
+      if (!dryRun && !batchSwingDueAt) {
+        batchSwingDueAt = new Date(
+          Date.now() + clubCfg.swing_duration_minutes * 60_000
+        ).toISOString();
+        console.log(`[process-swing] Fallback swingDueAt for club ${cid}: config default ${clubCfg.swing_duration_minutes}min`);
+      }
+
+      // ── PASS 1 — Auto-fill empty tables + cleanup stale pre_assign ────────
+      const staleThreshold = new Date(
+        Date.now() - STALE_PRE_ASSIGN_MINUTES * 60 * 1000
+      ).toISOString();
+
+      const { data: staleRows } = await admin
+        .from("dealer_assignments")
+        .select("id, pre_assigned_attendance_id")
+        .eq("status", "assigned")
+        .not("pre_assigned_attendance_id", "is", null)
+        .or(`pre_assigned_at.lt.${staleThreshold},updated_at.lt.${staleThreshold}`)
+        .in("table_id", await getTableIdsForClub(admin, cid));
+
+      if (staleRows && staleRows.length > 0) {
+        const staleAttendanceIds = staleRows
+          .map((r: { pre_assigned_attendance_id: string }) => r.pre_assigned_attendance_id)
+          .filter(Boolean);
+        await admin
           .from("dealer_assignments")
-          .update({ swing_processed_at: now.toISOString() })
+          .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
+          .in("id", staleRows.map((r: { id: string }) => r.id));
+        if (staleAttendanceIds.length > 0) {
+          await admin
+            .from("dealer_attendance")
+            .update({ current_state: "available" })
+            .in("id", staleAttendanceIds);
+        }
+        console.log(`[process-swing] Pass 1: cleaned ${staleRows.length} stale pre_assign records for club ${cid}`);
+      }
+
+      let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
+      if (!dryRun) {
+        fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt);
+        for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
+        for (const a of fillResult.assignments) {
+          notifier?.enqueue({
+            type: "swing_in",
+            tableName: a.table_name,
+            zone: clubZone,
+            dealerName: a.full_name,
+            username: null,
+          } satisfies SwingInEvent);
+        }
+      }
+
+      // ── PASS 2 — Pre-assign incoming dealer at T-N minutes ───────────────
+      // forceAll: skip pre-assign to preserve dealer pool for backlog processing
+      if (!forceAll) {
+        const preAnnounceMins = clubCfg.pre_announce_minutes;
+      const windowHalf = 2;
+      const windowStart = new Date(Date.now() + Math.max(0, preAnnounceMins - windowHalf) * 60 * 1000).toISOString();
+      const windowEnd = new Date(Date.now() + (preAnnounceMins + windowHalf) * 60 * 1000).toISOString();
+
+      const { data: upcoming } = await admin
+        .from("dealer_assignments")
+        .select(
+          `id, table_id, attendance_id, swing_due_at, version,
+           game_tables(club_id, table_name, table_type),
+            dealer_attendance!attendance_id(dealers(full_name))`
+        )
+        .eq("status", "assigned")
+        .is("pre_assigned_attendance_id", null)
+        .is("swing_processed_at", null)
+        .gte("swing_due_at", windowStart)
+        .lt("swing_due_at", windowEnd)
+        .eq("game_tables.club_id", cid);
+
+      for (const assignment of upcoming ?? []) {
+        const excludeSet = new Set<string>([
+          ...cycleExcludedIds,
+          assignment.attendance_id,
+        ]);
+
+        const nextDealer = await pickNextDealer(admin, cid, {
+          currentTableId: assignment.table_id,
+          excludeAttendanceIds: excludeSet,
+          requiredGameTypes: required_game_types,
+        });
+
+        if (!nextDealer) {
+          if (botToken) {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (chatId) {
+              const minsLeft = Math.round(
+                (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
+              );
+              const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
+              await sendTelegramNotification(
+                botToken, chatId,
+                formatPreAnnounceMessage({
+                  tableName: assignment.game_tables?.table_name ?? assignment.table_id,
+                  outgoingDealer,
+                  minutesLeft: minsLeft,
+                }),
+                {}
+              );
+            }
+          }
+          continue;
+        }
+
+        const { data: locked, error: lockErr } = await admin
+          .from("dealer_assignments")
+          .update({
+            pre_assigned_attendance_id: nextDealer.id,
+            pre_assigned_at: new Date().toISOString(),
+            version: assignment.version + 1,
+          })
           .eq("id", assignment.id)
           .eq("version", assignment.version)
-          .eq("status", "assigned")
-          .is("swing_processed_at", null)
-          .select("id");
+          .is("pre_assigned_attendance_id", null)
+          .select("id")
+          .single();
 
-        if (lockError || !locked?.length) {
-          results.push({ id: assignment.id, status: "race_lost" });
+        if (lockErr || !locked) {
+          console.warn(`[process-swing] Pass 2: CAS failed for assignment ${assignment.id}, skipping`);
           continue;
         }
 
-        // Release old dealer
-        await admin
-          .from("dealer_assignments")
-          .update({ released_at: now.toISOString(), status: "completed" })
-          .eq("id", assignment.id);
+        cycleExcludedIds.add(nextDealer.id);
+        await admin.from("dealer_attendance").update({ current_state: "pre_assigned" }).eq("id", nextDealer.id);
 
-        // Set old dealer state to available
-        await admin
-          .from("dealer_attendance")
-          .update({ current_state: "available" })
-          .eq("id", da.id);
+        const minsLeft = Math.round(
+          (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
+        );
+        const outgoingName = assignment.dealer_attendance?.dealers?.full_name ?? "";
+        const incomingName = nextDealer.full_name ?? nextDealer.id;
+        const incomingUsername = nextDealer.telegram_username ?? null;
+        const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
 
-        // Evaluate break need
-        const breakResult = await evaluateBreakNeed(admin, da.dealer_id, da.shift_id, table.club_id, da.id, config?.break_duration_minutes ?? 20);
-        let dealerWentOnBreak = false;
+        const outUsername = (assignment.dealer_attendance?.dealers as any)?.telegram_username ?? null;
 
-        if (breakResult.should_break) {
-          dealerWentOnBreak = true;
-          await admin
-            .from("dealer_attendance")
-            .update({ current_state: "on_break", priority_break_flag: false })
-            .eq("id", da.id);
+        // Enqueue pre-assign notification
+        notifier?.enqueue({
+          type: "pre_assign",
+          tableName,
+          zone: clubZone,
+          outName: outgoingName,
+          outUsername,
+          inName: incomingName,
+          inUsername: incomingUsername,
+          swingAt: new Date(assignment.swing_due_at),
+          minutesLeft: minsLeft,
+        } satisfies PreAssignEvent);
 
-          await admin.from("swing_audit_logs").insert({
-            club_id: table.club_id,
-            shift_id: da.shift_id,
-            assignment_id: assignment.id,
-            old_dealer_id: da.dealer_id,
-            action: "break_auto",
-            details: { reason: breakResult.reason, urgency: breakResult.urgency, table_name: table.table_name },
-            triggered_by: manualTrigger ? "manual" : "cron",
-          }).catch(() => {});
-        }
-
-        // Get shift tour_tier
-        const { data: shift } = await admin
-          .from("dealer_shifts")
-          .select("tour_tier")
-          .eq("id", da.shift_id)
-          .maybeSingle();
-
-        // Pick next dealer (corrected scoring)
-        const nextDealer = await pickNextDealer(admin, table.club_id, da.shift_id, table.table_type, shift?.tour_tier ?? "MEDIUM", durationMinutes);
-
-        let newAssignmentId: string | null = null;
-        let nextDealerName: string | null = null;
-
-        if (nextDealer) {
-          const { data: na } = await admin
-            .from("dealer_assignments")
-            .insert({
-              attendance_id: nextDealer.attendance_id,
-              table_id: table.id,
-              assigned_at: now.toISOString(),
-              status: "assigned",
-              idempotency_key: `swing-${assignment.id}-${now.getTime()}`,
-            })
-            .select("id")
-            .single();
-
-          newAssignmentId = na?.id ?? null;
-          nextDealerName = nextDealer.dealer_name;
-
-          await admin
-            .from("dealer_attendance")
-            .update({ current_state: "assigned" })
-            .eq("id", nextDealer.attendance_id);
-
-          successCount++;
-        } else {
-          noDealerCount++;
-          successCount++;
-        }
-
-        // Audit log
-        await admin.from("swing_audit_logs").insert({
-          club_id: table.club_id,
-          shift_id: da.shift_id,
-          assignment_id: assignment.id,
-          old_dealer_id: da.dealer_id,
-          new_dealer_id: nextDealer?.dealer_id ?? null,
-          table_id: table.id,
-          action: nextDealer ? "swing_success" : "swing_no_dealer",
-          details: {
-            table_name: table.table_name,
-            old_dealer_name: dealer.full_name,
-            new_dealer_name: nextDealerName,
-            old_went_on_break: dealerWentOnBreak,
-            break_reason: breakResult.reason,
-          },
-          triggered_by: manualTrigger ? "manual" : "cron",
-        }).catch(() => {});
-
-        // Telegram (async, non-blocking)
-        sendTelegramNotification(admin, botToken, defaultChatId, table, dealer.full_name, nextDealerName, assignment.id).catch(() => {});
-
-        results.push({
-          id: assignment.id,
-          status: nextDealer ? "swung" : "swung_no_dealer",
-          table_name: table.table_name,
-          released_dealer: dealer.full_name,
-          new_dealer: nextDealerName,
-          new_assignment_id: newAssignmentId,
-          old_dealer_break: dealerWentOnBreak,
-          break_reason: breakResult.reason,
-        });
-      } catch (err) {
-        failCount++;
-        const errMsg = (err as Error).message;
-        errors.push({ assignment_id: assignment.id, error: errMsg });
-
-        await admin.from("swing_audit_logs").insert({
-          club_id: (assignment.game_tables as any)?.club_id ?? "00000000-0000-0000-0000-000000000000",
-          assignment_id: assignment.id,
-          action: "swing_error",
-          error_message: errMsg,
-          triggered_by: manualTrigger ? "manual" : "cron",
-        }).catch(() => {});
-      }
-    }
-
-    // Upsert daily swing metrics
-    if (!dryRun && (successCount + failCount) > 0 && dueAssignments?.length) {
-      const firstClubId = (dueAssignments[0].game_tables as any)?.club_id;
-      if (firstClubId) {
-        const today = now.toISOString().split("T")[0];
-        const total = successCount + failCount;
-        const { data: existing } = await admin
-          .from("swing_metrics")
-          .select("*")
-          .eq("club_id", firstClubId)
-          .eq("date", today)
-          .maybeSingle();
-
-        if (existing) {
-          await admin.from("swing_metrics").update({
-            total_swings: existing.total_swings + total,
-            successful_swings: existing.successful_swings + successCount,
-            failed_swings: existing.failed_swings + failCount,
-            no_dealer_swings: existing.no_dealer_swings + noDealerCount,
-            avg_processing_time_ms: Math.round((Date.now() - startTime) / total),
-          }).eq("id", existing.id);
-        } else {
-          await admin.from("swing_metrics").insert({
-            club_id: firstClubId,
-            date: today,
-            total_swings: total,
-            successful_swings: successCount,
-            failed_swings: failCount,
-            no_dealer_swings: noDealerCount,
-            avg_processing_time_ms: Math.round((Date.now() - startTime) / total),
-          });
+        if (nextDealer.telegram_user_id) {
+          await notifyIncomingDealer(botToken, {
+            ...nextDealer,
+            telegram_user_id: Number(nextDealer.telegram_user_id),
+          } as any, tableName, minsLeft).catch(() => {});
         }
       }
-    }
+      } // end if (!forceAll)
 
-    return json({
-      success: failCount === 0,
-      processed_count: successCount,
-      failed_count: failCount,
-      no_dealer_count: noDealerCount,
-      execution_time_ms: Date.now() - startTime,
-      swings: results,
-      errors: errors.length > 0 ? errors : undefined,
-    });
-  } catch (e) {
-    return json({ error: (e as Error).message }, 500);
-  }
-});
+      // ── Dynamic swing duration (computed once per club per cycle) ──────
+      const swingDurResult = await computeSwingDuration(admin, cid, {
+        swing_duration_minutes: clubCfg.swing_duration_minutes,
+        auto_adjust_duration: clubCfg.auto_adjust_duration,
+        min_duration: clubCfg.min_duration,
+      });
+      console.log(`[process-swing] Club ${cid} swing duration:`, swingDurResult.durationRationale);
 
-/* ------------------------------------------------------------------ */
-/*  Break Eligibility Evaluation                                       */
-/* ------------------------------------------------------------------ */
-async function evaluateBreakNeed(
-  admin: ReturnType<typeof createClient>,
-  dealerId: string,
-  shiftId: string | null,
-  clubId: string,
-  attendanceId: string,
-  _defaultBreakDuration: number,
-): Promise<{ should_break: boolean; reason: string; urgency: string }> {
-  const { data: policy } = await admin
-    .from("shift_break_policies")
-    .select("*")
-    .eq("club_id", clubId)
-    .eq("shift_type", "default")
-    .maybeSingle();
+      // ── PASS 3 — Execute swings at T-0 ──────────────────────────────────
+      const nowPlusBuf = new Date(Date.now() + SWING_WINDOW_BUFFER_MINUTES * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
 
-  const maxWork = policy?.max_work_before_mandatory_break_minutes ?? 120;
-  const minWork = policy?.min_work_before_break_minutes ?? 90;
+      const query = admin
+        .from("dealer_assignments")
+        .select(
+          `id, table_id, attendance_id, swing_due_at, version,
+           pre_assigned_attendance_id, overtime_started_at,
+           game_tables(club_id, table_name, table_type),
+             dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
+        )
+        .eq("status", "assigned")
+        .is("swing_processed_at", null)
+        .eq("game_tables.club_id", cid);
 
-  const { data: attendance } = await admin
-    .from("dealer_attendance")
-    .select("worked_minutes_since_last_break")
-    .eq("id", attendanceId)
-    .maybeSingle();
+      if (!forceAll) {
+        query.lte("swing_due_at", nowPlusBuf);
+      } else {
+        // forceAll: only process overdue assignments (swing_due_at already past)
+        // no created_at filter — shift may cross midnight
+        query.lte("swing_due_at", now);
+      }
 
-  if (!attendance) return { should_break: false, reason: "no_attendance", urgency: "none" };
+      const { data: dueAssignments, error: dueErr } = await query;
+      if (dueErr) {
+        console.error(`[process-swing] Pass 3 query error for club ${cid}:`, dueErr.message);
+        continue;
+      }
 
-  const workedMinutes = attendance.worked_minutes_since_last_break ?? 0;
+      // Pre-compute consistent swing_due_at for all Pass 3 swings
+      const pass3SwingDueAt = recomputeSwingDueAt(swingDurResult.durationMinutes);
 
-  // Mandatory
-  if (workedMinutes >= maxWork) {
-    return { should_break: true, reason: "mandatory", urgency: "immediate" };
-  }
-
-  // Eligible + balance deficit
-  if (workedMinutes >= minWork) {
-    const { data: metrics } = await admin
-      .from("dealer_shift_metrics")
-      .select("total_break_minutes")
-      .eq("attendance_id", attendanceId)
-      .maybeSingle();
-
-    const dealerBreak = metrics?.total_break_minutes ?? 0;
-
-    const { data: allMetrics } = await admin
-      .from("dealer_shift_metrics")
-      .select("total_break_minutes")
-      .eq("shift_id", shiftId);
-
-    const breakTimes: number[] = (allMetrics ?? []).map((m: any) => m.total_break_minutes ?? 0);
-    const avgBreak = breakTimes.length > 0
-      ? breakTimes.reduce((a: number, b: number) => a + b, 0) / breakTimes.length
-      : 0;
-    const deficit = avgBreak - dealerBreak;
-
-    // Coverage check
-    const { count: available } = await admin
-      .from("dealer_attendance")
-      .select("id", { count: "exact", head: true })
-      .eq("current_state", "available")
-      .in("club_id", await getClubIdsForDealers(admin, clubId));
-
-    const { count: activeTables } = await admin
-      .from("dealer_assignments")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "assigned")
-      .in("table_id", await getTableIdsForClub(admin, clubId));
-
-    const availCount = available ?? 0;
-    const activeCount = activeTables ?? 0;
-    const canCover = availCount - 1 >= Math.ceil(activeCount * 0.2);
-
-    if (deficit >= 10 && canCover) {
-      return { should_break: true, reason: "balance", urgency: "soon" };
-    }
-  }
-
-  return { should_break: false, reason: "none", urgency: "none" };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Fair Dealer Scoring (corrected algorithm)                          */
-/* ------------------------------------------------------------------ */
-async function pickNextDealer(
-  admin: ReturnType<typeof createClient>,
-  clubId: string,
-  shiftId: string | null,
-  _tableType: string,
-  tourTier: string,
-  _swingDurationMinutes: number,
-): Promise<{ attendance_id: string; dealer_id: string; dealer_name: string; tier: string } | null> {
-  const today = new Date().toISOString().split("T")[0];
-
-  // Available dealers
-  let q = admin
-    .from("dealer_attendance")
-    .select(`
-      id, dealer_id, shift_id, worked_minutes_since_last_break, current_state, priority_break_flag,
-      dealers!inner(id, full_name, tier, club_id)
-    `)
-    .eq("shift_date", today)
-    .eq("status", "checked_in")
-    .eq("current_state", "available")
-    .eq("dealers.club_id", clubId);
-
-  if (shiftId) q = q.eq("shift_id", shiftId);
-
-  const { data: available } = await q;
-  if (!available?.length) return null;
-
-  const dealerIds = available.map((a: any) => a.dealer_id);
-  const { data: metrics } = await admin
-    .from("dealer_shift_metrics")
-    .select("*")
-    .in("dealer_id", dealerIds)
-    .eq("shift_id", shiftId ?? "");
-
-  const metricsMap = new Map((metrics ?? []).map((m: any) => [m.dealer_id, m]));
-
-  // Averages for balance calculations
-  const allWorked: number[] = (metrics ?? []).map((m: any) => m.total_worked_minutes ?? 0);
-  const avgWorkedMinutes = allWorked.length > 0
-    ? allWorked.reduce((a: number, b: number) => a + b, 0) / allWorked.length
-    : 0;
-
-  const allBreak: number[] = (metrics ?? []).map((m: any) => m.total_break_minutes ?? 0);
-  const avgBreakMinutes = allBreak.length > 0
-    ? allBreak.reduce((a: number, b: number) => a + b, 0) / allBreak.length
-    : 0;
-
-  const allHv: number[] = (metrics ?? []).map((m: any) => m.high_value_assignments ?? 0);
-  const avgHv = allHv.length > 0
-    ? allHv.reduce((a: number, b: number) => a + b, 0) / allHv.length
-    : 0;
-
-  const scored = available.map((a: any) => {
-    const m = metricsMap.get(a.dealer_id);
-    const dealer = a.dealers;
-    let score = 0;
-
-    const totalAssignments = m?.total_assignments ?? 0;
-    const minutesSinceRest = m?.minutes_since_rest ?? 0;
-    const workedSinceBreak = a.worked_minutes_since_last_break ?? 0;
-    const dealerWorkedMinutes = m?.total_worked_minutes ?? 0;
-    const dealerBreakMinutes = m?.total_break_minutes ?? 0;
-    const dealerHv = m?.high_value_assignments ?? 0;
-
-    // P1: First-time bonus (dominant)
-    if (totalAssignments === 0) score += 1000;
-
-    // P2: Freshness — well-rested dealers get higher score
-    score += Math.min(200, minutesSinceRest * 1.5);
-
-    // P2.5: Fatigue penalty — tired dealers get LOWER score (CORRECTED)
-    const minutesUntilMandatory = 120 - workedSinceBreak;
-    if (minutesUntilMandatory < 30) {
-      score -= (30 - minutesUntilMandatory) * 2;
-    }
-
-    // P3: Workload balance — less-worked dealers get bonus
-    score += (avgWorkedMinutes - dealerWorkedMinutes) * 0.3;
-
-    // P4: Break balance — MORE break = HIGHER score (CORRECTED)
-    score += (dealerBreakMinutes - avgBreakMinutes) * 0.4;
-
-    // P5: Tier matching
-    const tierNum = dealer.tier === "A" ? 3 : dealer.tier === "B" ? 2 : 1;
-    const tableTierNum = tourTier === "HIGH" ? 3 : tourTier === "MEDIUM" ? 2 : 1;
-    if (tierNum >= tableTierNum + 1) score += 30;
-    else if (tierNum === tableTierNum) score += 20;
-    else if (tierNum === tableTierNum - 1) score += 5;
-
-    // P6: Skill (simplified)
-    score += 10;
-
-    // P7: High-value rotation
-    if (tourTier === "HIGH") {
-      score += (avgHv - dealerHv) * 3;
-    }
-
-    return {
-      attendance_id: a.id,
-      dealer_id: a.dealer_id,
-      dealer_name: dealer.full_name,
-      tier: dealer.tier,
-      score,
-    };
-  }).sort((a: any, b: any) => b.score - a.score);
-
-  return scored[0] ?? null;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Telegram Notification (async with retry + exponential backoff)     */
-/* ------------------------------------------------------------------ */
-async function sendTelegramNotification(
-  admin: ReturnType<typeof createClient>,
-  botToken: string,
-  defaultChatId: string,
-  table: any,
-  oldDealerName: string,
-  newDealerName: string | null,
-  assignmentId: string,
-) {
-  if (!botToken) return;
-
-  const msg = newDealerName
-    ? `⏰ Đổi ca: ${table.table_name} — ${oldDealerName} ra, ${newDealerName} vào.`
-    : `⚠️ Bàn ${table.table_name}: ${oldDealerName} đã xong ca — CHƯA CÓ DEALER THAY!`;
-
-  try {
-    const { data: cs } = await admin
-      .from("club_settings")
-      .select("telegram_chat_id")
-      .eq("club_id", table.club_id)
-      .maybeSingle();
-
-    const chatId = (cs as any)?.telegram_chat_id || defaultChatId;
-    if (!chatId) return;
-
-    const MAX_RETRIES = 3;
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      try {
-        const tgRes = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendMessage`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: String(chatId), text: msg, parse_mode: "HTML", disable_web_page_preview: true }),
-          },
+      for (const assignment of dueAssignments ?? []) {
+        metrics.total++;
+        const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
+        const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
+        const minsLeft = Math.round(
+          (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
         );
 
-        if (tgRes.ok) return;
+        if (assignment.pre_assigned_attendance_id) {
+          const breakDecision = await evaluateBreakNeed(admin, assignment.attendance_id, {
+            maxWorkMinutes: Math.max(DEFAULT_MAX_WORK_MINUTES, swingDurResult.durationMinutes * 3),
+            minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
+            clubId: cid,
+          });
 
-        console.error("Telegram retry", i + 1, tgRes.status, await tgRes.text());
-        if (i === MAX_RETRIES - 1) {
-          await admin.from("swing_audit_logs").insert({
-            club_id: table.club_id,
-            assignment_id: assignmentId,
-            action: "telegram_failed",
-            details: { message: msg, chat_id: chatId },
-            error_message: `HTTP ${tgRes.status}`,
-            triggered_by: "system",
-          }).catch(() => {});
+          const { data: rpcResult, error: rpcErr } = await admin.rpc(
+            "execute_pre_assigned_swing",
+            {
+              p_old_assignment_id:  assignment.id,
+              p_next_attendance_id: assignment.pre_assigned_attendance_id,
+              p_swing_due_at:       pass3SwingDueAt,
+              p_duration_minutes:   swingDurResult.durationMinutes,
+              p_send_to_break:      breakDecision.shouldBreak,
+            }
+          );
+
+          if (rpcErr) {
+            console.error("[process-swing] execute_pre_assigned_swing RPC error:", rpcErr.message);
+            metrics.failed++;
+            continue;
+          }
+
+          switch (rpcResult?.status) {
+            case "success":
+              metrics.success++;
+              cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
+              // Incoming dealer swing notification
+              notifier?.enqueue({
+                type: "swing_in",
+                tableName,
+                zone: clubZone,
+                dealerName: rpcResult.incoming_name ?? "Unknown",
+                username: null,
+              } satisfies SwingInEvent);
+              // Outgoing dealer break notification
+              if (breakDecision.shouldBreak) {
+                const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
+                notifier?.enqueue({
+                  type: "break_start",
+                  dealerName: outgoingDealer.full_name,
+                  username: outgoingUsername,
+                  durationMin: clubCfg.break_duration_minutes,
+                } satisfies BreakStartEvent);
+              }
+              break;
+
+            case "race_lost":
+              cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
+              console.warn(
+                `[process-swing] Pre-assigned race_lost for ${tableName}`
+              );
+              break;
+
+            default:
+              console.error("[process-swing] execute_pre_assigned_swing failed:", rpcResult);
+              metrics.failed++;
+              break;
+          }
+        } else {
+          // ── Non-pre-assigned path ─────────────────────────────────────
+          const isOtDealer = !!(assignment as any).overtime_started_at;
+
+          // INVARIANT: OT dealer MUST go to break when finally relieved.
+          // Do NOT rely on evaluateBreakNeed here — worked_minutes_since_last_break
+          // is stale and may read 0, causing shouldBreak = false even after 2hr OT.
+          const breakDecision = isOtDealer
+            ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
+            : await evaluateBreakNeed(admin, assignment.attendance_id, {
+                maxWorkMinutes: swingDurResult.durationMinutes * 3,
+                minWorkMinutes: swingDurResult.durationMinutes * 2,
+                clubId: cid,
+              });
+
+          const nextExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
+          const nextDealer = await pickNextDealer(admin, cid, {
+            currentTableId: assignment.table_id,
+            excludeAttendanceIds: nextExcludes,
+            requiredGameTypes: required_game_types,
+          });
+
+          const { data: swingResult } = await admin.rpc("perform_swing", {
+            p_assignment_id: assignment.id,
+            p_version: assignment.version,
+            p_next_attendance_id: nextDealer?.id ?? null,
+            p_send_to_break: breakDecision.shouldBreak,
+            p_break_duration_minutes: clubCfg.break_duration_minutes,
+            p_swing_duration_minutes: swingDurResult.durationMinutes,
+            p_swing_due_at: pass3SwingDueAt,
+          });
+
+          const outcome = swingResult?.outcome ?? "failed";
+
+          if (outcome === "swung") {
+            metrics.success++;
+            if (nextDealer?.id) cycleExcludedIds.add(nextDealer.id);
+            // Incoming dealer swing notification
+            if (nextDealer) {
+              notifier?.enqueue({
+                type: "swing_in",
+                tableName,
+                zone: clubZone,
+                dealerName: nextDealer.full_name,
+                username: nextDealer.telegram_username ?? null,
+              } satisfies SwingInEvent);
+            }
+            // Outgoing dealer break notification
+            if (breakDecision.shouldBreak) {
+              const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
+              notifier?.enqueue({
+                type: "break_start",
+                dealerName: outgoingDealer.full_name,
+                username: outgoingUsername,
+                durationMin: clubCfg.break_duration_minutes,
+              } satisfies BreakStartEvent);
+            }
+          } else if (outcome === "no_dealer") {
+            metrics.no_dealer++;
+            // INVARIANT: is_new_overtime is only true on the FIRST no_dealer call
+            // for this assignment. Subsequent retries return is_new_overtime = false.
+            // This prevents Telegram spam on every cron tick.
+            if (swingResult?.is_new_overtime === true) {
+              const chatId = await getClubTelegramChatId(admin, cid);
+              if (botToken && chatId) {
+                await sendTelegramNotification(
+                  botToken, chatId,
+                  `⏱ *Bàn ${tableName}* — ${outgoingDealer.full_name} đang làm thêm giờ (không có dealer thay).\nSẽ xoay vòng khi có dealer mới hoặc bàn đóng.`,
+                  {}
+                );
+              }
+            }
+          } else if (outcome === "swing_skipped") {
+            metrics.skipped++;
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (botToken && chatId) {
+              await sendTelegramNotification(botToken, chatId,
+                formatSwingSkippedAlert(tableName, swingResult.retry_count), {});
+              await notifyFloorManagerDM(botToken, admin, cid,
+                formatSwingSkippedAlert(tableName, swingResult.retry_count));
+            }
+          } else {
+            metrics.failed++;
+          }
         }
-      } catch {
-        if (i === MAX_RETRIES - 1) throw;
       }
-      await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i)));
+
+      // ── All-tables-OT alert ──────────────────────────────────────────────
+      // INVARIANT: only alert when ALL due assignments are in OT (not just some).
+      // Partial OT is normal. All-OT means the pool is completely exhausted
+      // and floor intervention is needed.
+      const otCount = (dueAssignments ?? []).filter(
+        (a: any) => a.overtime_started_at
+      ).length;
+      const totalDue = (dueAssignments ?? []).length;
+      if (otCount > 0 && otCount === totalDue && totalDue > 0) {
+        const chatId = await getClubTelegramChatId(admin, cid);
+        if (botToken && chatId) {
+          await sendTelegramNotification(
+            botToken, chatId,
+            `🚨 *TOÀN BỘ ${otCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
+            {}
+          );
+        }
+      }
+
+      // Flush TelegramNotifier (fire-and-forget)
+      notifier?.flush().catch((err) =>
+        console.warn("[process-swing] notifier flush error:", err.message)
+      );
+
+      // ── Write metrics using club-local date ────────────────────────────
+      const localDate = await getClubLocalDate(admin, cid);
+      if (metrics.total > 0 || metrics.skipped > 0) {
+        await admin.from("swing_metrics").upsert(
+          {
+            club_id: cid,
+            date: localDate,
+            total_swings: metrics.total,
+            successful_swings: metrics.success,
+            failed_swings: metrics.failed,
+            no_dealer_swings: metrics.no_dealer,
+            skipped_swings: metrics.skipped,
+            telegram_failures: metrics.tg_failed,
+          },
+          { onConflict: "club_id,date", ignoreDuplicates: false }
+        );
+      }
+    } finally {
+      if (!manualTrigger) {
+        await releaseClubLock(admin, cid);
+      }
     }
-  } catch (err) {
-    console.error("Telegram failed:", err);
   }
-}
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-async function getClubIdsForDealers(admin: ReturnType<typeof createClient>, clubId: string): Promise<string[]> {
-  const { data } = await admin.from("dealers").select("club_id").eq("club_id", clubId).limit(1);
-  return [clubId];
+  const processingMs = Date.now() - startTime;
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      processing_ms: processingMs,
+      metrics: metricsPerClub,
+      dry_run: dryRun,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return new Response(
+    JSON.stringify({ error: "Internal error", detail: msg }),
+    {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }
+  );
 }
+});
 
-async function getTableIdsForClub(admin: ReturnType<typeof createClient>, clubId: string): Promise<string[]> {
-  const { data } = await admin.from("game_tables").select("id").eq("club_id", clubId).eq("status", "active");
-  return (data ?? []).map((t: any) => t.id);
+function formatSwingSkippedAlert(tableName: string, retryCount: number): string {
+  return `🚨 *Bàn ${tableName}* — Không có dealer thay sau ${retryCount} lần thử. Cần can thiệp thủ công!`;
 }

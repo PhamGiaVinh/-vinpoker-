@@ -1,4 +1,19 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+/**
+ * manage-break/index.ts
+ *
+ * [FIX-Timeout] Telegram calls wrapped in withTimeout (5s) — never block response
+ * [FIX-Return] Critical path returns before Telegram side-effect
+ * [FIX-TournamentBreak] tournament_break action uses single atomic DB RPC
+ */
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  sendTelegramNotification,
+  getClubTelegramChatId,
+  notifyDealerDM,
+  formatTournamentBreakMessage,
+  formatBreakMessage,
+} from "../_shared/telegram.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,229 +21,195 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T | null> {
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => {
+      console.warn(`[Timeout] ${label} exceeded ${ms}ms — skipping`);
+      resolve(null);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]);
+}
+
+Deno.serve(async (req: Request) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
-    const defaultChatId = Deno.env.get("TELEGRAM_DEFAULT_CHAT_ID")!;
-
-    const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
-    const admin = createClient(url, service);
-
-    const { data: u, error: ue } = await userClient.auth.getUser();
-    if (ue || !u?.user) return json({ error: "Unauthorized" }, 401);
-    const uid = u.user.id;
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 
     const body = await req.json().catch(() => ({}));
-    const { attendance_id, action, requested_by } = body ?? {};
-    if (!attendance_id || !["start", "end"].includes(action)) {
-      return json({ error: "attendance_id and action (start|end) required" }, 400);
-    }
+    const { action, attendance_id, club_id, duration_minutes = 20 } = body;
 
-    if (action === "start") {
-      // Find current assignment for this dealer attendance
-      const { data: assignment, error: ae } = await admin
+    switch (action) {
+    case "start": {
+      const { data: assignment, error: aErr } = await admin
         .from("dealer_assignments")
-        .select(`
-          id, table_id, status, version,
-          game_tables!inner(id, table_name, table_type, club_id)
-        `)
+        .select("id, version, table_id, game_tables(table_name)")
         .eq("attendance_id", attendance_id)
         .eq("status", "assigned")
-        .maybeSingle();
-
-      if (ae || !assignment) return json({ error: "No active assignment found for this dealer" }, 404);
-
-      // Check permissions
-      const table = assignment.game_tables as any;
-      const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });
-      if (!isControl) return json({ error: "Forbidden" }, 403);
-
-      // CAS update: set status to on_break
-      const { data: updated, error: ue2 } = await admin
-        .from("dealer_assignments")
-        .update({ status: "on_break" })
-        .eq("id", assignment.id)
-        .eq("version", assignment.version)
-        .eq("status", "assigned")
-        .select("id, version");
-
-      if (ue2 || !updated?.length) return json({ error: "Race condition — assignment was modified. Retry." }, 409);
-
-      // Get swing config for break duration
-      const { data: config } = await admin
-        .from("swing_config")
-        .select("break_duration_minutes")
-        .eq("club_id", table.club_id)
-        .eq("table_type", table.table_type)
-        .maybeSingle();
-
-      const breakDuration = config?.break_duration_minutes ?? 20;
-
-      // Create break record
-      const { data: breakRecord, error: be } = await admin
-        .from("dealer_breaks")
-        .insert({
-          assignment_id: assignment.id,
-          break_start: new Date().toISOString(),
-          expected_duration_minutes: breakDuration,
-        })
-        .select("id")
         .single();
 
-      if (be) return json({ error: be.message }, 500);
+      if (aErr || !assignment) {
+        return json({ error: "No active assignment found" }, 404);
+      }
 
-      // Audit log
-      await admin.from("audit_logs").insert({
-        club_id: table.club_id,
-        actor_id: requested_by ?? uid,
-        action: "break_start",
-        entity_type: "dealer_assignment",
-        entity_id: assignment.id,
-        payload: { table_id: table.id, break_id: breakRecord.id, break_duration: breakDuration },
-      });
-
-      return json({
-        status: "break_started",
-        assignment_id: assignment.id,
-        break_id: breakRecord.id,
-        expected_end_at: new Date(Date.now() + breakDuration * 60 * 1000).toISOString(),
-      });
-    }
-
-    if (action === "end") {
-      // Find current on_break assignment
-      const { data: assignment, error: ae } = await admin
+      const { error: casErr } = await admin
         .from("dealer_assignments")
-        .select(`
-          id, table_id, status, version,
-          game_tables!inner(id, table_name, table_type, club_id)
-        `)
-        .eq("attendance_id", attendance_id)
-        .eq("status", "on_break")
-        .maybeSingle();
-
-      if (ae || !assignment) return json({ error: "No active break found for this dealer" }, 404);
-
-      const table = assignment.game_tables as any;
-      const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });
-      if (!isControl) return json({ error: "Forbidden" }, 403);
-
-      // CAS update: set status back to assigned
-      const { data: updated, error: ue2 } = await admin
-        .from("dealer_assignments")
-        .update({ status: "assigned" })
+        .update({ status: "on_break", version: assignment.version + 1 })
         .eq("id", assignment.id)
-        .eq("version", assignment.version)
-        .eq("status", "on_break")
-        .select("id, version");
+        .eq("version", assignment.version);
 
-      if (ue2 || !updated?.length) return json({ error: "Race condition — break was modified. Retry." }, 409);
+      if (casErr) return json({ error: "CAS conflict, try again" }, 409);
 
-      // Close break record
-      const { data: breakRec } = await admin
-        .from("dealer_breaks")
-        .select("id")
-        .eq("assignment_id", assignment.id)
-        .is("break_end", null)
-        .order("break_start", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (breakRec) {
-        await admin.from("dealer_breaks").update({ break_end: new Date().toISOString() }).eq("id", breakRec.id);
-      }
-
-      // Get swing config for break_return_policy
-      const { data: config } = await admin
-        .from("swing_config")
-        .select("break_return_policy")
-        .eq("club_id", table.club_id)
-        .eq("table_type", table.table_type)
-        .maybeSingle();
-
-      const returnPolicy = config?.break_return_policy ?? "fifo";
-
-      let newTableId = table.id;
-
-      // If return policy is not same_table, find a new table
-      if (returnPolicy !== "same_table") {
-        const { data: needyTables } = await admin
-          .from("game_tables")
-          .select(`
-            id, table_name,
-            dealer_assignments!left(id, status)
-          `)
-          .eq("club_id", table.club_id)
-          .eq("status", "active")
-          .order("created_at", { ascending: true });
-
-        // Find tables with no current assignment (empty)
-        const emptyTable = (needyTables ?? []).find((t: any) =>
-          !(t.dealer_assignments ?? []).some((da: any) => da.status === "assigned" || da.status === "on_break")
-        );
-
-        if (emptyTable) {
-          newTableId = emptyTable.id;
-
-          // Release from old table, assign to new
-          await admin
-            .from("dealer_assignments")
-            .update({ released_at: new Date().toISOString(), status: "completed" })
-            .eq("id", assignment.id);
-
-          const { data: newAssignment } = await admin
-            .from("dealer_assignments")
-            .insert({
-              attendance_id,
-              table_id: newTableId,
-              assigned_at: new Date().toISOString(),
-              status: "assigned",
-              idempotency_key: `break-return-${assignment.id}-${Date.now()}`,
-            })
-            .select("id")
-            .single();
-
-          await admin.from("audit_logs").insert({
-            club_id: table.club_id,
-            actor_id: requested_by ?? uid,
-            action: "break_return_reroute",
-            entity_type: "dealer_assignment",
-            entity_id: newAssignment?.id ?? assignment.id,
-            payload: { from_table: table.id, to_table: newTableId, policy: returnPolicy },
-          });
-        }
-      }
-
-      // Audit log
-      await admin.from("audit_logs").insert({
-        club_id: table.club_id,
-        actor_id: requested_by ?? uid,
-        action: "break_end",
-        entity_type: "dealer_assignment",
-        entity_id: assignment.id,
-        payload: { table_id: newTableId, return_policy: returnPolicy },
-      });
-
-      return json({
-        status: "break_ended",
+      await admin.from("dealer_breaks").insert({
         assignment_id: assignment.id,
-        returning_to_table: newTableId,
+        break_start: new Date().toISOString(),
+        expected_duration_minutes: duration_minutes,
+        reason: "manual",
       });
+
+      await admin
+        .from("dealer_attendance")
+        .update({ current_state: "on_break" })
+        .eq("id", attendance_id);
+
+      // === CRITICAL PATH DONE — return immediately ===
+      const response = json({ ok: true, action: "started" });
+
+      // === SIDE EFFECT — Telegram sent async, no await ===
+      if (botToken) {
+        withTimeout(
+          (async () => {
+            const { data: dealer } = await admin
+              .from("dealer_attendance")
+              .select("dealers(full_name, telegram_user_id, telegram_username)")
+              .eq("id", attendance_id)
+              .single();
+
+            if (!dealer?.dealers) return;
+            const name = dealer.dealers.full_name ?? "Dealer";
+            const chatId = await getClubTelegramChatId(admin, club_id);
+            if (chatId) {
+              await sendTelegramNotification(
+                botToken,
+                chatId,
+                formatBreakMessage({ dealer: { full_name: name }, durationMinutes: duration_minutes }),
+                {}
+              );
+            }
+          })(),
+          5000,
+          "manage-break Telegram notification"
+        ).catch((err) => {
+          console.warn("[manage-break] Telegram side-effect error:", err);
+        });
+      }
+
+      return response;
     }
 
-    return json({ error: "Invalid action" }, 400);
-  } catch (e) {
-    return json({ error: (e as Error).message }, 500);
+    case "end":
+    case "return_from_break": {
+      const { data: rpcResult, error: rpcErr } = await admin.rpc(
+        "complete_dealer_break",
+        { p_attendance_id: attendance_id }
+      );
+
+      if (rpcErr) return json({ error: rpcErr.message }, 500);
+      return json({ ok: true, result: rpcResult });
+    }
+
+    case "tournament_break": {
+      const { data: rpcResult, error: rpcErr } = await admin.rpc(
+        "tournament_break_all_tables",
+        {
+          p_club_id: club_id,
+          p_duration_minutes: duration_minutes,
+          p_reason: "tournament_break",
+        }
+      );
+
+      if (rpcErr) {
+        console.error("[manage-break] tournament_break_all_tables RPC error:", rpcErr.message);
+        return json({ error: rpcErr.message }, 500);
+      }
+
+      const affectedDealers: Array<{
+        attendance_id: string;
+        full_name: string;
+        telegram_user_id?: string;
+        table_name: string;
+      }> = rpcResult?.affected_dealers ?? [];
+
+      const tableCount = affectedDealers.length;
+
+      const response = json({
+        ok: true,
+        affected_tables: tableCount,
+        duration_minutes,
+      });
+
+      if (botToken && tableCount > 0) {
+        withTimeout(
+          (async () => {
+            const chatId = await getClubTelegramChatId(admin, club_id);
+            if (chatId) {
+              await sendTelegramNotification(
+                botToken,
+                chatId,
+                formatTournamentBreakMessage({
+                  durationMinutes: duration_minutes,
+                  dealerCount: tableCount,
+                  tableCount,
+                }),
+                {}
+              );
+            }
+
+            const dmPromises = affectedDealers
+              .filter((d) => d.telegram_user_id)
+              .map((d) =>
+                notifyDealerDM(
+                  botToken,
+                  { telegram_user_id: d.telegram_user_id as any, full_name: d.full_name },
+                  `⏸ TOURNAMENT BREAK: ${duration_minutes} phút. Nghỉ ngơi đi nhé!`
+                )
+              );
+            await Promise.allSettled(dmPromises);
+          })(),
+          5000,
+          "manage-break tournament Telegram"
+        ).catch((err) => {
+          console.warn("[manage-break] Tournament Telegram side-effect error:", err);
+        });
+      }
+
+      return response;
+    }
+
+    default:
+      return json({ error: `Unknown action: ${action}` }, 400);
+    }
+  } catch (err) {
+    console.error("[manage-break] Unhandled error:", err);
+    return json({ error: "Internal error" }, 500);
   }
 });

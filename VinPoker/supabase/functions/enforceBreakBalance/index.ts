@@ -1,4 +1,12 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  sendTelegramNotification,
+  getClubTelegramChatId,
+  notifyDealerDM,
+  formatBreakAlertMessage,
+  formatForceBreakMessage,
+} from "../_shared/telegram.ts";
+import { getTableIdsForClub } from "../_shared/dealer-utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,240 +14,290 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+const DETECTION_BUFFER_MINUTES = 10;
 
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const body = await req.json().catch(() => ({}));
+  const { club_id: clubId, dry_run: dryRun = false } = body;
 
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
-    const defaultChatId = Deno.env.get("TELEGRAM_DEFAULT_CHAT_ID");
+  let clubIds: string[] = [];
+  if (clubId) {
+    clubIds = [clubId];
+  } else {
+    const { data: clubs } = await admin
+      .from("clubs")
+      .select("id")
+      .eq("status", "active");
+    clubIds = (clubs ?? []).map((c: { id: string }) => c.id);
+  }
 
-    const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
-    const admin = createClient(url, service);
+  const summary: Record<string, { forced: number; flagged: number; errors: number }> = {};
 
-    const { data: u, error: ue } = await userClient.auth.getUser();
-    if (ue || !u?.user) return json({ error: "Unauthorized" }, 401);
+  for (const cid of clubIds) {
+    summary[cid] = { forced: 0, flagged: 0, errors: 0 };
 
-    const body = await req.json().catch(() => ({}));
-    const { club_id, dry_run } = body ?? {};
+    const { data: policy } = await admin
+      .from("shift_break_policies")
+      .select("max_work_before_mandatory_break_minutes")
+      .eq("club_id", cid)
+      .single();
 
-    const results: {
-      club_id: string;
-      available_forced: number;
-      assigned_flagged: number;
-      errors: string[];
-      details: any[];
-    }[] = [];
+    const maxWork = policy?.max_work_before_mandatory_break_minutes ?? 120;
+    const detectionThreshold = maxWork - DETECTION_BUFFER_MINUTES;
 
-    // Get all clubs with active dealers, or just the specified one
-    let clubQuery = admin.from("clubs").select("id, name");
-    if (club_id) clubQuery = clubQuery.eq("id", club_id);
-    const { data: clubs } = await clubQuery;
-    if (!clubs?.length) return json({ status: "no_clubs", results: [] });
+    const { data: dealers } = await admin
+      .from("dealer_attendance")
+      .select(
+        `id, current_state, worked_minutes_since_last_break, priority_break_flag,
+         dealers(full_name, telegram_user_id, telegram_username, club_id)`
+      )
+      .eq("status", "checked_in")
+      .eq("dealers.club_id", cid);
 
-    const today = new Date().toISOString().split("T")[0];
-    const now = new Date().toISOString();
+    // ── Deadlock detection: pool exhausted + swings overdue ──────────
+    const availCount = (dealers ?? []).filter(
+      (d: { current_state: string }) => d.current_state === "available"
+    ).length;
+    const assignCount = (dealers ?? []).filter(
+      (d: { current_state: string }) => d.current_state === "assigned"
+    ).length;
 
-    for (const club of clubs) {
-      const clubResult = {
-        club_id: club.id,
-        available_forced: 0,
-        assigned_flagged: 0,
-        errors: [] as string[],
-        details: [] as any[],
-      };
-      results.push(clubResult);
+    if (availCount === 0 && assignCount > 0) {
+      const { data: overdueSwings } = await admin
+        .from("dealer_assignments")
+        .select("id, attendance_id")
+        .eq("status", "assigned")
+        .lt("swing_due_at", new Date().toISOString())
+        .in("table_id", await getTableIdsForClub(admin, cid));
 
-      try {
-        // Get break policy for this club
-        const { data: policy } = await admin
-          .from("shift_break_policies")
-          .select("*")
-          .eq("club_id", club.id)
-          .eq("shift_type", "default")
-          .maybeSingle();
+      if ((overdueSwings ?? []).length > 0) {
+        const longestAssigned = (dealers ?? [])
+          .filter((d: { current_state: string }) => d.current_state === "assigned")
+          .sort(
+            (a: { worked_minutes_since_last_break?: number }, b: { worked_minutes_since_last_break?: number }) =>
+              (b.worked_minutes_since_last_break ?? 0) - (a.worked_minutes_since_last_break ?? 0)
+          )
+          .slice(0, Math.max(1, Math.ceil(assignCount * 0.3)));
 
-        const maxWorkThreshold = policy?.max_work_before_mandatory_break_minutes ?? 120;
-
-        // Get all checked-in dealers with current assignments
-        const { data: attendanceRows } = await admin
-          .from("dealer_attendance")
-          .select(`
-            id, dealer_id, shift_id, current_state, worked_minutes_since_last_break, priority_break_flag,
-            dealers!inner(id, full_name, club_id)
-          `)
-          .eq("shift_date", today)
-          .eq("status", "checked_in")
-          .eq("dealers.club_id", club.id);
-
-        if (!attendanceRows?.length) continue;
-
-        // Get active assignments for these attendance records
-        const attIds = attendanceRows.map((r: any) => r.id);
-        const { data: activeAssignments } = await admin
-          .from("dealer_assignments")
-          .select("id, attendance_id, table_id, status, released_at")
-          .in("status", ["assigned", "on_break"])
-          .in("attendance_id", attIds);
-
-        const assignmentMap: Record<string, any> = {};
-        for (const a of activeAssignments ?? []) {
-          if (!assignmentMap[a.attendance_id]) assignmentMap[a.attendance_id] = a;
-        }
-
-        // Swing config for break duration
-        const { data: swingConfig } = await admin
-          .from("swing_config")
-          .select("break_duration_minutes")
-          .eq("club_id", club.id)
-          .eq("table_type", "cash")
-          .maybeSingle();
-
-        const breakDuration = swingConfig?.break_duration_minutes ?? 20;
-
-        for (const att of attendanceRows as any[]) {
-          const worked = att.worked_minutes_since_last_break ?? 0;
-          const currentState = att.current_state ?? "available";
-          const assignment = assignmentMap[att.id];
-
-          // Dealers on break are fine
-          if (currentState === "on_break") continue;
-
-          // Dealers who've exceeded mandatory threshold
-          if (worked >= maxWorkThreshold) {
-            if (currentState === "available" && !assignment) {
-              // Auto-send available dealer to break
-              clubResult.details.push({
-                dealer_id: att.dealer_id,
-                dealer_name: att.dealers?.full_name,
-                action: "force_break",
-                worked_minutes: worked,
-                threshold: maxWorkThreshold,
-              });
-
-              if (!dry_run) {
-                // Create a break-only assignment
-                const { data: breakAssignment, error: baErr } = await admin
-                  .from("dealer_assignments")
-                  .insert({
-                    attendance_id: att.id,
-                    table_id: null,
-                    assigned_at: now,
-                    status: "on_break",
-                    idempotency_key: `enforce-break-${att.id}-${today}`,
-                  })
-                  .select("id")
-                  .single();
-
-                if (baErr) {
-                  clubResult.errors.push(`Failed to create break assignment for ${att.dealers?.full_name}: ${baErr.message}`);
-                  continue;
-                }
-
-                // Create break record
-                await admin.from("dealer_breaks").insert({
-                  assignment_id: breakAssignment.id,
-                  break_start: now,
-                  expected_duration_minutes: breakDuration,
-                  is_auto_triggered: true,
-                });
-
-                // Update attendance state
-                await admin
-                  .from("dealer_attendance")
-                  .update({ current_state: "on_break", priority_break_flag: false })
-                  .eq("id", att.id);
-
-                // Audit log
-                await admin.from("swing_audit_logs").insert({
-                  club_id: club.id,
-                  action: "mandatory_break_enforced",
-                  old_dealer_id: att.dealer_id,
-                  details: {
-                    attendance_id: att.id,
-                    worked_minutes: worked,
-                    threshold: maxWorkThreshold,
-                    type: "available",
-                  },
-                  triggered_by: "system",
-                });
-
-                clubResult.available_forced++;
-              }
-            } else if (currentState === "assigned" || assignment) {
-              // Flag assigned dealer for priority break
-              clubResult.details.push({
-                dealer_id: att.dealer_id,
-                dealer_name: att.dealers?.full_name,
-                action: "flag_priority",
-                worked_minutes: worked,
-                threshold: maxWorkThreshold,
-              });
-
-              if (!dry_run && !att.priority_break_flag) {
-                await admin
-                  .from("dealer_attendance")
-                  .update({ priority_break_flag: true })
-                  .eq("id", att.id);
-
-                await admin.from("swing_audit_logs").insert({
-                  club_id: club.id,
-                  action: "priority_break_flagged",
-                  old_dealer_id: att.dealer_id,
-                  details: {
-                    attendance_id: att.id,
-                    worked_minutes: worked,
-                    threshold: maxWorkThreshold,
-                    type: "assigned",
-                  },
-                  triggered_by: "system",
-                });
-
-                // Send Telegram alert
-                if (botToken && defaultChatId) {
-                  const dealerName = att.dealers?.full_name ?? "Unknown";
-                  const msg = `⚠️ *Cảnh báo break*: ${dealerName} đã làm ${worked} phút tại ${club.name}. Cần cho nghỉ ngay!`;
-                  try {
-                    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        chat_id: defaultChatId,
-                        text: msg,
-                        parse_mode: "Markdown",
-                      }),
-                    });
-                  } catch { /* Telegram failures are non-critical */ }
-                }
-
-                clubResult.assigned_flagged++;
-              }
-            }
+        if (!dryRun) {
+          for (const d of longestAssigned) {
+            await admin.from("dealer_attendance")
+              .update({ current_state: "available" })
+              .eq("id", d.id);
           }
         }
-      } catch (e: any) {
-        clubResult.errors.push(`Club ${club.id}: ${e.message}`);
+
+        summary[cid].forced += longestAssigned.length;
+
+        if (botToken) {
+          const chatId = await getClubTelegramChatId(admin, cid);
+          if (chatId) {
+            await sendTelegramNotification(
+              botToken, chatId,
+              `⚠️ Pool dealer cạn kiệt — ${overdueSwings!.length} bàn chờ swing.\n` +
+              `Đã giải phóng ${longestAssigned.length} dealer lâu nhất để xử lý hàng đợi.`,
+              {}
+            );
+          }
+        }
+
+        console.log(`[enforceBreakBalance] Deadlock recovery for club ${cid}: ` +
+          `freed ${longestAssigned.length} dealers, ${overdueSwings!.length} swings overdue`);
       }
     }
 
-    return json({
-      status: dry_run ? "dry_run_complete" : "complete",
-      results,
-      summary: results.reduce((s, r) => ({
-        forced: s.forced + r.available_forced,
-        flagged: s.flagged + r.assigned_flagged,
-        errors: s.errors + r.errors.length,
-      }), { forced: 0, flagged: 0, errors: 0 }),
+    // ── OT Display Tracking ──────────────────────────────────────────────────
+    // INVARIANT: this OVERWRITES overtime_minutes, not accumulates.
+    // perform_swing ACCUMULATES (+=). enforceBreakBalance DISPLAYS (=).
+    // These serve different purposes:
+    //   enforceBreakBalance: shows current live OT session duration
+    //   perform_swing: records total OT across all sessions for payroll
+    // They don't conflict because perform_swing runs at swing time (session end)
+    // and immediately sets the final accumulated value, after which
+    // overtime_started_at = NULL so this query no longer touches that dealer.
+    if (!dryRun) {
+      const { data: otAssignments } = await admin
+        .from("dealer_assignments")
+        .select(`
+          id, attendance_id, overtime_started_at,
+          game_tables!inner(club_id, table_name)
+        `)
+        .not("overtime_started_at", "is", null)
+        .eq("status", "assigned")
+        .eq("game_tables.club_id", cid);
+
+      const otAlertLines: string[] = [];
+
+      for (const ota of otAssignments ?? []) {
+        const otMinutes = Math.floor(
+          (Date.now() - new Date(ota.overtime_started_at).getTime()) / 60000
+        );
+
+        // INVARIANT: write current session OT only (overwrite, not +=)
+        // The column shows "how long this dealer has been in OT right now"
+        await admin
+          .from("dealer_attendance")
+          .update({ overtime_minutes: otMinutes })
+          .eq("id", ota.attendance_id);
+
+        // Alert every 30 minutes of continuous OT
+        // INVARIANT: modulo check means alerts fire at 30, 60, 90... minutes
+        // Because enforceBreakBalance runs every 5 minutes, the check fires
+        // within 5 minutes of each 30-minute mark (e.g., fires at 30, 31, 32,
+        // 33, 34 minutes — all within the same 30-min bucket).
+        // To prevent 5 alerts at the 30-minute mark, add a tighter check:
+        if (otMinutes >= 30 && otMinutes % 30 < 5) {
+          otAlertLines.push(
+            `• Bàn ${(ota as any).game_tables?.table_name ?? "?"}: ${otMinutes} phút OT`
+          );
+        }
+      }
+
+      // Send one batch message for all OT alerts this cycle
+      if (otAlertLines.length > 0 && botToken) {
+        const chatId = await getClubTelegramChatId(admin, cid);
+        if (chatId) {
+          await sendTelegramNotification(
+            botToken, chatId,
+            `📊 *Cập nhật OT:*\n${otAlertLines.join("\n")}`,
+            {}
+          );
+        }
+      }
+    }
+
+    for (const dealer of dealers ?? []) {
+      try {
+        const worked = dealer.worked_minutes_since_last_break ?? 0;
+        if (worked < detectionThreshold) continue;
+
+        const name = dealer.dealers?.full_name ?? "Dealer";
+        const state = dealer.current_state;
+
+        if (state === "available") {
+          if (!dryRun) {
+            // [FIX-EB5] Lấy active assignment_id trước (dealer.id là attendance_id, không phải assignment_id)
+            const { data: activeAssignment } = await admin
+              .from("dealer_assignments")
+              .select("id")
+              .eq("attendance_id", dealer.id)
+              .eq("status", "assigned")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (!activeAssignment) {
+              console.warn(`[enforceBreak] No active assignment for attendance ${dealer.id} — skip`);
+              continue;
+            }
+
+            // [FIX-EB6] Double-break guard — skip nếu đã có break đang mở
+            const { data: existingBreak } = await admin
+              .from("dealer_breaks")
+              .select("id")
+              .eq("assignment_id", activeAssignment.id)
+              .is("break_end", null)
+              .maybeSingle();
+
+            if (existingBreak) {
+              console.log(`[enforceBreak] Open break exists for ${dealer.id} — skip`);
+              continue;
+            }
+
+            // [FIX-EB4] Insert với column names đúng
+            const { error: insertErr } = await admin
+              .from("dealer_breaks")
+              .insert({
+                assignment_id: activeAssignment.id,
+                break_start: new Date().toISOString(),
+                expected_duration_minutes: 15,
+                reason: "forced_balance",
+              });
+
+            if (insertErr) {
+              console.error(`[enforceBreak] Insert failed for ${dealer.id}:`, insertErr);
+              summary[cid].errors++;
+              continue;
+            }
+
+            // Update dealer state (current_state, priority_break_flag đã có sẵn từ code cũ)
+            await admin.from("dealer_attendance").update({
+              current_state: "on_break",
+              priority_break_flag: false,
+            }).eq("id", dealer.id);
+          }
+
+          summary[cid].forced++;
+
+          if (botToken) {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (chatId) {
+              await sendTelegramNotification(
+                botToken,
+                chatId,
+                formatForceBreakMessage({ dealer: { full_name: name }, durationMinutes: 15, reason: "Đã làm quá lâu — force break" }),
+                {}
+              );
+            }
+            if (dealer.dealers?.telegram_user_id) {
+              await notifyDealerDM(
+                botToken,
+                dealer.dealers.telegram_user_id,
+                `☕ Bạn đã làm ${worked} phút. Vui lòng nghỉ ngơi 15 phút.`
+              );
+            }
+          }
+        } else if (state === "assigned") {
+          if (!dryRun && !dealer.priority_break_flag) {
+            await admin
+              .from("dealer_attendance")
+              .update({ priority_break_flag: true })
+              .eq("id", dealer.id);
+          }
+
+          summary[cid].flagged++;
+
+          if (botToken) {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (chatId) {
+              await sendTelegramNotification(
+                botToken,
+                chatId,
+                formatBreakAlertMessage(
+                  name,
+                  `Đã làm ${worked} phút. Sẽ nghỉ sau swing tiếp theo.`
+                ),
+                {}
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[enforceBreak] Unexpected error for dealer ${dealer?.id ?? "unknown"}:`, err);
+        summary[cid].errors++;
+        continue;
+      }
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, dry_run: dryRun, summary }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: "Internal error", detail: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    return json({ error: (e as Error).message }, 500);
   }
 });

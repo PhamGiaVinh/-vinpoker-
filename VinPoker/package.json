@@ -13,6 +13,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "analyze": "vite build --mode analyze",
+    "deploy:functions": "supabase functions deploy --project-ref orlesggcjamwuknxwcpk",
+    "deploy:db": "supabase db push",
+    "deploy:all": "npm run build && supabase db push && supabase functions deploy --project-ref orlesggcjamwuknxwcpk",
     "postinstall": "node -e \"if(!process.env.VERCEL){require('child_process').execSync('npx playwright install chromium',{stdio:'inherit'})}\""
   },
   "dependencies": {

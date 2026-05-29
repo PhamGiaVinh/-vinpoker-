@@ -8,9 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -20,15 +26,22 @@ import {
 import { toast } from "sonner";
 import {
   useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
-  useSwingMetrics, useBreakPolicies,
+  useSwingMetrics, useBreakPolicies, useSpecialDates, useAvailableTables, usePreAssignedDealers, usePoolTables,
+  useOptimisticDealerCount, useNextDealerPredictions,
 } from "@/hooks/useDealerSwing";
-import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy } from "@/hooks/useDealerSwing";
+import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
+import DealerManagementTab from "./DealerManagementTab";
 import { exportToExcel } from "@/lib/exportExcel";
 import {
-  Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
+  Users,   Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   Send, FileSpreadsheet, DollarSign, Loader2, Clock, AlertTriangle,
-  Plus, MessageCircle, Save, Settings,
+  Plus, MessageCircle, Save, Settings, Trash2, Calendar as CalendarIcon, Zap, LayoutDashboard,
 } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
@@ -36,12 +49,16 @@ type Tour = { id: string; club_id: string; tour_name: string; start_time: string
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const genRef = useRef(0);
+  const clubIdsKey = useMemo(() => [...clubIds].sort().join(","), [clubIds]);
   const load = useCallback(async () => {
-    if (!clubIds.length) { setData([]); return; }
+    const gen = ++genRef.current;
+    if (!clubIds.length) { if (gen === genRef.current) setData([]); return; }
     setLoading(true);
     const { data: d } = await supabase.from("dealer_shifts").select("*").in("club_id", clubIds).order("start_time");
+    if (gen !== genRef.current) return;
     setData(d ?? []); setLoading(false);
-  }, [clubIds.join(",")]);
+  }, [clubIdsKey]);
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
 }
@@ -51,32 +68,47 @@ function useTours(clubIds: string[]) {
    ============================================================== */
 export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
-  const filteredClubIds = clubFilter ? [clubFilter] : clubIds;
+  const filteredClubIds = useMemo(() => {
+    const ids = clubFilter ? [clubFilter] : clubIds;
+    return [...ids].sort();
+  }, [clubFilter, clubIds]);
   const [selectedTour, setSelectedTour] = useState<string | null>(null);
 
-  const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds, selectedTour ?? undefined);
-  const { data: tables, loading: tablesLoading, refetch: refetchTables } = useActiveTables(filteredClubIds);
+  const { data: dealers, loading: dealersLoading, error: dealersError, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
+  const { data: allDealers } = useAllDealers(filteredClubIds);
+  const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useActiveTables(filteredClubIds);
+  const { data: availableTables, error: availableTablesError, refetch: refetchAvailableTables } = useAvailableTables(filteredClubIds);
+  const { data: poolTables, loading: poolLoading, error: poolError, refetch: refetchPoolTables } = usePoolTables(filteredClubIds);
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
+  const preAssignedMap = usePreAssignedDealers(assignments);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
   const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
   const breakPolicies = useBreakPolicies(filteredClubIds);
+  const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
+  const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(dealers?.length ?? 0);
+  const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds);
 
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
+  const [massAssignBusy, setMassAssignBusy] = useState(false);
+  const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
+  const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
-  const [checkinDealerId, setCheckinDealerId] = useState("");
+  const [checkinDealerIds, setCheckinDealerIds] = useState<string[]>([]);
   const [checkinDealers, setCheckinDealers] = useState<any[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutAttendanceId, setCheckoutAttendanceId] = useState("");
+  // Pool-based table creation state
   const [createTableOpen, setCreateTableOpen] = useState(false);
-  const [newTableName, setNewTableName] = useState("");
-  const [newTableType, setNewTableType] = useState("cash");
+  const [poolSearch, setPoolSearch] = useState("");
+  const [selectedPoolTableIds, setSelectedPoolTableIds] = useState<string[]>([]);
+  const [newTableType, setNewTableType] = useState("tournament");
 
   // Telegram config state
   const [telegramOpen, setTelegramOpen] = useState(false);
@@ -91,6 +123,32 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [payrollOpen, setPayrollOpen] = useState(false);
   const [payrollData, setPayrollData] = useState<any[] | null>(null);
   const [payrollClubSlug, setPayrollClubSlug] = useState("");
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollDatePreset, setPayrollDatePreset] = useState<"today" | "month" | "custom">("month");
+  const [payrollFromDate, setPayrollFromDate] = useState<Date>(() => {
+    const d = new Date(); d.setDate(1); return d;
+  });
+  const [payrollToDate, setPayrollToDate] = useState<Date>(new Date());
+  const [payrollEdits, setPayrollEdits] = useState<Record<string, { adjustedHours?: number; adjustedRate?: number }>>({});
+  const [payrollEditDealer, setPayrollEditDealer] = useState<string | null>(null);
+
+  const recalcPay = (row: any, edits: { adjustedHours?: number; adjustedRate?: number }) => {
+    const hours = edits.adjustedHours ?? row.total_hours;
+    const rate = edits.adjustedRate ?? row.hourly_rate_vnd;
+    const isPT = row.employment_type === "part_time";
+    const basePay = isPT ? hours * rate : (row.base_rate_vnd ?? hours * rate);
+    const otPay = (row.overtime_minutes ?? 0) / 60 * rate * 1.5;
+    return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
+  };
+
+  // Close table confirmation
+  const [closeTableConfirmId, setCloseTableConfirmId] = useState<string | null>(null);
+  const [closingTable, setClosingTable] = useState(false);
+
+  // Special dates dialog
+  const [specialDatesOpen, setSpecialDatesOpen] = useState(false);
+  const [sdForm, setSdForm] = useState({ date: "", label: "", multiplier: "1.5" });
+  const [sdSaving, setSdSaving] = useState(false);
 
   // Create tour state
   const [createTourOpen, setCreateTourOpen] = useState(false);
@@ -98,15 +156,69 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [newTourStartTime, setNewTourStartTime] = useState("");
   const [newTourEndTime, setNewTourEndTime] = useState("");
 
+  // Load auto_swing_enabled setting
+  useEffect(() => {
+    const cid = clubFilter || filteredClubIds[0];
+    if (!cid) return;
+    (async () => {
+      const { data } = await supabase
+        .from("club_settings")
+        .select("auto_swing_enabled")
+        .eq("club_id", cid)
+        .maybeSingle();
+      setAutoSwingEnabled((data as any)?.auto_swing_enabled ?? false);
+    })();
+  }, [clubFilter, filteredClubIds[0]]);
+
+  // When switching to a tour with no tables, force auto-swing OFF
+  useEffect(() => {
+    if (!selectedTour || !tables) return;
+    const hasTables = tables.some(t => t.shift_id === selectedTour);
+    if (!hasTables) setAutoSwingEnabled(false);
+  }, [selectedTour, tables]);
+
+  // Toggle auto-swing
+  const toggleAutoSwing = async () => {
+    const cid = clubFilter || filteredClubIds[0];
+    if (!cid) return;
+    const next = !autoSwingEnabled;
+    const { error } = await supabase
+      .from("club_settings")
+      .upsert({ club_id: cid, auto_swing_enabled: next }, { onConflict: "club_id" });
+    if (error) { toast.error(error.message); return; }
+    setAutoSwingEnabled(next);
+    toast.success(next ? "Auto-swing đã bật" : "Auto-swing đã tắt");
+    if (next) {
+      const result = await massAssign();
+      await refetchAssignments();
+      if (result === 0 && tables?.some(t => t.shift_id === selectedTour)) {
+        const freshTableAssignmentMap = Object.fromEntries(
+          (assignments ?? []).filter(a => a.status === "assigned").map(a => [a.table_id, a])
+        );
+        const hasEmptyTable = tables.some(t => t.shift_id === selectedTour && !freshTableAssignmentMap[t.id]);
+        if (hasEmptyTable) {
+          toast.warning("Không có dealer khả dụng cho bàn trống — cron sẽ retry sau");
+        }
+      }
+      try { await autoSwingAll(cid, selectedTour); }
+      catch (e) { console.error("[toggleAutoSwing] autoSwingAll failed", e); }
+    }
+  };
+
   const { user } = useAuth();
 
   const isSubmitting = useRef(false);
 
-  // Map tables to their current assignment
+  // INVARIANT: Must use `status === "assigned"` NOT `status !== "completed"`.
+  // dealer_assignments has status values: assigned, completed, on_break, swing_skipped.
+  // Using `!== "completed"` would match `on_break` records, and since .find() returns
+  // the first match (ordered by assigned_at ASC), old on_break assignments would shadow
+  // newer assigned ones — causing the UI to show a stale dealer on the table.
+  // See https://github.com/PhamGiaVinh/-vinpoker-/issues/... -- 2026-05-29 regression
   const tableAssignmentMap = useMemo(() => {
     const map: Record<string, DealerAssignment | null> = {};
     for (const t of tables ?? []) {
-      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status !== "completed");
+      const a = (assignments ?? []).find((a) => a.table_id === t.id && a.status === "assigned");
       map[t.id] = a ?? null;
     }
     return map;
@@ -117,18 +229,68 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     swingConfigs?.find((c) => (clubFilter ? c.club_id === clubFilter : true) && c.table_type === tableType);
 
   // Trigger auto-swing all
-  const autoSwingAll = async () => {
+  const autoSwingAll = async (clubId?: string | null, shiftId?: string | null) => {
     setSwingAllBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("process-swing", {});
-      if (error) { toast.error(error.message); return; }
-      toast.success(`Đã xử lý ${(data as any)?.processed ?? 0} swing`);
-      refetchAssignments();
-      refetchTables();
+      if (!clubId) clubId = clubFilter ?? filteredClubIds[0];
+      if (!clubId) { toast.error("Vui lòng chọn CLB"); setSwingAllBusy(false); return; }
+      const body: Record<string, any> = { manual_trigger: true };
+      if (clubId) body.club_id = clubId;
+      if (shiftId) body.shift_id = shiftId;
+      const { data, error } = await supabase.functions.invoke("process-swing", { body });
+      if (error) {
+        const ctx = (error as any)?.context;
+        let detail = `Lỗi ${ctx?.status ?? '?'}`;
+        try {
+          const respBody = await ctx?.text?.();
+          if (respBody) detail += `: ${respBody}`;
+        } catch { /* ignore */ }
+        toast.error(detail);
+        console.error("[autoSwingAll]", detail, error);
+        return;
+      }
+      toast.success(`Đã xử lý ${(data as any)?.processed_count ?? 0} swing`);
+      await Promise.all([
+        refetchAssignments(),
+        refetchTables(),
+        refetchDealers(),
+      ]);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setSwingAllBusy(false);
+    }
+  };
+
+  // Mass assign: fill empty tables. Returns assigned count.
+  const massAssign = async (): Promise<number> => {
+    const cid = clubFilter || filteredClubIds[0];
+    if (!cid) { toast.error("Vui lòng chọn CLB"); return 0; }
+    setMassAssignBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("mass-assign", {
+        body: { club_id: cid, shift_id: selectedTour ?? undefined },
+      });
+      if (error) {
+        const ctx = (error as any)?.context;
+        let detail = `Lỗi ${ctx?.status ?? '?'}`;
+        try { const rb = await ctx?.text?.(); if (rb) detail += `: ${rb}`; } catch {}
+        toast.error(detail);
+        console.error("[massAssign]", detail, error);
+        return 0;
+      }
+      const r = data as any;
+      toast.success(`Đã gán ${r.assigned ?? 0} bàn trống`);
+      await Promise.all([
+        refetchAssignments(),
+        refetchDealers(),
+      ]);
+      return r.assigned ?? 0;
+    } catch (e: any) {
+      toast.error(e.message);
+      return 0;
+    } finally {
+      setMassAssignBusy(false);
     }
   };
 
@@ -200,7 +362,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setProcessing(attendanceId);
     try {
       const { data, error } = await supabase.functions.invoke("manage-break", {
-        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id },
+        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0] },
       });
       if (error) { toast.error(error.message); return; }
       toast.success("Đã gửi dealer đi nghỉ");
@@ -209,7 +371,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       const breakName = breakDealer?.dealers?.full_name ?? "";
       const breakEnd = new Date(Date.now() + 15 * 60000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const tourName = getTourName();
-      sendTelegram(`☕ ${breakName} bắt đầu nghỉ${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`);
+      // fire-and-forget — never block UX, never show toast error
+      sendTelegram(`☕ ${breakName} bắt đầu nghỉ${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
+        .catch(() => {});
       refetchAssignments();
       refetchDealers();
     } catch (e: any) {
@@ -242,14 +406,53 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
   };
 
-  // Send Telegram notification
+  // Close table with dealer cleanup
+  const closeTable = async () => {
+    if (!closeTableConfirmId) return;
+    setClosingTable(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("close-table", {
+        body: { table_id: closeTableConfirmId, requested_by: user?.id },
+      });
+      if (error) {
+        let detail = error.message;
+        try { const b = await (error as any).context?.json(); detail = b?.error ?? detail; } catch {}
+        toast.error(`Lỗi đóng bàn: ${detail}`);
+        return;
+      }
+      const r = data as any;
+      if (r.had_dealer) {
+        toast.success("Đã đóng bàn và chuyển dealer sang break");
+      } else {
+        toast.success("Đã đóng bàn");
+      }
+      setCloseTableConfirmId(null);
+      refetchTables();
+      refetchAssignments();
+      refetchDealers();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setClosingTable(false);
+    }
+  };
+
+  // Send Telegram notification — fire-and-forget, silent fail
   const sendTelegram = async (message: string) => {
     const clubId = clubFilter ?? filteredClubIds[0];
     if (!clubId) return;
-    const { error } = await supabase.functions.invoke("telegram-swing-notifier", {
-      body: { chat_id: "__club__", message, club_id: clubId },
-    });
-    if (error) toast.error("Không gửi được Telegram, vui lòng kiểm tra kết nối.");
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const { error } = await supabase.functions.invoke("telegram-swing-notifier", {
+        body: { chat_id: "__club__", message, club_id: clubId },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (error) console.warn("[sendTelegram] Error:", error);
+    } catch {
+      // timeout or network error — non-critical, silent fail
+    }
   };
 
   // Get current tour name
@@ -259,31 +462,57 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return tour ? tour.tour_name : "";
   };
 
-  // Load dealers for manual check-in (exclude already checked-in today)
+  // Load dealers for manual check-in — exclude checked-in active dealers regardless of date
   const loadCheckinDealers = async () => {
     const { data: dealers } = await supabase
       .from("dealers")
       .select("id, full_name, tier")
       .in("club_id", filteredClubIds)
-      .eq("status", "scheduled")
+      .eq("status", "active")
       .order("full_name");
     if (!dealers?.length) { setCheckinDealers([]); return; }
+    const dealerIds = dealers.map((d) => d.id);
     const today = new Date().toISOString().split("T")[0];
-    const { data: checkedIn } = await supabase
+    // Layer 1: exclude dealers with any active checked-in attendance (all dates)
+    const { data: activeAtt } = await supabase
       .from("dealer_attendance")
       .select("dealer_id")
-      .eq("shift_date", today)
+      .in("dealer_id", dealerIds)
       .eq("status", "checked_in")
-      .in("dealer_id", dealers.map((d) => d.id));
-    const checkedInIds = new Set((checkedIn ?? []).map((c) => c.dealer_id));
-    setCheckinDealers(dealers.filter((d) => !checkedInIds.has(d.id)));
+      .in("current_state", ["available", "assigned", "on_break", "pre_assigned"]);
+    const activeCheckedInIds = new Set((activeAtt ?? []).map((a) => a.dealer_id));
+    // Backup layer: also check dealer_assignments for direct "sitting at table" evidence
+    const { data: activeAssigns } = await supabase
+      .from("dealer_assignments")
+      .select("dealer_id")
+      .eq("status", "assigned")
+      .in("dealer_id", dealerIds);
+    for (const a of activeAssigns ?? []) activeCheckedInIds.add(a.dealer_id);
+    const remainingIds = dealerIds.filter((id) => !activeCheckedInIds.has(id));
+    if (!remainingIds.length) { setCheckinDealers([]); return; }
+    // Layer 2: from remaining, only show those with no today attendance OR checked_out
+    const { data: todayAtt } = await supabase
+      .from("dealer_attendance")
+      .select("dealer_id, status")
+      .eq("shift_date", today)
+      .in("dealer_id", remainingIds);
+    const checkedOutIds = new Set(
+      (todayAtt ?? []).filter((a) => a.status === "checked_out").map((a) => a.dealer_id)
+    );
+    const withAttToday = new Set((todayAtt ?? []).map((a) => a.dealer_id));
+    const eligible = remainingIds
+      .filter((id) => !withAttToday.has(id) || checkedOutIds.has(id))
+      .map((id) => {
+        const d = dealers.find((x) => x.id === id)!;
+        return { ...d, wasCheckedOut: checkedOutIds.has(id) };
+      });
+    setCheckinDealers(eligible);
   };
 
-  // Manual check-in
+  // Manual check-in multiple dealers
   const doCheckin = async () => {
-    if (!checkinDealerId) return;
+    if (!checkinDealerIds.length) return;
     setProcessing("checkin");
-    // Find today's shift
     const today = new Date().toISOString().split("T")[0];
     const { data: shifts } = await supabase
       .from("dealer_shifts")
@@ -292,48 +521,147 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       .order("start_time")
       .limit(1);
     const shiftId = (shifts ?? [])[0]?.id;
+    let success = 0, fail = 0;
 
-    const { error } = await supabase.from("dealer_attendance").upsert({
-      dealer_id: checkinDealerId,
-      shift_id: shiftId ?? null,
-      shift_date: today,
-      status: "checked_in",
-      check_in_time: new Date().toISOString(),
-    }, { onConflict: "dealer_id, shift_id, shift_date", ignoreDuplicates: false });
-
+    for (const dealerId of checkinDealerIds) {
+      const { data: existing } = await supabase
+        .from("dealer_attendance")
+        .select("id")
+        .eq("dealer_id", dealerId)
+        .eq("shift_date", today)
+        .eq("status", "checked_out")
+        .limit(1);
+      if (existing?.length) {
+        const { error } = await supabase
+          .from("dealer_attendance")
+          .update({ status: "checked_in", current_state: "available", check_in_time: new Date().toISOString(), check_out_time: null })
+          .eq("id", existing[0].id);
+        if (error) { fail++; continue; }
+        success++;
+      } else {
+        // When shift_id is null, PostgreSQL UNIQUE won't deduplicate (NULL != NULL).
+        // Use partial index idx_attendance_no_shift for null shift_id case.
+        const conflictTarget = shiftId ? "dealer_id, shift_id, shift_date" : "dealer_id, shift_date";
+        const { error } = await supabase.from("dealer_attendance").upsert({
+          dealer_id: dealerId,
+          shift_id: shiftId ?? null,
+          shift_date: today,
+          status: "checked_in",
+          current_state: "available",
+          check_in_time: new Date().toISOString(),
+        }, { onConflict: conflictTarget, ignoreDuplicates: false });
+        if (error) { fail++; continue; }
+        success++;
+      }
+    }
     setProcessing(null);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Đã check-in dealer");
+    if (fail > 0) toast.warning(`Check-in: ${success} thành công, ${fail} thất bại`);
+    else toast.success(`Đã check-in ${success} dealer`);
     setCheckinOpen(false);
+    setCheckinDealerIds([]);
     refetchDealers();
   };
 
-  // Manual check-out (only if currently checked_in)
+  // ── Special Dates CRUD handlers (Bug 6) ─────────────────────────────────
+  async function handleAddSpecialDate() {
+    if (!sdForm.date) { toast.error("Vui lòng chọn ngày"); return; }
+    const mult = parseFloat(sdForm.multiplier);
+    if (isNaN(mult) || mult <= 0 || mult > 10) {
+      toast.error("Multiplier phải là số dương (VD: 1.5, 2.0)");
+      return;
+    }
+    setSdSaving(true);
+    try {
+      const { error } = await supabase.from("special_dates").insert({
+        club_id: clubFilter ?? filteredClubIds[0],
+        date: sdForm.date,
+        label: sdForm.label.trim() || null,
+        multiplier: mult,
+      });
+      if (error) throw error;
+      setSdForm({ date: "", label: "", multiplier: "1.5" });
+      await refetchSpecialDates();
+      toast.success("Đã thêm ngày đặc biệt");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Lỗi không xác định";
+      toast.error(`Thêm thất bại: ${msg}`);
+    } finally { setSdSaving(false); }
+  }
+
+  async function handleDeleteSpecialDate(id: string, label: string) {
+    if (!confirm(`Xóa ngày đặc biệt "${label || id}"?`)) return;
+    const { error } = await supabase.from("special_dates").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    await refetchSpecialDates();
+    toast.success("Đã xóa");
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Manual check-out via edge function (with pre_assigned cleanup)
   const doCheckout = async () => {
     if (!checkoutAttendanceId) return;
     setProcessing("checkout");
-    const { data: att } = await supabase
-      .from("dealer_attendance")
-      .select("status")
-      .eq("id", checkoutAttendanceId)
-      .single();
-    if (!att || att.status !== "checked_in") {
-      setProcessing(null);
-      toast.error("Dealer không trong trạng thái check-in");
+    const { data, error } = await supabase.functions.invoke("checkout-dealer", {
+      body: { attendance_id: checkoutAttendanceId },
+    });
+    setProcessing(null);
+    if (error) {
+      let detail = error.message || "Lỗi check-out dealer";
+      try {
+        const ctx = (error as any)?.context;
+        if (ctx?.json) {
+          const body = await ctx.json();
+          if (body?.error) detail = body.error;
+        }
+      } catch { /* ignore */ }
+      toast.error(detail);
       return;
     }
-    const { error } = await supabase
-      .from("dealer_attendance")
-      .update({
-        status: "checked_out",
-        check_out_time: new Date().toISOString(),
-      })
-      .eq("id", checkoutAttendanceId);
-    setProcessing(null);
-    if (error) { toast.error(error.message); return; }
+    if (data?.released_pre_assigned) {
+      toast.warning(`Dealer đang pre_assigned cho bàn ${data.pre_assigned_table ?? "?"} được release`);
+    }
     toast.success("Đã check-out dealer");
     setCheckoutOpen(false);
-    refetchDealers();
+    onOptCheckout();
+    setTimeout(refetchDealers, 50);
+  };
+
+  // Batch checkout via edge function
+  const doBatchCheckout = async (ids: string[]) => {
+    if (!ids.length) return;
+    setProcessing("checkout");
+    try {
+      const { data, error } = await supabase.functions.invoke("checkout-dealer", {
+        body: { attendance_ids: ids },
+      });
+      if (error) {
+        let detail = error.message || "Lỗi checkout hàng loạt";
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx?.json) {
+            const body = await ctx.json();
+            if (body?.error) detail = body.error;
+          }
+        } catch { /* ignore */ }
+        toast.error(detail);
+        return;
+      }
+      const results = (data as any)?.results ?? [];
+      const successCount = results.filter((r: any) => r.success).length;
+      if (successCount > 0) {
+        toast.success(`Đã checkout ${successCount}/${ids.length} dealer`);
+      }
+      if (successCount < ids.length) {
+        const failed = results.filter((r: any) => !r.success);
+        toast.error(`${failed.length} dealer thất bại`);
+      }
+      onOptCheckout(successCount);
+      setTimeout(refetchDealers, 50);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setProcessing(null);
+    }
   };
 
   // Export shift report
@@ -355,39 +683,74 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     toast.success("Đã tải báo cáo ca");
   };
 
-  // Payroll: fetch data and open modal instead of direct export
+  // Payroll: fetch dealer_scores + today's attendance + pay rates
+  const payrollDateBounds = useMemo(() => {
+    let from: string, to: string;
+    const today = new Date();
+    if (payrollDatePreset === "today") {
+      from = to = today.toISOString().split("T")[0];
+    } else if (payrollDatePreset === "month") {
+      from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+      to = today.toISOString().split("T")[0];
+    } else {
+      from = payrollFromDate.toISOString().split("T")[0];
+      to = payrollToDate.toISOString().split("T")[0];
+    }
+    return { from, to };
+  }, [payrollDatePreset, payrollFromDate, payrollToDate]);
+
   const openPayroll = async () => {
     if (!clubFilter && clubIds.length > 1) {
       toast.error("Vui lòng chọn một CLB trước khi xem lương");
       return;
     }
-    const today = new Date().toISOString().split("T")[0];
     const clubId = clubFilter ?? clubIds[0];
-    const { data: rows } = await supabase.rpc("get_shift_payroll_summary", {
-      p_club_id: clubId,
-      p_shift_date: today,
-    });
-    if (!rows?.length) { toast.error("Không có dữ liệu lương cho hôm nay"); return; }
-    // Get club slug for filename
-    const { data: club } = await supabase.from("clubs").select("slug").eq("id", clubId).single();
-    setPayrollData(rows as any[]);
-    setPayrollClubSlug((club as any)?.slug ?? "club");
+    setPayrollLoading(true);
     setPayrollOpen(true);
+    await loadPayrollData(clubId);
+  };
+
+  const loadPayrollData = async (clubId: string) => {
+    setPayrollLoading(true);
+    const { from, to } = payrollDateBounds;
+    const { data: club } = await supabase.from("clubs").select("slug").eq("id", clubId).single();
+    const { data, error } = await supabase.rpc("get_dealer_payroll", {
+      p_club_id: clubId,
+      p_from_date: from,
+      p_to_date: to,
+    });
+    setPayrollLoading(false);
+    if (error) { toast.error(error.message); return; }
+    setPayrollData((data ?? []) as any[]);
+    setPayrollClubSlug((club as any)?.slug ?? "club");
+  };
+
+  const reloadPayroll = async () => {
+    const clubId = clubFilter ?? clubIds[0];
+    if (!clubId) return;
+    await loadPayrollData(clubId);
   };
 
   const doExportPayrollCsv = () => {
     if (!payrollData?.length) return;
     const today = new Date().toISOString().split("T")[0];
-    exportToExcel(`bang-luong-${payrollClubSlug}-${today}`, payrollData.map((r: any) => ({
-      "Dealer": r.dealer_name,
-      "Hạng": r.tier,
-      "Tổng phút": r.total_minutes,
-      "OT phút": r.overtime_minutes,
-      "Số bàn": r.tables_served,
-      "Số swing": r.swings_done,
-      "Lương cơ bản": r.base_pay?.toLocaleString("vi-VN"),
-      "Lương OT": r.overtime_pay?.toLocaleString("vi-VN"),
-    })));
+    const label = `${payrollClubSlug}-${payrollDateBounds.from}-${payrollDateBounds.to}`;
+    exportToExcel(`bang-luong-${label}-${today}`, payrollData.map((r: any) => {
+      const edits = payrollEdits[r.dealer_id] ?? {};
+      const displayRow = recalcPay(r, edits);
+      return {
+        "Dealer": r.full_name,
+        "Hạng": r.tier,
+        "Loại": r.employment_type === "part_time" ? "Part-time" : "Full-time",
+        "Tổng giờ": displayRow.total_hours,
+        "OT phút": r.overtime_minutes,
+        "Số swing": r.total_swings,
+        "Giờ (VND)": Number(displayRow.hourly_rate_vnd).toLocaleString("vi-VN"),
+        "Lương CB": Number(displayRow.base_pay).toLocaleString("vi-VN"),
+        "Lương OT": Number(displayRow.overtime_pay).toLocaleString("vi-VN"),
+        "Tổng lương": Number(displayRow.total_pay).toLocaleString("vi-VN"),
+      };
+    }));
     toast.success("Đã tải bảng lương");
   };
 
@@ -411,6 +774,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Button size="sm" variant="outline" onClick={() => { refetchDealers(); refetchTables(); refetchAssignments(); }}>
           <RefreshCw className="w-3.5 h-3.5 mr-1" /> Làm mới
         </Button>
+        <Button size="sm" variant={activeView === "dealers" ? "default" : "outline"} onClick={() => setActiveView(activeView === "dealers" ? "tables" : "dealers")}>
+          <Users className="w-3.5 h-3.5 mr-1" /> Danh sách Dealer
+        </Button>
         <Button size="sm" variant="outline" onClick={() => {
           const cid = clubFilter || filteredClubIds[0] || "";
           setTelegramClubId(cid);
@@ -423,9 +789,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram
         </Button>
         <Button size="sm" variant="outline" onClick={() => setSwingConfigOpen(true)}>
-          <Settings className="w-3.5 h-3.5 mr-1" />
-          Swing: {swingConfigs?.find((c) => (clubFilter ? c.club_id === clubFilter : true) && c.table_type === "cash")?.swing_duration_minutes ?? "—"}m
-          {" / "}Break: {swingConfigs?.find((c) => (clubFilter ? c.club_id === clubFilter : true) && c.table_type === "cash")?.break_duration_minutes ?? "—"}m
+          <Settings className="w-3.5 h-3.5 mr-1" /> Cấu hình Swing
         </Button>
       </div>
 
@@ -438,7 +802,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             Tổng thể
           </button>
           {(tours ?? []).map((t) => (
-            <button key={t.id} onClick={() => setSelectedTour(t.id)}
+            <button key={t.id} onClick={() => { setSelectedTour(t.id); setActiveView("tables"); }}
               className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
               {t.tour_name} ({t.start_time?.slice(0, 5)}-{t.end_time?.slice(0, 5)})
             </button>
@@ -452,6 +816,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         )}
       </div>
 
+      {tablesError && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs p-3 rounded flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Lỗi tải bàn: {tablesError}</span>
+          <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchTables}>Thử lại</Button>
+        </div>
+      )}
+      {dealersError && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs p-3 rounded flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Lỗi tải dealer: {dealersError}</span>
+          <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchDealers}>Thử lại</Button>
+        </div>
+      )}
+
       {loading ? (
         <Skeleton className="h-96 rounded-none" />
       ) : (
@@ -463,26 +842,48 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               assignments={assignments ?? []}
               swingConfigs={swingConfigs ?? []}
               processing={processing}
+              totalDealers={allDealers?.length ?? 0}
+              checkedInCount={checkedInCount}
               onSendToBreak={sendToBreak}
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
+              onBatchCheckout={doBatchCheckout}
               breakPolicies={breakPolicies ?? []}
             />
           </div>
 
           {/* CENTER COLUMN — 50% */}
           <div className="lg:col-span-6">
-            <TableGrid
-              tables={tables ?? []}
-              tableAssignmentMap={tableAssignmentMap}
-              swingConfigs={swingConfigs ?? []}
-              processing={processing}
-              onAssign={openAssignModal}
-              onSendToBreak={(attId) => sendToBreak(attId)}
-              selectedTour={selectedTour}
-              onCreateTable={() => setCreateTableOpen(true)}
-            />
+            {activeView === "dealers" ? (
+              <>
+                {selectedTour && (
+                  <div className="text-xs text-amber-400 mb-2 flex items-center gap-2">
+                    <span>Tour đang chọn: {(tours ?? []).find(t => t.id === selectedTour)?.tour_name ?? selectedTour}</span>
+                    <button onClick={() => setActiveView("tables")} className="underline hover:text-amber-300">Xem bàn</button>
+                  </div>
+                )}
+                <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
+              </>
+            ) : (
+              <TableGrid
+                tables={tables ?? []}
+                tableAssignmentMap={tableAssignmentMap}
+                nextDealerMap={nextDealerMap}
+                preAssignedMap={preAssignedMap}
+                swingConfigs={swingConfigs ?? []}
+                processing={processing}
+                onAssign={openAssignModal}
+                onSendToBreak={(attId) => sendToBreak(attId)}
+                selectedTour={selectedTour}
+                onCreateTable={() => setCreateTableOpen(true)}
+                closeTableConfirmId={closeTableConfirmId}
+                onCloseTableClick={setCloseTableConfirmId}
+                onCloseTableConfirm={closeTable}
+                onCloseTableCancel={() => setCloseTableConfirmId(null)}
+                closingTable={closingTable}
+              />
+            )}
           </div>
 
           {/* RIGHT COLUMN — 25% */}
@@ -490,15 +891,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             <CommandCenter
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
+              onMassAssign={massAssign}
               onExportShift={exportShiftReport}
               onExportPayroll={openPayroll}
               swingAllBusy={swingAllBusy}
+              massAssignBusy={massAssignBusy}
+              autoSwingEnabled={autoSwingEnabled}
+              onToggleAutoSwing={toggleAutoSwing}
               clubFilter={clubFilter}
               clubs={clubs}
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
+              onOpenSpecialDates={() => setSpecialDatesOpen(true)}
               dealers={dealers ?? []}
               swingMetrics={swingMetrics ?? []}
               breakPolicies={breakPolicies ?? []}
+              tables={tables ?? []}
             />
           </div>
         </div>
@@ -593,21 +1000,47 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         </DialogContent>
       </Dialog>
 
-      {/* Check-in Dialog */}
-      <Dialog open={checkinOpen} onOpenChange={setCheckinOpen}>
+      {/* Check-in Dialog (multi-select) */}
+      <Dialog open={checkinOpen} onOpenChange={(o) => { setCheckinOpen(o); if (o) { loadCheckinDealers(); setCheckinDealerIds([]); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Check-in thủ công</DialogTitle></DialogHeader>
-          <Select value={checkinDealerId} onValueChange={setCheckinDealerId}>
-            <SelectTrigger><SelectValue placeholder="Chọn dealer..." /></SelectTrigger>
-            <SelectContent>
-              {checkinDealers.map((d: any) => (
-                <SelectItem key={d.id} value={d.id}>{d.full_name} ({d.tier})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="max-h-64 overflow-y-auto space-y-1 border border-border p-2 rounded">
+            {checkinDealers.length === 0 ? (
+              <div className="text-xs text-muted-foreground text-center py-4">Tất cả dealer đã check‑in hôm nay.</div>
+            ) : (
+              checkinDealers.map((d: any) => (
+                <label key={d.id}
+                  className={`flex items-center gap-2 p-2 text-xs rounded cursor-pointer hover:bg-muted/20 ${checkinDealerIds.includes(d.id) ? "bg-primary/10" : ""}`}>
+                  <Checkbox
+                    checked={checkinDealerIds.includes(d.id)}
+                    onCheckedChange={(chk) => {
+                      if (chk) setCheckinDealerIds([...checkinDealerIds, d.id]);
+                      else setCheckinDealerIds(checkinDealerIds.filter((id) => id !== d.id));
+                    }}
+                  />
+                  <span className="font-semibold">{d.full_name}</span>
+                  <Badge variant="outline" className="text-[10px]">{d.tier}</Badge>
+                  {d.wasCheckedOut && <span className="text-amber-400">(Đã kết thúc ca)</span>}
+                </label>
+              ))
+            )}
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Đã chọn: {checkinDealerIds.length}</span>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="h-6 text-xs"
+                onClick={() => setCheckinDealerIds(checkinDealers.map((d: any) => d.id))}>
+                Chọn tất cả
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-xs"
+                onClick={() => setCheckinDealerIds([])}>
+                Bỏ chọn
+              </Button>
+            </div>
+          </div>
           <DialogFooter>
-            <Button onClick={doCheckin} disabled={!checkinDealerId || processing === "checkin"}>
-              {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Check-in"}
+            <Button onClick={doCheckin} disabled={!checkinDealerIds.length || processing === "checkin"}>
+              {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" /> : `Check-in (${checkinDealerIds.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -636,50 +1069,133 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         </DialogContent>
       </Dialog>
 
-      {/* Table Creation Dialog */}
-      <Dialog open={createTableOpen} onOpenChange={setCreateTableOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Tạo bàn mới</DialogTitle></DialogHeader>
+      {/* Pool-based Table Creation Dialog (multi-select) */}
+      <Dialog open={createTableOpen} onOpenChange={(o) => { setCreateTableOpen(o); if (!o) { setPoolSearch(""); setSelectedPoolTableIds([]); setNewTableType("tournament"); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Thêm bàn từ pool</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Tên bàn</Label>
-              <Input value={newTableName} onChange={(e) => setNewTableName(e.target.value)} placeholder="VD: T25" />
+            <Input
+              placeholder="Tìm bàn..."
+              value={poolSearch}
+              onChange={(e) => setPoolSearch(e.target.value)}
+              className="text-xs"
+            />
+            <div className="max-h-48 overflow-y-auto space-y-1 border border-border p-1">
+              {poolError ? (
+                <div className="text-xs text-red-500 text-center py-4">Lỗi tải danh sách bàn: {poolError}. Vui lòng thử lại.</div>
+              ) : poolLoading ? (
+                <div className="text-xs text-muted-foreground text-center py-4">Đang tải...</div>
+              ) : !poolTables || poolTables.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-4">Chưa có bàn nào trong pool.</div>
+              ) : (
+                (() => {
+                  const excluded = ["11", "12", "13", "21", "A25"];
+                  const filtered = poolTables
+                    .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())));
+                  return filtered.map((t) => {
+                    const isAssigned = t.status === "active" && tableAssignmentMap[t.id];
+                    const isSelectable = !isAssigned;
+                    return (
+                      <label key={t.id}
+                        className={`flex items-center justify-between p-2 text-xs border ${isSelectable ? "cursor-pointer" : "opacity-50"} ${selectedPoolTableIds.includes(t.id) ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted/20"}`}>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={selectedPoolTableIds.includes(t.id)}
+                            disabled={!isSelectable}
+                            onCheckedChange={(chk) => {
+                              if (!isSelectable) return;
+                              if (chk) setSelectedPoolTableIds([...selectedPoolTableIds, t.id]);
+                              else setSelectedPoolTableIds(selectedPoolTableIds.filter((id) => id !== t.id));
+                            }}
+                          />
+                          <span className="font-semibold">{t.table_name}</span>
+                        </div>
+                        {isAssigned ? (
+                          <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Đã có dealer</Badge>
+                        ) : t.status === "active" ? (
+                          <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Sẵn sàng</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">Chưa active</Badge>
+                        )}
+                      </label>
+                    );
+                  });
+                })()
+              )}
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Đã chọn: {selectedPoolTableIds.length} bàn</span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" className="h-6 text-xs"
+                  onClick={() => {
+                    const excluded = ["11", "12", "13", "21", "A25"];
+                    const selectable = (poolTables ?? [])
+                      .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())))
+                      .filter((t) => !(t.status === "active" && tableAssignmentMap[t.id]));
+                    setSelectedPoolTableIds(selectable.map((t: any) => t.id));
+                  }}>
+                  Chọn tất cả
+                </Button>
+                <Button variant="ghost" size="sm" className="h-6 text-xs"
+                  onClick={() => setSelectedPoolTableIds([])}>
+                  Bỏ chọn
+                </Button>
+              </div>
             </div>
             <div>
               <Label className="text-xs">Loại bàn</Label>
               <Select value={newTableType} onValueChange={setNewTableType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
                   <SelectItem value="tournament">Tournament</SelectItem>
-                  <SelectItem value="vip">VIP</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateTableOpen(false)}>Huỷ</Button>
-            <Button disabled={!newTableName.trim() || processing === "create_table"}
+            <Button disabled={!selectedPoolTableIds.length || processing === "create_table"}
               onClick={async () => {
                 setProcessing("create_table");
-                const clubId = clubFilter ?? filteredClubIds[0];
-                if (!clubId || !newTableName.trim()) { setProcessing(null); return; }
-                const { error } = await supabase.from("game_tables").insert({
-                  club_id: clubId,
-                  table_name: newTableName.trim(),
-                  table_type: newTableType,
-                  status: "active",
-                });
+                let success = 0, fail = 0;
+                for (const tableId of selectedPoolTableIds) {
+                  // Clean up stale dealer assignments (if table was closed without releasing dealer)
+                  const { data: staleAssignments } = await supabase
+                    .from("dealer_assignments")
+                    .select("id, attendance_id")
+                    .eq("table_id", tableId)
+                    .in("status", ["assigned", "on_break"]);
+                  for (const sa of staleAssignments ?? []) {
+                    await supabase.from("dealer_assignments").update({
+                      released_at: new Date().toISOString(), status: "completed",
+                    }).eq("id", sa.id);
+                    await supabase.from("dealer_attendance").update({
+                      current_state: "available",
+                    }).eq("id", sa.attendance_id);
+                  }
+                  const { error } = await supabase.from("game_tables").update({
+                    shift_id: selectedTour ?? null,
+                    status: "active",
+                    table_type: newTableType,
+                  }).eq("id", tableId);
+                  if (error) { fail++; } else { success++; }
+                }
                 setProcessing(null);
-                if (error) { toast.error(error.message); return; }
-                toast.success("Đã tạo bàn mới");
+                if (fail > 0) toast.warning(`Thêm bàn: ${success} thành công, ${fail} thất bại`);
+                else toast.success(`Đã thêm ${success} bàn vào tour`);
                 setCreateTableOpen(false);
-                setNewTableName("");
-                setNewTableType("cash");
+                setPoolSearch("");
+                setSelectedPoolTableIds([]);
+                setNewTableType("tournament");
                 refetchTables();
-                // table stays in current tour view (empty tables are visible in all tours)
+                refetchAvailableTables();
+                refetchPoolTables();
+                if (success > 0) {
+                  const assigned = await massAssign();
+                  if (assigned > 0) toast.success(`Đã tự động gán dealer cho ${assigned} bàn`);
+                }
               }}>
-              {processing === "create_table" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Tạo bàn"}
+              {processing === "create_table" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Xác nhận"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -747,48 +1263,201 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       />
 
       {/* Payroll Preview Dialog */}
-      <Dialog open={payrollOpen} onOpenChange={(o) => { if (!o) setPayrollOpen(false); }}>
+      <Dialog open={payrollOpen} onOpenChange={(o) => { if (!o) { setPayrollOpen(false); setPayrollData(null); setPayrollEdits({}); setPayrollEditDealer(null); } }}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Bảng lương — {payrollClubSlug}</DialogTitle>
             <DialogDescription>
-              {new Date().toLocaleDateString("vi-VN")} · {payrollData?.length ?? 0} dealer
+              {payrollDateBounds.from} → {payrollDateBounds.to} · {payrollData?.length ?? 0} dealer
             </DialogDescription>
           </DialogHeader>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["today", "month", "custom"] as const).map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setPayrollDatePreset(preset)}
+                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                  payrollDatePreset === preset
+                    ? "bg-emerald-600 text-white"
+                    : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+                }`}
+              >
+                {preset === "today" ? "Hôm nay" : preset === "month" ? "Tháng này" : "Tuỳ chỉnh"}
+              </button>
+            ))}
+            {payrollDatePreset === "custom" && (
+              <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-xs h-8">
+                      {payrollFromDate ? format(payrollFromDate, "dd/MM/yyyy") : "Từ ngày"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={payrollFromDate}
+                      onSelect={(d) => d && setPayrollFromDate(d)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-xs text-muted-foreground">→</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-xs h-8">
+                      {payrollToDate ? format(payrollToDate, "dd/MM/yyyy") : "Đến ngày"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={payrollToDate}
+                      onSelect={(d) => d && setPayrollToDate(d)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Button size="sm" variant="outline" className="text-xs h-8" onClick={reloadPayroll} disabled={payrollLoading}>
+                  <RefreshCw className={`w-3 h-3 mr-1 ${payrollLoading ? "animate-spin" : ""}`} />
+                  Tải
+                </Button>
+              </div>
+            )}
+            {payrollDatePreset !== "custom" && (
+              <Button size="sm" variant="outline" className="text-xs h-8 ml-auto" onClick={reloadPayroll} disabled={payrollLoading}>
+                <RefreshCw className={`w-3 h-3 mr-1 ${payrollLoading ? "animate-spin" : ""}`} />
+                Làm mới
+              </Button>
+            )}
+          </div>
+
           <div className="max-h-[60vh] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Dealer</TableHead>
+                  <TableHead>Loại</TableHead>
                   <TableHead>Hạng</TableHead>
-                  <TableHead className="text-right">Tổng phút</TableHead>
+                  <TableHead className="text-right">Tổng giờ</TableHead>
                   <TableHead className="text-right">OT phút</TableHead>
-                  <TableHead className="text-right">Số bàn</TableHead>
-                  <TableHead className="text-right">Số swing</TableHead>
-                  <TableHead className="text-right">Lương cơ bản</TableHead>
+                  <TableHead className="text-right">Swing</TableHead>
+                  <TableHead className="text-right">Giờ (VND)</TableHead>
+                  <TableHead className="text-right">Lương CB</TableHead>
                   <TableHead className="text-right">Lương OT</TableHead>
+                  <TableHead className="text-right">Tổng lương</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(payrollData ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Không có dữ liệu</TableCell></TableRow>
-                ) : (payrollData ?? []).map((r: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{r.dealer_name}</TableCell>
-                    <TableCell>{r.tier}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.total_minutes}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.overtime_minutes}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.tables_served}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.swings_done}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.base_pay?.toLocaleString("vi-VN")}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.overtime_pay?.toLocaleString("vi-VN")}</TableCell>
-                  </TableRow>
-                ))}
+                {payrollLoading ? (
+                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></TableCell></TableRow>
+                ) : (payrollData ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground">Không có dữ liệu</TableCell></TableRow>
+                ) : (
+                  <>
+                    {(payrollData ?? []).map((r: any, i: number) => {
+                      const edits = payrollEdits[r.dealer_id] ?? {};
+                      const isEditing = payrollEditDealer === r.dealer_id;
+                      const displayRow = recalcPay(r, edits);
+                      return (
+                      <TableRow key={r.dealer_id ?? i}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1">
+                            {r.full_name}
+                            {!isEditing && (
+                              <button className="text-[10px] text-muted-foreground hover:text-primary ml-1" onClick={() => setPayrollEditDealer(r.dealer_id)} title="Điều chỉnh">
+                                ✏️
+                              </button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.employment_type === "part_time" ? "outline" : "default"} className="text-[10px]">
+                            {r.employment_type === "part_time" ? "PT" : "FT"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{r.tier}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="w-20 bg-zinc-900 border border-zinc-700 text-white text-xs text-right px-1 py-0.5 rounded"
+                              value={edits.adjustedHours ?? r.total_hours}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                setPayrollEdits(prev => ({ ...prev, [r.dealer_id]: { ...prev[r.dealer_id], adjustedHours: isNaN(v) ? undefined : v } }));
+                              }}
+                            />
+                          ) : (
+                            Number(displayRow.total_hours).toFixed(1)
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">{r.overtime_minutes}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{r.total_swings}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              step="1000"
+                              className="w-24 bg-zinc-900 border border-zinc-700 text-white text-xs text-right px-1 py-0.5 rounded"
+                              value={edits.adjustedRate ?? r.hourly_rate_vnd}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                setPayrollEdits(prev => ({ ...prev, [r.dealer_id]: { ...prev[r.dealer_id], adjustedRate: isNaN(v) ? undefined : v } }));
+                              }}
+                            />
+                          ) : (
+                            Number(displayRow.hourly_rate_vnd).toLocaleString("vi-VN")
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">{Number(displayRow.base_pay).toLocaleString("vi-VN")}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{Number(displayRow.overtime_pay).toLocaleString("vi-VN")}</TableCell>
+                        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{Number(displayRow.total_pay).toLocaleString("vi-VN")}</TableCell>
+                      </TableRow>
+                      );
+                    })}
+                    <TableRow className="border-t-2 border-emerald-600/40 bg-emerald-600/5">
+                      <TableCell className="font-bold text-emerald-400">TỔNG</TableCell>
+                      <TableCell colSpan={2} />
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {(payrollData ?? []).reduce((s, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + (e.adjustedHours ?? r.total_hours); }, 0).toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {payrollData?.reduce((s, r: any) => s + (r.overtime_minutes ?? 0), 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {payrollData?.reduce((s, r: any) => s + (r.total_swings ?? 0), 0)}
+                      </TableCell>
+                      <TableCell />
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).base_pay); }, 0)).toLocaleString("vi-VN")}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-semibold">
+                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).overtime_pay); }, 0)).toLocaleString("vi-VN")}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">
+                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).total_pay); }, 0)).toLocaleString("vi-VN")}
+                      </TableCell>
+                    </TableRow>
+                  </>
+                )}
               </TableBody>
             </Table>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPayrollOpen(false)}>Đóng</Button>
+            <Button variant="outline" onClick={() => { setPayrollOpen(false); setPayrollData(null); setPayrollEdits({}); setPayrollEditDealer(null); }}>Đóng</Button>
+            {payrollEditDealer && (
+              <Button variant="outline" onClick={() => setPayrollEditDealer(null)}>
+                ✅ Xong điều chỉnh
+              </Button>
+            )}
+            {Object.keys(payrollEdits).length > 0 && !payrollEditDealer && (
+              <Button variant="outline" onClick={() => { setPayrollEdits({}); }}>
+                ↺ Reset
+              </Button>
+            )}
             <Button onClick={doExportPayrollCsv}>
               <FileSpreadsheet className="w-3.5 h-3.5 mr-1" /> Xuất CSV
             </Button>
@@ -843,6 +1512,79 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Special Dates Dialog (Bug 6) */}
+      <Dialog open={specialDatesOpen} onOpenChange={setSpecialDatesOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Ngày đặc biệt</DialogTitle></DialogHeader>
+
+          {/* Add form */}
+          <div className="space-y-3 pb-4 border-b border-border">
+            <p className="text-xs text-muted-foreground font-medium">Thêm ngày mới</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ngày</label>
+                <Input
+                  type="date"
+                  value={sdForm.date}
+                  onChange={(e) => setSdForm(f => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Tên ngày lễ</label>
+                <Input
+                  placeholder="VD: Tết Nguyên Đán"
+                  value={sdForm.label}
+                  onChange={(e) => setSdForm(f => ({ ...f, label: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Hệ số (×)</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="10"
+                  placeholder="1.5"
+                  value={sdForm.multiplier}
+                  onChange={(e) => setSdForm(f => ({ ...f, multiplier: e.target.value }))}
+                />
+              </div>
+            </div>
+            <Button size="sm" onClick={handleAddSpecialDate} disabled={sdSaving || !sdForm.date}>
+              {sdSaving ? "Đang lưu..." : "+ Thêm"}
+            </Button>
+          </div>
+
+          {/* List */}
+          <div className="max-h-[40vh] overflow-y-auto space-y-2 mt-3">
+            {(!specialDates || specialDates.length === 0) && (
+              <p className="text-xs text-muted-foreground text-center py-4">Chưa có ngày đặc biệt nào.</p>
+            )}
+            {specialDates?.map((sd) => (
+              <div key={sd.id} className="flex items-center justify-between p-2 bg-muted/10 border border-border rounded">
+                <div>
+                  <div className="text-xs font-semibold">
+                    {new Date(sd.date).toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                  </div>
+                  {sd.label && <div className="text-[10px] text-muted-foreground">{sd.label}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">x{sd.multiplier}</Badge>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteSpecialDate(sd.id, sd.label ?? sd.date)}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSpecialDatesOpen(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
@@ -877,18 +1619,46 @@ function FatigueDot({ attendance }: { attendance: DealerAttendance }) {
 }
 
 function RosterPanel({
-  dealers, assignments, swingConfigs, processing, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen, breakPolicies,
+  dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen, onBatchCheckout, breakPolicies,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
   swingConfigs: SwingConfig[];
   processing: string | null;
+  totalDealers: number;
+  checkedInCount?: number;
   onSendToBreak: (attendanceId: string) => void;
   onEndBreak: (attendanceId: string) => void;
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
+  onBatchCheckout: (ids: string[]) => void;
   breakPolicies: ShiftBreakPolicy[];
 }) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleId = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllInSection = (ids: string[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      for (const id of ids) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const allDealerIds = useMemo(() => dealers.map((d) => d.id), [dealers]);
+  const allSelected = allDealerIds.length > 0 && allDealerIds.every((id) => selectedIds.has(id));
   const dealerStatuses = useMemo(() => {
     const map: Record<string, { status: string; tableName?: string; checkInTime: string; timerStart: string }> = {};
     for (const d of dealers) {
@@ -898,6 +1668,10 @@ function RosterPanel({
         map[d.id] = { status: "Đang bàn", tableName: (a as any).game_tables?.table_name, checkInTime, timerStart: a.assigned_at };
       } else if (a?.status === "on_break") {
         map[d.id] = { status: "Đang nghỉ", tableName: undefined, checkInTime, timerStart: a.released_at ?? checkInTime };
+      } else if (d.current_state === "pre_assigned") {
+        map[d.id] = { status: "Đang chờ", tableName: undefined, checkInTime, timerStart: checkInTime };
+      } else if (d.current_state === "assigned") {
+        map[d.id] = { status: "Đang bàn", tableName: undefined, checkInTime, timerStart: checkInTime };
       } else {
         map[d.id] = { status: "Sẵn sàng", tableName: undefined, checkInTime, timerStart: checkInTime };
       }
@@ -909,13 +1683,25 @@ function RosterPanel({
     { key: "Sẵn sàng", icon: Users, color: "text-emerald-400" },
     { key: "Đang bàn", icon: Table2, color: "text-blue-400" },
     { key: "Đang nghỉ", icon: Clock, color: "text-amber-400" },
+    { key: "Đang chờ", icon: Clock, color: "text-purple-400" },
   ] as const;
 
   return (
     <Card className="p-3 h-full">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
+        {dealers.length > 0 && (
+          <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
+            checked={allSelected}
+            onChange={() => toggleAllInSection(allDealerIds)} />
+        )}
         <Users className="w-4 h-4 text-primary" />
         <span className="font-display text-sm tracking-wider">ĐỘI HÌNH CHIẾN BINH</span>
+      </div>
+      <div className="text-[11px] text-muted-foreground mb-3 flex items-center gap-1.5">
+        <span className="text-emerald-400 font-semibold">{checkedInCount ?? dealers.length}</span>
+        <span>/</span>
+        <span>{totalDealers}</span>
+        <span className="ml-1">đang hoạt động</span>
       </div>
 
       <div className="space-y-3 max-h-[60vh] overflow-y-auto">
@@ -929,6 +1715,9 @@ function RosterPanel({
             return (
               <div key={sec.key}>
                 <div className="flex items-center gap-1.5 mb-2 sticky top-0 bg-card z-10 pb-1">
+                  <input type="checkbox" className="w-3 h-3 accent-emerald-500 cursor-pointer"
+                    checked={group.length > 0 && group.every((d) => selectedIds.has(d.id))}
+                    onChange={() => toggleAllInSection(group.map((d) => d.id))} />
                   <Icon className={`w-3 h-3 ${sec.color}`} />
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.key}</span>
                   <Badge variant="outline" className="text-[10px] ml-auto">{group.length}</Badge>
@@ -942,6 +1731,9 @@ function RosterPanel({
                     const onBreak = sec.key === "Đang nghỉ";
                     return (
                       <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
+                        <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
+                          checked={selectedIds.has(d.id)}
+                          onChange={() => toggleId(d.id)} />
                         <div className="relative">
                           <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
                             {dd?.full_name?.charAt(0) ?? "?"}
@@ -987,13 +1779,19 @@ function RosterPanel({
         )}
       </div>
 
-      <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+      <div className="flex gap-2 mt-3 pt-3 border-t border-border flex-wrap">
         <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
           <UserPlus className="w-3 h-3 mr-1" /> Check-in
         </Button>
         <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
           <UserMinus className="w-3 h-3 mr-1" /> Check-out
         </Button>
+        {selectedIds.size > 0 && (
+          <Button size="sm" variant="outline" className="w-full text-xs text-red-400 border-red-400/30 hover:bg-red-500/10 mt-1"
+            onClick={() => { onBatchCheckout([...selectedIds]); setSelectedIds(new Set()); }}>
+            <UserMinus className="w-3 h-3 mr-1" /> Checkout hàng loạt ({selectedIds.size})
+          </Button>
+        )}
       </div>
     </Card>
   );
@@ -1003,33 +1801,53 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
+  nextDealerMap: Record<string, NextDealerPrediction> | null;
+  preAssignedMap: Record<string, PreAssignedInfo | null>;
   swingConfigs: SwingConfig[];
   processing: string | null;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
   selectedTour: string | null;
   onCreateTable: () => void;
+  closeTableConfirmId: string | null;
+  onCloseTableClick: (tableId: string) => void;
+  onCloseTableConfirm: () => void;
+  onCloseTableCancel: () => void;
+  closingTable: boolean;
 }) {
-  const deactivateTable = async (tableId: string) => {
-    const { error } = await supabase.from("game_tables").update({ status: "inactive" }).eq("id", tableId);
-    if (error) toast.error(error.message);
-    else toast.success("Đã vô hiệu hoá bàn");
-  };
-
-  // Filter tables based on selected tour
+  // Filter tables based on selected tour using shift_id column
   const filteredTables = useMemo(() => {
     if (!selectedTour) return tables;
-    // Show tables assigned to this tour + all empty tables (no dealer assigned)
-    return tables.filter((t) => {
-      const a = tableAssignmentMap[t.id];
-      if (!a) return true;
-      return (a as any).dealer_attendance?.shift_id === selectedTour;
-    });
-  }, [tables, tableAssignmentMap, selectedTour]);
+    return tables.filter((t) => t.shift_id === selectedTour);
+  }, [tables, selectedTour]);
+
+  // Safe handler when a swing timer expires: guards against cross-tab duplicate
+  // and re-checks swing_processed_at before calling sendToBreak
+  const onTimerExpired = useCallback(async (attendanceId: string, assignmentId: string) => {
+    const lockKey = `swing_expired_${assignmentId}`;
+    try {
+      if (localStorage.getItem(lockKey)) return;
+      localStorage.setItem(lockKey, '1');
+    } catch { /* localStorage unavailable */ }
+
+    try {
+      const { data } = await supabase
+        .from('dealer_assignments')
+        .select('swing_processed_at')
+        .eq('id', assignmentId)
+        .maybeSingle();
+
+      if (data?.swing_processed_at) return; // backend already handled it
+      onSendToBreak(attendanceId);
+    } catch {
+      onSendToBreak(attendanceId);
+    }
+  }, [onSendToBreak]);
 
   return (
     <Card className="p-3 h-full">
@@ -1038,7 +1856,7 @@ function TableGrid({
         <span className="font-display text-sm tracking-wider">BẢN ĐỒ CHIẾN TRƯỜNG</span>
         <Badge variant="outline" className="ml-auto text-xs">{filteredTables.length} bàn</Badge>
         <Button size="sm" variant="outline" className="text-xs h-7" onClick={onCreateTable}>
-          + Tạo bàn mới
+          + Thêm bàn
         </Button>
       </div>
 
@@ -1051,7 +1869,6 @@ function TableGrid({
           filteredTables.map((t) => {
             const a = tableAssignmentMap[t.id];
             const config = swingConfigs?.find((c) => c.table_type === t.table_type);
-            const swingDuration = config?.swing_duration_minutes ?? 45;
             const warnAt = config?.warn_at_minutes ?? 5;
             const critAt = config?.crit_at_minutes ?? 1;
 
@@ -1063,10 +1880,21 @@ function TableGrid({
                   <div className="font-semibold text-sm">{t.table_name}</div>
                   <div className="flex items-center gap-1">
                     <TableTypeBadge type={t.table_type} />
-                    <button className="text-muted-foreground hover:text-destructive text-xs ml-1" title="Vô hiệu hoá bàn"
-                      onClick={() => deactivateTable(t.id)}>
-                      ✕
-                    </button>
+                    {closeTableConfirmId === t.id ? (
+                      <div className="flex items-center gap-1">
+                        <button className="text-destructive text-[10px] hover:underline" onClick={onCloseTableConfirm} disabled={closingTable}>
+                          Xác nhận
+                        </button>
+                        <button className="text-muted-foreground text-[10px] hover:underline" onClick={onCloseTableCancel}>
+                          Huỷ
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="text-muted-foreground hover:text-destructive text-xs ml-1" title="Đóng bàn"
+                        onClick={() => onCloseTableClick(t.id)}>
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1083,16 +1911,25 @@ function TableGrid({
                       </div>
                     </>
                   ) : (
-                    <div className="text-xs text-warning flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Trống
+                    <div className="text-xs flex items-center gap-1">
+                      {preAssignedMap[t.id] ? (
+                        <span className="text-primary flex items-center gap-1"><span>⬆</span> {preAssignedMap[t.id]!.full_name}</span>
+                      ) : (
+                        <><AlertTriangle className="w-3 h-3 text-warning" /><span className="text-warning"> Trống</span></>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Countdown timer — self-updating via 1s interval */}
-                {a && (
-                  <TimerCell assignedAt={a.assigned_at} swingDuration={swingDuration} warnAt={warnAt} critAt={critAt} />
-                )}
+                {/* Countdown timer + upcoming dealer (next dealer prediction) */}
+                <div className="flex items-center justify-between">
+                  {a && (
+                    <TimerCell swingDueAt={a.swing_due_at ?? a.assigned_at} warnAt={warnAt} critAt={critAt} attendanceId={a.attendance_id} assignmentId={a.id} onExpired={onTimerExpired} />
+                  )}
+                  {nextDealerMap?.[t.id] && (
+                    <NextDealerBadge prediction={nextDealerMap[t.id]!} />
+                  )}
+                </div>
 
                 {/* Action buttons */}
                 <div className="flex gap-1.5 mt-2">
@@ -1130,22 +1967,35 @@ function TableGrid({
    COMMAND CENTER — Right Column
    ============================================================== */
 function CommandCenter({
-  auditLogs, onAutoSwing, onExportShift, onExportPayroll, swingAllBusy, clubFilter, clubs, onOpenSwingConfig,
-  dealers, swingMetrics, breakPolicies,
+  auditLogs, onAutoSwing, onMassAssign,
+  onExportShift, onExportPayroll, swingAllBusy, massAssignBusy,
+  autoSwingEnabled, onToggleAutoSwing,
+  clubFilter, clubs, onOpenSwingConfig,
+  onOpenSpecialDates, dealers, swingMetrics, breakPolicies, tables,
 }: {
   auditLogs: any[];
   onAutoSwing: () => void;
+  onMassAssign: () => void;
   onExportShift: () => void;
   onExportPayroll: () => void;
   swingAllBusy: boolean;
+  massAssignBusy: boolean;
+  autoSwingEnabled: boolean;
+  onToggleAutoSwing: () => void;
   clubFilter: string | null;
   clubs: ClubRow[];
   onOpenSwingConfig: () => void;
+  onOpenSpecialDates: () => void;
   dealers: DealerAttendance[];
   swingMetrics: SwingMetrics[];
   breakPolicies: ShiftBreakPolicy[];
+  tables: any[];
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
+
+  // ── Internal dialogs ────────────────────────────────────────────
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  const [stopSaving, setStopSaving] = useState(false);
 
   const testTelegram = async () => {
     if (!clubFilter) { toast.error("Vui lòng chọn CLB trước"); return; }
@@ -1157,127 +2007,235 @@ function CommandCenter({
     else toast.success("Đã gửi test Telegram");
   };
 
+  const handleStopSwing = async () => {
+    const cid = clubFilter;
+    if (!cid) return;
+    setStopSaving(true);
+    const { error } = await supabase
+      .from("club_settings")
+      .upsert({ club_id: cid, auto_swing_enabled: false }, { onConflict: "club_id" });
+    setStopSaving(false);
+    setStopConfirmOpen(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Đã tắt Auto-Swing");
+    onToggleAutoSwing(); // sync parent state
+  };
+
+  const totMetrics = swingMetrics.reduce((s, m) => s + m.total_swings, 0);
+  const okMetrics = swingMetrics.reduce((s, m) => s + m.successful_swings, 0);
+  const failMetrics = swingMetrics.reduce((s, m) => s + m.failed_swings, 0);
+  const successRate = totMetrics > 0 ? ((okMetrics / totMetrics) * 100).toFixed(0) : "—";
+
   return (
-    <Card className="p-3 h-full">
-      <div className="flex items-center gap-2 mb-3">
-        <Bell className="w-4 h-4 text-primary" />
-        <span className="font-display text-sm tracking-wider">ĐÀI CHỈ HUY</span>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="space-y-2 mb-4">
-        <Button size="sm" className="w-full justify-start text-xs" onClick={onAutoSwing} disabled={swingAllBusy}>
-          {swingAllBusy ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-2" />}
-          Auto-Swing All
-        </Button>
-        <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={testTelegram}>
-          <Send className="w-3 h-3 mr-2" /> Gửi Telegram test
-        </Button>
-        <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportShift}>
-          <FileSpreadsheet className="w-3 h-3 mr-2" /> Xuất báo cáo ca
-        </Button>
-        <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportPayroll}>
-          <DollarSign className="w-3 h-3 mr-2" /> Xuất bảng lương
-        </Button>
-        <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onOpenSwingConfig}>
-          <Settings className="w-3 h-3 mr-2" /> Cấu hình Swing
-        </Button>
-      </div>
-
-      {/* Break Balance Widget */}
-      <div className="mb-4 p-3 bg-muted/10 border border-border rounded-none">
-        <div className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">CÂN BẰNG BREAK</div>
-        <div className="space-y-2">
-          {(() => {
-            const totalActive = dealers.length;
-            const approaching = dealers.filter((d) => {
-              const w = d.worked_minutes_since_last_break ?? 0;
-              return w >= 60 && w < 90 && !d.priority_break_flag;
-            }).length;
-            const needsBreak = dealers.filter((d) => {
-              const w = d.worked_minutes_since_last_break ?? 0;
-              return w >= 90 || d.priority_break_flag;
-            }).length;
-            const totMetrics = swingMetrics.reduce((s, m) => s + m.total_swings, 0);
-            const okMetrics = swingMetrics.reduce((s, m) => s + m.successful_swings, 0);
-            const failMetrics = swingMetrics.reduce((s, m) => s + m.failed_swings, 0);
-            const successRate = totMetrics > 0 ? ((okMetrics / totMetrics) * 100).toFixed(0) : "—";
-            return (
-              <>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Đang hoạt động</span>
-                  <span className="font-semibold font-mono">{totalActive}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-amber-500">Sắp đến giờ nghỉ</span>
-                  <span className="font-semibold font-mono text-amber-500">{approaching}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-red-500">Cần nghỉ ngay</span>
-                  <span className="font-semibold font-mono text-red-500">{needsBreak}</span>
-                </div>
-                <div className="border-t border-border pt-2 mt-2">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">Swing hôm nay</span>
-                    <span className="font-mono">{totMetrics}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">Tỉ lệ thành công</span>
-                    <span className="font-mono">{successRate}%</span>
-                  </div>
-                  {failMetrics > 0 && (
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-red-400">Thất bại</span>
-                      <span className="font-mono text-red-400">{failMetrics}</span>
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
+    <>
+      <Card className="p-3 h-full flex flex-col gap-3">
+        {/* HEADER */}
+        <div className="flex items-center gap-2">
+          <Bell className="w-4 h-4 text-primary" />
+          <span className="font-display text-sm tracking-wider">ĐÀI CHỈ HUY</span>
         </div>
-      </div>
 
-      {/* Audit Log Feed */}
-      <div>
-        <div className="text-xs font-semibold text-muted-foreground mb-2">NHẬT KÝ HOẠT ĐỘNG</div>
-        <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
-          {auditLogs.length === 0 ? (
-            <div className="text-xs text-muted-foreground italic">Chưa có hoạt động.</div>
-          ) : (
-            auditLogs.map((log: any) => (
-              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                <span className="font-semibold text-foreground">{log.action}</span>
-                <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+        {/* ─────────────── GROUP 1: VẬN HÀNH NỀN ─────────────── */}
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            Vận hành nền
+          </div>
+          <div className="flex items-center justify-between px-3 py-2 border border-border rounded-sm">
+            <span className="text-xs font-semibold">Auto-Swing</span>
+            <Switch checked={autoSwingEnabled} onCheckedChange={onToggleAutoSwing} />
+          </div>
+          <div className="grid grid-cols-2 gap-1 mt-1">
+            <Button size="sm" variant="outline" className="text-xs h-8" onClick={onOpenSwingConfig}>
+              <Settings className="w-3 h-3 mr-1" /> Cấu hình
+            </Button>
+            <Button size="sm" variant="outline" className="text-xs h-8" onClick={onOpenSpecialDates}>
+              <CalendarIcon className="w-3 h-3 mr-1" /> Ngày ĐB
+            </Button>
+          </div>
+        </div>
+
+        <hr className="border-border/60" />
+
+        {/* ─────────────── GROUP 2: THAO TÁC THƯỜNG XUYÊN ─────────────── */}
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            Thao tác thường xuyên
+          </div>
+          <div className="space-y-1">
+            <Button size="sm" className="w-full justify-start text-xs" onClick={onAutoSwing} disabled={swingAllBusy}>
+              {swingAllBusy ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-2" />}
+              Auto-Swing All
+            </Button>
+            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onMassAssign} disabled={massAssignBusy}>
+              {massAssignBusy ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <LayoutDashboard className="w-3 h-3 mr-2" />}
+              Mass Assign
+            </Button>
+          </div>
+        </div>
+
+        <hr className="border-border/60" />
+
+        {/* ─────────────── GROUP 3: ĐẦU CA & CUỐI CA ─────────────── */}
+        <div>
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            Đầu ca & Cuối ca
+          </div>
+          <div className="space-y-1">
+            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={testTelegram}>
+              <Send className="w-3 h-3 mr-2" /> Gửi Telegram test
+            </Button>
+            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportShift}>
+              <FileSpreadsheet className="w-3 h-3 mr-2" /> Xuất báo cáo ca
+            </Button>
+            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportPayroll}>
+              <DollarSign className="w-3 h-3 mr-2" /> Xuất bảng lương
+            </Button>
+          </div>
+        </div>
+
+        <hr className="border-border/60" />
+
+        {/* ─────────────── GROUP 4: KHẨN CẤP ─────────────── */}
+        <div>
+          <div className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-1.5">
+            Khẩn cấp
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full justify-start text-xs border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            onClick={() => setStopConfirmOpen(true)}
+          >
+            <AlertTriangle className="w-3 h-3 mr-2" />
+            Dừng toàn bộ Swing
+          </Button>
+        </div>
+
+        {/* ─────────────── BREAK BALANCE WIDGET ─────────────── */}
+        <div className="p-3 bg-muted/10 border border-border rounded-sm">
+          <div className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+            CÂN BẰNG BREAK
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Đang hoạt động</span>
+              <span className="font-semibold font-mono">{dealers.length}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-amber-500">Sắp đến giờ nghỉ</span>
+              <span className="font-semibold font-mono text-amber-500">
+                {dealers.filter((d) => {
+                  const w = d.worked_minutes_since_last_break ?? 0;
+                  return w >= 60 && w < 90 && !d.priority_break_flag;
+                }).length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-red-500">Cần nghỉ ngay</span>
+              <span className="font-semibold font-mono text-red-500">
+                {dealers.filter((d) => {
+                  const w = d.worked_minutes_since_last_break ?? 0;
+                  return w >= 90 || d.priority_break_flag;
+                }).length}
+              </span>
+            </div>
+            <div className="border-t border-border pt-1.5 mt-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Swing hôm nay</span>
+                <span className="font-mono">{totMetrics}</span>
               </div>
-            ))
-          )}
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Tỉ lệ thành công</span>
+                <span className="font-mono">{successRate}%</span>
+              </div>
+              {failMetrics > 0 && (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-red-400">Thất bại</span>
+                  <span className="font-mono text-red-400">{failMetrics}</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </Card>
+
+        {/* ─────────────── AUDIT LOG ─────────────── */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="text-xs font-semibold text-muted-foreground mb-2">NHẬT KÝ HOẠT ĐỘNG</div>
+          <div className="space-y-1.5 overflow-y-auto max-h-[20vh]">
+            {auditLogs.length === 0 ? (
+              <div className="text-xs text-muted-foreground italic">Chưa có hoạt động.</div>
+            ) : (
+              auditLogs.map((log: any) => (
+                <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
+                  <span className="font-semibold text-foreground">{log.action}</span>
+                  <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Stop Swing Confirmation ── */}
+      <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dừng toàn bộ Swing</AlertDialogTitle>
+            <AlertDialogDescription>
+              Thao tác này sẽ tắt Auto-Swing ngay lập tức và dừng cron job xoay dealer.
+              Bạn có chắc chắn muốn dừng?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={handleStopSwing}
+              disabled={stopSaving}
+            >
+              {stopSaving ? "Đang dừng..." : "Dừng"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </>
   );
 }
 
 /* ==============================================================
    TIMER CELL — self-updating countdown (1s interval, no parent re-render)
+   Uses swing_due_at directly when available for accurate countdown.
    ============================================================== */
-function TimerCell({ assignedAt, swingDuration, warnAt, critAt }: {
-  assignedAt: string;
-  swingDuration: number;
+function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onExpired }: {
+  swingDueAt: string;
   warnAt: number;
   critAt: number;
+  /** Optional: fires once when timer hits 0, with cross-tab guard built in via hasFiredRef */
+  attendanceId?: string;
+  assignmentId?: string;
+  onExpired?: (attendanceId: string, assignmentId: string) => void;
 }) {
   const [now, setNow] = useState(Date.now());
+  const hasFiredRef = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const elapsed = (now - new Date(assignedAt).getTime()) / (1000 * 60);
-  const timeLeft = Math.max(0, swingDuration - elapsed);
+  const timeLeftMs = new Date(swingDueAt).getTime() - now;
+  const timeLeft = Math.max(0, timeLeftMs / (1000 * 60));
   const m = Math.floor(timeLeft);
   const s = Math.floor((timeLeft - m) * 60);
+
+  // Fire onExpired once when timer reaches 0 (timeLeft <= 0 handles background throttle)
+  useEffect(() => {
+    if (timeLeft <= 0 && !hasFiredRef.current && attendanceId && assignmentId && onExpired) {
+      hasFiredRef.current = true;
+      onExpired(attendanceId, assignmentId);
+    }
+  }, [timeLeft, attendanceId, assignmentId, onExpired]);
 
   let color = "text-primary";
   if (timeLeft <= critAt) color = "text-red-500";
@@ -1307,21 +2265,39 @@ function TierBadge({ tier }: { tier: string }) {
 }
 
 /* ==============================================================
+   NEXT DEALER BADGE
+   ============================================================== */
+function NextDealerBadge({ prediction }: { prediction: NextDealerPrediction }) {
+  const isConfirmed = prediction.confidence === "confirmed";
+  return (
+    <div className="flex items-center gap-1.5 ml-2 min-w-0">
+      <span className="text-[10px] text-muted-foreground shrink-0">TIẾP THEO</span>
+      <span className="text-xs font-semibold truncate max-w-[100px]">
+        {prediction.nextDealerName ?? "—"}
+      </span>
+      <span className={`text-[9px] px-1 py-0.5 font-bold rounded-none shrink-0 ${
+        isConfirmed
+          ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/40"
+          : "bg-amber-500/20 text-amber-500 border border-amber-500/40"
+      }`}>
+        {isConfirmed ? "CHỐT" : "PV"}
+      </span>
+    </div>
+  );
+}
+
+/* ==============================================================
    TABLE TYPE BADGE
    ============================================================== */
 function TableTypeBadge({ type }: { type: string }) {
   const labels: Record<string, string> = {
-    cash: "Cash",
     tournament: "Tournament",
-    vip: "VIP",
   };
   const colors: Record<string, string> = {
-    cash: "bg-primary/10 text-primary border-primary/30",
     tournament: "bg-blue-500/10 text-blue-500 border-blue-500/30",
-    vip: "bg-purple-500/10 text-purple-500 border-purple-500/30",
   };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 border font-semibold ${colors[type] ?? colors.cash} rounded-none`}>
+    <span className={`text-[10px] px-1.5 py-0.5 border font-semibold ${colors[type] ?? "bg-primary/10 text-primary border-primary/30"} rounded-none`}>
       {labels[type] ?? type}
     </span>
   );
@@ -1330,6 +2306,233 @@ function TableTypeBadge({ type }: { type: string }) {
 /* ==============================================================
    SWING CONFIG DIALOG
    ============================================================== */
+// ─── Hook: live effective duration from v_club_swing_status ────────────────
+function useEffectiveDuration(clubId: string, autoAdjustEnabled: boolean) {
+  const [effectiveDuration, setEffectiveDuration] = useState<number | null>(null);
+  const [poolRatio, setPoolRatio] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!autoAdjustEnabled || !clubId) {
+      setEffectiveDuration(null);
+      setPoolRatio(null);
+      return;
+    }
+    let cancelled = false;
+
+    async function fetch() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("v_club_swing_status")
+        .select("effective_duration_minutes, available_dealers, pre_assigned_weighted, active_tables")
+        .eq("club_id", clubId)
+        .eq("table_type", "tournament")
+        .maybeSingle();
+
+      if (!cancelled && data) {
+        setEffectiveDuration(data.effective_duration_minutes);
+        const pool = (data.available_dealers ?? 0) + (data.pre_assigned_weighted ?? 0);
+        const tables = data.active_tables ?? 0;
+        setPoolRatio(tables > 0 ? pool / tables : null);
+      }
+      if (!cancelled) setLoading(false);
+    }
+
+    fetch();
+    const interval = setInterval(fetch, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [clubId, autoAdjustEnabled]);
+
+  return { effectiveDuration, poolRatio, loading };
+}
+
+// ─── Auto-adjust section inside SwingConfigDialog ─────────────────────────
+function AutoAdjustSection({
+  clubId, autoAdjust, baseDuration, targetRatio, minDuration, maxDuration,
+  onChange,
+}: {
+  clubId: string;
+  autoAdjust: boolean;
+  baseDuration: number;
+  targetRatio: number;
+  minDuration: number;
+  maxDuration: number;
+  onChange: (patch: Record<string, number>) => void;
+}) {
+  const { effectiveDuration, poolRatio, loading } = useEffectiveDuration(clubId, autoAdjust);
+  const [suggestResult, setSuggestResult] = useState<any>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
+  const staffingLabel =
+    poolRatio == null ? null
+    : poolRatio < 0.8 ? { text: "Thiếu dealer", color: "text-red-500" }
+    : poolRatio < 1.1 ? { text: "Bình thường",  color: "text-yellow-500" }
+    :                    { text: "Đủ dealer",     color: "text-green-500" };
+
+  const range = maxDuration - minDuration;
+  const basePct = range > 0 ? ((baseDuration - minDuration) / range) * 100 : 50;
+  const effectivePct = effectiveDuration != null && range > 0
+    ? ((effectiveDuration - minDuration) / range) * 100 : null;
+
+  const suggest = async () => {
+    setSuggestLoading(true);
+    setSuggestResult(null);
+    try {
+      const { data, error } = await supabase.rpc("suggest_swing_config", { p_club_id: clubId });
+      if (error) { toast.error("Lỗi gợi ý: " + error.message); return; }
+      setSuggestResult(data);
+    } catch (e: any) {
+      toast.error("Lỗi gợi ý: " + (e.message ?? "unknown"));
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  const applySuggest = () => {
+    if (!suggestResult) return;
+    const base = Math.max(30, suggestResult.suggested_base_duration);
+    onChange({
+      swing_duration_minutes: base,
+      base_duration_minutes: base,
+      target_ratio: suggestResult.suggested_target_ratio,
+      break_duration_minutes: suggestResult.suggested_break_duration,
+      pre_announce_minutes: Math.min(15, Math.max(5, Math.round(base / 3))),
+      min_duration_minutes: Math.max(30, Math.round(base * 0.5)),
+      max_duration_minutes: Math.round(base * 1.5),
+    });
+    toast.success("Đã áp dụng thông số gợi ý. Nhấn Lưu để ghi vào DB.");
+    setSuggestResult(null);
+  };
+
+  const suggestBadge = (status: string) => {
+    if (status === "understaffed") return { text: "Thiếu dealer", color: "bg-red-500/20 text-red-500" };
+    if (status === "overstaffed") return { text: "Đủ dealer", color: "bg-green-500/20 text-green-500" };
+    return { text: "Bình thường", color: "bg-yellow-500/20 text-yellow-500" };
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3 mb-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-medium">Tự động điều chỉnh thời gian swing</p>
+          <p className="text-[10px] text-muted-foreground">Dựa trên tỷ lệ dealer / bàn hiện tại</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={suggest} disabled={suggestLoading}>
+            {suggestLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Zap className="w-3 h-3 mr-1" />}
+            Gợi ý thông số
+          </Button>
+          <Switch
+            checked={autoAdjust}
+            onCheckedChange={(val) => onChange({ auto_adjust_duration: val ? 1 : 0 })}
+          />
+        </div>
+      </div>
+
+      {suggestResult && suggestResult.active_tables > 0 && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Thông số gợi ý</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${suggestBadge(suggestResult.staffing_status).color}`}>
+              {suggestBadge(suggestResult.staffing_status).text}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <span className="text-muted-foreground">Base</span>
+              <p className="font-mono font-semibold">{suggestResult.suggested_base_duration} phút</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Break</span>
+              <p className="font-mono font-semibold">{suggestResult.suggested_break_duration} phút</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Target Ratio</span>
+              <p className="font-mono font-semibold">{suggestResult.suggested_target_ratio}</p>
+            </div>
+          </div>
+          {suggestResult.note && (
+            <p className="text-[10px] text-muted-foreground italic">{suggestResult.note}</p>
+          )}
+          <div className="flex justify-end">
+            <Button size="sm" variant="default" className="text-xs h-7" onClick={applySuggest}>
+              <Zap className="w-3 h-3 mr-1" /> Áp dụng
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {autoAdjust && (
+        <>
+          <div className="rounded bg-muted/50 px-3 py-2 text-xs flex items-center gap-3">
+            {loading ? (
+              <span className="text-muted-foreground">Đang tính...</span>
+            ) : (
+              <>
+                <span>Thời gian hiệu lực: <strong>{effectiveDuration ?? "—"} phút</strong></span>
+                {staffingLabel && (
+                  <span className={`font-medium ${staffingLabel.color}`}>
+                    {staffingLabel.text} {poolRatio != null && `(${poolRatio.toFixed(2)})`}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[11px]">Base Duration (phút)</Label>
+              <Input type="number" min={30} max={120}
+                className="h-8 font-mono text-xs"
+                value={baseDuration}
+                onChange={(e) => onChange({ base_duration_minutes: Number(e.target.value) })} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Khi ratio = target</p>
+            </div>
+            <div>
+              <Label className="text-[11px]">Target Ratio</Label>
+              <Input type="number" min={0.5} max={3.0} step={0.1}
+                className="h-8 font-mono text-xs"
+                value={targetRatio}
+                onChange={(e) => onChange({ target_ratio: Number(e.target.value) })} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Dealer/bàn "bình thường"</p>
+            </div>
+            <div>
+              <Label className="text-[11px]">Min Duration (phút)</Label>
+              <Input type="number" min={30} max={Math.max(baseDuration - 1, 30)}
+                className="h-8 font-mono text-xs"
+                value={minDuration}
+                onChange={(e) => onChange({ min_duration_minutes: Number(e.target.value) })} />
+            </div>
+            <div>
+              <Label className="text-[11px]">Max Duration (phút)</Label>
+              <Input type="number" min={baseDuration + 1} max={180}
+                className="h-8 font-mono text-xs"
+                value={maxDuration}
+                onChange={(e) => onChange({ max_duration_minutes: Number(e.target.value) })} />
+            </div>
+          </div>
+
+          {/* Visual range bar */}
+          <div className="text-[10px] text-muted-foreground flex justify-between">
+            <span>Min: {minDuration}m</span>
+            <span>Base: {baseDuration}m</span>
+            <span>Max: {maxDuration}m</span>
+          </div>
+          <div className="relative h-2 rounded bg-muted overflow-hidden">
+            <div className="absolute h-full bg-primary/30 rounded w-full" />
+            <div className="absolute h-full w-0.5 bg-primary"
+              style={{ left: `${basePct}%` }} />
+            {effectivePct != null && (
+              <div className="absolute h-full w-1 bg-green-500 rounded"
+                style={{ left: `${effectivePct}%` }} />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -1338,12 +2541,15 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
   onSaved: () => void;
 }) {
   const defaultForm = useCallback(() => ({
-    cash: { swing_duration_minutes: 45, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
-    tournament: { swing_duration_minutes: 30, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
-    vip: { swing_duration_minutes: 45, break_duration_minutes: 20, warn_at_minutes: 5, crit_at_minutes: 1, tournament_mode: "time" },
+    tournament: {
+      swing_duration_minutes: 30, break_duration_minutes: 20, warn_at_minutes: 5,
+      crit_at_minutes: 1, tournament_mode: "time", pre_announce_minutes: 10,
+      auto_adjust_duration: false, base_duration_minutes: 30,
+      target_ratio: 1.2, min_duration_minutes: 30, max_duration_minutes: 60,
+    },
   }), []);
 
-  const [form, setForm] = useState<Record<string, typeof defaultForm.cash>>(defaultForm);
+  const [form, setForm] = useState<Record<string, any>>(defaultForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1352,11 +2558,17 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
     for (const cfg of currentConfigs) {
       if (next[cfg.table_type]) {
         next[cfg.table_type] = {
-          swing_duration_minutes: cfg.swing_duration_minutes,
+          swing_duration_minutes: Math.max(30, cfg.swing_duration_minutes),
           break_duration_minutes: cfg.break_duration_minutes,
           warn_at_minutes: cfg.warn_at_minutes,
           crit_at_minutes: cfg.crit_at_minutes,
           tournament_mode: (cfg as any).tournament_mode ?? "time",
+          pre_announce_minutes: (cfg as any).pre_announce_minutes ?? 10,
+          auto_adjust_duration: (cfg as any).auto_adjust_duration ?? false,
+          base_duration_minutes: Math.max(30, (cfg as any).base_duration_minutes ?? 30),
+          target_ratio: (cfg as any).target_ratio ?? 1.2,
+          min_duration_minutes: Math.max(30, (cfg as any).min_duration_minutes ?? 30),
+          max_duration_minutes: (cfg as any).max_duration_minutes ?? 60,
         };
       }
     }
@@ -1370,7 +2582,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
   const save = async () => {
     if (!clubId) { toast.error("Vui lòng chọn CLB"); return; }
     setSaving(true);
-    const types = ["cash", "tournament", "vip"];
+    const types = ["tournament"];
     for (const t of types) {
       const vals = form[t];
       if (!vals) continue;
@@ -1382,6 +2594,12 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
         warn_at_minutes: vals.warn_at_minutes,
         crit_at_minutes: vals.crit_at_minutes,
         tournament_mode: t === "tournament" ? vals.tournament_mode : "time",
+        pre_announce_minutes: vals.pre_announce_minutes ?? 10,
+        auto_adjust_duration: vals.auto_adjust_duration ?? false,
+        base_duration_minutes: vals.base_duration_minutes ?? 30,
+        target_ratio: vals.target_ratio ?? 1.2,
+        min_duration_minutes: vals.min_duration_minutes ?? 20,
+        max_duration_minutes: vals.max_duration_minutes ?? 60,
       }, { onConflict: "club_id, table_type" });
       if (error) { toast.error(`Lỗi lưu ${t}: ${error.message}`); setSaving(false); return; }
     }
@@ -1403,7 +2621,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           <div>
             <Label className="text-[11px]">Swing Duration (min)</Label>
-            <Input type="number" min={1} max={240}
+            <Input type="number" min={30} max={240}
               className="h-8 font-mono text-xs"
               value={v.swing_duration_minutes}
               onChange={(e) => update(type, "swing_duration_minutes", Number(e.target.value))} />
@@ -1443,6 +2661,13 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
               </Select>
             </div>
           )}
+          <div>
+            <Label className="text-[11px]">Pre-Announce (min before)</Label>
+            <Input type="number" min={5} max={15}
+              className="h-8 font-mono text-xs"
+              value={v.pre_announce_minutes ?? 10}
+              onChange={(e) => update(type, "pre_announce_minutes", Number(e.target.value))} />
+          </div>
         </div>
       </div>
     );
@@ -1461,9 +2686,22 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
           <DialogDescription>Điều chỉnh thông số swing cho từng loại bàn.</DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-y-auto pr-1">
-          {section("Cash", "cash")}
+          {form.tournament && (
+            <AutoAdjustSection
+              clubId={clubId}
+              autoAdjust={form.tournament.auto_adjust_duration}
+              baseDuration={form.tournament.base_duration_minutes}
+              targetRatio={form.tournament.target_ratio}
+              minDuration={form.tournament.min_duration_minutes}
+              maxDuration={form.tournament.max_duration_minutes}
+              onChange={(patch) => {
+                for (const [k, v] of Object.entries(patch)) {
+                  update("tournament", k, v);
+                }
+              }}
+            />
+          )}
           {section("Tournament", "tournament")}
-          {section("VIP", "vip")}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
@@ -1485,6 +2723,7 @@ function StatusPill({ status }: { status: string }) {
     "Sẵn sàng": "bg-emerald-500/20 text-emerald-500",
     "Đang bàn": "bg-blue-500/20 text-blue-500",
     "Đang nghỉ": "bg-amber-500/20 text-amber-500",
+    "Đang chờ": "bg-purple-500/20 text-purple-500",
   };
   return (
     <span className={`text-[10px] px-1.5 py-[1px] font-medium ${colors[status] ?? "bg-muted text-muted-foreground"} rounded-none`}>
