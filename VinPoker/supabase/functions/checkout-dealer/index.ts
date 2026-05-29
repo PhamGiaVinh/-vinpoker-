@@ -139,7 +139,8 @@ async function processOneCheckout(
     })
     .eq("id", attendanceId);
 
-  const fmtTime = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const fmtTime = (d: Date) =>
+    d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
   // 4. Telegram: gửi thông báo checkout tới group chat
   if (botToken) {
