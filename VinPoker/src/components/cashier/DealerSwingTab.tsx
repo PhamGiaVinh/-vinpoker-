@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import {
   useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
   useSwingMetrics, useBreakPolicies, useSpecialDates, useAvailableTables, usePreAssignedDealers, usePoolTables,
-  useOptimisticDealerCount, useNextDealerPredictions,
+  useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers,
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
@@ -75,6 +75,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [selectedTour, setSelectedTour] = useState<string | null>(null);
 
   const { data: dealers, loading: dealersLoading, error: dealersError, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
+  const { data: checkedOutDealers, refetch: refetchCheckedOut } = useTodayCheckedOutDealers(filteredClubIds);
   const { data: allDealers } = useAllDealers(filteredClubIds);
   const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useActiveTables(filteredClubIds);
   const { data: availableTables, error: availableTablesError, refetch: refetchAvailableTables } = useAvailableTables(filteredClubIds);
@@ -562,6 +563,29 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     refetchDealers();
   };
 
+  // Quick re-check-in for checked-out dealers (from the "Đã check-out" section)
+  const doReCheckin = async (attendanceId: string) => {
+    setProcessing("checkin");
+    const { error } = await supabase
+      .from("dealer_attendance")
+      .update({
+        status: "checked_in",
+        current_state: "available",
+        check_in_time: new Date().toISOString(),
+        check_out_time: null,
+      })
+      .eq("id", attendanceId)
+      .eq("status", "checked_out");
+    setProcessing(null);
+    if (error) {
+      toast.error(`Re-check-in thất bại: ${error.message}`);
+      return;
+    }
+    toast.success("Đã check-in lại dealer");
+    refetchDealers();
+    refetchCheckedOut();
+  };
+
   // ── Special Dates CRUD handlers (Bug 6) ─────────────────────────────────
   async function handleAddSpecialDate() {
     if (!sdForm.date) { toast.error("Vui lòng chọn ngày"); return; }
@@ -844,11 +868,13 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               processing={processing}
               totalDealers={allDealers?.length ?? 0}
               checkedInCount={checkedInCount}
+              checkedOutDealers={checkedOutDealers ?? []}
               onSendToBreak={sendToBreak}
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
               onBatchCheckout={doBatchCheckout}
+              onReCheckin={doReCheckin}
               breakPolicies={breakPolicies ?? []}
             />
           </div>
@@ -1619,7 +1645,9 @@ function FatigueDot({ attendance }: { attendance: DealerAttendance }) {
 }
 
 function RosterPanel({
-  dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen, onBatchCheckout, breakPolicies,
+  dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
+  checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
+  onBatchCheckout, onReCheckin, breakPolicies,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -1627,11 +1655,13 @@ function RosterPanel({
   processing: string | null;
   totalDealers: number;
   checkedInCount?: number;
+  checkedOutDealers: DealerAttendance[];
   onSendToBreak: (attendanceId: string) => void;
   onEndBreak: (attendanceId: string) => void;
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
+  onReCheckin: (attendanceId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1776,6 +1806,42 @@ function RosterPanel({
               </div>
             );
           })
+        )}
+
+        {/* Đã check-out section */}
+        {checkedOutDealers.length > 0 && (
+          <div className="pt-2 border-t border-border/40">
+            <div className="flex items-center gap-1.5 mb-2">
+              <UserMinus className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Đã check-out</span>
+              <Badge variant="outline" className="text-[10px] ml-auto">{checkedOutDealers.length}</Badge>
+            </div>
+            <div className="space-y-1.5 opacity-60 hover:opacity-100 transition-opacity">
+              {checkedOutDealers.map((d) => {
+                const dd = d.dealers;
+                return (
+                  <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
+                    <div className="w-8 h-8 rounded-none bg-gray-500/20 flex items-center justify-center text-xs font-bold text-gray-400">
+                      {dd?.full_name?.charAt(0) ?? "?"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate text-muted-foreground">{dd?.full_name ?? "—"}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <TierBadge tier={dd?.tier} />
+                        <span className="text-[10px] text-muted-foreground">
+                          {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
+                        </span>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 text-[11px]"
+                      onClick={() => onReCheckin(d.id)} disabled={processing !== null}>
+                      Check-in lại
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
 

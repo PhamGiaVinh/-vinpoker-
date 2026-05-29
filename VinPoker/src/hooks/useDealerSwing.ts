@@ -180,6 +180,28 @@ export function useCheckedInDealers(clubIds: string[]) {
   });
 }
 
+/** Fetch today's checked-out dealers so they appear in a "Đã check-out" panel for quick re-check-in */
+export function useTodayCheckedOutDealers(clubIds: string[]) {
+  const today = new Date().toISOString().split("T")[0];
+  return useRealtimeQuery<DealerAttendance>({
+    queryFn: async () =>
+      supabase
+        .from("dealer_attendance")
+        .select(
+          `id, dealer_id, shift_date, status, check_in_time, check_out_time,
+           overtime_minutes, current_state, worked_minutes_since_last_break,
+           priority_break_flag,
+           dealers!inner(full_name, telegram_username, tier, club_id)`
+        )
+        .eq("status", "checked_out")
+        .gte("shift_date", today)
+        .in("dealers.club_id", clubIds)
+        .order("check_out_time", { ascending: false }),
+    realtimeTables: ["dealer_attendance"],
+    clubIds,
+  });
+}
+
 export function useActiveAssignments(clubIds: string[], shiftId?: string) {
   return useRealtimeQuery<DealerAssignment>({
     queryFn: async () => {
