@@ -31,7 +31,10 @@ import {
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
+import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import DealerManagementTab from "./DealerManagementTab";
+import { TableTimerDisplay } from "./TableTimerDisplay";
+import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
 import {
   Users,   Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
@@ -141,6 +144,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     const otPay = (row.overtime_minutes ?? 0) / 60 * rate * 1.5;
     return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
   };
+
+  // Batch checkout confirm dialog
+  const [batchCheckoutConfirmOpen, setBatchCheckoutConfirmOpen] = useState(false);
+  const [batchCheckoutWarnings, setBatchCheckoutWarnings] = useState<string[]>([]);
+  const [batchCheckoutPending, setBatchCheckoutPending] = useState<string[]>([]);
 
   // Close table confirmation
   const [closeTableConfirmId, setCloseTableConfirmId] = useState<string | null>(null);
@@ -339,6 +347,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       }
       if ((data as any)?.error) { toast.error((data as any).error); return; }
       toast.success("Đã gán dealer");
+      if (modalTable) triggerSwingAnimation(modalTable);
       // Telegram notification
       const table = (tables ?? []).find((t) => t.id === modalTable);
       const tableName = table?.table_name ?? "";
@@ -463,18 +472,35 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return tour ? tour.tour_name : "";
   };
 
-  // Load dealers for manual check-in — exclude checked-in active dealers regardless of date
+  // Load dealers for manual check-in — includes checked-out dealers (re-check-in) in separate section
   const loadCheckinDealers = async () => {
-    const { data: dealers } = await supabase
+    const today = new Date().toISOString().split("T")[0];
+    const { data: activeDealers } = await supabase
       .from("dealers")
-      .select("id, full_name, tier")
+      .select("id, full_name, tier, club_id")
       .in("club_id", filteredClubIds)
       .eq("status", "active")
       .order("full_name");
-    if (!dealers?.length) { setCheckinDealers([]); return; }
-    const dealerIds = dealers.map((d) => d.id);
-    const today = new Date().toISOString().split("T")[0];
-    // Layer 1: exclude dealers with any active checked-in attendance (all dates)
+    const dealerMap = new Map((activeDealers ?? []).map((d) => [d.id, d]));
+
+    // Also fetch checked-out dealers today — they might not be in the active dealers list
+    const { data: checkedOutToday } = await supabase
+      .from("dealer_attendance")
+      .select("dealer_id, dealers!inner(full_name, tier)")
+      .in("dealers.club_id", filteredClubIds)
+      .eq("status", "checked_out")
+      .eq("shift_date", today);
+    for (const co of checkedOutToday ?? []) {
+      if (!dealerMap.has(co.dealer_id)) {
+        const dd = (co as any).dealers;
+        dealerMap.set(co.dealer_id, { id: co.dealer_id, full_name: dd?.full_name ?? "?", tier: dd?.tier ?? "C", club_id: "" });
+      }
+    }
+
+    const dealerIds = [...dealerMap.keys()];
+    if (!dealerIds.length) { setCheckinDealers([]); return; }
+
+    // Exclude currently checked-in dealers
     const { data: activeAtt } = await supabase
       .from("dealer_attendance")
       .select("dealer_id")
@@ -482,35 +508,44 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       .eq("status", "checked_in")
       .in("current_state", ["available", "assigned", "on_break", "pre_assigned"]);
     const activeCheckedInIds = new Set((activeAtt ?? []).map((a) => a.dealer_id));
-    // Backup layer: also check dealer_assignments for direct "sitting at table" evidence
+    // Also exclude dealers with active table assignments
     const { data: activeAssigns } = await supabase
       .from("dealer_assignments")
       .select("dealer_id")
       .eq("status", "assigned")
       .in("dealer_id", dealerIds);
     for (const a of activeAssigns ?? []) activeCheckedInIds.add(a.dealer_id);
-    const remainingIds = dealerIds.filter((id) => !activeCheckedInIds.has(id));
-    if (!remainingIds.length) { setCheckinDealers([]); return; }
-    // Layer 2: from remaining, only show those with no today attendance OR checked_out
+
+    // Get today's attendance to classify: checked-out → re-check-in, no attendance → new check-in
     const { data: todayAtt } = await supabase
       .from("dealer_attendance")
       .select("dealer_id, status")
       .eq("shift_date", today)
-      .in("dealer_id", remainingIds);
+      .in("dealer_id", dealerIds);
     const checkedOutIds = new Set(
       (todayAtt ?? []).filter((a) => a.status === "checked_out").map((a) => a.dealer_id)
     );
     const withAttToday = new Set((todayAtt ?? []).map((a) => a.dealer_id));
-    const eligible = remainingIds
-      .filter((id) => !withAttToday.has(id) || checkedOutIds.has(id))
-      .map((id) => {
-        const d = dealers.find((x) => x.id === id)!;
-        return { ...d, wasCheckedOut: checkedOutIds.has(id) };
-      });
-    setCheckinDealers(eligible);
+
+    const reCheckins: any[] = [];
+    const newCheckins: any[] = [];
+    for (const id of dealerIds) {
+      if (activeCheckedInIds.has(id)) continue;
+      const d = dealerMap.get(id)!;
+      if (checkedOutIds.has(id)) {
+        reCheckins.push({ ...d, wasCheckedOut: true });
+      } else if (!withAttToday.has(id)) {
+        newCheckins.push({ ...d, wasCheckedOut: false });
+      }
+      // skip if dealer has today attendance but not checked_out (e.g. stale checked_in)
+    }
+    setCheckinDealers([...reCheckins, ...newCheckins]);
   };
 
   // Manual check-in multiple dealers
+  // INSERT new record instead of UPDATE — preserves history for payroll.
+  // Partial unique index idx_one_active_checkin_per_dealer prevents
+  // double active check-in (dealer_id, shift_date WHERE status='checked_in').
   const doCheckin = async () => {
     if (!checkinDealerIds.length) return;
     setProcessing("checkin");
@@ -525,35 +560,38 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     let success = 0, fail = 0;
 
     for (const dealerId of checkinDealerIds) {
-      const { data: existing } = await supabase
+      // Idempotency: skip if dealer already actively checked in today
+      const { data: activeCheckin } = await supabase
         .from("dealer_attendance")
-        .select("id")
+        .select("id, check_in_time")
         .eq("dealer_id", dealerId)
         .eq("shift_date", today)
-        .eq("status", "checked_out")
-        .limit(1);
-      if (existing?.length) {
-        const { error } = await supabase
-          .from("dealer_attendance")
-          .update({ status: "checked_in", current_state: "available", check_in_time: new Date().toISOString(), check_out_time: null })
-          .eq("id", existing[0].id);
-        if (error) { fail++; continue; }
-        success++;
-      } else {
-        // When shift_id is null, PostgreSQL UNIQUE won't deduplicate (NULL != NULL).
-        // Use partial index idx_attendance_no_shift for null shift_id case.
-        const conflictTarget = shiftId ? "dealer_id, shift_id, shift_date" : "dealer_id, shift_date";
-        const { error } = await supabase.from("dealer_attendance").upsert({
-          dealer_id: dealerId,
-          shift_id: shiftId ?? null,
-          shift_date: today,
-          status: "checked_in",
-          current_state: "available",
-          check_in_time: new Date().toISOString(),
-        }, { onConflict: conflictTarget, ignoreDuplicates: false });
-        if (error) { fail++; continue; }
-        success++;
+        .eq("status", "checked_in")
+        .maybeSingle();
+      if (activeCheckin) {
+        console.warn(`[doCheckin] Dealer ${dealerId} already checked in at ${activeCheckin.check_in_time} — skip`);
+        continue;
       }
+      // INSERT new attendance record; the old checked_out record is preserved
+      const { error } = await supabase.from("dealer_attendance").insert({
+        dealer_id: dealerId,
+        shift_id: shiftId ?? null,
+        shift_date: today,
+        status: "checked_in",
+        current_state: "available",
+        check_in_time: new Date().toISOString(),
+      });
+      if (error) {
+        // 23505 = unique_violation from idx_one_active_checkin_per_dealer
+        if (error.code === "23505") {
+          console.warn(`[doCheckin] Dealer ${dealerId} checked in concurrently — skip`);
+          success++;
+          continue;
+        }
+        fail++;
+        continue;
+      }
+      success++;
     }
     setProcessing(null);
     if (fail > 0) toast.warning(`Check-in: ${success} thành công, ${fail} thất bại`);
@@ -564,26 +602,62 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   };
 
   // Quick re-check-in for checked-out dealers (from the "Đã check-out" section)
-  const doReCheckin = async (attendanceId: string) => {
+  // INSERT new record instead of UPDATE — the old checked_out record is
+  // preserved so payroll (get_dealer_payroll) can compute hours from history.
+  const doReCheckin = async (dealerId: string) => {
     setProcessing("checkin");
-    const { error } = await supabase
-      .from("dealer_attendance")
-      .update({
+    const today = new Date().toISOString().split("T")[0];
+    try {
+      // Idempotency: skip if dealer already actively checked in today
+      const { data: activeCheckin } = await supabase
+        .from("dealer_attendance")
+        .select("id, check_in_time")
+        .eq("dealer_id", dealerId)
+        .eq("shift_date", today)
+        .eq("status", "checked_in")
+        .maybeSingle();
+      if (activeCheckin) {
+        console.warn(`[doReCheckin] Dealer ${dealerId} already active since ${activeCheckin.check_in_time} — skip`);
+        toast.info("Dealer đang trong ca rồi");
+        setProcessing(null);
+        return;
+      }
+      // Get the latest checked-out record to reuse its shift_id
+      const { data: lastCheckout } = await supabase
+        .from("dealer_attendance")
+        .select("shift_id")
+        .eq("dealer_id", dealerId)
+        .eq("shift_date", today)
+        .eq("status", "checked_out")
+        .order("check_out_time", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      // INSERT new attendance record
+      const { error } = await supabase.from("dealer_attendance").insert({
+        dealer_id: dealerId,
+        shift_id: lastCheckout?.shift_id ?? null,
+        shift_date: today,
         status: "checked_in",
         current_state: "available",
         check_in_time: new Date().toISOString(),
-        check_out_time: null,
-      })
-      .eq("id", attendanceId)
-      .eq("status", "checked_out");
-    setProcessing(null);
-    if (error) {
-      toast.error(`Re-check-in thất bại: ${error.message}`);
-      return;
+      });
+      if (error) {
+        if (error.code === "23505") {
+          console.warn(`[doReCheckin] Race condition — dealer ${dealerId} checked in concurrently`);
+          toast.info("Dealer đã check-in rồi");
+          setProcessing(null);
+          return;
+        }
+        throw error;
+      }
+      setProcessing(null);
+      toast.success("Đã check-in lại dealer");
+      refetchDealers();
+      refetchCheckedOut();
+    } catch (e: any) {
+      setProcessing(null);
+      toast.error(`Re-check-in thất bại: ${e.message}`);
     }
-    toast.success("Đã check-in lại dealer");
-    refetchDealers();
-    refetchCheckedOut();
   };
 
   // ── Special Dates CRUD handlers (Bug 6) ─────────────────────────────────
@@ -648,6 +722,52 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setCheckoutOpen(false);
     onOptCheckout();
     setTimeout(refetchDealers, 50);
+  };
+
+  // Batch checkout with pre-check for active assignments
+  const handleBatchCheckoutClick = async (attendanceIds: string[]) => {
+    if (!attendanceIds.length) return;
+
+    const { data: active } = await supabase
+      .from("dealer_assignments")
+      .select(`
+        attendance_id,
+        status,
+        game_tables!inner(table_name)
+      `)
+      .in("attendance_id", attendanceIds)
+      .in("status", ["assigned", "pre_assigned"]);
+
+    const activeMap = new Map<string, { tableName: string; status: string }>();
+    for (const a of active ?? []) {
+      const aa = a as any;
+      activeMap.set(aa.attendance_id, {
+        tableName: aa.game_tables?.table_name ?? "?",
+        status: aa.status,
+      });
+    }
+
+    if (activeMap.size > 0) {
+      const warnings: string[] = [];
+      for (const id of attendanceIds) {
+        const info = activeMap.get(id);
+        if (info) {
+          const dealerEntry = (dealers ?? []).find((d: any) => d.id === id);
+          const dealerName = (dealerEntry as any)?.dealers?.full_name ?? id;
+          const statusLabel = info.status === "pre_assigned" ? "đang pre-assign" : "đang ở bàn";
+          warnings.push(`${dealerName} — ${statusLabel} ${info.tableName}`);
+        }
+      }
+      if (warnings.length > 0) {
+        setBatchCheckoutWarnings(warnings);
+        setBatchCheckoutPending(attendanceIds);
+        setBatchCheckoutConfirmOpen(true);
+        return;
+      }
+    }
+
+    // No active assignments — proceed directly
+    await doBatchCheckout(attendanceIds);
   };
 
   // Batch checkout via edge function
@@ -778,6 +898,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     toast.success("Đã tải bảng lương");
   };
 
+  const { triggerSwingAnimation, isAnimating } = useSwingAnimation();
+
   const loading = dealersLoading || tablesLoading || assignsLoading;
 
   return (
@@ -873,7 +995,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
-              onBatchCheckout={doBatchCheckout}
+              onBatchCheckout={handleBatchCheckoutClick}
               onReCheckin={doReCheckin}
               breakPolicies={breakPolicies ?? []}
             />
@@ -892,23 +1014,26 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
               </>
             ) : (
-              <TableGrid
-                tables={tables ?? []}
-                tableAssignmentMap={tableAssignmentMap}
-                nextDealerMap={nextDealerMap}
-                preAssignedMap={preAssignedMap}
-                swingConfigs={swingConfigs ?? []}
-                processing={processing}
-                onAssign={openAssignModal}
-                onSendToBreak={(attId) => sendToBreak(attId)}
-                selectedTour={selectedTour}
-                onCreateTable={() => setCreateTableOpen(true)}
-                closeTableConfirmId={closeTableConfirmId}
-                onCloseTableClick={setCloseTableConfirmId}
-                onCloseTableConfirm={closeTable}
-                onCloseTableCancel={() => setCloseTableConfirmId(null)}
-                closingTable={closingTable}
-              />
+                <TableGrid
+                  tables={tables ?? []}
+                  tableAssignmentMap={tableAssignmentMap}
+                  nextDealerMap={nextDealerMap}
+                  preAssignedMap={preAssignedMap}
+                  swingConfigs={swingConfigs ?? []}
+                  processing={processing}
+                  onAssign={openAssignModal}
+                  onSendToBreak={(attId) => sendToBreak(attId)}
+                  selectedTour={selectedTour}
+                  onCreateTable={() => setCreateTableOpen(true)}
+                  closeTableConfirmId={closeTableConfirmId}
+                  onCloseTableClick={setCloseTableConfirmId}
+                  onCloseTableConfirm={closeTable}
+                  onCloseTableCancel={() => setCloseTableConfirmId(null)}
+                  closingTable={closingTable}
+                  onManualSwing={openAssignModal}
+                  onForceClose={setCloseTableConfirmId}
+                  isAnimating={isAnimating}
+                />
             )}
           </div>
 
@@ -977,12 +1102,15 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                             {s.score}
                           </span>
                           {bd && (
-                            <div className="hidden absolute bottom-full right-0 mb-1 z-50 bg-black border border-border p-2 rounded-none shadow-lg min-w-[140px]">
+                            <div className="hidden absolute bottom-full right-0 mb-1 z-50 bg-black border border-border p-2 rounded-none shadow-lg min-w-[160px]">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
                                 <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
                                 <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.fairness}</span></div>
                                 {bd.no_back_to_back !== 0 && <div className="flex justify-between"><span>Tránh bàn cũ</span><span className="text-red-400">{bd.no_back_to_back}</span></div>}
                                 {bd.skill_bonus !== 0 && <div className="flex justify-between"><span>Kỹ năng</span><span className="text-emerald-400">+{bd.skill_bonus}</span></div>}
+                                {bd.heavy_worker_penalty !== 0 && <div className="flex justify-between"><span>Làm nhiều ca</span><span className="text-red-400">{bd.heavy_worker_penalty}</span></div>}
+                                {bd.consecutive_high_penalty !== 0 && <div className="flex justify-between"><span>Nhiều bàn HIGH</span><span className="text-red-400">{bd.consecutive_high_penalty}</span></div>}
+                                {bd.tier_back_to_back_penalty !== 0 && <div className="flex justify-between"><span>Bàn cũ (tier)</span><span className="text-red-400">{bd.tier_back_to_back_penalty}</span></div>}
                                 <div className="border-t border-border pt-0.5 mt-0.5 flex justify-between font-semibold">
                                   <span>Tổng</span><span className="text-primary">{s.score}</span>
                                 </div>
@@ -1026,29 +1154,78 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         </DialogContent>
       </Dialog>
 
-      {/* Check-in Dialog (multi-select) */}
+      {/* Check-in Dialog (multi-select) với 2 section: Check-in lại + Check-in mới */}
       <Dialog open={checkinOpen} onOpenChange={(o) => { setCheckinOpen(o); if (o) { loadCheckinDealers(); setCheckinDealerIds([]); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Check-in thủ công</DialogTitle></DialogHeader>
-          <div className="max-h-64 overflow-y-auto space-y-1 border border-border p-2 rounded">
+          <div className="max-h-72 overflow-y-auto space-y-2 border border-border p-2 rounded">
             {checkinDealers.length === 0 ? (
               <div className="text-xs text-muted-foreground text-center py-4">Tất cả dealer đã check‑in hôm nay.</div>
             ) : (
-              checkinDealers.map((d: any) => (
-                <label key={d.id}
-                  className={`flex items-center gap-2 p-2 text-xs rounded cursor-pointer hover:bg-muted/20 ${checkinDealerIds.includes(d.id) ? "bg-primary/10" : ""}`}>
-                  <Checkbox
-                    checked={checkinDealerIds.includes(d.id)}
-                    onCheckedChange={(chk) => {
-                      if (chk) setCheckinDealerIds([...checkinDealerIds, d.id]);
-                      else setCheckinDealerIds(checkinDealerIds.filter((id) => id !== d.id));
-                    }}
-                  />
-                  <span className="font-semibold">{d.full_name}</span>
-                  <Badge variant="outline" className="text-[10px]">{d.tier}</Badge>
-                  {d.wasCheckedOut && <span className="text-amber-400">(Đã kết thúc ca)</span>}
-                </label>
-              ))
+              <>
+                {/* Section: Check-in lại (đã checkout) */}
+                {(() => {
+                  const reCheckins = checkinDealers.filter((d: any) => d.wasCheckedOut);
+                  if (!reCheckins.length) return null;
+                  return (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1 sticky top-0 bg-card z-10 pb-1">
+                        <UserMinus className="w-3 h-3 text-amber-400" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">Check-in lại</span>
+                        <Badge variant="outline" className="text-[10px] ml-auto">{reCheckins.length}</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {reCheckins.map((d: any) => (
+                          <label key={d.id}
+                            className={`flex items-center gap-2 p-2 text-xs rounded cursor-pointer hover:bg-muted/20 ${checkinDealerIds.includes(d.id) ? "bg-primary/10 border border-primary/30" : "border border-transparent"}`}>
+                            <Checkbox
+                              checked={checkinDealerIds.includes(d.id)}
+                              onCheckedChange={(chk) => {
+                                if (chk) setCheckinDealerIds([...checkinDealerIds, d.id]);
+                                else setCheckinDealerIds(checkinDealerIds.filter((id) => id !== d.id));
+                              }}
+                            />
+                            <span className="font-semibold">{d.full_name}</span>
+                            <Badge variant="outline" className="text-[10px]">{d.tier}</Badge>
+                            <span className="text-[10px] text-amber-400">(Đã kết thúc ca)</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Section: Check-in mới */}
+                {(() => {
+                  const newCheckins = checkinDealers.filter((d: any) => !d.wasCheckedOut);
+                  if (!newCheckins.length) return null;
+                  return (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1 sticky top-0 bg-card z-10 pb-1">
+                        <UserPlus className="w-3 h-3 text-emerald-400" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">Check-in mới</span>
+                        <Badge variant="outline" className="text-[10px] ml-auto">{newCheckins.length}</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        {newCheckins.map((d: any) => (
+                          <label key={d.id}
+                            className={`flex items-center gap-2 p-2 text-xs rounded cursor-pointer hover:bg-muted/20 ${checkinDealerIds.includes(d.id) ? "bg-primary/10 border border-primary/30" : "border border-transparent"}`}>
+                            <Checkbox
+                              checked={checkinDealerIds.includes(d.id)}
+                              onCheckedChange={(chk) => {
+                                if (chk) setCheckinDealerIds([...checkinDealerIds, d.id]);
+                                else setCheckinDealerIds(checkinDealerIds.filter((id) => id !== d.id));
+                              }}
+                            />
+                            <span className="font-semibold">{d.full_name}</span>
+                            <Badge variant="outline" className="text-[10px]">{d.tier}</Badge>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </div>
           <div className="flex items-center justify-between text-xs">
@@ -1067,6 +1244,50 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           <DialogFooter>
             <Button onClick={doCheckin} disabled={!checkinDealerIds.length || processing === "checkin"}>
               {processing === "checkin" ? <Loader2 className="w-3 h-3 animate-spin" /> : `Check-in (${checkinDealerIds.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Checkout Confirm Dialog */}
+      <Dialog open={batchCheckoutConfirmOpen} onOpenChange={setBatchCheckoutConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xác nhận Check-out hàng loạt</DialogTitle>
+            <DialogDescription>
+              {batchCheckoutWarnings.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-amber-500 text-sm font-medium">
+                    ⚠️ Các dealer sau đang có assignment:
+                  </p>
+                  {batchCheckoutWarnings.map((w, i) => (
+                    <p key={i} className="text-xs text-muted-foreground pl-3">{w}</p>
+                  ))}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Checkout sẽ tự release assignment. Bàn có thể bị trống cho đến cron tick tiếp theo.
+                  </p>
+                </div>
+              )}
+              {batchCheckoutWarnings.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Xác nhận checkout {batchCheckoutPending.length} dealer?
+                </p>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchCheckoutConfirmOpen(false)}>
+              Huỷ
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setBatchCheckoutConfirmOpen(false);
+                setBatchCheckoutWarnings([]);
+                await doBatchCheckout(batchCheckoutPending);
+              }}
+            >
+              Xác nhận Checkout {batchCheckoutPending.length} dealer
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1420,7 +1641,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                             Number(displayRow.total_hours).toFixed(1)
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs">{r.overtime_minutes}</TableCell>
+                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-red-400 font-semibold" : ""}`}>
+                          {r.overtime_minutes > 0 ? (() => { const h = Math.floor(r.overtime_minutes / 60); const m = r.overtime_minutes % 60; return h > 0 ? `${h}h ${m}ph` : `${m}ph`; })() : "—"}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-xs">{r.total_swings}</TableCell>
                         <TableCell className="text-right font-mono text-xs">
                           {isEditing ? (
@@ -1439,7 +1662,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">{Number(displayRow.base_pay).toLocaleString("vi-VN")}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">{Number(displayRow.overtime_pay).toLocaleString("vi-VN")}</TableCell>
+                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-red-400 font-semibold" : ""}`}>
+                          {displayRow.overtime_pay > 0 ? Number(displayRow.overtime_pay).toLocaleString("vi-VN") : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{Number(displayRow.total_pay).toLocaleString("vi-VN")}</TableCell>
                       </TableRow>
                       );
@@ -1450,8 +1675,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                       <TableCell className="text-right font-mono text-xs font-semibold">
                         {(payrollData ?? []).reduce((s, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + (e.adjustedHours ?? r.total_hours); }, 0).toFixed(1)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold">
-                        {payrollData?.reduce((s, r: any) => s + (r.overtime_minutes ?? 0), 0)}
+                      <TableCell className="text-right font-mono text-xs font-semibold text-amber-400">
+                        {(() => { const total = payrollData?.reduce((s: number, r: any) => s + (r.overtime_minutes ?? 0), 0) ?? 0; const h = Math.floor(total / 60); const m = total % 60; return total > 0 ? (h > 0 ? `${h}h ${m}ph` : `${m}ph`) : "—"; })()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs font-semibold">
                         {payrollData?.reduce((s, r: any) => s + (r.total_swings ?? 0), 0)}
@@ -1460,8 +1685,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                       <TableCell className="text-right font-mono text-xs font-semibold">
                         {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).base_pay); }, 0)).toLocaleString("vi-VN")}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold">
-                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).overtime_pay); }, 0)).toLocaleString("vi-VN")}
+                      <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
+                        {(() => { const total = (payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).overtime_pay); }, 0); return total > 0 ? Number(total).toLocaleString("vi-VN") : "—"; })()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">
                         {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).total_pay); }, 0)).toLocaleString("vi-VN")}
@@ -1644,6 +1869,41 @@ function FatigueDot({ attendance }: { attendance: DealerAttendance }) {
   return <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} title={`Đã làm ${worked}p${priority ? " (ưu tiên nghỉ)" : ""}`} />;
 }
 
+function PriorityBreakIndicator({
+  priorityBreakFlag,
+  workedMinutesSinceLastBreak,
+  maxWorkMinutes = 105,
+}: {
+  priorityBreakFlag: boolean;
+  workedMinutesSinceLastBreak: number;
+  maxWorkMinutes?: number;
+}) {
+  const worked = workedMinutesSinceLastBreak ?? 0;
+  if (!priorityBreakFlag && worked < 75) return null;
+
+  const remaining = Math.max(0, maxWorkMinutes - worked);
+  const isMandatory = worked >= maxWorkMinutes;
+  const isWarning = worked >= 75 && !isMandatory;
+
+  if (isMandatory || priorityBreakFlag) {
+    return (
+      <span className="priority-break-badge--mandatory" title={`Làm ${worked} phút — bắt buộc nghỉ`}>
+        🔴 Nghỉ ngay
+      </span>
+    );
+  }
+
+  if (isWarning) {
+    return (
+      <span className="priority-break-badge--warning" title={`Làm ${worked}/${maxWorkMinutes} phút — còn ${remaining} phút`}>
+        ⚠️ {remaining}ph
+      </span>
+    );
+  }
+
+  return null;
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
@@ -1661,7 +1921,7 @@ function RosterPanel({
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
-  onReCheckin: (attendanceId: string) => void;
+  onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1775,6 +2035,7 @@ function RosterPanel({
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <TierBadge tier={dd?.tier} />
                             <StatusPill status={sec.key} />
+                            <PriorityBreakIndicator priorityBreakFlag={d.priority_break_flag} workedMinutesSinceLastBreak={d.worked_minutes_since_last_break} />
                             {info?.tableName && (
                               <span className="text-[10px] text-muted-foreground truncate">· {info.tableName}</span>
                             )}
@@ -1834,7 +2095,7 @@ function RosterPanel({
                       </div>
                     </div>
                     <Button size="sm" variant="outline" className="h-7 text-[11px]"
-                      onClick={() => onReCheckin(d.id)} disabled={processing !== null}>
+                      onClick={() => onReCheckin(d.dealer_id)} disabled={processing !== null}>
                       Check-in lại
                     </Button>
                   </div>
@@ -1869,6 +2130,7 @@ function RosterPanel({
 function TableGrid({
   tables, tableAssignmentMap, nextDealerMap, preAssignedMap, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
+  onManualSwing, onForceClose, isAnimating,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -1885,6 +2147,9 @@ function TableGrid({
   onCloseTableConfirm: () => void;
   onCloseTableCancel: () => void;
   closingTable: boolean;
+  onManualSwing?: (tableId: string) => void;
+  onForceClose?: (tableId: string) => void;
+  isAnimating?: (tableId: string) => boolean;
 }) {
   // Filter tables based on selected tour using shift_id column
   const filteredTables = useMemo(() => {
@@ -1941,9 +2206,20 @@ function TableGrid({
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
 
             return (
-              <div key={t.id} className="p-3 bg-muted/10 border border-border rounded-none animate-in fade-in slide-in-from-bottom-1 duration-300">
+              <div key={t.id} className={`p-3 bg-muted/10 border border-border rounded-none animate-in fade-in slide-in-from-bottom-1 duration-300 ${isAnimating?.(t.id) ? "table-card--swinging" : ""}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="font-semibold text-sm">{t.table_name}</div>
+                  <div className="font-semibold text-sm flex items-center gap-2">
+                    {t.table_name}
+                    {onManualSwing && onForceClose && (
+                      <TableCardKebab
+                        tableId={t.id}
+                        tableName={t.table_name}
+                        hasActiveAssign={!!a}
+                        onManualSwing={() => onManualSwing(t.id)}
+                        onForceClose={() => onForceClose(t.id)}
+                      />
+                    )}
+                  </div>
                   <div className="flex items-center gap-1">
                     <TableTypeBadge type={t.table_type} />
                     {closeTableConfirmId === t.id ? (
@@ -1990,7 +2266,10 @@ function TableGrid({
                 {/* Countdown timer + upcoming dealer (next dealer prediction) */}
                 <div className="flex items-center justify-between">
                   {a && (
-                    <TimerCell swingDueAt={a.swing_due_at ?? a.assigned_at} warnAt={warnAt} critAt={critAt} attendanceId={a.attendance_id} assignmentId={a.id} onExpired={onTimerExpired} />
+                    <TableTimerDisplay
+                      overtimeStartedAt={a.overtime_started_at}
+                      swingDueAt={a.swing_due_at}
+                    />
                   )}
                   {nextDealerMap?.[t.id] && (
                     <NextDealerBadge prediction={nextDealerMap[t.id]!} />
@@ -2027,6 +2306,40 @@ function TableGrid({
       </div>
     </Card>
   );
+}
+
+/* ==============================================================
+   AUTO-SCROLL AUDIT LOG HOOK
+   ============================================================== */
+function useAutoScrollLog(logs: unknown[]) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [unread, setUnread] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const scrollToBottom = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setUnread(0);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsPaused(distFromBottom > 50);
+  }, []);
+
+  useEffect(() => {
+    if (isPaused) {
+      setUnread((n) => n + 1);
+    } else {
+      scrollToBottom();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs.length]);
+
+  return { containerRef, unread, isPaused, scrollToBottom, handleScroll };
 }
 
 /* ==============================================================
@@ -2225,21 +2538,7 @@ function CommandCenter({
         </div>
 
         {/* ─────────────── AUDIT LOG ─────────────── */}
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="text-xs font-semibold text-muted-foreground mb-2">NHẬT KÝ HOẠT ĐỘNG</div>
-          <div className="space-y-1.5 overflow-y-auto max-h-[20vh]">
-            {auditLogs.length === 0 ? (
-              <div className="text-xs text-muted-foreground italic">Chưa có hoạt động.</div>
-            ) : (
-              auditLogs.map((log: any) => (
-                <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                  <span className="font-semibold text-foreground">{log.action}</span>
-                  <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <AuditLogSection logs={auditLogs} />
       </Card>
 
       {/* ── Stop Swing Confirmation ── */}
@@ -2784,6 +3083,47 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
 /* ==============================================================
    STATUS PILL
    ============================================================== */
+/* ==============================================================
+   AUDIT LOG SECTION — auto-scroll with unread badge
+   ============================================================== */
+function AuditLogSection({ logs }: { logs: any[] }) {
+  const { containerRef, unread, isPaused, scrollToBottom, handleScroll } = useAutoScrollLog(logs);
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col relative">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-muted-foreground">NHẬT KÝ HOẠT ĐỘNG</span>
+        <span className="text-[10px] text-muted-foreground">{logs.length} mục</span>
+      </div>
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="space-y-1.5 overflow-y-auto max-h-[20vh] scroll-smooth"
+        style={{ scrollBehavior: "smooth" }}
+      >
+        {logs.length === 0 ? (
+          <div className="text-xs text-muted-foreground italic">Chưa có hoạt động.</div>
+        ) : (
+          logs.map((log: any) => (
+            <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
+              <span className="font-semibold text-foreground">{log.action}</span>
+              <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+            </div>
+          ))
+        )}
+      </div>
+      {isPaused && unread > 0 && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1 rounded-full shadow-lg whitespace-nowrap hover:opacity-85 transition-opacity z-10"
+        >
+          ↓ {unread} log mới
+        </button>
+      )}
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const colors: Record<string, string> = {
     "Sẵn sàng": "bg-emerald-500/20 text-emerald-500",

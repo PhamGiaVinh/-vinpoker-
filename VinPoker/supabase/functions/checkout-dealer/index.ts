@@ -18,14 +18,10 @@ async function processOneCheckout(
   uid: string,
   attendanceId: string,
 ): Promise<Record<string, unknown>> {
-  // 1. Get attendance info + club_id for auth check
+  // 1. Get attendance info
   const { data: att, error: attErr } = await admin
     .from("dealer_attendance")
-    .select(`
-      id, dealer_id, status, current_state, shift_id, check_in_time,
-      pre_assigned_table_id,
-      dealers!inner(id, full_name, club_id)
-    `)
+    .select("id, dealer_id, status, current_state, shift_id, check_in_time, pre_assigned_table_id")
     .eq("id", attendanceId)
     .single();
 
@@ -35,9 +31,16 @@ async function processOneCheckout(
     return { attendance_id: attendanceId, success: false, error: "Dealer không trong trạng thái check-in" };
   }
 
-  const clubId = (att as any).dealers.club_id;
-  const dealerName = (att as any).dealers.full_name;
-  const checkInTime = (att as any).check_in_time;
+  // 1b. Get dealer info (separate query to avoid join syntax issues)
+  const { data: dealer } = await admin
+    .from("dealers")
+    .select("id, full_name, club_id, telegram_username, telegram_user_id")
+    .eq("id", att.dealer_id)
+    .single();
+
+  const clubId = dealer?.club_id ?? "";
+  const dealerName = dealer?.full_name ?? "";
+  const checkInTime = att.check_in_time;
 
   // Auth check for first item only (caller already verified for this club)
   // All items in a batch are expected to belong to the same club
@@ -124,9 +127,9 @@ async function processOneCheckout(
     totalHours = Math.round(workedMinutes / 6) / 10;
   }
 
-  // 3. Check-out chính
+  // 3. Check-out chính (atomic: status + current_state cùng 1 UPDATE)
   const nowISO = new Date().toISOString();
-  await admin
+  const { error: checkoutErr } = await admin
     .from("dealer_attendance")
     .update({
       status: "checked_out",
@@ -136,8 +139,10 @@ async function processOneCheckout(
       pre_assigned_at: null,
       overtime_minutes: overtimeMinutes,
       worked_minutes_since_last_break: workedMinutes,
+      total_worked_minutes_today: workedMinutes,
     })
-    .eq("id", attendanceId);
+    .eq("id", attendanceId)
+    .eq("status", "checked_in");   // ← GUARD: chống double-checkout
 
   const fmtTime = (d: Date) =>
     d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
@@ -226,15 +231,20 @@ Deno.serve(async (req) => {
     if (!ids.length) return jsonResponse({ error: "attendance_id or attendance_ids required" }, 400);
 
     // Verify dealer_control permission (check first item for club_id, then assume same club for batch)
-    const { data: firstAtt } = await admin
+    const { data: row } = await admin
       .from("dealer_attendance")
-      .select("dealers!inner(club_id)")
+      .select("dealer_id")
       .eq("id", ids[0])
       .maybeSingle();
-    if (!firstAtt) return jsonResponse({ error: "First attendance not found" }, 404);
+    if (!row) return jsonResponse({ error: "First attendance not found" }, 404);
 
-    const clubId = (firstAtt as any).dealers?.club_id;
-    if (!clubId) return jsonResponse({ error: "Cannot determine club" }, 400);
+    const { data: dealer, error: dealerErr } = await admin
+      .from("dealers")
+      .select("club_id")
+      .eq("id", row.dealer_id)
+      .single();
+    if (dealerErr || !dealer) return jsonResponse({ error: "Cannot determine club" }, 400);
+    const clubId = dealer.club_id;
 
     const { data: isControl } = await admin
       .rpc("is_club_dealer_control", { _user_id: uid, _club_id: clubId });

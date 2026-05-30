@@ -182,3 +182,118 @@
   /* No override — uses global primary (neon green) for visual consistency */
 }
 
+/* ── Timer / Countdown badges ──────────────────────────────── */
+
+.ot-badge--warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.ot-badge--critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: ot-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes ot-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ot-badge--critical {
+    animation: none;
+    border: 2px solid #ef4444;
+  }
+}
+
+.countdown-badge--normal {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.countdown-badge--urgent {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.countdown-badge--overdue {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 11px;
+}
+
+/* ── Priority break indicator ──────────────────────────────── */
+
+.priority-break-badge--mandatory {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: ot-blink 1.5s ease-in-out infinite;
+}
+
+.priority-break-badge--warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .priority-break-badge--mandatory {
+    animation: none;
+    border-width: 2px;
+  }
+}
+
+/* ── Swing shimmer animation ──────────────────────────────── */
+@keyframes swing-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.table-card--swinging {
+  position: relative;
+  overflow: hidden;
+}
+
+.table-card--swinging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(200, 164, 78, 0.15) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: swing-shimmer 1.2s ease-in-out;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-card--swinging::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+

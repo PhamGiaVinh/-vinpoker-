@@ -49,6 +49,7 @@ export interface DealerAssignment {
   swing_due_at: string | null;
   pre_assigned_attendance_id: string | null;
   pre_assigned_at: string | null;
+  overtime_started_at: string | null;
   game_tables: {
     id: string;
     table_name: string;
@@ -83,6 +84,10 @@ function useRealtimeQuery<T>(
   const pollTimerRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const queryFnRef = useRef(queryFn);
+  /** Unique per-hook-instance id to prevent channel name collision when
+   *  multiple hooks subscribe to the same table (e.g. useCheckedInDealers
+   *  + useTodayCheckedOutDealers both on dealer_attendance). */
+  const instanceId = useRef(Math.random().toString(36).slice(2, 8)).current;
   useEffect(() => { queryFnRef.current = queryFn; }, [queryFn]);
 
   const refetch = useCallback(async () => {
@@ -117,7 +122,7 @@ function useRealtimeQuery<T>(
 
     const ids = [...clubIds].sort().join("+");
     const tables = [...realtimeTables].sort().join("+");
-    const channel = supabase.channel(`swing:${tables}:${ids}`);
+    const channel = supabase.channel(`swing:${tables}:${ids}:${instanceId}`);
 
     for (const table of realtimeTables) {
       channel.on(
@@ -180,12 +185,28 @@ export function useCheckedInDealers(clubIds: string[]) {
   });
 }
 
-/** Fetch today's checked-out dealers so they appear in a "Đã check-out" panel for quick re-check-in */
+/** Fetch today's checked-out dealers so they appear in a "Đã check-out" panel for quick re-check-in.
+ *  Uses two-step query:
+ *    1. Get dealers with active checked_in today (to exclude)
+ *    2. Get checked_out dealers excluding active ones
+ *  This ensures a dealer who re-checked-in (INSERT new record) does NOT
+ *  still appear in the checked-out list because their OLD checked_out record
+ *  is shadowed by their NEW checked_in record.
+ */
 export function useTodayCheckedOutDealers(clubIds: string[]) {
   const today = new Date().toISOString().split("T")[0];
   return useRealtimeQuery<DealerAttendance>({
-    queryFn: async () =>
-      supabase
+    queryFn: async () => {
+      // Step 1: get dealers with active checked_in today
+      const { data: activeToday } = await supabase
+        .from("dealer_attendance")
+        .select("dealer_id")
+        .in("dealers.club_id", clubIds)
+        .eq("status", "checked_in")
+        .gte("shift_date", today);
+      const activeIds = [...new Set((activeToday ?? []).map((a) => a.dealer_id))];
+      // Step 2: get checked_out dealers, excluding active ones
+      let query = supabase
         .from("dealer_attendance")
         .select(
           `id, dealer_id, shift_date, status, check_in_time, check_out_time,
@@ -195,8 +216,13 @@ export function useTodayCheckedOutDealers(clubIds: string[]) {
         )
         .eq("status", "checked_out")
         .gte("shift_date", today)
-        .in("dealers.club_id", clubIds)
-        .order("check_out_time", { ascending: false }),
+        .in("dealers.club_id", clubIds);
+      if (activeIds.length > 0) {
+        // PostgREST: column=not.in.(val1,val2) — no quotes for UUID type
+        query = query.not("dealer_id", "in", `(${activeIds.join(",")})`);
+      }
+      return query.order("check_out_time", { ascending: false });
+    },
     realtimeTables: ["dealer_attendance"],
     clubIds,
   });
@@ -211,6 +237,7 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
            `id, attendance_id, table_id, assigned_at, released_at, status,
             version, swing_processed_at, swing_due_at,
             pre_assigned_attendance_id, pre_assigned_at,
+            overtime_started_at,
             game_tables!inner(id, table_name, table_type, status, club_id),
             dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username))`
         )
@@ -529,6 +556,60 @@ export interface NextDealerPrediction {
   nextDealerName: string | null;
   nextDealerId: string | null;
   confidence: "confirmed" | "predicted";
+}
+
+export interface OvertimeDealer {
+  assignmentId: string;
+  tableId: string;
+  tableName: string;
+  attendanceId: string;
+  dealerName: string;
+  overtimeStartedAt: string;
+  swingDueAt: string | null;
+  priorityBreakFlag: boolean;
+}
+
+export function useOvertimeDealers(clubIds: string[]) {
+  return useRealtimeQuery<OvertimeDealer>({
+    queryFn: async () => {
+      if (!clubIds.length) return { data: [], error: null };
+
+      const { data, error } = await supabase
+        .from("dealer_assignments")
+        .select(`
+          id,
+          table_id,
+          attendance_id,
+          swing_due_at,
+          overtime_started_at,
+          priority_break_flag,
+          game_tables!inner(table_name),
+          dealer_attendance!attendance_id(
+            dealers!inner(full_name)
+          )
+        `)
+        .in("game_tables.club_id", clubIds)
+        .eq("status", "assigned")
+        .not("overtime_started_at", "is", null);
+
+      if (error) return { data: null, error };
+
+      const mapped: OvertimeDealer[] = (data ?? []).map((row: any) => ({
+        assignmentId: row.id,
+        tableId: row.table_id,
+        tableName: row.game_tables?.table_name ?? "Unknown",
+        attendanceId: row.attendance_id,
+        dealerName: row.dealer_attendance?.dealers?.full_name ?? "Unknown",
+        overtimeStartedAt: row.overtime_started_at,
+        swingDueAt: row.swing_due_at,
+        priorityBreakFlag: row.priority_break_flag ?? false,
+      }));
+
+      return { data: mapped, error: null };
+    },
+    realtimeTables: ["dealer_assignments"],
+    clubIds,
+  });
 }
 
 export function useNextDealerPredictions(clubIds: string[]) {

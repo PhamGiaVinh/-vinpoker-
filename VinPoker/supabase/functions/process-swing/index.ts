@@ -135,7 +135,7 @@ async function releaseClubLock(
   admin: ReturnType<typeof createClient>,
   clubId: string
 ): Promise<void> {
-  await admin.rpc("release_club_lock", { p_club_id: clubId }).catch(() => {});
+  try { await admin.rpc("release_club_lock", { p_club_id: clubId }); } catch {}
 }
 
 async function getClubLocalDate(
@@ -290,7 +290,8 @@ Deno.serve(async (req: Request) => {
         .select("id, pre_assigned_attendance_id")
         .eq("status", "assigned")
         .not("pre_assigned_attendance_id", "is", null)
-        .or(`pre_assigned_at.lt.${staleThreshold},updated_at.lt.${staleThreshold}`)
+        .lt("pre_assigned_at", staleThreshold)
+        .lt("swing_due_at", new Date().toISOString())
         .in("table_id", await getTableIdsForClub(admin, cid));
 
       if (staleRows && staleRows.length > 0) {
@@ -451,6 +452,7 @@ Deno.serve(async (req: Request) => {
         .select(
           `id, table_id, attendance_id, swing_due_at, version,
            pre_assigned_attendance_id, overtime_started_at,
+           last_ot_alert_at,
            game_tables(club_id, table_name, table_type),
              dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
         )
@@ -473,7 +475,17 @@ Deno.serve(async (req: Request) => {
       }
 
       // Pre-compute consistent swing_due_at for all Pass 3 swings
-      const pass3SwingDueAt = recomputeSwingDueAt(swingDurResult.durationMinutes);
+      const pass3SwingDueAt = dryRun ? undefined : recomputeSwingDueAt(swingDurResult.durationMinutes);
+
+      // ── DRY RUN: report what would swing, skip actual execution ────
+      if (dryRun && dueAssignments && dueAssignments.length > 0) {
+        console.log(`[process-swing] DRY RUN — club ${cid} would swing ${dueAssignments.length} assignments, skipping Pass 3 execution`);
+        for (const da of dueAssignments) {
+          metrics.total++;
+          metrics.success++;
+        }
+        continue;
+      }
 
       for (const assignment of dueAssignments ?? []) {
         metrics.total++;
@@ -531,12 +543,100 @@ Deno.serve(async (req: Request) => {
               }
               break;
 
-            case "race_lost":
+            case "race_lost": {
               cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
-              console.warn(
-                `[process-swing] Pre-assigned race_lost for ${tableName}`
-              );
+              console.warn(`[process-swing] Pre-assign race_lost for ${tableName}, fallback...`);
+
+              // Re-fetch fresh state — version stale sau concurrent modify
+              const { data: freshRow } = await admin
+                .from("dealer_assignments")
+                .select("id, version, overtime_started_at, status, swing_processed_at")
+                .eq("id", assignment.id)
+                .single();
+
+              // Assignment biến mất → skip
+              if (!freshRow) {
+                console.warn(`[process-swing] Assignment ${assignment.id} not found after race_lost`);
+                break;
+              }
+
+              // Đã xử lý bởi concurrent process → count success
+              if (freshRow.status === "completed" || freshRow.swing_processed_at !== null) {
+                console.log(`[process-swing] Assignment ${assignment.id} already completed`);
+                metrics.success++;
+                break;
+              }
+
+              // OT assignment: force break (worked_minutes_since_last_break stale)
+              const isOtFallback = !!(freshRow as any).overtime_started_at;
+              const fbBreakDecision = isOtFallback
+                ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
+                : await evaluateBreakNeed(admin, assignment.attendance_id, {
+                    maxWorkMinutes: Math.max(DEFAULT_MAX_WORK_MINUTES, swingDurResult.durationMinutes * 3),
+                    minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
+                    clubId: cid,
+                  });
+
+              const fbDealer = await pickNextDealer(admin, cid, {
+                currentTableId: assignment.table_id,
+                excludeAttendanceIds: cycleExcludedIds,
+                requiredGameTypes: required_game_types,
+              });
+
+              if (fbDealer) {
+                const { data: fbResult } = await admin.rpc("perform_swing", {
+                  p_assignment_id: assignment.id,
+                  p_version: freshRow.version,
+                  p_next_attendance_id: fbDealer.id,
+                  p_send_to_break: fbBreakDecision.shouldBreak,
+                  p_break_duration_minutes: clubCfg.break_duration_minutes,
+                  p_swing_duration_minutes: swingDurResult.durationMinutes,
+                });
+
+                if (fbResult?.outcome === "swung") {
+                  metrics.success++;
+                  cycleExcludedIds.add(fbDealer.id);
+                  notifier?.enqueue({
+                    type: "swing_in",
+                    tableName,
+                    zone: clubZone,
+                    dealerName: fbDealer.full_name,
+                    username: fbDealer.telegram_username ?? null,
+                  } satisfies SwingInEvent);
+                } else if (fbResult?.outcome === "no_dealer") {
+                  metrics.no_dealer++;
+                  if (fbResult.is_new_overtime) {
+                    const chatId = await getClubTelegramChatId(admin, cid);
+                    if (botToken && chatId) {
+                      await sendTelegramNotification(botToken, chatId,
+                        `⏱ *Bàn ${tableName}* — Dealer đang OT (fallback sau race_lost).`, {});
+                    }
+                  }
+                } else {
+                  metrics.failed++;
+                  console.warn(`[process-swing] Fallback perform_swing outcome: ${fbResult?.outcome}`);
+                }
+              } else {
+                // No fallback → OT path
+                const { data: otResult } = await admin.rpc("perform_swing", {
+                  p_assignment_id: assignment.id,
+                  p_version: freshRow.version,
+                  p_next_attendance_id: null,
+                  p_send_to_break: false,
+                  p_break_duration_minutes: clubCfg.break_duration_minutes,
+                  p_swing_duration_minutes: swingDurResult.durationMinutes,
+                });
+                metrics.no_dealer++;
+                if (otResult?.outcome === "no_dealer" && otResult?.is_new_overtime) {
+                  const chatId = await getClubTelegramChatId(admin, cid);
+                  if (botToken && chatId) {
+                    await sendTelegramNotification(botToken, chatId,
+                      `⏱ *Bàn ${tableName}* — Dealer OT (không người thay sau race_lost).`, {});
+                  }
+                }
+              }
               break;
+            }
 
             default:
               console.error("[process-swing] execute_pre_assigned_swing failed:", rpcResult);
@@ -613,6 +713,36 @@ Deno.serve(async (req: Request) => {
                   `⏱ *Bàn ${tableName}* — ${outgoingDealer.full_name} đang làm thêm giờ (không có dealer thay).\nSẽ xoay vòng khi có dealer mới hoặc bàn đóng.`,
                   {}
                 );
+              }
+            } else if ((assignment as any).overtime_started_at) {
+              // Repeat OT alert every 5 minutes, drift-proof
+              // Uses last_ot_alert_at column instead of modulo — immune to cron jitter
+              const lastAlertAt = (assignment as any).last_ot_alert_at;
+              const minutesSinceLastAlert = lastAlertAt
+                ? Math.floor((Date.now() - new Date(lastAlertAt).getTime()) / 60_000)
+                : 999; // never alerted → treat as overdue
+
+              if (minutesSinceLastAlert >= 5) {
+                const otMs = Date.now() - new Date((assignment as any).overtime_started_at).getTime();
+                const otMinutes = Math.floor(otMs / 60_000);
+                const chatId = await getClubTelegramChatId(admin, cid);
+                if (botToken && chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `⏱ *OT ${otMinutes}ph* — ${outgoingDealer.full_name} @ ${tableName} — vẫn chưa có người thay. Cần can thiệp!`,
+                    {}
+                  );
+                }
+
+                // Write back last_ot_alert_at — fire-and-forget, non-blocking
+                admin
+                  .from("dealer_assignments")
+                  .update({ last_ot_alert_at: new Date().toISOString() })
+                  .eq("id", assignment.id)
+                  .then(() => {})
+                  .catch((e: Deno.errors.Error) =>
+                    console.error("[process-swing] last_ot_alert_at update failed:", e.message)
+                  );
               }
             }
           } else if (outcome === "swing_skipped") {

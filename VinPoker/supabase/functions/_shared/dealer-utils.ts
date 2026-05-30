@@ -25,6 +25,9 @@ export interface ScoreBreakdown {
   skill_bonus: number;
   priority_break_penalty: number;
   high_fatigue_penalty: number;
+  heavy_worker_penalty: number;
+  consecutive_high_penalty: number;
+  tier_back_to_back_penalty: number;
 }
 
 export interface PickDealerOptions {
@@ -150,16 +153,18 @@ async function buildDealerCandidates(
     (metricsRows ?? []).map((m: { attendance_id: string; minutes_since_rest: number; total_assignments: number }) => [m.attendance_id, m])
   );
 
-  // Step 4: Query last table per attendance for back-to-back detection
+  // Step 4: Query last 2 assignments per attendance for back-to-back detection
   const { data: lastAssignments } = await admin
     .from("dealer_assignments")
-    .select("attendance_id, table_id")
+    .select("attendance_id, table_id, game_tables!inner(tour_tier)")
     .in("attendance_id", attendanceIds)
     .order("assigned_at", { ascending: false });
   const lastTableMap = new Map<string, string>();
+  const lastTourTierMap = new Map<string, string>();
   for (const a of lastAssignments ?? []) {
     if (!lastTableMap.has(a.attendance_id)) {
       lastTableMap.set(a.attendance_id, a.table_id);
+      lastTourTierMap.set(a.attendance_id, (a.game_tables as any)?.tour_tier ?? "");
     }
   }
 
@@ -192,6 +197,7 @@ async function buildDealerCandidates(
     const restMin = metric?.minutes_since_rest ?? 999;
     const consecutive = metric?.total_assignments ?? 0;
     const lastTableId = lastTableMap.get(row.id) ?? null;
+    const lastTourTier = lastTourTierMap.get(row.id) ?? "";
     const priorityBreak = row.priority_break_flag ?? false;
 
     if (tourTier === "HIGH" && tier === "C") continue;
@@ -214,6 +220,8 @@ async function buildDealerCandidates(
       back_to_back_penalty: 0, consecutive_penalty: 0,
       mixed_bonus: 0, skill_bonus: 0,
       priority_break_penalty: 0, high_fatigue_penalty: 0,
+      heavy_worker_penalty: 0, consecutive_high_penalty: 0,
+      tier_back_to_back_penalty: 0,
     };
 
     if (restMin >= 20) { breakdown.rest_bonus = 200; score += 200; }
@@ -235,11 +243,6 @@ async function buildDealerCandidates(
       if (tier === "C") { breakdown.tier_bonus = 20; score += 20; }
     }
 
-    if (lastTableId && lastTableId === currentTableId) {
-      breakdown.back_to_back_penalty = -50;
-      score -= 50;
-    }
-
     if (consecutive >= 3) {
       breakdown.consecutive_penalty = -consecutive * 10;
       score += breakdown.consecutive_penalty;
@@ -259,6 +262,29 @@ async function buildDealerCandidates(
 
     if (restMin >= 90) { breakdown.high_fatigue_penalty = -100; score -= 100; }
     else if (restMin >= 75) { breakdown.high_fatigue_penalty = -50; score -= 50; }
+
+    // ── Heavy worker penalty ──
+    // Dealer with 3+ total assignments in this shift → reduce priority
+    // to prevent the same dealer being picked repeatedly
+    if (consecutive >= 3) {
+      breakdown.heavy_worker_penalty = -10 * (consecutive - 2);
+      score += breakdown.heavy_worker_penalty;
+    }
+
+    // ── Consecutive HIGH penalty ──
+    // Dealer assigned to HIGH tables in last 2 swings → lower priority for HIGH
+    if (tourTier === "HIGH" && lastTourTier === "HIGH") {
+      breakdown.consecutive_high_penalty = -20;
+      score += breakdown.consecutive_high_penalty;
+    }
+
+    // ── Tier-aware back-to-back ──
+    // Returning to the same table is penalized 50% less if switching tour tiers
+    if (lastTableId && lastTableId === currentTableId) {
+      const sameTier = lastTourTier === tourTier;
+      breakdown.tier_back_to_back_penalty = sameTier ? -50 : -25;
+      score += breakdown.tier_back_to_back_penalty;
+    }
 
     const candidate: DealerCandidate = {
       id: row.id,
@@ -314,7 +340,9 @@ export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): s
   else if (scoreBreakdown.rest_bonus >= 100) parts.push("Nghỉ ngơi đủ");
   if (scoreBreakdown.fatigue_penalty > -30) parts.push("Thời gian làm ít nhất");
   if (scoreBreakdown.skill_bonus > 0) parts.push("Có kỹ năng phù hợp");
-  if (scoreBreakdown.back_to_back_penalty < 0) parts.push("Tránh bàn cũ");
+  if (scoreBreakdown.tier_back_to_back_penalty < 0) parts.push("Tránh bàn cũ");
+  if (scoreBreakdown.heavy_worker_penalty < 0) parts.push("Đã làm nhiều swing");
+  if (scoreBreakdown.consecutive_high_penalty < 0) parts.push("Nghỉ bàn HIGH");
   if (scoreBreakdown.priority_break_penalty < 0) parts.push("Đến giờ nghỉ");
   return parts.length ? parts.join(" · ") : "Sẵn sàng";
 }

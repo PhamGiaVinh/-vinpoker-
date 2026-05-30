@@ -7,6 +7,12 @@ import {
   jsonResponse,
   type ScoreBreakdown,
 } from "../_shared/dealer-utils.ts";
+import {
+  notifyIncomingDealer,
+  getClubTelegramChatId,
+  sendTelegramNotification,
+  mention,
+} from "../_shared/telegram.ts";
 
 function decodeJWT(token: string): { sub: string } | null {
   try {
@@ -82,9 +88,8 @@ Deno.serve(async (req) => {
     if (force_dealer_id) {
       const query = admin
         .from("dealer_attendance")
-        .select("id, shift_id")
+        .select("id, shift_id, dealers!inner(full_name, telegram_username, telegram_user_id)")
         .eq("dealer_id", force_dealer_id)
-        .eq("shift_date", today)
         .eq("status", "checked_in");
 
       const { data: attendanceRows, error: ae } = await query
@@ -97,8 +102,7 @@ Deno.serve(async (req) => {
           .from("dealer_attendance")
           .select("id", { count: "exact", head: true })
           .eq("dealer_id", force_dealer_id)
-          .eq("shift_date", today)
-          .in("status", ["checked_in"]);
+          .eq("status", "checked_in");
         console.log(`[assign-dealer] dealer ${force_dealer_id} not found (total today: ${countAll.count})`);
         return json({ error: "DEALER_NOT_CHECKED_IN: Dealer hasn't checked in today", dealer_id: force_dealer_id, shift_id }, 400);
       }
@@ -138,6 +142,31 @@ Deno.serve(async (req) => {
         entity_id: assignment.id,
         payload: { table_id, attendance_id: attendance.id, mode: "force" },
       });
+
+      const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+      if (botToken) {
+        const dealerInfo = (attendance as any)?.dealers ?? {};
+        const dealerName: string = dealerInfo.full_name ?? "Unknown";
+        const dealerUsername: string | null = dealerInfo.telegram_username ?? null;
+        const dealerUserId: number | null = dealerInfo.telegram_user_id ? Number(dealerInfo.telegram_user_id) : null;
+
+        notifyIncomingDealer(
+          botToken,
+          { full_name: dealerName, telegram_username: dealerUsername, telegram_user_id: dealerUserId },
+          table.table_name,
+          swingDuration,
+        ).catch(() => {});
+
+        getClubTelegramChatId(admin, table.club_id).then((chatId) => {
+          if (chatId) {
+            sendTelegramNotification(
+              botToken,
+              chatId,
+              `🪑 Vào bàn ${table.table_name}: ${mention({ full_name: dealerName, telegram_username: dealerUsername })}`,
+            ).catch(() => {});
+          }
+        }).catch(() => {});
+      }
 
       return json({ assignment, status: "success" });
     }
