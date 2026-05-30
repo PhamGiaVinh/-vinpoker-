@@ -25,11 +25,12 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
-  useCheckedInDealers, useActiveTables, useActiveAssignments, useSwingConfigs, useAuditLogs,
+  useCheckedInDealers, useActiveTables, useActiveAssignmentsWithTimeline, useSwingConfigs, useAuditLogs,
   useSwingMetrics, useBreakPolicies, useSpecialDates, useAvailableTables, usePreAssignedDealers, usePoolTables,
   useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers,
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import { NextDealerPreview } from "./NextDealerPreview";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import DealerManagementTab from "./DealerManagementTab";
@@ -83,9 +84,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: tables, loading: tablesLoading, error: tablesError, refetch: refetchTables } = useActiveTables(filteredClubIds);
   const { data: availableTables, error: availableTablesError, refetch: refetchAvailableTables } = useAvailableTables(filteredClubIds);
   const { data: poolTables, loading: poolLoading, error: poolError, refetch: refetchPoolTables } = usePoolTables(filteredClubIds);
-  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignments(filteredClubIds);
+  const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignmentsWithTimeline(filteredClubIds);
   const preAssignedMap = usePreAssignedDealers(assignments);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
+
+  const timelineByTableId = useMemo(() => {
+    const map: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }> = {};
+    for (const a of assignments ?? []) {
+      map[a.table_id] = {
+        minutesLeft: (a as any).minutesLeft ?? 0,
+        showNextDealerSoon: (a as any).showNextDealerSoon ?? false,
+        isOverdue: (a as any).isOverdue ?? false,
+      };
+    }
+    return map;
+  }, [assignments]);
   const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
   const breakPolicies = useBreakPolicies(filteredClubIds);
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
@@ -1014,12 +1027,13 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
               </>
             ) : (
-                <TableGrid
-                  tables={tables ?? []}
-                  tableAssignmentMap={tableAssignmentMap}
-                  nextDealerMap={nextDealerMap}
-                  preAssignedMap={preAssignedMap}
-                  swingConfigs={swingConfigs ?? []}
+                  <TableGrid
+                    tables={tables ?? []}
+                    tableAssignmentMap={tableAssignmentMap}
+                    nextDealerMap={nextDealerMap}
+                    preAssignedMap={preAssignedMap}
+                    timelineByTableId={timelineByTableId}
+                    swingConfigs={swingConfigs ?? []}
                   processing={processing}
                   onAssign={openAssignModal}
                   onSendToBreak={(attId) => sendToBreak(attId)}
@@ -2128,7 +2142,7 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating,
 }: {
@@ -2136,6 +2150,7 @@ function TableGrid({
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
   preAssignedMap: Record<string, PreAssignedInfo | null>;
+  timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
   swingConfigs: SwingConfig[];
   processing: string | null;
   onAssign: (tableId: string) => void;
@@ -2271,10 +2286,47 @@ function TableGrid({
                       swingDueAt={a.swing_due_at}
                     />
                   )}
-                  {nextDealerMap?.[t.id] && (
-                    <NextDealerBadge prediction={nextDealerMap[t.id]!} />
+                  {nextDealerMap?.[t.id] && nextDealerMap[t.id]!.nextDealerName && (
+                    <div className="ml-auto">
+                      {nextDealerMap[t.id]!.confidence === "confirmed" ? (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-500 border border-emerald-500/40 px-1 py-0.5 font-bold">
+                          ✅ CHỐT
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-amber-500/20 text-amber-500 border border-amber-500/40 px-1 py-0.5 font-bold">
+                          🔮 PV
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
+
+                {/* Next Dealer Preview — shows at ≤5 min */}
+                {(() => {
+                  const tl = timelineByTableId[t.id];
+                  if (!tl?.showNextDealerSoon) return null;
+                  const pred = nextDealerMap?.[t.id];
+                  if (!pred?.nextDealerName) return null;
+                  return (
+                    <NextDealerPreview
+                      minutesLeft={tl.minutesLeft}
+                      dealerName={pred.nextDealerName}
+                      telegramUsername={(pred as any).telegram_username ?? null}
+                      confidence={pred.confidence as "confirmed" | "predicted"}
+                    />
+                  );
+                })()}
+
+                {/* Overdue badge */}
+                {(() => {
+                  const tl = timelineByTableId[t.id];
+                  if (!tl?.isOverdue) return null;
+                  return (
+                    <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-500/10 border border-red-500/30 px-2 py-0.5">
+                      <span className="animate-pulse">⏰</span> OVERDUE
+                    </span>
+                  );
+                })()}
 
                 {/* Action buttons */}
                 <div className="flex gap-1.5 mt-2">
@@ -2632,25 +2684,6 @@ function TierBadge({ tier }: { tier: string }) {
 /* ==============================================================
    NEXT DEALER BADGE
    ============================================================== */
-function NextDealerBadge({ prediction }: { prediction: NextDealerPrediction }) {
-  const isConfirmed = prediction.confidence === "confirmed";
-  return (
-    <div className="flex items-center gap-1.5 ml-2 min-w-0">
-      <span className="text-[10px] text-muted-foreground shrink-0">TIẾP THEO</span>
-      <span className="text-xs font-semibold truncate max-w-[100px]">
-        {prediction.nextDealerName ?? "—"}
-      </span>
-      <span className={`text-[9px] px-1 py-0.5 font-bold rounded-none shrink-0 ${
-        isConfirmed
-          ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/40"
-          : "bg-amber-500/20 text-amber-500 border border-amber-500/40"
-      }`}>
-        {isConfirmed ? "CHỐT" : "PV"}
-      </span>
-    </div>
-  );
-}
-
 /* ==============================================================
    TABLE TYPE BADGE
    ============================================================== */

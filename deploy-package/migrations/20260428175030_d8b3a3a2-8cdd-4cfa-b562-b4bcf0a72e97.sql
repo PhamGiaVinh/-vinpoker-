@@ -1,0 +1,3 @@
+ALTER TABLE public.tournaments
+  ADD COLUMN IF NOT EXISTS minutes_per_level INTEGER NOT NULL DEFAULT 20,
+  ADD COLUMN IF NOT EXISTS late_reg_close_level INTEGER NOT NULL DEFAULT 6;

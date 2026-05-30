@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useLiveClock } from "@/hooks/useLiveClock";
 
 export interface DealerAttendance {
   id: string;
@@ -63,6 +64,13 @@ export interface DealerAssignment {
       telegram_username?: string;
     };
   };
+}
+
+export interface PreAssignedInfo {
+  attendance_id: string;
+  full_name: string;
+  telegram_username: string | null;
+  tier: string;
 }
 
 interface UseRealtimeQueryOptions<T> {
@@ -239,7 +247,8 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
             pre_assigned_attendance_id, pre_assigned_at,
             overtime_started_at,
             game_tables!inner(id, table_name, table_type, status, club_id),
-            dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username))`
+            dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username)),
+            pre_assigned:dealer_attendance!pre_assigned_attendance_id(dealers(full_name, telegram_username, tier))`
         )
         .in("status", ["assigned"])
         .in("game_tables.club_id", clubIds)
@@ -254,6 +263,28 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
     realtimeTables: ["dealer_assignments", "dealer_attendance"],
     clubIds,
   });
+}
+
+/** Timeline enrichment — adds minutesLeft, showNextDealerSoon, isOverdue per assignment */
+export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
+  const now = useLiveClock();
+  const result = useActiveAssignments(clubIds);
+
+  const enriched = useMemo(() => {
+    return (result.data ?? []).map((a) => {
+      const due = a.swing_due_at ? new Date(a.swing_due_at).getTime() : null;
+      if (!due) {
+        return { ...a, minutesLeft: null, secondsLeft: null, showNextDealerSoon: false, isOverdue: false };
+      }
+      const diffMs = due - now;
+      const minutesLeft = Math.max(0, diffMs / 60000);
+      const showNextDealerSoon = minutesLeft <= 5;
+      const isOverdue = diffMs < 0;
+      return { ...a, minutesLeft, secondsLeft: Math.max(0, Math.floor(diffMs / 1000)), showNextDealerSoon, isOverdue };
+    });
+  }, [result.data, now]);
+
+  return { ...result, data: enriched };
 }
 
 export function useActiveTables(clubIds: string[]) {
@@ -495,10 +526,16 @@ export function useAvailableTables(clubIds: string[]) {
 
 export function usePreAssignedDealers(assignments: any[]) {
   return useMemo(() => {
-    const map = new Map<string, boolean>();
+    const map: Record<string, PreAssignedInfo> = {};
     for (const a of assignments ?? []) {
-      if (a.pre_assigned_attendance_id) {
-        map.set(a.attendance_id, true);
+      const pre = a.pre_assigned;
+      if (a.pre_assigned_attendance_id && pre?.dealers) {
+        map[a.table_id] = {
+          attendance_id: a.pre_assigned_attendance_id,
+          full_name: pre.dealers.full_name,
+          telegram_username: pre.dealers.telegram_username ?? null,
+          tier: pre.dealers.tier,
+        };
       }
     }
     return map;

@@ -1,0 +1,1 @@
+ALTER TYPE public.staking_audit_action ADD VALUE IF NOT EXISTS 'auto_closed_deadline';

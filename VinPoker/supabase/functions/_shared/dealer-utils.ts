@@ -17,14 +17,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export interface ScoreBreakdown {
   rest_bonus: number;
-  fatigue_penalty: number;
   tier_bonus: number;
   back_to_back_penalty: number;
   consecutive_penalty: number;
   mixed_bonus: number;
   skill_bonus: number;
   priority_break_penalty: number;
-  high_fatigue_penalty: number;
   heavy_worker_penalty: number;
   consecutive_high_penalty: number;
   tier_back_to_back_penalty: number;
@@ -202,9 +200,12 @@ async function buildDealerCandidates(
 
     if (tourTier === "HIGH" && tier === "C") continue;
 
-    if (priorityBreak && restMin >= 100) continue;
+    if (consecutive > 0 && priorityBreak && restMin >= 100) continue;
 
-    if (restMin >= 105) continue;
+    // Rest min: dealer needs ≥15 min rest after each swing cycle.
+    // After finishing a swing + break, restMin counts up from 0.
+    // Skip if they haven't reached the minimum rest threshold yet.
+    if (consecutive > 0 && restMin < 15) continue;
 
     if (
       requiredGameTypes &&
@@ -216,10 +217,10 @@ async function buildDealerCandidates(
 
     let score = 0;
     const breakdown: ScoreBreakdown = {
-      rest_bonus: 0, fatigue_penalty: 0, tier_bonus: 0,
+      rest_bonus: 0, tier_bonus: 0,
       back_to_back_penalty: 0, consecutive_penalty: 0,
       mixed_bonus: 0, skill_bonus: 0,
-      priority_break_penalty: 0, high_fatigue_penalty: 0,
+      priority_break_penalty: 0,
       heavy_worker_penalty: 0, consecutive_high_penalty: 0,
       tier_back_to_back_penalty: 0,
     };
@@ -227,12 +228,6 @@ async function buildDealerCandidates(
     if (restMin >= 20) { breakdown.rest_bonus = 200; score += 200; }
     else if (restMin >= 10) { breakdown.rest_bonus = 100; score += 100; }
     else if (restMin >= 5) { breakdown.rest_bonus = 50; score += 50; }
-
-    // Fatigue: use restMin (minutes_since_rest from dealer_shift_metrics view — real-time)
-    // rather than workedMin (worked_minutes_since_last_break column — stale between swings)
-    const fatigueMinutes = restMin;
-    breakdown.fatigue_penalty = -Math.floor(fatigueMinutes / 10) * 5;
-    score += breakdown.fatigue_penalty;
 
     if (tourTier === "HIGH") {
       if (tier === "A") { breakdown.tier_bonus = 30; score += 30; }
@@ -259,9 +254,6 @@ async function buildDealerCandidates(
       breakdown.priority_break_penalty = -500;
       score += breakdown.priority_break_penalty;
     }
-
-    if (restMin >= 90) { breakdown.high_fatigue_penalty = -100; score -= 100; }
-    else if (restMin >= 75) { breakdown.high_fatigue_penalty = -50; score -= 50; }
 
     // ── Heavy worker penalty ──
     // Dealer with 3+ total assignments in this shift → reduce priority
@@ -338,7 +330,6 @@ export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): s
   else if (tier === "B") parts.push("Hạng B – phù hợp");
   if (scoreBreakdown.rest_bonus >= 200) parts.push("Thời gian nghỉ dài");
   else if (scoreBreakdown.rest_bonus >= 100) parts.push("Nghỉ ngơi đủ");
-  if (scoreBreakdown.fatigue_penalty > -30) parts.push("Thời gian làm ít nhất");
   if (scoreBreakdown.skill_bonus > 0) parts.push("Có kỹ năng phù hợp");
   if (scoreBreakdown.tier_back_to_back_penalty < 0) parts.push("Tránh bàn cũ");
   if (scoreBreakdown.heavy_worker_penalty < 0) parts.push("Đã làm nhiều swing");

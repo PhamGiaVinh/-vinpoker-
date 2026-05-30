@@ -1,0 +1,1 @@
+ALTER TABLE public.clubs ADD COLUMN IF NOT EXISTS daily_schedule_image_url text, ADD COLUMN IF NOT EXISTS weekly_schedule_image_url text;

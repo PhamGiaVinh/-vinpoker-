@@ -1,0 +1,1 @@
+ALTER TABLE public.staking_release_requests DROP CONSTRAINT IF EXISTS cosign_must_differ;
