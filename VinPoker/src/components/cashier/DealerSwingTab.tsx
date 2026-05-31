@@ -1015,7 +1015,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               assignments={assignments ?? []}
               swingConfigs={swingConfigs ?? []}
               processing={processing}
-              totalDealers={allDealers?.length ?? 0}
+              totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
               checkedInCount={checkedInCount}
               checkedOutDealers={checkedOutDealers ?? []}
               onSendToBreak={sendToBreak}

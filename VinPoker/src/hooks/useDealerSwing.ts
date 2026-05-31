@@ -549,7 +549,7 @@ export function usePreAssignedDealers(assignments: any[]) {
  * Tracks checkout count optimistically so the badge updates instantly
  * on click, then reconciles when the realtime refetch lands.
  * - Optimistically decrement on checkout
- * - Auto-resets after 500ms (server refetch should have landed by then)
+ * - Auto-resets after 5000ms (server refetch should have landed by then)
  *
  * Usage:
  *   const { optimistic: checkedInCount, onCheckout } = useOptimisticDealerCount(realCount);
@@ -565,7 +565,7 @@ export function useOptimisticDealerCount(realCount: number) {
     timerRef.current = window.setTimeout(() => {
       setOptimistic(null);
       timerRef.current = null;
-    }, 500);
+    }, 5000);
   }, [realCount]);
 
   // cleanup on unmount
