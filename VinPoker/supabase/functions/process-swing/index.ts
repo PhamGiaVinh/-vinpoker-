@@ -664,25 +664,74 @@ Deno.serve(async (req: Request) => {
                 });
 
             const nextExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
-            let nextDealer = await pickNextDealer(admin, cid, {
+
+            // Compute OT minutes for escalation threshold check
+            const otMinutes = isOtDealer && (assignment as any).overtime_started_at
+              ? Math.floor((Date.now() - new Date((assignment as any).overtime_started_at).getTime()) / 60000)
+              : 0;
+
+            // Shared base options for all pick attempts
+            const basePickOptions = {
               currentTableId: assignment.table_id,
               excludeAttendanceIds: nextExcludes,
               requiredGameTypes: required_game_types,
-            });
+              clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+            };
 
-            // ── Desperate fallback for OT tables ────────────────────────────
-            // If no dealer found and this is an OT table (dealer needs relief),
-            // retry with relaxed criteria: skip priority_break_flag guard so
-            // dealers flagged for break but well-rested (rest_min >= 100)
-            // are still eligible to be picked.
+            // ── Level 1: Normal pick ─────────────────────────────────────────
+            // All filters active, priority break flag respected.
+            let nextDealer = await pickNextDealer(admin, cid, basePickOptions);
+
+            // ── Level 2: Relax priority break guard (OT first attempt) ────────
+            // When no dealer found and table is OT, skip priority_break_flag
+            // filter so dealers flagged for break but well-rested are eligible.
             if (!nextDealer && isOtDealer) {
-              console.log(`[process-swing] Desperate fallback for ${tableName}: retrying with relaxed priority break guard`);
+              console.log(
+                `[process-swing] Level 2 fallback for ${tableName} ` +
+                `(OT ${otMinutes}min): relaxing priority break guard`
+              );
               nextDealer = await pickNextDealer(admin, cid, {
-                currentTableId: assignment.table_id,
-                excludeAttendanceIds: nextExcludes,
-                requiredGameTypes: required_game_types,
+                ...basePickOptions,
                 skipPriorityBreakGuard: true,
               });
+            }
+
+            // ── Level 3: Relax fatigue hard cap (extended OT only) ────────────
+            // When OT extends beyond escalation threshold (default 20 min),
+            // also relax the 105-min fatigue hard cap so heavily worked dealers
+            // can still be picked as absolute last resort.
+            const escalationThreshold = 20;
+            if (!nextDealer && isOtDealer && otMinutes >= escalationThreshold) {
+              console.warn(
+                `[process-swing] Level 3 fallback for ${tableName} ` +
+                `(OT ${otMinutes}min): relaxing fatigue cap — last resort`
+              );
+              nextDealer = await pickNextDealer(admin, cid, {
+                ...basePickOptions,
+                skipPriorityBreakGuard: true,
+                skipFatigueHardCap: true,
+              });
+            }
+
+            // ── Log desperate pick for floor visibility ──────────────────────
+            if (nextDealer && isOtDealer && otMinutes > 0) {
+              console.warn(
+                `[process-swing] Desperate pick for OT table ${tableName}: ` +
+                `assigned ${nextDealer.full_name} ` +
+                `(worked ${nextDealer.worked_minutes_since_last_break}min, ` +
+                `priorityBreak=${nextDealer.priority_break_flag})`
+              );
+              // Send Telegram alert if this was Level 3 (extended OT)
+              if (otMinutes >= escalationThreshold) {
+                const chatId = botToken ? await getClubTelegramChatId(admin, cid).catch(() => null) : null;
+                if (botToken && chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `⚠️ *Bàn ${tableName}* — Cấp cứu OT ${otMinutes}ph: đã gán ${nextDealer.full_name} theo luật nới lỏng.\nCần theo dõi sát!`,
+                    {}
+                  ).catch(() => {});
+                }
+              }
             }
 
             // SAFEGUARD: verify dealer belongs to this club before assigning

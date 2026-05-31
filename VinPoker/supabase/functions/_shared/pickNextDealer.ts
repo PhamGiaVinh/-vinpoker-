@@ -34,6 +34,7 @@ export interface ScoreBreakdown {
   tier_back_to_back_penalty: number;
   break_equity_penalty: number;
   priority_swing_bonus: number;
+  fatigue_penalty: number;
 }
 
 export interface PickDealerOptions {
@@ -46,9 +47,12 @@ export interface PickDealerOptions {
   includeScoreBreakdown?: boolean;
   /** Known club average break ratio (pre-fetched). Skips batch query. */
   clubAvgBreakRatio?: number;
-  /** When true, skip the priority_break_flag filter so dealers
-   *  flagged for break are still considered in desperate situations. */
+  /** Emergency: skip priority_break_flag filter. Use when OT dealer has no normal replacement. */
   skipPriorityBreakGuard?: boolean;
+  /** Emergency: skip 105-min fatigue hard cap. Use only when OT exceeds escalation threshold. */
+  skipFatigueHardCap?: boolean;
+  /** Club break duration for rest threshold calculation. Defaults to 20 if not provided. */
+  clubBreakDurationMinutes?: number;
 }
 
 export interface DealerCandidate {
@@ -85,6 +89,8 @@ async function buildDealerCandidates(
     includeScoreBreakdown,
     clubAvgBreakRatio,
     skipPriorityBreakGuard = false,
+    skipFatigueHardCap = false,
+    clubBreakDurationMinutes = 20,
   } = options;
 
   // Step 1: Get active dealer IDs for this club
@@ -210,11 +216,21 @@ async function buildDealerCandidates(
     // MEDIUM tournaments prefer B tier but accept A/C.
     if (tourTier === "HIGH" && tier === "C") continue;
 
+    // ── Fatigue hard cap ────────────────────────────────────────────────────
+    // Dealer who worked ≥105 min since last break needs mandatory rest.
+    // Excluded UNLESS skipFatigueHardCap is set (Level 3 emergency only).
+    // When skipped, heavy score penalty ensures they're last resort.
+    if (!skipFatigueHardCap && workedMin >= 105) continue;
+    if (skipFatigueHardCap && workedMin >= 105) {
+      if (!breakdown) { /* already handled below */ }
+    }
+
     // ── Priority break + rest guard ─────────────────────────────────────────
-    // If dealer was flagged for priority break AND has worked enough,
-    // skip them (they need rest, not another assignment).
-    // Exception: if they've had ≥100 min rest, they're ready again.
-    if (!skipPriorityBreakGuard && consecutive > 0 && priorityBreak && restMin < 100) continue;
+    // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
+    // Rest threshold = break_duration_minutes + 5 buffer (default 20+5=25).
+    // Dealer who rested ≥ threshold is "rested enough" to reassign.
+    const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
+    if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) continue;
 
     // ── Minimum rest ────────────────────────────────────────────────────────
     // Dealer needs ≥10 min rest between swing cycles.
@@ -241,6 +257,7 @@ async function buildDealerCandidates(
       heavy_worker_penalty: 0, consecutive_high_penalty: 0,
       tier_back_to_back_penalty: 0, break_equity_penalty: 0,
       priority_swing_bonus: 0,
+      fatigue_penalty: 0,
     };
 
     // Rest bonus — prefer well-rested dealers
@@ -327,6 +344,14 @@ async function buildDealerCandidates(
       score += 300;
     }
 
+    // ── Fatigue penalty (Level 3 emergency override) ────────────────────────
+    // When skipFatigueHardCap is active, heavily fatigued dealers (≥105min worked)
+    // get a -300 score penalty so they're only picked when NO other dealer exists.
+    if (skipFatigueHardCap && workedMin >= 105) {
+      breakdown.fatigue_penalty = -300;
+      score += breakdown.fatigue_penalty;
+    }
+
     const candidate: DealerCandidate = {
       id: row.id,
       dealer_id: row.dealer_id,
@@ -392,5 +417,6 @@ export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): s
   if (scoreBreakdown.priority_break_penalty < 0) parts.push("Đến giờ nghỉ");
   if (scoreBreakdown.break_equity_penalty < 0) parts.push("Cần cân bằng nghỉ");
   if (scoreBreakdown.priority_swing_bonus > 0) parts.push("Bàn ưu tiên");
+  if (scoreBreakdown.fatigue_penalty < 0) parts.push("Khẩn cấp – mệt nhiều");
   return parts.length ? parts.join(" · ") : "Sẵn sàng";
 }
