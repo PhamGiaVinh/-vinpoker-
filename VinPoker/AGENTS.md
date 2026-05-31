@@ -94,3 +94,42 @@ Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 ### Domain docs
 
 Single-context layout. See `docs/agents/domain.md`.
+
+---
+
+## Design Standard — Taste Skill (v2 experimental)
+
+Installed at `.agents/skills/design-taste-frontend/SKILL.md`. Load via `skill(name="design-taste-frontend")`.
+
+**All future UI work must load taste-skill and follow its rules.**
+
+### Key rules for VinPoker (dashboard-adapted)
+
+| Rule | Applies |
+|---|---|
+| Anti-placeholder, no TODO comments, full implementation | ✅ Always |
+| Color consistency — one accent (#10B981 emerald) per page | ✅ Always |
+| Shape consistency — one corner-radius system per page | ✅ Always |
+| WCAG AA contrast on all CTAs | ✅ Always |
+| Icons: Phosphor > HugeIcons > Radix > Tabler (Lucide discouraged) | ✅ Migrate gradually |
+| Motion via `motion/react` (framer-motion rebrand), GSAP for scroll effects | ✅ New motion work |
+| No `window.addEventListener('scroll')` — use Motion `whileInView` | ✅ Always |
+| Reduced motion support for `MOTION_INTENSITY > 3` | ✅ Always |
+| `transform`/`opacity` only for animation (no top/left/width/height) | ✅ Always |
+| Em-dash ban, section-number eyebrows, decorative dots | ⚠️ Landing pages only |
+| Hero rules, section-layout ban, trusted-by walls | ❌ Dashboard-specific UI skip |
+
+### Dial defaults for VinPoker (dashboard context)
+
+```json
+{ "DESIGN_VARIANCE": 3,   "MOTION_INTENSITY": 2, "VISUAL_DENSITY": 7 }
+```
+
+Dashboard = high density, low variance, restrained motion. Override per feature when appropriate.
+
+### When to load
+
+For any frontend work involving **new UI components, pages, or significant redesign of existing views**, load taste-skill as:
+```typescript
+task(category="visual-engineering", load_skills=["design-taste-frontend"], prompt="...")
+```

@@ -43,6 +43,7 @@ const BookingChat = lazy(() => import("./pages/BookingChat"));
 const ChatInbox = lazy(() => import("./pages/ChatInbox"));
 const DirectChat = lazy(() => import("./pages/DirectChat"));
 const GroupChat = lazy(() => import("./pages/GroupChat"));
+const TournamentConfig = lazy(() => import("./pages/TournamentConfigPage"));
 const GroupInvite = lazy(() => import("./pages/GroupInvite"));
 const SeriesDetail = lazy(() => import("./pages/SeriesDetail"));
 const SetupDavinci = lazy(() => import("./pages/SetupDavinci"));
@@ -151,6 +152,7 @@ const App = () => (
                 <Route path="/admin/leaderboard" element={<AdminLeaderboard />} />
                 <Route path="/admin/money-list" element={<AdminMoneyList />} />
                 <Route path="/admin/web-vitals" element={<AdminWebVitals />} />
+                <Route path="/admin/tournament-config/:clubId" element={<TournamentConfig />} />
                 <Route path="/admin/gto-ranges" element={<div className="container mx-auto p-4"><RangeEditor /></div>} />
                 <Route path="*" element={<NotFound />} />
               </Route>

@@ -115,11 +115,16 @@ export function calculateBatchSwingDuration(
     };
   }
 
-  // Core formula
+  // Core formula (CORRECTED direction)
+  // When ratio < target_ratio (tight pool): target_ratio/ratio > 1 → factor clamped to maxFactor
+  //   → duration = base / maxFactor = base / (base/min) = MIN duration (shorter swings) ✓
+  // When ratio > target_ratio (generous pool): target_ratio/ratio < 1 → factor clamped to minFactor
+  //   → duration = base / minFactor = base / (base/max) = MAX duration (longer swings) ✓
   const ratio = weightedPool / activeTables;
+  const rawFactor = ratio > 0 ? cfg.target_ratio / ratio : cfg.max_duration_minutes;
   const minFactor = cfg.base_duration_minutes / cfg.max_duration_minutes;
   const maxFactor = cfg.base_duration_minutes / cfg.min_duration_minutes;
-  const factor = Math.min(Math.max(ratio / cfg.target_ratio, minFactor), maxFactor);
+  const factor = Math.min(Math.max(rawFactor, minFactor), maxFactor);
   const rawDuration = cfg.base_duration_minutes / factor;
   const durationMinutes = Math.round(
     Math.min(Math.max(rawDuration, cfg.min_duration_minutes), cfg.max_duration_minutes)

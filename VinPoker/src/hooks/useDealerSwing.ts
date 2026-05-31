@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLiveClock } from "@/hooks/useLiveClock";
+import type { TournamentWithTables, SwingConfigOverride, EffectiveSwingConfig } from "@/types/tournament";
 
 export interface DealerAttendance {
   id: string;
@@ -674,4 +675,118 @@ export function useNextDealerPredictions(clubIds: string[]) {
   useEffect(() => { load(); }, [load]);
 
   return { data, loading, refetch: load };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SWING CONFIG RESOLVER — Pure function (no hooks)
+// Resolves table → tournament → club hierarchy for swing config
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ResolvedSwingConfig {
+  swing_duration_minutes: number;
+  warn_at_minutes: number;
+  crit_at_minutes: number;
+  source: "table" | "tournament" | "club" | "default";
+}
+
+export function resolveEffectiveSwingConfig(
+  tableId: string,
+  tournaments: TournamentWithTables[] | undefined,
+  tableOverrides: SwingConfigOverride[] | undefined,
+  clubDefault: { swing_duration_minutes: number; warn_at_minutes: number; crit_at_minutes: number } | undefined
+): ResolvedSwingConfig {
+  // Priority 1: Table override (swing_configs table)
+  const tableOverride = tableOverrides?.find(
+    (c) => c.scope_type === "table" && c.scope_id === tableId
+  );
+  if (tableOverride) {
+    return {
+      swing_duration_minutes: tableOverride.swing_duration_minutes,
+      warn_at_minutes: tableOverride.warn_at_minutes,
+      crit_at_minutes: tableOverride.crit_at_minutes,
+      source: "table",
+    };
+  }
+
+  // Priority 2: Tournament config
+  const tournament = tournaments?.find((t) =>
+    t.tournament_tables.some((tt) => tt.table_id === tableId)
+  );
+  if (tournament) {
+    return {
+      swing_duration_minutes: tournament.swing_duration_minutes,
+      warn_at_minutes: tournament.warn_at_minutes,
+      crit_at_minutes: tournament.crit_at_minutes,
+      source: "tournament",
+    };
+  }
+
+  // Priority 3: Club default (from swing_config or swing_configs)
+  if (clubDefault) {
+    return {
+      swing_duration_minutes: clubDefault.swing_duration_minutes,
+      warn_at_minutes: clubDefault.warn_at_minutes,
+      crit_at_minutes: clubDefault.crit_at_minutes,
+      source: "club",
+    };
+  }
+
+  // Fallback
+  return {
+    swing_duration_minutes: 45,
+    warn_at_minutes: 5,
+    crit_at_minutes: 2,
+    source: "default",
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Hook: Fetch table-level overrides from swing_configs table
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function useTableConfigOverrides(clubIds: string[]) {
+  const [data, setData] = useState<SwingConfigOverride[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!clubIds.length) { setData([]); return; }
+    setLoading(true);
+    const { data: d } = await supabase
+      .from("swing_configs")
+      .select("*")
+      .in("club_id", clubIds);
+    setData((d ?? []) as SwingConfigOverride[]);
+    setLoading(false);
+  }, [clubIds.join(",")]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { data, loading, refetch: load };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Hook: Build per-table swing config map
+// Combines tournaments + table overrides + club default into a single map
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function useTableSwingConfigMap(
+  clubIds: string[],
+  tableIds: string[],
+  tournaments: TournamentWithTables[] | undefined,
+  clubDefault: { swing_duration_minutes: number; warn_at_minutes: number; crit_at_minutes: number } | undefined
+) {
+  const { data: tableOverrides } = useTableConfigOverrides(clubIds);
+
+  const configMap = useMemo(() => {
+    const map = new Map<string, ResolvedSwingConfig>();
+    for (const tableId of tableIds) {
+      map.set(
+        tableId,
+        resolveEffectiveSwingConfig(tableId, tournaments, tableOverrides ?? undefined, clubDefault)
+      );
+    }
+    return map;
+  }, [tableIds.join(","), tournaments, tableOverrides, clubDefault?.swing_duration_minutes]);
+
+  return configMap;
 }

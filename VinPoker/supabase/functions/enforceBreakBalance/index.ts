@@ -81,31 +81,52 @@ Deno.serve(async (req: Request) => {
         .in("table_id", await getTableIdsForClub(admin, cid));
 
       if ((overdueSwings ?? []).length > 0) {
-        const longestAssigned = (dealers ?? [])
+        // [FIX] Replace direct state mutation with manage-break invocation.
+        // Before: UPDATE dealer_attendance SET current_state='available' while
+        //   dealer still has active assignment — breaks state machine invariant.
+        // After: manage-break does proper CAS (version check) + dealer_breaks
+        //   insert + attendance state update. Preserves invariants.
+        const worstAssigned = (dealers ?? [])
           .filter((d: { current_state: string }) => d.current_state === "assigned")
           .sort(
             (a: { worked_minutes_since_last_break?: number }, b: { worked_minutes_since_last_break?: number }) =>
               (b.worked_minutes_since_last_break ?? 0) - (a.worked_minutes_since_last_break ?? 0)
           )
-          .slice(0, Math.max(1, Math.ceil(assignCount * 0.3)));
+          .slice(0, 1);
+
+        let freedCount = 0;
 
         if (!dryRun) {
-          for (const d of longestAssigned) {
-            await admin.from("dealer_attendance")
-              .update({ current_state: "available" })
-              .eq("id", d.id);
-          }
+          const results = await Promise.allSettled(
+            worstAssigned.map(async (d) => {
+              try {
+                await admin.functions.invoke("manage-break", {
+                  body: {
+                    action: "start",
+                    attendance_id: d.id,
+                    duration_minutes: 15,
+                    reason: "deadlock_recovery",
+                    club_id: cid,
+                  },
+                });
+                freedCount++;
+              } catch (err) {
+                console.error(`[enforceBreakBalance] manage-break invoke failed for ${d.id}:`, err);
+                summary[cid].errors++;
+              }
+            })
+          );
         }
 
-        summary[cid].forced += longestAssigned.length;
+        summary[cid].forced += freedCount;
 
-        if (botToken) {
+        if (freedCount > 0 && botToken) {
           const chatId = await getClubTelegramChatId(admin, cid);
           if (chatId) {
             await sendTelegramNotification(
               botToken, chatId,
               `⚠️ Pool dealer cạn kiệt — ${overdueSwings!.length} bàn chờ swing.\n` +
-              `Đã giải phóng ${longestAssigned.length} dealer lâu nhất để xử lý hàng đợi.`,
+              `Đã ép dealer lâu nhất nghỉ để xử lý hàng đợi.`,
               {}
             );
           }
@@ -143,11 +164,11 @@ Deno.serve(async (req: Request) => {
           (Date.now() - new Date(ota.overtime_started_at).getTime()) / 60000
         );
 
-        // INVARIANT: write current session OT only (overwrite, not +=)
-        // The column shows "how long this dealer has been in OT right now"
+        // Write to current_ot_display_minutes (display-only, overwrite-safe).
+        // Payroll accumulation stays in dealer_attendance.overtime_minutes (written by perform_swing).
         await admin
           .from("dealer_attendance")
-          .update({ overtime_minutes: otMinutes })
+          .update({ current_ot_display_minutes: otMinutes })
           .eq("id", ota.attendance_id);
 
         // Alert every 30 minutes of continuous OT

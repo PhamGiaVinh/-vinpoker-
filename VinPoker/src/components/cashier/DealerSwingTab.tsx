@@ -30,6 +30,8 @@ import {
   useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers,
 } from "@/hooks/useDealerSwing";
 import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import { useActiveTournaments } from "@/hooks/useTournaments";
+import type { TournamentWithTables } from "@/types/tournament";
 import { NextDealerPreview } from "./NextDealerPreview";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
@@ -106,6 +108,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
   const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(dealers?.length ?? 0);
   const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds);
+
+  // ── Tournament config for swing override display ─────────────────────────
+  const { data: tournaments } = useActiveTournaments(
+    clubFilter ?? filteredClubIds[0]
+  );
 
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
@@ -1034,6 +1041,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                     preAssignedMap={preAssignedMap}
                     timelineByTableId={timelineByTableId}
                     swingConfigs={swingConfigs ?? []}
+                    tournaments={tournaments}
                   processing={processing}
                   onAssign={openAssignModal}
                   onSendToBreak={(attId) => sendToBreak(attId)}
@@ -2142,7 +2150,7 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating,
 }: {
@@ -2152,6 +2160,7 @@ function TableGrid({
   preAssignedMap: Record<string, PreAssignedInfo | null>;
   timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
   swingConfigs: SwingConfig[];
+  tournaments: TournamentWithTables[] | undefined;
   processing: string | null;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
@@ -2214,9 +2223,12 @@ function TableGrid({
         ) : (
           filteredTables.map((t) => {
             const a = tableAssignmentMap[t.id];
-            const config = swingConfigs?.find((c) => c.table_type === t.table_type);
-            const warnAt = config?.warn_at_minutes ?? 5;
-            const critAt = config?.crit_at_minutes ?? 1;
+            // Resolve config: tournament → club default
+            const tableTournament = tournaments?.find((tr) =>
+              tr.tournament_tables.some((tt) => tt.table_id === t.id)
+            );
+            const warnAt = tableTournament?.warn_at_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.warn_at_minutes ?? 5;
+            const critAt = tableTournament?.crit_at_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.crit_at_minutes ?? 1;
 
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
 
