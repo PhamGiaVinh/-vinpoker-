@@ -664,11 +664,26 @@ Deno.serve(async (req: Request) => {
                 });
 
             const nextExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
-            const nextDealer = await pickNextDealer(admin, cid, {
+            let nextDealer = await pickNextDealer(admin, cid, {
               currentTableId: assignment.table_id,
               excludeAttendanceIds: nextExcludes,
               requiredGameTypes: required_game_types,
             });
+
+            // ── Desperate fallback for OT tables ────────────────────────────
+            // If no dealer found and this is an OT table (dealer needs relief),
+            // retry with relaxed criteria: skip priority_break_flag guard so
+            // dealers flagged for break but well-rested (rest_min >= 100)
+            // are still eligible to be picked.
+            if (!nextDealer && isOtDealer) {
+              console.log(`[process-swing] Desperate fallback for ${tableName}: retrying with relaxed priority break guard`);
+              nextDealer = await pickNextDealer(admin, cid, {
+                currentTableId: assignment.table_id,
+                excludeAttendanceIds: nextExcludes,
+                requiredGameTypes: required_game_types,
+                skipPriorityBreakGuard: true,
+              });
+            }
 
             // SAFEGUARD: verify dealer belongs to this club before assigning
             if (nextDealer?.id) {

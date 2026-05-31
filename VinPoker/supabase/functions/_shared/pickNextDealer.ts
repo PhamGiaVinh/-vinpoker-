@@ -46,6 +46,9 @@ export interface PickDealerOptions {
   includeScoreBreakdown?: boolean;
   /** Known club average break ratio (pre-fetched). Skips batch query. */
   clubAvgBreakRatio?: number;
+  /** When true, skip the priority_break_flag filter so dealers
+   *  flagged for break are still considered in desperate situations. */
+  skipPriorityBreakGuard?: boolean;
 }
 
 export interface DealerCandidate {
@@ -81,6 +84,7 @@ async function buildDealerCandidates(
     excludeAttendanceIds = new Set(),
     includeScoreBreakdown,
     clubAvgBreakRatio,
+    skipPriorityBreakGuard = false,
   } = options;
 
   // Step 1: Get active dealer IDs for this club
@@ -210,7 +214,7 @@ async function buildDealerCandidates(
     // If dealer was flagged for priority break AND has worked enough,
     // skip them (they need rest, not another assignment).
     // Exception: if they've had ≥100 min rest, they're ready again.
-    if (consecutive > 0 && priorityBreak && restMin >= 100) continue;
+    if (!skipPriorityBreakGuard && consecutive > 0 && priorityBreak && restMin < 100) continue;
 
     // ── Minimum rest ────────────────────────────────────────────────────────
     // Dealer needs ≥10 min rest between swing cycles.
