@@ -2991,8 +2991,8 @@ function AutoAdjustSection({
       target_ratio: suggestResult.suggested_target_ratio,
       break_duration_minutes: suggestResult.suggested_break_duration,
       pre_announce_minutes: Math.min(15, Math.max(5, Math.round(base / 3))),
-      min_duration_minutes: Math.max(30, Math.round(base * 0.5)),
-      max_duration_minutes: Math.round(base * 1.5),
+      min_duration_minutes: Math.max(25, Math.round(base * 0.5)),
+      max_duration_minutes: Math.max(Math.round(base * 1.5), base + 5),
     });
     toast.success("Đã áp dụng thông số gợi ý. Nhấn Lưu để ghi vào DB.");
     setSuggestResult(null);
@@ -3139,7 +3139,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
       swing_duration_minutes: 30, break_duration_minutes: 20, warn_at_minutes: 5,
       crit_at_minutes: 1, tournament_mode: "time", pre_announce_minutes: 10,
       auto_adjust_duration: false, base_duration_minutes: 30,
-      target_ratio: 1.2, min_duration_minutes: 30, max_duration_minutes: 60,
+      target_ratio: 1.2, min_duration_minutes: 25, max_duration_minutes: 60,
     },
   }), []);
 
@@ -3161,8 +3161,8 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
           auto_adjust_duration: (cfg as any).auto_adjust_duration ?? false,
           base_duration_minutes: Math.max(30, (cfg as any).base_duration_minutes ?? 30),
           target_ratio: (cfg as any).target_ratio ?? 1.2,
-          min_duration_minutes: Math.max(30, (cfg as any).min_duration_minutes ?? 30),
-          max_duration_minutes: (cfg as any).max_duration_minutes ?? 60,
+      min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 25, Math.max(30, (cfg as any).base_duration_minutes ?? 30) - 1)),
+      max_duration_minutes: Math.max((cfg as any).max_duration_minutes ?? 60, Math.max(30, (cfg as any).base_duration_minutes ?? 30) + 5),
         };
       }
     }

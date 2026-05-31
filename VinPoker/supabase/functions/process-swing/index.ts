@@ -672,12 +672,15 @@ Deno.serve(async (req: Request) => {
 
             // SAFEGUARD: verify dealer belongs to this club before assigning
             if (nextDealer?.id) {
-              const { data: dealerClub } = await admin
-                .from("dealers")
-                .select("club_id")
-                .eq("id", nextDealer.dealer_id)
-                .single()
-                .catch(() => ({ data: null }));
+              let dealerClub: { club_id: string } | null = null;
+              try {
+                const res = await admin
+                  .from("dealers")
+                  .select("club_id")
+                  .eq("id", nextDealer.dealer_id)
+                  .single();
+                dealerClub = res.data;
+              } catch { /* ignore */ }
               if (!dealerClub || dealerClub.club_id !== cid) {
                 console.warn(`[process-swing] SAFEGUARD: dealer ${nextDealer.full_name} club ${dealerClub?.club_id} != table club ${cid}, skipping`);
                 await admin.from("dealer_attendance").update({ current_state: "available" }).eq("id", nextDealer.id);
@@ -747,14 +750,14 @@ Deno.serve(async (req: Request) => {
                     );
                   }
 
-                  admin
-                    .from("dealer_assignments")
-                    .update({ last_ot_alert_at: new Date().toISOString() })
-                    .eq("id", assignment.id)
-                    .then(() => {})
-                    .catch((e: Deno.errors.Error) =>
-                      console.error("[process-swing] last_ot_alert_at update failed:", e.message)
-                    );
+                  try {
+                    await admin
+                      .from("dealer_assignments")
+                      .update({ last_ot_alert_at: new Date().toISOString() })
+                      .eq("id", assignment.id);
+                  } catch (e: unknown) {
+                    console.error("[process-swing] last_ot_alert_at update failed:", e instanceof Error ? e.message : e);
+                  }
                 }
               }
             } else if (outcome === "swing_skipped") {
