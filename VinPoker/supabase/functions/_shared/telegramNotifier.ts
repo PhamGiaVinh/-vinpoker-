@@ -98,7 +98,7 @@ function hhmm(date: Date): string {
 function formatEventLine(event: DealerEvent): string {
   switch (event.type) {
     case "swing_in":
-      return `🪑 Vào bàn ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
+      return `🪑 Vào ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
 
     case "break_start":
       return `☕ Đang break: ${event.dealerName}${handle(event.username)} (${event.durationMin} phút)`;
@@ -115,7 +115,7 @@ function formatEventLine(event: DealerEvent): string {
       return `⚠️ Tăng ca: ${event.dealerName}${handle(event.username)} @ ${event.tableName}`;
 
     case "table_reopen":
-      return `Mở lại bàn ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
+      return `Mở lại ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
 
     case "no_dealer":
       return `🚨 Không có dealer cho bàn ${event.tableName}`;

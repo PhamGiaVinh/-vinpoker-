@@ -1,0 +1,153 @@
+import { useMemo } from "react";
+import type { DealerAssignment, DealerAttendance, NextDealerPrediction } from "@/hooks/useDealerSwing";
+
+export type AttentionType = "ot" | "empty_table" | "break_due" | "missing_next_dealer";
+
+export interface AttentionItem {
+  id: string;
+  type: AttentionType;
+  severity: "critical" | "warning";
+  score: number;
+  title: string;
+  subtitle?: string;
+  tableId?: string;
+  tableName?: string;
+  attendanceId?: string;
+}
+
+export interface AttentionQueueResult {
+  items: AttentionItem[];
+  criticalItems: AttentionItem[];
+  warningItems: AttentionItem[];
+  totalCount: number;
+  criticalCount: number;
+}
+
+interface UseAttentionQueueProps {
+  assignments: DealerAssignment[];
+  tables: any[];
+  dealers: DealerAttendance[];
+  tableAssignmentMap: Record<string, DealerAssignment | null>;
+  timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
+  nextDealerMap: Record<string, NextDealerPrediction> | null;
+  nowMs: number;
+}
+
+const BASE_SCORE: Record<AttentionType, number> = {
+  ot: 100,
+  empty_table: 90,
+  break_due: 55,
+  missing_next_dealer: 40,
+};
+
+function cap(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function useAttentionQueue({
+  assignments, tables, dealers, tableAssignmentMap,
+  timelineByTableId, nextDealerMap, nowMs,
+}: UseAttentionQueueProps): AttentionQueueResult {
+  return useMemo(() => {
+    const items: AttentionItem[] = [];
+
+    // ── 1. OT — confirmed overtime_started_at ──
+    for (const a of assignments) {
+      if (a.status !== "assigned") continue;
+      if (!a.overtime_started_at) continue;
+
+      const otSec = Math.floor((nowMs - new Date(a.overtime_started_at).getTime()) / 1000);
+      const otMin = Math.floor(otSec / 60);
+      const timeFactor = cap(otMin, 0, 50);
+      const score = BASE_SCORE.ot + timeFactor;
+
+      const otDisplay = otMin >= 60
+        ? `+${Math.floor(otMin / 60)}h${otMin % 60}m`
+        : `+${otMin}m`;
+
+      items.push({
+        id: `ot-${a.id}`,
+        type: "ot",
+        severity: score >= 80 ? "critical" : "warning",
+        score,
+        title: `${a.game_tables?.table_name ?? "??"} • OT ${otDisplay}`,
+        subtitle: a.dealer_attendance?.dealers?.full_name ?? undefined,
+        tableId: a.table_id,
+        tableName: a.game_tables?.table_name ?? undefined,
+        attendanceId: a.attendance_id,
+      });
+    }
+
+    // ── 2. Empty tables ──
+    for (const t of tables ?? []) {
+      if (tableAssignmentMap[t.id]) continue;
+      const tableName = t.table_name ?? "??";
+      items.push({
+        id: `empty-${t.id}`,
+        type: "empty_table",
+        severity: BASE_SCORE.empty_table >= 80 ? "critical" : "warning",
+        score: BASE_SCORE.empty_table,
+        title: `${tableName} • Bàn trống`,
+        subtitle: "Chưa có dealer",
+        tableId: t.id,
+        tableName,
+      });
+    }
+
+    // ── 3. Break due ──
+    for (const d of dealers ?? []) {
+      const w = d.worked_minutes_since_last_break ?? 0;
+      if (w < 90 && !d.priority_break_flag) continue;
+      const excess = cap(w - 90, 0, 30);
+      const score = BASE_SCORE.break_due + excess;
+      const name = (d as any).dealers?.full_name ?? "??";
+
+      items.push({
+        id: `break-${d.id}`,
+        type: "break_due",
+        severity: score >= 80 ? "critical" : "warning",
+        score,
+        title: `${name} • Cần nghỉ`,
+        subtitle: d.priority_break_flag ? "Priority break" : `Đã làm ${w} phút`,
+        attendanceId: d.id,
+      });
+    }
+
+    // ── 4. Missing next dealer ──
+    if (nextDealerMap) {
+      for (const t of tables ?? []) {
+        const tl = timelineByTableId[t.id];
+        if (!tl?.showNextDealerSoon) continue;
+        const pred = nextDealerMap[t.id];
+        if (pred?.nextDealerName) continue;
+
+        const minutesToSwing = pred?.minutesUntilSwing ?? tl.minutesLeft;
+        const timeFactor = cap(30 - minutesToSwing, 0, 30);
+        const score = BASE_SCORE.missing_next_dealer + timeFactor;
+        const tableName = t.table_name ?? "??";
+
+        items.push({
+          id: `next-${t.id}`,
+          type: "missing_next_dealer",
+          severity: score >= 80 ? "critical" : "warning",
+          score,
+          title: `${tableName} • Chưa có dealer kế`,
+          subtitle: tl.isOverdue ? "Đã quá giờ swing" : `Còn ${minutesToSwing} phút`,
+          tableId: t.id,
+          tableName,
+        });
+      }
+    }
+
+    // Sort by score descending
+    items.sort((a, b) => b.score - a.score);
+
+    return {
+      items,
+      criticalItems: items.filter((i) => i.severity === "critical"),
+      warningItems: items.filter((i) => i.severity === "warning"),
+      totalCount: items.length,
+      criticalCount: items.filter((i) => i.severity === "critical").length,
+    };
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, nowMs]);
+}

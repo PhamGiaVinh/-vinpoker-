@@ -264,6 +264,25 @@
   }
 }
 
+/* ── Table focus animation ────────────────────────────────── */
+.table-card--focused {
+  animation: focusPulse 1s ease-in-out 3;
+  border-color: rgba(59, 130, 246, 0.6) !important;
+  box-shadow: 0 0 20px -4px rgba(59, 130, 246, 0.4);
+}
+
+@keyframes focusPulse {
+  0%, 100% { box-shadow: 0 0 20px -4px rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 30px -2px rgba(59, 130, 246, 0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-card--focused {
+    animation: none;
+    border-color: rgba(59, 130, 246, 0.6) !important;
+  }
+}
+
 /* ── Swing shimmer animation ──────────────────────────────── */
 @keyframes swing-shimmer {
   0%   { background-position: -200% 0; }

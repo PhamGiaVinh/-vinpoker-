@@ -33,16 +33,22 @@ import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy,
 import { useActiveTournaments } from "@/hooks/useTournaments";
 import type { TournamentWithTables } from "@/types/tournament";
 import { NextDealerPreview } from "./NextDealerPreview";
+import AttentionQueue from "./command-center/AttentionQueue";
+import OperationsCard from "./command-center/OperationsCard";
+import SystemHealthCard from "./command-center/SystemHealthCard";
+import QuickLinksCard from "./command-center/QuickLinksCard";
+import { useLiveClock } from "@/hooks/useLiveClock";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
+import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
 import { TableTimerDisplay } from "./TableTimerDisplay";
 import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
 import {
-  Users,   Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
-  Send, FileSpreadsheet, DollarSign, Loader2, Clock, AlertTriangle,
-  Plus, MessageCircle, Save, Settings, Trash2, Calendar as CalendarIcon, Zap, LayoutDashboard,
+  Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
+  FileSpreadsheet, Loader2, Clock, AlertTriangle,
+  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -919,6 +925,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   };
 
   const { triggerSwingAnimation, isAnimating } = useSwingAnimation();
+  const { focusedTableId, focusTable } = useFocusNavigation();
 
   const loading = dealersLoading || tablesLoading || assignsLoading;
 
@@ -1055,6 +1062,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                   onManualSwing={openAssignModal}
                   onForceClose={setCloseTableConfirmId}
                   isAnimating={isAnimating}
+                  focusedTableId={focusedTableId}
                 />
             )}
           </div>
@@ -1075,10 +1083,16 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               clubs={clubs}
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
               onOpenSpecialDates={() => setSpecialDatesOpen(true)}
+              onAssign={openAssignModal}
+              onSendToBreak={sendToBreak}
               dealers={dealers ?? []}
               swingMetrics={swingMetrics ?? []}
-              breakPolicies={breakPolicies ?? []}
               tables={tables ?? []}
+              assignments={assignments ?? []}
+              tableAssignmentMap={tableAssignmentMap}
+              timelineByTableId={timelineByTableId}
+              nextDealerMap={nextDealerMap}
+              onFocusTable={focusTable}
             />
           </div>
         </div>
@@ -1946,6 +1960,9 @@ function RosterPanel({
   onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
 }) {
+  const nowMs = useLiveClock();
+  const [batchMode, setBatchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const toggleId = (id: string) => {
@@ -1970,7 +1987,6 @@ function RosterPanel({
   };
 
   const allDealerIds = useMemo(() => dealers.map((d) => d.id), [dealers]);
-  const allSelected = allDealerIds.length > 0 && allDealerIds.every((id) => selectedIds.has(id));
   const dealerStatuses = useMemo(() => {
     const map: Record<string, { status: string; tableName?: string; checkInTime: string; timerStart: string }> = {};
     for (const d of dealers) {
@@ -1991,95 +2007,196 @@ function RosterPanel({
     return map;
   }, [dealers, assignments]);
 
+  // Urgency key for sorting assigned dealers
+  const urgencyKey = useCallback((att: DealerAssignment | undefined): number => {
+    if (!att) return 999;
+    if (att.overtime_started_at) return 0;
+    const ms = new Date(att.swing_due_at).getTime() - nowMs;
+    if (ms <= 0) return 1;
+    if (ms <= 120000) return 2;
+    if (ms <= 300000) return 3;
+    return 4;
+  }, [nowMs]);
+
+  // Search filter across name / username / table name
+  const filteredDealers = useMemo(() => {
+    if (!searchQuery.trim()) return dealers;
+    const q = searchQuery.toLowerCase();
+    return dealers.filter((d) => {
+      const dd = d.dealers;
+      if (dd?.full_name?.toLowerCase().includes(q)) return true;
+      if (dd?.telegram_username?.toLowerCase().includes(q)) return true;
+      const info = dealerStatuses[d.id];
+      if (info?.tableName?.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [dealers, searchQuery, dealerStatuses]);
+
   const sections = [
-    { key: "Sẵn sàng", icon: Users, color: "text-emerald-400" },
-    { key: "Đang bàn", icon: Table2, color: "text-blue-400" },
-    { key: "Đang nghỉ", icon: Clock, color: "text-amber-400" },
-    { key: "Đang chờ", icon: Clock, color: "text-purple-400" },
+    { key: "Sẵn sàng", icon: Users, color: "text-emerald-400", dot: "bg-emerald-500" },
+    { key: "Đang bàn", icon: Table2, color: "text-blue-400", dot: "bg-blue-500" },
+    { key: "Đang nghỉ", icon: Clock, color: "text-amber-400", dot: "bg-amber-500" },
+    { key: "Đang chờ", icon: Clock, color: "text-purple-400", dot: "bg-purple-500" },
   ] as const;
 
   return (
-    <Card className="p-3 h-full">
-      <div className="flex items-center gap-2 mb-1">
-        {dealers.length > 0 && (
-          <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
-            checked={allSelected}
-            onChange={() => toggleAllInSection(allDealerIds)} />
-        )}
-        <Users className="w-4 h-4 text-primary" />
-        <span className="font-display text-sm tracking-wider">ĐỘI HÌNH CHIẾN BINH</span>
+    <Card className="p-3 h-full flex flex-col">
+      {/* ── Header: title + batch toggle ── */}
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary" />
+          <span className="font-display text-sm tracking-wider">ĐỘI HÌNH</span>
+        </div>
+        <Button size="sm" variant={batchMode ? "default" : "outline"}
+          className="text-[10px] h-6 px-2"
+          onClick={() => { setBatchMode(!batchMode); if (batchMode) setSelectedIds(new Set()); }}>
+          {batchMode ? "Thoát chọn" : "Chọn nhiều"}
+        </Button>
       </div>
-      <div className="text-[11px] text-muted-foreground mb-3 flex items-center gap-1.5">
-        <span className="text-emerald-400 font-semibold">{checkedInCount ?? dealers.length}</span>
+
+      {/* ── Stats row ── */}
+      <div className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5">
+        <span className="text-emerald-400 font-semibold">{checkedInCount ?? filteredDealers.length}</span>
         <span>/</span>
         <span>{totalDealers}</span>
         <span className="ml-1">đang hoạt động</span>
       </div>
 
-      <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-        {dealers.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-6">Chưa có dealer check-in hôm nay.</div>
+      {/* ── Search input ── */}
+      <div className="relative mb-2">
+        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+        </svg>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Tìm dealer..."
+          className="w-full h-7 pl-7 pr-2 text-xs bg-zinc-800/50 border border-zinc-700 rounded outline-none focus:border-emerald-500/50 text-zinc-300 placeholder-zinc-600"
+        />
+      </div>
+
+      {/* ── Scrollable roster body ── */}
+      <div className="flex-1 space-y-3 overflow-y-auto min-h-0">
+        {filteredDealers.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-6">
+            {searchQuery ? "Không tìm thấy dealer phù hợp." : "Chưa có dealer check-in hôm nay."}
+          </div>
         ) : (
           sections.map((sec) => {
-            const group = dealers.filter((d) => dealerStatuses[d.id]?.status === sec.key);
+            let group = filteredDealers.filter((d) => dealerStatuses[d.id]?.status === sec.key);
             if (!group.length) return null;
+            // Sort assigned by urgency — OT first
+            if (sec.key === "Đang bàn") {
+              group = [...group].sort((a, b) => {
+                const aA = assignments.find((x) => x.attendance_id === a.id);
+                const bA = assignments.find((x) => x.attendance_id === b.id);
+                return urgencyKey(aA) - urgencyKey(bA);
+              });
+            }
             const Icon = sec.icon;
+            const allSelected = group.every((d) => selectedIds.has(d.id));
             return (
               <div key={sec.key}>
-                <div className="flex items-center gap-1.5 mb-2 sticky top-0 bg-card z-10 pb-1">
-                  <input type="checkbox" className="w-3 h-3 accent-emerald-500 cursor-pointer"
-                    checked={group.length > 0 && group.every((d) => selectedIds.has(d.id))}
-                    onChange={() => toggleAllInSection(group.map((d) => d.id))} />
+                {/* Section header */}
+                <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 z-10 pb-0.5">
+                  {batchMode && (
+                    <input type="checkbox" className="w-3 h-3 accent-emerald-500 cursor-pointer"
+                      checked={allSelected}
+                      onChange={() => toggleAllInSection(group.map((d) => d.id))} />
+                  )}
                   <Icon className={`w-3 h-3 ${sec.color}`} />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.key}</span>
-                  <Badge variant="outline" className="text-[10px] ml-auto">{group.length}</Badge>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.key}</span>
+                  <Badge variant="outline" className="text-[9px] ml-auto">{group.length}</Badge>
                 </div>
-                <div className="space-y-1.5">
+
+                {/* Compact rows */}
+                <div className="space-y-0.5">
                   {group.map((d) => {
                     const dd = d.dealers;
                     const info = dealerStatuses[d.id];
                     const isBusy = processing === d.id;
                     const ready = sec.key === "Sẵn sàng";
                     const onBreak = sec.key === "Đang nghỉ";
+
+                    // Detect OT for this dealer
+                    const assignment = assignments.find((a) => a.attendance_id === d.id);
+                    const isOt = assignment?.overtime_started_at !== null &&
+                      ((assignment?.overtime_started_at ?? '') !== '' || new Date(assignment?.swing_due_at ?? '').getTime() <= nowMs);
+
                     return (
-                      <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
-                        <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
-                          checked={selectedIds.has(d.id)}
-                          onChange={() => toggleId(d.id)} />
-                        <div className="relative">
-                          <div className="w-8 h-8 rounded-none bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                            {dd?.full_name?.charAt(0) ?? "?"}
-                          </div>
-                          {sec.key === "Sẵn sàng" && <div className="absolute -top-1 -right-1"><FatigueDot attendance={d} /></div>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold truncate">{dd?.full_name ?? "—"}</div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <TierBadge tier={dd?.tier} />
-                            <StatusPill status={sec.key} />
-                            <PriorityBreakIndicator priorityBreakFlag={d.priority_break_flag} workedMinutesSinceLastBreak={d.worked_minutes_since_last_break} />
-                            {info?.tableName && (
-                              <span className="text-[10px] text-muted-foreground truncate">· {info.tableName}</span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
-                            <Clock className="w-3 h-3 inline mr-0.5" />
+                      <div key={d.id} className={[
+                        "flex items-center gap-2 px-2 py-1.5 rounded transition-all",
+                        isOt ? "bg-red-950/20" : "hover:bg-zinc-800/30",
+                      ].join(" ")}>
+                        {/* Checkbox — batch mode only */}
+                        {batchMode && (
+                          <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer flex-shrink-0"
+                            checked={selectedIds.has(d.id)}
+                            onChange={() => toggleId(d.id)} />
+                        )}
+
+                        {/* Status dot */}
+                        <div className={[
+                          "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                          isOt ? "bg-red-500" : sec.dot,
+                        ].join(" ")} />
+
+                        {/* Name */}
+                        <span className={[
+                          "text-xs font-medium truncate min-w-0 flex-1",
+                          isOt ? "text-red-300" : "text-zinc-200",
+                        ].join(" ")}>
+                          {dd?.full_name ?? "—"}
+                        </span>
+
+                        {/* Tier (compact) */}
+                        <span className={[
+                          "text-[9px] font-bold leading-none flex-shrink-0",
+                          dd?.tier === "A" ? "text-amber-500" : dd?.tier === "B" ? "text-blue-400" : "text-zinc-500",
+                        ].join(" ")}>
+                          {dd?.tier ?? "C"}
+                        </span>
+
+                        {/* Table badge */}
+                        {info?.tableName && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 leading-none flex-shrink-0">
+                            {info.tableName}
+                          </span>
+                        )}
+
+                        {/* Fatigue dot (available only) */}
+                        {ready && <FatigueDot attendance={d} />}
+
+                        {/* Timer */}
+                        {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
+                          <span className={[
+                            "font-mono text-[10px] flex-shrink-0 tabular-nums",
+                            isOt ? "text-red-400 font-bold" : "text-zinc-400",
+                          ].join(" ")}>
                             {sec.key === "Đang nghỉ" ? "Nghỉ " : ""}
-                            <DealerTimer startTime={info?.timerStart ?? info?.checkInTime ?? new Date().toISOString()} />
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-1">
+                            <DealerTimer startTime={info.timerStart} />
+                          </span>
+                        )}
+
+                        {/* Priority break indicator */}
+                        <PriorityBreakIndicator
+                          priorityBreakFlag={d.priority_break_flag}
+                          workedMinutesSinceLastBreak={d.worked_minutes_since_last_break}
+                        />
+
+                        {/* Action: break / end break */}
+                        <div className="flex-shrink-0">
                           {ready && (
-                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Gửi nghỉ"
+                            <button className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Gửi nghỉ"
                               onClick={() => onSendToBreak(d.id)} disabled={isBusy}>
                               <Clock className="w-3 h-3" />
-                            </Button>
+                            </button>
                           )}
                           {onBreak && (
-                            <Button size="icon" variant="ghost" className="h-6 w-6" title="Kết thúc nghỉ"
+                            <button className="text-emerald-500 hover:text-emerald-400 transition-colors" title="Kết thúc nghỉ"
                               onClick={() => onEndBreak(d.id)} disabled={isBusy}>
-                              <Play className="w-3 h-3 text-primary" />
-                            </Button>
+                              <Play className="w-3 h-3" />
+                            </button>
                           )}
                         </div>
                       </div>
@@ -2096,27 +2213,23 @@ function RosterPanel({
           <div className="pt-2 border-t border-border/40">
             <div className="flex items-center gap-1.5 mb-2">
               <UserMinus className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Đã check-out</span>
-              <Badge variant="outline" className="text-[10px] ml-auto">{checkedOutDealers.length}</Badge>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Đã check-out</span>
+              <Badge variant="outline" className="text-[9px] ml-auto">{checkedOutDealers.length}</Badge>
             </div>
-            <div className="space-y-1.5 opacity-60 hover:opacity-100 transition-opacity">
+            <div className="space-y-0.5 opacity-60 hover:opacity-100 transition-opacity">
               {checkedOutDealers.map((d) => {
                 const dd = d.dealers;
                 return (
-                  <div key={d.id} className="flex items-center gap-2 p-2 bg-muted/10 border border-border rounded-none">
-                    <div className="w-8 h-8 rounded-none bg-gray-500/20 flex items-center justify-center text-xs font-bold text-gray-400">
+                  <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/30">
+                    <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-zinc-500 flex-shrink-0">
                       {dd?.full_name?.charAt(0) ?? "?"}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate text-muted-foreground">{dd?.full_name ?? "—"}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <TierBadge tier={dd?.tier} />
-                        <span className="text-[10px] text-muted-foreground">
-                          {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
-                        </span>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline" className="h-7 text-[11px]"
+                    <span className="text-xs text-zinc-500 truncate flex-1">{dd?.full_name ?? "—"}</span>
+                    <span className="text-[9px] text-zinc-600">{dd?.tier ?? "C"}</span>
+                    <span className="text-[10px] text-zinc-600">
+                      {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
                       onClick={() => onReCheckin(d.dealer_id)} disabled={processing !== null}>
                       Check-in lại
                     </Button>
@@ -2128,20 +2241,32 @@ function RosterPanel({
         )}
       </div>
 
-      <div className="flex gap-2 mt-3 pt-3 border-t border-border flex-wrap">
-        <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
-          <UserPlus className="w-3 h-3 mr-1" /> Check-in
-        </Button>
-        <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
-          <UserMinus className="w-3 h-3 mr-1" /> Check-out
-        </Button>
-        {selectedIds.size > 0 && (
-          <Button size="sm" variant="outline" className="w-full text-xs text-red-400 border-red-400/30 hover:bg-red-500/10 mt-1"
+      {/* ── Sticky batch action footer ── */}
+      {batchMode && selectedIds.size > 0 && (
+        <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-700 p-2 mt-2 flex items-center gap-2 rounded-b-lg">
+          <span className="text-xs text-zinc-400 flex-1">{selectedIds.size} dealer đã chọn</span>
+          <Button size="sm" variant="destructive" className="text-xs h-7"
             onClick={() => { onBatchCheckout([...selectedIds]); setSelectedIds(new Set()); }}>
-            <UserMinus className="w-3 h-3 mr-1" /> Checkout hàng loạt ({selectedIds.size})
+            <UserMinus className="w-3 h-3 mr-1" /> Check-out
           </Button>
-        )}
-      </div>
+          <Button size="sm" variant="outline" className="text-xs h-7"
+            onClick={() => setSelectedIds(new Set())}>
+            Hủy
+          </Button>
+        </div>
+      )}
+
+      {/* ── Always-visible footer ── */}
+      {!batchMode && (
+        <div className="flex gap-2 mt-3 pt-3 border-t border-border flex-wrap">
+          <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
+            <UserPlus className="w-3 h-3 mr-1" /> Check-in
+          </Button>
+          <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
+            <UserMinus className="w-3 h-3 mr-1" /> Check-out
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }
@@ -2152,7 +2277,7 @@ function RosterPanel({
 function TableGrid({
   tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
-  onManualSwing, onForceClose, isAnimating,
+  onManualSwing, onForceClose, isAnimating, focusedTableId,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -2174,7 +2299,10 @@ function TableGrid({
   onManualSwing?: (tableId: string) => void;
   onForceClose?: (tableId: string) => void;
   isAnimating?: (tableId: string) => boolean;
+  focusedTableId?: string | null;
 }) {
+  const nowMs = useLiveClock();
+
   // Filter tables based on selected tour using shift_id column
   const filteredTables = useMemo(() => {
     if (!selectedTour) return tables;
@@ -2232,136 +2360,208 @@ function TableGrid({
 
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
 
+            // ── Timer / OT / Progress computations ──────────────────────────
+            const swingDueMs = a ? new Date(a.swing_due_at).getTime() : 0;
+            const isOt = a && (a.overtime_started_at !== null || swingDueMs <= nowMs);
+
+            let otLabel = "";
+            if (isOt) {
+              const otStartMs = a.overtime_started_at
+                ? new Date(a.overtime_started_at).getTime()
+                : new Date(a.swing_due_at).getTime();
+              const otSec = Math.max(0, Math.floor((nowMs - otStartMs) / 1000));
+              otLabel = `+${String(Math.floor(otSec / 60)).padStart(2, "0")}:${String(otSec % 60).padStart(2, "0")}`;
+            }
+
+            let timerLabel = "--:--";
+            let timerColor = "text-emerald-400";
+            if (!isOt && a) {
+              const remainingMs = swingDueMs - nowMs;
+              if (remainingMs > 0) {
+                const secs = Math.floor(remainingMs / 1000);
+                timerLabel = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+                if (secs <= 60) timerColor = "text-red-400";
+                else if (secs <= 180) timerColor = "text-orange-400";
+                else if (secs <= 300) timerColor = "text-amber-400";
+              }
+            }
+
+            let progress = 0;
+            if (a && a.assigned_at) {
+              const totalMs = swingDueMs - new Date(a.assigned_at).getTime();
+              const elapsedMs = nowMs - new Date(a.assigned_at).getTime();
+              progress = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0;
+            }
+
+            const progressColor = isOt
+              ? "bg-red-500"
+              : progress > 85 ? "bg-orange-500"
+              : progress > 70 ? "bg-amber-500"
+              : "bg-emerald-500";
+
+            const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
+
+            const tl = timelineByTableId[t.id];
+            const pred = nextDealerMap?.[t.id];
+
             return (
-              <div key={t.id} className={`p-3 bg-muted/10 border border-border rounded-none animate-in fade-in slide-in-from-bottom-1 duration-300 ${isAnimating?.(t.id) ? "table-card--swinging" : ""}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-semibold text-sm flex items-center gap-2">
-                    {t.table_name}
-                    {onManualSwing && onForceClose && (
-                      <TableCardKebab
-                        tableId={t.id}
-                        tableName={t.table_name}
-                        hasActiveAssign={!!a}
-                        onManualSwing={() => onManualSwing(t.id)}
-                        onForceClose={() => onForceClose(t.id)}
-                      />
-                    )}
+              <div key={t.id} id={`table-card-${t.id}`} className={[
+                "relative overflow-hidden border rounded-lg transition-all duration-300",
+                isOt ? "border-red-500/70 bg-red-950/30 shadow-[0_0_24px_-8px_rgba(239,68,68,0.4)]" : "border-zinc-700/50 bg-zinc-900/70",
+                isAnimating?.(t.id) ? "table-card--swinging" : "",
+                focusedTableId === t.id ? "table-card--focused" : "",
+              ].join(" ")}>
+                {/* ── OT bar — full width ── */}
+                {isOt && (
+                  <div className="bg-red-600/90 text-red-100 text-[10px] font-bold text-center py-1.5 tracking-wider uppercase select-none">
+                    ⏰ Overtime — {otLabel}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <TableTypeBadge type={t.table_type} />
-                    {closeTableConfirmId === t.id ? (
-                      <div className="flex items-center gap-1">
-                        <button className="text-destructive text-[10px] hover:underline" onClick={onCloseTableConfirm} disabled={closingTable}>
-                          Xác nhận
-                        </button>
-                        <button className="text-muted-foreground text-[10px] hover:underline" onClick={onCloseTableCancel}>
-                          Huỷ
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="text-muted-foreground hover:text-destructive text-xs ml-1" title="Đóng bàn"
-                        onClick={() => onCloseTableClick(t.id)}>
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                )}
 
-                {/* Dealer info */}
-                <div className="flex items-center gap-2 mb-2">
+                {/* ── Progress bar ── */}
+                {a && a.assigned_at && (
+                  <div className="h-[3px] bg-zinc-800/60 overflow-hidden">
+                    <div
+                      className={["h-full transition-all duration-1000 ease-linear", progressColor].join(" ")}
+                      style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* ── Card body ── */}
+                <div className="p-3 space-y-2">
+                  {/* Header: table name + type tag + kebab + close */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-bold text-zinc-200 truncate">{t.table_name}</span>
+                      <span className={[
+                        "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
+                        t.table_type === "high"
+                          ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
+                          : "bg-zinc-800 text-zinc-400 border border-zinc-700",
+                      ].join(" ")}>
+                        {tableTypeLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {onManualSwing && onForceClose && (
+                        <TableCardKebab
+                          tableId={t.id}
+                          tableName={t.table_name}
+                          hasActiveAssign={!!a}
+                          onManualSwing={() => onManualSwing(t.id)}
+                          onForceClose={() => onForceClose(t.id)}
+                        />
+                      )}
+                      {closeTableConfirmId === t.id ? (
+                        <div className="flex items-center gap-1">
+                          <button className="text-destructive text-[10px] hover:underline" onClick={onCloseTableConfirm} disabled={closingTable}>
+                            Xác nhận
+                          </button>
+                          <button className="text-muted-foreground text-[10px] hover:underline" onClick={onCloseTableCancel}>
+                            Huỷ
+                          </button>
+                        </div>
+                      ) : (
+                        <button className="text-zinc-600 hover:text-red-400 text-xs" title="Đóng bàn"
+                          onClick={() => onCloseTableClick(t.id)}>
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Timer ── */}
+                  {a && a.assigned_at && (
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={[
+                        "text-[22px] font-mono font-bold tracking-tight tabular-nums leading-none",
+                        isOt ? "text-red-400" : timerColor,
+                      ].join(" ")}>
+                        {isOt ? otLabel : timerLabel}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
+                        {isOt ? "OT" : "còn lại"}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ── Swing time tooltip ── */}
+                  {a && a.swing_due_at && (
+                    <div className="text-[9px] text-zinc-600 font-mono">
+                      Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+
+                  {/* ── Current dealer / Empty state ── */}
                   {dealer ? (
-                    <>
-                      <div className="w-6 h-6 rounded-none bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">
-                        {dealer.full_name?.charAt(0) ?? "?"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate">{dealer.full_name}</div>
-                        <TierBadge tier={dealer.tier} />
-                      </div>
-                    </>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <div className={["w-2 h-2 rounded-full flex-shrink-0", isOt ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
+                      <span className="text-xs font-semibold text-zinc-200">{dealer.full_name}</span>
+                      <span className={[
+                        "text-[9px] font-bold px-1 py-0.5 rounded leading-none",
+                        dealer.tier === "A" ? "bg-amber-500/20 text-amber-400" : dealer.tier === "B" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400",
+                      ].join(" ")}>
+                        {dealer.tier}
+                      </span>
+                    </div>
+                  ) : preAssignedMap[t.id] ? (
+                    <div className="flex items-center gap-2 pt-0.5 text-primary">
+                      <span className="text-xs">⬆</span>
+                      <span className="text-xs font-semibold">{preAssignedMap[t.id]!.full_name}</span>
+                    </div>
                   ) : (
-                    <div className="text-xs flex items-center gap-1">
-                      {preAssignedMap[t.id] ? (
-                        <span className="text-primary flex items-center gap-1"><span>⬆</span> {preAssignedMap[t.id]!.full_name}</span>
-                      ) : (
-                        <><AlertTriangle className="w-3 h-3 text-warning" /><span className="text-warning"> Trống</span></>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Countdown timer + upcoming dealer (next dealer prediction) */}
-                <div className="flex items-center justify-between">
-                  {a && (
-                    <TableTimerDisplay
-                      overtimeStartedAt={a.overtime_started_at}
-                      swingDueAt={a.swing_due_at}
-                    />
-                  )}
-                  {nextDealerMap?.[t.id] && nextDealerMap[t.id]!.nextDealerName && (
-                    <div className="ml-auto">
-                      {nextDealerMap[t.id]!.confidence === "confirmed" ? (
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-500 border border-emerald-500/40 px-1 py-0.5 font-bold">
-                          ✅ CHỐT
-                        </span>
-                      ) : (
-                        <span className="text-[10px] bg-amber-500/20 text-amber-500 border border-amber-500/40 px-1 py-0.5 font-bold">
-                          🔮 PV
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Next Dealer Preview — shows at ≤5 min */}
-                {(() => {
-                  const tl = timelineByTableId[t.id];
-                  if (!tl?.showNextDealerSoon) return null;
-                  const pred = nextDealerMap?.[t.id];
-                  if (!pred?.nextDealerName) return null;
-                  return (
-                    <NextDealerPreview
-                      minutesLeft={tl.minutesLeft}
-                      dealerName={pred.nextDealerName}
-                      telegramUsername={(pred as any).telegram_username ?? null}
-                      confidence={pred.confidence as "confirmed" | "predicted"}
-                    />
-                  );
-                })()}
-
-                {/* Overdue badge */}
-                {(() => {
-                  const tl = timelineByTableId[t.id];
-                  if (!tl?.isOverdue) return null;
-                  return (
-                    <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-500/10 border border-red-500/30 px-2 py-0.5">
-                      <span className="animate-pulse">⏰</span> OVERDUE
-                    </span>
-                  );
-                })()}
-
-                {/* Action buttons */}
-                <div className="flex gap-1.5 mt-2">
-                  {a && a.status === "assigned" && (
-                    <>
-                      <Button size="sm" variant="outline" className="flex-1 text-xs h-7"
-                        onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
-                        <Clock className="w-3 h-3 mr-1" /> Nghỉ
+                    <div className="flex flex-col items-center py-4 text-zinc-500">
+                      <svg className="w-8 h-8 mb-1.5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      <span className="text-xs text-zinc-600 mb-2">Trống</span>
+                      <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10"
+                        onClick={() => onAssign(t.id)}>
+                        <Users className="w-3 h-3 mr-1" /> Gán dealer
                       </Button>
-                      {!a.swing_processed_at && (
-                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-amber-500 border-amber-500/30"
-                          disabled>
-                          <RefreshCw className="w-3 h-3 mr-1" /> Swing
-                        </Button>
-                      )}
+                    </div>
+                  )}
+
+                  {/* ── Next dealer inline (inside card body) ── */}
+                  {dealer && pred?.nextDealerName && (
+                    <>
+                      <div className="border-t border-zinc-800" />
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <span className="text-[10px] text-zinc-500">Tiếp:</span>
+                        {pred.confidence === "confirmed" ? (
+                          <span className="text-[11px] text-emerald-400 font-medium">
+                            <span className="text-emerald-500">✓</span> {pred.nextDealerName}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-zinc-400">~ {pred.nextDealerName}</span>
+                        )}
+                      </div>
                     </>
                   )}
-                  {!a && (
-                    <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-primary"
-                      onClick={() => onAssign(t.id)}>
-                      <Users className="w-3 h-3 mr-1" /> Gán
-                    </Button>
-                  )}
+
+                  {/* ── Action buttons ── */}
+                  <div className="flex gap-1.5 pt-1">
+                    {a && a.status === "assigned" && (
+                      <>
+                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7"
+                          onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
+                          <Clock className="w-3 h-3 mr-1" /> Nghỉ
+                        </Button>
+                        {!a.swing_processed_at && (
+                          <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-amber-500 border-amber-500/30" disabled>
+                            <RefreshCw className="w-3 h-3 mr-1" /> Swing
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    {!a && (
+                      <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-primary"
+                        onClick={() => onAssign(t.id)}>
+                        <Users className="w-3 h-3 mr-1" /> Gán
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -2375,46 +2575,14 @@ function TableGrid({
 /* ==============================================================
    AUTO-SCROLL AUDIT LOG HOOK
    ============================================================== */
-function useAutoScrollLog(logs: unknown[]) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [unread, setUnread] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-
-  const scrollToBottom = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    setUnread(0);
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsPaused(distFromBottom > 50);
-  }, []);
-
-  useEffect(() => {
-    if (isPaused) {
-      setUnread((n) => n + 1);
-    } else {
-      scrollToBottom();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logs.length]);
-
-  return { containerRef, unread, isPaused, scrollToBottom, handleScroll };
-}
-
-/* ==============================================================
-   COMMAND CENTER — Right Column
-   ============================================================== */
 function CommandCenter({
   auditLogs, onAutoSwing, onMassAssign,
   onExportShift, onExportPayroll, swingAllBusy, massAssignBusy,
   autoSwingEnabled, onToggleAutoSwing,
   clubFilter, clubs, onOpenSwingConfig,
-  onOpenSpecialDates, dealers, swingMetrics, breakPolicies, tables,
+  onOpenSpecialDates, dealers, swingMetrics, tables,
+  assignments, tableAssignmentMap, timelineByTableId, nextDealerMap,
+  onAssign, onSendToBreak, onFocusTable,
 }: {
   auditLogs: any[];
   onAutoSwing: () => void;
@@ -2429,16 +2597,24 @@ function CommandCenter({
   clubs: ClubRow[];
   onOpenSwingConfig: () => void;
   onOpenSpecialDates: () => void;
+  onAssign: (tableId: string) => void;
+  onSendToBreak: (attendanceId: string) => void;
   dealers: DealerAttendance[];
   swingMetrics: SwingMetrics[];
-  breakPolicies: ShiftBreakPolicy[];
   tables: any[];
+  assignments: DealerAssignment[];
+  tableAssignmentMap: Record<string, DealerAssignment | null>;
+  timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
+  nextDealerMap: Record<string, NextDealerPrediction> | null;
+  onFocusTable?: (tableId: string) => void;
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
+  const nowMs = useLiveClock();
 
   // ── Internal dialogs ────────────────────────────────────────────
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [stopSaving, setStopSaving] = useState(false);
+  const [fullLogOpen, setFullLogOpen] = useState(false);
 
   const testTelegram = async () => {
     if (!clubFilter) { toast.error("Vui lòng chọn CLB trước"); return; }
@@ -2461,149 +2637,158 @@ function CommandCenter({
     setStopConfirmOpen(false);
     if (error) { toast.error(error.message); return; }
     toast.success("Đã tắt Auto-Swing");
-    onToggleAutoSwing(); // sync parent state
+    onToggleAutoSwing();
   };
 
-  const totMetrics = swingMetrics.reduce((s, m) => s + m.total_swings, 0);
-  const okMetrics = swingMetrics.reduce((s, m) => s + m.successful_swings, 0);
-  const failMetrics = swingMetrics.reduce((s, m) => s + m.failed_swings, 0);
-  const successRate = totMetrics > 0 ? ((okMetrics / totMetrics) * 100).toFixed(0) : "—";
+  // ── Computed metrics ────────────────────────────────────────────
+  const activeTablesCount = tables?.length ?? 0;
+  const assignedTablesCount = useMemo(
+    () => assignments.filter((a) => a.status === "assigned").length,
+    [assignments],
+  );
+  const otTablesCount = useMemo(
+    () => assignments.filter((a) => a.status === "assigned" && a.overtime_started_at).length,
+    [assignments],
+  );
+  const availableDealersCount = useMemo(
+    () => dealers?.filter((d) => d.current_state === "available" || d.current_state === "waiting")?.length ?? 0,
+    [dealers],
+  );
+
+  // Exceptions count for health badge and SystemHealthCard
+  const exceptionsCount = useMemo(() => {
+    let count = 0;
+    // OT
+    for (const a of assignments) {
+      if (a.status === "assigned" && a.overtime_started_at) count++;
+    }
+    // Empty tables
+    for (const t of tables ?? []) {
+      if (!tableAssignmentMap[t.id]) count++;
+    }
+    // Break due
+    for (const d of dealers ?? []) {
+      const w = d.worked_minutes_since_last_break ?? 0;
+      if (w >= 90 || d.priority_break_flag) count++;
+    }
+    // Missing next dealer
+    if (nextDealerMap) {
+      for (const t of tables ?? []) {
+        const tl = timelineByTableId[t.id];
+        if (!tl?.showNextDealerSoon) continue;
+        if (!nextDealerMap[t.id]?.nextDealerName) count++;
+      }
+    }
+    return count;
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap]);
+
+  const recentLogs = useMemo(() => auditLogs.slice(0, 5), [auditLogs]);
 
   return (
     <>
-      <Card className="p-3 h-full flex flex-col gap-3">
-        {/* HEADER */}
-        <div className="flex items-center gap-2">
-          <Bell className="w-4 h-4 text-primary" />
-          <span className="font-display text-sm tracking-wider">ĐÀI CHỈ HUY</span>
-        </div>
-
-        {/* ─────────────── GROUP 1: VẬN HÀNH NỀN ─────────────── */}
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-            Vận hành nền
+      <Card className="p-3 space-y-3">
+        {/* ── HEADER ── */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Bell className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold tracking-wider">ĐÀI CHỈ HUY</span>
           </div>
-          <div className="flex items-center justify-between px-3 py-2 border border-border rounded-sm">
-            <span className="text-xs font-semibold">Auto-Swing</span>
-            <Switch checked={autoSwingEnabled} onCheckedChange={onToggleAutoSwing} />
-          </div>
-          <div className="grid grid-cols-2 gap-1 mt-1">
-            <Button size="sm" variant="outline" className="text-xs h-8" onClick={onOpenSwingConfig}>
-              <Settings className="w-3 h-3 mr-1" /> Cấu hình
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs h-8" onClick={onOpenSpecialDates}>
-              <CalendarIcon className="w-3 h-3 mr-1" /> Ngày ĐB
-            </Button>
-          </div>
-        </div>
-
-        <hr className="border-border/60" />
-
-        {/* ─────────────── GROUP 2: THAO TÁC THƯỜNG XUYÊN ─────────────── */}
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-            Thao tác thường xuyên
-          </div>
-          <div className="space-y-1">
-            <Button size="sm" className="w-full justify-start text-xs" onClick={onAutoSwing} disabled={swingAllBusy}>
-              {swingAllBusy ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-2" />}
-              Auto-Swing All
-            </Button>
-            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onMassAssign} disabled={massAssignBusy}>
-              {massAssignBusy ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <LayoutDashboard className="w-3 h-3 mr-2" />}
-              Mass Assign
-            </Button>
-          </div>
-        </div>
-
-        <hr className="border-border/60" />
-
-        {/* ─────────────── GROUP 3: ĐẦU CA & CUỐI CA ─────────────── */}
-        <div>
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-            Đầu ca & Cuối ca
-          </div>
-          <div className="space-y-1">
-            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={testTelegram}>
-              <Send className="w-3 h-3 mr-2" /> Gửi Telegram test
-            </Button>
-            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportShift}>
-              <FileSpreadsheet className="w-3 h-3 mr-2" /> Xuất báo cáo ca
-            </Button>
-            <Button size="sm" variant="outline" className="w-full justify-start text-xs" onClick={onExportPayroll}>
-              <DollarSign className="w-3 h-3 mr-2" /> Xuất bảng lương
-            </Button>
-          </div>
-        </div>
-
-        <hr className="border-border/60" />
-
-        {/* ─────────────── GROUP 4: KHẨN CẤP ─────────────── */}
-        <div>
-          <div className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-1.5">
-            Khẩn cấp
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full justify-start text-xs border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          {/* Stop Swing button — small, tucked in header */}
+          <button
             onClick={() => setStopConfirmOpen(true)}
+            className="text-[9px] text-red-500/60 hover:text-red-400 transition-colors px-1 py-0.5"
+            title="Dừng toàn bộ Swing"
           >
-            <AlertTriangle className="w-3 h-3 mr-2" />
-            Dừng toàn bộ Swing
-          </Button>
+            ⏹ Dừng
+          </button>
         </div>
 
-        {/* ─────────────── BREAK BALANCE WIDGET ─────────────── */}
-        <div className="p-3 bg-muted/10 border border-border rounded-sm">
-          <div className="text-[11px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-            CÂN BẰNG BREAK
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Đang hoạt động</span>
-              <span className="font-semibold font-mono">{dealers.length}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-amber-500">Sắp đến giờ nghỉ</span>
-              <span className="font-semibold font-mono text-amber-500">
-                {dealers.filter((d) => {
-                  const w = d.worked_minutes_since_last_break ?? 0;
-                  return w >= 60 && w < 90 && !d.priority_break_flag;
-                }).length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-red-500">Cần nghỉ ngay</span>
-              <span className="font-semibold font-mono text-red-500">
-                {dealers.filter((d) => {
-                  const w = d.worked_minutes_since_last_break ?? 0;
-                  return w >= 90 || d.priority_break_flag;
-                }).length}
-              </span>
-            </div>
-            <div className="border-t border-border pt-1.5 mt-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-muted-foreground">Swing hôm nay</span>
-                <span className="font-mono">{totMetrics}</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-muted-foreground">Tỉ lệ thành công</span>
-                <span className="font-mono">{successRate}%</span>
-              </div>
-              {failMetrics > 0 && (
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-red-400">Thất bại</span>
-                  <span className="font-mono text-red-400">{failMetrics}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* ── ATTENTION QUEUE ── */}
+        <AttentionQueue
+          assignments={assignments}
+          tables={tables ?? []}
+          dealers={dealers ?? []}
+          tableAssignmentMap={tableAssignmentMap}
+          timelineByTableId={timelineByTableId}
+          nextDealerMap={nextDealerMap}
+          nowMs={nowMs}
+          autoSwingEnabled={autoSwingEnabled}
+          onSwing={(attendanceId) => {
+            const a = assignments.find((x) => x.attendance_id === attendanceId);
+            if (a) onAutoSwing();
+          }}
+          onAssign={onAssign}
+          onSendToBreak={onSendToBreak}
+          onFocusTable={onFocusTable}
+        />
 
-        {/* ─────────────── AUDIT LOG ─────────────── */}
-        <AuditLogSection logs={auditLogs} />
+        <hr className="border-border/40" />
+
+        {/* ── OPERATIONS ── */}
+        <OperationsCard
+          autoSwingEnabled={autoSwingEnabled}
+          exceptionsCount={exceptionsCount}
+          totalTables={activeTablesCount}
+          tablesCovered={assignedTablesCount}
+          onToggleAutoSwing={onToggleAutoSwing}
+          onAutoSwingAll={onAutoSwing}
+          onMassAssign={onMassAssign}
+          swingAllBusy={swingAllBusy}
+          massAssignBusy={massAssignBusy}
+        />
+
+        <hr className="border-border/40" />
+
+        {/* ── SYSTEM HEALTH ── */}
+        <SystemHealthCard
+          totalTables={activeTablesCount}
+          assignedTables={assignedTablesCount}
+          otTables={otTablesCount}
+          availableDealers={availableDealersCount}
+          needAttention={exceptionsCount}
+        />
+
+        <hr className="border-border/40" />
+
+        {/* ── RECENT ACTIVITY ── */}
+        <RecentActivitySection logs={recentLogs} totalCount={auditLogs.length} onViewAll={() => setFullLogOpen(true)} />
+
+        <hr className="border-border/40" />
+
+        {/* ── QUICK LINKS ── */}
+        <QuickLinksCard
+          onOpenSwingConfig={onOpenSwingConfig}
+          onOpenSpecialDates={onOpenSpecialDates}
+          onExportShift={onExportShift}
+          onExportPayroll={onExportPayroll}
+          onTestTelegram={testTelegram}
+          onViewFullAuditLog={() => setFullLogOpen(true)}
+        />
       </Card>
+
+      {/* ── Full Audit Log Dialog ── */}
+      <Dialog open={fullLogOpen} onOpenChange={setFullLogOpen}>
+        <DialogContent className="max-w-lg max-h-[70vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Nhật ký hoạt động</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto space-y-1.5 flex-1">
+            {auditLogs.length === 0 ? (
+              <div className="text-xs text-muted-foreground italic py-4 text-center">Chưa có hoạt động.</div>
+            ) : (
+              auditLogs.map((log: any) => (
+                <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
+                  <span className="font-semibold text-foreground">{log.action}</span>
+                  <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setFullLogOpen(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Stop Swing Confirmation ── */}
       <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
@@ -2627,7 +2812,6 @@ function CommandCenter({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </>
   );
 }
@@ -3131,39 +3315,33 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
 /* ==============================================================
    AUDIT LOG SECTION — auto-scroll with unread badge
    ============================================================== */
-function AuditLogSection({ logs }: { logs: any[] }) {
-  const { containerRef, unread, isPaused, scrollToBottom, handleScroll } = useAutoScrollLog(logs);
-
+function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; totalCount: number; onViewAll: () => void }) {
   return (
-    <div className="flex-1 min-h-0 flex flex-col relative">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-muted-foreground">NHẬT KÝ HOẠT ĐỘNG</span>
-        <span className="text-[10px] text-muted-foreground">{logs.length} mục</span>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Hoạt động gần đây</span>
       </div>
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="space-y-1.5 overflow-y-auto max-h-[20vh] scroll-smooth"
-        style={{ scrollBehavior: "smooth" }}
-      >
-        {logs.length === 0 ? (
-          <div className="text-xs text-muted-foreground italic">Chưa có hoạt động.</div>
-        ) : (
-          logs.map((log: any) => (
-            <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-              <span className="font-semibold text-foreground">{log.action}</span>
-              <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
-            </div>
-          ))
-        )}
-      </div>
-      {isPaused && unread > 0 && (
-        <button
-          onClick={scrollToBottom}
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1 rounded-full shadow-lg whitespace-nowrap hover:opacity-85 transition-opacity z-10"
-        >
-          ↓ {unread} log mới
-        </button>
+      {logs.length === 0 ? (
+        <div className="text-[11px] text-muted-foreground italic">Chưa có hoạt động.</div>
+      ) : (
+        <>
+          <div className="space-y-1">
+            {logs.map((log: any) => (
+              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
+                <span className="font-mono text-[10px]">{new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                <span className="ml-1.5 font-semibold text-foreground">{log.action}</span>
+              </div>
+            ))}
+          </div>
+          {totalCount > logs.length && (
+            <button
+              onClick={onViewAll}
+              className="text-[10px] text-primary hover:text-primary/80 font-semibold w-full text-left pt-0.5"
+            >
+              Xem toàn bộ &rarr;
+            </button>
+          )}
+        </>
       )}
     </div>
   );

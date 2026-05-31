@@ -140,17 +140,16 @@ CREATE TABLE public.swing_configs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     club_id UUID NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
     scope_type TEXT NOT NULL CHECK (scope_type IN ('club', 'table')),
-    scope_id UUID,  -- NULL khi scope_type = 'club', = table_id khi scope_type = 'table'
-    swing_duration_minutes INT NOT NULL
-        CHECK (swing_duration_minutes >= 1),
-    warn_at_minutes INT NOT NULL DEFAULT 5
-        CHECK (warn_at_minutes >= 0),
-    crit_at_minutes INT NOT NULL DEFAULT 2
-        CHECK (crit_at_minutes >= 0),
+    scope_id UUID,
+    swing_duration_minutes INT NOT NULL CHECK (swing_duration_minutes >= 1),
+    warn_at_minutes INT NOT NULL DEFAULT 5 CHECK (warn_at_minutes >= 0),
+    crit_at_minutes INT NOT NULL DEFAULT 2 CHECK (crit_at_minutes >= 0),
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(club_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'))
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE UNIQUE INDEX idx_swing_configs_unique
+    ON public.swing_configs(club_id, scope_type, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'));
 
 ALTER TABLE public.swing_configs ENABLE ROW LEVEL SECURITY;
 

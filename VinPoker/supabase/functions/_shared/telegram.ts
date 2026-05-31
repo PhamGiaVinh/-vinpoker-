@@ -19,10 +19,10 @@ export function formatSwingMessage(params: {
   const tourInfo = tourName ? ` (${tourName})` : "";
   const out = mention(outgoingDealer);
   if (!incomingDealer) {
-    return `⚠️ Bàn ${tableName}${tourInfo}: ${out} ra — CHƯA CÓ DEALER THAY!`;
+    return `⚠️ ${tableName}${tourInfo}: ${out} ra —`;
   }
   const incoming = mention(incomingDealer);
-  return `📋 Bàn ${tableName}${tourInfo}: ${out} ra, ${incoming} vào (còn ${minutesLeft} phút).`;
+  return `📋 ${tableName}${tourInfo}: ${out} ra, ${incoming} vào (còn ${minutesLeft} phút).`;
 }
 
 export function formatPreAnnounceMessage(params: {
@@ -34,7 +34,7 @@ export function formatPreAnnounceMessage(params: {
   const { tableName, tourName, outgoingDealer, minutesLeft } = params;
   const tourInfo = tourName ? ` (${tourName})` : "";
   const out = mention(outgoingDealer);
-  return `⏰ Bàn ${tableName}${tourInfo}: ${out} còn ~${minutesLeft} phút. Floor chuẩn bị!`;
+  return `⏰ ${tableName}${tourInfo}: ${out} còn ~${minutesLeft} phút.`;
 }
 
 export function formatBreakMessage(params: {
@@ -65,7 +65,7 @@ export function formatCloseTableMessage(params: {
 }): string {
   const { tableName, dealerName, tourName } = params;
   const tourInfo = tourName ? ` (${tourName})` : "";
-  return `🛑 Bàn ${tableName}${tourInfo}: ĐÃ ĐÓNG. Dealer ${dealerName} được release.`;
+  return `🛑 ${tableName}${tourInfo}: ĐÃ ĐÓNG. Dealer ${dealerName} được nghỉ.`;
 }
 
 export function formatMassAssignMessage(assignments: Array<{
@@ -76,7 +76,7 @@ export function formatMassAssignMessage(assignments: Array<{
   const lines = assignments.map(
     (a, i) => `  ${i + 1}. Bàn ${a.tableName} → ${a.dealer.full_name}`
   );
-  return `📦 *Mass Assign* (${assignments.length} bàn):\n${lines.join("\n")}`;
+  return `📦 *Vào bàn* (${assignments.length} bàn):\n${lines.join("\n")}`;
 }
 
 export function formatTierWarningMessage(params: {
@@ -97,7 +97,7 @@ export function formatBreakAlertMessage(params: {
   const { dealer, urgency, reason } = params;
   const d = mention(dealer);
   const urgencyLabel = urgency === "immediate" ? "KHẨN" : "SẮP ĐẾN";
-  return `🔴 [${urgencyLabel}] ${d} — ${reason}. Cần nghỉ sớm!`;
+  return `🔴 [${urgencyLabel}] ${d} — ${reason}. Cần nghỉ sớm.`;
 }
 
 export function formatPreAssignMessage(params: {
@@ -123,7 +123,7 @@ export function formatAutoFillMessage(assignments: Array<{
   if (!assignments.length) return "";
   const lines = assignments.map((a) => {
     const tierInfo = a.tourTier && a.tourTier !== "MEDIUM" ? ` (${a.tourTier})` : "";
-    return `  • Bàn ${a.tableName}${tierInfo} → ${a.dealer.full_name}`;
+    return `  • ${a.tableName}${tierInfo} → ${a.dealer.full_name}`;
   });
   return `🔄 *Tự động fill* (${assignments.length} bàn):\n${lines.join("\n")}`;
 }
@@ -135,7 +135,7 @@ export function formatPreAssignFallbackMessage(params: {
 }): string {
   const { tableName, oldDealer, reason } = params;
   const out = mention(oldDealer);
-  return `⚠️ Bàn ${tableName}: Pre-assign fallback — ${out}, lý do: ${reason}. Chọn dealer mới.`;
+  return `⚠️ ${tableName}: Pre-assign fallback — ${out}, lý do: ${reason}. Chọn dealer mới.`;
 }
 
 export function formatBatchSwingMessage(swings: Array<{
@@ -149,11 +149,11 @@ export function formatBatchSwingMessage(swings: Array<{
     const out = mention(s.outgoingDealer);
     if (s.incomingDealer) {
       const inc = mention(s.incomingDealer);
-      return `  • Bàn ${s.tableName}: ${out} → ${inc} (còn ${s.minutesLeft} phút)`;
+      return `  • ${s.tableName}: ${out} → ${inc} (còn ${s.minutesLeft} phút)`;
     }
-    return `  ⚠️ Bàn ${s.tableName}: ${out} — CHƯA CÓ DEALER!`;
+    return `  ⚠️ ${s.tableName}: ${out} — CHƯA CÓ DEALER.`;
   });
-  return `📋 *Batch Swing* (${swings.length} bàn):\n${lines.join("\n")}`;
+  return `📋 *Swing* (${swings.length} bàn):\n${lines.join("\n")}`;
 }
 
 export function formatCheckoutAlertMessage(params: {
@@ -241,7 +241,7 @@ export async function notifyIncomingDealer(
   minutesLeft: number,
   chatId?: string,
 ): Promise<void> {
-  const msg = `🔔 Chuẩn bị: Bàn <b>${tableName}</b> sau ~${minutesLeft} phút. Đến vị trí!`;
+  const msg = `🔔 Chuẩn bị: <b>${tableName}</b> sau ~${minutesLeft} phút.`;
 
   if (dealer.telegram_user_id) {
     try {
