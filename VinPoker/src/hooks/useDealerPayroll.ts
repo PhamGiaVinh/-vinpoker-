@@ -38,6 +38,40 @@ export interface ClubPayrollResult {
   dealers: Record<string, DealerPayrollRow>;
 }
 
+export interface PayrollAdjustmentRow {
+  id: string;
+  payroll_id: string;
+  adjustment_type: string;
+  amount_vnd: number;
+  reason: string;
+  created_by: string | null;
+  approved_by: string | null;
+  created_at: string;
+}
+
+export interface SavedPayrollRecord {
+  id: string;
+  dealer_id: string;
+  club_id: string;
+  period_id: string;
+  employment_type: string;
+  monthly_salary_vnd: number | null;
+  hourly_rate_vnd: number | null;
+  ot_multiplier: number | null;
+  total_shifts: number | null;
+  total_hours: number | null;
+  regular_hours: number | null;
+  ot_hours: number | null;
+  base_salary_vnd: number | null;
+  regular_pay_vnd: number | null;
+  ot_pay_vnd: number | null;
+  gross_pay_vnd: number | null;
+  total_adjustments_vnd: number | null;
+  net_pay_vnd: number | null;
+  status: string | null;
+  calculated_at: string | null;
+}
+
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDealerPayroll(clubIds: string[]): {
@@ -84,26 +118,82 @@ export function useDealerPayroll(clubIds: string[]): {
   return { data: rows, period, loading, error, fetchPayroll };
 }
 
-// ── Adjustments ──────────────────────────────────────────────────────────────
+// ── Save / Approve helpers ────────────────────────────────────────────────────
 
-export interface PayrollAdjustment {
-  id: string;
-  payroll_id: string;
-  adjustment_type: string;
-  amount_vnd: number;
-  reason: string;
-  created_by: string | null;
-  approved_by: string | null;
-  created_at: string;
+/**
+ * Save payroll to DB: creates/gets payroll_period, then upserts dealer_payroll rows.
+ * Returns the period_id.
+ */
+export async function savePayroll(
+  clubId: string,
+  year: number,
+  month: number,
+  payrollRows: DealerPayrollRow[],
+  userId: string
+): Promise<{ periodId: string; savedCount: number }> {
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+
+  // 1. Upsert payroll_period
+  const { data: periodData, error: periodError } = await supabase
+    .from("payroll_periods")
+    .upsert(
+      { club_id: clubId, period_year: year, period_month: month, period_start: startDate, period_end: endDate, status: "draft" },
+      { onConflict: "club_id,period_year,period_month" }
+    )
+    .select("id")
+    .single();
+  if (periodError) throw periodError;
+  const periodId = periodData.id;
+
+  // 2. Upsert dealer_payroll rows
+  const rows = payrollRows.map((r) => ({
+    dealer_id: r.dealer_id,
+    club_id: clubId,
+    period_id: periodId,
+    employment_type: r.employment_type,
+    monthly_salary_vnd: r.monthly_salary_vnd || null,
+    hourly_rate_vnd: r.hourly_rate_vnd || null,
+    ot_multiplier: r.ot_multiplier || null,
+    total_shifts: r.total_shifts,
+    total_hours: r.total_hours,
+    regular_hours: r.regular_hours,
+    ot_hours: r.ot_hours,
+    base_salary_vnd: r.base_salary_vnd,
+    regular_pay_vnd: r.regular_pay_vnd,
+    ot_pay_vnd: r.ot_pay_vnd,
+    gross_pay_vnd: r.gross_pay_vnd,
+    net_pay_vnd: r.net_pay_vnd,
+    status: "draft",
+    calculated_by: userId,
+  }));
+
+  // Delete existing rows for this period first (to handle updates)
+  const { error: delError } = await supabase
+    .from("dealer_payroll")
+    .delete()
+    .eq("period_id", periodId);
+  if (delError) throw delError;
+
+  const { error: insertError } = await supabase
+    .from("dealer_payroll")
+    .insert(rows);
+  if (insertError) throw insertError;
+
+  return { periodId, savedCount: rows.length };
 }
 
+/**
+ * Add a payroll adjustment to a saved dealer_payroll record.
+ */
 export async function addPayrollAdjustment(
   payrollId: string,
   adjustmentType: string,
   amountVnd: number,
   reason: string,
   createdBy: string
-): Promise<PayrollAdjustment | null> {
+): Promise<PayrollAdjustmentRow> {
   const { data, error } = await supabase
     .from("payroll_adjustments")
     .insert({
@@ -116,5 +206,65 @@ export async function addPayrollAdjustment(
     .select()
     .single();
   if (error) throw error;
-  return data as PayrollAdjustment;
+  return data as PayrollAdjustmentRow;
+}
+
+/**
+ * Load saved payroll adjustments for a given period.
+ * Returns map of dealer_id → PayrollAdjustmentRow[]
+ */
+export async function loadPayrollAdjustments(
+  periodId: string
+): Promise<Record<string, PayrollAdjustmentRow[]>> {
+  const { data, error } = await supabase
+    .from("dealer_payroll")
+    .select("id, dealer_id, payroll_adjustments:id(*)")
+    .eq("period_id", periodId);
+  if (error) throw error;
+
+  const map: Record<string, PayrollAdjustmentRow[]> = {};
+  for (const row of (data ?? []) as any[]) {
+    map[row.dealer_id] = row.payroll_adjustments ?? [];
+  }
+  return map;
+}
+
+/**
+ * Get saved payroll records for a period.
+ */
+export async function getSavedPayroll(
+  clubId: string,
+  year: number,
+  month: number
+): Promise<{ periodId: string | null; records: SavedPayrollRecord[] }> {
+  const { data: periods } = await supabase
+    .from("payroll_periods")
+    .select("id")
+    .eq("club_id", clubId)
+    .eq("period_year", year)
+    .eq("period_month", month)
+    .maybeSingle();
+
+  if (!periods) return { periodId: null, records: [] };
+
+  const { data: records, error } = await supabase
+    .from("dealer_payroll")
+    .select("*")
+    .eq("period_id", periods.id);
+  if (error) throw error;
+
+  return { periodId: periods.id, records: (records ?? []) as SavedPayrollRecord[] };
+}
+
+/**
+ * Delete a payroll adjustment.
+ */
+export async function deletePayrollAdjustment(
+  adjustmentId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("payroll_adjustments")
+    .delete()
+    .eq("id", adjustmentId);
+  if (error) throw error;
 }

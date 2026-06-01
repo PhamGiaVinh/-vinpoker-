@@ -1,12 +1,18 @@
 import { useState, useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Search, X, Pencil } from "lucide-react";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import { Plus, Search, X, Pencil, Trash2, Loader2 } from "lucide-react";
 import { useAllDealers, useDealerScores, type DealerRecord, type DealerScore } from "@/hooks/useDealerManagement";
 import AddDealerDialog from "./AddDealerDialog";
 import DealerAdjustDialog from "./DealerAdjustDialog";
+import { toast } from "sonner";
 
 interface DealerManagementTabProps {
   clubIds: string[];
@@ -24,6 +30,27 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedDealer, setSelectedDealer] = useState<string | null>(null);
   const [adjustDealer, setAdjustDealer] = useState<DealerRecord | null>(null);
+  const [deleteDealerId, setDeleteDealerId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Soft-delete handler
+  const handleSoftDelete = async () => {
+    if (!deleteDealerId) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("dealers")
+        .update({ deleted_at: new Date().toISOString(), status: "inactive" })
+        .eq("id", deleteDealerId);
+      if (error) throw error;
+      toast.success("Đã xoá dealer");
+      setDeleteDealerId(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi xoá dealer");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Build a map of dealer_id → score
   const scoreMap = useMemo(() => {
@@ -299,13 +326,20 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                       <span className="text-zinc-500">—</span>
                     )}
                   </div>
-                  <div className="col-span-1 text-center">
+                  <div className="col-span-1 text-center flex items-center justify-center gap-0.5">
                     <button
                       onClick={(e) => { e.stopPropagation(); setAdjustDealer(dealer); }}
                       className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
                       title="Điều chỉnh"
                     >
                       <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteDealerId(dealer.id); }}
+                      className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition-colors"
+                      title="Xoá"
+                    >
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 </button>
@@ -334,9 +368,27 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
         onClose={() => setAdjustDealer(null)}
         onSaved={() => {
           setAdjustDealer(null);
-          // Refetch is automatic via polling
         }}
       />
+
+      {/* Soft-delete confirmation */}
+      <AlertDialog open={!!deleteDealerId} onOpenChange={(o) => { if (!o) setDeleteDealerId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xoá dealer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dealer sẽ bị ẩn khỏi danh sách nhưng dữ liệu vẫn được giữ. Hành động này có thể hoàn tác bằng cách đặt lại trạng thái.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSoftDelete} disabled={deleting} className="bg-red-600 hover:bg-red-500 text-white">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Xoá
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -41,6 +41,7 @@ import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
+import DealerPayrollTab from "./DealerPayrollTab";
 import { TableTimerDisplay } from "./TableTimerDisplay";
 import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
@@ -48,6 +49,7 @@ import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle,
   Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard,
+  Calculator,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -128,7 +130,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [swingAllBusy, setSwingAllBusy] = useState(false);
   const [massAssignBusy, setMassAssignBusy] = useState(false);
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
-  const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers">("tables");
+  const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
@@ -962,6 +964,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Button size="sm" variant={activeView === "dealers" ? "default" : "outline"} onClick={() => setActiveView(activeView === "dealers" ? "tables" : "dealers")}>
           <Users className="w-3.5 h-3.5 mr-1" /> Danh sách Dealer
         </Button>
+        <Button size="sm" variant={activeView === "payroll" ? "default" : "outline"} onClick={() => setActiveView(activeView === "payroll" ? "tables" : "payroll")}>
+          <Calculator className="w-3.5 h-3.5 mr-1" /> Bảng lương
+        </Button>
         <Button size="sm" variant="outline" onClick={() => {
           const cid = clubFilter || filteredClubIds[0] || "";
           setTelegramClubId(cid);
@@ -1052,6 +1057,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 )}
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
               </>
+            ) : activeView === "payroll" ? (
+              <DealerPayrollTab clubIds={filteredClubIds} clubs={clubs} />
             ) : (
                   <TableGrid
                     tables={tables ?? []}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,22 +11,41 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
 import { exportToExcel, type ExcelColumn } from "@/lib/exportExcel";
 import {
   useDealerPayroll, type DealerPayrollRow,
+  savePayroll, addPayrollAdjustment, loadPayrollAdjustments, getSavedPayroll, deletePayrollAdjustment,
+  type PayrollAdjustmentRow, type SavedPayrollRecord,
 } from "@/hooks/useDealerPayroll";
 import {
-  Users, RefreshCw, Download, ChevronDown, ChevronRight, Calculator,
+  Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
+type AdjType = "BONUS" | "PENALTY" | "DEDUCTION" | "ADVANCE" | "OTHER";
 
-interface DealerPayrollTabProps {
-  clubIds: string[];
-  clubs: ClubRow[];
-}
+const ADJ_TYPE_LABELS: Record<AdjType, string> = {
+  BONUS: "Thưởng",
+  PENALTY: "Phạt",
+  DEDUCTION: "Khấu trừ",
+  ADVANCE: "Tạm ứng",
+  OTHER: "Khác",
+};
+
+const ADJ_TYPE_COLORS: Record<AdjType, string> = {
+  BONUS: "border-emerald-500 text-emerald-400",
+  PENALTY: "border-red-500 text-red-400",
+  DEDUCTION: "border-orange-500 text-orange-400",
+  ADVANCE: "border-blue-500 text-blue-400",
+  OTHER: "border-zinc-500 text-zinc-400",
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,8 +63,8 @@ function formatHours(h: number): string {
   return `${hours}h${mins < 10 ? "0" : ""}${mins}ph`;
 }
 
-function getMonthYearOptions(): { value: string; label: string; start: string; end: string }[] {
-  const options: { value: string; label: string; start: string; end: string }[] = [];
+function getMonthYearOptions(): { value: string; label: string; start: string; end: string; year: number; month: number }[] {
+  const options: { value: string; label: string; start: string; end: string; year: number; month: number }[] = [];
   const now = new Date();
   for (let i = 0; i < 13; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -56,28 +76,76 @@ function getMonthYearOptions(): { value: string; label: string; start: string; e
     const end = `${year}-${pad(month)}-${lastDay}`;
     const label = `Tháng ${month}/${year}`;
     const value = `${year}-${pad(month)}`;
-    options.push({ value, label, start, end });
+    options.push({ value, label, start, end, year, month });
   }
   return options;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
+interface DealerPayrollTabProps {
+  clubIds: string[];
+  clubs: ClubRow[];
+}
+
 export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabProps) {
+  const { user } = useAuth();
   const monthOptions = useMemo(() => getMonthYearOptions(), []);
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value ?? "");
   const currentRange = useMemo(() => monthOptions.find((o) => o.value === selectedMonth), [monthOptions, selectedMonth]);
-
   const [clubFilter, setClubFilter] = useState<string>(clubIds.length === 1 ? clubIds[0] : "");
 
   const { data: payrollRows, period, loading, error, fetchPayroll } = useDealerPayroll(clubIds);
-
   const activeClubId = clubFilter || clubIds[0] || "";
 
-  // Auto-fetch when month or club changes
+  // ── Saved payroll state ──────────────────────────────────────────────────
+  const [savedPeriodId, setSavedPeriodId] = useState<string | null>(null);
+  const [savedRecords, setSavedRecords] = useState<Record<string, SavedPayrollRecord>>({});
+  const [adjustments, setAdjustments] = useState<Record<string, PayrollAdjustmentRow[]>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Adjustment dialog state
+  const [adjDialogOpen, setAdjDialogOpen] = useState(false);
+  const [adjustingDealerId, setAdjustingDealerId] = useState<string | null>(null);
+  const [adjType, setAdjType] = useState<AdjType>("BONUS");
+  const [adjAmount, setAdjAmount] = useState("");
+  const [adjReason, setAdjReason] = useState("");
+  const [adjSaving, setAdjSaving] = useState(false);
+
+  // ── Fetch payroll & check saved ──────────────────────────────────────────
+
+  const refreshAll = useCallback(async () => {
+    if (!activeClubId || !currentRange) return;
+    await fetchPayroll(activeClubId, currentRange.start, currentRange.end);
+    const { periodId, records } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
+    setSavedPeriodId(periodId);
+    const recordMap: Record<string, SavedPayrollRecord> = {};
+    for (const r of records) { recordMap[r.dealer_id] = r; }
+    setSavedRecords(recordMap);
+    if (periodId) {
+      const adjMap = await loadPayrollAdjustments(periodId);
+      setAdjustments(adjMap);
+    } else {
+      setAdjustments({});
+    }
+  }, [activeClubId, currentRange, fetchPayroll]);
+
   useEffect(() => {
     if (!activeClubId || !currentRange) return;
     fetchPayroll(activeClubId, currentRange.start, currentRange.end);
+    (async () => {
+      const { periodId, records } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
+      setSavedPeriodId(periodId);
+      const recordMap: Record<string, SavedPayrollRecord> = {};
+      for (const r of records) { recordMap[r.dealer_id] = r; }
+      setSavedRecords(recordMap);
+      if (periodId) {
+        const adjMap = await loadPayrollAdjustments(periodId);
+        setAdjustments(adjMap);
+      } else {
+        setAdjustments({});
+      }
+    })();
   }, [activeClubId, currentRange, fetchPayroll]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -95,6 +163,70 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     const totalShifts = payrollRows.reduce((s, d) => s + d.total_shifts, 0);
     return { totalGross, totalBase, totalOt, totalNet, totalAdjust, totalHours, totalShifts };
   }, [payrollRows]);
+
+  // ── Save payroll ──────────────────────────────────────────────────────────
+
+  const handleSave = useCallback(async () => {
+    if (!user || !activeClubId || !currentRange || !payrollRows.length) return;
+    setSaving(true);
+    try {
+      const result = await savePayroll(activeClubId, currentRange.year, currentRange.month, payrollRows, user.id);
+      setSavedPeriodId(result.periodId);
+      toast.success(`Đã lưu bảng lương — ${result.savedCount} dealer`);
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi lưu bảng lương");
+    } finally {
+      setSaving(false);
+    }
+  }, [user, activeClubId, currentRange, payrollRows, refreshAll]);
+
+  // ── Add adjustment ────────────────────────────────────────────────────────
+
+  const openAdjustDialog = useCallback((dealerId: string) => {
+    setAdjustingDealerId(dealerId);
+    setAdjType("BONUS");
+    setAdjAmount("");
+    setAdjReason("");
+    setAdjDialogOpen(true);
+  }, []);
+
+  const handleAddAdjustment = useCallback(async () => {
+    if (!adjustingDealerId || !user || !savedPeriodId) return;
+    const record = savedRecords[adjustingDealerId];
+    if (!record) {
+      toast.error("Vui lòng lưu bảng lương trước khi thêm điều chỉnh");
+      return;
+    }
+    const amount = parseInt(adjAmount, 10);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Số tiền không hợp lệ");
+      return;
+    }
+    setAdjSaving(true);
+    try {
+      await addPayrollAdjustment(record.id, adjType, amount, adjReason || adjType, user.id);
+      toast.success("Đã thêm điều chỉnh");
+      setAdjDialogOpen(false);
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi thêm điều chỉnh");
+    } finally {
+      setAdjSaving(false);
+    }
+  }, [adjustingDealerId, user, savedPeriodId, savedRecords, adjType, adjAmount, adjReason, refreshAll]);
+
+  // ── Delete adjustment ─────────────────────────────────────────────────────
+
+  const handleDeleteAdjustment = useCallback(async (adjId: string) => {
+    try {
+      await deletePayrollAdjustment(adjId);
+      toast.success("Đã xóa điều chỉnh");
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi xóa điều chỉnh");
+    }
+  }, [refreshAll]);
 
   // ── Export ─────────────────────────────────────────────────────────────────
 
@@ -124,46 +256,86 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
-  const renderRow = (r: DealerPayrollRow) => (
-    <TableRow key={r.dealer_id} className="hover:bg-zinc-800/50">
-      <TableCell className="font-medium text-white text-sm">
-        {r.full_name}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant="outline"
-          className={`text-[10px] ${
-            r.employment_type === "full_time"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-amber-500 text-amber-400"
-          }`}
-        >
-          {r.employment_type === "full_time" ? "FT" : "PT"}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-center text-zinc-300 text-xs">{r.total_shifts || "—"}</TableCell>
-      <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.total_hours)}</TableCell>
-      <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.regular_hours)}</TableCell>
-      <TableCell className={`text-right font-mono text-xs ${r.ot_hours > 0 ? "text-red-400 font-semibold" : "text-zinc-500"}`}>
-        {r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}
-      </TableCell>
-      <TableCell className="text-right font-mono text-xs text-zinc-300">
-        {r.employment_type === "full_time"
-          ? r.monthly_salary_vnd ? formatVNDShort(r.monthly_salary_vnd) : "—"
-          : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"
-        }
-      </TableCell>
-      <TableCell className="text-right font-mono text-xs text-zinc-300">{formatVND(r.regular_pay_vnd)}</TableCell>
-      <TableCell className={`text-right font-mono text-xs ${r.ot_pay_vnd > 0 ? "text-red-400" : "text-zinc-500"}`}>
-        {r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}
-      </TableCell>
-      <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(r.gross_pay_vnd)}</TableCell>
-      <TableCell className={`text-right font-mono text-xs ${r.total_adjustments_vnd > 0 ? "text-emerald-400" : r.total_adjustments_vnd < 0 ? "text-red-400" : "text-zinc-500"}`}>
-        {r.total_adjustments_vnd !== 0 ? formatVND(r.total_adjustments_vnd) : "—"}
-      </TableCell>
-      <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(r.net_pay_vnd)}</TableCell>
-    </TableRow>
-  );
+  const isSaved = !!savedPeriodId;
+
+  const renderRow = (r: DealerPayrollRow) => {
+    const adjList = adjustments[r.dealer_id] ?? [];
+    const savedRecord = savedRecords[r.dealer_id];
+
+    return (
+      <TableRow key={r.dealer_id} className="hover:bg-zinc-800/50">
+        <TableCell className="font-medium text-white text-sm">
+          <div className="flex items-center gap-1">
+            {r.full_name}
+            {isSaved && savedRecord && (
+              <button
+                className="text-[10px] text-zinc-400 hover:text-emerald-400 ml-1"
+                onClick={() => openAdjustDialog(r.dealer_id)}
+                title="Thêm điều chỉnh"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {adjList.length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {adjList.map((a) => (
+                <div key={a.id} className="flex items-center gap-1 text-[10px]">
+                  <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${ADJ_TYPE_COLORS[a.adjustment_type as AdjType] ?? ""}`}>
+                    {ADJ_TYPE_LABELS[a.adjustment_type as AdjType] ?? a.adjustment_type}
+                  </Badge>
+                  <span className={(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER") ? "text-emerald-400" : "text-red-400"}>
+                    {(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER" ? "+" : "-")}{Number(a.amount_vnd).toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-zinc-500">{a.reason}</span>
+                  <button
+                    className="text-zinc-600 hover:text-red-400 ml-0.5"
+                    onClick={() => handleDeleteAdjustment(a.id)}
+                    title="Xóa"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant="outline"
+            className={`text-[10px] ${
+              r.employment_type === "full_time"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-amber-500 text-amber-400"
+            }`}
+          >
+            {r.employment_type === "full_time" ? "FT" : "PT"}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-center text-zinc-300 text-xs">{r.total_shifts || "—"}</TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.total_hours)}</TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.regular_hours)}</TableCell>
+        <TableCell className={`text-right font-mono text-xs ${r.ot_hours > 0 ? "text-red-400 font-semibold" : "text-zinc-500"}`}>
+          {r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-300">
+          {r.employment_type === "full_time"
+            ? r.monthly_salary_vnd ? formatVNDShort(r.monthly_salary_vnd) : "—"
+            : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"
+          }
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-300">{formatVND(r.regular_pay_vnd)}</TableCell>
+        <TableCell className={`text-right font-mono text-xs ${r.ot_pay_vnd > 0 ? "text-red-400" : "text-zinc-500"}`}>
+          {r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(r.gross_pay_vnd)}</TableCell>
+        <TableCell className={`text-right font-mono text-xs ${r.total_adjustments_vnd > 0 ? "text-emerald-400" : r.total_adjustments_vnd < 0 ? "text-red-400" : "text-zinc-500"}`}>
+          {r.total_adjustments_vnd !== 0 ? formatVND(r.total_adjustments_vnd) : "—"}
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(r.net_pay_vnd)}</TableCell>
+      </TableRow>
+    );
+  };
 
   // ── Main render ────────────────────────────────────────────────────────────
 
@@ -199,11 +371,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           size="sm"
           variant="outline"
           className="h-8 text-xs"
-          onClick={() => {
-            if (activeClubId && currentRange) {
-              fetchPayroll(activeClubId, currentRange.start, currentRange.end);
-            }
-          }}
+          onClick={refreshAll}
           disabled={loading}
         >
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
@@ -215,6 +383,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             <Download className="w-3.5 h-3.5 mr-1" />
             Xuất Excel
           </Button>
+        )}
+
+        {payrollRows.length > 0 && !isSaved && (
+          <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+            Lưu bảng lương
+          </Button>
+        )}
+
+        {isSaved && (
+          <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/30 text-[10px]">
+            Đã lưu ✓
+          </Badge>
         )}
 
         <div className="flex-1" />
@@ -242,7 +423,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         </div>
       )}
 
-      {/* Data */}
+      {/* No data */}
       {!loading && !error && payrollRows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
           <Calculator className="w-10 h-10 mb-3 opacity-40" />
@@ -251,6 +432,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         </div>
       )}
 
+      {/* Payroll tables */}
       {!loading && !error && payrollRows.length > 0 && (
         <ScrollArea className="flex-1">
           {/* FT Section */}
@@ -279,34 +461,21 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </TableHeader>
                 <TableBody>
                   {ftDealers.map(renderRow)}
-                  {/* FT subtotal */}
                   <TableRow className="border-t-2 border-emerald-600/30 bg-emerald-600/5">
-                    <TableCell className="font-bold text-emerald-400 text-xs" colSpan={3}>
-                      FT subtotal
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(ftDealers.reduce((s, d) => s + d.total_hours, 0))}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(ftDealers.reduce((s, d) => s + d.regular_hours, 0))}
-                    </TableCell>
+                    <TableCell className="font-bold text-emerald-400 text-xs" colSpan={3}>FT subtotal</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ftDealers.reduce((s, d) => s + d.total_hours, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ftDealers.reduce((s, d) => s + d.regular_hours, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
                       {(() => { const total = ftDealers.reduce((s, d) => s + d.ot_hours, 0); return total > 0 ? formatHours(total) : "—"; })()}
                     </TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatVND(ftDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatVND(ftDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.ot_pay_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">
-                      {formatVND(ftDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">
-                      {formatVND(ftDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -339,30 +508,17 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </TableHeader>
                 <TableBody>
                   {ptDealers.map(renderRow)}
-                  {/* PT subtotal */}
                   <TableRow className="border-t-2 border-amber-600/30 bg-amber-600/5">
-                    <TableCell className="font-bold text-amber-400 text-xs" colSpan={3}>
-                      PT subtotal
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(ptDealers.reduce((s, d) => s + d.total_hours, 0))}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatHours(ptDealers.reduce((s, d) => s + d.regular_hours, 0))}
-                    </TableCell>
+                    <TableCell className="font-bold text-amber-400 text-xs" colSpan={3}>PT subtotal</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ptDealers.reduce((s, d) => s + d.total_hours, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ptDealers.reduce((s, d) => s + d.regular_hours, 0))}</TableCell>
                     <TableCell />
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-semibold">
-                      {formatVND(ptDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">{formatVND(ptDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">
-                      {formatVND(ptDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">
-                      {formatVND(ptDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}
-                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -404,6 +560,65 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           </div>
         </ScrollArea>
       )}
+
+      {/* Adjustment Dialog */}
+      <Dialog open={adjDialogOpen} onOpenChange={setAdjDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Thêm điều chỉnh</DialogTitle>
+            <DialogDescription>
+              Thêm thưởng/phạt/khấu trừ cho{" "}
+              {payrollRows.find((r) => r.dealer_id === adjustingDealerId)?.full_name ?? "dealer"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs text-zinc-400">Loại điều chỉnh</Label>
+              <div className="flex gap-2 mt-1 flex-wrap">
+                {(Object.entries(ADJ_TYPE_LABELS) as [AdjType, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setAdjType(key)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      adjType === key
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : `bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white hover:bg-zinc-700`
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-zinc-400">Số tiền (VND)</Label>
+              <Input
+                type="number"
+                value={adjAmount}
+                onChange={(e) => setAdjAmount(e.target.value)}
+                placeholder="VD: 500000"
+                className="bg-zinc-900 border-zinc-700 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-zinc-400">Lý do</Label>
+              <Input
+                value={adjReason}
+                onChange={(e) => setAdjReason(e.target.value)}
+                placeholder={ADJ_TYPE_LABELS[adjType]}
+                className="bg-zinc-900 border-zinc-700 text-white"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>Huỷ</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleAddAdjustment} disabled={adjSaving || !adjAmount}>
+              {adjSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              Thêm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

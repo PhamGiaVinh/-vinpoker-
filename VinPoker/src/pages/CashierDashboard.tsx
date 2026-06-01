@@ -25,15 +25,14 @@ import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import SwingPanel from "@/components/cashier/DealerSwingTab";
-import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Table2, Calculator,
+  Table2,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "swing";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -100,7 +99,6 @@ export default function CashierDashboard() {
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "payroll" as SectionKey, label: "Bảng lương", icon: Calculator }] : []),
   ];
 
   return (
@@ -152,7 +150,6 @@ export default function CashierDashboard() {
           {section === "members" && <MembersPanel clubIds={clubIds} clubs={clubs} />}
           {section === "reports" && <ReportsPanel clubIds={clubIds} clubs={clubs} />}
           {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
-          {section === "payroll" && <DealerPayrollTab clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
         </main>
       </div>
     </div>

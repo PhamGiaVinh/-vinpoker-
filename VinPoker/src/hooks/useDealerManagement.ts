@@ -91,6 +91,7 @@ export function useAllDealers(clubIds: string[]): {
           "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone"
         )
         .in("club_id", clubIds)
+        .is("deleted_at", null)
         .order("full_name");
       if (error) throw error;
       return (data ?? []) as DealerRecord[];
