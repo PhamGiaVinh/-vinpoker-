@@ -22,6 +22,9 @@ interface DealerData {
   employment_type: string;
   hourly_rate_vnd: number | null;
   base_rate_vnd: number | null;
+  monthly_salary_vnd: number | null;
+  standard_hours_per_shift: number | null;
+  ot_multiplier: number | null;
   notes: string | null;
 }
 
@@ -39,25 +42,28 @@ export default function DealerAdjustDialog({
   const [tier, setTier] = useState("C");
   const [employmentType, setEmploymentType] = useState("full_time");
   const [hourlyRate, setHourlyRate] = useState("");
-  const [baseRate, setBaseRate] = useState("");
+  const [monthlySalary, setMonthlySalary] = useState("");
+  const [standardHours, setStandardHours] = useState("8");
+  const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Dealer scores
-  const [score, setScore] = useState<number | null>(null);
   const [totalHours, setTotalHours] = useState<number | null>(null);
   const [editScore, setEditScore] = useState("");
   const [editWorkedHours, setEditWorkedHours] = useState("");
 
   const isPT = employmentType === "part_time";
 
-  // ─── [C5c] Reset form when dealer changes (key on id) ──────────────────────
+  // ─── Reset form when dealer changes (key on id) ──────────────────────────
   useEffect(() => {
     if (!dealer) return;
     setTier(dealer.tier);
     setEmploymentType(dealer.employment_type);
     setHourlyRate(String(dealer.hourly_rate_vnd ?? ""));
-    setBaseRate(String(dealer.base_rate_vnd ?? ""));
+    setMonthlySalary(String(dealer.monthly_salary_vnd ?? ""));
+    setStandardHours(String(dealer.standard_hours_per_shift ?? 8));
+    setOtMultiplier(String(dealer.ot_multiplier ?? 1.5));
     setNotes(dealer.notes ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealer?.id]);
@@ -72,12 +78,10 @@ export default function DealerAdjustDialog({
         .eq("dealer_id", dealer.id)
         .maybeSingle();
       if (data) {
-        setScore((data as any).score ?? null);
         setTotalHours((data as any).total_hours ?? null);
         setEditScore(String((data as any).overridden_score ?? (data as any).score ?? ""));
         setEditWorkedHours(String((data as any).worked_hours ?? ""));
       } else {
-        setScore(null);
         setTotalHours(null);
         setEditScore("");
         setEditWorkedHours("");
@@ -85,36 +89,45 @@ export default function DealerAdjustDialog({
     })();
   }, [open, dealer?.id]);
 
-  // ─── Computed salary display ───────────────────────────────────────────────
+  // ─── Computed values ────────────────────────────────────────────────────────
   const hourlyNum = parseFloat(hourlyRate) || 0;
-  const computedSalary = isPT && totalHours != null
-    ? Math.round(totalHours * hourlyNum)
-    : !isPT && baseRate
-      ? parseInt(baseRate, 10) || 0
-      : 0;
+  const monthlySalaryNum = parseInt(monthlySalary) || 0;
+  const standardHoursNum = parseFloat(standardHours) || 8;
+  const otMultiplierNum = parseFloat(otMultiplier) || 1.5;
 
-  // ─── [C5b] Validate ALL numeric inputs ─────────────────────────────────────
+  // Auto-derive hourly rate from monthly salary for full-time
+  const derivedHourlyRate = isPT
+    ? hourlyNum
+    : monthlySalaryNum > 0
+      ? Math.round(monthlySalaryNum / 26 / standardHoursNum)
+      : hourlyNum;
+
+  // ─── Validate ALL numeric inputs ──────────────────────────────────────────
   function validateForm(): string | null {
     if (hourlyRate !== "") {
       const hr = Number(hourlyRate);
       if (isNaN(hr) || hr < 0) return "Lương giờ không hợp lệ — vui lòng nhập số dương";
     }
-
-    if (!isPT && baseRate !== "") {
-      const br = Number(baseRate);
-      if (isNaN(br) || br < 0) return "Lương tháng không hợp lệ — vui lòng nhập số dương";
+    if (!isPT && monthlySalary !== "") {
+      const ms = Number(monthlySalary);
+      if (isNaN(ms) || ms < 0) return "Lương tháng không hợp lệ — vui lòng nhập số dương";
     }
-
+    if (standardHours !== "") {
+      const sh = Number(standardHours);
+      if (isNaN(sh) || sh <= 0 || sh > 24) return "Giờ chuẩn/ca phải từ 1-24";
+    }
+    if (otMultiplier !== "") {
+      const om = Number(otMultiplier);
+      if (isNaN(om) || om < 1 || om > 3) return "Hệ số OT phải từ 1.0-3.0";
+    }
     if (editScore !== "") {
       const s = Number(editScore);
       if (isNaN(s)) return "Điểm số không hợp lệ — vui lòng nhập số";
     }
-
     if (editWorkedHours !== "") {
       const wh = Number(editWorkedHours);
       if (isNaN(wh) || wh < 0) return "Giờ làm việc không hợp lệ — vui lòng nhập số dương";
     }
-
     return null;
   }
 
@@ -122,7 +135,6 @@ export default function DealerAdjustDialog({
   const handleSave = async () => {
     if (!dealer) return;
 
-    // [C5b] Guard: validate before any DB call — prevents NaN → broken error chain
     const validationError = validateForm();
     if (validationError) {
       toast.error(validationError);
@@ -131,24 +143,28 @@ export default function DealerAdjustDialog({
 
     setSaving(true);
     try {
-      // 1. Update core dealer fields
       const hourlyRateNum = hourlyRate ? parseInt(hourlyRate, 10) : null;
-      const baseRateNum = !isPT && baseRate ? parseInt(baseRate, 10) : null;
+      const monthlySalarySave = !isPT && monthlySalary ? parseInt(monthlySalary, 10) : 0;
+      const standardHoursSave = parseFloat(standardHours) || 8;
+      const otMultiplierSave = parseFloat(otMultiplier) || 1.5;
 
       const { error: dealerErr } = await supabase
         .from("dealers")
         .update({
           tier,
           employment_type: employmentType,
-          hourly_rate_vnd: hourlyRateNum,
-          base_rate_vnd: baseRateNum,
+          hourly_rate_vnd: isPT ? hourlyRateNum : (monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26 / standardHoursSave) : hourlyRateNum),
+          base_rate_vnd: monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26) : null,
+          monthly_salary_vnd: isPT ? 0 : monthlySalarySave,
+          standard_hours_per_shift: standardHoursSave,
+          ot_multiplier: otMultiplierSave,
           notes: notes || null,
         })
         .eq("id", dealer.id);
 
       if (dealerErr) throw dealerErr;
 
-      // 2. Save score & worked_hours overrides to dealer_score_overrides table
+      // Save score & worked_hours overrides
       if (editScore !== "" || editWorkedHours !== "") {
         const overrides: Record<string, string | number | null> = {
           dealer_id: dealer.id,
@@ -167,7 +183,6 @@ export default function DealerAdjustDialog({
       onSaved();
       onClose();
     } catch (e: unknown) {
-      // [C5b] Robust error handling — e can be Error, string, or Supabase error object
       let msg = "Lỗi không xác định";
       if (e instanceof Error) {
         msg = e.message;
@@ -184,9 +199,8 @@ export default function DealerAdjustDialog({
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    // [C5c] open prop controls visibility — Dialog stays mounted
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {dealer ? `Điều chỉnh — ${dealer.full_name}` : "Điều chỉnh dealer"}
@@ -195,43 +209,37 @@ export default function DealerAdjustDialog({
 
         {dealer && (
           <div className="space-y-3">
-            {/* Salary summary */}
-            {totalHours != null && computedSalary > 0 && (
-              <div className="p-3 bg-emerald-600/10 border border-emerald-600/30 rounded-sm text-sm">
-                <span className="text-muted-foreground">Lương hiện tại: </span>
-                <span className="text-emerald-400 font-bold">{computedSalary.toLocaleString("vi-VN")} VND</span>
-                {isPT && (
-                  <span className="text-xs text-muted-foreground ml-2">
-                    ({totalHours.toFixed(1)}h × {hourlyNum.toLocaleString("vi-VN")}/h)
+            {/* ── Salary Summary Card ── */}
+            <div className="p-3 bg-emerald-600/10 border border-emerald-600/30 rounded-sm text-sm">
+              <div className="font-semibold text-emerald-400 mb-1">
+                {isPT ? "Lương part-time" : "Lương full-time"}
+              </div>
+              {isPT ? (
+                <>
+                  <span className="text-white font-bold">
+                    {totalHours != null && hourlyNum > 0
+                      ? `${Math.round(totalHours * hourlyNum).toLocaleString("vi-VN")} VND`
+                      : "—"}
                   </span>
-                )}
-              </div>
-            )}
-
-            {/* [C6] Điểm + Số giờ — ALWAYS visible, never gated on null */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Điểm</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={editScore}
-                  onChange={(e) => setEditScore(e.target.value)}
-                  placeholder="VD: 4.5"
-                  className="text-xs"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Số giờ đã làm</Label>
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={editWorkedHours}
-                  onChange={(e) => setEditWorkedHours(e.target.value)}
-                  placeholder="VD: 40"
-                  className="text-xs"
-                />
-              </div>
+                  {totalHours != null && hourlyNum > 0 && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({totalHours.toFixed(1)}h × {hourlyNum.toLocaleString("vi-VN")}/h)
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="text-white">
+                    <span className="text-muted-foreground">Lương tháng: </span>
+                    <span className="font-bold">{monthlySalaryNum > 0 ? monthlySalaryNum.toLocaleString("vi-VN") : "—"} VND</span>
+                  </div>
+                  {monthlySalaryNum > 0 && (
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Lương giờ: {derivedHourlyRate.toLocaleString("vi-VN")} VND/h • OT: ×{otMultiplierNum}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Loại hợp đồng */}
@@ -259,36 +267,95 @@ export default function DealerAdjustDialog({
               </Select>
             </div>
 
-            {/* Giờ/Tháng (VND) */}
-            <div>
-              <Label className="text-xs">Giờ/Tháng (VND) — {isPT ? "part-time" : "full-time"}</Label>
-              <Input
-                type="number"
-                value={hourlyRate}
-                onChange={(e) => setHourlyRate(e.target.value)}
-                placeholder="VD: 100000"
-                className="text-xs"
-              />
-            </div>
-
-            {/* [C5a] Lương tháng — ẩn khi part-time */}
-            {!isPT && (
+            {/* ── Payroll Fields ── */}
+            {isPT ? (
+              /* Part-time: chỉ cần hourly rate */
               <div>
-                <Label className="text-xs">Lương tháng (VND) — full-time</Label>
+                <Label className="text-xs">Lương giờ (VND/h)</Label>
                 <Input
                   type="number"
-                  value={baseRate}
-                  onChange={(e) => setBaseRate(e.target.value)}
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
                   placeholder="VD: 100000"
                   className="text-xs"
                 />
               </div>
+            ) : (
+              /* Full-time: lương tháng + auto-derive hourly */
+              <>
+                <div>
+                  <Label className="text-xs">Lương tháng (VND)</Label>
+                  <Input
+                    type="number"
+                    value={monthlySalary}
+                    onChange={(e) => setMonthlySalary(e.target.value)}
+                    placeholder="VD: 9000000"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Giờ chuẩn/ca</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={standardHours}
+                      onChange={(e) => setStandardHours(e.target.value)}
+                      placeholder="8"
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Hệ số OT</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={otMultiplier}
+                      onChange={(e) => setOtMultiplier(e.target.value)}
+                      placeholder="1.5"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+                {monthlySalaryNum > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Lương giờ tự tính: {derivedHourlyRate.toLocaleString("vi-VN")} VND/h
+                    (={monthlySalaryNum.toLocaleString("vi-VN")} ÷ 26 ngày ÷ {standardHoursNum}h)
+                  </div>
+                )}
+              </>
             )}
+
+            {/* ── Score & Hours ── */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+              <div>
+                <Label className="text-xs">Điểm</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={editScore}
+                  onChange={(e) => setEditScore(e.target.value)}
+                  placeholder="VD: 4.5"
+                  className="text-xs"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Số giờ đã làm</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={editWorkedHours}
+                  onChange={(e) =>setEditWorkedHours(e.target.value)}
+                  placeholder="VD: 40"
+                  className="text-xs"
+                />
+              </div>
+            </div>
 
             {/* Ghi chú */}
             <div>
               <Label className="text-xs">Ghi chú</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="text-xs" rows={3} />
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="text-xs" rows={2} />
             </div>
           </div>
         )}

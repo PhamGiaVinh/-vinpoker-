@@ -91,6 +91,37 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
               {dealer.employment_type === "part_time" ? "Part-time" : "Full-time"}
             </span>
           </div>
+          {dealer.employment_type === "part_time" ? (
+            dealer.hourly_rate_vnd != null && (
+              <div>
+                <span className="text-zinc-500">Lương giờ:</span>{" "}
+                <span className="text-white">{dealer.hourly_rate_vnd.toLocaleString("vi-VN")} VND/h</span>
+              </div>
+            )
+          ) : (
+            <>
+              {dealer.monthly_salary_vnd != null && dealer.monthly_salary_vnd > 0 && (
+                <div>
+                  <span className="text-zinc-500">Lương tháng:</span>{" "}
+                  <span className="text-emerald-400 font-semibold">{dealer.monthly_salary_vnd.toLocaleString("vi-VN")} VND</span>
+                </div>
+              )}
+              {dealer.hourly_rate_vnd != null && (
+                <div>
+                  <span className="text-zinc-500">Lương giờ:</span>{" "}
+                  <span className="text-white">{dealer.hourly_rate_vnd.toLocaleString("vi-VN")} VND/h</span>
+                </div>
+              )}
+              <div>
+                <span className="text-zinc-500">Giờ chuẩn/ca:</span>{" "}
+                <span className="text-white">{dealer.standard_hours_per_shift ?? 8}h</span>
+              </div>
+              <div>
+                <span className="text-zinc-500">OT:</span>{" "}
+                <span className="text-white">×{dealer.ot_multiplier ?? 1.5}</span>
+              </div>
+            </>
+          )}
           {score && (
             <>
               <div>
@@ -190,14 +221,18 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
               <div className="col-span-1">Hạng</div>
               <div className="col-span-1">Loại</div>
               <div className="col-span-2 text-right">Giờ</div>
-              <div className="col-span-2 text-right">Điểm</div>
-              <div className="col-span-2 text-center">Sửa</div>
+              <div className="col-span-2 text-right">Lương</div>
+              <div className="col-span-1 text-right">Điểm</div>
+              <div className="col-span-1 text-center">Sửa</div>
             </div>
             {/* Rows */}
             {filtered.map((dealer, idx) => {
               const score = scoreMap.get(dealer.id);
               const rank = idx + 1;
               const isSelected = selectedDealer === dealer.id;
+              const monthlyPay = dealer.employment_type === "part_time"
+                ? (score ? Math.round(score.total_hours * (dealer.hourly_rate_vnd ?? 0)) : null)
+                : dealer.monthly_salary_vnd ?? dealer.base_rate_vnd;
               return (
                 <button
                   key={dealer.id}
@@ -252,22 +287,19 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                   <div className="col-span-2 text-right text-zinc-300">
                     {score ? `${score.total_hours.toFixed(1)}h` : "—"}
                   </div>
-                  <div className="col-span-2 text-right">
+                  <div className="col-span-2 text-right text-emerald-400 text-xs">
+                    {monthlyPay ? `${(monthlyPay / 1000000).toFixed(1)}M` : "—"}
+                  </div>
+                  <div className="col-span-1 text-right">
                     {score ? (
-                      <span
-                        className={
-                          rank <= 3
-                            ? "text-emerald-400 font-semibold"
-                            : "text-zinc-300"
-                        }
-                      >
+                      <span className={rank <= 3 ? "text-emerald-400 font-semibold" : "text-zinc-300"}>
                         {score.score.toFixed(1)}
                       </span>
                     ) : (
                       <span className="text-zinc-500">—</span>
                     )}
                   </div>
-                  <div className="col-span-2 text-center">
+                  <div className="col-span-1 text-center">
                     <button
                       onClick={(e) => { e.stopPropagation(); setAdjustDealer(dealer); }}
                       className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"

@@ -12,6 +12,9 @@ export interface DealerRecord {
   employment_type: string | null;
   hourly_rate_vnd: number | null;
   base_rate_vnd: number | null;
+  monthly_salary_vnd: number | null;
+  standard_hours_per_shift: number | null;
+  ot_multiplier: number | null;
   joined_date: string | null;
   notes: string | null;
   phone: string | null;
@@ -85,7 +88,7 @@ export function useAllDealers(clubIds: string[]): {
       const { data, error } = await supabase
         .from("dealers")
         .select(
-          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, joined_date, notes, phone"
+          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone"
         )
         .in("club_id", clubIds)
         .order("full_name");

@@ -147,7 +147,7 @@ async function processOneCheckout(
       pre_assigned_table_id: null,
       pre_assigned_at: null,
       overtime_minutes: overtimeMinutes,
-      worked_minutes_since_last_break: workedMinutes,
+      worked_minutes_since_last_break: 0,
       total_worked_minutes_today: workedMinutes,
     })
     .eq("id", attendanceId)

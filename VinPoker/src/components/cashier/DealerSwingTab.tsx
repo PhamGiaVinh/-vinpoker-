@@ -1952,6 +1952,39 @@ function PriorityBreakIndicator({
   return null;
 }
 
+function CollapsibleSection<T>({
+  items,
+  defaultVisible = 3,
+  renderItem,
+  header,
+}: {
+  items: T[];
+  defaultVisible?: number;
+  renderItem: (item: T) => React.ReactNode;
+  header: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, defaultVisible);
+  const hidden = items.length - defaultVisible;
+
+  return (
+    <div className="pt-2 border-t border-border/40">
+      {header}
+      <div className="space-y-0.5 opacity-60 hover:opacity-100 transition-opacity">
+        {visible.map((item) => renderItem(item))}
+      </div>
+      {hidden > 0 && (
+        <button
+          className="w-full text-[10px] text-zinc-500 hover:text-zinc-300 py-1.5 text-center transition-colors"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? `Thu gọn` : `+${hidden} dealer khác`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
@@ -2225,36 +2258,38 @@ function RosterPanel({
           })
         )}
 
-        {/* Đã check-out section */}
+        {/* Đã check-out section — collapsible, max 3 visible by default */}
         {checkedOutDealers.length > 0 && (
-          <div className="pt-2 border-t border-border/40">
-            <div className="flex items-center gap-1.5 mb-2">
-              <UserMinus className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Đã check-out</span>
-              <Badge variant="outline" className="text-[9px] ml-auto">{checkedOutDealers.length}</Badge>
-            </div>
-            <div className="space-y-0.5 opacity-60 hover:opacity-100 transition-opacity">
-              {checkedOutDealers.map((d) => {
-                const dd = d.dealers;
-                return (
-                  <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/30">
-                    <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-zinc-500 flex-shrink-0">
-                      {dd?.full_name?.charAt(0) ?? "?"}
-                    </div>
-                    <span className="text-xs text-zinc-500 truncate flex-1">{dd?.full_name ?? "—"}</span>
-                    <span className="text-[9px] text-zinc-600">{dd?.tier ?? "C"}</span>
-                    <span className="text-[10px] text-zinc-600">
-                      {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
-                    </span>
-                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
-                      onClick={() => onReCheckin(d.dealer_id)} disabled={processing !== null}>
-                      Check-in lại
-                    </Button>
+          <CollapsibleSection
+            items={checkedOutDealers}
+            defaultVisible={3}
+            renderItem={(d) => {
+              const dd = d.dealers;
+              return (
+                <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/30">
+                  <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-zinc-500 flex-shrink-0">
+                    {dd?.full_name?.charAt(0) ?? "?"}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <span className="text-xs text-zinc-500 truncate flex-1">{dd?.full_name ?? "—"}</span>
+                  <span className="text-[9px] text-zinc-600">{dd?.tier ?? "C"}</span>
+                  <span className="text-[10px] text-zinc-600">
+                    {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
+                  </span>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
+                    onClick={() => onReCheckin(d.dealer_id)} disabled={processing !== null}>
+                    Check-in lại
+                  </Button>
+                </div>
+              );
+            }}
+            header={(
+              <div className="flex items-center gap-1.5">
+                <UserMinus className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Đã check-out</span>
+                <Badge variant="outline" className="text-[9px] ml-auto">{checkedOutDealers.length}</Badge>
+              </div>
+            )}
+          />
         )}
       </div>
 
@@ -2276,12 +2311,27 @@ function RosterPanel({
       {/* ── Always-visible footer ── */}
       {!batchMode && (
         <div className="flex gap-2 mt-3 pt-3 border-t border-border flex-wrap">
-          <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
-            <UserPlus className="w-3 h-3 mr-1" /> Check-in
-          </Button>
-          <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
-            <UserMinus className="w-3 h-3 mr-1" /> Check-out
-          </Button>
+          {checkedInCount !== undefined && checkedInCount > 0 ? (
+            <>
+              {/* When dealers are checked in: checkout is primary, check-in is secondary */}
+              <Button size="sm" className="flex-[2] text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={onCheckoutOpen}>
+                <UserMinus className="w-3 h-3 mr-1" /> Check-out ({checkedInCount})
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
+                <UserPlus className="w-3 h-3 mr-1" /> Check-in
+              </Button>
+            </>
+          ) : (
+            <>
+              {/* No dealers checked in: check-in is primary */}
+              <Button size="sm" className="flex-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={onCheckinOpen}>
+                <UserPlus className="w-3 h-3 mr-1" /> Check-in
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
+                <UserMinus className="w-3 h-3 mr-1" /> Check-out
+              </Button>
+            </>
+          )}
         </div>
       )}
     </Card>

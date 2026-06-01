@@ -36,17 +36,23 @@ export default function AddDealerDialog({
   const [tier, setTier] = useState("C");
   const [employmentType, setEmploymentType] = useState("full_time");
   const [hourlyRate, setHourlyRate] = useState("");
-  const [baseRate, setBaseRate] = useState("");
+  const [monthlySalary, setMonthlySalary] = useState("9000000");
+  const [standardHours, setStandardHours] = useState("8");
+  const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const isPT = employmentType === "part_time";
 
   const reset = () => {
     setFullName("");
     setTier("C");
     setEmploymentType("full_time");
     setHourlyRate("");
-    setBaseRate("");
+    setMonthlySalary("9000000");
+    setStandardHours("8");
+    setOtMultiplier("1.5");
     setPhone("");
     setNotes("");
   };
@@ -62,13 +68,25 @@ export default function AddDealerDialog({
     }
     setSaving(true);
     try {
+      const monthlySalaryNum = !isPT && monthlySalary ? parseInt(monthlySalary, 10) : 0;
+      const standardHoursNum = parseFloat(standardHours) || 8;
+      const otMultiplierNum = parseFloat(otMultiplier) || 1.5;
+
+      // Auto-derive hourly rate for full-time from monthly salary
+      const hourlyRateNum = isPT
+        ? (hourlyRate ? parseInt(hourlyRate, 10) : null)
+        : (monthlySalaryNum > 0 ? Math.round(monthlySalaryNum / 26 / standardHoursNum) : (hourlyRate ? parseInt(hourlyRate, 10) : null));
+
       const { error } = await supabase.from("dealers").insert({
         club_id: clubId,
         full_name: fullName.trim(),
         tier,
         employment_type: employmentType,
-        hourly_rate_vnd: hourlyRate ? parseInt(hourlyRate, 10) : null,
-        base_rate_vnd: baseRate ? parseInt(baseRate, 10) : null,
+        hourly_rate_vnd: hourlyRateNum,
+        base_rate_vnd: monthlySalaryNum > 0 ? Math.round(monthlySalaryNum / 26) : null,
+        monthly_salary_vnd: isPT ? 0 : monthlySalaryNum,
+        standard_hours_per_shift: standardHoursNum,
+        ot_multiplier: otMultiplierNum,
         phone: phone.trim() || null,
         notes: notes.trim() || null,
         joined_date: new Date().toISOString().split("T")[0],
@@ -89,9 +107,16 @@ export default function AddDealerDialog({
     }
   };
 
+  // Computed: auto-derive hourly rate display
+  const derivedHourlyRate = isPT
+    ? (parseInt(hourlyRate) || 0)
+    : monthlySalary && parseInt(monthlySalary) > 0
+      ? Math.round(parseInt(monthlySalary) / 26 / (parseFloat(standardHours) || 8))
+      : 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border border-zinc-800 text-white">
+      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border border-zinc-800 text-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm Dealer Mới</DialogTitle>
           <DialogDescription className="text-zinc-400">
@@ -136,28 +161,65 @@ export default function AddDealerDialog({
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* ── Payroll Fields ── */}
+          {isPT ? (
+            /* Part-time: chỉ cần hourly rate */
             <div>
-              <Label>Lương giờ (VND)</Label>
+              <Label>Lương giờ (VND/h)</Label>
               <Input
                 type="number"
                 value={hourlyRate}
                 onChange={(e) => setHourlyRate(e.target.value)}
-                placeholder="50000"
+                placeholder="VD: 100000"
                 className="bg-zinc-900 border-zinc-700 text-white"
               />
             </div>
-            <div>
-              <Label>Lương cơ bản (VND)</Label>
-              <Input
-                type="number"
-                value={baseRate}
-                onChange={(e) => setBaseRate(e.target.value)}
-                placeholder="8000000"
-                className="bg-zinc-900 border-zinc-700 text-white"
-              />
-            </div>
-          </div>
+          ) : (
+            /* Full-time: lương tháng + auto-derive hourly */
+            <>
+              <div>
+                <Label>Lương tháng (VND)</Label>
+                <Input
+                  type="number"
+                  value={monthlySalary}
+                  onChange={(e) => setMonthlySalary(e.target.value)}
+                  placeholder="VD: 9000000"
+                  className="bg-zinc-900 border-zinc-700 text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Giờ chuẩn/ca</Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    value={standardHours}
+                    onChange={(e) => setStandardHours(e.target.value)}
+                    placeholder="8"
+                    className="bg-zinc-900 border-zinc-700 text-white"
+                  />
+                </div>
+                <div>
+                  <Label>Hệ số OT</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={otMultiplier}
+                    onChange={(e) => setOtMultiplier(e.target.value)}
+                    placeholder="1.5"
+                    className="bg-zinc-900 border-zinc-700 text-white"
+                  />
+                </div>
+              </div>
+              {derivedHourlyRate > 0 && (
+                <div className="text-xs text-zinc-400">
+                  Lương giờ tự tính: {derivedHourlyRate.toLocaleString("vi-VN")} VND/h
+                </div>
+              )}
+            </>
+          )}
+
           <div>
             <Label>Số điện thoại</Label>
             <Input
