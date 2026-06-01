@@ -98,13 +98,15 @@ export function useDealerPayroll(clubIds: string[]): {
       if (rpcError) throw rpcError;
       const result = data as ClubPayrollResult;
       setPeriod({ start: result.period_start, end: result.period_end });
-      const dealerRows = Object.values(result.dealers ?? {});
+      const allRows = Object.values(result.dealers ?? {});
+      // Filter out error objects (inactive dealers return {error: "..."})
+      const dealerRows = allRows.filter((r: any) => r.dealer_id && r.full_name) as DealerPayrollRow[];
       // Sort: FT first, then PT; within each group by name
       dealerRows.sort((a, b) => {
         if (a.employment_type !== b.employment_type) {
           return a.employment_type === "full_time" ? -1 : 1;
         }
-        return a.full_name.localeCompare(b.full_name);
+        return (a.full_name || "").localeCompare(b.full_name || "");
       });
       setRows(dealerRows);
     } catch (e: any) {
