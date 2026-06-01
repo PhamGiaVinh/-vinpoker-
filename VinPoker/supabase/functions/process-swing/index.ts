@@ -27,6 +27,8 @@ import {
   type PoolSnapshot,
   type SwingConfig,
 } from "./calculateBatchSwingDuration.ts";
+import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
+import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +45,79 @@ const DEFAULT_SWING_DURATION_MINUTES = 30;
 const DEFAULT_BREAK_DURATION_MINUTES = 15;
 const SWING_WINDOW_BUFFER_MINUTES = 2;
 const MAX_SWING_RETRIES = 3;
+
+// ─── Dealer State Machine ─────────────────────────────────────────────────────
+// Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
+// Batch cleanup (Pass 1b, 1c) dùng direct UPDATE — trigger ghi audit tự động.
+
+interface StateTransitionResult {
+  success: boolean;
+  from?: string;
+  to?: string;
+  noop?: boolean;
+  error?: string;
+}
+
+async function transitionDealerState(
+  admin: ReturnType<typeof createClient>,
+  attendanceId: string,
+  newState: string,
+  reason?: string
+): Promise<StateTransitionResult> {
+  try {
+    const { data, error } = await admin.rpc("transition_dealer_state", {
+      p_attendance_id: attendanceId,
+      p_new_state: newState,
+      p_reason: reason ?? null,
+    });
+    if (error) {
+      console.error(`[state] ❌ RPC error ${attendanceId}: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+    if (!data || data.ok !== true) {
+      console.error(
+        `[state] ❌ FAILED ${attendanceId}: ${data?.from ?? "?"} → ${newState}` +
+        ` (${data?.error ?? "unknown"})` + (reason ? ` reason=${reason}` : "")
+      );
+      return { success: false, from: data?.from, to: newState, error: data?.error ?? "transition failed" };
+    }
+    if (data.noop) {
+      return { success: true, noop: true, from: data.from, to: data.to };
+    }
+    console.log(`[state] ✅ ${attendanceId}: ${data.from} → ${data.to}` + (reason ? ` (${reason})` : ""));
+    return { success: true, from: data.from, to: data.to };
+  } catch (err: any) {
+    console.error(`[state] ❌ Exception ${attendanceId}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// ─── Break settings cache ─────────────────────────────────────────────────────
+const breakSettingsCache = new Map<string, { breakDuration: number; maxBreak: number; cachedAt: number }>();
+
+async function getBreakSettings(
+  admin: ReturnType<typeof createClient>,
+  clubId: string
+): Promise<{ breakDuration: number; maxBreak: number }> {
+  const CACHE_TTL = 5 * 60 * 1000;
+  const now = Date.now();
+  const cached = breakSettingsCache.get(clubId);
+  if (cached && now - cached.cachedAt < CACHE_TTL) {
+    return { breakDuration: cached.breakDuration, maxBreak: cached.maxBreak };
+  }
+
+  const { data: clubCfg } = await admin
+    .from("club_settings")
+    .select("break_duration_minutes, max_break_duration_minutes")
+    .eq("club_id", clubId)
+    .maybeSingle();
+
+  const breakDuration = Math.max(5, Math.min(60, clubCfg?.break_duration_minutes ?? 15));
+  const maxBreak = Math.max(breakDuration, Math.min(120, clubCfg?.max_break_duration_minutes ?? 60));
+
+  breakSettingsCache.set(clubId, { breakDuration, maxBreak, cachedAt: now });
+  return { breakDuration, maxBreak };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -271,6 +346,192 @@ Deno.serve(async (req: Request) => {
           availableDealerCount = count ?? 0;
         }
 
+        // ── PASS 0c: Detect & auto-fix stuck dealers ────────────────────────
+        if (!dryRun) {
+          const stuckIssues: Array<{ id: string; dealer_name: string; issue: string }> = [];
+
+          // Get club dealer IDs for scoped queries
+          const { data: clubDealers } = await admin
+            .from("dealers")
+            .select("id")
+            .eq("club_id", cid);
+          const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+
+          // 1. Stuck pre_assigned (no table OR no timestamp — incomplete pre-assign)
+          const { data: stuckPre } = await admin
+            .from("dealer_attendance")
+            .select(`
+              id,
+              dealer_id,
+              current_state,
+              pre_assigned_table_id,
+              pre_assigned_at,
+              dealers!inner(full_name)
+            `)
+            .eq("club_id", cid)
+            .eq("current_state", "pre_assigned")
+            .or("pre_assigned_table_id.is.null,pre_assigned_at.is.null")
+            .in("dealer_id", cidDealerIds);
+
+          if (stuckPre && stuckPre.length > 0) {
+            console.log(`[Pass 0c] Found ${stuckPre.length} stuck pre_assigned dealers (missing fields)`);
+            for (const s of stuckPre) {
+              const dealerName = (s.dealers as any)?.full_name ?? "Unknown";
+              stuckIssues.push({
+                id: s.id,
+                dealer_name: dealerName,
+                issue: `pre_assigned_incomplete: table=${s.pre_assigned_table_id ?? 'NULL'}, at=${s.pre_assigned_at ?? 'NULL'}`,
+              });
+              await transitionDealerState(admin, s.id, "available", "pass0c_stuck_pre_assigned_incomplete");
+            }
+          }
+
+          // 1b. Orphaned pre_assigned (no active assignment pointing to them)
+          const { data: orphanedPreAssigned } = await admin
+            .from("dealer_attendance")
+            .select(`
+              id,
+              dealer_id,
+              updated_at,
+              pre_assigned_table_id,
+              dealers!inner(full_name)
+            `)
+            .eq("club_id", cid)
+            .eq("current_state", "pre_assigned")
+            .eq("status", "checked_in")
+            .in("dealer_id", cidDealerIds);
+
+          if (orphanedPreAssigned && orphanedPreAssigned.length > 0) {
+            const { data: validPreAssigns } = await admin
+              .from("dealer_assignments")
+              .select("pre_assigned_attendance_id")
+              .in("pre_assigned_attendance_id", orphanedPreAssigned.map((d: any) => d.id))
+              .eq("status", "assigned")
+              .is("released_at", null);
+
+            const validPreIds = new Set(
+              (validPreAssigns ?? []).map((a: any) => a.pre_assigned_attendance_id)
+            );
+            const toReleasePre = orphanedPreAssigned.filter(
+              (d: any) => !validPreIds.has(d.id)
+            );
+
+            for (const dealer of toReleasePre) {
+              const dealerName = (dealer.dealers as any)?.full_name ?? "Unknown";
+              stuckIssues.push({
+                id: dealer.id,
+                dealer_name: dealerName,
+                issue: "pre_assigned_orphaned_no_assignment",
+              });
+              await transitionDealerState(
+                admin, dealer.id, "available",
+                `pass0c_orphaned_pre_assigned_${dealer.pre_assigned_table_id ?? "none"}`
+              );
+              cycleExcludedIds.add(dealer.id);
+              console.log(`[Pass 0c] Released orphaned pre_assigned dealer ${dealerName}`);
+            }
+          }
+
+          // 2. Stuck on_break (overdue)
+          const { data: stuckBreaks, error: breakErr } = await admin.rpc("detect_stuck_breaks", { p_club_id: cid });
+          if (breakErr) {
+            console.error("[Pass 0c] ❌ detect_stuck_breaks RPC failed:", breakErr);
+          } else if (stuckBreaks && stuckBreaks.length > 0) {
+            console.log(`[Pass 0c] Found ${stuckBreaks.length} stuck breaks (overdue)`);
+            for (const b of stuckBreaks) {
+              stuckIssues.push({ id: b.attendance_id, dealer_name: b.dealer_name, issue: `break_overdue_${b.overdue_min}m` });
+              const { data: endResult, error: endErr } = await admin.rpc("end_dealer_break", {
+                p_break_id: b.break_id,
+                p_attendance_id: b.attendance_id,
+              });
+              if (endErr || endResult?.outcome !== "success") {
+                console.error(`[Pass 0c] ❌ Failed to end stuck break ${b.break_id}:`, endErr?.message ?? endResult?.message);
+              } else {
+                console.log(`[Pass 0c] ✅ Auto-ended stuck break for ${b.dealer_name} (${b.overdue_min}m overdue)`);
+              }
+            }
+          }
+
+          // 3. Stuck in_transition (>5 minutes)
+          const { data: stuckTransition } = await admin
+            .from("dealer_attendance")
+            .select("id, dealer_id, updated_at, dealers!inner(full_name)")
+            .eq("current_state", "in_transition")
+            .in("dealer_id", cidDealerIds)
+            .lt("updated_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
+          if (stuckTransition && stuckTransition.length > 0) {
+            console.log(`[Pass 0c] Found ${stuckTransition.length} stuck in_transition dealers (>5min)`);
+            for (const s of stuckTransition) {
+              const dealerName = (s.dealers as any)?.full_name ?? "Unknown";
+              const stuckMinutes = Math.floor((Date.now() - new Date(s.updated_at).getTime()) / 60000);
+              stuckIssues.push({ id: s.id, dealer_name: dealerName, issue: `in_transition_stuck_${stuckMinutes}m` });
+              await transitionDealerState(admin, s.id, "available", `pass0c_stuck_in_transition_${stuckMinutes}m`);
+            }
+          }
+
+          // ── 4. Stuck assigned (no active assignment) ──────────────────────
+          const { data: orphanedAssigned } = await admin
+            .from("dealer_attendance")
+            .select(`
+              id,
+              dealer_id,
+              current_table_id,
+              updated_at,
+              dealers!inner(full_name)
+            `)
+            .eq("club_id", cid)
+            .eq("current_state", "assigned")
+            .eq("status", "checked_in")
+            .in("dealer_id", cidDealerIds);
+
+          if (orphanedAssigned && orphanedAssigned.length > 0) {
+            const { data: activeAssignments } = await admin
+              .from("dealer_assignments")
+              .select("attendance_id")
+              .in("attendance_id", orphanedAssigned.map((d: any) => d.id))
+              .eq("status", "assigned")
+              .is("released_at", null);
+
+            const activeIds = new Set((activeAssignments ?? []).map((a: any) => a.attendance_id));
+            const toRelease = orphanedAssigned.filter((d: any) => !activeIds.has(d.id));
+
+            for (const dealer of toRelease) {
+              const dealerName = (dealer.dealers as any)?.full_name ?? "Unknown";
+              const stuckMinutes = Math.floor(
+                (Date.now() - new Date(dealer.updated_at).getTime()) / 60000
+              );
+              const tableId = (dealer as any).current_table_id ?? "none";
+              stuckIssues.push({
+                id: dealer.id,
+                dealer_name: dealerName,
+                issue: `assigned_orphaned_${stuckMinutes}m (table: ${tableId})`,
+              });
+              await transitionDealerState(
+                admin, dealer.id, "available",
+                `pass0c_orphaned_assigned_${tableId}_stuck_${stuckMinutes}m`
+              );
+              cycleExcludedIds.add(dealer.id);
+              console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, table: ${tableId}, stuck: ${stuckMinutes}m)`);
+            }
+          }
+
+          // 5. Telegram notification
+          if (stuckIssues.length > 0) {
+            console.warn(`[Pass 0c] ⚠️ Found ${stuckIssues.length} stuck dealers (auto-fixed)`);
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (botToken && chatId) {
+              const msg = `⚠️ *${stuckIssues.length} dealer bị treo — đã tự động sửa*\n\n` +
+                stuckIssues.slice(0, 10).map(s => `  • *${s.dealer_name}*: ${s.issue}\n    \`${s.id.slice(0, 8)}…\``).join("\n") +
+                (stuckIssues.length > 10 ? `\n\n_...và ${stuckIssues.length - 10} dealers khác_` : "") +
+                `\n\n🔍 Kiểm tra \`dealer_state_transitions\` để biết chi tiết.`;
+              await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
+            }
+          } else {
+            console.log("[Pass 0c] ✅ No stuck dealers found");
+          }
+        }
+
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -312,122 +573,106 @@ Deno.serve(async (req: Request) => {
             .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
             .in("id", staleRows.map((r: { id: string }) => r.id));
           if (staleAttendanceIds.length > 0) {
-            await admin
-              .from("dealer_attendance")
-              .update({ current_state: "available" })
-              .in("id", staleAttendanceIds);
+            console.log(`[Pass 1b] Releasing ${staleAttendanceIds.length} stale pre-assigned dealers...`);
+            let releaseOk = 0;
+            let releaseFail = 0;
+            for (const attId of staleAttendanceIds) {
+              const result = await transitionDealerState(
+                admin, attId, "available", "pass1b_release_stale_pre_assign"
+              );
+              if (!result.success) {
+                releaseFail++;
+                if (releaseFail <= 3) console.error(`[Pass 1b] transitionDealerState failed for ${attId}:`, result.error);
+                continue;
+              }
+              await admin.from("dealer_attendance")
+                .update({ pre_assigned_table_id: null, pre_assigned_at: null })
+                .eq("id", attId);
+              releaseOk++;
+            }
+            if (releaseFail > 0) {
+              console.error(`[Pass 1b] ❌ Released ${releaseOk}/${staleAttendanceIds.length} dealers (${releaseFail} failed)`);
+            } else {
+              console.log(`[Pass 1b] ✅ All ${releaseOk} stale pre-assigned dealers released with context`);
+            }
+          } else {
+            console.log(`[Pass 1b] ✅ Cleaned ${staleRows.length} stale pre_assign records for club ${cid}`);
           }
-          console.log(`[process-swing] Pass 1b: cleaned ${staleRows.length} stale pre_assign records for club ${cid}`);
         }
 
-        // ── PASS 2 — Pre-assign incoming dealer at T-N minutes ───────────
-        // Runs AFTER fillEmptyTables so remaining dealers go to upcoming swings.
-        // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
-        if (!forceAll) {
-          const preAnnounceMins = clubCfg.pre_announce_minutes;
-          const windowHalf = 2;
-          const windowStart = new Date(Date.now() + Math.max(0, preAnnounceMins - windowHalf) * 60 * 1000).toISOString();
-          const windowEnd = new Date(Date.now() + (preAnnounceMins + windowHalf) * 60 * 1000).toISOString();
-
-          const { data: upcoming } = await admin
-            .from("dealer_assignments")
-            .select(
-              `id, table_id, attendance_id, swing_due_at, version,
-               game_tables(club_id, table_name, table_type),
-               dealer_attendance!attendance_id(dealers(full_name))`
-            )
-            .eq("status", "assigned")
-            .is("pre_assigned_attendance_id", null)
-            .is("swing_processed_at", null)
-            .gte("swing_due_at", windowStart)
-            .lt("swing_due_at", windowEnd)
-            .eq("game_tables.club_id", cid);
-
-          for (const assignment of upcoming ?? []) {
-            const excludeSet = new Set<string>([
-              ...cycleExcludedIds,
-              assignment.attendance_id,
-            ]);
-
-            const nextDealer = await pickNextDealer(admin, cid, {
-              currentTableId: assignment.table_id,
-              excludeAttendanceIds: excludeSet,
-              requiredGameTypes: required_game_types,
-            });
-
-            if (!nextDealer) {
-              if (botToken) {
-                const chatId = await getClubTelegramChatId(admin, cid);
-                if (chatId) {
-                  const minsLeft = Math.round(
-                    (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
-                  );
-                  const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
-                  await sendTelegramNotification(
-                    botToken, chatId,
-                    formatPreAnnounceMessage({
-                      tableName: assignment.game_tables?.table_name ?? assignment.table_id,
-                      outgoingDealer,
-                      minutesLeft: minsLeft,
-                    }),
-                    {}
-                  );
-                }
+        // ── Pass 1c: Release orphaned pre_assigned (no table, no assignment) ──
+        const { data: clubDealers } = await admin
+          .from("dealers")
+          .select("id")
+          .eq("club_id", cid);
+        const clubDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+        if (clubDealerIds.length > 0) {
+          const { data: orphanedAttendances } = await admin
+            .from("dealer_attendance")
+            .select("id")
+            .eq("current_state", "pre_assigned")
+            .is("pre_assigned_table_id", null)
+            .in("dealer_id", clubDealerIds);
+          if (orphanedAttendances && orphanedAttendances.length > 0) {
+            const orphanIds = orphanedAttendances.map((r: { id: string }) => r.id);
+            console.log(`[Pass 1c] Releasing ${orphanIds.length} orphaned pre_assigned dealers...`);
+            let releaseOk = 0;
+            let releaseFail = 0;
+            for (const attId of orphanIds) {
+              const result = await transitionDealerState(
+                admin, attId, "available", "pass1c_release_orphan_pre_assign"
+              );
+              if (!result.success) {
+                releaseFail++;
+                if (releaseFail <= 3) console.error(`[Pass 1c] transitionDealerState failed for ${attId}:`, result.error);
+                continue;
               }
-              continue;
+              await admin.from("dealer_attendance")
+                .update({ pre_assigned_table_id: null, pre_assigned_at: null })
+                .eq("id", attId);
+              releaseOk++;
             }
-
-            // CAS update: only succeed if version matches and not already pre-assigned
-            const { data: locked, error: lockErr } = await admin
-              .from("dealer_assignments")
-              .update({
-                pre_assigned_attendance_id: nextDealer.id,
-                pre_assigned_at: new Date().toISOString(),
-                version: assignment.version + 1,
-              })
-              .eq("id", assignment.id)
-              .eq("version", assignment.version)
-              .is("pre_assigned_attendance_id", null)
-              .select("id")
-              .single();
-
-            if (lockErr || !locked) {
-              console.warn(`[process-swing] Pass 2: CAS failed for assignment ${assignment.id}, skipping`);
-              continue;
-            }
-
-            cycleExcludedIds.add(nextDealer.id);
-            await admin.from("dealer_attendance").update({ current_state: "pre_assigned" }).eq("id", nextDealer.id);
-
-            const minsLeft = Math.round(
-              (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
-            );
-            const outgoingName = assignment.dealer_attendance?.dealers?.full_name ?? "";
-            const incomingName = nextDealer.full_name ?? nextDealer.id;
-            const incomingUsername = nextDealer.telegram_username ?? null;
-            const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
-            const outUsername = (assignment.dealer_attendance?.dealers as any)?.telegram_username ?? null;
-
-            notifier?.enqueue({
-              type: "pre_assign",
-              tableName,
-              zone: clubZone,
-              outName: outgoingName,
-              outUsername,
-              inName: incomingName,
-              inUsername: incomingUsername,
-              swingAt: new Date(assignment.swing_due_at),
-              minutesLeft: minsLeft,
-            } satisfies PreAssignEvent);
-
-            if (nextDealer.telegram_user_id) {
-              await notifyIncomingDealer(botToken, {
-                ...nextDealer,
-                telegram_user_id: Number(nextDealer.telegram_user_id),
-              } as any, tableName, minsLeft).catch(() => {});
+            if (releaseFail > 0) {
+              console.error(`[Pass 1c] ❌ Released ${releaseOk}/${orphanIds.length} orphans (${releaseFail} failed)`);
+            } else {
+              console.log(`[Pass 1c] ✅ All ${releaseOk} orphaned dealers released with pass1c context`);
             }
           }
-        } // end if (!forceAll)
+        }
+
+        // ── PASS 2 — Pre-assign incoming dealers ────────────────────────
+        // Uses pickNextDealer + CAS RPC to atomically pre-assign dealers
+        // for tables whose swing due falls within the pre-announce window.
+        // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
+        if (!forceAll) {
+          const pass2Result = await pass2PreAssignNext(
+            admin, cid, clubCfg.pre_announce_minutes,
+            {
+              clubZone,
+              notifier,
+              cycleExcludedIds,
+              botToken: botToken ?? "",
+            },
+          );
+          if (pass2Result.pre_assigned_count > 0) {
+            console.log(`[Pass 2] ✅ Pre-assigned ${pass2Result.pre_assigned_count} dealers`);
+          }
+        }
+
+        // ── PASS 2.5 — Assign initial dealers to empty assignments ──────
+        // Catches assignments that have status='assigned' but dealer_id=NULL.
+        // This happens when the initial creation sets attendance_id but
+        // dealer_id was never linked (e.g. pre-assign succeeded but the
+        // subsequent swing that writes dealer_id failed).
+        // Runs after Pass 2 so pre-assigned dealers get priority.
+        {
+          const pass25Result = await pass25InitialAssign(
+            admin, cid, cycleExcludedIds, required_game_types,
+          );
+          if (pass25Result.assigned_count > 0) {
+            console.log(`[Pass 2.5] ✅ Assigned ${pass25Result.assigned_count} initial dealers`);
+          }
+        }
 
         // ── Dynamic swing duration ────────────────────────────────────────
         const swingDurResult = await computeSwingDuration(admin, cid, {
@@ -478,8 +723,17 @@ Deno.serve(async (req: Request) => {
         // Oldest-due (furthest past due) first. This ensures fairness:
         // dealers who've been waiting longest get relief first.
         const dueAssignments = (rawDueAssignments ?? []).sort(
-          (a: any, b: any) => new Date(a.swing_due_at).getTime() - new Date(b.swing_due_at).getTime()
+          (a: any, b: any) => {
+            const aOt = a.overtime_started_at ? 1 : 0;
+            const bOt = b.overtime_started_at ? 1 : 0;
+            if (aOt !== bOt) return bOt - aOt;
+            return new Date(a.swing_due_at).getTime() - new Date(b.swing_due_at).getTime();
+          }
         );
+
+        const validatedBreakDuration = clubCfg.break_duration_minutes == null
+          ? DEFAULT_BREAK_DURATION_MINUTES
+          : Math.max(5, Math.min(60, clubCfg.break_duration_minutes));
 
         // Pre-compute consistent swing_due_at for all Pass 3 swings
         const pass3SwingDueAt = dryRun ? undefined : computeNextSwingAt(
@@ -517,11 +771,12 @@ Deno.serve(async (req: Request) => {
             const { data: rpcResult, error: rpcErr } = await admin.rpc(
               "execute_pre_assigned_swing",
               {
-                p_old_assignment_id:  assignment.id,
-                p_next_attendance_id: assignment.pre_assigned_attendance_id,
-                p_swing_due_at:       pass3SwingDueAt,
-                p_duration_minutes:   swingDurResult.durationMinutes,
-                p_send_to_break:      breakDecision.shouldBreak,
+                p_old_assignment_id:    assignment.id,
+                p_next_attendance_id:   assignment.pre_assigned_attendance_id,
+                p_swing_due_at:         pass3SwingDueAt,
+                p_duration_minutes:     swingDurResult.durationMinutes,
+                p_send_to_break:        breakDecision.shouldBreak,
+                p_break_duration_minutes: validatedBreakDuration,
               }
             );
 
@@ -591,13 +846,14 @@ Deno.serve(async (req: Request) => {
                 });
 
                 if (fbDealer) {
+                  const { breakDuration: fbBreakDuration } = await getBreakSettings(admin, cid);
                   const { data: fbResult } = await admin.rpc("perform_swing", {
                     p_assignment_id: assignment.id,
-                    p_version: freshRow.version,
-                    p_next_attendance_id: fbDealer.id,
+                    p_duration_minutes: swingDurResult.durationMinutes,
                     p_send_to_break: fbBreakDecision.shouldBreak,
-                    p_break_duration_minutes: clubCfg.break_duration_minutes,
-                    p_swing_duration_minutes: swingDurResult.durationMinutes,
+                    p_break_duration_minutes: fbBreakDuration,
+                    p_expected_version: freshRow.version,
+                    p_next_attendance_id: fbDealer.id,
                   });
 
                   if (fbResult?.outcome === "swung") {
@@ -625,13 +881,14 @@ Deno.serve(async (req: Request) => {
                   }
                 } else {
                   // No fallback → OT path
+                  const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
                   const { data: otResult } = await admin.rpc("perform_swing", {
                     p_assignment_id: assignment.id,
-                    p_version: freshRow.version,
-                    p_next_attendance_id: null,
+                    p_duration_minutes: swingDurResult.durationMinutes,
                     p_send_to_break: false,
-                    p_break_duration_minutes: clubCfg.break_duration_minutes,
-                    p_swing_duration_minutes: swingDurResult.durationMinutes,
+                    p_break_duration_minutes: otBreakDur,
+                    p_expected_version: freshRow.version,
+                    p_next_attendance_id: null,
                   });
                   metrics.no_dealer++;
                   if (otResult?.outcome === "no_dealer" && otResult?.is_new_overtime) {
@@ -734,7 +991,7 @@ Deno.serve(async (req: Request) => {
               }
             }
 
-            // SAFEGUARD: verify dealer belongs to this club before assigning
+                // SAFEGUARD: verify dealer belongs to this club before assigning
             if (nextDealer?.id) {
               let dealerClub: { club_id: string } | null = null;
               try {
@@ -747,19 +1004,27 @@ Deno.serve(async (req: Request) => {
               } catch { /* ignore */ }
               if (!dealerClub || dealerClub.club_id !== cid) {
                 console.warn(`[process-swing] SAFEGUARD: dealer ${nextDealer.full_name} club ${dealerClub?.club_id} != table club ${cid}, skipping`);
-                await admin.from("dealer_attendance").update({ current_state: "available" }).eq("id", nextDealer.id);
+                const safeguardResult = await transitionDealerState(
+                  admin,
+                  nextDealer.id,
+                  "available",
+                  `safeguard_club_mismatch_table_${assignment.table_id}`
+                );
+                if (!safeguardResult.success) {
+                  console.error(`[Pass 3] ❌ Safeguard failed to release dealer ${nextDealer.id}:`, safeguardResult.error);
+                }
                 continue;
               }
             }
 
+            const { breakDuration: pBreakDuration } = await getBreakSettings(admin, cid);
             const { data: swingResult } = await admin.rpc("perform_swing", {
               p_assignment_id: assignment.id,
-              p_version: assignment.version,
-              p_next_attendance_id: nextDealer?.id ?? null,
+              p_duration_minutes: swingDurResult.durationMinutes,
               p_send_to_break: breakDecision.shouldBreak,
-              p_break_duration_minutes: clubCfg.break_duration_minutes,
-              p_swing_duration_minutes: swingDurResult.durationMinutes,
-              p_swing_due_at: pass3SwingDueAt,
+              p_break_duration_minutes: pBreakDuration,
+              p_expected_version: assignment.version,
+              p_next_attendance_id: nextDealer?.id ?? null,
             });
 
             const outcome = swingResult?.outcome ?? "failed";
@@ -847,6 +1112,79 @@ Deno.serve(async (req: Request) => {
           if (endedBreaks && endedBreaks.length > 0) {
             console.log(`[process-swing] Pass 4: ended ${endedBreaks.length} expired breaks for club ${cid}`,
               endedBreaks.map((b: any) => b.dealer_name).join(", "));
+          }
+        }
+
+        // ── PASS 4b — Refresh dealer pool summary (monitoring) ────────────
+        if (!dryRun) {
+          console.log("[Pass 4b] 🔄 Refreshing dealer pool summary...");
+          const poolStartTime = Date.now();
+          try {
+            const { error: refreshErr } = await admin.rpc("refresh_dealer_pool_summary");
+            if (refreshErr) {
+              console.warn("[Pass 4b] ⚠️ Pool summary refresh failed:", refreshErr.message);
+            } else {
+              console.log(`[Pass 4b] ✅ Pool summary refreshed (${Date.now() - poolStartTime}ms)`);
+            }
+          } catch (err: any) {
+            console.warn("[Pass 4b] ⚠️ Pool summary refresh exception:", err.message);
+          }
+        }
+
+        // ── SHORTAGE ESCALATION ──────────────────────────────────────────
+        if (!dryRun && metrics.total > 0 && metrics.failed === 0) {
+          const noDealerRatio = metrics.no_dealer / metrics.total;
+          if (noDealerRatio > 0.5 && metrics.no_dealer >= 3) {
+            console.warn(
+              `[Shortage] ⚠️ Club ${cid}: no_dealer=${metrics.no_dealer}/${metrics.total} ` +
+              `(${(noDealerRatio * 100).toFixed(1)}%)`
+            );
+
+            const { data: settingsRow } = await admin
+              .from("club_settings")
+              .select("shortage_auto_close_enabled, shortage_close_threshold, shortage_notify_telegram")
+              .eq("club_id", cid)
+              .maybeSingle();
+
+            const autoCloseEnabled = (settingsRow as any)?.shortage_auto_close_enabled ?? false;
+            const closeThreshold = (settingsRow as any)?.shortage_close_threshold ?? 4;
+            const notifyTelegram = (settingsRow as any)?.shortage_notify_telegram ?? true;
+
+            let closedTables: Array<{ table_id: string; table_name: string }> = [];
+
+            if (autoCloseEnabled && metrics.no_dealer >= closeThreshold) {
+              console.log(`[Shortage] Auto-closing low-priority tables (no_dealer=${metrics.no_dealer} >= threshold=${closeThreshold})...`);
+              try {
+                const { data: closeResult, error: closeErr } = await admin.rpc(
+                  "auto_close_low_priority_tables", { p_club_id: cid }
+                );
+                if (closeErr) {
+                  console.error("[Shortage] ❌ auto_close_low_priority_tables RPC failed:", closeErr);
+                } else if (closeResult && closeResult.length > 0) {
+                  closedTables = closeResult;
+                  console.log(`[Shortage] ✅ Auto-closed ${closedTables.length} tables:`, closedTables.map((t: any) => t.table_name).join(", "));
+                }
+              } catch (err: any) {
+                console.error("[Shortage] ❌ Exception during auto-close:", err.message);
+              }
+            }
+
+            if (notifyTelegram) {
+              const chatId = await getClubTelegramChatId(admin, cid);
+              if (botToken && chatId) {
+                let msg = `🚨 *THIẾU DEALER* — ${metrics.no_dealer}/${metrics.total} bàn không có người thay.\n\n`;
+                if (closedTables.length > 0) {
+                  msg += `🔴 *Đã tự động đóng ${closedTables.length} bàn:*\n` +
+                    closedTables.map((t: any) => `  • ${t.table_name}`).join("\n") + `\n\n`;
+                } else if (autoCloseEnabled && metrics.no_dealer >= closeThreshold) {
+                  msg += `⚠️ Auto-close enabled nhưng không có bàn low-priority.\n\n`;
+                } else if (autoCloseEnabled) {
+                  msg += `⏳ Auto-close enabled nhưng chưa đạt threshold (${metrics.no_dealer}/${closeThreshold}).\n\n`;
+                }
+                msg += `💡 *Khuyến nghị:*\n  • Check-in thêm dealers\n  • Hoặc đóng bàn thủ công\n\n🔄 Cron sẽ thử lại ở lần chạy tiếp theo.`;
+                await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
+              }
+            }
           }
         }
 

@@ -20,7 +20,7 @@ export interface TableCardSwingConfig {
   crit_at_minutes: number;
 }
 
-export type NextDealerSource = "pre_assigned" | "predicted";
+export type NextDealerSource = "confirmed" | "predicted";
 
 export interface TableCardNextDealer extends TableCardDealer {
   source: NextDealerSource;

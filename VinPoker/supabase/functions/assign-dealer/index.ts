@@ -60,7 +60,18 @@ Deno.serve(async (req) => {
       .eq("id", table_id)
       .maybeSingle();
     if (te || !table) return json({ error: "Table not found" }, 404);
-    if (table.status !== "active") return json({ error: "Table is not active" }, 400);
+
+    // Block assignment if table already has an active dealer (unless force or suggestions-only)
+    const { data: activeAssignment } = await admin
+      .from("dealer_assignments")
+      .select("id, status")
+      .eq("table_id", table_id)
+      .in("status", ["assigned", "on_break"])
+      .is("released_at", null)
+      .maybeSingle();
+    if (activeAssignment && !force_dealer_id && !return_suggestions_only) {
+      return json({ error: "Table already has an active dealer", assignment_id: activeAssignment.id }, 409);
+    }
 
     const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });
     if (!isControl) return json({ error: "Forbidden — not a dealer controller" }, 403);
@@ -117,6 +128,41 @@ Deno.serve(async (req) => {
           error: "DEALER_BUSY: Dealer này vừa được phân công bởi người dùng khác. Vui lòng thử lại.",
           dealer_id: force_dealer_id,
         }, 409);
+      }
+
+      // Release any existing active assignment for this table first
+      // (e.g. an OT dealer stuck by the previous broken perform_swing).
+      const { data: oldAssignment } = await admin
+        .from("dealer_assignments")
+        .select("id, attendance_id, status")
+        .eq("table_id", table_id)
+        .in("status", ["assigned", "on_break"])
+        .is("released_at", null)
+        .maybeSingle();
+
+      if (oldAssignment) {
+        console.log(`[assign-dealer] Releasing old assignment ${oldAssignment.id} for table ${table_id}`);
+        const { error: releaseErr } = await admin
+          .from("dealer_assignments")
+          .update({
+            status: "completed",
+            released_at: new Date().toISOString(),
+          })
+          .eq("id", oldAssignment.id);
+        if (releaseErr) {
+          console.error(`[assign-dealer] Failed to release old assignment: ${releaseErr.message}`);
+        } else {
+          // Set old dealer back to available via state machine RPC
+          // (creates proper audit trail, handles all valid states)
+          const { data: transResult } = await admin.rpc("transition_dealer_state", {
+            p_attendance_id: oldAssignment.attendance_id,
+            p_new_state: "available",
+            p_reason: "force_reassignment_release_old_dealer",
+          });
+          if (!transResult?.ok) {
+            console.error(`[assign-dealer] Failed to release old dealer state: ${transResult?.error ?? "unknown"}`);
+          }
+        }
       }
 
       const swingDueAt = new Date(Date.now() + swingDuration * 60 * 1000).toISOString();

@@ -174,8 +174,7 @@ function useRealtimeQuery<T>(
 }
 
 export function useCheckedInDealers(clubIds: string[]) {
-  const today = new Date().toISOString().split("T")[0];
-  return useRealtimeQuery<DealerAttendance>({
+  const result = useRealtimeQuery<DealerAttendance>({
     queryFn: async () =>
       supabase
         .from("dealer_attendance")
@@ -186,12 +185,27 @@ export function useCheckedInDealers(clubIds: string[]) {
            dealers!inner(full_name, telegram_username, tier, club_id)`
         )
         .eq("status", "checked_in")
-        .gte("shift_date", today)
         .in("dealers.club_id", clubIds)
         .order("check_in_time", { ascending: true }),
     realtimeTables: ["dealer_attendance"],
     clubIds,
   });
+
+  // Deduplicate by dealer_id — re-check-in creates duplicate checked_in records
+  // (INSERT new record, shift_date differs from original), causing inflated counts.
+  // Keep only the latest record per dealer (most recent check_in_time wins).
+  const deduped = useMemo(() => {
+    const map = new Map<string, DealerAttendance>();
+    for (const d of result.data) {
+      const existing = map.get(d.dealer_id);
+      if (!existing || d.check_in_time! > existing.check_in_time!) {
+        map.set(d.dealer_id, d);
+      }
+    }
+    return Array.from(map.values());
+  }, [result.data]);
+
+  return { ...result, data: deduped };
 }
 
 /** Fetch today's checked-out dealers so they appear in a "Đã check-out" panel for quick re-check-in.
@@ -295,7 +309,6 @@ export function useActiveTables(clubIds: string[]) {
         .from("game_tables")
         .select("*")
         .in("club_id", clubIds)
-        .eq("status", "active")
         .order("table_name"),
     realtimeTables: ["game_tables"],
     clubIds,
@@ -655,26 +668,50 @@ export function useNextDealerPredictions(clubIds: string[]) {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
+    if (clubIds.length === 0) { setData({}); setLoading(false); return; }
     const cid = clubIds[0];
-    if (!cid) { setData({}); return; }
     setLoading(true);
     const { data: rows, error } = await supabase
-      .rpc("predict_next_dealers", { p_club_id: cid });
+      .rpc("get_table_assignments_with_next", { p_club_id: cid });
     if (error) {
-      console.error("[useNextDealerPredictions] error:", error);
+      console.error("[useNextDealerPredictions] RPC error:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       setData(null);
     } else {
-      const arr = (rows as NextDealerPrediction[]) ?? [];
+      const arr = (rows as any[]) ?? [];
       const map: Record<string, NextDealerPrediction> = {};
-      for (const r of arr) map[r.tableId] = r;
+      for (const r of arr) {
+        map[r.table_id] = {
+          tableId: r.table_id,
+          tableName: r.table_name,
+          currentDealerName: r.current_dealer,
+          currentState: null,
+          workedMinutes: 0,
+          swingDueAt: null,
+          minutesUntilSwing: r.minutes_until_swing,
+          nextDealerName: r.next_dealer,
+          nextDealerId: null,
+          confidence: r.next_dealer ? "confirmed" : "predicted",
+        };
+      }
       setData(map);
     }
     setLoading(false);
   }, [clubIds.join(",")]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
+  }, [load]);
 
-  return { data, loading, refetch: load };
+  const refetch = useCallback(() => { load(); }, [load]);
+
+  return { data, loading, refetch };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

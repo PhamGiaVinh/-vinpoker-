@@ -52,7 +52,7 @@ export function TableCard({ data, onAssign, onSwing, className }: TableCardProps
   const isHighTable = tableType === "high";
 
   const nextDealerVisible =
-    (data.next_dealer?.source === "pre_assigned") ||
+    (data.next_dealer?.source === "confirmed") ||
     (data.next_dealer?.source === "predicted" && timer.remainingSec <= 300);
 
   const otGlow = isOtMode ? "ring-1 ring-red-500/20" : "";
@@ -162,12 +162,12 @@ export function TableCard({ data, onAssign, onSwing, className }: TableCardProps
           <div className="flex items-center gap-2 mb-2">
             <div className={[
               "w-1.5 h-1.5 rounded-full",
-              data.next_dealer.source === "pre_assigned" ? "bg-emerald-500/70" : "bg-amber-500/50",
+              data.next_dealer.source === "confirmed" ? "bg-emerald-500/70" : "bg-amber-500/50",
             ].join(" ")} />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
               Tiếp theo
             </span>
-            {data.next_dealer.source === "pre_assigned" && (
+            {data.next_dealer.source === "confirmed" && (
               <span className="text-[9px] text-emerald-500/70 ml-auto">✓ Xác nhận</span>
             )}
           </div>
@@ -175,11 +175,11 @@ export function TableCard({ data, onAssign, onSwing, className }: TableCardProps
             dealer={data.next_dealer}
             variant="secondary"
             badge={
-              data.next_dealer.source === "pre_assigned"
+              data.next_dealer.source === "confirmed"
                 ? { label: "Sẵn sàng", color: "green" }
                 : { label: "Dự kiến", color: "yellow" }
             }
-            accentColor={data.next_dealer.source === "pre_assigned" ? "#10b981" : "#f59e0b"}
+            accentColor={data.next_dealer.source === "confirmed" ? "#10b981" : "#f59e0b"}
           />
         </div>
       ) : (

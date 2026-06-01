@@ -63,16 +63,16 @@ async function processOneCheckout(
       .maybeSingle();
     preAssignedTableName = tableInfo?.table_name ?? null;
 
-    // Cleanup dealer_attendance
+    await admin.rpc("transition_dealer_state", {
+      p_attendance_id: attendanceId,
+      p_new_state: "available",
+      p_reason: "checkout_release_pre_assign",
+    });
+
     await admin
       .from("dealer_attendance")
-      .update({
-        current_state: "available",
-        pre_assigned_table_id: null,
-        pre_assigned_at: null,
-      })
-      .eq("id", attendanceId)
-      .eq("current_state", "pre_assigned");
+      .update({ pre_assigned_table_id: null, pre_assigned_at: null })
+      .eq("id", attendanceId);
 
     // Cleanup dealer_assignments
     await admin
@@ -127,14 +127,23 @@ async function processOneCheckout(
     totalHours = Math.round(workedMinutes / 6) / 10;
   }
 
-  // 3. Check-out chính (atomic: status + current_state cùng 1 UPDATE)
+  // 3. State transition via RPC (validated + audited)
+  const { data: txResult } = await admin.rpc("transition_dealer_state", {
+    p_attendance_id: attendanceId,
+    p_new_state: "checked_out",
+    p_reason: "dealer_checkout",
+  });
+  if (txResult?.ok === false) {
+    return { attendance_id: attendanceId, success: false, error: `State transition failed: ${txResult.error}` };
+  }
+
+  // 4. Update non-state fields (checkout time, status, OT, cleanup)
   const nowISO = new Date().toISOString();
   const { error: checkoutErr } = await admin
     .from("dealer_attendance")
     .update({
       status: "checked_out",
       check_out_time: nowISO,
-      current_state: "checked_out",
       pre_assigned_table_id: null,
       pre_assigned_at: null,
       overtime_minutes: overtimeMinutes,
@@ -142,7 +151,7 @@ async function processOneCheckout(
       total_worked_minutes_today: workedMinutes,
     })
     .eq("id", attendanceId)
-    .eq("status", "checked_in");   // ← GUARD: chống double-checkout
+    .eq("status", "checked_in");   // anti-double-checkout guard
 
   const fmtTime = (d: Date) =>
     d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });

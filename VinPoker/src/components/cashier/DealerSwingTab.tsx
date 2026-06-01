@@ -32,7 +32,6 @@ import {
 import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
 import { useActiveTournaments } from "@/hooks/useTournaments";
 import type { TournamentWithTables } from "@/types/tournament";
-import { NextDealerPreview } from "./NextDealerPreview";
 import AttentionQueue from "./command-center/AttentionQueue";
 import OperationsCard from "./command-center/OperationsCard";
 import SystemHealthCard from "./command-center/SystemHealthCard";
@@ -99,14 +98,19 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const timelineByTableId = useMemo(() => {
     const map: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }> = {};
     for (const a of assignments ?? []) {
+      const minutesLeft = (a as any).minutesLeft ?? 0;
+      // Use configured warn_at_minutes instead of hardcoded 5
+      const tableType = (a as any).game_tables?.table_type;
+      const warnAt = swingConfigs?.find((c) => c.table_type === tableType)?.warn_at_minutes ?? 5;
+      const showNextDealerSoon = minutesLeft <= warnAt;
       map[a.table_id] = {
-        minutesLeft: (a as any).minutesLeft ?? 0,
-        showNextDealerSoon: (a as any).showNextDealerSoon ?? false,
+        minutesLeft,
+        showNextDealerSoon,
         isOverdue: (a as any).isOverdue ?? false,
       };
     }
     return map;
-  }, [assignments]);
+  }, [assignments, swingConfigs]);
   const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
   const breakPolicies = useBreakPolicies(filteredClubIds);
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
@@ -363,10 +367,18 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       });
       if (error) {
         let detail = error.message;
+        let status: number | undefined;
         if (error instanceof FunctionsHttpError) {
           const body = await error.context.json().catch(() => null);
+          status = error.context.status;
           detail = body?.error ?? body?.message ?? detail;
-          console.error("[confirmAssign] edge function returned:", { status: error.context.status, body });
+          console.error("[confirmAssign] edge function returned:", { status, body });
+        }
+        // 409 = table already has an active dealer (cron may have auto-assigned)
+        if (status === 409) {
+          toast.info("Bàn đã có dealer — tự động cập nhật...");
+          refetchAssignments();
+          return;
         }
         toast.error(`Lỗi gán: ${detail}`);
         return;
@@ -1998,9 +2010,12 @@ function RosterPanel({
         map[d.id] = { status: "Đang nghỉ", tableName: undefined, checkInTime, timerStart: a.released_at ?? checkInTime };
       } else if (d.current_state === "pre_assigned") {
         map[d.id] = { status: "Đang chờ", tableName: undefined, checkInTime, timerStart: checkInTime };
-      } else if (d.current_state === "assigned") {
-        map[d.id] = { status: "Đang bàn", tableName: undefined, checkInTime, timerStart: checkInTime };
       } else {
+        // available, or orphaned assigned with no active assignment → treat as available
+        // Pass 0c will fix the DB, but UI must handle it gracefully
+        if (d.current_state === "assigned") {
+          console.warn(`[DealerSwingTab] Orphaned assigned state: dealer ${d.id} has no active assignment`);
+        }
         map[d.id] = { status: "Sẵn sàng", tableName: undefined, checkInTime, timerStart: checkInTime };
       }
     }
@@ -2178,11 +2193,13 @@ function RosterPanel({
                           </span>
                         )}
 
-                        {/* Priority break indicator */}
-                        <PriorityBreakIndicator
-                          priorityBreakFlag={d.priority_break_flag}
-                          workedMinutesSinceLastBreak={d.worked_minutes_since_last_break}
-                        />
+                        {/* Priority break indicator — chỉ hiển thị cho dealer đang làm việc, không hiển thị khi đã nghỉ */}
+                        {sec.key !== "Đang nghỉ" && (
+                          <PriorityBreakIndicator
+                            priorityBreakFlag={d.priority_break_flag}
+                            workedMinutesSinceLastBreak={d.worked_minutes_since_last_break}
+                          />
+                        )}
 
                         {/* Action: break / end break */}
                         <div className="flex-shrink-0">
@@ -2303,11 +2320,10 @@ function TableGrid({
 }) {
   const nowMs = useLiveClock();
 
-  // Filter tables based on selected tour using shift_id column
   const filteredTables = useMemo(() => {
-    if (!selectedTour) return tables;
+    if (!selectedTour) return tables.filter((t) => tableAssignmentMap[t.id] != null);
     return tables.filter((t) => t.shift_id === selectedTour);
-  }, [tables, selectedTour]);
+  }, [tables, selectedTour, tableAssignmentMap]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
   // and re-checks swing_processed_at before calling sendToBreak
@@ -2471,8 +2487,8 @@ function TableGrid({
                     </div>
                   </div>
 
-                  {/* ── Timer ── */}
-                  {a && a.assigned_at && (
+                  {/* ── Timer (only when dealer present — no timer for empty tables) ── */}
+                  {dealer && a && a.assigned_at && (
                     <div className="flex items-baseline gap-1.5">
                       <span className={[
                         "text-[22px] font-mono font-bold tracking-tight tabular-nums leading-none",
@@ -2486,8 +2502,8 @@ function TableGrid({
                     </div>
                   )}
 
-                  {/* ── Swing time tooltip ── */}
-                  {a && a.swing_due_at && (
+                  {/* ── Swing time tooltip (same guard) ── */}
+                  {dealer && a && a.swing_due_at && (
                     <div className="text-[9px] text-zinc-600 font-mono">
                       Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                     </div>

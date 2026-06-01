@@ -161,14 +161,16 @@ async function buildDealerCandidates(
     }
   }
 
-  // Step 5: Exclude dealers with active assignment on ANY attendance record
-  const candidateDealerIds = (rows ?? []).map((r: { dealer_id: string }) => r.dealer_id);
+  // Step 5: Exclude dealers whose specific available attendance record changed
+  // to assigned/pre_assigned. Query by attendance_id (already computed in Step 3)
+  // instead of dealer_id to avoid false positives from stale duplicate records
+  // with orphaned 'assigned'/'pre_assigned' state from prior shifts.
   const busyDealerIds = new Set<string>();
-  if (candidateDealerIds.length > 0) {
+  if (attendanceIds.length > 0) {
     const { data: busyDealers } = await admin
       .from("dealer_attendance")
       .select("dealer_id")
-      .in("dealer_id", candidateDealerIds)
+      .in("id", attendanceIds)
       .in("current_state", ["assigned", "pre_assigned"]);
     for (const bd of busyDealers ?? []) {
       busyDealerIds.add(bd.dealer_id);

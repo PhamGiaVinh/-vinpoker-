@@ -251,11 +251,21 @@ Deno.serve(async (req: Request) => {
               continue;
             }
 
-            // Update dealer state (current_state, priority_break_flag đã có sẵn từ code cũ)
-            await admin.from("dealer_attendance").update({
-              current_state: "on_break",
-              priority_break_flag: false,
-            }).eq("id", dealer.id);
+            const { data: stateResult } = await admin.rpc("transition_dealer_state", {
+              p_attendance_id: dealer.id,
+              p_new_state: "on_break",
+              p_reason: "break_balance_enforced",
+            });
+            if (stateResult?.ok === false) {
+              console.error(`[enforceBreak] State transition failed for ${dealer.id}: ${stateResult.error}`);
+              summary[cid].errors++;
+              continue;
+            }
+
+            await admin
+              .from("dealer_attendance")
+              .update({ priority_break_flag: false })
+              .eq("id", dealer.id);
           }
 
           summary[cid].forced++;

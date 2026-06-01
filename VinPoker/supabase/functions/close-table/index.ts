@@ -51,11 +51,24 @@ Deno.serve(async (req) => {
     if (!isControl) return json({ error: "Forbidden — not a dealer controller" }, 403);
 
     // Release any pre_assigned dealer for this table (before closing)
-    await admin
+    const { data: preAssigned } = await admin
       .from("dealer_attendance")
-      .update({ current_state: "available", pre_assigned_table_id: null, pre_assigned_at: null })
+      .select("id")
       .eq("pre_assigned_table_id", table_id)
       .eq("current_state", "pre_assigned");
+
+    for (const pa of preAssigned ?? []) {
+      await admin.rpc("transition_dealer_state", {
+        p_attendance_id: pa.id,
+        p_new_state: "available",
+        p_reason: "table_closed_release_pre_assign",
+      });
+    }
+
+    await admin
+      .from("dealer_attendance")
+      .update({ pre_assigned_table_id: null, pre_assigned_at: null })
+      .eq("pre_assigned_table_id", table_id);
 
     let dealerBreakId: string | null = null;
     let hadDealer = false;
@@ -94,26 +107,31 @@ Deno.serve(async (req) => {
         .eq("id", assignment.id);
       if (relErr) return json({ error: `Failed to release dealer: ${relErr.message}` }, 500);
 
-      if (assignment.status === "assigned") {
-        const { data: breakRec, error: brErr } = await admin
-          .from("dealer_breaks")
-          .insert({
-            assignment_id: assignment.id,
-            break_start: new Date().toISOString(),
-            expected_duration_minutes: 20,
-            reason: "table_closed",
-          })
-          .select("id")
-          .single();
-        if (brErr) return json({ error: `Failed to create break: ${brErr.message}` }, 500);
-        dealerBreakId = breakRec.id;
+      const { data: activeBreak } = await admin
+        .from("dealer_breaks")
+        .select("id")
+        .eq("assignment_id", assignment.id)
+        .is("break_end", null)
+        .maybeSingle();
+
+      if (activeBreak) {
+        const { error: endBreakErr } = await admin.rpc("end_dealer_break", {
+          p_break_id: activeBreak.id,
+          p_attendance_id: assignment.attendance_id,
+        });
+        if (endBreakErr) {
+          console.error(`[close-table] Failed to end active break ${activeBreak.id}: ${endBreakErr.message}`);
+        }
       }
 
-      // Update attendance state back to available
-      await admin
-        .from("dealer_attendance")
-        .update({ current_state: "available" })
-        .eq("id", assignment.attendance_id);
+      const { data: releaseResult } = await admin.rpc("transition_dealer_state", {
+        p_attendance_id: assignment.attendance_id,
+        p_new_state: "available",
+        p_reason: `close_table_${tableId}`,
+      });
+      if (releaseResult?.ok === false) {
+        console.error(`[close-table] Failed to release dealer state: ${releaseResult.error}`);
+      }
     }
 
     // Before deactivating, remove any conflicting row with same name + shift_id IS NULL

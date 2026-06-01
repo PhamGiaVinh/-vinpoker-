@@ -78,23 +78,7 @@ export function useAttentionQueue({
       });
     }
 
-    // ── 2. Empty tables ──
-    for (const t of tables ?? []) {
-      if (tableAssignmentMap[t.id]) continue;
-      const tableName = t.table_name ?? "??";
-      items.push({
-        id: `empty-${t.id}`,
-        type: "empty_table",
-        severity: BASE_SCORE.empty_table >= 80 ? "critical" : "warning",
-        score: BASE_SCORE.empty_table,
-        title: `${tableName} • Bàn trống`,
-        subtitle: "Chưa có dealer",
-        tableId: t.id,
-        tableName,
-      });
-    }
-
-    // ── 3. Break due ──
+    // ── 2. Break due ──
     for (const d of dealers ?? []) {
       const w = d.worked_minutes_since_last_break ?? 0;
       if (w < 90 && !d.priority_break_flag) continue;

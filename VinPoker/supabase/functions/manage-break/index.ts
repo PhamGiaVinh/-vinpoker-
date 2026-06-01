@@ -86,10 +86,15 @@ Deno.serve(async (req: Request) => {
         reason: "manual",
       });
 
-      await admin
-        .from("dealer_attendance")
-        .update({ current_state: "on_break" })
-        .eq("id", attendance_id);
+      const { data: stateResult } = await admin.rpc("transition_dealer_state", {
+        p_attendance_id: attendance_id,
+        p_new_state: "on_break",
+        p_reason: "manage_break_start",
+      });
+      if (stateResult?.ok === false) {
+        console.error(`[manage-break] State transition failed: ${stateResult.error}`);
+        return json({ error: `State transition failed: ${stateResult.error}` }, 500);
+      }
 
       // === CRITICAL PATH DONE — return immediately ===
       const response = json({ ok: true, action: "started" });
