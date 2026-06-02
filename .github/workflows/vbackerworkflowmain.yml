@@ -73,10 +73,9 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
 
       - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCELTOKEN }}
-          vercel-org-id: ${{ secrets.USERIDVERRCEL }}
-          vercel-project-id: ${{ secrets.VERCELPROJECTID }}
-          vercel-args: "--prod"
-          working-directory: ./VinPoker
+        run: |
+          npm install -g vercel@latest
+          vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
+          vercel build --prod --token ${{ secrets.VERCELTOKEN }}
+          vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
+        working-directory: ./VinPoker
