@@ -267,7 +267,8 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
         )
         .in("status", ["assigned"])
         .in("game_tables.club_id", clubIds)
-        .neq("dealer_attendance.current_state", "on_break");
+        .neq("dealer_attendance.current_state", "on_break")
+        .neq("dealer_attendance.current_state", "checked_out");
 
       if (shiftId) {
         q = q.eq("game_tables.shift_id", shiftId);
@@ -294,7 +295,10 @@ export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
       const diffMs = due - now;
       const minutesLeft = Math.max(0, diffMs / 60000);
       const showNextDealerSoon = minutesLeft <= 5;
-      const isOverdue = diffMs < 0;
+      // BUG 2 FIX: If a pre-assigned replacement is coming, the dealer is NOT overdue
+      // for swing. The OT is informational only — system has already handled it.
+      const hasReplacementComing = !!a.pre_assigned_attendance_id;
+      const isOverdue = !hasReplacementComing && diffMs < 0;
       return { ...a, minutesLeft, secondsLeft: Math.max(0, Math.floor(diffMs / 1000)), showNextDealerSoon, isOverdue };
     });
   }, [result.data, now]);

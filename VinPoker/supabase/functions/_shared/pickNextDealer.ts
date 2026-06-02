@@ -161,20 +161,21 @@ async function buildDealerCandidates(
     }
   }
 
-  // Step 5: Exclude dealers whose specific available attendance record changed
-  // to assigned/pre_assigned. Query by attendance_id (already computed in Step 3)
-  // instead of dealer_id to avoid false positives from stale duplicate records
-  // with orphaned 'assigned'/'pre_assigned' state from prior shifts.
+  // Step 5: Exclude dealers who are ALREADY BUSY at any table.
+  // BUG FIX: Query by dealer_id across ALL attendance records (not just the
+  // available list) to catch dealers with duplicate attendance records or
+  // orphaned 'assigned'/'pre_assigned'/'in_transition' state from prior shifts.
+  // Also excludes dealers who haven't checked out yet regardless of which
+  // attendance record shows them busy.
   const busyDealerIds = new Set<string>();
-  if (attendanceIds.length > 0) {
-    const { data: busyDealers } = await admin
-      .from("dealer_attendance")
-      .select("dealer_id")
-      .in("id", attendanceIds)
-      .in("current_state", ["assigned", "pre_assigned"]);
-    for (const bd of busyDealers ?? []) {
-      busyDealerIds.add(bd.dealer_id);
-    }
+  const { data: busyDealers } = await admin
+    .from("dealer_attendance")
+    .select("dealer_id")
+    .eq("club_id", clubId)
+    .in("current_state", ["assigned", "pre_assigned", "in_transition"])
+    .is("check_out_time", null);
+  for (const bd of busyDealers ?? []) {
+    busyDealerIds.add(bd.dealer_id);
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring

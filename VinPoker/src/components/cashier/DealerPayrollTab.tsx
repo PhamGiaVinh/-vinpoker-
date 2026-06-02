@@ -22,10 +22,11 @@ import { exportToExcel, type ExcelColumn } from "@/lib/exportExcel";
 import {
   useDealerPayroll, type DealerPayrollRow,
   savePayroll, addPayrollAdjustment, loadPayrollAdjustments, getSavedPayroll, deletePayrollAdjustment,
+  submitPayroll, approvePayroll, lockPayroll,
   type PayrollAdjustmentRow, type SavedPayrollRecord,
 } from "@/hooks/useDealerPayroll";
 import {
-  Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2,
+  Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2, Moon,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
@@ -100,6 +101,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   // ── Saved payroll state ──────────────────────────────────────────────────
   const [savedPeriodId, setSavedPeriodId] = useState<string | null>(null);
+  const [payrollStatus, setPayrollStatus] = useState<string | null>(null);
   const [savedRecords, setSavedRecords] = useState<Record<string, SavedPayrollRecord>>({});
   const [adjustments, setAdjustments] = useState<Record<string, PayrollAdjustmentRow[]>>({});
   const [saving, setSaving] = useState(false);
@@ -117,8 +119,9 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const refreshAll = useCallback(async () => {
     if (!activeClubId || !currentRange) return;
     await fetchPayroll(activeClubId, currentRange.start, currentRange.end);
-    const { periodId, records } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
+    const { periodId, status, records } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
     setSavedPeriodId(periodId);
+    setPayrollStatus(status);
     const recordMap: Record<string, SavedPayrollRecord> = {};
     for (const r of records) { recordMap[r.dealer_id] = r; }
     setSavedRecords(recordMap);
@@ -132,21 +135,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   useEffect(() => {
     if (!activeClubId || !currentRange) return;
-    fetchPayroll(activeClubId, currentRange.start, currentRange.end);
-    (async () => {
-      const { periodId, records } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
-      setSavedPeriodId(periodId);
-      const recordMap: Record<string, SavedPayrollRecord> = {};
-      for (const r of records) { recordMap[r.dealer_id] = r; }
-      setSavedRecords(recordMap);
-      if (periodId) {
-        const adjMap = await loadPayrollAdjustments(periodId);
-        setAdjustments(adjMap);
-      } else {
-        setAdjustments({});
-      }
-    })();
-  }, [activeClubId, currentRange, fetchPayroll]);
+    refreshAll();
+  }, [activeClubId, currentRange, refreshAll]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -154,14 +144,22 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const ptDealers = useMemo(() => payrollRows.filter((d) => d.employment_type === "part_time"), [payrollRows]);
 
   const totals = useMemo(() => {
-    const totalGross = payrollRows.reduce((s, d) => s + d.gross_pay_vnd, 0);
-    const totalBase = payrollRows.reduce((s, d) => s + d.base_salary_vnd, 0);
-    const totalOt = payrollRows.reduce((s, d) => s + d.ot_pay_vnd, 0);
-    const totalNet = payrollRows.reduce((s, d) => s + d.net_pay_vnd, 0);
-    const totalAdjust = payrollRows.reduce((s, d) => s + d.total_adjustments_vnd, 0);
-    const totalHours = payrollRows.reduce((s, d) => s + d.total_hours, 0);
-    const totalShifts = payrollRows.reduce((s, d) => s + d.total_shifts, 0);
-    return { totalGross, totalBase, totalOt, totalNet, totalAdjust, totalHours, totalShifts };
+    const sum = (key: keyof DealerPayrollRow) => payrollRows.reduce((s, d) => s + (d[key] as number), 0);
+    return {
+      totalGross: sum("gross_pay_vnd"),
+      totalBase: sum("base_salary_vnd"),
+      totalOt: sum("ot_pay_vnd"),
+      totalNet: sum("net_pay_vnd"),
+      totalAdjust: sum("total_adjustments_vnd"),
+      totalHours: sum("total_hours"),
+      totalShifts: sum("total_shifts"),
+      totalTips: sum("tips_amount_vnd"),
+      totalBhxh: sum("bhxh_deduction_vnd"),
+      totalBhyt: sum("bhyt_deduction_vnd"),
+      totalBhtn: sum("bhtn_deduction_vnd"),
+      totalPit: sum("pit_deduction_vnd"),
+      totalNetAfterTax: sum("net_pay_after_tax_vnd"),
+    };
   }, [payrollRows]);
 
   // ── Save payroll ──────────────────────────────────────────────────────────
@@ -172,6 +170,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     try {
       const result = await savePayroll(activeClubId, currentRange.year, currentRange.month, payrollRows, user.id);
       setSavedPeriodId(result.periodId);
+      setPayrollStatus("draft");
       toast.success(`Đã lưu bảng lương — ${result.savedCount} dealer`);
       await refreshAll();
     } catch (e: any) {
@@ -180,6 +179,48 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       setSaving(false);
     }
   }, [user, activeClubId, currentRange, payrollRows, refreshAll]);
+
+  // ── Status helpers ──────────────────────────────────────────────────────────
+
+  const isLocked = payrollStatus === "locked";
+  const isDraft = payrollStatus === "draft" || payrollStatus === null;
+  const isSubmitted = payrollStatus === "submitted";
+  const isApproved = payrollStatus === "approved";
+
+  // ── Submit / Approve / Lock ─────────────────────────────────────────────
+
+  const handleSubmit = useCallback(async () => {
+    if (!user || !savedPeriodId) return;
+    try {
+      await submitPayroll(savedPeriodId, user.id);
+      setPayrollStatus("submitted");
+      toast.success("Đã gửi duyệt");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi gửi duyệt");
+    }
+  }, [user, savedPeriodId]);
+
+  const handleApprove = useCallback(async () => {
+    if (!user || !savedPeriodId) return;
+    try {
+      await approvePayroll(savedPeriodId, user.id);
+      setPayrollStatus("approved");
+      toast.success("Đã phê duyệt");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi phê duyệt");
+    }
+  }, [user, savedPeriodId]);
+
+  const handleLock = useCallback(async () => {
+    if (!user || !savedPeriodId) return;
+    try {
+      await lockPayroll(savedPeriodId, user.id);
+      setPayrollStatus("locked");
+      toast.success("Đã khoá sổ");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi khoá sổ");
+    }
+  }, [user, savedPeriodId]);
 
   // ── Add adjustment ────────────────────────────────────────────────────────
 
@@ -247,6 +288,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       { header: "Lương thường (VND)", get: (r) => r.regular_pay_vnd },
       { header: "Lương OT (VND)", get: (r) => r.ot_pay_vnd },
       { header: "Tổng gộp (VND)", get: (r) => r.gross_pay_vnd },
+      { header: "Tips (VND)", get: (r) => r.tips_amount_vnd },
+      { header: "BHXH (VND)", get: (r) => r.bhxh_deduction_vnd },
+      { header: "BHYT (VND)", get: (r) => r.bhyt_deduction_vnd },
+      { header: "BHTN (VND)", get: (r) => r.bhtn_deduction_vnd },
+      { header: "PIT (VND)", get: (r) => r.pit_deduction_vnd },
+      { header: "Sau thuế (VND)", get: (r) => r.net_pay_after_tax_vnd },
       { header: "Điều chỉnh (VND)", get: (r) => r.total_adjustments_vnd },
       { header: "Thực lãnh (VND)", get: (r) => r.net_pay_vnd },
     ];
@@ -256,18 +303,18 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
-  const isSaved = !!savedPeriodId;
-
   const renderRow = (r: DealerPayrollRow) => {
     const adjList = adjustments[r.dealer_id] ?? [];
     const savedRecord = savedRecords[r.dealer_id];
+    const hasOvernightShift = r.shifts.some((s) => s.is_overnight);
+    const isFullTime = r.employment_type === "full_time";
 
     return (
       <TableRow key={r.dealer_id} className="hover:bg-zinc-800/50">
         <TableCell className="font-medium text-white text-sm">
           <div className="flex items-center gap-1">
             {r.full_name}
-            {isSaved && savedRecord && (
+            {!isLocked && savedRecord && (
               <button
                 className="text-[10px] text-zinc-400 hover:text-emerald-400 ml-1"
                 onClick={() => openAdjustDialog(r.dealer_id)}
@@ -288,13 +335,15 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     {(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER" ? "+" : "-")}{Number(a.amount_vnd).toLocaleString("vi-VN")}
                   </span>
                   <span className="text-zinc-500">{a.reason}</span>
-                  <button
-                    className="text-zinc-600 hover:text-red-400 ml-0.5"
-                    onClick={() => handleDeleteAdjustment(a.id)}
-                    title="Xóa"
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
+                  {!isLocked && (
+                    <button
+                      className="text-zinc-600 hover:text-red-400 ml-0.5"
+                      onClick={() => handleDeleteAdjustment(a.id)}
+                      title="Xóa"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -304,22 +353,29 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           <Badge
             variant="outline"
             className={`text-[10px] ${
-              r.employment_type === "full_time"
+              isFullTime
                 ? "border-emerald-500 text-emerald-400"
                 : "border-amber-500 text-amber-400"
             }`}
           >
-            {r.employment_type === "full_time" ? "FT" : "PT"}
+            {isFullTime ? "FT" : "PT"}
           </Badge>
         </TableCell>
-        <TableCell className="text-center text-zinc-300 text-xs">{r.total_shifts || "—"}</TableCell>
+        <TableCell className="text-center text-zinc-300 text-xs">
+          <div className="flex items-center justify-center gap-1">
+            {r.total_shifts || "—"}
+            {hasOvernightShift && (
+              <Moon className="w-3 h-3 text-indigo-400" title="Có ca qua đêm" />
+            )}
+          </div>
+        </TableCell>
         <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.total_hours)}</TableCell>
         <TableCell className="text-right font-mono text-xs text-zinc-300">{formatHours(r.regular_hours)}</TableCell>
         <TableCell className={`text-right font-mono text-xs ${r.ot_hours > 0 ? "text-red-400 font-semibold" : "text-zinc-500"}`}>
           {r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}
         </TableCell>
         <TableCell className="text-right font-mono text-xs text-zinc-300">
-          {r.employment_type === "full_time"
+          {isFullTime
             ? r.monthly_salary_vnd ? formatVNDShort(r.monthly_salary_vnd) : "—"
             : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"
           }
@@ -329,10 +385,25 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           {r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}
         </TableCell>
         <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(r.gross_pay_vnd)}</TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-500">
+          {r.tips_amount_vnd > 0 ? formatVND(r.tips_amount_vnd) : "—"}
+        </TableCell>
+        <TableCell className={`text-right font-mono text-xs ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>
+          {isFullTime && r.bhxh_deduction_vnd > 0 ? formatVND(r.bhxh_deduction_vnd) : "—"}
+        </TableCell>
+        <TableCell className={`text-right font-mono text-xs ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>
+          {isFullTime && r.bhyt_deduction_vnd > 0 ? formatVND(r.bhyt_deduction_vnd) : "—"}
+        </TableCell>
+        <TableCell className={`text-right font-mono text-xs ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>
+          {isFullTime && r.bhtn_deduction_vnd > 0 ? formatVND(r.bhtn_deduction_vnd) : "—"}
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs text-zinc-500">
+          {r.pit_deduction_vnd > 0 ? formatVND(r.pit_deduction_vnd) : "—"}
+        </TableCell>
+        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(r.net_pay_after_tax_vnd)}</TableCell>
         <TableCell className={`text-right font-mono text-xs ${r.total_adjustments_vnd > 0 ? "text-emerald-400" : r.total_adjustments_vnd < 0 ? "text-red-400" : "text-zinc-500"}`}>
           {r.total_adjustments_vnd !== 0 ? formatVND(r.total_adjustments_vnd) : "—"}
         </TableCell>
-        <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(r.net_pay_vnd)}</TableCell>
       </TableRow>
     );
   };
@@ -385,16 +456,52 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           </Button>
         )}
 
-        {payrollRows.length > 0 && !isSaved && (
+        {/* Status-aware workflow buttons */}
+        {payrollRows.length > 0 && !savedPeriodId && (
           <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
             Lưu bảng lương
           </Button>
         )}
 
-        {isSaved && (
-          <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/30 text-[10px]">
-            Đã lưu ✓
+        {payrollStatus === "draft" && savedPeriodId && (
+          <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+            Lưu lại
+          </Button>
+        )}
+
+        {payrollStatus === "draft" && savedPeriodId && (
+          <Button size="sm" className="h-8 text-xs bg-amber-600 hover:bg-amber-500 text-white" onClick={handleSubmit}>
+            Gửi duyệt
+          </Button>
+        )}
+
+        {payrollStatus === "submitted" && (
+          <>
+            <Badge className="bg-amber-600/20 text-amber-400 border-amber-600/30 text-[10px]">
+              Chờ duyệt
+            </Badge>
+            <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleApprove}>
+              Phê duyệt
+            </Button>
+          </>
+        )}
+
+        {payrollStatus === "approved" && (
+          <>
+            <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/30 text-[10px]">
+              Đã duyệt
+            </Badge>
+            <Button size="sm" className="h-8 text-xs bg-red-600 hover:bg-red-500 text-white" onClick={handleLock}>
+              Khoá sổ
+            </Button>
+          </>
+        )}
+
+        {payrollStatus === "locked" && (
+          <Badge className="bg-zinc-600/20 text-zinc-400 border-zinc-600/30 text-[10px]">
+            Đã khoá sổ
           </Badge>
         )}
 
@@ -455,8 +562,13 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     <TableHead className="text-zinc-400 text-xs text-right">Thường</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">OT pay</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Gộp</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">Tips</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHXH</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHYT</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHTN</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">PIT</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">Sau thuế</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Điều chỉnh</TableHead>
-                    <TableHead className="text-zinc-400 text-xs text-right">Thực lãnh</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -474,8 +586,25 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.ot_pay_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
-                    <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.tips_amount_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.bhxh_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.bhyt_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.bhtn_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.pit_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">
+                      {(() => { const t = ftDealers.reduce((s, d) => s + d.total_adjustments_vnd, 0); return t !== 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -502,8 +631,13 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     <TableHead className="text-zinc-400 text-xs text-right">Thường</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">OT pay</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Gộp</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">Tips</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHXH</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHYT</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">BHTN</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">PIT</TableHead>
+                    <TableHead className="text-zinc-400 text-xs text-right">Sau thuế</TableHead>
                     <TableHead className="text-zinc-400 text-xs text-right">Điều chỉnh</TableHead>
-                    <TableHead className="text-zinc-400 text-xs text-right">Thực lãnh</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -517,8 +651,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatVND(ptDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}</TableCell>
                     <TableCell />
                     <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
-                    <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.net_pay_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">
+                      {(() => { const t = ptDealers.reduce((s, d) => s + d.tips_amount_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                      {(() => { const t = ptDealers.reduce((s, d) => s + d.pit_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold">
+                      {(() => { const t = ptDealers.reduce((s, d) => s + d.total_adjustments_vnd, 0); return t !== 0 ? formatVND(t) : "—"; })()}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -527,7 +672,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
           {/* Grand Total */}
           <div className="mt-2 p-4 rounded-lg bg-zinc-900 border border-emerald-600/30">
-            <div className="grid grid-cols-4 md:grid-cols-7 gap-3 text-center">
+            <div className="grid grid-cols-4 md:grid-cols-10 gap-3 text-center">
               <div>
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Dealer</div>
                 <div className="text-lg font-bold text-white">{payrollRows.length}</div>
@@ -551,6 +696,18 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               <div>
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Gộp</div>
                 <div className="text-base font-semibold text-emerald-400">{formatVND(totals.totalGross)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Tips</div>
+                <div className="text-base font-semibold text-zinc-300">{totals.totalTips > 0 ? formatVND(totals.totalTips) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">BHXH</div>
+                <div className="text-base font-semibold text-zinc-300">{totals.totalBhxh > 0 ? formatVND(totals.totalBhxh) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Sau thuế</div>
+                <div className="text-base font-semibold text-emerald-400">{formatVND(totals.totalNetAfterTax)}</div>
               </div>
               <div>
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Thực lãnh</div>

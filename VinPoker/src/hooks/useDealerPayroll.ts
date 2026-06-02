@@ -20,7 +20,13 @@ export interface DealerPayrollRow {
   ot_pay_vnd: number;
   gross_pay_vnd: number;
   total_adjustments_vnd: number;
+  tips_amount_vnd: number;
+  bhxh_deduction_vnd: number;
+  bhyt_deduction_vnd: number;
+  bhtn_deduction_vnd: number;
+  pit_deduction_vnd: number;
   net_pay_vnd: number;
+  net_pay_after_tax_vnd: number;
   shifts: Array<{
     attendance_id: string;
     check_in_time: string;
@@ -28,6 +34,10 @@ export interface DealerPayrollRow {
     total_worked_minutes: number;
     overtime_minutes: number;
     regular_minutes: number;
+    shift_hours: number;
+    regular_hours: number;
+    ot_hours: number;
+    is_overnight: boolean;
   }>;
 }
 
@@ -67,7 +77,13 @@ export interface SavedPayrollRecord {
   ot_pay_vnd: number | null;
   gross_pay_vnd: number | null;
   total_adjustments_vnd: number | null;
+  tips_amount_vnd: number | null;
+  bhxh_deduction_vnd: number | null;
+  bhyt_deduction_vnd: number | null;
+  bhtn_deduction_vnd: number | null;
+  pit_deduction_vnd: number | null;
   net_pay_vnd: number | null;
+  net_pay_after_tax_vnd: number | null;
   status: string | null;
   calculated_at: string | null;
 }
@@ -123,8 +139,9 @@ export function useDealerPayroll(clubIds: string[]): {
 // ── Save / Approve helpers ────────────────────────────────────────────────────
 
 /**
- * Save payroll to DB: creates/gets payroll_period, then upserts dealer_payroll rows.
- * Returns the period_id.
+ * Save payroll to DB via transaction-safe RPC.
+ * Replaces old 3-call sequence (upsert + delete + insert).
+ * Uses ON CONFLICT (period_id, dealer_id) DO UPDATE so adjustments are preserved.
  */
 export async function savePayroll(
   clubId: string,
@@ -137,53 +154,69 @@ export async function savePayroll(
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
 
-  // 1. Upsert payroll_period
-  const { data: periodData, error: periodError } = await supabase
-    .from("payroll_periods")
-    .upsert(
-      { club_id: clubId, period_year: year, period_month: month, period_start: startDate, period_end: endDate, status: "draft" },
-      { onConflict: "club_id,period_year,period_month" }
-    )
-    .select("id")
-    .single();
-  if (periodError) throw periodError;
-  const periodId = periodData.id;
+  const { data: periodId, error } = await supabase.rpc("save_payroll_period", {
+    p_club_id: clubId,
+    p_year: year,
+    p_month: month,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_payroll_rows: payrollRows,
+    p_user_id: userId,
+  });
 
-  // 2. Upsert dealer_payroll rows
-  const rows = payrollRows.map((r) => ({
-    dealer_id: r.dealer_id,
-    club_id: clubId,
-    period_id: periodId,
-    employment_type: r.employment_type,
-    monthly_salary_vnd: r.monthly_salary_vnd || null,
-    hourly_rate_vnd: r.hourly_rate_vnd || null,
-    ot_multiplier: r.ot_multiplier || null,
-    total_shifts: r.total_shifts,
-    total_hours: r.total_hours,
-    regular_hours: r.regular_hours,
-    ot_hours: r.ot_hours,
-    base_salary_vnd: r.base_salary_vnd,
-    regular_pay_vnd: r.regular_pay_vnd,
-    ot_pay_vnd: r.ot_pay_vnd,
-    gross_pay_vnd: r.gross_pay_vnd,
-    net_pay_vnd: r.net_pay_vnd,
-    status: "draft",
-    calculated_by: userId,
-  }));
+  if (error) throw error;
+  return { periodId, savedCount: payrollRows.length };
+}
 
-  // Delete existing rows for this period first (to handle updates)
-  const { error: delError } = await supabase
-    .from("dealer_payroll")
-    .delete()
-    .eq("period_id", periodId);
-  if (delError) throw delError;
+/**
+ * Submit payroll period for approval (draft → submitted).
+ */
+export async function submitPayroll(
+  periodId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("transition_payroll_status", {
+    p_period_id: periodId,
+    p_expected_status: "draft",
+    p_new_status: "submitted",
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
 
-  const { error: insertError } = await supabase
-    .from("dealer_payroll")
-    .insert(rows);
-  if (insertError) throw insertError;
+/**
+ * Approve payroll period (submitted → approved).
+ */
+export async function approvePayroll(
+  periodId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("transition_payroll_status", {
+    p_period_id: periodId,
+    p_expected_status: "submitted",
+    p_new_status: "approved",
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
 
-  return { periodId, savedCount: rows.length };
+/**
+ * Lock payroll period (approved → locked). No more edits allowed.
+ */
+export async function lockPayroll(
+  periodId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("transition_payroll_status", {
+    p_period_id: periodId,
+    p_expected_status: "approved",
+    p_new_status: "locked",
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data as boolean;
 }
 
 /**
@@ -232,30 +265,101 @@ export async function loadPayrollAdjustments(
 }
 
 /**
- * Get saved payroll records for a period.
+ * Get saved payroll records for a period, including status.
  */
 export async function getSavedPayroll(
   clubId: string,
   year: number,
   month: number
-): Promise<{ periodId: string | null; records: SavedPayrollRecord[] }> {
-  const { data: periods } = await supabase
+): Promise<{
+  periodId: string | null;
+  status: string | null;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
+  records: SavedPayrollRecord[];
+}> {
+  const { data: period } = await supabase
     .from("payroll_periods")
-    .select("id")
+    .select("id, status, submitted_by, submitted_at, approved_by, approved_at, locked_by, locked_at")
     .eq("club_id", clubId)
     .eq("period_year", year)
     .eq("period_month", month)
     .maybeSingle();
 
-  if (!periods) return { periodId: null, records: [] };
+  if (!period) {
+    return {
+      periodId: null,
+      status: null,
+      submittedBy: null,
+      submittedAt: null,
+      approvedBy: null,
+      approvedAt: null,
+      lockedBy: null,
+      lockedAt: null,
+      records: [],
+    };
+  }
 
   const { data: records, error } = await supabase
     .from("dealer_payroll")
     .select("*")
-    .eq("period_id", periods.id);
+    .eq("period_id", period.id);
   if (error) throw error;
 
-  return { periodId: periods.id, records: (records ?? []) as SavedPayrollRecord[] };
+  return {
+    periodId: period.id,
+    status: period.status,
+    submittedBy: period.submitted_by,
+    submittedAt: period.submitted_at,
+    approvedBy: period.approved_by,
+    approvedAt: period.approved_at,
+    lockedBy: period.locked_by,
+    lockedAt: period.locked_at,
+    records: (records ?? []) as SavedPayrollRecord[],
+  };
+}
+
+/**
+ * Get audit log for a period.
+ */
+export async function getPayrollAuditLog(
+  periodId: string,
+  limit: number = 100
+): Promise<any[]> {
+  const { data, error } = await supabase.rpc("get_payroll_audit_log", {
+    p_period_id: periodId,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Get audit log for a payroll period.
+ */
+export async function getAuditLog(
+  periodId: string,
+  limit = 100
+): Promise<Array<{
+  id: string;
+  table_name: string;
+  record_id: string;
+  action: string;
+  old_values: any;
+  new_values: any;
+  changed_by: string | null;
+  changed_at: string;
+}>> {
+  const { data, error } = await supabase.rpc("get_payroll_audit_log", {
+    p_period_id: periodId,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return (data ?? []) as any[];
 }
 
 /**
