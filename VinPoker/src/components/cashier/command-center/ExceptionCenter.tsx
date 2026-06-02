@@ -70,9 +70,12 @@ export default function ExceptionCenter({
       });
     }
 
-    // 3. Break due — dealers who urgently need break
+    // 3. Break due — dealers who urgently need break (live compute from assignment)
     for (const d of dealers) {
-      const w = d.worked_minutes_since_last_break ?? 0;
+      const assignment = assignments.find((a) => a.attendance_id === d.id && a.status === "assigned");
+      const w = assignment?.assigned_at
+        ? Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000))
+        : (d.worked_minutes_since_last_break ?? 0);
       if (w < 90 && !d.priority_break_flag) continue;
       const name = (d as any).dealers?.full_name ?? "??";
       items.push({

@@ -219,13 +219,12 @@ async function buildDealerCandidates(
     if (tourTier === "HIGH" && tier === "C") continue;
 
     // ── Fatigue hard cap ────────────────────────────────────────────────────
-    // Dealer who worked ≥105 min since last break needs mandatory rest.
-    // Excluded UNLESS skipFatigueHardCap is set (Level 3 emergency only).
-    // When skipped, heavy score penalty ensures they're last resort.
-    if (!skipFatigueHardCap && workedMin >= 105) continue;
-    if (skipFatigueHardCap && workedMin >= 105) {
-      if (!breakdown) { /* already handled below */ }
-    }
+    // Dealer who hasn't rested enough after a long session needs mandatory rest.
+    // Uses restMin (computed from timestamps, never stale) instead of the
+    // worked_minutes_since_last_break column. Excluded UNLESS skipFatigueHardCap
+    // is set (Level 3 emergency only). When skipped, heavy score penalty applies.
+    const fatigueHardCap = consecutive >= 4 && restMin < 10;
+    if (!skipFatigueHardCap && fatigueHardCap) continue;
 
     // ── Priority break + rest guard ─────────────────────────────────────────
     // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
@@ -347,9 +346,9 @@ async function buildDealerCandidates(
     }
 
     // ── Fatigue penalty (Level 3 emergency override) ────────────────────────
-    // When skipFatigueHardCap is active, heavily fatigued dealers (≥105min worked)
-    // get a -300 score penalty so they're only picked when NO other dealer exists.
-    if (skipFatigueHardCap && workedMin >= 105) {
+    // When skipFatigueHardCap is active, dealers who haven't rested enough
+    // after 4+ consecutive assignments get a -300 score penalty.
+    if (skipFatigueHardCap && fatigueHardCap) {
       breakdown.fatigue_penalty = -300;
       score += breakdown.fatigue_penalty;
     }
