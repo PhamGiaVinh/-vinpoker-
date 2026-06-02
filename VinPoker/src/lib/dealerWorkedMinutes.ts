@@ -22,7 +22,9 @@ export function calculateLiveWorkedMinutes(
       const elapsedMin = (nowMs - new Date(assignment.assigned_at).getTime()) / 60000;
       map[d.id] = Math.max(0, Math.floor(elapsedMin));
     } else {
-      map[d.id] = d.worked_minutes_since_last_break ?? 0;
+      const stored = d.worked_minutes_since_last_break ?? 0;
+      const STALE_DATA_CAP = 180;
+      map[d.id] = stored > STALE_DATA_CAP ? 0 : stored;
     }
   }
   return map;
