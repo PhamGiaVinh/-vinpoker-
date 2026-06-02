@@ -1,5 +1,8 @@
 name: Deploy to Production
 
+# Workflow consolidated into user's first self-created workflow file.
+# Triggers: push to main/master, or manual dispatch via Actions tab.
+
 on:
   push:
     branches:
