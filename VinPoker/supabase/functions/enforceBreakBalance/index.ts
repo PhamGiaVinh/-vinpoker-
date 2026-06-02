@@ -59,10 +59,23 @@ Deno.serve(async (req: Request) => {
       .from("dealer_attendance")
       .select(
         `id, current_state, worked_minutes_since_last_break, priority_break_flag,
-         dealers(full_name, telegram_user_id, telegram_username, club_id)`
+         dealers(full_name, telegram_user_id, telegram_username, club_id),
+         dealer_assignments!attendance_id(id, assigned_at, status)`
       )
       .eq("status", "checked_in")
       .eq("dealers.club_id", cid);
+
+    // Compute live worked minutes from assignment timestamps (never stale)
+    const computeWorkedMin = (d: any): number => {
+      if (d.current_state === "assigned" && d.dealer_assignments) {
+        const assignments = Array.isArray(d.dealer_assignments) ? d.dealer_assignments : [d.dealer_assignments];
+        const active = assignments.find((a: any) => a.status === "assigned");
+        if (active?.assigned_at) {
+          return Math.max(0, Math.floor((Date.now() - new Date(active.assigned_at).getTime()) / 60000));
+        }
+      }
+      return d.worked_minutes_since_last_break ?? 0;
+    };
 
     // ── Deadlock detection: pool exhausted + swings overdue ──────────
     const availCount = (dealers ?? []).filter(
@@ -81,16 +94,10 @@ Deno.serve(async (req: Request) => {
         .in("table_id", await getTableIdsForClub(admin, cid));
 
       if ((overdueSwings ?? []).length > 0) {
-        // [FIX] Replace direct state mutation with manage-break invocation.
-        // Before: UPDATE dealer_attendance SET current_state='available' while
-        //   dealer still has active assignment — breaks state machine invariant.
-        // After: manage-break does proper CAS (version check) + dealer_breaks
-        //   insert + attendance state update. Preserves invariants.
         const worstAssigned = (dealers ?? [])
           .filter((d: { current_state: string }) => d.current_state === "assigned")
           .sort(
-            (a: { worked_minutes_since_last_break?: number }, b: { worked_minutes_since_last_break?: number }) =>
-              (b.worked_minutes_since_last_break ?? 0) - (a.worked_minutes_since_last_break ?? 0)
+            (a: any, b: any) => computeWorkedMin(b) - computeWorkedMin(a)
           )
           .slice(0, 1);
 
@@ -199,7 +206,7 @@ Deno.serve(async (req: Request) => {
 
     for (const dealer of dealers ?? []) {
       try {
-        const worked = dealer.worked_minutes_since_last_break ?? 0;
+        const worked = computeWorkedMin(dealer);
         if (worked < detectionThreshold) continue;
 
         const name = dealer.dealers?.full_name ?? "Dealer";

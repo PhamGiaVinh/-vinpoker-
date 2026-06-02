@@ -1914,14 +1914,14 @@ function DealerTimer({ startTime }: { startTime: string }) {
   );
 }
 
-function FatigueDot({ attendance }: { attendance: DealerAttendance }) {
-  const worked = attendance.worked_minutes_since_last_break ?? 0;
-  const priority = attendance.priority_break_flag ?? false;
+function FatigueDot({ workedMinutes, priorityBreakFlag }: { workedMinutes: number; priorityBreakFlag: boolean }) {
+  const worked = workedMinutes;
+  const priority = priorityBreakFlag;
   let color: string;
   if (priority || worked >= 90) color = "bg-red-500";
   else if (worked >= 60) color = "bg-amber-500";
   else color = "bg-emerald-500";
-  return <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} title={`Đã làm ${worked}p${priority ? " (ưu tiên nghỉ)" : ""}`} />;
+  return <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} title={`Đã làm ${Math.round(worked)}p${priority ? " (ưu tiên nghỉ)" : ""}`} />;
 }
 
 function PriorityBreakIndicator({
@@ -2061,6 +2061,22 @@ function RosterPanel({
     }
     return map;
   }, [dealers, assignments]);
+
+  // Live worked minutes: compute from assignment timestamps, not stale column.
+  // Assigned → elapsed since assigned_at; others → stored value (last session).
+  const liveWorkedMin = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const d of dealers) {
+      const assignment = assignments.find((a) => a.attendance_id === d.id && a.status === "assigned");
+      if (assignment?.assigned_at) {
+        const elapsedMin = (nowMs - new Date(assignment.assigned_at).getTime()) / 60000;
+        map[d.id] = Math.max(0, Math.floor(elapsedMin));
+      } else {
+        map[d.id] = d.worked_minutes_since_last_break ?? 0;
+      }
+    }
+    return map;
+  }, [dealers, assignments, nowMs]);
 
   // Urgency key for sorting assigned dealers
   const urgencyKey = useCallback((att: DealerAssignment | undefined): number => {
@@ -2219,8 +2235,8 @@ function RosterPanel({
                           </span>
                         )}
 
-                        {/* Fatigue dot (available only) */}
-                        {ready && <FatigueDot attendance={d} />}
+                        {/* Fatigue dot — computed live from assignment timestamps */}
+                        <FatigueDot workedMinutes={liveWorkedMin[d.id] ?? 0} priorityBreakFlag={d.priority_break_flag ?? false} />
 
                         {/* Timer */}
                         {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
@@ -2237,7 +2253,7 @@ function RosterPanel({
                         {sec.key !== "Đang nghỉ" && (
                           <PriorityBreakIndicator
                             priorityBreakFlag={d.priority_break_flag}
-                            workedMinutesSinceLastBreak={d.worked_minutes_since_last_break}
+                            workedMinutesSinceLastBreak={liveWorkedMin[d.id] ?? 0}
                           />
                         )}
 
@@ -2739,9 +2755,9 @@ function CommandCenter({
     for (const t of tables ?? []) {
       if (!tableAssignmentMap[t.id]) count++;
     }
-    // Break due
+    // Break due — use live computed minutes
     for (const d of dealers ?? []) {
-      const w = d.worked_minutes_since_last_break ?? 0;
+      const w = liveWorkedMin[d.id] ?? 0;
       if (w >= 90 || d.priority_break_flag) count++;
     }
     // Missing next dealer
@@ -2753,7 +2769,7 @@ function CommandCenter({
       }
     }
     return count;
-  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap]);
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, liveWorkedMin]);
 
   const recentLogs = useMemo(() => auditLogs.slice(0, 5), [auditLogs]);
 
