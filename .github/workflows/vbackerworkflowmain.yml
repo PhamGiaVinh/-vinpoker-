@@ -75,6 +75,8 @@ jobs:
       - name: Deploy to Vercel
         run: |
           npm install -g vercel@latest
+          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+          export SHELL=/bin/bash
           vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
           vercel build --prod --token ${{ secrets.VERCELTOKEN }}
           vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
