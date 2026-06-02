@@ -59,6 +59,23 @@ import { Calendar } from "@/components/ui/calendar";
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
 
+// Pure function — computes live worked minutes from timestamps.
+// Top-level so minifier cannot tree-shake it.
+function calculateLiveWorkedMinutes(
+  dealerId: string,
+  dealers: DealerAttendance[],
+  assignments: DealerAssignment[],
+  nowMs: number
+): number {
+  const dealer = dealers.find((d) => d.id === dealerId);
+  if (!dealer) return 0;
+  const assignment = assignments.find((a) => a.attendance_id === dealerId && a.status === "assigned");
+  if (assignment?.assigned_at) {
+    return Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000));
+  }
+  return dealer.worked_minutes_since_last_break ?? 0;
+}
+
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2062,16 +2079,7 @@ function RosterPanel({
     return map;
   }, [dealers, assignments]);
 
-  // Live worked minutes: compute on demand from assignment timestamps.
-  const getWorkedMinutes = useCallback((attendanceId: string): number => {
-    const d = dealers.find((dealer) => dealer.id === attendanceId);
-    if (!d) return 0;
-    const assignment = assignments.find((a) => a.attendance_id === attendanceId && a.status === "assigned");
-    if (assignment?.assigned_at) {
-      return Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000));
-    }
-    return d.worked_minutes_since_last_break ?? 0;
-  }, [dealers, assignments, nowMs]);
+  // getWorkedMinutes replaced by calculateLiveWorkedMinutes (top-level pure function)
 
   // Urgency key for sorting assigned dealers
   const urgencyKey = useCallback((att: DealerAssignment | undefined): number => {
@@ -2231,7 +2239,7 @@ function RosterPanel({
                         )}
 
                         {/* Fatigue dot — computed live from assignment timestamps */}
-                        <FatigueDot workedMinutes={getWorkedMinutes(d.id)} priorityBreakFlag={d.priority_break_flag ?? false} />
+                        <FatigueDot workedMinutes={calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs)} priorityBreakFlag={d.priority_break_flag ?? false} />
 
                         {/* Timer */}
                         {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
@@ -2248,7 +2256,7 @@ function RosterPanel({
                         {sec.key !== "Đang nghỉ" && (
                           <PriorityBreakIndicator
                             priorityBreakFlag={d.priority_break_flag}
-                            workedMinutesSinceLastBreak={getWorkedMinutes(d.id)}
+                            workedMinutesSinceLastBreak={calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs)}
                           />
                         )}
 
@@ -2752,7 +2760,7 @@ function CommandCenter({
     }
     // Break due — use live computed minutes
     for (const d of dealers ?? []) {
-      const w = getWorkedMinutes(d.id);
+      const w = calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs);
       if (w >= 90 || d.priority_break_flag) count++;
     }
     // Missing next dealer
@@ -2764,7 +2772,7 @@ function CommandCenter({
       }
     }
     return count;
-  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, getWorkedMinutes]);
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, nowMs]);
 
   const recentLogs = useMemo(() => auditLogs.slice(0, 5), [auditLogs]);
 
