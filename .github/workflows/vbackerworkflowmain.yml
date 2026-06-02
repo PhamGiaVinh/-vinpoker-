@@ -74,9 +74,12 @@ jobs:
 
       - name: Deploy to Vercel
         run: |
+          echo "DEBUG: which sh=$(which sh 2>&1 || echo NOTFOUND)"
+          echo "DEBUG: ls /bin/sh=$(ls -la /bin/sh 2>&1 || echo NOTFOUND)"
+          echo "DEBUG: ls /usr/bin/sh=$(ls -la /usr/bin/sh 2>&1 || echo NOTFOUND)"
+          ln -sf /bin/bash /usr/local/bin/sh
+          echo "DEBUG: after symlink, which sh=$(which sh 2>&1 || echo NOTFOUND)"
           npm install -g vercel@latest
-          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-          export SHELL=/bin/bash
           vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
           vercel build --prod --token ${{ secrets.VERCELTOKEN }}
           vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
