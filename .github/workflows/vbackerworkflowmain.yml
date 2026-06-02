@@ -75,7 +75,7 @@ jobs:
       - name: Deploy to Vercel
         run: |
           npm install -g vercel@latest
-          vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
+          vercel env pull .env.production.local --environment=production --yes --token ${{ secrets.VERCELTOKEN }}
           npm install --ignore-scripts
           npm run build
           mkdir -p .vercel/output/static
