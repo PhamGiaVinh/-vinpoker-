@@ -2062,20 +2062,15 @@ function RosterPanel({
     return map;
   }, [dealers, assignments]);
 
-  // Live worked minutes: compute from assignment timestamps, not stale column.
-  // Assigned → elapsed since assigned_at; others → stored value (last session).
-  const liveWorkedMin = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const d of dealers) {
-      const assignment = assignments.find((a) => a.attendance_id === d.id && a.status === "assigned");
-      if (assignment?.assigned_at) {
-        const elapsedMin = (nowMs - new Date(assignment.assigned_at).getTime()) / 60000;
-        map[d.id] = Math.max(0, Math.floor(elapsedMin));
-      } else {
-        map[d.id] = d.worked_minutes_since_last_break ?? 0;
-      }
+  // Live worked minutes: compute on demand from assignment timestamps.
+  const getWorkedMinutes = useCallback((attendanceId: string): number => {
+    const d = dealers.find((dealer) => dealer.id === attendanceId);
+    if (!d) return 0;
+    const assignment = assignments.find((a) => a.attendance_id === attendanceId && a.status === "assigned");
+    if (assignment?.assigned_at) {
+      return Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000));
     }
-    return map;
+    return d.worked_minutes_since_last_break ?? 0;
   }, [dealers, assignments, nowMs]);
 
   // Urgency key for sorting assigned dealers
@@ -2236,7 +2231,7 @@ function RosterPanel({
                         )}
 
                         {/* Fatigue dot — computed live from assignment timestamps */}
-                        <FatigueDot workedMinutes={liveWorkedMin[d.id] ?? 0} priorityBreakFlag={d.priority_break_flag ?? false} />
+                        <FatigueDot workedMinutes={getWorkedMinutes(d.id)} priorityBreakFlag={d.priority_break_flag ?? false} />
 
                         {/* Timer */}
                         {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
@@ -2253,7 +2248,7 @@ function RosterPanel({
                         {sec.key !== "Đang nghỉ" && (
                           <PriorityBreakIndicator
                             priorityBreakFlag={d.priority_break_flag}
-                            workedMinutesSinceLastBreak={liveWorkedMin[d.id] ?? 0}
+                            workedMinutesSinceLastBreak={getWorkedMinutes(d.id)}
                           />
                         )}
 
@@ -2757,7 +2752,7 @@ function CommandCenter({
     }
     // Break due — use live computed minutes
     for (const d of dealers ?? []) {
-      const w = liveWorkedMin[d.id] ?? 0;
+      const w = getWorkedMinutes(d.id);
       if (w >= 90 || d.priority_break_flag) count++;
     }
     // Missing next dealer
@@ -2769,7 +2764,7 @@ function CommandCenter({
       }
     }
     return count;
-  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, liveWorkedMin]);
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, getWorkedMinutes]);
 
   const recentLogs = useMemo(() => auditLogs.slice(0, 5), [auditLogs]);
 
