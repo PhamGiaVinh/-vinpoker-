@@ -101,6 +101,10 @@ CREATE INDEX IF NOT EXISTS idx_assignments_needs_replacement
 --   (B) Same dealer being assigned to two tables (via FOR UPDATE SKIP LOCKED)
 -- Also clears needs_replacement flag on the table.
 
+-- CREATE OR REPLACE cannot rename existing input parameters (SQLSTATE 42P13);
+-- the remote has this function with an older parameter name, so drop it first.
+DROP FUNCTION IF EXISTS assign_dealer_to_table(UUID, UUID, TIMESTAMPTZ, TIMESTAMPTZ) CASCADE;
+
 CREATE OR REPLACE FUNCTION assign_dealer_to_table(
   p_attendance_id  UUID,
   p_table_id       UUID,
