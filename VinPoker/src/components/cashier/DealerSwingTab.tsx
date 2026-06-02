@@ -45,6 +45,7 @@ import DealerPayrollTab from "./DealerPayrollTab";
 import { TableTimerDisplay } from "./TableTimerDisplay";
 import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
+import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle,
@@ -2064,19 +2065,10 @@ function RosterPanel({
 
   // Live worked minutes: compute from assignment timestamps, not stale column.
   // Assigned → elapsed since assigned_at; others → stored value (last session).
-  const liveWorkedMin = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const d of dealers) {
-      const assignment = assignments.find((a) => a.attendance_id === d.id && a.status === "assigned");
-      if (assignment?.assigned_at) {
-        const elapsedMin = (nowMs - new Date(assignment.assigned_at).getTime()) / 60000;
-        map[d.id] = Math.max(0, Math.floor(elapsedMin));
-      } else {
-        map[d.id] = d.worked_minutes_since_last_break ?? 0;
-      }
-    }
-    return map;
-  }, [dealers, assignments, nowMs]);
+  const liveWorkedMin = useMemo(
+    () => calculateLiveWorkedMinutes(dealers, assignments, nowMs),
+    [dealers, assignments, nowMs]
+  );
 
   // Urgency key for sorting assigned dealers
   const urgencyKey = useCallback((att: DealerAssignment | undefined): number => {
@@ -2699,6 +2691,10 @@ function CommandCenter({
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
   const nowMs = useLiveClock();
+  const liveWorkedMin = useMemo(
+    () => calculateLiveWorkedMinutes(dealers, assignments, nowMs),
+    [dealers, assignments, nowMs]
+  );
 
   // ── Internal dialogs ────────────────────────────────────────────
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);

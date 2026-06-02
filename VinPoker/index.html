@@ -183,6 +183,58 @@
         }, 8000);
       })();
     </script>
+    <script>
+      // Version-based cache invalidation: detect stale deploys before chunk load.
+      (function () {
+        var META = document.querySelector('meta[name="app-version"]');
+        var META_VER = META ? META.getAttribute('content') : null;
+        var LS_KEY = 'vp:app-version';
+        var STORED = null;
+        try { STORED = localStorage.getItem(LS_KEY); } catch (e) {}
+        if (META_VER && STORED && STORED !== META_VER) {
+          // New deploy detected — clear Service Workers + CacheStorage, then reload once
+          var cleared = false;
+          try {
+            if ('caches' in window) {
+              caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (n) { return caches.delete(n); }));
+              }).catch(function () {});
+            }
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }).catch(function () {});
+            }
+            localStorage.setItem(LS_KEY, META_VER);
+            sessionStorage.setItem('vp:just-updated', '1');
+            cleared = true;
+          } catch (e) {}
+          if (cleared) {
+            var url = new URL(location.href);
+            url.searchParams.set('_v', META_VER);
+            location.replace(url.toString());
+            return;
+          }
+        }
+        if (META_VER) {
+          try { localStorage.setItem(LS_KEY, META_VER); } catch (e) {}
+        }
+      })();
+
+      // Chunk guard: auto-reload on any "is not defined" error (stale chunk symptom).
+      window.addEventListener('error', function (e) {
+        var msg = (e.message || '').toLowerCase();
+        if (msg.indexOf('is not defined') !== -1 || msg.indexOf('is not a function') !== -1) {
+          try {
+            if (sessionStorage.getItem('vp:chunk-reloaded')) return;
+            sessionStorage.setItem('vp:chunk-reloaded', '1');
+          } catch (_) {}
+          var url = new URL(location.href);
+          url.searchParams.set('recover', Date.now().toString());
+          location.replace(url.toString());
+        }
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

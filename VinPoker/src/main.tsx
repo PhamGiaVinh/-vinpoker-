@@ -59,3 +59,20 @@ window.addEventListener("vite:preloadError", (e) => {
   window.location.reload();
 });
 
+window.addEventListener("error", (e) => {
+  const msg = (e.message || "").toLowerCase();
+  if (
+    msg.includes("is not defined") ||
+    msg.includes("cannot read properties of undefined") ||
+    msg.includes("is not a function")
+  ) {
+    try {
+      if (sessionStorage.getItem("vp:chunk-reloaded")) return;
+      sessionStorage.setItem("vp:chunk-reloaded", "1");
+    } catch (_) {}
+    const url = new URL(location.href);
+    url.searchParams.set("recover", Date.now().toString());
+    location.replace(url.toString());
+  }
+});
+
