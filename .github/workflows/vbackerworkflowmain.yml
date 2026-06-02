@@ -75,11 +75,13 @@ jobs:
       - name: Deploy to Vercel
         run: |
           npm install -g vercel@latest
-          vercel env pull .env.production.local --environment=production --yes --token ${{ secrets.VERCELTOKEN }}
+          vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
+          cp -f .vercel/.env.production.local VinPoker/.env.production.local
+          cd VinPoker
           npm install --ignore-scripts
           npm run build
-          mkdir -p .vercel/output/static
-          cp -r dist/. .vercel/output/static/
-          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
+          mkdir -p ../.vercel/output/static
+          cp -r dist/. ../.vercel/output/static/
+          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > ../.vercel/output/config.json
+          cd ..
           vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
-        working-directory: ./VinPoker
