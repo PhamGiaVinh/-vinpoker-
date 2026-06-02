@@ -171,6 +171,7 @@ Deno.serve(async (req) => {
         .insert({
           attendance_id: attendance.id,
           table_id,
+          club_id: table.club_id,        // Phase 1: club_id is NOT NULL on dealer_assignments
           assigned_at: new Date().toISOString(),
           status: "assigned",
           swing_due_at: swingDueAt,

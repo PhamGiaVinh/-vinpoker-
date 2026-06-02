@@ -58,13 +58,13 @@ export async function pass2PreAssignNext(
       .select(`
         id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
         pre_assigned_attendance_id,
-        game_tables!inner(id, table_name, table_type, club_id),
+        game_tables!inner(id, table_name, table_type),
         dealer_attendance!attendance_id(
           dealers!inner(full_name, telegram_username, telegram_user_id)
         )
       `)
-      // ✅ scope to club via game_tables join (dealer_assignments has no club_id)
-      .eq("game_tables.club_id", clubId)
+      // Phase 1: scope to club via denormalized club_id (indexed, no join needed)
+      .eq("club_id", clubId)
       // ✅ correct status value
       .eq("status", "assigned")
       // ✅ correct column name (was 'ended_at')
@@ -135,6 +135,14 @@ export async function pass2PreAssignNext(
           case "pre_assigned": {
             result.pre_assigned_count++;
             cycleExcludedIds.add(nextDealer.id);
+
+            // BUG 2 FIX: Clear overtime_started_at since a replacement
+            // is now on the way. The current dealer's OT is resolved.
+            await admin
+              .from("dealer_assignments")
+              .update({ overtime_started_at: null })
+              .eq("id", assignment.id)
+              .not("overtime_started_at", "is", null);
 
             // Compute minutes until swing for the notification
             const swingAt = new Date(assignment.swing_due_at).getTime();

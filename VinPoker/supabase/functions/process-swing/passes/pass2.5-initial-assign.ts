@@ -43,12 +43,13 @@ export async function pass25InitialAssign(
       .from("dealer_assignments")
       .select(`
         id, table_id, attendance_id, version, overtime_started_at,
-        game_tables!inner(id, table_name, club_id),
+        game_tables!inner(id, table_name),
         dealer_attendance!attendance_id(
           id, dealer_id, current_state, worked_minutes_since_last_break, priority_break_flag
         )
       `)
-      .eq("game_tables.club_id", clubId)
+      // Phase 1: scope to club via denormalized club_id (indexed, no join needed)
+      .eq("club_id", clubId)
       .eq("status", "assigned")
       .is("dealer_id", null)
       .is("released_at", null)
