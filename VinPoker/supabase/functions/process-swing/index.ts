@@ -530,6 +530,81 @@ Deno.serve(async (req: Request) => {
           } else {
             console.log("[Pass 0c] ✅ No stuck dealers found");
           }
+
+          // 6. Phase 4: Critically overdue + extended OT alerting
+          // Detects conditions that Pass 3 cannot catch proactively:
+          //   - swing_due_at > 30 min in the past (Pass 3 only catches window [now, now+2min])
+          //   - overtime_started_at > 45 min ago (extended OT needs floor intervention)
+          // These alert the floor WITHOUT auto-fix (dealers may be in legitimate process).
+          const overdueThreshold = new Date(Date.now() - 30 * 60_000).toISOString();
+          const { data: overdueAssignments, error: overdueErr } = await admin
+            .from("dealer_assignments")
+            .select(`
+              id, table_id, swing_due_at, overtime_started_at,
+              game_tables(table_name),
+              dealer_attendance!attendance_id(dealers(full_name))
+            `)
+            .eq("club_id", cid)
+            .eq("status", "assigned")
+            .is("swing_processed_at", null)
+            .lt("swing_due_at", overdueThreshold);
+
+          const otThreshold = new Date(Date.now() - 45 * 60_000).toISOString();
+          const { data: extendedOtAssignments, error: otErr } = await admin
+            .from("dealer_assignments")
+            .select(`
+              id, table_id, overtime_started_at,
+              game_tables(table_name),
+              dealer_attendance!attendance_id(dealers(full_name))
+            `)
+            .eq("club_id", cid)
+            .eq("status", "assigned")
+            .is("swing_processed_at", null)
+            .not("overtime_started_at", "is", null)
+            .lt("overtime_started_at", otThreshold);
+
+          const criticalAlerts: string[] = [];
+
+          if (overdueErr) {
+            console.error("[Pass 0c] ❌ Overdue query error:", overdueErr.message);
+          } else if (overdueAssignments && overdueAssignments.length > 0) {
+            console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} critically overdue assignments (>30 min)`);
+            for (const a of overdueAssignments) {
+              const overdueMin = Math.floor(
+                (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
+              );
+              const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+              const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+              criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: swing_due_at QUÁ HẠN ${overdueMin}ph. Cần xử lý ngay!`);
+            }
+          }
+
+          if (otErr) {
+            console.error("[Pass 0c] ❌ Extended OT query error:", otErr.message);
+          } else if (extendedOtAssignments && extendedOtAssignments.length > 0) {
+            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min)`);
+            for (const a of extendedOtAssignments) {
+              const otMin = Math.floor(
+                (Date.now() - new Date(a.overtime_started_at).getTime()) / 60_000
+              );
+              const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+              const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+              criticalAlerts.push(`⏱ *Bàn ${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+            }
+          }
+
+          if (criticalAlerts.length > 0) {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (botToken && chatId) {
+              const msg = `🚨 *${criticalAlerts.length} cảnh báo nghiêm trọng*\n\n` +
+                criticalAlerts.slice(0, 10).join("\n\n") +
+                (criticalAlerts.length > 10 ? `\n\n_...và ${criticalAlerts.length - 10} cảnh báo khác_` : "") +
+                `\n\n🔍 Cron sẽ thử lại ở lần chạy tiếp theo. Nếu không tự giải quyết, kiểm tra pool dealer.`;
+              await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
+            }
+          } else {
+            console.log("[Pass 0c] ✅ No critically overdue or extended OT assignments");
+          }
         }
 
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
@@ -695,12 +770,12 @@ Deno.serve(async (req: Request) => {
             `id, table_id, attendance_id, swing_due_at, version,
              pre_assigned_attendance_id, overtime_started_at,
              last_ot_alert_at,
-             game_tables(club_id, table_name, table_type),
+             game_tables(table_name, table_type),
              dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
           )
           .eq("status", "assigned")
           .is("swing_processed_at", null)
-          .eq("game_tables.club_id", cid);
+          .eq("club_id", cid);  // Phase 1: use denormalized club_id (NOT NULL + indexed)
 
         if (!forceAll) {
           query.lte("swing_due_at", nowPlusBuf);
