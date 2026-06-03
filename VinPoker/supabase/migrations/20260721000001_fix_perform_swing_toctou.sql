@@ -132,11 +132,13 @@ BEGIN
     END IF;
 
     -- If caller-provided dealer was snatched (TOCTOU) or never provided, query pool
+    -- Note: club_id is on dealers table, not dealer_attendance
     IF v_next_attendance_id IS NULL THEN
       SELECT dat.id
       INTO   v_next_attendance_id
       FROM dealer_attendance dat
-      WHERE dat.club_id = v_club_id
+      JOIN dealers d ON d.id = dat.dealer_id
+      WHERE d.club_id = v_club_id
         AND dat.shift_id = v_shift_id
         AND dat.current_state = 'available'
         AND dat.status = 'checked_in'

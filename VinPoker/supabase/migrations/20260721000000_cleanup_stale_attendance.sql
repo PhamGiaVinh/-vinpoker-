@@ -9,7 +9,7 @@
 --
 -- Changes:
 --   1. cleanup_stale_attendance(club_id) RPC — transitions zombie records to
---      'abandoned' state with an estimated checkout time (preserving audit trail)
+--      'checked_out' state with an estimated checkout time (preserving audit trail)
 --   2. Scheduled daily cleanup via pg_cron
 --   3. Unique index preventing NEW stale records from accumulating
 -- =============================================================================
@@ -19,9 +19,9 @@ BEGIN;
 -- ===========================================================================
 -- 1. cleanup_stale_attendance RPC
 -- ===========================================================================
--- Closes attendance records that were left in assigned/pre_assigned/in_transition
+--   Closes attendance records that were left in assigned/pre_assigned/in_transition
 -- for > 24 hours without a proper checkout. Instead of silently deleting,
--- we set a well-documented 'abandoned' state with estimated checkout time.
+-- we set them to 'checked_out' state with estimated checkout time.
 --
 -- Parameters:
 --   p_club_id               UUID        — target club (NULL = all clubs)
@@ -83,10 +83,9 @@ BEGIN
   -- Mark stale attendances as 'abandoned' with estimated checkout
   UPDATE dealer_attendance
   SET
-    current_state  = 'abandoned',
-    status         = 'auto_closed',
-    check_out_time = check_in_time + INTERVAL '8 hours',  -- assume 8h shift
-    updated_at     = NOW()
+    current_state  = 'checked_out',
+    status         = 'checked_out',
+    check_out_time = check_in_time + INTERVAL '8 hours'  -- assume 8h shift
   FROM dealers d
   WHERE d.id = dealer_attendance.dealer_id
     AND (p_club_id IS NULL OR d.club_id = p_club_id)
@@ -113,7 +112,7 @@ GRANT EXECUTE ON FUNCTION cleanup_stale_attendance(UUID, INTEGER) TO service_rol
 
 COMMENT ON FUNCTION cleanup_stale_attendance IS
   'Closes attendance records stuck in assigned/pre_assigned/in_transition for >24h.
-   Transitions them to "abandoned" state with estimated checkout = check_in + 8h.
+   Transitions them to "checked_out" status with estimated checkout = check_in + 8h.
    Run periodically to prevent zombie records from poisoning dealer pool selection.';
 
 -- ===========================================================================
@@ -129,8 +128,9 @@ SELECT cron.schedule(
 -- 3. Partial unique index: only 1 active attendance per dealer per club
 -- ===========================================================================
 -- Prevents NEW stale records from accumulating in future.
+-- Note: dealer_id only (club_id not available on dealer_attendance)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_attendance_per_dealer
-  ON dealer_attendance (dealer_id, club_id)
+  ON dealer_attendance (dealer_id)
   WHERE check_out_time IS NULL
     AND status = 'checked_in'
     AND current_state IN ('assigned', 'pre_assigned', 'in_transition');
