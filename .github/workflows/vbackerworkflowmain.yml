@@ -65,11 +65,15 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Deploy Edge Functions
-        run: |
-          supabase functions deploy process-swing --no-verify-jwt
-          supabase functions deploy assign-dealer --no-verify-jwt
-          supabase functions deploy close-table --no-verify-jwt
-          supabase functions deploy swing-metrics --no-verify-jwt
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: |
+            supabase functions deploy process-swing --no-verify-jwt
+            supabase functions deploy assign-dealer --no-verify-jwt
+            supabase functions deploy close-table --no-verify-jwt
+            supabase functions deploy swing-metrics --no-verify-jwt
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
