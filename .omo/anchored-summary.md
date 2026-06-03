@@ -50,7 +50,7 @@ Fix all VinPoker production issues: Dealer Control flow (mass assign → auto sw
 - **All process-swing invocations returning 200** — no 400 errors from invalid columns
 - **Cleanup cron active**: Daily stale attendance cleanup via `pg_cron`
 - **Cron active**: jobid=8 (`process-swing`, service_role) + jobid=19 (`process-swing-auto`, anon key) — both run `* * * * *`
-- **CI/CD**: Run #26 passed (all 11 steps). Run #27 retry failed at Step 10 (transient Edge Function deploy issue). Steps 8+9 (repair + DB push) work reliably.
+- **CI/CD**: Run #26 passed. Run #28 (commit `59d7330`) passed all 11 steps ✅ — Edge Function deploy now uses independent retry loops (3 attempts per function) to handle transient failures.
 
 ## Key Decisions
 - **`user_id = NULL` on dealers** — NOT a problem (edge functions use `service_role`, bypass RLS)
@@ -80,8 +80,8 @@ Fix all VinPoker production issues: Dealer Control flow (mass assign → auto sw
 - `VinPoker/src/components/cashier/DealerSwingTab.tsx:2149-2175` — TimerCell (for future onComplete work)
 
 ## Active Working Context (For Seamless Continuation)
-- **Current State**: All edge functions deployed with column fixes. All process-swing invocations returning 200. CI/CD run #26 passed all steps. Run #27 retry failed at Step 10 (Edge Function deploy — transient).
-- **Known pending**: Cron jobid=19 uses hardcoded anon key — redundant with jobid=8 but harmless. CI/CD Step 10 intermittent failure.
+- **Current State**: All edge functions deployed with column fixes. All process-swing invocations returning 200. CI/CD run #28 passed all 11 steps ✅ (independent retry loops for Edge Function deploy).
+- **Known pending**: Cron jobid=21 uses hardcoded anon key — harmless (function uses service_role internally for DB queries).
 - **Supabase project**: `https://supabase.com/dashboard/project/orlesggcjamwuknxwcpk`
 - **Service role key**: Available via `supabase secrets list`
-- **Latest commits on master**: `7d62c18` (column fix), `97448ac` (empty retry commit)
+- **Latest commits on master**: `59d7330` (CI/CD retry fix), `7d62c18` (column fix)
