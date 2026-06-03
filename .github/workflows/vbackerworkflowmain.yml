@@ -105,3 +105,9 @@ jobs:
           printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > ../.vercel/output/config.json
           cd ..
           vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
+        # VITE env vars MUST be set here (process env > .env.production.local).
+        # Vercel project env vars are sometimes missing after DB password changes.
+        # The anon/publishable key is public (exposed in client bundle anyway).
+        env:
+          VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A"
