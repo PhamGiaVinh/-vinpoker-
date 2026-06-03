@@ -27,7 +27,7 @@ export interface TournamentWithTables extends Tournament {
     table_id: string;
     game_tables?: {
       id: string;
-      name: string;
+      table_name: string;
     } | null;
   }[];
 }

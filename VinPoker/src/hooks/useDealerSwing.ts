@@ -220,6 +220,8 @@ export function useTodayCheckedOutDealers(clubIds: string[]) {
   const today = new Date().toISOString().split("T")[0];
   return useRealtimeQuery<DealerAttendance>({
     queryFn: async () => {
+      if (!clubIds.length) return [];
+
       // Step 1: get dealers with active checked_in today
       const { data: activeToday } = await supabase
         .from("dealer_attendance")

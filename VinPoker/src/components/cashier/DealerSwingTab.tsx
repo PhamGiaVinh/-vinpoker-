@@ -129,6 +129,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
+  const [swingingTableId, setSwingingTableId] = useState<string | null>(null);
   const [massAssignBusy, setMassAssignBusy] = useState(false);
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
@@ -301,6 +302,50 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       toast.error(e.message);
     } finally {
       setSwingAllBusy(false);
+    }
+  };
+
+  // Manual swing: perform swing for a single assignment only (no side effects on other tables)
+  const swingingRef = useRef(false);
+  const performSwingForTable = async (assignmentId: string) => {
+    if (swingingRef.current) return; // prevent double-click (ref is synchronous)
+    swingingRef.current = true;
+    setSwingingTableId(assignmentId);
+    try {
+      const { data, error } = await supabase.rpc("perform_swing", {
+        p_assignment_id: assignmentId,
+      });
+      if (error) {
+        toast.error(`Lỗi swing: ${error.message}`);
+        console.error("[performSwingForTable]", error);
+        return;
+      }
+      const result = data as any;
+      const outcome = result?.outcome;
+      if (outcome === "race_lost" || outcome === "version_conflict") {
+        toast.warning("Bàn này vừa được xử lý bởi người khác. Đang cập nhật...");
+      } else if (outcome === "no_dealer" || outcome === "no_dealer_available") {
+        toast.warning("Không đủ dealer khả dụng để thay thế.");
+      } else if (outcome === "not_found" || outcome === "state_mismatch") {
+        toast.warning("Assignment không còn hiệu lực. Đang cập nhật...");
+      } else if (outcome === "enforce_next_swing") {
+        toast.info(result?.message ?? "Dealer tiếp theo cần nghỉ sớm, sẽ swing tiếp.");
+      } else if (outcome === "swung" || outcome === "swung_to_break" || outcome === "swung_to_pool") {
+        toast.success("Swing thành công!");
+      } else if (outcome === "error") {
+        toast.error(`Lỗi: ${result?.message ?? "Unknown"}`);
+      } else {
+        toast.success("Swing thành công!");
+      }
+      await Promise.all([
+        refetchAssignments(),
+        refetchDealers(),
+      ]);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSwingingTableId(null);
+      swingingRef.current = false;
     }
   };
 
@@ -1083,6 +1128,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                   onForceClose={setCloseTableConfirmId}
                   isAnimating={isAnimating}
                   focusedTableId={focusedTableId}
+                  onSwingTable={performSwingForTable}
+                  swingingAssignmentId={swingingTableId}
                 />
             )}
           </div>
@@ -2360,6 +2407,7 @@ function TableGrid({
   tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
+  onSwingTable, swingingAssignmentId,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -2382,6 +2430,8 @@ function TableGrid({
   onForceClose?: (tableId: string) => void;
   isAnimating?: (tableId: string) => boolean;
   focusedTableId?: string | null;
+  onSwingTable: (assignmentId: string) => void;
+  swingingAssignmentId: string | null;
 }) {
   const nowMs = useLiveClock();
 
@@ -2444,6 +2494,8 @@ function TableGrid({
             // ── Timer / OT / Progress computations ──────────────────────────
             const swingDueMs = a ? new Date(a.swing_due_at).getTime() : 0;
             const isOt = a && (a.overtime_started_at !== null || swingDueMs <= nowMs);
+            const isActualOt = a && a.overtime_started_at !== null && !a.swing_processed_at;
+            const canSwing = !a?.swing_processed_at && !!isOt;
 
             let otLabel = "";
             if (isOt) {
@@ -2629,11 +2681,20 @@ function TableGrid({
                           onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
                           <Clock className="w-3 h-3 mr-1" /> Nghỉ
                         </Button>
-                        {!a.swing_processed_at && (
-                          <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-amber-500 border-amber-500/30" disabled>
-                            <RefreshCw className="w-3 h-3 mr-1" /> Swing
-                          </Button>
-                        )}
+                        <Button size="sm" variant="outline"
+                          className={[
+                            "flex-1 text-xs h-7",
+                            isActualOt
+                              ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
+                              : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
+                          ].join(" ")}
+                          onClick={() => onSwingTable(a.id)}
+                          disabled={!canSwing || swingingAssignmentId === a.id}>
+                          {swingingAssignmentId === a.id
+                            ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            : <RefreshCw className="w-3 h-3 mr-1" />}
+                          {isActualOt ? "Swing ngay" : "Swing"}
+                        </Button>
                       </>
                     )}
                     {!a && (
