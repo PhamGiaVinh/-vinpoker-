@@ -74,9 +74,9 @@ export function formatMassAssignMessage(assignments: Array<{
 }>): string {
   if (!assignments.length) return "";
   const lines = assignments.map(
-    (a, i) => `  ${i + 1}. Bàn ${a.tableName} → ${a.dealer.full_name}`
+    (a, i) => `${i + 1}.${a.tableName} → ${a.dealer.full_name}`
   );
-  return `📦 *Vào bàn* (${assignments.length} bàn):\n${lines.join("\n")}`;
+  return `Mở Bàn (${assignments.length} bàn)\n${lines.join("\n")}`;
 }
 
 export function formatTierWarningMessage(params: {
