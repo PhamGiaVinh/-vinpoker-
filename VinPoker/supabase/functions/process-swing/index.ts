@@ -834,6 +834,37 @@ Deno.serve(async (req: Request) => {
             (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
           );
 
+          // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
+          // If swing is overdue by > 60 minutes, this is likely an infinite retry
+          // loop caused by stale dealer pool (bug #1) or TOCTOU race (bug #2).
+          // Mark swing_processed_at to break the loop and alert admins.
+          const OVERDUE_CIRCUIT_BREAKER_MINUTES = 60;
+          if (minsLeft < -OVERDUE_CIRCUIT_BREAKER_MINUTES) {
+            console.error(
+              `[process-swing] 🚨 CIRCUIT BREAKER: Table ${tableName} assignment ${assignment.id} ` +
+              `overdue by ${-minsLeft} min. Breaking loop.`
+            );
+            if (!dryRun) {
+              await admin
+                .from("dealer_assignments")
+                .update({
+                  swing_processed_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", assignment.id);
+              const chatId = await getClubTelegramChatId(admin, cid);
+              if (botToken && chatId) {
+                await sendTelegramNotification(
+                  botToken, chatId,
+                  `🚨 *CIRCUIT BREAKER* — Bàn ${tableName} (${outgoingDealer.full_name}) quá hạn swing ${-minsLeft}ph.\nĐã dừng vòng lặp. Cần can thiệp thủ công ngay!`,
+                  {}
+                );
+              }
+            }
+            metrics.failed++;
+            continue;
+          }
+
           if (assignment.pre_assigned_attendance_id) {
             // ── Pre-assigned swing path ───────────────────────────────────
             const breakDecision = await evaluateBreakNeed(admin, assignment.attendance_id, {
@@ -1127,6 +1158,12 @@ Deno.serve(async (req: Request) => {
               }
             } else if (outcome === "no_dealer") {
               metrics.no_dealer++;
+              console.warn(
+                `[process-swing] no_dealer for ${tableName}: ` +
+                `level=${isOtDealer ? (otMinutes >= 20 ? 3 : 2) : 1} ` +
+                `nextDealer=${nextDealer?.id ?? "null"} ` +
+                `retry=${swingResult?.retry_attempts ?? 0}`
+              );
               if (swingResult?.is_new_overtime === true) {
                 const chatId = await getClubTelegramChatId(admin, cid);
                 if (botToken && chatId) {

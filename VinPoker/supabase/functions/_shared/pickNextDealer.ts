@@ -167,15 +167,25 @@ async function buildDealerCandidates(
   // orphaned 'assigned'/'pre_assigned'/'in_transition' state from prior shifts.
   // Also excludes dealers who haven't checked out yet regardless of which
   // attendance record shows them busy.
+  //
+  // 🚨 CRITICAL FIX: Use rolling 24h window to prevent stale records (>1 day old)
+  // from poisoning the pool. In tournament poker, shifts cross midnight, so
+  // "today" is wrong — 24h rolling window is safe for any shift length.
   const busyDealerIds = new Set<string>();
+  const busyWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: busyDealers } = await admin
     .from("dealer_attendance")
     .select("dealer_id")
     .eq("club_id", clubId)
     .in("current_state", ["assigned", "pre_assigned", "in_transition"])
-    .is("check_out_time", null);
+    .is("check_out_time", null)
+    .gte("check_in_time", busyWindow);
   for (const bd of busyDealers ?? []) {
     busyDealerIds.add(bd.dealer_id);
+  }
+
+  if (busyDealerIds.size > 0) {
+    console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring
@@ -375,6 +385,18 @@ async function buildDealerCandidates(
     }
 
     candidates.push(candidate);
+  }
+
+  // Log when no candidates found after all filters — circuit breaker debugging
+  if (candidates.length === 0) {
+    console.warn(`[pickNextDealer] ⚠️ Club ${clubId}: ZERO candidates after filtering`, {
+      totalRows: (rows ?? []).length,
+      busyExcluded: busyDealerIds.size,
+      tourTier: options.tourTier,
+      requiredGameTypes: options.requiredGameTypes,
+      skipPriorityBreakGuard: options.skipPriorityBreakGuard,
+      skipFatigueHardCap: options.skipFatigueHardCap,
+    });
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
