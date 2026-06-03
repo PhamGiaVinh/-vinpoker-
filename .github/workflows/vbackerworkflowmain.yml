@@ -66,17 +66,28 @@ jobs:
 
       - name: Deploy Edge Functions
         run: |
-          for i in 1 2 3; do
-            echo "=== Attempt $i/3 ==="
-            supabase functions deploy process-swing --no-verify-jwt \
-            && supabase functions deploy assign-dealer --no-verify-jwt \
-            && supabase functions deploy close-table --no-verify-jwt \
-            && supabase functions deploy swing-metrics --no-verify-jwt \
-            && echo "=== All functions deployed ===" && exit 0
-            echo "=== Attempt $i failed, retrying... ==="
-            sleep 10
-          done
-          echo "=== All 3 attempts exhausted ===" && exit 1
+          deploy_func() {
+            local name=$1
+            local attempt=1
+            while [ $attempt -le 3 ]; do
+              echo "=== Deploying $name (attempt $attempt/3) ==="
+              supabase functions deploy "$name" --no-verify-jwt && return 0
+              echo "=== $name attempt $attempt failed ==="
+              attempt=$((attempt + 1))
+              [ $attempt -le 3 ] && sleep 10
+            done
+            return 1
+          }
+          deploy_func process-swing
+          result1=$?
+          deploy_func assign-dealer
+          result2=$?
+          deploy_func close-table
+          result3=$?
+          deploy_func swing-metrics
+          result4=$?
+          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
+          echo "=== Some functions failed ===" && exit 1
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
