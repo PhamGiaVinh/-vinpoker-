@@ -204,14 +204,27 @@ async function buildDealerCandidates(
     if (totalW > 0) avgBreakRatio = totalB / totalW;
   }
 
+  // ── Diagnostics counters (zero-candidate debugging) ────────────────────
+  const diag = {
+    total_rows: (rows ?? []).length,
+    busy_excluded: 0,
+    exclude_set_excluded: 0,
+    tier_excluded: 0,
+    fatigue_excluded: 0,
+    priority_break_excluded: 0,
+    min_rest_excluded: 0,
+    game_type_excluded: 0,
+    candidates_count: 0,
+  };
+
   const candidates: DealerCandidate[] = [];
 
   for (const row of rows ?? []) {
     // ── Intra-cycle exclusion ────────────────────────────────────────────────
     // Accumulative exclusion: dealers picked in earlier phases (Fill, Pass 2)
     // are excluded from later phases (Pass 3). The caller manages the set.
-    if (busyDealerIds.has(row.dealer_id)) continue;
-    if (excludeAttendanceIds.has(row.id)) continue;
+    if (busyDealerIds.has(row.dealer_id)) { diag.busy_excluded++; continue; }
+    if (excludeAttendanceIds.has(row.id)) { diag.exclude_set_excluded++; continue; }
 
     const d = row.dealers;
     const tier: "A" | "B" | "C" = d.tier ?? "C";
@@ -227,7 +240,7 @@ async function buildDealerCandidates(
     // ── High-stakes tier guard ─────────────────────────────────────────────
     // HIGH tournaments require A+ tier dealers. Exclude C tier entirely.
     // MEDIUM tournaments prefer B tier but accept A/C.
-    if (tourTier === "HIGH" && tier === "C") continue;
+    if (tourTier === "HIGH" && tier === "C") { diag.tier_excluded++; continue; }
 
     // ── Fatigue hard cap ────────────────────────────────────────────────────
     // Dealer who hasn't rested enough after a long session needs mandatory rest.
@@ -235,18 +248,18 @@ async function buildDealerCandidates(
     // worked_minutes_since_last_break column. Excluded UNLESS skipFatigueHardCap
     // is set (Level 3 emergency only). When skipped, heavy score penalty applies.
     const fatigueHardCap = consecutive >= 4 && restMin < 10;
-    if (!skipFatigueHardCap && fatigueHardCap) continue;
+    if (!skipFatigueHardCap && fatigueHardCap) { diag.fatigue_excluded++; continue; }
 
     // ── Priority break + rest guard ─────────────────────────────────────────
     // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
     // Rest threshold = break_duration_minutes + 5 buffer (default 20+5=25).
     // Dealer who rested ≥ threshold is "rested enough" to reassign.
     const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
-    if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) continue;
+    if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
     // ── Minimum rest ────────────────────────────────────────────────────────
     // Dealer needs ≥10 min rest between swing cycles.
-    if (consecutive > 0 && restMin < 10) continue;
+    if (consecutive > 0 && restMin < 10) { diag.min_rest_excluded++; continue; }
 
     // ── Game type hard-exclude ──────────────────────────────────────────────
     // If the table requires specific game types (e.g., "Omaha", "Mixed"),
@@ -256,6 +269,7 @@ async function buildDealerCandidates(
       requiredGameTypes.length > 0 &&
       !requiredGameTypes.some((g) => skills.includes(g))
     ) {
+      diag.game_type_excluded++;
       continue;
     }
 
@@ -387,16 +401,21 @@ async function buildDealerCandidates(
     candidates.push(candidate);
   }
 
-  // Log when no candidates found after all filters — circuit breaker debugging
+  diag.candidates_count = candidates.length;
+
+  // Log detailed diagnostics when zero or very few candidates — circuit breaker debugging
   if (candidates.length === 0) {
-    console.warn(`[pickNextDealer] ⚠️ Club ${clubId}: ZERO candidates after filtering`, {
-      totalRows: (rows ?? []).length,
-      busyExcluded: busyDealerIds.size,
-      tourTier: options.tourTier,
-      requiredGameTypes: options.requiredGameTypes,
+    console.warn(`[pickNextDealer] ⚠️ Club ${clubId}: ZERO candidates — diagnostics:`, {
+      ...diag,
+      tourTier: options.tourTier || "(not set)",
+      requiredGameTypes: options.requiredGameTypes || "(none)",
       skipPriorityBreakGuard: options.skipPriorityBreakGuard,
       skipFatigueHardCap: options.skipFatigueHardCap,
+      busyDealerTotal: busyDealerIds.size,
+      busyDealerIds: [...busyDealerIds],
     });
+  } else if (candidates.length <= 2) {
+    console.log(`[pickNextDealer] ℹ️ Club ${clubId}: ${candidates.length} candidates — diagnostics:`, diag);
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));

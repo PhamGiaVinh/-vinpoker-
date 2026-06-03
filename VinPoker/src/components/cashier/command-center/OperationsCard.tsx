@@ -1,4 +1,4 @@
-import { Loader2, Zap, LayoutDashboard, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Loader2, Zap, LayoutDashboard, UserCheck, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
@@ -10,8 +10,10 @@ interface Props {
   onToggleAutoSwing: () => void;
   onAutoSwingAll: () => void;
   onMassAssign: () => void;
+  onPreAssign: () => void;
   swingAllBusy: boolean;
   massAssignBusy: boolean;
+  preAssignBusy: boolean;
 }
 
 function HealthBadge({ enabled, coverageRatio, exceptions }: {
@@ -44,8 +46,8 @@ function HealthBadge({ enabled, coverageRatio, exceptions }: {
 
 export default function OperationsCard({
   autoSwingEnabled, exceptionsCount, totalTables, tablesCovered,
-  onToggleAutoSwing, onAutoSwingAll, onMassAssign,
-  swingAllBusy, massAssignBusy,
+  onToggleAutoSwing, onAutoSwingAll, onMassAssign, onPreAssign,
+  swingAllBusy, massAssignBusy, preAssignBusy,
 }: Props) {
   const coverageRatio = totalTables > 0 ? tablesCovered / totalTables : 1;
 
@@ -72,7 +74,7 @@ export default function OperationsCard({
       </div>
 
       {/* Action buttons */}
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid grid-cols-3 gap-1">
         <Button
           size="sm"
           variant={swingAllBusy ? "default" : "outline"}
@@ -92,6 +94,16 @@ export default function OperationsCard({
         >
           {massAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <LayoutDashboard className="w-3 h-3 mr-1" />}
           Gán loạt
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-[11px] h-7"
+          onClick={onPreAssign}
+          disabled={preAssignBusy}
+        >
+          {preAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserCheck className="w-3 h-3 mr-1" />}
+          Pre-assign
         </Button>
       </div>
     </div>

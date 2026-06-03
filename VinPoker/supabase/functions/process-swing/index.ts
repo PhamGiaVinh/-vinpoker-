@@ -244,6 +244,8 @@ Deno.serve(async (req: Request) => {
       dry_run: dryRun = false,
       manual_trigger: manualTrigger = false,
       required_game_types,
+      pre_assign_only: preAssignOnly = false,
+      manual_window_minutes: manualWindowMinutes = 15,
     } = body;
 
     const startTime = Date.now();
@@ -715,18 +717,29 @@ Deno.serve(async (req: Request) => {
         // for tables whose swing due falls within the pre-announce window.
         // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
         if (!forceAll) {
+          const pass2Options: Parameters<typeof pass2PreAssignNext>[3] = {
+            clubZone,
+            notifier,
+            cycleExcludedIds,
+            botToken: botToken ?? "",
+          };
+          if (preAssignOnly) {
+            pass2Options.manualWindowMinutes = manualWindowMinutes;
+          }
           const pass2Result = await pass2PreAssignNext(
             admin, cid, clubCfg.pre_announce_minutes,
-            {
-              clubZone,
-              notifier,
-              cycleExcludedIds,
-              botToken: botToken ?? "",
-            },
+            pass2Options,
           );
           if (pass2Result.pre_assigned_count > 0) {
             console.log(`[Pass 2] ✅ Pre-assigned ${pass2Result.pre_assigned_count} dealers`);
           }
+          metrics.total += pass2Result.pre_assigned_count;
+          metrics.success += pass2Result.pre_assigned_count;
+        }
+
+        if (preAssignOnly) {
+          console.log(`[process-swing] pre_assign_only mode — skipping Pass 2.5+ for club ${cid}`);
+          continue;
         }
 
         // ── PASS 2.5 — Assign initial dealers to empty assignments ──────

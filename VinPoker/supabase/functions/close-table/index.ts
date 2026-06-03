@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
       const { data: releaseResult } = await admin.rpc("transition_dealer_state", {
         p_attendance_id: assignment.attendance_id,
         p_new_state: "available",
-        p_reason: `close_table_${tableId}`,
+        p_reason: `close_table_${table_id}`,
       });
       if (releaseResult?.ok === false) {
         console.error(`[close-table] Failed to release dealer state: ${releaseResult.error}`);

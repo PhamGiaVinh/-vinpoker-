@@ -21,6 +21,11 @@ interface Pass2Options {
   notifier: TelegramNotifier | null;
   cycleExcludedIds: Set<string>;
   botToken: string;
+  /** When set, overrides the window calculation.
+   *  Default window: [now + (preAnnounceMinutes-2), now + (preAnnounceMinutes+2)]
+   *  Manual window:  [now, now + manualWindowMinutes]
+   *  Used by manual pre-assign trigger so cashier sees immediate results. */
+  manualWindowMinutes?: number;
 }
 
 export async function pass2PreAssignNext(
@@ -37,20 +42,22 @@ export async function pass2PreAssignNext(
     errors: [],
   };
 
-  const { clubZone, notifier, cycleExcludedIds, botToken } = options;
+  const { clubZone, notifier, cycleExcludedIds, botToken, manualWindowMinutes } = options;
 
   try {
     // ════════════════════════════════════════════════════════
     // STEP 1: Find assignments needing pre-assignment
-    // Window = [now + (preAnnounceMins - 2), now + (preAnnounceMins + 2)]
-    // e.g. preAnnounceMins=6 → window [T+4min, T+8min]
+    // Default window: [now + (preAnnounceMins - 2), now + (preAnnounceMins + 2)]
+    //   e.g. preAnnounceMins=6 → window [T+4min, T+8min]
+    // Manual window:  [now, now + manualWindowMinutes]
+    //   e.g. manualWindowMinutes=15 → window [T+0min, T+15min]
     // ════════════════════════════════════════════════════════
 
     const windowStart = new Date(
-      Date.now() + (preAnnounceMinutes - 2) * 60_000
+      Date.now() + (manualWindowMinutes ? 0 : (preAnnounceMinutes - 2) * 60_000)
     ).toISOString();
     const windowEnd = new Date(
-      Date.now() + (preAnnounceMinutes + 2) * 60_000
+      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 2)) * 60_000
     ).toISOString();
 
     const { data: upcomingAssignments, error: queryErr } = await admin
