@@ -15,6 +15,11 @@
 --   7. Add status = 'checked_in' filter to pool query — prevents checked_out dealers
 --      from being assigned. current_state = 'available' alone is insufficient because
 --      a dealer can be marked available but have status = 'checked_out'.
+--   8. Include on_break dealers in pool query if they've rested >= 10 minutes.
+--      ORDER BY prefers 'available' dealers first (CASE 0/1), then shift match,
+--      then priority_break and worked_minutes. When an on_break dealer is selected,
+--      the wrapper ends their break (transitions to 'available') before delegating
+--      to the 7-param core.
 --
 -- Signature:
 --   6-param: perform_swing(p_assignment_id UUID, p_duration_minutes INT DEFAULT 30,
@@ -126,11 +131,19 @@ BEGIN
     WHERE d.club_id = v_club_id
       AND dat.id != v_old_attendance_id
       AND (dat.shift_id = v_shift_id OR dat.shift_id IS NULL)
-      AND dat.current_state = 'available'
+      AND (
+        dat.current_state = 'available'
+        OR (dat.current_state = 'on_break' AND COALESCE(dat.worked_minutes_since_last_break, 0) >= 10)
+      )
       AND dat.status = 'checked_in'
       AND dat.check_in_time IS NOT NULL
       AND dat.check_out_time IS NULL
-    ORDER BY dat.shift_id IS NULL, dat.priority_break_flag ASC, dat.worked_minutes_since_last_break ASC, RANDOM()
+    ORDER BY
+      CASE WHEN dat.current_state = 'available' THEN 0 ELSE 1 END,
+      dat.shift_id IS NULL,
+      dat.priority_break_flag ASC,
+      dat.worked_minutes_since_last_break ASC,
+      RANDOM()
     LIMIT 1
     FOR UPDATE SKIP LOCKED;
 

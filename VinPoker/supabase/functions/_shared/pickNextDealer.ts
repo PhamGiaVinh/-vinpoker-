@@ -117,6 +117,12 @@ async function buildDealerCandidates(
   }
 
   // Step 2: Query dealer_attendance
+  // Include dealers on_break if they've rested >= minimum_break_duration_minutes (default 10).
+  // This allows dealers who have completed their minimum break to be pulled back for swing.
+  const minBreakMinutes = options.clubBreakDurationMinutes
+    ? Math.min(options.clubBreakDurationMinutes, 10)
+    : 10;
+
   const { data: rows, error } = await admin
     .from("dealer_attendance")
     .select(
@@ -127,9 +133,9 @@ async function buildDealerCandidates(
          tier, skills
        )`
     )
-    .eq("current_state", "available")
     .eq("status", "checked_in")
-    .in("dealer_id", dealerIds);
+    .in("dealer_id", dealerIds)
+    .or(`current_state.eq.available,current_state.eq.on_break`);
 
   if (error) {
     console.error("[pickNextDealer] query error:", error.message);
@@ -237,6 +243,14 @@ async function buildDealerCandidates(
     const lastTourTier = lastTourTierMap.get(row.id) ?? "";
     const priorityBreak = row.priority_break_flag ?? false;
 
+    // ── On-break minimum rest guard ──────────────────────────────────────────────
+    // Dealers on_break are included in the pool query but only eligible if they've
+    // rested >= minimum_break_duration_minutes (10). Available dealers always pass.
+    if (row.current_state === "on_break" && restMin < minBreakMinutes) {
+      diag.min_rest_excluded++;
+      continue;
+    }
+
     // ── High-stakes tier guard ─────────────────────────────────────────────
     // HIGH tournaments require A+ tier dealers. Exclude C tier entirely.
     // MEDIUM tournaments prefer B tier but accept A/C.
@@ -275,6 +289,11 @@ async function buildDealerCandidates(
 
     // ── Scoring ─────────────────────────────────────────────────────────────
     let score = 0;
+
+    // ── On-break penalty ────────────────────────────────────────────────────────
+    // Dealers on_break are eligible but deprioritized vs available dealers.
+    // They've rested enough but are currently pulled out of rotation.
+    if (row.current_state === "on_break") { score -= 50; }
     const breakdown: ScoreBreakdown = {
       rest_bonus: 0, tier_bonus: 0,
       back_to_back_penalty: 0, consecutive_penalty: 0,
