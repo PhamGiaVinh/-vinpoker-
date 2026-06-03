@@ -176,7 +176,7 @@ async function buildDealerCandidates(
   const { data: busyDealers } = await admin
     .from("dealer_attendance")
     .select("dealer_id")
-    .eq("club_id", clubId)
+    .in("dealer_id", dealerIds)
     .in("current_state", ["assigned", "pre_assigned", "in_transition"])
     .is("check_out_time", null)
     .gte("check_in_time", busyWindow);

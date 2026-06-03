@@ -368,7 +368,6 @@ Deno.serve(async (req: Request) => {
               pre_assigned_at,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "pre_assigned")
             .or("pre_assigned_table_id.is.null,pre_assigned_at.is.null")
             .in("dealer_id", cidDealerIds);
@@ -392,11 +391,9 @@ Deno.serve(async (req: Request) => {
             .select(`
               id,
               dealer_id,
-              updated_at,
               pre_assigned_table_id,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "pre_assigned")
             .eq("status", "checked_in")
             .in("dealer_id", cidDealerIds);
@@ -453,18 +450,19 @@ Deno.serve(async (req: Request) => {
           }
 
           // 3. Stuck in_transition (>5 minutes)
+          // dealer_attendance has no updated_at — use check_in_time as proxy for time-based guard
           const { data: stuckTransition } = await admin
             .from("dealer_attendance")
-            .select("id, dealer_id, updated_at, dealers!inner(full_name)")
+            .select("id, dealer_id, check_in_time, dealers!inner(full_name)")
             .eq("current_state", "in_transition")
             .in("dealer_id", cidDealerIds)
-            .lt("updated_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+            .lt("check_in_time", new Date(Date.now() - 5 * 60 * 1000).toISOString());
 
           if (stuckTransition && stuckTransition.length > 0) {
             console.log(`[Pass 0c] Found ${stuckTransition.length} stuck in_transition dealers (>5min)`);
             for (const s of stuckTransition) {
               const dealerName = (s.dealers as any)?.full_name ?? "Unknown";
-              const stuckMinutes = Math.floor((Date.now() - new Date(s.updated_at).getTime()) / 60000);
+              const stuckMinutes = Math.floor((Date.now() - new Date(s.check_in_time).getTime()) / 60000);
               stuckIssues.push({ id: s.id, dealer_name: dealerName, issue: `in_transition_stuck_${stuckMinutes}m` });
               await transitionDealerState(admin, s.id, "available", `pass0c_stuck_in_transition_${stuckMinutes}m`);
             }
@@ -476,11 +474,9 @@ Deno.serve(async (req: Request) => {
             .select(`
               id,
               dealer_id,
-              current_table_id,
-              updated_at,
+              check_in_time,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "assigned")
             .eq("status", "checked_in")
             .in("dealer_id", cidDealerIds);
@@ -499,20 +495,19 @@ Deno.serve(async (req: Request) => {
             for (const dealer of toRelease) {
               const dealerName = (dealer.dealers as any)?.full_name ?? "Unknown";
               const stuckMinutes = Math.floor(
-                (Date.now() - new Date(dealer.updated_at).getTime()) / 60000
+                (Date.now() - new Date(dealer.check_in_time).getTime()) / 60000
               );
-              const tableId = (dealer as any).current_table_id ?? "none";
               stuckIssues.push({
                 id: dealer.id,
                 dealer_name: dealerName,
-                issue: `assigned_orphaned_${stuckMinutes}m (table: ${tableId})`,
+                issue: `assigned_orphaned_${stuckMinutes}m`,
               });
               await transitionDealerState(
                 admin, dealer.id, "available",
-                `pass0c_orphaned_assigned_${tableId}_stuck_${stuckMinutes}m`
+                `pass0c_orphaned_assigned_stuck_${stuckMinutes}m`
               );
               cycleExcludedIds.add(dealer.id);
-              console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, table: ${tableId}, stuck: ${stuckMinutes}m)`);
+              console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, stuck: ${stuckMinutes}m)`);
             }
           }
 
