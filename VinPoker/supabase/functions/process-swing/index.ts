@@ -623,12 +623,13 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── PASS 1b — Clean up stale pre_assign records ──────────────────
-        // Only clear pre-assigns older than RECENT_PRE_ASSIGN_MINUTES (10 min).
-        // This prevents clearing a pre-assign that was just set in the current
-        // or previous tick. The 10-min buffer accounts for clock skew and
-        // long-running tick processing.
+        // Threshold = pre_announce_minutes + 5 to account for:
+        //   1. The pre-announce window (up to pre_announce_minutes+2)
+        //   2. Tick delay (up to 2-3 min)
+        // This prevents Pass 1b from clearing a pre-assign that was set
+        // legitimately by Pass 2 but is still waiting for Pass 3 to execute.
         const recentThreshold = new Date(
-          Date.now() - RECENT_PRE_ASSIGN_MINUTES * 60 * 1000
+          Date.now() - (clubCfg.pre_announce_minutes + 5) * 60 * 1000
         ).toISOString();
 
         const { data: staleRows } = await admin
