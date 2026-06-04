@@ -220,6 +220,42 @@ export async function lockPayroll(
 }
 
 /**
+ * Reject payroll period (submitted → rejected). Records rejecter + reason.
+ */
+export async function rejectPayroll(
+  periodId: string,
+  userId: string,
+  reason: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("transition_payroll_status", {
+    p_period_id: periodId,
+    p_expected_status: "submitted",
+    p_new_status: "rejected",
+    p_user_id: userId,
+    p_rejection_reason: reason,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
+ * Resubmit rejected payroll (rejected → draft). Clears reject metadata.
+ */
+export async function resubmitPayroll(
+  periodId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("transition_payroll_status", {
+    p_period_id: periodId,
+    p_expected_status: "rejected",
+    p_new_status: "draft",
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
  * Add a payroll adjustment to a saved dealer_payroll record.
  */
 export async function addPayrollAdjustment(
@@ -280,11 +316,14 @@ export async function getSavedPayroll(
   approvedAt: string | null;
   lockedBy: string | null;
   lockedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
   records: SavedPayrollRecord[];
 }> {
   const { data: period } = await supabase
     .from("payroll_periods")
-    .select("id, status, submitted_by, submitted_at, approved_by, approved_at, locked_by, locked_at")
+    .select("id, status, submitted_by, submitted_at, approved_by, approved_at, locked_by, locked_at, rejected_by, rejected_at, rejection_reason")
     .eq("club_id", clubId)
     .eq("period_year", year)
     .eq("period_month", month)
@@ -300,6 +339,9 @@ export async function getSavedPayroll(
       approvedAt: null,
       lockedBy: null,
       lockedAt: null,
+      rejectedBy: null,
+      rejectedAt: null,
+      rejectionReason: null,
       records: [],
     };
   }
@@ -319,6 +361,9 @@ export async function getSavedPayroll(
     approvedAt: period.approved_at,
     lockedBy: period.locked_by,
     lockedAt: period.locked_at,
+    rejectedBy: period.rejected_by,
+    rejectedAt: period.rejected_at,
+    rejectionReason: period.rejection_reason,
     records: (records ?? []) as SavedPayrollRecord[],
   };
 }
