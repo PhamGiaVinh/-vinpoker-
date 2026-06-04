@@ -1019,6 +1019,29 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         }}>
           <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram
         </Button>
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <Switch
+            checked={(() => {
+              const cid = clubFilter || filteredClubIds[0];
+              if (!cid) return false;
+              const cfg = (swingConfigs ?? []).find((c: any) => c.club_id === cid && c.table_type === "tournament");
+              return cfg?.rotation_planner_enabled ?? false;
+            })()}
+            onCheckedChange={async (checked: boolean) => {
+              const cid = clubFilter || filteredClubIds[0];
+              if (!cid) { toast.error("Vui lòng chọn CLB"); return; }
+              const { error } = await supabase.from("swing_config").upsert({
+                club_id: cid,
+                table_type: "tournament",
+                rotation_planner_enabled: checked,
+              }, { onConflict: "club_id, table_type" });
+              if (error) { toast.error("Lỗi lưu: " + error.message); return; }
+              refetchSwingConfigs();
+              toast.success(checked ? "Rotation Planner đã bật" : "Rotation Planner đã tắt");
+            }}
+          />
+          <span className="text-[11px] text-muted-foreground">Rotation</span>
+        </label>
         <Button size="sm" variant="outline" onClick={() => setSwingConfigOpen(true)}>
           <Settings className="w-3.5 h-3.5 mr-1" /> Cấu hình Swing
         </Button>
@@ -3404,20 +3427,6 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
               value={v.pre_announce_minutes ?? 10}
               onChange={(e) => update(type, "pre_announce_minutes", Number(e.target.value))} />
           </div>
-          {isTournament && (
-            <div className="col-span-2 flex items-center justify-between rounded-md border border-border/50 bg-muted/30 px-3 py-2">
-              <div className="space-y-0.5">
-                <Label className="text-[11px] font-medium">Rotation Planner</Label>
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  Tự động gán dealer trước cho bàn sắp swing (Pass 1.5)
-                </p>
-              </div>
-              <Switch
-                checked={v.rotation_planner_enabled ?? false}
-                onCheckedChange={(checked: boolean) => update(type, "rotation_planner_enabled", checked)}
-              />
-            </div>
-          )}
         </div>
       </div>
     );
