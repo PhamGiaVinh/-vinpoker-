@@ -68,19 +68,26 @@ export interface DealerCandidate {
   consecutive_assignments: number;
   rest_minutes: number;
   priority_break_flag: boolean;
+  current_state: "available" | "on_break";
+  last_tour_tier: string;
   score?: number;
   score_breakdown?: ScoreBreakdown;
+}
+
+export interface BuildCandidatesResult {
+  candidates: DealerCandidate[];
+  avgBreakRatio: number | null;
 }
 
 export type SupabaseAdmin = ReturnType<typeof createClient>;
 
 // ─── buildDealerCandidates ────────────────────────────────────────────────────
 
-async function buildDealerCandidates(
+export async function buildDealerCandidates(
   admin: SupabaseAdmin,
   clubId: string,
   options: PickDealerOptions = {}
-): Promise<DealerCandidate[]> {
+): Promise<BuildCandidatesResult> {
   const {
     tourTier,
     requiredGameTypes,
@@ -100,7 +107,10 @@ async function buildDealerCandidates(
     .eq("club_id", clubId)
     .eq("status", "active");
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
-  if (dealerIds.length === 0) return [];
+  // Step 1 edge case: no dealers → return empty with null avgBreakRatio
+  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
+
+  // Step 1b: Check if requesting table has priority_swing_at set
 
   // Step 1b: Check if requesting table has priority_swing_at set
   // +300 bonus ensures the priority table gets next available dealer.
@@ -137,9 +147,10 @@ async function buildDealerCandidates(
     .in("dealer_id", dealerIds)
     .or(`current_state.eq.available,current_state.eq.on_break`);
 
+  // Step 2 edge case: query error or empty rows
   if (error) {
     console.error("[pickNextDealer] query error:", error.message);
-    return [];
+    return { candidates: [], avgBreakRatio: null };
   }
 
   // Step 3: Query dealer_shift_metrics separately
@@ -195,8 +206,9 @@ async function buildDealerCandidates(
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring
-  let avgBreakRatio = clubAvgBreakRatio ?? 0.15;
-  if (includeScoreBreakdown && avgBreakRatio <= 0 && clubId) {
+  // null = insufficient data → skip break equity penalty entirely
+  let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
+  if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
     const { data: allMetricsRaw } = await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
@@ -364,9 +376,8 @@ async function buildDealerCandidates(
     // ── Break equity penalty ───────────────────────────────────────────────
     // Dealers with below-average break ratio get a small score penalty,
     // making them less likely to be picked for another full swing.
-    // This prevents the same dealers from being overworked while others
-    // take frequent breaks.
-    if (avgBreakRatio > 0 && metric) {
+    // avgBreakRatio === null means insufficient data → skip entirely.
+    if (avgBreakRatio !== null && avgBreakRatio > 0 && metric) {
       const dealerBreak = metric.total_break_minutes ?? 0;
       const dealerWorked = metric.total_worked_minutes ?? 0;
       const totalDealerTime = dealerBreak + dealerWorked;
@@ -410,6 +421,8 @@ async function buildDealerCandidates(
       consecutive_assignments: consecutive,
       rest_minutes: restMin,
       priority_break_flag: priorityBreak,
+      current_state: row.current_state as "available" | "on_break",
+      last_tour_tier: lastTourTier,
       score,
     };
 
@@ -438,7 +451,7 @@ async function buildDealerCandidates(
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return candidates;
+  return { candidates, avgBreakRatio };
 }
 
 // ─── pickNextDealer ───────────────────────────────────────────────────────────
@@ -448,7 +461,7 @@ export async function pickNextDealer(
   clubId: string,
   options: PickDealerOptions = {}
 ): Promise<DealerCandidate | null> {
-  const candidates = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates[0] ?? null;
 }
 
@@ -460,7 +473,7 @@ export async function pickTopDealers(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<DealerCandidate[]> {
-  const candidates = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates.slice(0, topN);
 }
 

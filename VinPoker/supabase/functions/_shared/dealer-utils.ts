@@ -15,6 +15,7 @@ export {
   pickNextDealer,
   pickTopDealers,
   buildScoreLabel,
+  buildDealerCandidates,
 } from "./pickNextDealer.ts";
 
 export {
@@ -39,6 +40,7 @@ export type {
   ScoreBreakdown,
   PickDealerOptions,
   DealerCandidate,
+  BuildCandidatesResult,
 } from "./pickNextDealer.ts";
 
 export type {
@@ -48,6 +50,24 @@ export type {
 export type {
   BreakEvalOptions,
 } from "./evaluateBreakNeed.ts";
+
+export {
+  solveGreedyLazy,
+  type SolverOptions,
+} from "./rotationSolver.ts";
+
+export type {
+  RotationTable,
+  RotationCandidate,
+  RotationPair,
+  RotationResult,
+  MissedTableReason,
+  Pass15Options,
+  Pass15Result,
+  ScoreCandidateInput,
+  ScoreCandidateOptions,
+  RotationTier,
+} from "./rotationTypes.ts";
 
 // ─── Shared utilities (not extracted) ─────────────────────────────────────────
 

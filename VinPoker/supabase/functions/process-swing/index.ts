@@ -8,6 +8,7 @@ import {
   fillEmptyTables,
   getTableIdsForClub,
 } from "../_shared/dealer-utils.ts";
+import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
 import {
   sendTelegramNotification,
   getClubTelegramChatId,
@@ -29,6 +30,7 @@ import {
 } from "./calculateBatchSwingDuration.ts";
 import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
+import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,6 +152,7 @@ interface ClubSwingConfig {
   max_duration_minutes: number;
   sync_swings: boolean;
   sync_window_minutes: number;
+  rotation_planner_enabled: boolean;
 }
 
 // ─── Config fetching ──────────────────────────────────────────────────────────
@@ -193,6 +196,7 @@ async function fetchAllClubConfigs(
       max_duration_minutes: row.max_duration_minutes ?? 60,
       sync_swings: row.sync_swings ?? false,
       sync_window_minutes: row.sync_window_minutes ?? 5,
+      rotation_planner_enabled: row.rotation_planner_enabled ?? false,
     });
   }
   return configMap;
@@ -217,6 +221,7 @@ function getClubConfig(
       max_duration_minutes: 60,
       sync_swings: false,
       sync_window_minutes: 5,
+      rotation_planner_enabled: false,
     }
   );
 }
@@ -1145,6 +1150,11 @@ Deno.serve(async (req: Request) => {
           const allSuccessfulAttIds: string[] = [];
           const failedStaleTransitions: Array<{ rowId: string; dealerId: string; reason: string }> = [];
 
+          let safetyThresholdMin = 15;
+          let blockedRowsCount = 0;
+          let safeStaleRowsCount = 0;
+          let circuitBreakerThreshold = 0;
+
           const { data: allStaleRaw, error: staleErr } = await admin
             .from("dealer_assignments")
             .select("id, pre_assigned_attendance_id, pre_assigned_at, version")
@@ -1201,13 +1211,94 @@ Deno.serve(async (req: Request) => {
 
                 trulyStaleCount = trulyStaleRows.length;
 
-                if (tier2Count > 0) {
-                  console.log(`[Pass 1b] \u2139\uFE0F ${tier2Count} stale assignments \u2014 dealer still pre_assigned \u2014 monitoring only`);
+if (tier2Count > 0) {
+                  console.log(`[Pass 1b] ℹ️ ${tier2Count} stale assignments — dealer still pre_assigned — monitoring only`);
                 }
 
-                // ── Tier 1: Process truly stale assignments ────────────────
-                if (trulyStaleRows.length > 0) {
+                // ── Pass 1b SAFEGUARD: Block recently pre-assigned dealers ──
+                let safeStaleRows: StalePreAssignRow[];
+
+                try {
+                  const now = Date.now();
+                  safetyThresholdMin = Math.max(clubCfg.pre_announce_minutes + 5, 15);
+                  const safetyThresholdMs = safetyThresholdMin * 60 * 1000;
+
+                  const blockedRows: Array<{ id: string; age: number }> = [];
+                  safeStaleRows = [];
+
                   for (const row of trulyStaleRows) {
+                    if (!row.pre_assigned_at) {
+                      safeStaleRows.push(row);
+                      continue;
+                    }
+                    const preAssignTime = new Date(row.pre_assigned_at).getTime();
+                    const ageMs = now - preAssignTime;
+                    const ageMinutes = Math.floor(ageMs / 60000);
+
+                    if (ageMs < safetyThresholdMs) {
+                      blockedRows.push({ id: row.id, age: ageMinutes });
+                      continue;
+                    }
+                    safeStaleRows.push(row);
+                  }
+
+                  if (blockedRows.length > 0) {
+                    const blockedSummary = blockedRows.length > 5
+                      ? `${blockedRows.slice(0, 5).map(r => `${truncateId(r.id)}(${r.age}min)`).join(', ')} +${blockedRows.length - 5} more`
+                      : blockedRows.map(r => `${truncateId(r.id)}(${r.age}min)`).join(', ');
+
+                    console.warn(
+                      `[Pass 1b] 🛡️ SAFEGUARD: Blocked ${blockedRows.length} assignments: ${blockedSummary} ` +
+                      `(threshold: ${safetyThresholdMin}min)`
+                    );
+                  }
+
+                  blockedRowsCount = blockedRows.length;
+
+                  circuitBreakerThreshold = clubTableIds.length === 0
+                    ? 0
+                    : Math.max(
+                        Math.min(Math.floor(clubTableIds.length * 0.3), clubTableIds.length - 1),
+                        Math.min(clubTableIds.length, 3)
+                      );
+
+                  if (safeStaleRows.length === 0) {
+                    console.log(`[Pass 1b] ✅ No stale assignments for ${clubTableIds.length} tables`);
+                    safeStaleRowsCount = 0;
+                  } else if (safeStaleRows.length >= circuitBreakerThreshold) {
+                    const severity = safeStaleRows.length > clubTableIds.length * 0.5 ? '🚨 CRITICAL' : '⚠️ WARNING';
+
+                    console.error(
+                      `[Pass 1b] ${severity}: ${safeStaleRows.length} stale assignments ` +
+                      `(${Math.round(safeStaleRows.length / clubTableIds.length * 100)}% of ${clubTableIds.length} tables) ` +
+                      `exceeds threshold ${circuitBreakerThreshold}`
+                    );
+
+                    await safeSendAlert(admin, cid,
+                      `${severity} *CIRCUIT BREAKER*: ${safeStaleRows.length}/${clubTableIds.length} stale assignments. ` +
+                      `Processing limited to ${circuitBreakerThreshold}. Manual review required.`,
+                      botToken
+                    );
+
+                    const originalCount = safeStaleRows.length;
+                    safeStaleRows.splice(circuitBreakerThreshold);
+                    safeStaleRowsCount = circuitBreakerThreshold;
+                    console.warn(`[Pass 1b] Limited processing from ${originalCount} to ${circuitBreakerThreshold}`);
+                  } else {
+                    console.log(`[Pass 1b] Processing ${safeStaleRows.length} stale assignments (threshold: ${circuitBreakerThreshold})`);
+                    safeStaleRowsCount = safeStaleRows.length;
+                  }
+                } catch (safeguardErr) {
+                  console.error('[Pass 1b] ⚠️ Safeguard failed, falling back to unfiltered:', (safeguardErr as Error).message);
+                  safeStaleRows = trulyStaleRows;
+                  safeStaleRowsCount = trulyStaleRows.length;
+                  blockedRowsCount = 0;
+                  circuitBreakerThreshold = 0;
+                }
+
+                // ── Tier 1: Process safe stale assignments ────────────────
+                if (safeStaleRows.length > 0) {
+                  for (const row of safeStaleRows) {
                     try {
                       // Guard: skip rows with missing attendance ID
                       if (!row.pre_assigned_attendance_id) {
@@ -1282,7 +1373,7 @@ Deno.serve(async (req: Request) => {
                     }
                   }
 
-                  console.log(`[Pass 1b] \u2705 Released ${allSuccessfulAttIds.length}/${trulyStaleRows.length} stale dealers`);
+                  console.log(`[Pass 1b] \u2705 Released ${allSuccessfulAttIds.length}/${safeStaleRows.length} stale dealers`);
                 }
               }
             }
@@ -1299,6 +1390,10 @@ Deno.serve(async (req: Request) => {
             stale: {
               found: staleFoundCount,
               truly_stale: trulyStaleCount,
+              safeguard_blocked: blockedRowsCount,
+              safeguard_threshold_min: safetyThresholdMin,
+              circuit_breaker: circuitBreakerThreshold,
+              processed: safeStaleRowsCount,
               still_waiting: tier2Count,
               released: allSuccessfulAttIds.length,
               failed: failedStaleTransitions.length,
@@ -1358,6 +1453,35 @@ Deno.serve(async (req: Request) => {
           if (preAssignedDealers && preAssignedDealers.length > 0) {
             for (const d of preAssignedDealers) cycleExcludedIds.add(d.id);
             console.log(`[process-swing] Seeded ${preAssignedDealers.length} pre-assigned dealers into cycleExcludedIds for club ${cid}`);
+          }
+        }
+
+        // ── PASS 1.5 — Rotation Planner (greedy batch pre-assign) ──────────
+        // When enabled, plans assignments for tables in the upcoming rotation
+        // window before Pass 2 runs. Uses greedy solver to find optimal
+        // dealer-table pairings. Feature-flagged per club.
+        if (!forceAll && !preAssignOnly && clubCfg.rotation_planner_enabled) {
+          try {
+            const p15Result = await pass15RotationPlanner(admin, cid, {
+              dryRun: !!dryRun,
+              preAnnounceMinutes: clubCfg.pre_announce_minutes,
+              requiredGameTypes: required_game_types,
+              cycleExcludedIds,
+              clubId: cid,
+            });
+            console.log(
+              `[Pass 1.5] ${p15Result.assigned} assigned, ` +
+              `${p15Result.unassigned} unassigned` +
+              `${p15Result.dryRun ? " (dryRun)" : ""}`
+            );
+            if (p15Result.errors.length > 0) {
+              console.error(
+                `[Pass 1.5] ${p15Result.errors.length} write errors:`,
+                p15Result.errors.map(e => `${e.tableId}: ${e.error}`).join("; ")
+              );
+            }
+          } catch (err: any) {
+            console.error(`[Pass 1.5] ❌ Error:`, err.message);
           }
         }
 
