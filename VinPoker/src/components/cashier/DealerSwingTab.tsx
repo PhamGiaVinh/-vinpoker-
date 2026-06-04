@@ -3279,6 +3279,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
       crit_at_minutes: 1, tournament_mode: "time", pre_announce_minutes: 10,
       auto_adjust_duration: false, base_duration_minutes: 30,
       target_ratio: 1.2, min_duration_minutes: 25, max_duration_minutes: 60,
+      rotation_planner_enabled: false,
     },
   }), []);
 
@@ -3302,6 +3303,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
           target_ratio: (cfg as any).target_ratio ?? 1.2,
       min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 25, Math.max(30, (cfg as any).base_duration_minutes ?? 30) - 1)),
       max_duration_minutes: Math.max((cfg as any).max_duration_minutes ?? 60, Math.max(30, (cfg as any).base_duration_minutes ?? 30) + 5),
+          rotation_planner_enabled: (cfg as any).rotation_planner_enabled ?? false,
         };
       }
     }
@@ -3333,6 +3335,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
         target_ratio: vals.target_ratio ?? 1.2,
         min_duration_minutes: vals.min_duration_minutes ?? 20,
         max_duration_minutes: vals.max_duration_minutes ?? 60,
+        rotation_planner_enabled: vals.rotation_planner_enabled ?? false,
       }, { onConflict: "club_id, table_type" });
       if (error) { toast.error(`Lỗi lưu ${t}: ${error.message}`); setSaving(false); return; }
     }
@@ -3401,6 +3404,20 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
               value={v.pre_announce_minutes ?? 10}
               onChange={(e) => update(type, "pre_announce_minutes", Number(e.target.value))} />
           </div>
+          {isTournament && (
+            <div className="col-span-2 flex items-center justify-between rounded-md border border-border/50 bg-muted/30 px-3 py-2">
+              <div className="space-y-0.5">
+                <Label className="text-[11px] font-medium">Rotation Planner</Label>
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  Tự động gán dealer trước cho bàn sắp swing (Pass 1.5)
+                </p>
+              </div>
+              <Switch
+                checked={v.rotation_planner_enabled ?? false}
+                onCheckedChange={(checked: boolean) => update(type, "rotation_planner_enabled", checked)}
+              />
+            </div>
+          )}
         </div>
       </div>
     );

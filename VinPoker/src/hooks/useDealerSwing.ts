@@ -371,6 +371,7 @@ export interface SwingConfig {
   target_ratio?: number;
   min_duration_minutes?: number;
   max_duration_minutes?: number;
+  rotation_planner_enabled?: boolean;
 }
 
 interface SwingMetrics {
