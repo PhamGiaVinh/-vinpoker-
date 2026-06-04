@@ -597,24 +597,31 @@ Deno.serve(async (req: Request) => {
           console.log(`[process-swing] Fallback swingDueAt for club ${cid}: config default ${clubCfg.swing_duration_minutes}min`);
         }
 
+        // ── Pre-fetch club dealer IDs (used by available count, Pass 0c, and seeding) ──
+        const { data: clubDealers } = await admin
+          .from("dealers")
+          .select("id")
+          .eq("club_id", cid);
+        const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+
+        if (cidDealerIds.length === 0) {
+          console.log(`[process-swing] No dealers for club ${cid} — skipping`);
+          continue;
+        }
+
         // ── PASS 0b — Query available dealer count for break deadlock guard ──
         let availableDealerCount: number | undefined;
         if (!dryRun) {
           const { count } = await admin
             .from("dealer_attendance")
             .select("id", { head: true, count: "exact" })
+            .in("dealer_id", cidDealerIds)
             .eq("current_state", "available")
             .eq("status", "checked_in");
           availableDealerCount = count ?? 0;
         }
 
         // ── PASS 0c: Detect & auto-fix stuck dealers ────────────────────────
-        // Pre-fetch club dealer IDs (used by Pass 0c and seeding below)
-        const { data: clubDealers } = await admin
-          .from("dealers")
-          .select("id")
-          .eq("club_id", cid);
-        const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
 
         if (!dryRun) {
           const stuckIssues: Array<{ id: string; dealer_name: string; issue: string }> = [];
@@ -1555,8 +1562,9 @@ if (tier2Count > 0) {
              dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
           )
           .eq("status", "assigned")
+          .is("released_at", null)
           .is("swing_processed_at", null)
-          .eq("club_id", cid);  // Phase 1: use denormalized club_id (NOT NULL + indexed)
+          .eq("club_id", cid);
 
         if (!forceAll) {
           query.lte("swing_due_at", nowPlusBuf);
@@ -1609,6 +1617,7 @@ if (tier2Count > 0) {
 
         for (const assignment of dueAssignments) {
           metrics.total++;
+          try {
           const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
           const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
           const minsLeft = Math.round(
@@ -1617,14 +1626,29 @@ if (tier2Count > 0) {
 
           // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
           // If swing is overdue by > 60 minutes, this is likely an infinite retry
-          // loop caused by stale dealer pool (bug #1) or TOCTOU race (bug #2).
-          // Mark swing_processed_at to break the loop and alert admins.
+          // loop caused by stale dealer or TOCTOU race.
+          // Release pre-assigned dealer, mark assignment processed, throttle alerts.
           if (minsLeft < -SWING_THRESHOLDS.OVERDUE_THRESHOLD_MINUTES) {
             console.error(
-              `[process-swing] 🚨 CIRCUIT BREAKER: Table ${tableName} assignment ${assignment.id} ` +
-              `overdue by ${-minsLeft} min. Breaking loop.`
+              `[process-swing] 🚨 CIRCUIT BREAKER: ${tableName} overdue by ${-minsLeft}min`
             );
             if (!dryRun) {
+              // 1. Release pre-assigned dealer if exists
+              if (assignment.pre_assigned_attendance_id) {
+                await admin
+                  .from("dealer_assignments")
+                  .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
+                  .eq("id", assignment.id)
+                  .is("released_at", null);
+                await transitionDealerState(
+                  admin,
+                  assignment.pre_assigned_attendance_id,
+                  "available",
+                  "circuit_breaker_force_release"
+                );
+              }
+
+              // 2. Mark assignment processed so cron escapes the loop
               await admin
                 .from("dealer_assignments")
                 .update({
@@ -1632,13 +1656,35 @@ if (tier2Count > 0) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", assignment.id);
-              const chatId = await getClubTelegramChatId(admin, cid);
-              if (botToken && chatId) {
-                await sendTelegramNotification(
-                  botToken, chatId,
-                  `🚨 *CIRCUIT BREAKER* — Bàn ${tableName} (${outgoingDealer.full_name}) quá hạn swing ${-minsLeft}ph.\nĐã dừng vòng lặp. Cần can thiệp thủ công ngay!`,
-                  {}
-                );
+
+              // 3. Throttled alert using clubs.last_critical_alert_at (CAS update)
+              const throttleThreshold = new Date(
+                Date.now() - SWING_THRESHOLDS.ALERT_THROTTLE_HOURS * 60 * 60 * 1000
+              ).toISOString();
+              const { data: alertUpdated, error: alertUpdateErr } = await admin
+                .from("clubs")
+                .update({ last_critical_alert_at: new Date().toISOString() })
+                .eq("id", cid)
+                .or(`last_critical_alert_at.is.null,last_critical_alert_at.lt.${throttleThreshold}`)
+                .select("id");
+
+              const shouldAlert = !alertUpdateErr && alertUpdated && alertUpdated.length > 0;
+              if (shouldAlert) {
+                const chatId = await getClubTelegramChatId(admin, cid);
+                if (botToken && chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `🚨 *CIRCUIT BREAKER* — Bàn *${tableName}*\n` +
+                    `Dealer *${outgoingDealer?.full_name || "Unknown"}* kẹt ${-minsLeft}ph.\n` +
+                    (assignment.pre_assigned_attendance_id
+                      ? `Pre-assign đã force-release. `
+                      : `Không có pre-assign. `) +
+                    `⚠️ Cần can thiệp thủ công!`,
+                    {}
+                  );
+                }
+              } else {
+                console.log(`[Pass 3] 🔇 Alert throttled for club ${cid} (sent within last ${SWING_THRESHOLDS.ALERT_THROTTLE_HOURS}h)`);
               }
             }
             metrics.failed++;
@@ -1652,6 +1698,7 @@ if (tier2Count > 0) {
               minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
               clubId: cid,
               availableDealerCount,
+              clubDealerIds: cidDealerIds,
             });
 
             const { data: rpcResult, error: rpcErr } = await admin.rpc(
@@ -1723,6 +1770,7 @@ if (tier2Count > 0) {
                       minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
                       clubId: cid,
                       availableDealerCount,
+                      clubDealerIds: cidDealerIds,
                     });
 
                 const fbDealer = await pickNextDealer(admin, cid, {
@@ -1799,12 +1847,13 @@ if (tier2Count > 0) {
 
             const breakDecision = isOtDealer
               ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
-              : await evaluateBreakNeed(admin, assignment.attendance_id, {
-                  maxWorkMinutes: swingDurResult.durationMinutes * 3,
-                  minWorkMinutes: swingDurResult.durationMinutes * 2,
-                  clubId: cid,
-                  availableDealerCount,
-                });
+: await evaluateBreakNeed(admin, assignment.attendance_id, {
+                   maxWorkMinutes: swingDurResult.durationMinutes * 3,
+                   minWorkMinutes: swingDurResult.durationMinutes * 2,
+                   clubId: cid,
+                   availableDealerCount,
+                   clubDealerIds: cidDealerIds,
+                 });
 
             const nextExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
 
@@ -1993,6 +2042,40 @@ if (tier2Count > 0) {
             } else {
               metrics.failed++;
             }
+          }
+          } catch (swingErr: any) {
+            metrics.failed++;
+            console.error(
+              `[Pass 3] ❌ Swing failed for assignment ${assignment.id} (table ${assignment.table_id}):`,
+              swingErr?.message ?? swingErr
+            );
+            try {
+              await admin
+                .from("dealer_assignments")
+                .update({
+                  pre_assigned_attendance_id: null,
+                  pre_assigned_at: null,
+                })
+                .eq("id", assignment.id);
+              if (assignment.pre_assigned_attendance_id) {
+                await transitionDealerState(
+                  admin,
+                  assignment.pre_assigned_attendance_id,
+                  "available",
+                  "pass3_swing_failure_cleanup"
+                );
+                console.log(
+                  `[Pass 3] Released stuck dealer ${assignment.pre_assigned_attendance_id} ` +
+                  `from failed assignment ${assignment.id}`
+                );
+              }
+            } catch (cleanupErr: any) {
+              console.error(
+                `[Pass 3] ⚠️ Cleanup failed for ${assignment.id}:`,
+                cleanupErr?.message ?? cleanupErr
+              );
+            }
+            continue;
           }
         }
 

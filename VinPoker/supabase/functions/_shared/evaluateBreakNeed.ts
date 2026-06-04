@@ -27,6 +27,8 @@ export interface BreakEvalOptions {
   clubId?: string;
   /** Caller-supplied snapshot of how many available dealers exist (skip DB query). */
   availableDealerCount?: number;
+  /** Club-scoped dealer IDs for filtering the Rule 4 fallback query. Required. */
+  clubDealerIds: string[];
 }
 
 const DEFAULT_MAX_WORK = 120;
@@ -52,13 +54,60 @@ export async function evaluateBreakNeed(
     return { shouldBreak: false, reason: "none", workedMinutes: 0 };
   }
 
-  const { data: metrics } = await admin
+  const { data: shiftMetrics } = await admin
     .from("dealer_shift_metrics")
     .select("minutes_since_rest, total_break_minutes, total_worked_minutes")
     .eq("attendance_id", attendanceId)
     .maybeSingle();
 
-  const worked = metrics?.minutes_since_rest ?? 0;
+  let worked = 0;
+  if (shiftMetrics) {
+    worked = shiftMetrics.minutes_since_rest ?? 0;
+  } else {
+    // Tier 2: dealer_attendance.worked_minutes_since_last_break
+    const { data: att } = await admin
+      .from("dealer_attendance")
+      .select("worked_minutes_since_last_break, check_in_time")
+      .eq("id", attendanceId)
+      .single();
+
+    if (att?.worked_minutes_since_last_break != null) {
+      worked = att.worked_minutes_since_last_break;
+    } else {
+      // Tier 3: Compute from dealer_breaks + check_in_time
+      let baseline: Date | null = null;
+      const { data: currentAssignment } = await admin
+        .from("dealer_assignments")
+        .select("id")
+        .eq("attendance_id", attendanceId)
+        .eq("status", "assigned")
+        .maybeSingle();
+
+      if (currentAssignment) {
+        const { data: lastBreak } = await admin
+          .from("dealer_breaks")
+          .select("break_end")
+          .eq("assignment_id", currentAssignment.id)
+          .not("break_end", "is", null)
+          .order("break_end", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lastBreak?.break_end) baseline = new Date(lastBreak.break_end);
+      }
+
+      if (!baseline && att?.check_in_time) baseline = new Date(att.check_in_time);
+
+      worked = baseline
+        ? Math.floor((Date.now() - baseline.getTime()) / 60_000)
+        : 0;
+
+      console.warn(
+        `[evaluateBreakNeed] Tier 3 fallback for ${attendanceId}: worked=${worked}min ` +
+        `(from ${baseline ? 'timestamps' : 'zero'})`
+      );
+    }
+  }
+  const metrics = shiftMetrics;
 
   // ── Rule 1: MANDATORY ────────────────────────────────────────────────────
   // Non-negotiable safety threshold. Dealer MUST go to break.
@@ -106,13 +155,16 @@ export async function evaluateBreakNeed(
     let poolEmpty = false;
     if (options.availableDealerCount !== undefined) {
       poolEmpty = options.availableDealerCount === 0;
-    } else if (options.clubId) {
+    } else if (options.clubId && options.clubDealerIds.length > 0) {
       const { count } = await admin
         .from("dealer_attendance")
         .select("id", { head: true, count: "exact" })
+        .in("dealer_id", options.clubDealerIds)
         .eq("current_state", "available")
         .eq("status", "checked_in");
       poolEmpty = (count ?? 0) === 0;
+    } else if (options.clubId) {
+      poolEmpty = true;
     }
 
     if (poolEmpty) {
