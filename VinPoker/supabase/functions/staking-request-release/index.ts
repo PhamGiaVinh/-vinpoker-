@@ -2,15 +2,15 @@
 // Guard: status=result_verified. Server recomputes via Formula A and rejects mismatch.
 // Status: result_verified -> release_requested. Creates staking_release_requests row.
 // Idempotent for retry/resume: release_requested/cosigned returns the active request.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-
-import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import {
+  corsHeaders,
+  json,
+  createAdminClient,
+  authenticateUser,
+  requireAdminRoles,
+  requireClubAccess,
+} from "../_shared/staking-common.ts";
 
 const BodySchema = z.object({
   deal_id: z.string().uuid(),
@@ -22,28 +22,15 @@ const BodySchema = z.object({
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Missing auth" }, 401);
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader }, fetch: retryFetch } }
-    );
-    const { data: userData } = await userClient.auth.getUser();
-    if (!userData?.user) return json({ error: "Invalid token" }, 401);
-    const uid = userData.user.id;
+    const auth = await authenticateUser(req);
+    if (auth instanceof Response) return auth;
+    const uid = auth.uid;
 
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const { data: roles } = await admin
-      .from("user_roles").select("role")
-      .eq("user_id", uid).in("role", ["super_admin", "cashier"]);
-    const roleSet = new Set((roles ?? []).map((r: any) => r.role));
-    const isSuper = roleSet.has("super_admin");
-    const isCashier = roleSet.has("cashier");
-    if (!isSuper && !isCashier) return json({ error: "Forbidden" }, 403);
+    const admin = createAdminClient();
+
+    const roles = await requireAdminRoles(admin, uid);
+    if (roles instanceof Response) return roles;
+    const { isSuper, isCashier } = roles;
 
     const parsed = await parseBody(req, BodySchema, corsHeaders);
     if (!parsed.ok) return parsed.response;
@@ -57,9 +44,8 @@ Deno.serve(async (req) => {
       .eq("id", body.deal_id).maybeSingle();
     if (!deal) return json({ error: "Deal not found" }, 404);
     if (!isSuper && isCashier) {
-      if (!deal.club_id) return json({ error: "Forbidden: deal không gắn CLB" }, 403);
-      const { data: ok } = await admin.rpc("is_club_cashier", { _user_id: uid, _club_id: deal.club_id });
-      if (!ok) return json({ error: "Forbidden: bạn không được gán cashier cho CLB này" }, 403);
+      const access = await requireClubAccess(admin, uid, deal.club_id);
+      if (access instanceof Response) return access;
     }
 
     // Idempotent retry/resume path: the cashier UI can be stale after a prior
@@ -153,6 +139,4 @@ Deno.serve(async (req) => {
   }
 });
 
-function json(b: unknown, status = 200) {
-  return new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
+
