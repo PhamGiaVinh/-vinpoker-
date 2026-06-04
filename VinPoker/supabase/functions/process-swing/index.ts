@@ -23,7 +23,6 @@ import type {
 import {
   calculateBatchSwingDuration,
   resolveSwingConfig,
-  recomputeSwingDueAt,
   type PoolSnapshot,
   type SwingConfig,
 } from "./calculateBatchSwingDuration.ts";
@@ -36,7 +35,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const STALE_PRE_ASSIGN_MINUTES = 20;
+const STALE_PRE_ASSIGN_MINUTES = 20;       // Documentation: original threshold for stale pre-assign cleanup
+const RECENT_PRE_ASSIGN_MINUTES = 10;      // Pre-assigns younger than this are valid, don't clear
 const DEFAULT_PRE_ANNOUNCE_MINUTES = 6;
 const DEFAULT_PRE_ASSIGN_WINDOW_MINUTES = 4;
 const DEFAULT_MAX_WORK_MINUTES = 120;
@@ -349,15 +349,15 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── PASS 0c: Detect & auto-fix stuck dealers ────────────────────────
+        // Pre-fetch club dealer IDs (used by Pass 0c and seeding below)
+        const { data: clubDealers } = await admin
+          .from("dealers")
+          .select("id")
+          .eq("club_id", cid);
+        const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+
         if (!dryRun) {
           const stuckIssues: Array<{ id: string; dealer_name: string; issue: string }> = [];
-
-          // Get club dealer IDs for scoped queries
-          const { data: clubDealers } = await admin
-            .from("dealers")
-            .select("id")
-            .eq("club_id", cid);
-          const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
 
           // 1. Stuck pre_assigned (no table OR no timestamp — incomplete pre-assign)
           const { data: stuckPre } = await admin
@@ -604,6 +604,24 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // ── SEED: Pre-assigned dealers from previous ticks ──────────────────
+        // Without this, two ticks can pre-assign the same dealer because
+        // cycleExcludedIds only accumulates within a single tick. Seeding
+        // with already-committed pre-assigned dealers prevents double-assignment.
+        if (!dryRun) {
+          const { data: preAssignedDealers } = await admin
+            .from("dealer_attendance")
+            .select("id")
+            .eq("current_state", "pre_assigned")
+            .eq("status", "checked_in")
+            .in("dealer_id", cidDealerIds);
+
+          if (preAssignedDealers && preAssignedDealers.length > 0) {
+            for (const d of preAssignedDealers) cycleExcludedIds.add(d.id);
+            console.log(`[process-swing] Seeded ${preAssignedDealers.length} pre-assigned dealers into cycleExcludedIds for club ${cid}`);
+          }
+        }
+
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -623,8 +641,12 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── PASS 1b — Clean up stale pre_assign records ──────────────────
-        const staleThreshold = new Date(
-          Date.now() - STALE_PRE_ASSIGN_MINUTES * 60 * 1000
+        // Only clear pre-assigns older than RECENT_PRE_ASSIGN_MINUTES (10 min).
+        // This prevents clearing a pre-assign that was just set in the current
+        // or previous tick. The 10-min buffer accounts for clock skew and
+        // long-running tick processing.
+        const recentThreshold = new Date(
+          Date.now() - RECENT_PRE_ASSIGN_MINUTES * 60 * 1000
         ).toISOString();
 
         const { data: staleRows } = await admin
@@ -632,7 +654,7 @@ Deno.serve(async (req: Request) => {
           .select("id, pre_assigned_attendance_id")
           .eq("status", "assigned")
           .not("pre_assigned_attendance_id", "is", null)
-          .lt("pre_assigned_at", staleThreshold)
+          .lt("pre_assigned_at", recentThreshold)
           .lt("swing_due_at", new Date().toISOString())
           .in("table_id", await getTableIdsForClub(admin, cid));
 
@@ -673,18 +695,13 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── Pass 1c: Release orphaned pre_assigned (no table, no assignment) ──
-        const { data: clubDealers } = await admin
-          .from("dealers")
-          .select("id")
-          .eq("club_id", cid);
-        const clubDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
-        if (clubDealerIds.length > 0) {
+        if (cidDealerIds.length > 0) {
           const { data: orphanedAttendances } = await admin
             .from("dealer_attendance")
             .select("id")
             .eq("current_state", "pre_assigned")
             .is("pre_assigned_table_id", null)
-            .in("dealer_id", clubDealerIds);
+            .in("dealer_id", cidDealerIds);
           if (orphanedAttendances && orphanedAttendances.length > 0) {
             const orphanIds = orphanedAttendances.map((r: { id: string }) => r.id);
             console.log(`[Pass 1c] Releasing ${orphanIds.length} orphaned pre_assigned dealers...`);

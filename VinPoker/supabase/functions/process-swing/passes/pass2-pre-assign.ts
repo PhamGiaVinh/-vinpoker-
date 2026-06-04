@@ -236,13 +236,12 @@ export async function pass2PreAssignNext(
             result.pre_assigned_count++;
             cycleExcludedIds.add(nextDealer.id);
 
-            // BUG 2 FIX: Clear overtime_started_at since a replacement
-            // is now on the way. The current dealer's OT is resolved.
-            await admin
-              .from("dealer_assignments")
-              .update({ overtime_started_at: null })
-              .eq("id", assignment.id)
-              .not("overtime_started_at", "is", null);
+            // NOTE: overtime_started_at is NOT cleared here. It was
+            // previously cleared prematurely (before the RPC committed),
+            // which broke the rollback path in execute_pre_assigned_swing
+            // (step [8] would restore NULL instead of the original OT timestamp).
+            // The RPC now handles OT clearing correctly in step [6] on success
+            // and preserves the original value on rollback in step [8].
 
             // Compute minutes until swing for the notification
             const swingAt = new Date(assignment.swing_due_at).getTime();
