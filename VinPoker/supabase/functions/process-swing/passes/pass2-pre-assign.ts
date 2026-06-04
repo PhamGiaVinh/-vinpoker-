@@ -174,12 +174,6 @@ export async function pass2PreAssignNext(
       }
     }
 
-    if (queryErr) {
-      console.error("[Pass 2] ❌ Query error:", queryErr.message);
-      // Don't throw — let other passes continue
-      return result;
-    }
-
     if (upcomingAssignments.length === 0) {
       console.log("[Pass 2] No tables needing pre-assignment in window");
       return result;
