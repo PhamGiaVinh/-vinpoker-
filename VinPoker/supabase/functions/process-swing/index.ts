@@ -604,24 +604,6 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // ── SEED: Pre-assigned dealers from previous ticks ──────────────────
-        // Without this, two ticks can pre-assign the same dealer because
-        // cycleExcludedIds only accumulates within a single tick. Seeding
-        // with already-committed pre-assigned dealers prevents double-assignment.
-        if (!dryRun) {
-          const { data: preAssignedDealers } = await admin
-            .from("dealer_attendance")
-            .select("id")
-            .eq("current_state", "pre_assigned")
-            .eq("status", "checked_in")
-            .in("dealer_id", cidDealerIds);
-
-          if (preAssignedDealers && preAssignedDealers.length > 0) {
-            for (const d of preAssignedDealers) cycleExcludedIds.add(d.id);
-            console.log(`[process-swing] Seeded ${preAssignedDealers.length} pre-assigned dealers into cycleExcludedIds for club ${cid}`);
-          }
-        }
-
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -726,6 +708,25 @@ Deno.serve(async (req: Request) => {
             } else {
               console.log(`[Pass 1c] ✅ All ${releaseOk} orphaned dealers released with pass1c context`);
             }
+          }
+        }
+
+        // ── SEED: Pre-assigned dealers remaining after cleanup ────────────────
+        // Runs AFTER Pass 1b/1c cleanup so only TRULY pre-assigned dealers
+        // (within the 10-min RECENT window) are excluded from Pass 2.
+        // Dealers released by Pass 1b (stale) or Pass 1c (orphaned) are no
+        // longer pre_assigned and correctly remain eligible for pre-assignment.
+        if (!dryRun) {
+          const { data: preAssignedDealers } = await admin
+            .from("dealer_attendance")
+            .select("id")
+            .eq("current_state", "pre_assigned")
+            .eq("status", "checked_in")
+            .in("dealer_id", cidDealerIds);
+
+          if (preAssignedDealers && preAssignedDealers.length > 0) {
+            for (const d of preAssignedDealers) cycleExcludedIds.add(d.id);
+            console.log(`[process-swing] Seeded ${preAssignedDealers.length} pre-assigned dealers into cycleExcludedIds for club ${cid}`);
           }
         }
 
