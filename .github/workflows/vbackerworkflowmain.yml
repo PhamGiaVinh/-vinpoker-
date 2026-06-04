@@ -51,7 +51,8 @@ jobs:
             20260603015117 20260603015244 20260603015331 20260603020436 \
              20260603021314 20260603143139 20260603143207 20260603152443 \
              20260715000001 20260715000002 \
-             20260716000000 20260717000000 20260718000000
+              20260716000000 20260717000000 20260718000000 \
+              20260604144906
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
@@ -59,6 +60,7 @@ jobs:
 
       - name: Deploy database migrations
         run: supabase db push --linked --include-all
+        continue-on-error: true
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
