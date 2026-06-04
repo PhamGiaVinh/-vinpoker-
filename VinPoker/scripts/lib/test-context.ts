@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createDealer, createGameTable, createAttendance, ensureSwingConfig, cleanupTestData } from "./test-data.ts";
 
-export class TestContext {
+class TestContext {
   admin: ReturnType<typeof createClient>;
   clubId: string;
 

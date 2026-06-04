@@ -51,7 +51,7 @@ if (typeof document !== "undefined") {
 }
 
 /** Manually surface the update banner (e.g. when version polling detects a new build). */
-export function notifyUpdateAvailable() {
+function notifyUpdateAvailable() {
   emitWaiting(waitingWorker);
 }
 

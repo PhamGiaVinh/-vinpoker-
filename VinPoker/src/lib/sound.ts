@@ -61,7 +61,7 @@ function tone(freq: number, duration: number, type: OscillatorType = "sine", gai
 }
 
 /** Warm marimba/wood-tap click (Material-style). */
-export function playClick() {
+function playClick() {
   const ac = getCtx();
   if (!ac) return;
   if (ac.state === "suspended") {

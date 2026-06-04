@@ -386,7 +386,7 @@ export async function getPayrollAuditLog(
 /**
  * Get audit log for a payroll period.
  */
-export async function getAuditLog(
+async function getAuditLog(
   periodId: string,
   limit = 100
 ): Promise<Array<{

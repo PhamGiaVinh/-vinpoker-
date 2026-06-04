@@ -3,7 +3,7 @@ export const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) &&
   !(window as any).MSStream;
 
-export const isAndroid = () =>
+const isAndroid = () =>
   typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 
 /**

@@ -3,7 +3,7 @@
 export type GTOAction = "allin" | "raise" | "call" | "fold";
 export type GTOPosition = "UTG" | "UTG1" | "LJ" | "HJ" | "CO" | "BTN" | "SB";
 
-export const GTO_POSITIONS: GTOPosition[] = ["UTG", "UTG1", "LJ", "HJ", "CO", "BTN", "SB"];
+const GTO_POSITIONS: GTOPosition[] = ["UTG", "UTG1", "LJ", "HJ", "CO", "BTN", "SB"];
 
 // Raise size labels per position
 export const RAISE_SIZE: Record<GTOPosition, string> = {
@@ -108,6 +108,6 @@ export const OPEN_RANGE_50BB: Record<GTOPosition, Map> = {
   SB:   CO, // SB hiển thị chart giống BTN (CO-original)
 };
 
-export function actionOf(pos: GTOPosition, hand: string): GTOAction {
+function actionOf(pos: GTOPosition, hand: string): GTOAction {
   return OPEN_RANGE_50BB[pos][hand] ?? "fold";
 }

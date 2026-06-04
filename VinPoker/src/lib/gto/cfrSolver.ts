@@ -83,7 +83,7 @@ interface SolveOpts {
   pot?: number;
 }
 
-export class PreflopSolver {
+class PreflopSolver {
   iterations: number;
   stack: number;
   pot: number;
@@ -286,4 +286,4 @@ export class PreflopSolver {
   }
 }
 
-export const HAND_INDEX = new Map(HAND_TABLE.map((h) => [h.hand, h.index]));
+const HAND_INDEX = new Map(HAND_TABLE.map((h) => [h.hand, h.index]));

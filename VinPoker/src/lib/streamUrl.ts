@@ -3,7 +3,7 @@
 
 export type StreamPlatform = "youtube" | "facebook";
 
-export function parseYoutubeId(url: string): string | null {
+function parseYoutubeId(url: string): string | null {
   try {
     const u = new URL(url.trim());
     const host = u.hostname.replace(/^www\./, "");
@@ -19,7 +19,7 @@ export function parseYoutubeId(url: string): string | null {
   }
 }
 
-export function isValidFacebookUrl(url: string): boolean {
+function isValidFacebookUrl(url: string): boolean {
   try {
     const u = new URL(url.trim());
     const host = u.hostname.replace(/^www\./, "");

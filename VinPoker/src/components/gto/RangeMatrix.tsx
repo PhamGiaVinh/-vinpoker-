@@ -34,7 +34,7 @@ function stripBackground(h: HandAction): string {
   return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
 
-export default function RangeMatrix({ range, editable }: Props) {
+function RangeMatrix({ range, editable }: Props) {
   const { state, setSelectedHand, updateHand } = useRangeTree();
   const { isAdmin } = useAuth();
   const selectedHand = state.selectedHand;

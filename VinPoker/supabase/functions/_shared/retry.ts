@@ -47,7 +47,7 @@ function jitter(ms: number): number {
   return Math.round(ms + (Math.random() * 2 - 1) * delta);
 }
 
-export async function withRetry<T>(
+async function withRetry<T>(
   fn: () => Promise<T>,
   opts: RetryOptions,
 ): Promise<T> {
@@ -89,7 +89,7 @@ export async function withRetry<T>(
 // Convenience wrapper for typical Supabase calls that resolve to
 // `{ data, error }`. Treats `error` with status >=500 / network msgs
 // as transient and retries; otherwise returns the result as-is.
-export async function withRetrySb<T>(
+async function withRetrySb<T>(
   fn: () => Promise<{ data: T | null; error: unknown }>,
   opts: RetryOptions,
 ): Promise<{ data: T | null; error: unknown }> {

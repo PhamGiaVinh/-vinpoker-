@@ -32,7 +32,7 @@ const BADGE_COLORS: Record<DealerRowBadge["color"], string> = {
   gray:   "bg-zinc-500/15 text-zinc-500 border-zinc-600/20",
 };
 
-export function DealerRow({
+function DealerRow({
   dealer,
   variant = "primary",
   badge,

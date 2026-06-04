@@ -1,5 +1,5 @@
 // Built-in opening range presets (approximate, tournament/cash hybrid)
-export const PRESETS: Record<string, string[]> = {
+const PRESETS: Record<string, string[]> = {
   UTG: [
     "AA","KK","QQ","JJ","TT","99","88","77",
     "AKs","AQs","AJs","ATs","KQs","KJs","QJs","JTs",
@@ -38,4 +38,4 @@ export const PRESETS: Record<string, string[]> = {
 };
 
 export type PresetName = keyof typeof PRESETS;
-export const PRESET_NAMES: PresetName[] = ["UTG", "MP", "CO", "BTN", "SB"];
+const PRESET_NAMES: PresetName[] = ["UTG", "MP", "CO", "BTN", "SB"];

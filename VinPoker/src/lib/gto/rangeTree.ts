@@ -19,18 +19,18 @@ export const POSITIONS = ["UTG", "UTG1", "LJ", "HJ", "CO", "BTN", "SB", "BB"] as
 export type Position = (typeof POSITIONS)[number];
 
 export type TreePos = Position;
-export const ALL_POS: Position[] = [...POSITIONS];
+const ALL_POS: Position[] = [...POSITIONS];
 
 export const STACK_DEPTHS = [10, 15, 20, 25, 40, 50, 75, 100, 200] as const;
 export type StackDepth = (typeof STACK_DEPTHS)[number];
 
 // -------------------- CONSTANTS --------------------
 
-export const STACK_BB = 50;
-export const TOTAL_COMBOS = TOTAL_COMBOS_MATH;
-export const combosOf = combosOfFromMath;
+const STACK_BB = 50;
+const TOTAL_COMBOS = TOTAL_COMBOS_MATH;
+const combosOf = combosOfFromMath;
 
-export const OPEN_SIZE: Record<Position, number> = {
+const OPEN_SIZE: Record<Position, number> = {
   UTG: 2.3, UTG1: 2.3, LJ: 2.3, HJ: 2.3, CO: 2.3, BTN: 2.3, SB: 3.5, BB: 0,
 };
 
@@ -45,7 +45,7 @@ function isOOP(actor: Position, raiser: Position): boolean {
   return POSITIONS.indexOf(actor) < POSITIONS.indexOf(raiser);
 }
 
-export function calcRaiseSize(
+function calcRaiseSize(
   prevRaiseSize: number,
   callerCount: number,
   actorPos: Position,
@@ -58,7 +58,7 @@ export function calcRaiseSize(
   return Math.round(Math.max(raw, minRaise) * 10) / 10;
 }
 
-export function calc4BetSize(prevRaiseSize: number, lastRaiseDelta: number = 0): number {
+function calc4BetSize(prevRaiseSize: number, lastRaiseDelta: number = 0): number {
   const raw = prevRaiseSize * 2.5;
   const minRaise = prevRaiseSize + Math.max(lastRaiseDelta, 1);
   return Math.round(Math.max(raw, minRaise) * 10) / 10;
@@ -79,7 +79,7 @@ export function getLastRaiser(path: ActionStep[]): ActionStep | null {
   return null;
 }
 
-export function getPrevRaiseSize(path: ActionStep[]): number {
+function getPrevRaiseSize(path: ActionStep[]): number {
   let count = 0;
   for (let i = path.length - 1; i >= 0; i--) {
     if (path[i].action === "raise" || path[i].action === "allin") {
@@ -90,7 +90,7 @@ export function getPrevRaiseSize(path: ActionStep[]): number {
   return 0;
 }
 
-export function getCallerCount(path: ActionStep[]): number {
+function getCallerCount(path: ActionStep[]): number {
   let lastRaiseIdx = -1;
   for (let i = path.length - 1; i >= 0; i--) {
     if (path[i].action === "raise" || path[i].action === "allin") {
@@ -157,7 +157,7 @@ export function getAvailableActions(
 
 // -------------------- KEYS --------------------
 
-export function pathKey(path: ActionStep[]): string {
+function pathKey(path: ActionStep[]): string {
   if (path.length === 0) return "root";
   return path.map((s) => `${s.position}:${s.action}${s.raiseSize ? ":" + s.raiseSize : ""}`).join("|");
 }
@@ -303,11 +303,11 @@ export function updateHandAction(
 
 // -------------------- POSITION HELPERS --------------------
 
-export function posIndex(p: Position): number {
+function posIndex(p: Position): number {
   return POSITIONS.indexOf(p);
 }
 
-export function defaultOpenSize(p: Position): number {
+function defaultOpenSize(p: Position): number {
   return OPEN_SIZE[p] ?? 2.3;
 }
 
@@ -339,7 +339,7 @@ export function getNextToAct(path: ActionStep[]): Position | null {
   return null;
 }
 
-export function isPathValid(path: ActionStep[]): { valid: boolean; reason?: string } {
+function isPathValid(path: ActionStep[]): { valid: boolean; reason?: string } {
   const seen = new Map<Position, ActionStep>();
   for (const step of path) {
     const prev = seen.get(step.position);

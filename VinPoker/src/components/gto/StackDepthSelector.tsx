@@ -8,7 +8,7 @@ import { useVisibleStackDepths } from "@/hooks/useVisibleStackDepths";
 import { Eye, EyeOff, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function StackDepthSelector() {
+function StackDepthSelector() {
   const { state, setStackDepth, resetAll } = useRangeTree();
   const { isAdmin } = useAuth();
   const { depths: visible, save } = useVisibleStackDepths();

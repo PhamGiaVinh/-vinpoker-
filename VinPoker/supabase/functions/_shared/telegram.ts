@@ -8,7 +8,7 @@ export function mention(dealer: { full_name: string; telegram_username?: string 
   return dealer.telegram_username ? `@${dealer.telegram_username}` : dealer.full_name;
 }
 
-export function formatSwingMessage(params: {
+function formatSwingMessage(params: {
   tableName: string;
   tourName?: string;
   outgoingDealer: { full_name: string; telegram_username?: string | null };
@@ -25,7 +25,7 @@ export function formatSwingMessage(params: {
   return `📋 ${tableName}${tourInfo}: ${out} ra, ${incoming} vào (còn ${minutesLeft} phút).`;
 }
 
-export function formatPreAnnounceMessage(params: {
+function formatPreAnnounceMessage(params: {
   tableName: string;
   tourName?: string;
   outgoingDealer: { full_name: string; telegram_username?: string | null };
@@ -49,7 +49,7 @@ export function formatBreakMessage(params: {
   return msg;
 }
 
-export function formatBreakEndMessage(params: {
+function formatBreakEndMessage(params: {
   dealer: { full_name: string; telegram_username?: string | null };
   tableName: string;
 }): string {
@@ -79,7 +79,7 @@ export function formatMassAssignMessage(assignments: Array<{
   return `Mở Bàn (${assignments.length} bàn)\n${lines.join("\n")}`;
 }
 
-export function formatTierWarningMessage(params: {
+function formatTierWarningMessage(params: {
   tier: string;
   tableTier: string;
   dealerName: string;
@@ -100,7 +100,7 @@ export function formatBreakAlertMessage(params: {
   return `🔴 [${urgencyLabel}] ${d} — ${reason}. Cần nghỉ sớm.`;
 }
 
-export function formatPreAssignMessage(params: {
+function formatPreAssignMessage(params: {
   tableName: string;
   tourTier?: string;
   outgoingDealer: { full_name: string; telegram_username?: string | null };
@@ -115,7 +115,7 @@ export function formatPreAssignMessage(params: {
   return `📋 Tiếp theo ${tableName}${tierInfo}: ${out} ra, ${inc} vào (${time}, còn ${minutesLeft} phút)`;
 }
 
-export function formatAutoFillMessage(assignments: Array<{
+function formatAutoFillMessage(assignments: Array<{
   tableName: string;
   dealer: { full_name: string };
   tourTier?: string;
@@ -128,7 +128,7 @@ export function formatAutoFillMessage(assignments: Array<{
   return `🔄 *Tự động fill* (${assignments.length} bàn):\n${lines.join("\n")}`;
 }
 
-export function formatPreAssignFallbackMessage(params: {
+function formatPreAssignFallbackMessage(params: {
   tableName: string;
   oldDealer: { full_name: string; telegram_username?: string | null };
   reason: string;
@@ -138,7 +138,7 @@ export function formatPreAssignFallbackMessage(params: {
   return `⚠️ ${tableName}: Pre-assign fallback — ${out}, lý do: ${reason}. Chọn dealer mới.`;
 }
 
-export function formatBatchSwingMessage(swings: Array<{
+function formatBatchSwingMessage(swings: Array<{
   tableName: string;
   outgoingDealer: { full_name: string; telegram_username?: string | null };
   incomingDealer: { full_name: string; telegram_username?: string | null } | null;
@@ -156,7 +156,7 @@ export function formatBatchSwingMessage(swings: Array<{
   return `📋 *Swing* (${swings.length} bàn):\n${lines.join("\n")}`;
 }
 
-export function formatCheckoutAlertMessage(params: {
+function formatCheckoutAlertMessage(params: {
   dealerName: string;
   tableName: string;
   isPreAssigned: boolean;

@@ -4,7 +4,7 @@ function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-export async function createDealer(
+async function createDealer(
   admin: ReturnType<typeof createClient>,
   clubId: string,
 ) {
@@ -25,7 +25,7 @@ export async function createDealer(
   return data;
 }
 
-export async function createGameTable(
+async function createGameTable(
   admin: ReturnType<typeof createClient>,
   clubId: string,
   shiftId?: string,
@@ -48,7 +48,7 @@ export async function createGameTable(
   return data;
 }
 
-export async function createAttendance(
+async function createAttendance(
   admin: ReturnType<typeof createClient>,
   dealerId: string,
   shiftId?: string,
@@ -72,7 +72,7 @@ export async function createAttendance(
   return data;
 }
 
-export async function ensureSwingConfig(
+async function ensureSwingConfig(
   admin: ReturnType<typeof createClient>,
   clubId: string,
 ) {
@@ -101,7 +101,7 @@ export async function ensureSwingConfig(
   return data;
 }
 
-export async function cleanupTestData(
+async function cleanupTestData(
   admin: ReturnType<typeof createClient>,
   dealerId: string,
   tableId?: string,

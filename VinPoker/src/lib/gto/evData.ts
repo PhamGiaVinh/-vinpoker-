@@ -1,5 +1,5 @@
 export type Street = "preflop" | "flop" | "turn" | "river";
-export const STREETS: Street[] = ["preflop", "flop", "turn", "river"];
+const STREETS: Street[] = ["preflop", "flop", "turn", "river"];
 
 export interface EVAction {
   action: string;
@@ -7,7 +7,7 @@ export interface EVAction {
   freq: number;
 }
 
-export const DEFAULT_EV_DATA: Record<Street, EVAction[]> = {
+const DEFAULT_EV_DATA: Record<Street, EVAction[]> = {
   preflop: [
     { action: "Fold", ev: -1.0, freq: 30 },
     { action: "Call", ev: 0.25, freq: 40 },
@@ -33,7 +33,7 @@ export const DEFAULT_EV_DATA: Record<Street, EVAction[]> = {
 
 const KEY = "gto.evCustom";
 
-export function loadEV(): Record<Street, EVAction[]> {
+function loadEV(): Record<Street, EVAction[]> {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULT_EV_DATA);
@@ -44,7 +44,7 @@ export function loadEV(): Record<Street, EVAction[]> {
   }
 }
 
-export function saveEV(data: Record<Street, EVAction[]>) {
+function saveEV(data: Record<Street, EVAction[]>) {
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
   } catch {
@@ -52,7 +52,7 @@ export function saveEV(data: Record<Street, EVAction[]>) {
   }
 }
 
-export function resetEV() {
+function resetEV() {
   try {
     localStorage.removeItem(KEY);
   } catch {
