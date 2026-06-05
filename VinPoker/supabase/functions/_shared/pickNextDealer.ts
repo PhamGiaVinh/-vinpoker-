@@ -127,11 +127,10 @@ export async function buildDealerCandidates(
   }
 
   // Step 2: Query dealer_attendance
-  // Include dealers on_break if they've rested >= minimum_break_duration_minutes (default 10).
-  // This allows dealers who have completed their minimum break to be pulled back for swing.
-  const minBreakMinutes = options.clubBreakDurationMinutes
-    ? Math.min(options.clubBreakDurationMinutes, 10)
-    : 10;
+  // Dealers on_break must rest the full configured break duration before
+  // they can be pulled back for swing. This protects lunch breaks (e.g. 30min).
+  // Available dealers always pass this guard since they're not on_break.
+  const minBreakMinutes = options.clubBreakDurationMinutes ?? 15;
 
   const { data: rows, error } = await admin
     .from("dealer_attendance")
@@ -203,6 +202,24 @@ export async function buildDealerCandidates(
 
   if (busyDealerIds.size > 0) {
     console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
+  }
+
+  // Step 5b: Cross-check dealer_assignments for dealers that appear available
+  // in dealer_attendance but actually have active assignments (B6 defense).
+  // This catches state inconsistencies that slip past the attendance-state filter.
+  if (dealerIds.length > 0) {
+    const { data: assignedDealers } = await admin
+      .from("dealer_assignments")
+      .select("dealer_id")
+      .in("dealer_id", dealerIds)
+      .eq("status", "assigned")
+      .is("released_at", null);
+    for (const ad of assignedDealers ?? []) {
+      busyDealerIds.add(ad.dealer_id);
+    }
+    if (assignedDealers && assignedDealers.length > 0) {
+      console.log(`[pickNextDealer] Club ${clubId}: ${assignedDealers.length} dealers excluded by assignment cross-check (Step 5b)`);
+    }
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring

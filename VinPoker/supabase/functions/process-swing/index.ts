@@ -871,6 +871,49 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // ── PASS 0d: Reconcile dealer states ──────────────────────────────────
+        {
+          const RECONCILE_TIMEOUT_MS = 3000;
+
+          try {
+            const response = await Promise.race([
+              admin.rpc('reconcile_dealer_states', { p_club_id: cid }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('reconcile_timeout')), RECONCILE_TIMEOUT_MS)
+              )
+            ]);
+
+            if (response.error) {
+              console.error(`[Pass 0d] ❌ DB error:`, response.error.message);
+            } else {
+              const result = Array.isArray(response.data) ? response.data[0] : response.data;
+              const orphan  = result?.fixed_pre_assigned_orphan ?? 0;
+              const timeout  = result?.fixed_pre_assigned_timeout ?? 0;
+              const total    = (result?.fixed_available ?? 0)
+                            + (result?.fixed_assigned ?? 0)
+                            + orphan + timeout
+                            + (result?.cleared_orphaned ?? 0);
+
+              if (orphan > 0) {
+                console.error(`[Pass 0d] 🚨 B6 pattern: ${orphan} orphaned pre_assigned`);
+              }
+              if (total > 5) {
+                console.error(`[Pass 0d] 🚨 Excessive fixes (${total})! Possible systemic issue.`);
+              }
+              if (total > 0) {
+                console.warn(`[Pass 0d] ⚠️ Fixed ${total} inconsistencies:`, result);
+              } else {
+                console.log(`[Pass 0d] ✅ No inconsistencies found`);
+              }
+            }
+          } catch (err: any) {
+            const isTimeout = err.message === 'reconcile_timeout';
+            console[isTimeout ? 'warn' : 'error'](
+              `[Pass 0d] ${isTimeout ? '⏱️ Timed out' : '❌ Network error'} after ${RECONCILE_TIMEOUT_MS}ms`
+            );
+          }
+        }
+
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.

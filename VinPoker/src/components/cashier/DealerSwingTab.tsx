@@ -1525,20 +1525,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 setProcessing("create_table");
                 let success = 0, fail = 0;
                 for (const tableId of selectedPoolTableIds) {
-                  // Clean up stale dealer assignments (if table was closed without releasing dealer)
-                  const { data: staleAssignments } = await supabase
-                    .from("dealer_assignments")
-                    .select("id, attendance_id")
-                    .eq("table_id", tableId)
-                    .in("status", ["assigned", "on_break"]);
-                  for (const sa of staleAssignments ?? []) {
-                    await supabase.from("dealer_assignments").update({
-                      released_at: new Date().toISOString(), status: "completed",
-                    }).eq("id", sa.id);
-                    await supabase.from("dealer_attendance").update({
-                      current_state: "available",
-                    }).eq("id", sa.attendance_id);
-                  }
+                  // Clean up stale dealer assignments (atomic RPC — checks for other active assignments)
+                  await supabase.rpc("release_dealer_from_table", { p_table_id: tableId });
                   const { error } = await supabase.from("game_tables").update({
                     shift_id: selectedTour ?? null,
                     status: "active",
