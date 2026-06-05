@@ -254,7 +254,7 @@ async function main() {
   check("perform_swing null → race_lost", ps.rows[0]?.result?.outcome === "race_lost", JSON.stringify(ps.rows[0]?.result).substring(0, 100));
   if (ps.error) check("perform_swing null", false, ps.error.message);
 
-  const eps = await query(pool, "SELECT execute_pre_assigned_swing(NULL, NULL, NULL::timestamptz, NULL::int) AS result");
+  const eps = await query(pool, "SELECT execute_pre_assigned_swing(NULL, NULL, NULL::timestamptz, NULL::int, NULL::boolean, NULL::int) AS result");
   check("execute_pre_assigned_swing null → error", eps.rows[0]?.result?.status === "error", JSON.stringify(eps.rows[0]?.result).substring(0, 100));
   if (eps.error) check("execute_pre_assigned_swing null", false, eps.error.message);
 
@@ -371,7 +371,9 @@ async function main() {
       '00000000-0000-0000-0000-000000000000'::uuid,
       NULL::uuid,
       NOW()::timestamptz,
-      45
+      45,
+      false,
+      15
     ) AS result`
   );
   if (badEps.error) {
