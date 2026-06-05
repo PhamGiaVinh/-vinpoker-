@@ -31,6 +31,7 @@ import {
 import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
+import { runPass3Diagnostic } from "./diagnostics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1607,6 +1608,31 @@ if (tier2Count > 0) {
         // ── PASS 3 — Execute swings at T-0 ────────────────────────────────
         const nowPlusBuf = new Date(Date.now() + SWING_WINDOW_BUFFER_MINUTES * 60 * 1000).toISOString();
         const now = new Date().toISOString();
+
+        // ═══ DIAGNOSTIC: Compare simple vs nested query (Phase 1) ═══════
+        try {
+          const diagnostic = await runPass3Diagnostic(admin, cid, forceAll);
+          console.log('[Pass 3 Diagnostic] Summary:', {
+            confirmed_bug: diagnostic.confirmed_bug,
+            lost_rows: diagnostic.lost_rows,
+            simple_count: diagnostic.simple_query.count,
+            nested_count: diagnostic.nested_query.data_length
+          });
+          await admin.from("diagnostic_logs").insert({
+            timestamp: diagnostic.timestamp,
+            club_id: diagnostic.club_id,
+            diagnostic_type: 'pass3_query_issue',
+            result: diagnostic,
+            metadata: { force_all: forceAll, pass: 3 }
+          }).then(({ error: insertErr }) => {
+            if (insertErr) {
+              console.warn('[Pass 3 Diagnostic] Failed to save:', insertErr.message);
+            }
+          });
+        } catch (diagErr: any) {
+          console.warn('[Pass 3 Diagnostic] Diagnostic failed (non-blocking):', diagErr?.message);
+        }
+        // ═══ End diagnostic ═════════════════════════════════════════════
 
         const query = admin
           .from("dealer_assignments")
