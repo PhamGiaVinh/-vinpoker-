@@ -155,6 +155,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   // Swing config state
   const [swingConfigOpen, setSwingConfigOpen] = useState(false);
 
+  // Break duration dialog state
+  const [breakDurationOpen, setBreakDurationOpen] = useState<string | null>(null);
+
+  // Default break duration from swing_config, ref for timer callback stability
+  const defaultBreakMinutes = useMemo(() => {
+    if (!clubFilter) return 15;
+    const cfg = (swingConfigs ?? []).find((c: any) => c.club_id === clubFilter);
+    return cfg?.break_duration_minutes ?? 15;
+  }, [swingConfigs, clubFilter]);
+
+  const defaultBreakMinutesRef = useRef<number>(15);
+  useEffect(() => {
+    defaultBreakMinutesRef.current = defaultBreakMinutes;
+  }, [defaultBreakMinutes]);
+
   // Payroll modal state
   const [payrollOpen, setPayrollOpen] = useState(false);
   const [payrollData, setPayrollData] = useState<any[] | null>(null);
@@ -451,22 +466,20 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
   };
 
-  // Send dealer to break
-  const sendToBreak = async (attendanceId: string) => {
+  // Send dealer to break with configurable duration
+  const sendToBreak = async (attendanceId: string, durationMinutes: number) => {
     setProcessing(attendanceId);
     try {
       const { data, error } = await supabase.functions.invoke("manage-break", {
-        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0] },
+        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0], duration_minutes: durationMinutes },
       });
       if (error) { toast.error(error.message); return; }
-      toast.success("Đã gửi dealer đi nghỉ");
-      // Telegram notification
+      toast.success(`Đã gửi dealer đi nghỉ ${durationMinutes} phút`);
       const breakDealer = (dealers ?? []).find((d) => d.id === attendanceId);
       const breakName = breakDealer?.dealers?.full_name ?? "";
-      const breakEnd = new Date(Date.now() + 15 * 60000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+      const breakEnd = new Date(Date.now() + durationMinutes * 60_000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const tourName = getTourName();
-      // fire-and-forget — never block UX, never show toast error
-      sendTelegram(`☕ ${breakName} bắt đầu nghỉ${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
+      sendTelegram(`☕ ${breakName} bắt đầu nghỉ ${durationMinutes} phút${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
         .catch(() => {});
       refetchAssignments();
       refetchDealers();
@@ -474,6 +487,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       toast.error(e.message);
     } finally {
       setProcessing(null);
+      setBreakDurationOpen((prev) => (prev === attendanceId ? null : prev));
     }
   };
 
@@ -1099,7 +1113,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
               checkedInCount={checkedInCount}
               checkedOutDealers={checkedOutDealers ?? []}
-              onSendToBreak={sendToBreak}
+              onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
@@ -1132,8 +1146,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                     tournaments={tournaments}
                   processing={processing}
                   onAssign={openAssignModal}
-                  onSendToBreak={(attId) => sendToBreak(attId)}
-                  selectedTour={selectedTour}
+onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+                   onAutoBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
+                   selectedTour={selectedTour}
                   onCreateTable={() => setCreateTableOpen(true)}
                   closeTableConfirmId={closeTableConfirmId}
                   onCloseTableClick={setCloseTableConfirmId}
@@ -1167,7 +1182,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
               onOpenSpecialDates={() => setSpecialDatesOpen(true)}
               onAssign={openAssignModal}
-              onSendToBreak={sendToBreak}
+              onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               dealers={dealers ?? []}
               swingMetrics={swingMetrics ?? []}
               tables={tables ?? []}
@@ -1616,6 +1631,16 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         onSaved={refetchSwingConfigs}
       />
 
+      {/* Break Duration Dialog */}
+      <BreakDurationDialog
+        open={breakDurationOpen !== null}
+        onOpenChange={(v) => { if (!v) setBreakDurationOpen(null); }}
+        defaultMinutes={defaultBreakMinutes}
+        onConfirm={(minutes) => {
+          if (breakDurationOpen) sendToBreak(breakDurationOpen, minutes);
+        }}
+      />
+
       {/* Payroll Preview Dialog */}
       <Dialog open={payrollOpen} onOpenChange={(o) => { if (!o) { setPayrollOpen(false); setPayrollData(null); setPayrollEdits({}); setPayrollEditDealer(null); } }}>
         <DialogContent className="max-w-4xl">
@@ -2044,6 +2069,85 @@ function CollapsibleSection<T>({
   );
 }
 
+function BreakDurationDialog({
+  open,
+  onOpenChange,
+  defaultMinutes,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  defaultMinutes: number;
+  onConfirm: (minutes: number) => void;
+}) {
+  const presets = [15, 30, 45, 60];
+  const [selected, setSelected] = useState<number>(defaultMinutes);
+  const [custom, setCustom] = useState<string>("");
+
+  useEffect(() => {
+    if (open) {
+      setSelected(defaultMinutes);
+      setCustom("");
+    }
+  }, [open, defaultMinutes]);
+
+  const parsedCustom = custom ? parseInt(custom, 10) : NaN;
+  const isValidCustom = !isNaN(parsedCustom) && parsedCustom >= 5 && parsedCustom <= 120;
+  const effectiveMinutes: number | null =
+    custom
+      ? isValidCustom ? parsedCustom : null
+      : selected;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-zinc-900 border-zinc-700 max-w-[260px]">
+        <DialogHeader>
+          <DialogTitle className="text-zinc-200 text-sm">Chọn thời gian nghỉ</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-1.5">
+            {presets.map((m) => (
+              <button
+                key={m}
+                className={`px-2 py-1.5 text-xs rounded-md transition-colors ${
+                  !custom && selected === m
+                    ? "bg-emerald-600 text-white"
+                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
+                onClick={() => { setSelected(m); setCustom(""); }}
+              >
+                {m}p
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              placeholder="Custom"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              className="h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-200"
+            />
+            <span className="text-xs text-zinc-500">phút</span>
+          </div>
+          <Button
+            size="sm"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={effectiveMinutes === null}
+            onClick={() => { if (effectiveMinutes !== null) onConfirm(effectiveMinutes); }}
+          >
+            {effectiveMinutes !== null
+              ? `Xác nhận — ${effectiveMinutes} phút`
+              : "Nhập 5–120 phút"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
@@ -2408,7 +2512,7 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
@@ -2423,6 +2527,7 @@ function TableGrid({
   processing: string | null;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
+  onAutoBreak: (attendanceId: string) => void;
   selectedTour: string | null;
   onCreateTable: () => void;
   closeTableConfirmId: string | null;
@@ -2445,13 +2550,13 @@ function TableGrid({
   }, [tables, selectedTour, tableAssignmentMap]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
-  // and re-checks swing_processed_at before calling sendToBreak
+  // and re-checks swing_processed_at before calling auto-break
+  // Uses in-memory Set instead of localStorage (unavailable in iframe/restricted contexts)
+  const processedTimers = useRef(new Set<string>());
+
   const onTimerExpired = useCallback(async (attendanceId: string, assignmentId: string) => {
-    const lockKey = `swing_expired_${assignmentId}`;
-    try {
-      if (localStorage.getItem(lockKey)) return;
-      localStorage.setItem(lockKey, '1');
-    } catch { /* localStorage unavailable */ }
+    if (processedTimers.current.has(assignmentId)) return;
+    processedTimers.current.add(assignmentId);
 
     try {
       const { data } = await supabase
@@ -2460,12 +2565,12 @@ function TableGrid({
         .eq('id', assignmentId)
         .maybeSingle();
 
-      if (data?.swing_processed_at) return; // backend already handled it
-      onSendToBreak(attendanceId);
+      if (data?.swing_processed_at) return;
+      onAutoBreak(attendanceId);
     } catch {
-      onSendToBreak(attendanceId);
+      onAutoBreak(attendanceId);
     }
-  }, [onSendToBreak]);
+  }, [onAutoBreak]);
 
   return (
     <Card className="p-3 h-full">
