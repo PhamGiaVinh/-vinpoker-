@@ -180,8 +180,8 @@ async function main() {
   for (let i = 0; i < assignCount; i++) {
     const swingDue = new Date(Date.now() + 2 * 60000).toISOString();
     const r = await query(pool,
-      `SELECT assign_dealer_to_table($1, $2, $3) AS result`,
-      [tableIds[i], attendanceIds[i], swingDue]
+      `SELECT assign_dealer_to_table($1::uuid, $2::uuid, now(), $3::timestamptz) AS result`,
+      [attendanceIds[i], tableIds[i], swingDue]
     );
     if (r.error) {
       console.log(`  ❌ assign ${i}: ${r.error.message}`);
@@ -421,6 +421,47 @@ async function main() {
     WHERE table_name = 'dealer_assignments' AND column_name = 'state'
   `);
   check("Assignment state column exists", stateCheck.rows.length > 0);
+
+  // B16. Unique index prevents duplicate active assignments
+  console.log("\nB16. Unique index guard (idx_one_active_per_dealer)...");
+  if (tableIds.length >= 2 && attendanceIds.length >= 1) {
+    let caught = false;
+    const b16AttId = attendanceIds[0];
+    try {
+      // Insert first assignment (dealer at table 1)
+      const insert1 = await query(pool,
+        `INSERT INTO dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'assigned', NOW(), NOW() + interval '30 minutes')`,
+        [b16AttId, tableIds[0], CLUB_ID]
+      );
+      if (insert1.error) {
+        // Dealer might already have an assignment from A6 — that's OK, proceed to duplicate test
+      }
+
+      // Attempt duplicate at different table — expect UniqueViolation
+      try {
+        await query(pool,
+          `INSERT INTO dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, 'assigned', NOW(), NOW() + interval '30 minutes')`,
+          [b16AttId, tableIds[1], CLUB_ID]
+        );
+        check("UniqueViolation caught", false, "INSERT succeeded — unique index not working");
+      } catch (innerErr) {
+        caught = innerErr.code === "23505" || (innerErr.message && innerErr.message.includes("unique_violation"));
+        check("UniqueViolation caught as expected", caught, innerErr.message?.substring(0, 100));
+      }
+
+      // Cleanup: release the test assignment
+      await query(pool,
+        `UPDATE dealer_assignments SET status = 'completed', released_at = NOW() WHERE attendance_id = $1::uuid AND status = 'assigned'`,
+        [b16AttId]
+      ).catch(() => {});
+    } catch (outerErr) {
+      check("UniqueViolation caught", false, outerErr.message?.substring(0, 100));
+    }
+  } else {
+    console.log("  ⚠️ Skipped: need at least 2 tables and 1 attendance");
+  }
 
   // ─────────────────────────────────────────────────
   // RESULTS

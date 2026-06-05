@@ -231,7 +231,7 @@ export const setTopic = async (topic: Topic, enabled: boolean) => {
   await os.User?.addTag?.(TOPIC_TAG[topic], enabled ? "1" : "0");
 };
 
-export const setLanguageTag = async (lang: string) => {
+const setLanguageTag = async (lang: string) => {
   const os = await withOS();
   if (!os) return;
   await os.User?.addTag?.("lang", lang);

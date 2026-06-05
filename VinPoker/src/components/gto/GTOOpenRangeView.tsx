@@ -186,7 +186,7 @@ function Inner({ personalMode }: { personalMode: boolean }) {
   );
 }
 
-export default function GTOOpenRangeView({ personalMode = false }: { personalMode?: boolean } = {}) {
+function GTOOpenRangeView({ personalMode = false }: { personalMode?: boolean } = {}) {
   return (
     <RangeTreeProvider personalMode={personalMode}>
       <Inner personalMode={personalMode} />

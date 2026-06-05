@@ -535,7 +535,7 @@ SSL/TLS、敏感字段加密、RLS、管理员 MFA、备份、内部访问限制
 **点击"我同意"即表示您已阅读、理解并同意以上全部服务条款与隐私政策。**
 `;
 
-export const TosAgreementModal = ({ open, onOpenChange, onAgree }: Props) => {
+const TosAgreementModal = ({ open, onOpenChange, onAgree }: Props) => {
   const { t, i18n } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);

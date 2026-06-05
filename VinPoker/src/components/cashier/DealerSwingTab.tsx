@@ -41,15 +41,14 @@ import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
-import DealerPayrollTab from "./DealerPayrollTab";
 import { TableTimerDisplay } from "./TableTimerDisplay";
 import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
+import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle,
   Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard,
-  Calculator,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -58,23 +57,6 @@ import { Calendar } from "@/components/ui/calendar";
 
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
-
-// Pure function — computes live worked minutes from timestamps.
-// Top-level so minifier cannot tree-shake it.
-function calculateLiveWorkedMinutes(
-  dealerId: string,
-  dealers: DealerAttendance[],
-  assignments: DealerAssignment[],
-  nowMs: number
-): number {
-  const dealer = dealers.find((d) => d.id === dealerId);
-  if (!dealer) return 0;
-  const assignment = assignments.find((a) => a.attendance_id === dealerId && a.status === "assigned");
-  if (assignment?.assigned_at) {
-    return Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000));
-  }
-  return dealer.worked_minutes_since_last_break ?? 0;
-}
 
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
@@ -145,6 +127,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
+  const [swingingTableId, setSwingingTableId] = useState<string | null>(null);
   const [massAssignBusy, setMassAssignBusy] = useState(false);
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
@@ -171,6 +154,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   // Swing config state
   const [swingConfigOpen, setSwingConfigOpen] = useState(false);
+
+  // Break duration dialog state
+  const [breakDurationOpen, setBreakDurationOpen] = useState<string | null>(null);
+
+  // Default break duration from swing_config, ref for timer callback stability
+  const defaultBreakMinutes = useMemo(() => {
+    if (!clubFilter) return 15;
+    const cfg = (swingConfigs ?? []).find((c: any) => c.club_id === clubFilter);
+    return cfg?.break_duration_minutes ?? 15;
+  }, [swingConfigs, clubFilter]);
+
+  const defaultBreakMinutesRef = useRef<number>(15);
+  useEffect(() => {
+    defaultBreakMinutesRef.current = defaultBreakMinutes;
+  }, [defaultBreakMinutes]);
 
   // Payroll modal state
   const [payrollOpen, setPayrollOpen] = useState(false);
@@ -320,6 +318,50 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
   };
 
+  // Manual swing: perform swing for a single assignment only (no side effects on other tables)
+  const swingingRef = useRef(false);
+  const performSwingForTable = async (assignmentId: string) => {
+    if (swingingRef.current) return; // prevent double-click (ref is synchronous)
+    swingingRef.current = true;
+    setSwingingTableId(assignmentId);
+    try {
+      const { data, error } = await supabase.rpc("perform_swing", {
+        p_assignment_id: assignmentId,
+      });
+      if (error) {
+        toast.error(`Lỗi swing: ${error.message}`);
+        console.error("[performSwingForTable]", error);
+        return;
+      }
+      const result = data as any;
+      const outcome = result?.outcome;
+      if (outcome === "race_lost" || outcome === "version_conflict") {
+        toast.warning("Bàn này vừa được xử lý bởi người khác. Đang cập nhật...");
+      } else if (outcome === "no_dealer" || outcome === "no_dealer_available") {
+        toast.warning("Không đủ dealer khả dụng để thay thế.");
+      } else if (outcome === "not_found" || outcome === "state_mismatch") {
+        toast.warning("Assignment không còn hiệu lực. Đang cập nhật...");
+      } else if (outcome === "enforce_next_swing") {
+        toast.info(result?.message ?? "Dealer tiếp theo cần nghỉ sớm, sẽ swing tiếp.");
+      } else if (outcome === "swung" || outcome === "swung_to_break" || outcome === "swung_to_pool") {
+        toast.success("Swing thành công!");
+      } else if (outcome === "error") {
+        toast.error(`Lỗi: ${result?.message ?? "Unknown"}`);
+      } else {
+        toast.success("Swing thành công!");
+      }
+      await Promise.all([
+        refetchAssignments(),
+        refetchDealers(),
+      ]);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSwingingTableId(null);
+      swingingRef.current = false;
+    }
+  };
+
   // Mass assign: fill empty tables. Returns assigned count.
   const massAssign = async (): Promise<number> => {
     const cid = clubFilter || filteredClubIds[0];
@@ -424,22 +466,20 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
   };
 
-  // Send dealer to break
-  const sendToBreak = async (attendanceId: string) => {
+  // Send dealer to break with configurable duration
+  const sendToBreak = async (attendanceId: string, durationMinutes: number) => {
     setProcessing(attendanceId);
     try {
       const { data, error } = await supabase.functions.invoke("manage-break", {
-        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0] },
+        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0], duration_minutes: durationMinutes },
       });
       if (error) { toast.error(error.message); return; }
-      toast.success("Đã gửi dealer đi nghỉ");
-      // Telegram notification
+      toast.success(`Đã gửi dealer đi nghỉ ${durationMinutes} phút`);
       const breakDealer = (dealers ?? []).find((d) => d.id === attendanceId);
       const breakName = breakDealer?.dealers?.full_name ?? "";
-      const breakEnd = new Date(Date.now() + 15 * 60000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+      const breakEnd = new Date(Date.now() + durationMinutes * 60_000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const tourName = getTourName();
-      // fire-and-forget — never block UX, never show toast error
-      sendTelegram(`☕ ${breakName} bắt đầu nghỉ${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
+      sendTelegram(`☕ ${breakName} bắt đầu nghỉ ${durationMinutes} phút${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
         .catch(() => {});
       refetchAssignments();
       refetchDealers();
@@ -447,6 +487,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       toast.error(e.message);
     } finally {
       setProcessing(null);
+      setBreakDurationOpen((prev) => (prev === attendanceId ? null : prev));
     }
   };
 
@@ -981,9 +1022,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Button size="sm" variant={activeView === "dealers" ? "default" : "outline"} onClick={() => setActiveView(activeView === "dealers" ? "tables" : "dealers")}>
           <Users className="w-3.5 h-3.5 mr-1" /> Danh sách Dealer
         </Button>
-        <Button size="sm" variant={activeView === "payroll" ? "default" : "outline"} onClick={() => setActiveView(activeView === "payroll" ? "tables" : "payroll")}>
-          <Calculator className="w-3.5 h-3.5 mr-1" /> Bảng lương
-        </Button>
         <Button size="sm" variant="outline" onClick={() => {
           const cid = clubFilter || filteredClubIds[0] || "";
           setTelegramClubId(cid);
@@ -995,6 +1033,29 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         }}>
           <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram
         </Button>
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <Switch
+            checked={(() => {
+              const cid = clubFilter || filteredClubIds[0];
+              if (!cid) return false;
+              const cfg = (swingConfigs ?? []).find((c: any) => c.club_id === cid && c.table_type === "tournament");
+              return cfg?.rotation_planner_enabled ?? false;
+            })()}
+            onCheckedChange={async (checked: boolean) => {
+              const cid = clubFilter || filteredClubIds[0];
+              if (!cid) { toast.error("Vui lòng chọn CLB"); return; }
+              const { error } = await supabase.from("swing_config").upsert({
+                club_id: cid,
+                table_type: "tournament",
+                rotation_planner_enabled: checked,
+              }, { onConflict: "club_id, table_type" });
+              if (error) { toast.error("Lỗi lưu: " + error.message); return; }
+              refetchSwingConfigs();
+              toast.success(checked ? "Rotation Planner đã bật" : "Rotation Planner đã tắt");
+            }}
+          />
+          <span className="text-[11px] text-muted-foreground">Rotation</span>
+        </label>
         <Button size="sm" variant="outline" onClick={() => setSwingConfigOpen(true)}>
           <Settings className="w-3.5 h-3.5 mr-1" /> Cấu hình Swing
         </Button>
@@ -1052,7 +1113,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
               checkedInCount={checkedInCount}
               checkedOutDealers={checkedOutDealers ?? []}
-              onSendToBreak={sendToBreak}
+              onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
@@ -1074,8 +1135,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 )}
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
               </>
-            ) : activeView === "payroll" ? (
-              <DealerPayrollTab clubIds={filteredClubIds} clubs={clubs} />
             ) : (
                   <TableGrid
                     tables={tables ?? []}
@@ -1087,8 +1146,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                     tournaments={tournaments}
                   processing={processing}
                   onAssign={openAssignModal}
-                  onSendToBreak={(attId) => sendToBreak(attId)}
-                  selectedTour={selectedTour}
+onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+                   onAutoBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
+                   selectedTour={selectedTour}
                   onCreateTable={() => setCreateTableOpen(true)}
                   closeTableConfirmId={closeTableConfirmId}
                   onCloseTableClick={setCloseTableConfirmId}
@@ -1099,6 +1159,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                   onForceClose={setCloseTableConfirmId}
                   isAnimating={isAnimating}
                   focusedTableId={focusedTableId}
+                  onSwingTable={performSwingForTable}
+                  swingingAssignmentId={swingingTableId}
                 />
             )}
           </div>
@@ -1120,7 +1182,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onOpenSwingConfig={() => setSwingConfigOpen(true)}
               onOpenSpecialDates={() => setSpecialDatesOpen(true)}
               onAssign={openAssignModal}
-              onSendToBreak={sendToBreak}
+              onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               dealers={dealers ?? []}
               swingMetrics={swingMetrics ?? []}
               tables={tables ?? []}
@@ -1478,20 +1540,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                 setProcessing("create_table");
                 let success = 0, fail = 0;
                 for (const tableId of selectedPoolTableIds) {
-                  // Clean up stale dealer assignments (if table was closed without releasing dealer)
-                  const { data: staleAssignments } = await supabase
-                    .from("dealer_assignments")
-                    .select("id, attendance_id")
-                    .eq("table_id", tableId)
-                    .in("status", ["assigned", "on_break"]);
-                  for (const sa of staleAssignments ?? []) {
-                    await supabase.from("dealer_assignments").update({
-                      released_at: new Date().toISOString(), status: "completed",
-                    }).eq("id", sa.id);
-                    await supabase.from("dealer_attendance").update({
-                      current_state: "available",
-                    }).eq("id", sa.attendance_id);
-                  }
+                  // Clean up stale dealer assignments (atomic RPC — checks for other active assignments)
+                  await supabase.rpc("release_dealer_from_table", { p_table_id: tableId });
                   const { error } = await supabase.from("game_tables").update({
                     shift_id: selectedTour ?? null,
                     status: "active",
@@ -1579,6 +1629,16 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         clubId={clubFilter ?? filteredClubIds[0] ?? ""}
         currentConfigs={swingConfigs ?? []}
         onSaved={refetchSwingConfigs}
+      />
+
+      {/* Break Duration Dialog */}
+      <BreakDurationDialog
+        open={breakDurationOpen !== null}
+        onOpenChange={(v) => { if (!v) setBreakDurationOpen(null); }}
+        defaultMinutes={defaultBreakMinutes}
+        onConfirm={(minutes) => {
+          if (breakDurationOpen) sendToBreak(breakDurationOpen, minutes);
+        }}
       />
 
       {/* Payroll Preview Dialog */}
@@ -2009,6 +2069,85 @@ function CollapsibleSection<T>({
   );
 }
 
+function BreakDurationDialog({
+  open,
+  onOpenChange,
+  defaultMinutes,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  defaultMinutes: number;
+  onConfirm: (minutes: number) => void;
+}) {
+  const presets = [15, 30, 45, 60];
+  const [selected, setSelected] = useState<number>(defaultMinutes);
+  const [custom, setCustom] = useState<string>("");
+
+  useEffect(() => {
+    if (open) {
+      setSelected(defaultMinutes);
+      setCustom("");
+    }
+  }, [open, defaultMinutes]);
+
+  const parsedCustom = custom ? parseInt(custom, 10) : NaN;
+  const isValidCustom = !isNaN(parsedCustom) && parsedCustom >= 5 && parsedCustom <= 120;
+  const effectiveMinutes: number | null =
+    custom
+      ? isValidCustom ? parsedCustom : null
+      : selected;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-zinc-900 border-zinc-700 max-w-[260px]">
+        <DialogHeader>
+          <DialogTitle className="text-zinc-200 text-sm">Chọn thời gian nghỉ</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-1.5">
+            {presets.map((m) => (
+              <button
+                key={m}
+                className={`px-2 py-1.5 text-xs rounded-md transition-colors ${
+                  !custom && selected === m
+                    ? "bg-emerald-600 text-white"
+                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                }`}
+                onClick={() => { setSelected(m); setCustom(""); }}
+              >
+                {m}p
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              placeholder="Custom"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              className="h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-200"
+            />
+            <span className="text-xs text-zinc-500">phút</span>
+          </div>
+          <Button
+            size="sm"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={effectiveMinutes === null}
+            onClick={() => { if (effectiveMinutes !== null) onConfirm(effectiveMinutes); }}
+          >
+            {effectiveMinutes !== null
+              ? `Xác nhận — ${effectiveMinutes} phút`
+              : "Nhập 5–120 phút"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
@@ -2079,7 +2218,12 @@ function RosterPanel({
     return map;
   }, [dealers, assignments]);
 
-  // getWorkedMinutes replaced by calculateLiveWorkedMinutes (top-level pure function)
+  // Live worked minutes: compute from assignment timestamps, not stale column.
+  // Assigned → elapsed since assigned_at; others → stored value (last session).
+  const liveWorkedMin = useMemo(
+    () => calculateLiveWorkedMinutes(dealers, assignments, nowMs),
+    [dealers, assignments, nowMs]
+  );
 
   // Urgency key for sorting assigned dealers
   const urgencyKey = useCallback((att: DealerAssignment | undefined): number => {
@@ -2239,7 +2383,7 @@ function RosterPanel({
                         )}
 
                         {/* Fatigue dot — computed live from assignment timestamps */}
-                        <FatigueDot workedMinutes={calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs)} priorityBreakFlag={d.priority_break_flag ?? false} />
+                        <FatigueDot workedMinutes={liveWorkedMin[d.id] ?? 0} priorityBreakFlag={d.priority_break_flag ?? false} />
 
                         {/* Timer */}
                         {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
@@ -2256,7 +2400,7 @@ function RosterPanel({
                         {sec.key !== "Đang nghỉ" && (
                           <PriorityBreakIndicator
                             priorityBreakFlag={d.priority_break_flag}
-                            workedMinutesSinceLastBreak={calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs)}
+                            workedMinutesSinceLastBreak={liveWorkedMin[d.id] ?? 0}
                           />
                         )}
 
@@ -2368,9 +2512,10 @@ function RosterPanel({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
+  onSwingTable, swingingAssignmentId,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -2382,6 +2527,7 @@ function TableGrid({
   processing: string | null;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
+  onAutoBreak: (attendanceId: string) => void;
   selectedTour: string | null;
   onCreateTable: () => void;
   closeTableConfirmId: string | null;
@@ -2393,6 +2539,8 @@ function TableGrid({
   onForceClose?: (tableId: string) => void;
   isAnimating?: (tableId: string) => boolean;
   focusedTableId?: string | null;
+  onSwingTable: (assignmentId: string) => void;
+  swingingAssignmentId: string | null;
 }) {
   const nowMs = useLiveClock();
 
@@ -2402,13 +2550,13 @@ function TableGrid({
   }, [tables, selectedTour, tableAssignmentMap]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
-  // and re-checks swing_processed_at before calling sendToBreak
+  // and re-checks swing_processed_at before calling auto-break
+  // Uses in-memory Set instead of localStorage (unavailable in iframe/restricted contexts)
+  const processedTimers = useRef(new Set<string>());
+
   const onTimerExpired = useCallback(async (attendanceId: string, assignmentId: string) => {
-    const lockKey = `swing_expired_${assignmentId}`;
-    try {
-      if (localStorage.getItem(lockKey)) return;
-      localStorage.setItem(lockKey, '1');
-    } catch { /* localStorage unavailable */ }
+    if (processedTimers.current.has(assignmentId)) return;
+    processedTimers.current.add(assignmentId);
 
     try {
       const { data } = await supabase
@@ -2417,12 +2565,12 @@ function TableGrid({
         .eq('id', assignmentId)
         .maybeSingle();
 
-      if (data?.swing_processed_at) return; // backend already handled it
-      onSendToBreak(attendanceId);
+      if (data?.swing_processed_at) return;
+      onAutoBreak(attendanceId);
     } catch {
-      onSendToBreak(attendanceId);
+      onAutoBreak(attendanceId);
     }
-  }, [onSendToBreak]);
+  }, [onAutoBreak]);
 
   return (
     <Card className="p-3 h-full">
@@ -2455,6 +2603,8 @@ function TableGrid({
             // ── Timer / OT / Progress computations ──────────────────────────
             const swingDueMs = a ? new Date(a.swing_due_at).getTime() : 0;
             const isOt = a && (a.overtime_started_at !== null || swingDueMs <= nowMs);
+            const isActualOt = a && a.overtime_started_at !== null && !a.swing_processed_at;
+            const canSwing = !a?.swing_processed_at && !!isOt;
 
             let otLabel = "";
             if (isOt) {
@@ -2640,11 +2790,20 @@ function TableGrid({
                           onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
                           <Clock className="w-3 h-3 mr-1" /> Nghỉ
                         </Button>
-                        {!a.swing_processed_at && (
-                          <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-amber-500 border-amber-500/30" disabled>
-                            <RefreshCw className="w-3 h-3 mr-1" /> Swing
-                          </Button>
-                        )}
+                        <Button size="sm" variant="outline"
+                          className={[
+                            "flex-1 text-xs h-7",
+                            isActualOt
+                              ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
+                              : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
+                          ].join(" ")}
+                          onClick={() => onSwingTable(a.id)}
+                          disabled={!canSwing || swingingAssignmentId === a.id}>
+                          {swingingAssignmentId === a.id
+                            ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            : <RefreshCw className="w-3 h-3 mr-1" />}
+                          {isActualOt ? "Swing ngay" : "Swing"}
+                        </Button>
                       </>
                     )}
                     {!a && (
@@ -2702,6 +2861,10 @@ function CommandCenter({
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
   const nowMs = useLiveClock();
+  const liveWorkedMin = useMemo(
+    () => calculateLiveWorkedMinutes(dealers, assignments, nowMs),
+    [dealers, assignments, nowMs]
+  );
 
   // ── Internal dialogs ────────────────────────────────────────────
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
@@ -2760,7 +2923,7 @@ function CommandCenter({
     }
     // Break due — use live computed minutes
     for (const d of dealers ?? []) {
-      const w = calculateLiveWorkedMinutes(d.id, dealers, assignments, nowMs);
+      const w = liveWorkedMin[d.id] ?? 0;
       if (w >= 90 || d.priority_break_flag) count++;
     }
     // Missing next dealer
@@ -2772,7 +2935,7 @@ function CommandCenter({
       }
     }
     return count;
-  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, nowMs]);
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, liveWorkedMin]);
 
   const recentLogs = useMemo(() => auditLogs.slice(0, 5), [auditLogs]);
 
@@ -3232,6 +3395,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
       crit_at_minutes: 1, tournament_mode: "time", pre_announce_minutes: 10,
       auto_adjust_duration: false, base_duration_minutes: 30,
       target_ratio: 1.2, min_duration_minutes: 25, max_duration_minutes: 60,
+      rotation_planner_enabled: false,
     },
   }), []);
 
@@ -3255,6 +3419,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
           target_ratio: (cfg as any).target_ratio ?? 1.2,
       min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 25, Math.max(30, (cfg as any).base_duration_minutes ?? 30) - 1)),
       max_duration_minutes: Math.max((cfg as any).max_duration_minutes ?? 60, Math.max(30, (cfg as any).base_duration_minutes ?? 30) + 5),
+          rotation_planner_enabled: (cfg as any).rotation_planner_enabled ?? false,
         };
       }
     }
@@ -3286,6 +3451,7 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
         target_ratio: vals.target_ratio ?? 1.2,
         min_duration_minutes: vals.min_duration_minutes ?? 20,
         max_duration_minutes: vals.max_duration_minutes ?? 60,
+        rotation_planner_enabled: vals.rotation_planner_enabled ?? false,
       }, { onConflict: "club_id, table_type" });
       if (error) { toast.error(`Lỗi lưu ${t}: ${error.message}`); setSaving(false); return; }
     }

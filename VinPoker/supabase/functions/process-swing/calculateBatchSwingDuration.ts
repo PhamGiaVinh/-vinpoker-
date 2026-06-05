@@ -145,6 +145,6 @@ export function calculateBatchSwingDuration(
  * Useful for Pass 3 (swing execution) where we want the same duration
  * but a fresh `now + duration` timestamp.
  */
-export function recomputeSwingDueAt(durationMinutes: number): string {
+function recomputeSwingDueAt(durationMinutes: number): string {
   return new Date(Date.now() + durationMinutes * 60_000).toISOString();
 }

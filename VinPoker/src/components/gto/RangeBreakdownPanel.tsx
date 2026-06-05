@@ -16,7 +16,7 @@ const ROWS: { key: keyof HandAction; label: string; bg: string }[] = [
   { key: "fold",  label: "Fold",  bg: "bg-gto-fold"  },
 ];
 
-export default function RangeBreakdownPanel({ range }: Props) {
+function RangeBreakdownPanel({ range }: Props) {
   const { state, updateHand } = useRangeTree();
   const selectedHand = state.selectedHand;
 

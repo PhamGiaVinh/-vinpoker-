@@ -55,7 +55,7 @@ function normalizeRange(raw: unknown): Range {
   return out;
 }
 
-export function registerSpot(key: SpotKey, range: Range) {
+function registerSpot(key: SpotKey, range: Range) {
   PRECOMPUTED.set(key, range);
 }
 
@@ -97,7 +97,7 @@ export async function initRemoteRanges() {
 }
 
 /** Đọc range custom (nếu có) — cache đã pull từ DB qua initRemoteRanges. */
-export function getCustomRange(key: SpotKey): Range | null {
+function getCustomRange(key: SpotKey): Range | null {
   return REMOTE_CACHE.get(key) ?? null;
 }
 
@@ -163,7 +163,7 @@ export async function initUserRanges() {
     .subscribe();
 }
 
-export function getUserRange(key: SpotKey): Range | null {
+function getUserRange(key: SpotKey): Range | null {
   return USER_CACHE.get(key) ?? null;
 }
 
@@ -207,7 +207,7 @@ export function getEffectiveRange(key: SpotKey): Range | null {
 }
 
 
-export function hasPrecomputed(key: SpotKey): boolean {
+function hasPrecomputed(key: SpotKey): boolean {
   return !!getPrecomputedRange(key);
 }
 
@@ -219,7 +219,7 @@ export function makeSpotKey(
   return `${position}_${spotType}_${depth}bb`;
 }
 
-export function getAllRegisteredSpots(): SpotKey[] {
+function getAllRegisteredSpots(): SpotKey[] {
   return Array.from(PRECOMPUTED.keys());
 }
 
@@ -229,7 +229,7 @@ function a(fold: number, call: number, raise: number, allin: number): HandAction
   return normalizeHandAction({ fold, call, raise, allin });
 }
 
-export function buildFullRange(overrides: Record<string, HandAction>): Range {
+function buildFullRange(overrides: Record<string, HandAction>): Range {
   const range: Range = {};
   for (const hand of allHands()) {
     range[hand] = overrides[hand] ?? a(1, 0, 0, 0);

@@ -46,12 +46,10 @@ Deno.serve(async (req) => {
     console.log(`[assign-dealer] table=${table_id} force=${force_dealer_id} shift=${shift_id} idemp=${idempotency_key}`);
 
     if (idempotency_key) {
-      const { data: existing } = await admin
-        .from("dealer_assignments")
-        .select("id, status")
-        .eq("idempotency_key", idempotency_key)
-        .maybeSingle();
-      if (existing) return json({ status: "already_processed", id: existing.id });
+      // Format validation only — atomic idempotency check is in RPC Step 0
+      if (typeof idempotency_key !== "string" || idempotency_key.length > 255) {
+        return json({ error: "Invalid idempotency_key" }, 400);
+      }
     }
 
     const { data: table, error: te } = await admin
@@ -130,66 +128,75 @@ Deno.serve(async (req) => {
         }, 409);
       }
 
-      // Release any existing active assignment for this table first
-      // (e.g. an OT dealer stuck by the previous broken perform_swing).
-      const { data: oldAssignment } = await admin
-        .from("dealer_assignments")
-        .select("id, attendance_id, status")
-        .eq("table_id", table_id)
-        .in("status", ["assigned", "on_break"])
-        .is("released_at", null)
-        .maybeSingle();
-
-      if (oldAssignment) {
-        console.log(`[assign-dealer] Releasing old assignment ${oldAssignment.id} for table ${table_id}`);
-        const { error: releaseErr } = await admin
-          .from("dealer_assignments")
-          .update({
-            status: "completed",
-            released_at: new Date().toISOString(),
-          })
-          .eq("id", oldAssignment.id);
-        if (releaseErr) {
-          console.error(`[assign-dealer] Failed to release old assignment: ${releaseErr.message}`);
-        } else {
-          // Set old dealer back to available via state machine RPC
-          // (creates proper audit trail, handles all valid states)
-          const { data: transResult } = await admin.rpc("transition_dealer_state", {
-            p_attendance_id: oldAssignment.attendance_id,
-            p_new_state: "available",
-            p_reason: "force_reassignment_release_old_dealer",
-          });
-          if (!transResult?.ok) {
-            console.error(`[assign-dealer] Failed to release old dealer state: ${transResult?.error ?? "unknown"}`);
-          }
-        }
-      }
+      // ═══════════════════════════════════════════════════════════════════
+      // SINGLE SOURCE OF TRUTH: Call assign_dealer_to_table RPC
+      // All release + insert logic lives in the RPC (atomic transaction).
+      // Edge fn = auth/validation wrapper only.
+      // ═══════════════════════════════════════════════════════════════════
 
       const swingDueAt = new Date(Date.now() + swingDuration * 60 * 1000).toISOString();
-      const { data: assignment, error: ase } = await admin
-        .from("dealer_assignments")
-        .insert({
-          attendance_id: attendance.id,
-          table_id,
-          club_id: table.club_id,        // Phase 1: club_id is NOT NULL on dealer_assignments
-          assigned_at: new Date().toISOString(),
-          status: "assigned",
-          swing_due_at: swingDueAt,
-          idempotency_key: idempotency_key ?? null,
-        })
-        .select("id, assigned_at, status")
-        .single();
-      if (ase) return json({ error: ase.message }, 500);
+      const { data: rpcResult, error: rpcErr } = await admin.rpc(
+        "assign_dealer_to_table",
+        {
+          p_attendance_id: attendance.id,
+          p_table_id: table_id,
+          p_assigned_at: new Date().toISOString(),
+          p_swing_due_at: swingDueAt,
+          p_club_id: table.club_id,
+          p_idempotency_key: idempotency_key ?? null,
+          p_force_replace: true,
+        }
+      );
+
+      if (rpcErr) {
+        console.error("[assign-dealer] RPC error:", rpcErr.message);
+        return json({ error: rpcErr.message }, 500);
+      }
+
+      const outcome = typeof rpcResult === "string" ? rpcResult : rpcResult?.outcome;
+
+      if (outcome === "conflict") {
+        return json({
+          error: "DEALER_BUSY: Dealer này vừa được phân công bởi người dùng khác. Vui lòng thử lại.",
+          dealer_id: force_dealer_id,
+        }, 409);
+      }
+
+      if (outcome === "table_occupied") {
+        return json({ error: "Table already has an active dealer" }, 409);
+      }
+
+      if (outcome !== "ok") {
+        return json({ error: `Unexpected outcome: ${outcome}` }, 500);
+      }
+
+      const assignmentId = typeof rpcResult === "object" ? rpcResult.assignment_id : null;
+
+      if (!assignmentId) {
+        console.error("[assign-dealer] RPC returned ok but no assignment_id");
+        return json({ error: "Assignment created but ID missing" }, 500);
+      }
+
+      // Handle idempotent replay — assignment already existed
+      const isIdempotent = typeof rpcResult === "object" && rpcResult.idempotent === true;
 
       await admin.from("audit_logs").insert({
         club_id: table.club_id,
         actor_id: requested_by ?? uid,
         action: "assign",
         entity_type: "dealer_assignment",
-        entity_id: assignment.id,
-        payload: { table_id, attendance_id: attendance.id, mode: "force" },
+        entity_id: assignmentId,
+        payload: {
+          table_id,
+          attendance_id: attendance.id,
+          mode: "force",
+          outcome: "ok",
+          idempotent: isIdempotent || undefined,
+          orphan_count: typeof rpcResult === "object" ? (rpcResult.orphan_count ?? 0) : 0,
+        },
       });
 
+      // Telegram notification
       const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
       if (botToken) {
         const dealerInfo = (attendance as any)?.dealers ?? {};
@@ -215,7 +222,7 @@ Deno.serve(async (req) => {
         }).catch(() => {});
       }
 
-      return json({ assignment, status: "success" });
+      return json({ assignment: { id: assignmentId, status: "success" }, status: "success" });
     }
 
     const topDealers = await pickTopDealers(admin, table.club_id, 3, {

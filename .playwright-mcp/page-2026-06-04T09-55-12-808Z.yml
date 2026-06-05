@@ -1,0 +1,9 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - img
+  - generic [ref=e2]:
+    - region "Notifications alt+T"
+    - generic [ref=e3]:
+      - generic [ref=e4]: VIN BACKER
+      - img [ref=e5]
+      - paragraph [ref=e7]: Đang tải...

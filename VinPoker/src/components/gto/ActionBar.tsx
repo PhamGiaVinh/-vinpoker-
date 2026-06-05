@@ -21,7 +21,7 @@ const ACTION_TEXT: Record<ActionStep["action"], string> = {
   allin: "text-gto-allin",
 };
 
-export default function ActionBar() {
+function ActionBar() {
   const { state, pushStep, popTo, setViewing } = useRangeTree();
   const { actionPath, stackDepth, viewingPosition } = state;
 

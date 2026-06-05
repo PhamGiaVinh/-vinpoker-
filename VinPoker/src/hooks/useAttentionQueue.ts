@@ -81,9 +81,14 @@ export function useAttentionQueue({
     // ── 2. Break due ──
     for (const d of dealers ?? []) {
       const assignment = assignments.find((a) => a.attendance_id === d.id && a.status === "assigned");
-      const w = assignment?.assigned_at
-        ? Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000))
-        : (d.worked_minutes_since_last_break ?? 0);
+      let w: number;
+      if (assignment?.assigned_at) {
+        w = Math.max(0, Math.floor((nowMs - new Date(assignment.assigned_at).getTime()) / 60000));
+      } else {
+        const stored = d.worked_minutes_since_last_break ?? 0;
+        const STALE_DATA_CAP = 180;
+        w = stored > STALE_DATA_CAP ? 0 : stored;
+      }
       if (w < 90 && !d.priority_break_flag) continue;
       const excess = cap(w - 90, 0, 30);
       const score = BASE_SCORE.break_due + excess;

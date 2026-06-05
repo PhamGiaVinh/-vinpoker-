@@ -58,17 +58,41 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const { action, attendance_id, club_id, duration_minutes = 20 } = body;
 
+    // Log every incoming call for traceability (cross-club leak investigations)
+    const callerIp = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
+    console.log(
+      `[manage-break] action=${action} attendance_id=${attendance_id} ` +
+      `club_id=${club_id} caller_ip=${callerIp}`
+    );
+
     switch (action) {
     case "start": {
+      // Fetch assignment with INNER JOIN on game_tables to validate club at query level.
+      // The !inner + .eq("game_tables.club_id", clubId) combo should filter out
+      // assignments whose table belongs to a different club.
+      // Safety check below covers PostgREST versions that silently ignore nested filters.
       const { data: assignment, error: aErr } = await admin
         .from("dealer_assignments")
-        .select("id, version, table_id, game_tables(table_name)")
+        .select("id, version, game_tables!inner(club_id, table_name)")
         .eq("attendance_id", attendance_id)
         .eq("status", "assigned")
-        .single();
+        .eq("game_tables.club_id", club_id)
+        .maybeSingle();
 
       if (aErr || !assignment) {
-        return json({ error: "No active assignment found" }, 404);
+        return json({ error: "No active assignment found for this club" }, 404);
+      }
+
+      // Safety check: verify club_id was actually enforced (PostgREST nested filter quirk)
+      const gameTable = Array.isArray(assignment.game_tables)
+        ? assignment.game_tables[0]
+        : assignment.game_tables;
+      if (gameTable?.club_id !== club_id) {
+        console.error(
+          `[manage-break] Club mismatch (safety): attendance=${attendance_id} ` +
+          `table_club=${gameTable?.club_id} request_club=${club_id}`
+        );
+        return json({ error: "Attendance does not belong to this club" }, 403);
       }
 
       const { error: casErr } = await admin
@@ -133,6 +157,20 @@ Deno.serve(async (req: Request) => {
 
     case "end":
     case "return_from_break": {
+      // Validate the attendance's dealer belongs to the requested club
+      // before calling complete_dealer_break. Prevents ending another club's break.
+      const { data: breakCheck } = await admin
+        .from("dealer_attendance")
+        .select("dealers!inner(club_id)")
+        .eq("id", attendance_id)
+        .eq("status", "checked_in")
+        .eq("dealers.club_id", club_id)
+        .maybeSingle();
+
+      if (!breakCheck) {
+        return json({ error: "No active attendance found for this club" }, 404);
+      }
+
       const { data: rpcResult, error: rpcErr } = await admin.rpc(
         "complete_dealer_break",
         { p_attendance_id: attendance_id }

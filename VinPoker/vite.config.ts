@@ -54,5 +54,6 @@ export default defineConfig(({ mode }) => ({
     // vendor-react and vendor-charts that crashed the app at boot
     // ("Cannot access 'P' before initialization"). Let Rollup decide
     // chunking automatically — it's safe and keeps lazy routes split.
+    sourcemap: "hidden",
   },
 }));

@@ -44,4 +44,4 @@ export function computeStakingPayouts(
 }
 
 // FUTURE: International expansion (preserve)
-export const PLATFORM_FEE_RATE = 1.0;
+const PLATFORM_FEE_RATE = 1.0;

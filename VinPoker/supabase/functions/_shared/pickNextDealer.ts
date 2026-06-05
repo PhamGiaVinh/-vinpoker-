@@ -68,19 +68,26 @@ export interface DealerCandidate {
   consecutive_assignments: number;
   rest_minutes: number;
   priority_break_flag: boolean;
+  current_state: "available" | "on_break";
+  last_tour_tier: string;
   score?: number;
   score_breakdown?: ScoreBreakdown;
+}
+
+export interface BuildCandidatesResult {
+  candidates: DealerCandidate[];
+  avgBreakRatio: number | null;
 }
 
 export type SupabaseAdmin = ReturnType<typeof createClient>;
 
 // ─── buildDealerCandidates ────────────────────────────────────────────────────
 
-async function buildDealerCandidates(
+export async function buildDealerCandidates(
   admin: SupabaseAdmin,
   clubId: string,
   options: PickDealerOptions = {}
-): Promise<DealerCandidate[]> {
+): Promise<BuildCandidatesResult> {
   const {
     tourTier,
     requiredGameTypes,
@@ -100,7 +107,10 @@ async function buildDealerCandidates(
     .eq("club_id", clubId)
     .eq("status", "active");
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
-  if (dealerIds.length === 0) return [];
+  // Step 1 edge case: no dealers → return empty with null avgBreakRatio
+  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
+
+  // Step 1b: Check if requesting table has priority_swing_at set
 
   // Step 1b: Check if requesting table has priority_swing_at set
   // +300 bonus ensures the priority table gets next available dealer.
@@ -117,6 +127,11 @@ async function buildDealerCandidates(
   }
 
   // Step 2: Query dealer_attendance
+  // Dealers on_break must rest the full configured break duration before
+  // they can be pulled back for swing. This protects lunch breaks (e.g. 30min).
+  // Available dealers always pass this guard since they're not on_break.
+  const minBreakMinutes = options.clubBreakDurationMinutes ?? 15;
+
   const { data: rows, error } = await admin
     .from("dealer_attendance")
     .select(
@@ -127,13 +142,14 @@ async function buildDealerCandidates(
          tier, skills
        )`
     )
-    .eq("current_state", "available")
     .eq("status", "checked_in")
-    .in("dealer_id", dealerIds);
+    .in("dealer_id", dealerIds)
+    .or(`current_state.eq.available,current_state.eq.on_break`);
 
+  // Step 2 edge case: query error or empty rows
   if (error) {
     console.error("[pickNextDealer] query error:", error.message);
-    return [];
+    return { candidates: [], avgBreakRatio: null };
   }
 
   // Step 3: Query dealer_shift_metrics separately
@@ -161,25 +177,75 @@ async function buildDealerCandidates(
     }
   }
 
-  // Step 5: Exclude dealers whose specific available attendance record changed
-  // to assigned/pre_assigned. Query by attendance_id (already computed in Step 3)
-  // instead of dealer_id to avoid false positives from stale duplicate records
-  // with orphaned 'assigned'/'pre_assigned' state from prior shifts.
+  // Step 5: Exclude dealers who are ALREADY BUSY at any table.
+  // BUG FIX: Query by dealer_id across ALL attendance records (not just the
+  // available list) to catch dealers with duplicate attendance records or
+  // orphaned 'assigned'/'pre_assigned'/'in_transition' state from prior shifts.
+  // Also excludes dealers who haven't checked out yet regardless of which
+  // attendance record shows them busy.
+  //
+  // 🚨 CRITICAL FIX: Use rolling 24h window to prevent stale records (>1 day old)
+  // from poisoning the pool. In tournament poker, shifts cross midnight, so
+  // "today" is wrong — 24h rolling window is safe for any shift length.
   const busyDealerIds = new Set<string>();
-  if (attendanceIds.length > 0) {
-    const { data: busyDealers } = await admin
-      .from("dealer_attendance")
-      .select("dealer_id")
-      .in("id", attendanceIds)
-      .in("current_state", ["assigned", "pre_assigned"]);
-    for (const bd of busyDealers ?? []) {
-      busyDealerIds.add(bd.dealer_id);
+  const busyWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: busyDealers } = await admin
+    .from("dealer_attendance")
+    .select("dealer_id")
+    .in("dealer_id", dealerIds)
+    .in("current_state", ["assigned", "pre_assigned", "in_transition"])
+    .is("check_out_time", null)
+    .gte("check_in_time", busyWindow);
+  for (const bd of busyDealers ?? []) {
+    busyDealerIds.add(bd.dealer_id);
+  }
+
+  if (busyDealerIds.size > 0) {
+    console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
+  }
+
+  // Step 5b: Cross-check dealer_assignments for dealers that appear available
+  // or on_break in dealer_attendance but actually have active assignments at a
+  // different table (B6 defense). Includes on_break and pre_assigned statuses.
+  // Table-aware: excludes assignments at currentTableId since dealer on_break
+  // at the table being picked for is valid (they'll be replaced).
+  // TODO: Add advisory lock per-dealer to prevent race condition when 2 tables
+  // pick the same dealer concurrently (Bug A — club-level lock is sufficient for now).
+  if (dealerIds.length > 0) {
+    let busyAssignmentsQuery = admin
+      .from("dealer_assignments")
+      .select("dealer_id, table_id, status")
+      .in("dealer_id", dealerIds)
+      .in("status", ["assigned", "pre_assigned", "on_break"])
+      .is("released_at", null);
+
+    if (currentTableId) {
+      busyAssignmentsQuery = busyAssignmentsQuery.neq("table_id", currentTableId);
+    } else {
+      console.warn(
+        `[pickNextDealer] Club ${clubId}: currentTableId not provided — ` +
+        `table-aware guard disabled. Verify excludeAttendanceIds covers current table dealers.`
+      );
+    }
+
+    const { data: busyAssignments } = await busyAssignmentsQuery;
+
+    for (const ba of busyAssignments ?? []) {
+      busyDealerIds.add(ba.dealer_id);
+    }
+
+    if (busyAssignments && busyAssignments.length > 0) {
+      console.log(
+        `[pickNextDealer] Club ${clubId}: ${busyAssignments.length} dealers excluded by assignment cross-check (Step 5b)` +
+        (currentTableId ? ` [table-aware: excluding table ${currentTableId}]` : " [no table-aware filter]")
+      );
     }
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring
-  let avgBreakRatio = clubAvgBreakRatio ?? 0.15;
-  if (includeScoreBreakdown && avgBreakRatio <= 0 && clubId) {
+  // null = insufficient data → skip break equity penalty entirely
+  let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
+  if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
     const { data: allMetricsRaw } = await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
@@ -193,14 +259,27 @@ async function buildDealerCandidates(
     if (totalW > 0) avgBreakRatio = totalB / totalW;
   }
 
+  // ── Diagnostics counters (zero-candidate debugging) ────────────────────
+  const diag = {
+    total_rows: (rows ?? []).length,
+    busy_excluded: 0,
+    exclude_set_excluded: 0,
+    tier_excluded: 0,
+    fatigue_excluded: 0,
+    priority_break_excluded: 0,
+    min_rest_excluded: 0,
+    game_type_excluded: 0,
+    candidates_count: 0,
+  };
+
   const candidates: DealerCandidate[] = [];
 
   for (const row of rows ?? []) {
     // ── Intra-cycle exclusion ────────────────────────────────────────────────
     // Accumulative exclusion: dealers picked in earlier phases (Fill, Pass 2)
     // are excluded from later phases (Pass 3). The caller manages the set.
-    if (busyDealerIds.has(row.dealer_id)) continue;
-    if (excludeAttendanceIds.has(row.id)) continue;
+    if (busyDealerIds.has(row.dealer_id)) { diag.busy_excluded++; continue; }
+    if (excludeAttendanceIds.has(row.id)) { diag.exclude_set_excluded++; continue; }
 
     const d = row.dealers;
     const tier: "A" | "B" | "C" = d.tier ?? "C";
@@ -213,10 +292,18 @@ async function buildDealerCandidates(
     const lastTourTier = lastTourTierMap.get(row.id) ?? "";
     const priorityBreak = row.priority_break_flag ?? false;
 
+    // ── On-break minimum rest guard ──────────────────────────────────────────────
+    // Dealers on_break are included in the pool query but only eligible if they've
+    // rested >= minimum_break_duration_minutes (10). Available dealers always pass.
+    if (row.current_state === "on_break" && restMin < minBreakMinutes) {
+      diag.min_rest_excluded++;
+      continue;
+    }
+
     // ── High-stakes tier guard ─────────────────────────────────────────────
     // HIGH tournaments require A+ tier dealers. Exclude C tier entirely.
     // MEDIUM tournaments prefer B tier but accept A/C.
-    if (tourTier === "HIGH" && tier === "C") continue;
+    if (tourTier === "HIGH" && tier === "C") { diag.tier_excluded++; continue; }
 
     // ── Fatigue hard cap ────────────────────────────────────────────────────
     // Dealer who hasn't rested enough after a long session needs mandatory rest.
@@ -224,18 +311,18 @@ async function buildDealerCandidates(
     // worked_minutes_since_last_break column. Excluded UNLESS skipFatigueHardCap
     // is set (Level 3 emergency only). When skipped, heavy score penalty applies.
     const fatigueHardCap = consecutive >= 4 && restMin < 10;
-    if (!skipFatigueHardCap && fatigueHardCap) continue;
+    if (!skipFatigueHardCap && fatigueHardCap) { diag.fatigue_excluded++; continue; }
 
     // ── Priority break + rest guard ─────────────────────────────────────────
     // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
     // Rest threshold = break_duration_minutes + 5 buffer (default 20+5=25).
     // Dealer who rested ≥ threshold is "rested enough" to reassign.
     const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
-    if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) continue;
+    if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
     // ── Minimum rest ────────────────────────────────────────────────────────
     // Dealer needs ≥10 min rest between swing cycles.
-    if (consecutive > 0 && restMin < 10) continue;
+    if (consecutive > 0 && restMin < 10) { diag.min_rest_excluded++; continue; }
 
     // ── Game type hard-exclude ──────────────────────────────────────────────
     // If the table requires specific game types (e.g., "Omaha", "Mixed"),
@@ -245,11 +332,17 @@ async function buildDealerCandidates(
       requiredGameTypes.length > 0 &&
       !requiredGameTypes.some((g) => skills.includes(g))
     ) {
+      diag.game_type_excluded++;
       continue;
     }
 
     // ── Scoring ─────────────────────────────────────────────────────────────
     let score = 0;
+
+    // ── On-break penalty ────────────────────────────────────────────────────────
+    // Dealers on_break are eligible but deprioritized vs available dealers.
+    // They've rested enough but are currently pulled out of rotation.
+    if (row.current_state === "on_break") { score -= 50; }
     const breakdown: ScoreBreakdown = {
       rest_bonus: 0, tier_bonus: 0,
       back_to_back_penalty: 0, consecutive_penalty: 0,
@@ -320,9 +413,8 @@ async function buildDealerCandidates(
     // ── Break equity penalty ───────────────────────────────────────────────
     // Dealers with below-average break ratio get a small score penalty,
     // making them less likely to be picked for another full swing.
-    // This prevents the same dealers from being overworked while others
-    // take frequent breaks.
-    if (avgBreakRatio > 0 && metric) {
+    // avgBreakRatio === null means insufficient data → skip entirely.
+    if (avgBreakRatio !== null && avgBreakRatio > 0 && metric) {
       const dealerBreak = metric.total_break_minutes ?? 0;
       const dealerWorked = metric.total_worked_minutes ?? 0;
       const totalDealerTime = dealerBreak + dealerWorked;
@@ -366,6 +458,8 @@ async function buildDealerCandidates(
       consecutive_assignments: consecutive,
       rest_minutes: restMin,
       priority_break_flag: priorityBreak,
+      current_state: row.current_state as "available" | "on_break",
+      last_tour_tier: lastTourTier,
       score,
     };
 
@@ -376,8 +470,25 @@ async function buildDealerCandidates(
     candidates.push(candidate);
   }
 
+  diag.candidates_count = candidates.length;
+
+  // Log detailed diagnostics when zero or very few candidates — circuit breaker debugging
+  if (candidates.length === 0) {
+    console.warn(`[pickNextDealer] ⚠️ Club ${clubId}: ZERO candidates — diagnostics:`, {
+      ...diag,
+      tourTier: options.tourTier || "(not set)",
+      requiredGameTypes: options.requiredGameTypes || "(none)",
+      skipPriorityBreakGuard: options.skipPriorityBreakGuard,
+      skipFatigueHardCap: options.skipFatigueHardCap,
+      busyDealerTotal: busyDealerIds.size,
+      busyDealerIds: [...busyDealerIds],
+    });
+  } else if (candidates.length <= 2) {
+    console.log(`[pickNextDealer] ℹ️ Club ${clubId}: ${candidates.length} candidates — diagnostics:`, diag);
+  }
+
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return candidates;
+  return { candidates, avgBreakRatio };
 }
 
 // ─── pickNextDealer ───────────────────────────────────────────────────────────
@@ -387,7 +498,7 @@ export async function pickNextDealer(
   clubId: string,
   options: PickDealerOptions = {}
 ): Promise<DealerCandidate | null> {
-  const candidates = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates[0] ?? null;
 }
 
@@ -399,7 +510,7 @@ export async function pickTopDealers(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<DealerCandidate[]> {
-  const candidates = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates.slice(0, topN);
 }
 

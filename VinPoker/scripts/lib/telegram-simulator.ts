@@ -1,4 +1,4 @@
-export async function sendTestWebhook(
+async function sendTestWebhook(
   botToken: string,
   functionUrl: string,
   secretToken: string,
@@ -21,7 +21,7 @@ export async function sendTestWebhook(
   }
 }
 
-export async function getLastTelegramMessage(
+async function getLastTelegramMessage(
   botToken: string,
   chatId: string,
   since: number,
@@ -50,7 +50,7 @@ export async function getLastTelegramMessage(
   }
 }
 
-export async function waitForTelegramMessage(
+async function waitForTelegramMessage(
   botToken: string,
   chatId: string,
   timeoutMs: number,

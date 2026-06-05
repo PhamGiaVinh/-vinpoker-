@@ -28,7 +28,7 @@ function loadFromStorage(): ClipboardPayload | null {
   }
 }
 
-export function getClipboard(): ClipboardPayload | null {
+function getClipboard(): ClipboardPayload | null {
   if (memory) return memory;
   memory = loadFromStorage();
   return memory;
@@ -65,7 +65,7 @@ export async function pasteRangeFromClipboard(): Promise<Range | null> {
   return cb ? normalizeRange(cb.range) : null;
 }
 
-export function subscribeClipboard(cb: () => void): () => void {
+function subscribeClipboard(cb: () => void): () => void {
   subs.add(cb);
   return () => { subs.delete(cb); };
 }

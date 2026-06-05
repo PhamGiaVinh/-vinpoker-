@@ -1,799 +1,756 @@
-# Dealer Swing — Vận Hành Gọi Người & Tự Động Thay Thế
+# Dealer Swing — Hệ Thống Vận Hành & Luồng Xử Lý
 
-> Tài liệu này giải thích chi tiết cách hệ thống gọi dealer, chấm điểm, gửi Telegram, và tự động swing.
-
----
-
-## 1. Luồng Gọi Người (Assign Dealer)
-
-### 1.1 Khi Nào Gọi Người Mới?
-
-Có **3 thời điểm** gọi dealer mới, tương ứng 3 Pass trong `process-swing`:
-
-```
-Pass 1 (mỗi phút) — Fill bàn trống
-  Điều kiện: bàn active nhưng chưa có dealer_assignments.status='assigned'
-  Gọi: fillEmptyTables() → pickNextDealer() → INSERT + UPDATE current_state='assigned'
-
-Pass 2 (T-6) — Pre-assign dealer thay thế
-  Điều kiện: assignment có swing_due_at trong [4 phút tới, 8 phút tới]
-  Gọi: pickNextDealer() → UPDATE pre_assigned_attendance_id → SET current_state='pre_assigned'
-
-Pass 3 (T-0) — Thực thi swing
-  Điều kiện: swing_due_at <= NOW() + 5 phút
-  Gọi: execute_pre_assigned_swing() RPC → release old + activate new
-    hoặc: perform_swing() RPC (legacy / fallback)
-```
-
-**Luồng đầy đủ cho 1 dealer từ lúc check-in đến lúc được gọi:**
-
-```
-check-in → available
-              ↓ Pass 1/2
-        pickNextDealer() chấm điểm
-              ↓
-        current_state = 'assigned' (Pass 1)
-        current_state = 'pre_assigned' (Pass 2, T-6)
-              ↓
-        execute_pre_assigned_swing (Pass 3, T-0)
-              ↓
-        current_state = 'assigned' (vào bàn mới)
-```
-
-### 1.2 Code Gọi Dealer (từ process-sign Pass 2)
-
-```typescript
-// File: supabase/functions/process-swing/index.ts:147-211
-// Pass 2 — Pre-assign: T-6 phút, chọn dealer thay thế
-
-// 1. Query assignments sắp đến giờ swing
-const { data: preAssignList } = await admin
-  .from("dealer_assignments")
-  .select(`
-    id, table_id, attendance_id, assigned_at, version, swing_due_at,
-    game_tables!inner(id, table_name, table_type, club_id, game_type, tour_tier),
-    dealer_attendance!attendance_id!inner(id, dealer_id, shift_id,
-      dealers!inner(id, full_name, tier, telegram_username, telegram_user_id))
-  `)
-  .eq("status", "assigned")
-  .is("swing_processed_at", null)
-  .is("pre_assigned_attendance_id", null)
-  .gte("swing_due_at", NOW + 4min)
-  .lte("swing_due_at", NOW + 8min);
-
-// 2. Với mỗi assignment, chọn dealer thay thế
-for (const a of preAssignList) {
-  const nextDealer = await pickNextDealer(
-    admin, table.club_id, da.shift_id, table.table_type,
-    table.tour_tier, 45, [], table.id,
-  );
-
-  if (!nextDealer) {
-    // Không có dealer → gửi pre-announce cảnh báo floor
-    sendTelegramNotification(..., formatPreAnnounceMessage(...));
-    continue;
-  }
-
-  // 3. Atomic CAS: lock pre_assigned_attendance_id (tránh race condition)
-  const { data: locked } = await admin
-    .from("dealer_assignments")
-    .update({ pre_assigned_attendance_id: nextDealer.attendance_id, pre_assigned_at: now })
-    .eq("id", a.id)
-    .is("pre_assigned_attendance_id", null)
-    .eq("status", "assigned")
-    .select("id");
-
-  if (!locked?.length) continue; // race lost → cycle sau xử lý lại
-
-  // 4. Lock dealer state → pre_assigned
-  await admin
-    .from("dealer_attendance")
-    .update({ current_state: "pre_assigned", pre_assigned_table_id: table.id, pre_assigned_at: now })
-    .eq("id", nextDealer.attendance_id)
-    .eq("current_state", "available");
-
-  // 5. Gửi Telegram
-  sendGroupNotify(botToken, admin, table.club_id,
-    formatPreAssignMessage({ tableName, incomingDealer, minutesLeft }), a.id);
-  notifyIncomingDealer(botToken, dealer, table.table_name, minutesLeft);
-}
-```
+## Mục lục
+1. [Tổng quan Kiến trúc](#1-tổng-quan-kiến-trúc)
+2. [Pass Pipeline](#2-pass-pipeline)
+3. [Pass 3 — Thực Thi Swing (Chi Tiết)](#3-pass-3--thực-thi-swing-chi-tiết)
+4. [Dealer Scoring (pickNextDealer.ts)](#4-dealer-scoring-picknextdealerts)
+5. [Timer & Timeline System](#5-timer--timeline-system)
+6. [Shortage Handling — Xử Lý Thiếu Dealer](#6-shortage-handling--xử-lý-thiếu-dealer)
+7. [Frontend (DealerSwingTab.tsx + Hooks)](#7-frontend-dealerswingtabtsx--hooks)
+8. [Data Flow — Luồng Dữ Liệu](#8-data-flow--luồng-dữ-liệu)
+9. [Key RPCs — Stored Procedures](#9-key-rpcs--stored-procedures)
+10. [Config Tables — Bảng Cấu Hình](#10-config-tables--bảng-cấu-hình)
 
 ---
 
-## 2. Logic Chấm Điểm Chọn Dealer (pickNextDealer)
+## 1. Tổng quan Kiến trúc
 
-### 2.1 Bộ Lọc Cứng (Hard Filters) — Loại Bỏ Hoàn Toàn
-
-```typescript
-// File: supabase/functions/_shared/dealer-utils.ts:119-328
-
-// Filter 1: dealer không available
-.eq("current_state", "available")
-
-// Filter 2: chưa check-in
-.eq("status", "checked_in")
-
-// Filter 3: khác club
-.eq("dealers.club_id", clubId)
-
-// Filter 4: pool đã cạn (đã được chọn trong cycle này)
-if (excludeAttendanceIds?.size) {
-  available = available.filter(a => !excludeAttendanceIds.has(a.id));
-}
-
-// Filter 5: HIGH tour → loại Dealer C
-if (tourTier === "HIGH") {
-  available = available.filter(a => a.dealers.tier !== "C");
-}
-
-// Filter 6: Fatigue — < 15 phút đến mandatory break (120 phút)
-const MANDATORY_BREAK_MINUTES = 120;
-available = available.filter(a => {
-  const worked = a.worked_minutes_since_last_break ?? 0;
-  return (MANDATORY_BREAK_MINUTES - worked) >= 15;
-});
-
-// Filter 7: Skill match (nếu requiredGameTypes có)
-// Chỉ giữ dealer có ALL required game types
+### Vòng đời 1 dealer tại 1 bàn
+```
+check-in → available → assigned → pre_assigned (T-6) → swing (T-0) → available / on_break
 ```
 
-### 2.2 Bảng Chấm Điểm (Scoring)
+### Nguyên tắc vận hành
+- **process-swing** edge function được pg_cron gọi mỗi ~60 giây
+- Mỗi club được xử lý **độc lập** trong một vòng lặp tuần tự
+- **CAS per-row** (cột `version` trên `dealer_assignments`) bảo vệ chống concurrent modification
+- **Không dùng advisory lock** — mọi đồng bộ qua optimistic locking + `SKIP LOCKED`
+- Batch swing duration được snapshot một lần duy nhất trước khi xử lý batch → TOCTOU-safe
 
-Sau khi lọc, mỗi dealer được chấm điểm. Dealer có điểm **cao nhất** được chọn.
-
-```typescript
-// File: supabase/functions/_shared/dealer-utils.ts:248-318
-
-const scored = available.map(a => {
-  let score = 0;
-
-  // ─── 1000 điểm: Dealer mới chưa có assignment nào + không back-to-back ───
-  if (totalAssignments === 0 && lastTableMap.get(a.dealer_id) !== currentTableId)
-    score += 1000;
-
-  // ─── Thời gian nghỉ từ lần break cuối (tối đa 200 điểm) ───
-  score += Math.min(200, minutesSinceRest * 1.5);
-
-  // ─── Sắp đến giới hạn break? (trừ điểm, áp dụng khi < 30 phút) ───
-  const minutesUntilMandatory = 120 - workedSinceBreak;
-  if (minutesUntilMandatory < 30) {
-    score -= (30 - minutesUntilMandatory) * 2;
-  }
-
-  // ─── Công bằng workload (so với trung bình club) ───
-  score += (avgWorkedMinutes - dealerWorkedMinutes) * 0.3;
-
-  // ─── Cân bằng break (dealer nghỉ nhiều hơn TB = ưu tiên) ───
-  score += (dealerBreakMinutes - avgBreakMinutes) * 0.4;
-
-  // ─── Tier matching theo tour ───
-  // HIGH: A=+30, B=+5
-  // MEDIUM: B=+20, A=+5, C=+5
-  // LOW: C=+20, B=+5, A=+2
-
-  // ─── High-value balance (chỉ HIGH tour) ───
-  score += (avgHv - dealerHv) * 3;
-
-  // ─── Phạt back-to-back (cùng bàn) ───
-  if (lastTableMap.get(a.dealer_id) === currentTableId) score -= 50;
-
-  // ─── Phạt consecutive >= 3 lần ───
-  if (recentAssignments >= 3) score -= (recentAssignments - 2) * 15;
-
-  // ─── Skill match bonus ───
-  if (requiredGameTypes.length > 0) {
-    const matchCount = requiredGameTypes.filter(gt => skills.includes(gt)).length;
-    score += matchCount * 20;
-  }
-
-  return { attendance_id, dealer_id, dealer_name, tier, score };
-});
-
-// Sắp xếp giảm dần theo điểm
-.sort((a, b) => b.score - a.score);
-
-// Lọc lại theo skill match (nếu có)
-const filtered = requiredGameTypes.length > 0
-  ? scored.filter(d => requiredGameTypes.every(gt => skills.includes(gt)))
-  : scored;
-
-// Trả về dealer tốt nhất
-return filtered[0] ?? null;
-```
-
-### 2.3 Giải Thích Ý Nghĩa Từng Yếu Tố
-
-| Yếu tố | Ý nghĩa | Tại sao? |
-|--------|---------|----------|
-| **+1000** | Dealer chưa từng được gán | Đảm bảo dealer mới check-in được ưu tiên, không bị bỏ quên |
-| **+min(200, rest*1.5)** | Vừa nghỉ xong được bonus | Dealer vừa break xong là ứng viên tốt nhất |
-| **-(30-phút)*2** | Trừ điểm nếu sắp đến break | Tránh gán cho dealer sắp phải nghỉ bắt buộc (sắp đạt 120 phút) |
-| **+(TB-dealer)*0.3** | Ưu tiên người làm ít hơn | Công bằng: dealer làm ít được ưu tiên hơn |
-| **+(nghỉ-TB)*0.4** | Dealer nghỉ nhiều hơn TB | Dealer vừa break xong (đã nghỉ nhiều) đáng được chọn |
-| **+score theo tier** | Tier phù hợp tour | Bàn HIGH cần dealer A/B, bàn LOW có thể dealer C |
-| **+(TBhv-dealerHv)*3** | Cân bằng high-value | Phân bố đều các bàn HIGH cho mọi dealer |
-| **-50** | Back-to-back | Tránh dealer ngồi mãi một bàn (công bằng, giảm chán) |
-| **-(count-2)*15** | Consecutive penalty | Không để cùng 1 dealer bị gọi 3+ lần liên tiếp |
-| **+matchCount*20** | Skill match | Dealer có kỹ năng phù hợp được bonus |
+### Cấu trúc trigger
+- Pass 0: snapshot pool + phát hiện stuck + pre-cleanup
+- Pass 1: auto-fill bàn trống (trước pre-assign)
+- Pass 2: pre-assign dealer sắp đến lượt
+- Pass 2.5: gán dealer ban đầu cho assignment chưa có dealer
+- Pass 3: thực thi swing T-0
+- Pass 4: end break + refresh pool summary
 
 ---
 
-## 3. Đếm Thời Gian Còn Bao Nhiêu Phút
+## 2. Pass Pipeline
 
-### 3.1 Khi Nào Tính `swing_due_at`?
+### PASS 0 — Batch Swing Duration & Pool Snapshot
 
-**Trigger `trg_calc_swing_due_at`** (BEFORE INSERT ON dealer_assignments):
+**Mục đích**: Lấy snapshot pool dealer một lần duy nhất trước batch, tính swing duration cho toàn batch.
 
+**Luồng**:
+1. Gọi `get_dealer_pool_snapshot` RPC → lấy số liệu pool (available, assigned, on_break, pre_assigned)
+2. Gọi `calculateBatchSwingDuration(poolSnapshot)` → tính duration cho từng loại bàn dựa trên pool health:
+   - Pool dư dealer → duration ngắn hơn (swing nhanh)
+   - Pool thiếu dealer → duration dài hơn (giữ dealer lâu hơn)
+   - Có thể điều chỉnh theo club_settings
+3. Lưu batch duration vào context để Pass 3 dùng
+
+**Ghi chú**: TOCTOU-safe vì snapshot trước khi bất kỳ mutation nào xảy ra trong batch.
+
+### PASS 0b — Break Deadlock Guard
+
+**Mục đích**: Đếm số dealer `available` để làm guard cho logic break. Nếu không còn dealer available nào, hệ thống sẽ không tạo thêm break (tránh deadlock: tất cả đều on_break, không ai available để swing).
+
+**Luồng**:
+1. `SELECT COUNT(*) FROM dealer_attendance WHERE current_state = 'available' AND club_id = $1`
+2. Lưu biến `availableCount` → Pass 3 dùng để quyết định có tạo break không
+
+### PASS 0c — Detect & Auto-fix Stuck Dealers (6 sub-checks)
+
+**Mục đích**: Phát hiện và tự động sửa dealer bị kẹt ở trạng thái không hợp lệ (stuck state, overdue break, orphan pre_assigned).
+
+**6 sub-checks**:
+1. **Stuck `pre_assigned`**: `current_state = 'pre_assigned'` nhưng `pre_assigned_table_id` không còn assignment active hoặc quá hạn > 15 phút → reset về `available`
+2. **Stuck `on_break`**: break đã `break_end` nhưng `current_state` vẫn là `on_break` → reset về `available`
+3. **Stuck `assigned`**: `current_state = 'assigned'` nhưng không có `dealer_assignments` active → reset về `available`
+4. **Overdue break detection**: gọi `detect_stuck_breaks` → tìm break quá `expected_duration_minutes * 1.5`
+5. **Orphaned pre_assigned_attendance_id**: assignment có `pre_assigned_attendance_id` nhưng dealer đã bị gán đi bàn khác → clear
+6. **Duplicate active assignments**: 1 dealer có >1 assignment `status = 'assigned'` → giữ mới nhất, close cũ
+
+### PASS 1 — Auto-fill Empty Tables
+
+**Mục đích**: Gán dealer cho bàn đang hoạt động nhưng chưa có assignment.
+
+**Luồng**:
+1. Query `game_tables WHERE status = 'active'` không có `dealer_assignments` active
+2. Sort theo `tour_tier`: HIGH → MEDIUM → LOW
+3. Gọi `fillEmptyTables()` (shared từ `_shared/dealer-utils.ts`)
+4. Với mỗi bàn trống:
+   - `pickNextDealer()` với exclusion set (tránh gán trùng dealer)
+   - INSERT `dealer_assignments` → trigger tự tính `swing_due_at`
+   - UPDATE `dealer_attendance.current_state = 'assigned'`
+5. Telegram notification nếu có dealer mới được gán
+
+**Quan trọng**: Pass 1 chạy **TRƯỚC** Pass 2 (pre-assign) để bàn mới fill có ngay dealer, không phải chờ pre-assign.
+
+### PASS 1b — Clean Up Stale Pre-Assign Records
+
+**Mục đích**: Xóa các bản ghi `pre_assign` đã quá hạn >20 phút so với `swing_due_at` dự kiến. Đây là các pre-assign "mồ côi" — dealer đã được pre-assign nhưng swing không bao giờ xảy ra (bàn bị đóng, dealer bị gán đi nơi khác).
+
+**Luồng**:
+1. Query assignments có `pre_assigned_attendance_id IS NOT NULL` và `(NOW() - pre_assigned_at) > 20 minutes`
+2. Clear `pre_assigned_attendance_id`, `pre_assigned_at` về NULL
+3. Reset dealer state về `available` nếu còn `pre_assigned`
+
+### PASS 1c — Release Orphaned Pre-Assigned (No Table)
+
+**Mục đích**: Dealer đang `pre_assigned` nhưng bàn đã bị đóng/xóa → release dealer.
+
+**Luồng**:
+1. Query dealer_attendance WHERE `current_state = 'pre_assigned'`
+2. JOIN với game_tables để kiểm tra bàn còn tồn tại không
+3. Nếu bàn không tồn tại hoặc `status = 'inactive'` → reset dealer về `available`, clear `pre_assigned_table_id`
+
+### PASS 2 — Pre-Assign Incoming Dealers
+
+**Mục đích**: Chọn dealer cho bàn sắp đến giờ swing (T+4 đến T+8 phút), khóa dealer ở state `pre_assigned`.
+
+**Window**:
+- **Bình thường**: `swing_due_at BETWEEN NOW() + 4min AND NOW() + 8min` (T-6 ±2 phút)
+- **OT (Overtime)**: `swing_due_at BETWEEN NOW() + 1min AND NOW() + 5min` (T-3 ±2 phút, gấp hơn)
+
+**Luồng**:
+1. Query assignments thỏa window, chưa có `pre_assigned_attendance_id`, `status = 'assigned'`
+2. Với mỗi assignment, gọi `pickNextDealer()` với exclusion set
+3. CAS update `pre_assigned_attendance_id` trên `dealer_assignments`
+4. Update dealer state → `pre_assigned`, set `pre_assigned_table_id`
+5. Telegram DM cho dealer được pre-assign + group mention
+6. Gọi `pre_assign_next_dealer_for_table` RPC (atomic, có CAS)
+
+**Telegram format**:
+```
+⏰ @dealer_name chuẩn bị ra Bàn X sau ~6 phút
+📍 Tour: Tour Sáng | Game: NLH
+```
+
+### PASS 2.5 — Assign Initial Dealers to Empty Assignments
+
+**Mục đích**: Sửa các assignment có `dealer_id IS NULL` (lỗi race condition hoặc migration cũ). Gán dealer thực tế vào assignment.
+
+**Luồng**:
+1. Query assignments `WHERE dealer_id IS NULL AND status = 'assigned'`
+2. Gọi `fill_dealer_id` RPC để gán `attendance_id` → `dealer_id` (join qua `dealer_attendance.dealer_id`)
+3. Nếu không có attendance → đánh dấu assignment là `completed` (orphaned)
+
+### PASS 3 — Execute Swings at T-0
+
+**(Chi tiết ở Section 3 bên dưới)**
+
+### PASS 4 — End Expired Breaks
+
+**Mục đích**: Tự động kết thúc break đã quá hạn.
+
+**Luồng**:
+1. Gọi `end_expired_breaks` RPC:
+   - Query breaks có `break_end IS NULL` và `NOW() > break_start + expected_duration_minutes * 1.2`
+   - Set `break_end = NOW()`
+   - Reset `current_state = 'available'` cho dealer
+   - Reset `worked_minutes_since_last_break = 0`
+2. Telegram notification nếu có break được end
+
+### PASS 4b — Refresh Dealer Pool Summary
+
+**Mục đích**: Cập nhật bảng `dealer_pool_summary` cho monitoring dashboard.
+
+**Luồng**:
+1. Gọi `refresh_dealer_pool_summary` RPC:
+   - Đếm available, assigned, on_break, pre_assigned, checked_in, checked_out
+   - Ghi vào bảng summary với timestamp
+2. Dùng cho biểu đồ pool health, alerting
+
+---
+
+## 3. Pass 3 — Thực Thi Swing (Chi Tiết)
+
+Pass 3 là pass phức tạp nhất trong toàn bộ pipeline. Đây là nơi thực sự thực hiện swing — dealer cũ rời bàn, dealer mới vào.
+
+### 3.1 Query & Sort
+
+**Query assignments cần swing**:
 ```sql
--- Từ migration 20260530000003_sprint3_schema.sql
-CREATE OR REPLACE FUNCTION func_calc_swing_due_at()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_duration INT;
-  v_pre_announce INT;
-BEGIN
-  -- Lấy swing_duration từ swing_config dựa trên club + table_type
-  SELECT swing_duration_minutes, pre_announce_minutes
-  INTO v_duration, v_pre_announce
-  FROM swing_config sc
-  JOIN game_tables gt ON gt.club_id = sc.club_id AND gt.table_type = sc.table_type
-  WHERE gt.id = NEW.table_id;
-
-  v_duration := COALESCE(v_duration, 45);
-  v_pre_announce := COALESCE(v_pre_announce, 10);
-
-  NEW.swing_due_at := NEW.assigned_at + (v_duration || ' minutes')::INTERVAL;
-  NEW.pre_announce_due_at := NEW.swing_due_at - (v_pre_announce || ' minutes')::INTERVAL;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_calc_swing_due_at
-  BEFORE INSERT ON dealer_assignments
-  FOR EACH ROW EXECUTE FUNCTION func_calc_swing_due_at();
-```
-
-> **Lưu ý:** Hiện tại trigger đang bị bug (self-join `dealer_assignments` trong BEFORE INSERT). Cần fix bằng cách JOIN qua `game_tables` thay vì `dealer_assignments` (đang pending fix).
-
-### 3.2 Công Thức Tính Thời Gian
-
-```
-assigned_at = NOW (khi dealer ngồi bàn)
-swing_due_at = assigned_at + swing_duration_minutes (default 45 phút)
-pre_announce_due_at = swing_due_at - pre_announce_minutes (default 10 phút)
-
-Ví dụ:
-  assigned_at = 10:00
-  swing_duration = 45 phút
-  pre_announce = 10 phút
-  → swing_due_at = 10:45
-  → pre_announce_due_at = 10:35
-
-Pass 2 (pre-assign) trigger: swing_due_at BETWEEN (NOW+4min) AND (NOW+8min)
-  → Khoảng 10:37-10:41 → chọn dealer mới, set pre_assigned
-
-Pass 3 (execute): swing_due_at <= NOW+5min
-  → Khoảng 10:40+ → thực thi swing
-```
-
-### 3.3 Code Đếm Phút
-
-```typescript
-// Trong process-swing Pass 2:
-const swingDueAt = new Date(a.swing_due_at ?? a.assigned_at);
-const minutesLeft = Math.max(1, Math.round((swingDueAt.getTime() - now.getTime()) / 60000));
-// → Kết quả: "còn ~6 phút" (dùng trong formatPreAssignMessage)
-
-// Trong process-swing Pass 3 (Telegram sau swing):
-const minutesLeft = Math.max(0, Math.round((swingDueAt.getTime() - Date.now()) / 60000));
-// → Kết quả: "còn X phút" (dùng trong formatSwingMessage)
-```
-
----
-
-## 4. Gửi Tin Nhắn Telegram
-
-### 4.1 Cơ Chế Gửi Chung
-
-```typescript
-// File: supabase/functions/_shared/telegram.ts:188-232
-
-async function sendTelegramNotification(
-  botToken: string,
-  chatId: string,        // Telegram chat/group ID
-  text: string,          // Nội dung tin nhắn (HTML)
-  options?: { retries?: number; logError?: (msg: string) => void },
-): Promise<boolean> {
-  const maxRetries = options?.retries ?? 3;
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: String(chatId),
-          text,                              // Nội dung
-          parse_mode: "HTML",                // Hỗ trợ HTML tags
-          disable_web_page_preview: true,
-        }),
-      });
-      if (res.ok) return true;               // Thành công
-
-      // Thất bại → log lỗi
-      const err = await res.text();
-      console.error(`Telegram attempt ${i + 1} failed:`, res.status, err);
-    } catch (err) { /* exception */ }
-
-    // Exponential backoff: 1s, 2s, 4s
-    if (i < maxRetries - 1) {
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
-    }
-  }
-  return false;
-}
-```
-
-### 4.2 Format Từng Loại Tin Nhắn
-
-#### 🔔 Pre-Assign (Pass 2 — Có dealer thay)
-```typescript
-formatPreAssignMessage({
-  tableName: "Bàn 5",
-  tourTier: "HIGH",
-  incomingDealer: { full_name: "Nguyễn Văn A", telegram_username: "nguyenvana" },
-  minutesLeft: 6,
-})
-// Kết quả: 🔔 Bàn 5 [HIGH]: @nguyenvana chuẩn bị ra bàn sau ~6 phút!
-```
-
-#### ⏰ Pre-Announce (Pass 2 — Không có dealer thay)
-```typescript
-formatPreAnnounceMessage({
-  tableName: "Bàn 5",
-  outgoingDealer: { full_name: "Trần Văn B" },
-  minutesLeft: 10,
-})
-// Kết quả: ⏰ Bàn 5: Trần Văn B còn ~10 phút. Floor chuẩn bị!
-```
-
-#### 📋 Swing Execute
-```typescript
-formatSwingMessage({
-  tableName: "Bàn 5",
-  tourName: "Tournament",
-  outgoingDealer: { full_name: "Trần Văn B" },
-  incomingDealer: { full_name: "Nguyễn Văn A", telegram_username: "nguyenvana" },
-  minutesLeft: 45,
-})
-// Kết quả: 📋 Bàn 5 (Tournament): Trần Văn B ra, @nguyenvana vào (còn 45 phút).
-
-// Nếu không có dealer thay:
-// ⚠️ Bàn 5 (Tournament): Trần Văn B ra — CHƯA CÓ DEALER THAY!
-```
-
-#### ⚠️ Pre-Assign Fallback
-```typescript
-formatPreAssignFallbackMessage({
-  tableName: "Bàn 5",
-  oldDealer: { full_name: "Trần Văn B" },
-  reason: "không còn available",
-})
-// Kết quả: ⚠️ Bàn 5: Trần Văn B ra — dealer dự kiến không còn available. Đang chọn lại...
-```
-
-#### 🆕 Auto-Fill (Pass 1)
-```typescript
-formatAutoFillMessage([
-  { tableName: "Bàn 3", dealer: { full_name: "Nguyễn Văn A" }, tourTier: "HIGH" },
-  { tableName: "Bàn 7", dealer: { full_name: "Lê Thị C" }, tourTier: "LOW" },
-])
-// Kết quả:
-// 🆕 Tự động gán dealer (2 bàn):
-//   • Bàn 3 [HIGH] → Nguyễn Văn A
-//   • Bàn 7 [LOW] → Lê Thị C
-```
-
-#### 📋 Mass Assign
-```typescript
-formatMassAssignMessage([
-  { tableName: "Bàn 3", dealer: { full_name: "Nguyễn Văn A" } },
-])
-// Kết quả: 📋 Mass Assign (1 bàn):
-//   • Bàn 3 → Nguyễn Văn A
-```
-
-#### ☕ Break Start
-```typescript
-formatBreakMessage({
-  dealer: { full_name: "Nguyễn Văn A" },
-  durationMinutes: 20,
-  startTime: "14:30",
-})
-// Kết quả: ☕ Nguyễn Văn A đang nghỉ (20 phút). Bắt đầu lúc: 14:30.
-```
-
-#### ✅ Break End
-```typescript
-formatBreakEndMessage({
-  dealer: { full_name: "Nguyễn Văn A" },
-  tableName: "Bàn 5",
-})
-// Kết quả: ✅ Nguyễn Văn A đã nghỉ xong, quay lại bàn 5.
-```
-
-#### 🔴 Close Table
-```typescript
-formatCloseTableMessage({
-  tableName: "Bàn 5",
-  lastDealer: { full_name: "Nguyễn Văn A" },
-  workedMinutes: 120,
-  reason: "Kết thúc giải",
-})
-// Kết quả: 🔴 Đóng bàn 5. Dealer cuối: Nguyễn Văn A (120 phút). Lý do: Kết thúc giải.
-```
-
-#### ⚠️ Break Alert (từ enforceBreakBalance)
-```typescript
-formatBreakAlertMessage({
-  dealer: { full_name: "Nguyễn Văn A" },
-  workedMinutes: 110,
-  clubName: "Club Poker",
-})
-// Kết quả: ⚠️ Cảnh báo break: Nguyễn Văn A đã làm 110 phút tại Club Poker.
-//          Cần cho nghỉ ngay!
-```
-
-### 4.3 DM Riêng Cho Dealer (nếu đã /link)
-
-```typescript
-// File: supabase/functions/_shared/telegram.ts:143-170
-async function notifyIncomingDealer(
-  botToken: string,
-  dealer: { telegram_user_id?: number; full_name: string; telegram_username?: string },
-  tableName: string,
-  minutesLeft: number,
-  chatId?: string, // fallback group
-): Promise<void> {
-  const msg = `🔔 Chuẩn bị: Bàn <b>${tableName}</b> sau ~${minutesLeft} phút. Đến vị trí!`;
-
-  // Thử DM trực tiếp
-  if (dealer.telegram_user_id) {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: String(dealer.telegram_user_id), text: msg, parse_mode: "HTML" }),
-    });
-    if (res.ok) return; // DM thành công
-  }
-  // Fallback: group notification đã được gửi riêng
-}
-```
-
-### 4.4 Full Diagram Gửi Tin Nhắn Trong 1 Swing
-
-```
-Thời gian:     T-10                 T-6                    T-0
-               │                    │                       │
-Telegram:  ⏰ pre-announce     🔔 pre-assign          📋 swing execute
-           (cảnh báo floor)   (group + DM cho        (thông báo ai ra, ai vào)
-                               dealer mới)
-```
-
----
-
-## 5. Auto Swing — Tự Động Thay Thế Người
-
-### 5.1 Kích Hoạt
-
-**Cron job mỗi phút** (pg_cron):
-```sql
--- File: 20260530000004_pg_cron_auto_swing.sql
-SELECT cron.schedule(
-  'process-swing-auto',
-  '* * * * *',                     -- Mỗi phút
-  $$SELECT net.http_post(
-    url:='https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/process-swing',
-    headers:=jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer [ANON_KEY]'
-    ),
-    body:='{}'                     -- Không club_id → xử lý tất cả clubs
-  )$$
-);
-```
-
-**Hoặc manual từ Frontend (khi bật Auto-Swing toggle):**
-```typescript
-// Trong DealerSwingTab.tsx:
-const [autoSwing, setAutoSwing] = useState(false); // Mặc định OFF
-
-// Khi toggle ON:
-const handleAutoSwingToggle = async (checked: boolean) => {
-  setAutoSwing(checked);
-  if (checked) {
-    // 1. Upsert club_settings.auto_swing_enabled = true
-    await upsertClubSetting(cid, { auto_swing_enabled: true });
-
-    // 2. Mass assign (fill bàn trống trước)
-    const result = await massAssign({ club_id: cid, shift_id });
-    const emptyTablesExist = result === 0; // nếu có bàn trống
-
-    // 3. Process swing (manual trigger + force_all)
-    const swingResult = await autoSwingAll(cid, selectedTour);
-    if (swingResult === 0 && emptyTablesExist) {
-      // Rollback: tắt auto swing
-      setAutoSwing(false);
-    }
-  } else {
-    // Upsert club_settings.auto_swing_enabled = false
-    await upsertClubSetting(cid, { auto_swing_enabled: false });
-  }
-};
-```
-
-### 5.2 3-Pass Architecture (process-swing)
-
-Đây là cốt lõi của auto swing. Mỗi lần chạy, function thực hiện 3 pass:
-
-```
-process-swing mỗi phút
-│
-├── PASS 1: Cleanup + Fill bàn trống
-│   ├── Reset stale pre_assigned (> 15 phút) → available
-│   ├── fillEmptyTables(): tìm bàn trống, pickNextDealer, INSERT
-│   └── Gửi 🆕 Telegram nếu có bàn mới
-│
-├── PASS 2: Pre-assign T-6
-│   ├── Tìm assignments swing_due_at ~4-8 phút tới
-│   ├── pickNextDealer() → CAS lock pre_assigned_attendance_id
-│   ├── Lock dealer: current_state = 'pre_assigned'
-│   ├── Gửi 🔔 Telegram group + DM dealer mới
-│   └── Nếu không có dealer → gửi ⏰ pre-announce
-│
-└── PASS 3: Execute T-0
-    ├── Tìm assignments swing_due_at <= NOW+5ph
-    ├── Có pre_assigned?
-    │   ├── YES → execute_pre_assigned_swing() RPC
-    │   │   ├── swung → release old + activate pre-assigned
-    │   │   ├── pre_assigned_lost → fallback: pickNextDealer mới
-    │   │   └── race_lost → skip
-    │   └── NO (legacy) → perform_swing() RPC
-    │       ├── evaluateBreakNeed()
-    │       ├── pickNextDealer()
-    │       └── atomic: release old + break + assign new
-    ├── Realtime broadcast → frontend
-    └── Gửi 📋 Telegram
-```
-
-### 5.3 Auto-Fill Bàn Trống (fillEmptyTables)
-
-```typescript
-// File: supabase/functions/_shared/dealer-utils.ts:333-423
-
-async function fillEmptyTables(admin, clubId, shiftId) {
-  // 1. Đếm tổng bàn active → 0? skip (guard count)
-  const { count: totalActive } = await admin
-    .from("game_tables").select("id", { count: "exact", head: true })
-    .eq("club_id", clubId).eq("status", "active");
-  if (!totalActive) return [];
-
-  // 2. Fetch tất cả active tables + tier
-  const { data: allTables } = await admin
-    .from("game_tables").select("id, table_name, table_type, tour_tier")
-    .eq("club_id", clubId).eq("status", "active");
-
-  // 3. Fetch assignment đang active → build busy set
-  const { data: activeAssignments } = await admin
-    .from("dealer_assignments").select("table_id")
-    .eq("status", "assigned")
-    .in("table_id", allTables.map(t => t.id));
-  const busyTableIds = new Set(activeAssignments.map(a => a.table_id));
-  let emptyTables = allTables.filter(t => !busyTableIds.has(t.id));
-
-  // 4. Sort: HIGH → MEDIUM → LOW
-  const tierOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-  emptyTables.sort((a, b) => tierOrder[a.tour_tier] - tierOrder[b.tour_tier]);
-
-  // 5. Với mỗi bàn trống → pickNextDealer + INSERT
-  const assignments = [];
-  const assignedAttendanceIds = new Set(); // pool depletion
-
-  for (const table of emptyTables) {
-    const nextDealer = await pickNextDealer(
-      admin, clubId, shiftId, table.table_type,
-      table.tour_tier, 45, [], table.id,
-      assignedAttendanceIds, // exclude set
-    );
-    if (!nextDealer) break; // hết dealer khả dụng
-
-    assignedAttendanceIds.add(nextDealer.attendance_id);
-
-    // INSERT assignment
-    await admin.from("dealer_assignments").insert({
-      attendance_id: nextDealer.attendance_id,
-      table_id: table.id,
-      assigned_at: new Date().toISOString(),
-      status: "assigned",
-      idempotency_key: `fill-${table.id}-${Date.now()}`,
-    });
-
-    // UPDATE dealer state
-    await admin.from("dealer_attendance")
-      .update({ current_state: "assigned" })
-      .eq("id", nextDealer.attendance_id);
-  }
-
-  return assignments;
-}
-```
-
-### 5.4 Atomic Swing Execution (RPC)
-
-Khi đến giờ swing, hệ thống thực hiện **atomic transaction** để tránh race condition:
-
-#### Pre-assigned path:
-
-```sql
--- File: 20260530000005_pre_assign_swing.sql
--- execute_pre_assigned_swing() RPC
-
--- 1. CAS lock: SELECT ... FOR UPDATE (chỉ lock nếu version khớp)
 SELECT * FROM dealer_assignments
-WHERE id = p_old_assignment_id
-  AND version = p_old_version
-  AND status = 'assigned'
-FOR UPDATE;
-
--- 2. Verify pre-assigned dealer còn valid
-SELECT * FROM dealer_attendance
-WHERE id = pre_att_id AND current_state = 'pre_assigned'
-FOR UPDATE;
-
--- Nếu mất → UPDATE pre_assigned_attendance_id = NULL
---          RETURN { status: 'pre_assigned_lost' }
-
--- 3. Release old assignment
-UPDATE dealer_assignments SET status='completed', released_at=NOW(), ...;
-
--- 4. Reset old dealer
-UPDATE dealer_attendance SET current_state='available' WHERE id=old_id;
-
--- 5. Create new assignment cho pre-assigned dealer
-INSERT INTO dealer_assignments(table_id, attendance_id, ...);
-
--- 6. Activate new dealer
-UPDATE dealer_attendance SET current_state='assigned', pre_assigned_table_id=NULL
-WHERE id=pre_att_id;
-
--- 7. Audit log
-INSERT INTO swing_audit_logs(...);
+WHERE status = 'assigned'
+  AND swing_processed_at IS NULL
+  AND (swing_due_at <= NOW() + INTERVAL '5 minutes' OR force_all = true)
+LIMIT 8
 ```
 
-#### Legacy path (không pre-assign):
+**Sort order**:
+1. **OT (overtime) first**: assignment có `swing_due_at` đã qua → ưu tiên xử lý trước
+2. **Oldest `swing_due_at` first**: trong cùng nhóm OT/non-OT, assignment nào đến hạn sớm nhất được xử lý trước
 
-```sql
--- File: 20260528000002_perform_swing_rpc.sql
--- perform_swing() RPC
+**LIMIT 8**: Giới hạn số swing mỗi lần chạy để tránh timeout edge function (50s hard limit của Supabase).
 
--- Atomic CAS release
-UPDATE dealer_assignments SET released_at=NOW(), status='completed',
-       swing_processed_at=NOW(), version=version+1
-WHERE id=p_old_assignment_id AND version=p_old_version
-  AND status='assigned' AND swing_processed_at IS NULL;
+### 3.2 Circuit Breaker
 
-IF NOT FOUND THEN RETURN { status: 'race_lost' }; END IF;
+**Điều kiện**: Assignment có `swing_due_at` quá hạn >60 phút so với hiện tại.
 
--- Release old dealer
-UPDATE dealer_attendance SET current_state='available' WHERE id=old_id;
+**Hành động**:
+- Đánh dấu `swing_processed_at = NOW()`, `status = 'completed'`
+- Gửi Telegram alert: "⚠️ Bàn X — Swing quá hạn 60+ phút, đã bỏ qua. Cần xử lý thủ công."
+- Ghi `swing_audit_logs` với lý do `overdue_skip`
 
--- Break if needed
-IF p_should_break THEN
-  INSERT INTO dealer_breaks(assignment_id, break_start, ...);
-  UPDATE dealer_attendance SET current_state='on_break' WHERE id=old_id;
-END IF;
+### 3.3 Pre-Assigned Path
 
--- Assign new dealer
-INSERT INTO dealer_assignments(attendance_id, table_id, ...);
-UPDATE dealer_attendance SET current_state='assigned' WHERE id=new_id;
-
--- Audit
-INSERT INTO swing_audit_logs(...);
-```
-
-### 5.5 Telegram Notifications Trong Auto Swing
-
-Dưới đây là thứ tự Telegram khi auto swing chạy cho 1 bàn:
+Nếu assignment có `pre_assigned_attendance_id`:
 
 ```
-⏰ Bàn 5: Trần Văn B còn ~10 phút. Floor chuẩn bị!
-    → Pass 2: không tìm được dealer thay, cảnh báo floor
-
---- hoặc ---
-
-🔔 Bàn 5 [HIGH]: @nguyenvana chuẩn bị ra bàn sau ~6 phút!
-    → Pass 2: tìm được dealer mới (group thông báo)
-
-🔔 Chuẩn bị: Bàn 5 sau ~6 phút. Đến vị trí!
-    → DM riêng cho Nguyễn Văn A (nếu đã /link)
-
-📋 Bàn 5 (Tournament): Trần Văn B ra, @nguyenvana vào (còn 45 phút).
-    → Pass 3: swing thực thi thành công
-
---- nếu pre-assign mất ---
-
-⚠️ Bàn 5: Trần Văn B ra — dealer dự kiến không còn available. Đang chọn lại...
-    → Pass 3: fallback, chọn dealer mới
+Gọi execute_pre_assigned_swing() RPC
+  ├─ CAS lock: version = old_version AND swing_processed_at IS NULL
+  ├─ Verify: dealer còn current_state = 'pre_assigned'
+  ├─ OK:
+  │   ├─ Release old dealer (completed, available)
+  │   ├─ Assign pre-assigned dealer vào assignment
+  │   ├─ Update states: old → available, new → assigned
+  │   └─ Return: { status: 'ok' }
+  └─ race_lost / pre_assigned_lost:
+      └─ Fallback: perform_swing() + pickNextDealer() (non-pre-assigned path)
 ```
 
-### 5.6 Xử Lý Lỗi & Fallback
+**`pre_assigned_lost` scenarios**:
+- Dealer đã bị gán đi bàn khác (state không còn `pre_assigned`)
+- Dealer đã checkout
+- Version CAS fail (process khác đã swing trước)
 
-| Tình huống | Xử lý | Hậu quả |
-|------------|-------|---------|
-| **race_lost** (CAS fail) | Skip, cycle sau xử lý lại | Bàn trễ swing 1 phút |
-| **pre_assigned_lost** | Fallback: pickNextDealer + perform_swing | Swing vẫn diễn ra, nhưng có thể chậm hơn |
-| **Không có dealer thay** | Ghi swung_no_dealer, bàn tạm trống | Pass 1 cycle sau sẽ fill |
-| **Stale pre_assigned > 15 phút** | Reset to available | Dealer được giải phóng |
-| **Telegram fail** | Retry 3 lần (1s, 2s, 4s), log error vào swing_audit_logs | Tin nhắn có thể mất |
-| **Auto-swing disabled** | Skip toàn bộ | Chỉ chạy khi manual trigger |
+### 3.4 Non-Pre-Assigned Path — pickNextDealer với 3 Levels
 
-### 5.7 Enforce Break Balance (Cron 15 Phút)
+Khi assignment không có pre-assign (hoặc pre-assign bị mất), hệ thống tìm dealer mới qua 3 level fallback:
 
+#### L1: Normal — Tất cả filter active
+- Gọi `pickNextDealer()` với đầy đủ filter:
+  - Busy exclusion (dealer đang assigned)
+  - Tired exclusion (mệt, sắp đến giới hạn break)
+  - Tier hard-exclude (Dealer C không được gán bàn HIGH)
+  - Fatigue hard cap (quá max_work → không chọn)
+  - Game type exclusion (không có skill tương ứng)
+  - Priority break penalty (-500 nếu có `priority_break_flag`)
+- **Thành công** → swing bình thường
+- **Thất bại (0 candidates)** → thử L2
+
+#### L2: skipPriorityBreakGuard — Bỏ qua penalty ưu tiên break
+- **Áp dụng cho**: Bàn OT (overtime) > 0 phút
+- Bỏ filter `priority_break_flag` → dealer sắp đến giờ break vẫn được chọn
+- Giữ các filter khác (tier, fatigue, game type)
+- **Thành công** → swing với dealer "gần giới hạn"
+- **Thất bại (0 candidates)** → thử L3
+
+#### L3: skipFatigueHardCap — Bỏ qua hard cap mệt mỏi
+- **Áp dụng cho**: Bàn OT > 20 phút (cực kỳ cấp bách)
+- Bỏ `fatigue_hard_cap` → dealer đã làm quá `max_work_before_mandatory_break` vẫn được chọn
+- **Đây là last resort** — ưu tiên có dealer trên bàn hơn là để bàn trống
+- **Thành công** → swing + Telegram alert "⚠️ Dealer X đã vượt giới hạn làm việc"
+- **Thất bại (0 candidates)** → `no_dealer` — bàn không có dealer
+
+### 3.5 SAFEGUARD — Verify Club
+
+**Kiểm tra cuối cùng trước khi swing**:
 ```typescript
-// Khi dealer đã làm >= 120 phút không nghỉ:
-// Nếu available + không có assignment → force break ngay
-// Nếu assigned → set priority_break_flag + Telegram cảnh báo
-// Lý do: fatigue hard-exclude đã loại dealer khi < 15 phút đến break,
-// nhưng enforceBreakBalance đảm bảo dealer được cho nghỉ trước khi
-// đến ngưỡng fatigue
+if (selectedDealer.club_id !== table.club_id) {
+  // SAFEGUARD: Dealer không thuộc club của bàn
+  // → bỏ qua dealer này, log lỗi, Telegram alert
+  // → thử fallback tiếp theo hoặc no_dealer
+}
+```
+
+Đây là safeguard chống lại bug data integrity — đảm bảo dealer không bao giờ được gán vào bàn của club khác.
+
+### 3.6 Progressive Fallback Diagram
+
+```
+pickNextDealer() L1 (full filters)
+  ├─ Có dealer → swing
+  └─ 0 candidates → L2
+      ├─ Có dealer → swing (warn: skipPriorityBreak)
+      └─ 0 candidates → L3
+          ├─ Có dealer → swing (crit: skipFatigueCap + alert)
+          └─ 0 candidates → no_dealer
+              └─ Ghi swing_metrics.no_dealer_count++
+              └─ Telegram alert
+              └─ Kiểm tra shortage → auto_close?
+```
+
+### 3.7 After Swing — Side Effects
+
+1. **Release old dealer**: `current_state = 'available'` (hoặc `on_break` nếu cần break)
+2. **Assign new dealer**: `current_state = 'assigned'`
+3. **Break creation**: Nếu `evaluateBreakNeed()` → `should_break: true`
+   - Tạo `dealer_breaks` record
+   - Set old dealer `current_state = 'on_break'`
+4. **Realtime broadcast**: Gửi qua Supabase Realtime channel
+5. **Telegram notification**: Group message
+6. **swing_audit_logs**: Ghi log audit (old_dealer, new_dealer, reason, timestamp)
+7. **swing_metrics**: Cập nhật counter (success/fail/no_dealer/execution_time_ms)
+
+---
+
+## 4. Dealer Scoring (pickNextDealer.ts)
+
+### 4.1 13 Score Components
+
+| # | Component | Weight | Mô tả |
+|---|-----------|--------|-------|
+| 1 | `priority_swing_bonus` | **+300** | Dealer được ưu tiên swing (đã nghỉ đủ lâu, coverage tốt) |
+| 2 | `priority_break_penalty` | **-500** | Dealer có `priority_break_flag = true` → cần break gấp, tránh chọn |
+| 3 | `minutes_since_rest` | +min(200, minutes × 1.5) | Thưởng dealer đã nghỉ lâu |
+| 4 | `minutes_until_mandatory` | -(30 - minutes) × 2 | Phạt dealer sắp tới giới hạn break bắt buộc |
+| 5 | `fairness_worked` | +(avgWorked - dealerWorked) × 0.3 | Cân bằng thời gian làm việc giữa các dealer |
+| 6 | `fairness_break` | +(dealerBreak - avgBreak) × 0.4 | Cân bằng thời gian nghỉ |
+| 7 | `tour_tier_bonus_HIGH` | +50 (A/B), +0 (C) | Bàn HIGH ưu tiên dealer tier cao |
+| 8 | `tour_tier_bonus_MEDIUM` | +30 | Bàn MEDIUM thưởng đều |
+| 9 | `tour_tier_bonus_LOW` | +20 | Bàn LOW thưởng nhẹ |
+| 10 | `high_value_fairness` | +(avgHV - dealerHV) × 3 | Fairness cho bàn HIGH (ai ít làm HIGH được ưu tiên) |
+| 11 | `back_to_back_penalty` | -50 | Phạt dealer vừa rời bàn này (không quay lại ngay) |
+| 12 | `skill_bonus` | +matchCount × 20 | Mỗi game type khớp với skill của dealer |
+| 13 | `new_dealer_bonus` | +1000 | Dealer chưa có assignment nào trong ca → ưu tiên cao nhất |
+
+### 4.2 Filter Pipeline (Trước khi Score)
+
+Dealer bị loại trước khi tính điểm nếu thuộc các trường hợp:
+
+| Filter | Điều kiện | Ghi chú |
+|--------|-----------|---------|
+| **Busy exclusion** | `current_state IN ('assigned', 'on_break', 'pre_assigned')` | Dealer đang bận |
+| **Tired exclusion** | `worked_minutes_since_last_break >= max_work_before_mandatory_break * 0.9` | Sắp tới giới hạn |
+| **Tier hard-exclude** | `tier = 'C' AND tour_tier = 'HIGH'` | Dealer C không làm bàn HIGH |
+| **Fatigue hard cap** | `worked_minutes >= max_work_before_mandatory_break` | Vượt giới hạn (trừ L3) |
+| **Game type exclude** | Không có `dealer_skills` cho game type của bàn | Không đủ kỹ năng |
+| **Club mismatch** | `dealer.club_id ≠ table.club_id` | Khác club |
+| **Checked out** | `status = 'checked_out'` | Đã checkout |
+| **Exclusion set** | `attendance_id IN excludeAttendanceIds` | Đã được gán trong batch này |
+
+### 4.3 Diagnostics Logging
+
+Khi `pickNextDealer()` trả về 0 hoặc ≤ 2 candidates:
+- Log tất cả dealer đã bị filter ra + lý do
+- Log số dealer available ban đầu
+- Log các filter đã active
+- Gửi Telegram diagnostic nếu 0 candidates (shortage alert)
+
+---
+
+## 5. Timer & Timeline System
+
+### 5.1 Batch Swing Duration
+
+**TOCTOU-safe, one snapshot before batch**:
+```
+Bắt đầu batch:
+  1. SELECT COUNT(*) FROM dealer_attendance WHERE current_state = 'available'
+  2. SELECT COUNT(*) FROM game_tables WHERE status = 'active'
+  3. Tính pool_ratio = available / active_tables
+  4. Tính duration:
+     - pool_ratio >= 2.0 → duration = swing_config.swing_duration_minutes (base)
+     - pool_ratio >= 1.5 → duration = base * 1.1
+     - pool_ratio >= 1.0 → duration = base * 1.2
+     - pool_ratio <  1.0 → duration = base * 1.3 (shortage mode)
+  5. Lưu vào batch context → dùng cho mọi swing trong batch
+```
+
+Snapshot một lần duy nhất tránh TOCTOU: nếu query pool sau mỗi lần swing trong batch, số liệu sẽ bị sai lệch do chính các swing trước đó đã thay đổi.
+
+### 5.2 Deterministic Stagger
+
+**Công thức**: `stagger_offset = (table_index % 10) × 30 seconds`
+
+Mỗi bàn trong batch được offset 30s so với bàn trước, tối đa 10 nhóm. Ngăn tất cả bàn swing đồng loạt (gây spike load).
+
+```
+Bàn 0, 10, 20: swing tại T+0
+Bàn 1, 11, 21: swing tại T+30s
+Bàn 2, 12, 22: swing tại T+60s
+...
+Bàn 9, 19, 29: swing tại T+270s (4.5 phút)
+```
+
+### 5.3 Sync-Swing Mode
+
+Khi bật `sync_swing` (config), tất cả bàn trong cùng một tour swing tại cùng một thời điểm:
+- `swing_due_at` được set giống nhau cho mọi bàn
+- Dùng cho giải đấu có cấu trúc blind level — tất cả dealer đổi cùng lúc
+
+### 5.4 Config Hierarchy — Độ Ưu Tiên Cấu Hình Duration
+
+```
+table override (swing_configs)     ← ưu tiên cao nhất
+  └─ tournament config (tournaments.swing_duration_minutes)
+      └─ club config (swing_config.swing_duration_minutes)
+          └─ default (45 minutes)  ← fallback cuối cùng
+```
+
+Mỗi bàn có thể có duration riêng, nếu không có thì kế thừa từ tournament, rồi club, rồi default.
+
+### 5.5 Timeline Visualization
+
+```
+T-45:  assignment được tạo → trigger tính swing_due_at = now + duration
+T-8:   window pre-assign mở (bình thường)
+T-6:   pre-assign dealer, lock state = pre_assigned, Telegram DM
+T-5:   window pre-assign mở (OT mode)
+T-4:   window pre-assign đóng (bình thường)
+T-3:   pre-assign dealer (OT mode)
+T-1:   window pre-assign đóng (OT mode)
+T-0:   swing_due_at → execute swing
+       ├─ pre-assigned path: execute_pre_assigned_swing()
+       └─ non-pre-assigned path: perform_swing() + pickNextDealer()
+T+1:   swing hoàn thành → new assignment → T+45 tiếp theo
+T+60:  circuit breaker: nếu chưa swing → overdue >60min → skip
 ```
 
 ---
 
-## 6. Tổng Kết Luồng
+## 6. Shortage Handling — Xử Lý Thiếu Dealer
+
+### 6.1 Auto-Close Low Priority Tables
+
+**Trigger**: `no_dealer_count / total_active_tables > 50%` **VÀ** `no_dealer_count >= 3`
+
+**Hành động**:
+1. Gọi `auto_close_low_priority_tables` RPC
+2. Sort bàn LOW tier trước, sau đó MEDIUM, không đóng HIGH
+3. Đóng từng bàn, release dealer → tăng pool available
+4. Telegram alert: "⚠️ Thiếu dealer — Đã tự động đóng X bàn ưu tiên thấp"
+5. Audit log
+
+### 6.2 All-Tables-OT Alert
+
+Khi **tất cả** bàn active đều đang OT (quá `swing_due_at`):
+- Telegram alert: "🚨 TẤT CẢ BÀN ĐỀU QUÁ HẠN SWING — Thiếu dealer trầm trọng"
+- Tự động bật `emergency_mode`: giảm duration, bỏ fatigue cap
+
+### 6.3 Telegram Escalation with Recommendations
+
+Mức độ escalation:
+
+| Level | Điều kiện | Hành động |
+|-------|-----------|-----------|
+| **Info** | `no_dealer = 1-2` | Log + metric |
+| **Warning** | `no_dealer >= 3` hoặc `no_dealer > 30%` | Telegram group alert |
+| **Critical** | `no_dealer > 50%` hoặc tất cả OT | Telegram + tự động close LOW tables |
+| **Emergency** | `available = 0` và `active_tables > 0` | Telegram + khuyến nghị: check-in thêm dealer, đóng bớt bàn |
+
+Khuyến nghị trong alert:
+- Số dealer đang checked_in nhưng chưa available (đang break, pre_assigned)
+- Số bàn có thể đóng để giải phóng dealer
+- Dự đoán thời gian hồi phục pool
+
+---
+
+## 7. Frontend (DealerSwingTab.tsx + Hooks)
+
+### 7.1 Layout 3 Cột
 
 ```
-Frontend User                    process-swing                     Database                  Telegram Group
-    │                                │                               │                          │
-    │ Bật Auto Swing                 │                               │                          │
-    │───────────────────────────────►│                               │                          │
-    │                                │                               │                          │
-    │                          ┌─────┴──────┐                       │                          │
-    │                          │ Pass 1: Fill│                       │                          │
-    │                          │ bàn trống   │────► INSERT + UPDATE ──►                          │
-    │                          │             │────► 🆕 Telegram ─────────────────────────────────►
-    │                          └─────┬──────┘                       │                          │
-    │                                │                               │                          │
-    │                          ┌─────┴──────┐                       │                          │
-    │                          │ Pass 2:    │                       │                          │
-    │                          │ Pre-assign │────► CAS lock + state ──►                          │
-    │                          │ T-6        │────► 🔔 Telegram ─────────────────────────────────►
-    │                          │            │────► DM riêng ──────────► (DM dealer mới)          │
-    │                          └─────┬──────┘                       │                          │
-    │                                │                               │                          │
-    │                          ┌─────┴──────┐                       │                          │
-    │                          │ Pass 3:    │                       │                          │
-    │                          │ Execute    │────► RPC: swing ──────►                          │
-    │                          │ T-0        │────► 📋 Telegram ─────────────────────────────────►
-    │                          │            │────► Realtime ─────────►                          │
-    │◄─────────────────────────┤            │                       │                          │
-    │   { success, swings,     └────────────┘                       │                          │
-    │     errors, ...}                                              │                          │
-    │                                │                               │                          │
-    │ Frontend cập nhật UI           │                               │                          │
-    │ (await refetchAssignments()     │                               │                          │
-    │  → build fresh map từ data mới) │                               │                          │
+┌──────────────┬────────────────────────┬──────────────┐
+│    25%       │         50%            │     25%      │
+│ RosterPanel  │      TableGrid         │ CommandCenter│
+│              │                        │              │
+│ Available    │ ┌──────┐ ┌──────┐      │ Auto-Swing   │
+│ Assigned     │ │Bàn 1 │ │Bàn 2 │ ...  │ Toggle       │
+│ On Break     │ │5:12  │ │2:30  │      │              │
+│ Pre-Assigned │ │ NLH  │ │ PLO  │      │ Mass Assign  │
+│              │ └──────┘ └──────┘      │              │
+│ Check-in/out │                        │ Force Swing  │
+│ Fatigue Dots │ TimerCell (1s tick)   │ All          │
+│              │ Color: green/amber/red │              │
+│              │     theo warn/crit     │ Config Panel │
+│              │                        │              │
+└──────────────┴────────────────────────┴──────────────┘
+```
+
+### 7.2 Supabase Realtime + Polling Fallback
+
+- **Primary**: Supabase Realtime (`postgres_changes` trên `dealer_assignments`, `dealer_attendance`, `game_tables`)
+- **Fallback**: Polling mỗi 60 giây nếu Realtime disconnect
+- **Subscription filter**: `club_id` để chỉ nhận event của club hiện tại
+
+### 7.3 14 Hooks từ useDealerSwing.ts
+
+| # | Hook | Data Source | Refresh |
+|---|------|-------------|---------|
+| 1 | `useCheckedInDealers` | dealer_attendance + dealers | Realtime + 30s |
+| 2 | `useActiveTables` | game_tables | Realtime |
+| 3 | `useAvailableTables` | game_tables (inactive, no shift) | Realtime |
+| 4 | `useActiveAssignments` | dealer_assignments + joins | Realtime + 30s |
+| 5 | `useSwingConfigs` | swing_config | On mount |
+| 6 | `useTableOverrides` | swing_configs | On mount |
+| 7 | `useTournaments` | tournaments | On mount |
+| 8 | `useSwingMetrics` | swing_metrics (today) | 60s |
+| 9 | `useBreakPolicies` | shift_break_policies | On mount |
+| 10 | `useSpecialDates` | special_dates | On mount |
+| 11 | `useAuditLogs` | audit_logs (limit 20) | 30s |
+| 12 | `usePoolSummary` | dealer_pool_summary (latest) | 30s |
+| 13 | `useTourFilter` | local state | — |
+| 14 | `useAnimationTracker` | local state (optimistic updates) | — |
+
+### 7.4 Key UI Features
+
+- **TimerCell**: Đếm ngược 1 giây/lần từ `swing_due_at`. Màu sắc:
+  - Xanh lá: > `warn_at_minutes`
+  - Vàng: giữa `warn_at_minutes` và `crit_at_minutes`
+  - Đỏ: < `crit_at_minutes`
+  - Đỏ nhấp nháy: đã quá hạn (OT)
+
+- **FatigueDot**: Chấm tròn bên cạnh tên dealer:
+  - Đỏ: `priority_break_flag = true`
+  - Cam: `worked_minutes >= max_work * 0.8`
+  - Xanh: bình thường
+
+- **Optimistic Checkout Count**: Khi user bấm checkout, UI cập nhật ngay (không chờ server), rollback nếu lỗi
+
+- **Animation Tracking**: Theo dõi dealer vừa được swing (highlight 3 giây)
+
+- **Tour Filter Bar**: Lọc bàn theo tour (Tour Sáng, Tour Chiều, Tour Tối). Mặc định hiển thị tất cả.
+
+- **Assignment Modal**: Khi click vào ô bàn trống → mở modal với:
+  - Danh sách dealer available (sắp xếp theo score)
+  - Top 3 suggestions (từ `assign-dealer` edge function)
+  - Nút "Gán ngay" + "Xem thêm"
+
+### 7.5 Command Center Actions
+
+| Action | Edge Function | Mô tả |
+|--------|---------------|-------|
+| Auto-Swing Toggle | (local) | Bật/tắt cron job |
+| Mass Assign | mass-assign | Fill tất cả bàn trống |
+| Force Swing All | process-swing (force_all) | Swing tất cả bàn ngay lập tức |
+| Close Table | close-table | Đóng bàn + release dealer |
+| Manual Assign | assign-dealer | Gán dealer cụ thể vào bàn |
+| Config Dialog | (local → DB) | Sửa swing_config, break policies |
+| Refresh Pool | (local) | Force refresh dữ liệu |
+
+---
+
+## 8. Data Flow — Luồng Dữ Liệu
+
+### 8.1 Tổng quan Flow
+
+```
+pg_cron (~60s) → process-swing edge function
+  │
+  ├─ fetchAllClubConfigs()
+  │   └─ Lấy club_settings, swing_config, tournaments, shift_break_policies
+  │
+  ├─ FOR EACH club:
+  │   │
+  │   ├─ PASS 0: get_dealer_pool_snapshot → calculateBatchSwingDuration
+  │   ├─ PASS 0b: Đếm available dealers cho break guard
+  │   ├─ PASS 0c: detect_stuck_breaks + tự sửa
+  │   │
+  │   ├─ PASS 1: fillEmptyTables()
+  │   │   └─ pickNextDealer() → INSERT assignments → update states
+  │   │
+  │   ├─ PASS 1b: Clean stale pre_assign records (>20min)
+  │   ├─ PASS 1c: Release orphaned pre_assigned (no table)
+  │   │
+  │   ├─ PASS 2: pass2PreAssignNext()
+  │   │   └─ pickNextDealer() → pre_assign_next_dealer_for_table RPC
+  │   │   └─ Update state → pre_assigned
+  │   │
+  │   ├─ PASS 2.5: pass25InitialAssign()
+  │   │   └─ fill_dealer_id RPC (fix NULL dealer)
+  │   │
+  │   ├─ PASS 3: Execute swings
+  │   │   ├─ computeSwingDuration → computeNextSwingAt
+  │   │   ├─ IF pre_assigned: execute_pre_assigned_swing RPC
+  │   │   │   └─ race_lost? → fallback
+  │   │   └─ ELSE: pickNextDealer(L1→L2→L3) → perform_swing RPC
+  │   │       └─ evaluateBreakNeed → create break?
+  │   │
+  │   ├─ PASS 4: end_expired_breaks RPC
+  │   └─ PASS 4b: refresh_dealer_pool_summary RPC
+  │
+  └─ Write swing_metrics + flush Telegram queue
+```
+
+### 8.2 Mutation Flow (1 lần swing)
+
+```
+1. [Edge Function] computeSwingDuration(table, club, tournament)
+2. [Edge Function] pickNextDealer(club, table, excludeList)
+3. [Edge Function → RPC] perform_swing(old_assignment_id, old_version, new_dealer_id, ...)
+     │
+     ├─ [SQL] SELECT ... WHERE version = p_old_version FOR UPDATE SKIP LOCKED
+     ├─ [SQL] UPDATE old assignment: status=completed, released_at=now(), swing_processed_at=now()
+     ├─ [SQL] UPDATE old dealer: current_state='available' (hoặc 'on_break')
+     ├─ [SQL] INSERT break record (nếu cần)
+     ├─ [SQL] INSERT new assignment: status=assigned, assigned_at=now()
+     ├─ [SQL] UPDATE new dealer: current_state='assigned'
+     ├─ [SQL] INSERT swing_audit_logs
+     └─ [Trigger] bump_dealer_assignment_version → new.version = old.version + 1
+
+4. [Edge Function] Telegram notification
+5. [Edge Function] Realtime broadcast
+6. [Edge Function] swing_metrics update
+```
+
+### 8.3 Read Flow (UI mount)
+
+```
+DealerSwingTab mount
+  │
+  ├─ useCheckedInDealers → SELECT dealer_attendance JOIN dealers
+  ├─ useActiveTables → SELECT game_tables WHERE status='active'
+  ├─ useActiveAssignments → SELECT dealer_assignments JOIN attendance JOIN dealers JOIN tables
+  ├─ useSwingConfigs → SELECT swing_config
+  ├─ useTableOverrides → SELECT swing_configs
+  ├─ useTournaments → SELECT tournaments
+  ├─ useSwingMetrics → SELECT swing_metrics WHERE date = today
+  ├─ useBreakPolicies → SELECT shift_break_policies
+  ├─ usePoolSummary → SELECT dealer_pool_summary ORDER BY timestamp DESC LIMIT 1
+  │
+  └─ Realtime subscription
+      ├─ dealer_assignments: INSERT/UPDATE/DELETE
+      ├─ dealer_attendance: UPDATE
+      └─ game_tables: UPDATE
 ```
 
 ---
 
-*File tham khảo chính:*
-- `supabase/functions/_shared/dealer-utils.ts` — pickNextDealer, fillEmptyTables, evaluateBreakNeed
-- `supabase/functions/_shared/telegram.ts` — format messages, sendTelegramNotification
-- `supabase/functions/process-swing/index.ts` — 3-pass orchestrator
-- `supabase/functions/mass-assign/index.ts` — fill bàn trống manual
-- `supabase/migrations/20260528000002_perform_swing_rpc.sql` — atomic swing RPC
-- `supabase/migrations/20260530000005_pre_assign_swing.sql` — pre-assign swing RPC
-- `src/components/cashier/DealerSwingTab.tsx` — frontend auto-swing toggle
+## 9. Key RPCs — Stored Procedures
+
+### Swing Execution RPCs
+
+| RPC | Mục đích | CAS/ Lock | Ghi chú |
+|-----|----------|-----------|---------|
+| `perform_swing` | Thực thi swing chính | version CAS + FOR UPDATE SKIP LOCKED | Release old, assign new, create break, audit log |
+| `execute_pre_assigned_swing` | Swing cho dealer đã pre-assign | version CAS + verify pre_assigned state | Nhẹ hơn perform_swing, không cần pickNextDealer |
+| `assign_dealer_to_table` | Gán dealer vào bàn (initial) | FOR UPDATE SKIP LOCKED | Dùng khi fill bàn trống hoặc manual assign |
+| `fill_dealer_id` | Sửa assignment có dealer_id=NULL | Không lock | Fix data integrity, join attendance→dealer |
+
+### Dealer State RPCs
+
+| RPC | Mục đích | Ghi chú |
+|-----|----------|---------|
+| `transition_dealer_state` | State machine chuyển trạng thái dealer | available↔assigned↔on_break↔pre_assigned↔checked_out |
+| `detect_stuck_breaks` | Tìm break quá hạn | Trả về danh sách break cần force-end |
+| `end_expired_breaks` | Force-end break quá hạn | Reset state về available |
+| `end_dealer_break` | Kết thúc break cụ thể | Set break_end, reset worked_minutes |
+| `pre_assign_next_dealer_for_table` | Pre-assign dealer cho bàn | CAS trên pre_assigned_attendance_id |
+
+### Pool & Monitoring RPCs
+
+| RPC | Mục đích | Ghi chú |
+|-----|----------|---------|
+| `get_dealer_pool_snapshot` | Snapshot pool stats | Đếm available, assigned, on_break, pre_assigned |
+| `refresh_dealer_pool_summary` | Cập nhật bảng pool_summary | Dùng cho dashboard monitoring |
+| `auto_close_low_priority_tables` | Đóng bàn LOW khi thiếu dealer | Trigger khi shortage > 50% |
+| `club_local_date` | Lấy ngày local theo timezone club | Dùng cho attendance, payroll |
+| `get_table_assignments_with_next` | UI predictions | Dự đoán dealer sẽ swing tiếp theo |
+| `get_dealer_payroll` | Tính lương dealer | Dựa trên worked_minutes, special_dates, multiplier |
+
+### Duration Calculation
+
+| RPC | Mục đích |
+|-----|----------|
+| `calculate_dynamic_swing_duration` | SQL-level duration: table override > tournament > club > default |
+
+---
+
+## 10. Config Tables — Bảng Cấu Hình
+
+### 10.1 swing_config — Cấu Hình Swing Per Club
+
+| Column | Type | Default | Mô tả |
+|--------|------|---------|-------|
+| `id` | UUID PK | auto | |
+| `club_id` | UUID FK | | Liên kết club |
+| `table_type` | TEXT | 'tournament' | Loại bàn áp dụng |
+| `swing_duration_minutes` | INT | 45 | Thời gian mỗi dealer ngồi 1 bàn |
+| `break_duration_minutes` | INT | 15 | Thời gian nghỉ mặc định |
+| `warn_at_minutes` | INT | 10 | Ngưỡng cảnh báo (vàng) |
+| `crit_at_minutes` | INT | 3 | Ngưỡng nguy cấp (đỏ) |
+| `tournament_mode` | BOOLEAN | false | Bật sync-swing mode |
+| `break_return_policy` | TEXT | 'new_table' | 'same_table' hoặc 'new_table' |
+| `pre_announce_minutes` | INT | 6 | Thời gian pre-announce trước swing |
+| `auto_swing_enabled` | BOOLEAN | false | Bật/tắt auto-swing |
+
+### 10.2 swing_configs — Table-Level Overrides
+
+| Column | Type | Mô tả |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `table_id` | UUID FK | Bàn cụ thể |
+| `swing_duration_minutes` | INT nullable | Ghi đè duration cho bàn này |
+| `break_duration_minutes` | INT nullable | Ghi đè break duration |
+| `tournament_mode` | BOOLEAN nullable | Ghi đè tournament mode |
+
+**Priority**: swing_configs (table) > tournaments > swing_config (club) > default
+
+### 10.3 club_settings — Cấu Hình Club
+
+| Column | Type | Mô tả |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `club_id` | UUID FK | |
+| `auto_swing_enabled` | BOOLEAN | Bật/tắt auto-swing toàn club |
+| `break_balance_enabled` | BOOLEAN | Bật/tắt enforce break balance |
+| `shortage_auto_close` | BOOLEAN | Tự động đóng bàn khi thiếu dealer |
+| `shortage_threshold_percent` | INT | Ngưỡng % để trigger auto-close |
+| `shortage_min_no_dealer` | INT | Số bàn thiếu tối thiểu để trigger |
+| `telegram_chat_id` | TEXT | Chat ID của group Telegram |
+| `telegram_bot_token` | TEXT (encrypted) | Bot token |
+
+### 10.4 tournaments — Cấu Hình Tournament
+
+| Column | Type | Mô tả |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `club_id` | UUID FK | |
+| `tour_name` | TEXT | Tên tournament |
+| `swing_duration_minutes` | INT nullable | Duration cho tournament này |
+| `break_duration_minutes` | INT nullable | Break duration |
+| `tour_tier` | TEXT | HIGH / MEDIUM / LOW |
+| `status` | TEXT | active / inactive |
+
+### 10.5 shift_break_policies — Chính Sách Break Theo Ca
+
+| Column | Type | Mô tả |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `shift_id` | UUID FK | Ca làm việc |
+| `min_work_before_break` | INT | Thời gian tối thiểu trước khi được break (phút) |
+| `max_work_before_mandatory_break` | INT | Giới hạn bắt buộc phải break (phút) |
+| `break_duration_minutes` | INT | Thời gian break |
+| `balance_deficit_threshold` | INT | Ngưỡng deficit để trigger balance break |
+
+### 10.6 special_dates — Ngày Đặc Biệt
+
+| Column | Type | Mô tả |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `club_id` | UUID FK | |
+| `date` | DATE | Ngày đặc biệt |
+| `multiplier` | DECIMAL | Hệ số nhân lương (VD: 2.0 = x2) |
+| `label` | TEXT | Nhãn (VD: "Tết Nguyên Đán") |
+
+---
+
+## Phụ lục — File Map
+
+| File | Vai trò |
+|------|---------|
+| `supabase/functions/process-swing/index.ts` | Edge function orchestrator (~447 dòng) |
+| `supabase/functions/_shared/dealer-utils.ts` | pickNextDealer, fillEmptyTables, evaluateBreakNeed |
+| `supabase/functions/_shared/telegram.ts` | Telegram formatting + sending utilities |
+| `supabase/functions/mass-assign/index.ts` | Mass assign edge function |
+| `supabase/functions/assign-dealer/index.ts` | Manual assign + suggestions |
+| `supabase/functions/manage-break/index.ts` | Break management |
+| `supabase/functions/enforce-break-balance/index.ts` | Break enforcement cron |
+| `supabase/functions/close-table/index.ts` | Close table handler |
+| `supabase/migrations/` | Tất cả migration SQL (DDL, RPC, triggers) |
+| `src/hooks/useDealerSwing.ts` | 14 React Query hooks |
+| `src/components/DealerSwingTab.tsx` | Component chính (1761 dòng) |
+| `src/components/TimerCell.tsx` | Ô đếm ngược swing timer |
+| `src/components/FatigueDot.tsx` | Chấm báo mệt mỏi |
+| `src/components/RosterPanel.tsx` | Panel danh sách dealer |
+| `src/components/TableGrid.tsx` | Lưới bàn |
+| `src/components/CommandCenter.tsx` | Panel điều khiển |
+| `src/components/AssignmentModal.tsx` | Modal gán dealer |
+| `src/components/SwingConfigDialog.tsx` | Dialog cấu hình swing |

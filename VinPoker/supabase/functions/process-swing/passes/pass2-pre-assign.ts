@@ -21,6 +21,11 @@ interface Pass2Options {
   notifier: TelegramNotifier | null;
   cycleExcludedIds: Set<string>;
   botToken: string;
+  /** When set, overrides the window calculation.
+   *  Default window: [now + (preAnnounceMinutes-2), now + (preAnnounceMinutes+2)]
+   *  Manual window:  [now, now + manualWindowMinutes]
+   *  Used by manual pre-assign trigger so cashier sees immediate results. */
+  manualWindowMinutes?: number;
 }
 
 export async function pass2PreAssignNext(
@@ -37,59 +42,148 @@ export async function pass2PreAssignNext(
     errors: [],
   };
 
-  const { clubZone, notifier, cycleExcludedIds, botToken } = options;
+  const { clubZone, notifier, cycleExcludedIds, botToken, manualWindowMinutes } = options;
+
+  // Emergency OT pre-announce window: 3 minutes instead of normal 6 min.
+  // Tables in overtime get notified sooner so dealers can prepare.
+  const EMERGENCY_OT_PRE_ANNOUNCE_MINUTES = 3;
 
   try {
     // ════════════════════════════════════════════════════════
     // STEP 1: Find assignments needing pre-assignment
-    // Window = [now + (preAnnounceMins - 2), now + (preAnnounceMins + 2)]
-    // e.g. preAnnounceMins=6 → window [T+4min, T+8min]
+    //
+    // Normal tables: window [now + (preAnnounceMins - 2), now + (preAnnounceMins + 2)]
+    //   e.g. preAnnounceMins=6 → window [T+4min, T+8min]
+    //
+    // OT emergency: window [now + (EMERGENCY_OT - 2), now + (EMERGENCY_OT + 2)]
+    //   i.e. EMERGENCY_OT=3 → window [T+1min, T+5min]
+    //
+    // We query BOTH windows and merge (UNION behavior via OR).
+    // Manual window:  [now, now + manualWindowMinutes]
+    //   e.g. manualWindowMinutes=15 → window [T+0min, T+15min]
     // ════════════════════════════════════════════════════════
 
-    const windowStart = new Date(
-      Date.now() + (preAnnounceMinutes - 2) * 60_000
+    const normalWindowStart = new Date(
+      Date.now() + (manualWindowMinutes ? 0 : (preAnnounceMinutes - 2) * 60_000)
     ).toISOString();
-    const windowEnd = new Date(
-      Date.now() + (preAnnounceMinutes + 2) * 60_000
+    const normalWindowEnd = new Date(
+      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 2)) * 60_000
     ).toISOString();
 
-    const { data: upcomingAssignments, error: queryErr } = await admin
-      .from("dealer_assignments")
-      .select(`
-        id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
-        pre_assigned_attendance_id,
-        game_tables!inner(id, table_name, table_type),
-        dealer_attendance!attendance_id(
-          dealers!inner(full_name, telegram_username, telegram_user_id)
-        )
-      `)
-      // Phase 1: scope to club via denormalized club_id (indexed, no join needed)
-      .eq("club_id", clubId)
-      // ✅ correct status value
-      .eq("status", "assigned")
-      // ✅ correct column name (was 'ended_at')
-      .is("released_at", null)
-      .is("swing_processed_at", null)
-      // Skip tables that already have a pre-assigned dealer
-      .is("pre_assigned_attendance_id", null)
-      // Filter by swing due within pre-announce window
-      .gte("swing_due_at", windowStart)
-      .lt("swing_due_at", windowEnd);
+    // Emergency OT window: shorter notification window
+    const otWindowStart = new Date(
+      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES - 2) * 60_000
+    ).toISOString();
+    const otWindowEnd = new Date(
+      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES + 2) * 60_000
+    ).toISOString();
 
-    if (queryErr) {
-      console.error("[Pass 2] ❌ Query error:", queryErr.message);
-      // Don't throw — let other passes continue
-      return result;
+    // For manual trigger, use single wide window
+    // For automatic: query normal window OR (OT window if overtime_started_at IS NOT NULL)
+    const windowStart = manualWindowMinutes
+      ? new Date(Date.now()).toISOString()
+      : normalWindowStart;
+    const windowEnd = manualWindowMinutes
+      ? new Date(Date.now() + manualWindowMinutes * 60_000).toISOString()
+      : normalWindowEnd;
+
+    let upcomingAssignments: any[] = [];
+
+    if (manualWindowMinutes) {
+      // Manual trigger: single wide window
+      const { data, error: queryErr } = await admin
+        .from("dealer_assignments")
+        .select(`
+          id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
+          pre_assigned_attendance_id,
+          game_tables!inner(id, table_name, table_type),
+          dealer_attendance!attendance_id(
+            dealers!inner(full_name, telegram_username, telegram_user_id)
+          )
+        `)
+        .eq("club_id", clubId)
+        .eq("status", "assigned")
+        .is("released_at", null)
+        .is("swing_processed_at", null)
+        .is("pre_assigned_attendance_id", null)
+        .gte("swing_due_at", windowStart)
+        .lt("swing_due_at", windowEnd);
+
+      if (queryErr) {
+        console.error("[Pass 2] ❌ Query error:", queryErr.message);
+        return result;
+      }
+      upcomingAssignments = data ?? [];
+    } else {
+      // Automatic: separate queries for normal and OT emergency windows
+      // Normal tables: pre-announce at default window
+      const { data: normalData, error: normalErr } = await admin
+        .from("dealer_assignments")
+        .select(`
+          id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
+          pre_assigned_attendance_id,
+          game_tables!inner(id, table_name, table_type),
+          dealer_attendance!attendance_id(
+            dealers!inner(full_name, telegram_username, telegram_user_id)
+          )
+        `)
+        .eq("club_id", clubId)
+        .eq("status", "assigned")
+        .is("released_at", null)
+        .is("swing_processed_at", null)
+        .is("pre_assigned_attendance_id", null)
+        .is("overtime_started_at", null)
+        .gte("swing_due_at", normalWindowStart)
+        .lt("swing_due_at", normalWindowEnd);
+
+      if (normalErr) {
+        console.error("[Pass 2] ❌ Normal window query error:", normalErr.message);
+      }
+
+      // OT emergency: shortened pre-announce window (3 min instead of 6)
+      const { data: otData, error: otErr } = await admin
+        .from("dealer_assignments")
+        .select(`
+          id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
+          pre_assigned_attendance_id,
+          game_tables!inner(id, table_name, table_type),
+          dealer_attendance!attendance_id(
+            dealers!inner(full_name, telegram_username, telegram_user_id)
+          )
+        `)
+        .eq("club_id", clubId)
+        .eq("status", "assigned")
+        .is("released_at", null)
+        .is("swing_processed_at", null)
+        .is("pre_assigned_attendance_id", null)
+        .not("overtime_started_at", "is", null)
+        .gte("swing_due_at", otWindowStart)
+        .lt("swing_due_at", otWindowEnd);
+
+      if (otErr) {
+        console.error("[Pass 2] ❌ OT window query error:", otErr.message);
+      }
+
+      // Merge and deduplicate by assignment id
+      const seen = new Set<string>();
+      for (const row of [...(normalData ?? []), ...(otData ?? [])]) {
+        if (!seen.has(row.id)) {
+          seen.add(row.id);
+          upcomingAssignments.push(row);
+        }
+      }
     }
 
-    if (!upcomingAssignments || upcomingAssignments.length === 0) {
+    if (upcomingAssignments.length === 0) {
       console.log("[Pass 2] No tables needing pre-assignment in window");
       return result;
     }
 
+    const otCount = upcomingAssignments.filter((a: any) => a.overtime_started_at).length;
     console.log(
       `[Pass 2] Found ${upcomingAssignments.length} tables needing pre-assignment ` +
-      `(window ${preAnnounceMinutes - 2}–${preAnnounceMinutes + 2} min before swing)`
+      `(${otCount} OT emergency at ${EMERGENCY_OT_PRE_ANNOUNCE_MINUTES}min, ` +
+      `${upcomingAssignments.length - otCount} normal at ${preAnnounceMinutes}min)`
     );
 
     // ════════════════════════════════════════════════════════
@@ -136,13 +230,12 @@ export async function pass2PreAssignNext(
             result.pre_assigned_count++;
             cycleExcludedIds.add(nextDealer.id);
 
-            // BUG 2 FIX: Clear overtime_started_at since a replacement
-            // is now on the way. The current dealer's OT is resolved.
-            await admin
-              .from("dealer_assignments")
-              .update({ overtime_started_at: null })
-              .eq("id", assignment.id)
-              .not("overtime_started_at", "is", null);
+            // NOTE: overtime_started_at is NOT cleared here. It was
+            // previously cleared prematurely (before the RPC committed),
+            // which broke the rollback path in execute_pre_assigned_swing
+            // (step [8] would restore NULL instead of the original OT timestamp).
+            // The RPC now handles OT clearing correctly in step [6] on success
+            // and preserves the original value on rollback in step [8].
 
             // Compute minutes until swing for the notification
             const swingAt = new Date(assignment.swing_due_at).getTime();

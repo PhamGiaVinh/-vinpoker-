@@ -44,7 +44,7 @@ export async function parseBody<T extends z.ZodTypeAny>(
   return { ok: true, data: result.data };
 }
 
-export function jsonError(
+function jsonError(
   status: number,
   message: string,
   details?: unknown,
@@ -59,11 +59,11 @@ export function jsonError(
 }
 
 // Common reusable schema fragments.
-export const Uuid = z.string().uuid();
-export const ShortText = z.string().trim().min(1).max(500);
-export const Reason = z.string().trim().max(1000).nullish();
-export const Note = z.string().trim().max(1000).nullish();
-export const Percent1to100 = z.number().int().min(1).max(100);
-export const NonNegInt = z.number().int().min(0);
-export const PositiveAmountVnd = z.number().min(0).max(1e10); // up to 10 tỷ VND
-export const HttpsUrl = z.string().url().max(2048);
+const Uuid = z.string().uuid();
+const ShortText = z.string().trim().min(1).max(500);
+const Reason = z.string().trim().max(1000).nullish();
+const Note = z.string().trim().max(1000).nullish();
+const Percent1to100 = z.number().int().min(1).max(100);
+const NonNegInt = z.number().int().min(0);
+const PositiveAmountVnd = z.number().min(0).max(1e10); // up to 10 tỷ VND
+const HttpsUrl = z.string().url().max(2048);

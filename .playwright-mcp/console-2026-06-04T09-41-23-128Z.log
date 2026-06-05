@@ -1,0 +1,15 @@
+[    1486ms] [WARNING] [OneSignal] init failed Error: Can only be used on: https://vinpoker.live
+    at https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:18361
+    at https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:18423
+    at async t.zr (https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:135232)
+    at async t.init (https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:135865)
+    at async https://vinpoker.vercel.app/assets/index-CXUwt7H_.js:113:68146
+    at async https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:140199 @ https://vinpoker.vercel.app/assets/index-CXUwt7H_.js:112
+[    1488ms] [WARNING] [OneSignal] logout failed TypeError: Cannot read properties of undefined (reading 'Qe')
+    at t.Ms (https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:86761)
+    at t.logout (https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:86720)
+    at t.logout (https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js?v=160605:1:135597)
+    at Pj (https://vinpoker.vercel.app/assets/index-CXUwt7H_.js:113:71251) @ https://vinpoker.vercel.app/assets/index-CXUwt7H_.js:112
+[    1495ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ https://vinpoker.vercel.app/auth:0
+[    1558ms] [INFO] Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner. @ https://vinpoker.vercel.app/auth:0
+[    2012ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://vinpoker.vercel.app/auth:0

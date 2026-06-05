@@ -97,7 +97,7 @@ export const ICON_FOR: Record<NotificationType, string> = {
   profile_updated: "📝",
 };
 
-export const SOUND_FOR: Record<string, () => void> = {
+const SOUND_FOR: Record<string, () => void> = {
   deal_committed: playSuccessSound,
   deal_funded: playSuccessSound,
   purchase_funded: playSuccessSound,

@@ -161,7 +161,8 @@ export async function fillEmptyTables(
         continue;
       }
 
-      if (rpcResult === "ok" || rpcResult?.outcome === "assigned") {
+      const outcome = typeof rpcResult === "string" ? rpcResult : rpcResult?.outcome;
+      if (outcome === "ok") {
         localExclude.add(dealer.id);
         result.assignedAttendanceIds.add(dealer.id);
         result.assignments.push({
@@ -174,12 +175,18 @@ export async function fillEmptyTables(
         break;
       }
 
-      if (rpcResult === "conflict") {
+      if (outcome === "table_occupied") {
+        console.warn(`[fillEmptyTables] Table ${table.table_name} (${table.id}) already occupied, skipping`);
+        break;
+      }
+
+      if (outcome === "conflict") {
         localExclude.add(dealer.id);
         continue;
       }
 
       // Unknown result → treat as conflict
+      console.warn(`[fillEmptyTables] Unknown RPC outcome '${outcome}' for table ${table.id}, dealer ${dealer.id}`);
       localExclude.add(dealer.id);
     }
 

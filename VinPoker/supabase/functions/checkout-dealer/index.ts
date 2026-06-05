@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { corsHeaders, jsonResponse } from "../_shared/dealer-utils.ts";
+import { corsHeaders, jsonResponse, pickNextDealer } from "../_shared/dealer-utils.ts";
 import {
   sendTelegramNotification, getClubTelegramChatId,
 } from "../_shared/telegram.ts";
@@ -193,7 +193,124 @@ async function processOneCheckout(
     }
   }
 
-  // 5. Audit log
+  // 5. BUG 3 FIX: Release active dealer_assignment for this attendance
+  // so the table is no longer considered "occupied" by fillEmptyTables.
+  // Set needs_replacement=true so process-swing prioritizes refilling it.
+  let needsReplacementTableId: string | null = null;
+  const { data: activeAss } = await admin
+    .from("dealer_assignments")
+    .select("id, table_id")
+    .eq("attendance_id", attendanceId)
+    .eq("status", "assigned")
+    .is("released_at", null);
+
+  if (activeAss && activeAss.length > 0) {
+    needsReplacementTableId = activeAss[0].table_id;
+    await admin
+      .from("dealer_assignments")
+      .update({
+        released_at: nowISO,
+        status: "completed",
+        needs_replacement: true,
+      })
+      .eq("id", activeAss[0].id);
+  }
+
+  // 6. BUG 3: Best-effort auto-replacement for the affected table.
+  // If a dealer is available, assign immediately. If not, cron will
+  // handle it through fillEmptyTables on the next cycle.
+  let autoAssigned: { dealer_name: string } | null = null;
+  if (needsReplacementTableId && botToken) {
+    try {
+      const dealer = await pickNextDealer(admin, clubId, {
+        currentTableId: needsReplacementTableId,
+      });
+      if (dealer) {
+        // Compute swing_due_at from swing_config (table_type-aware fallback chain)
+        let swingMinutes: number | null = null;
+        const { data: tableInfo } = await admin
+          .from("game_tables")
+          .select("table_type")
+          .eq("id", needsReplacementTableId)
+          .maybeSingle();
+
+        if (tableInfo?.table_type) {
+          const { data: swingConfig } = await admin
+            .from("swing_config")
+            .select("swing_duration_minutes")
+            .eq("club_id", clubId)
+            .eq("table_type", tableInfo.table_type)
+            .maybeSingle();
+          swingMinutes = swingConfig?.swing_duration_minutes ?? null;
+        }
+
+        if (swingMinutes == null) {
+          const { data: fallbackConfig } = await admin
+            .from("swing_config")
+            .select("swing_duration_minutes")
+            .eq("club_id", clubId)
+            .limit(1)
+            .maybeSingle();
+          swingMinutes = fallbackConfig?.swing_duration_minutes ?? null;
+        }
+
+        const replacementSwingDueAt = new Date(
+          Date.now() + (swingMinutes ?? 45) * 60_000
+        ).toISOString();
+
+        const { data: assignResult, error: assignErr } = await admin.rpc(
+          "assign_dealer_to_table",
+          {
+            p_attendance_id: dealer.id,
+            p_table_id: needsReplacementTableId,
+            p_swing_due_at: replacementSwingDueAt,
+          }
+        );
+        if (assignErr) {
+          console.error(`[checkout-dealer] Auto-replace RPC error: ${assignErr.message}`);
+        } else {
+          const assignOutcome = typeof assignResult === "string" ? assignResult : assignResult?.outcome;
+          if (assignOutcome === "ok") {
+            autoAssigned = { dealer_name: dealer.full_name };
+            console.log(
+              `[checkout-dealer] Auto-assigned ${dealer.full_name} to table ${needsReplacementTableId}`
+            );
+          } else {
+            console.warn(`[checkout-dealer] Auto-replace outcome: ${assignOutcome}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(
+        `[checkout-dealer] Auto-replace failed for table ${needsReplacementTableId}:`,
+        err.message
+      );
+    }
+
+    // If auto-assign failed, notify floor manager
+    if (!autoAssigned) {
+      try {
+        const { data: cs } = await admin
+          .from("club_settings")
+          .select("floor_manager_chat_id")
+          .eq("club_id", clubId)
+          .maybeSingle();
+        const fmChatId = (cs as any)?.floor_manager_chat_id;
+        if (fmChatId) {
+          await sendTelegramNotification(
+            botToken,
+            fmChatId,
+            `⚠️ Bàn vừa mất dealer (check-out) — chưa có người thay. Hệ thống sẽ tự động xoay vòng.`,
+            {}
+          ).catch(() => {});
+        }
+      } catch {
+        /* non-critical */
+      }
+    }
+  }
+
+  // 7. Audit log
   await admin.from("audit_logs").insert({
     club_id: clubId,
     actor_id: uid,
@@ -205,6 +322,8 @@ async function processOneCheckout(
       was_pre_assigned: wasPreAssigned,
       released_pre_assigned: releasedPreAssigned,
       pre_assigned_table: preAssignedTableName,
+      needs_replacement_table: needsReplacementTableId,
+      auto_assigned: autoAssigned?.dealer_name ?? null,
     },
   }).then(() => {}).catch(() => {});
 
@@ -217,6 +336,8 @@ async function processOneCheckout(
     total_hours: totalHours,
     released_pre_assigned: releasedPreAssigned,
     pre_assigned_table: preAssignedTableName,
+    needs_replacement_table: needsReplacementTableId,
+    auto_assigned_dealer: autoAssigned?.dealer_name ?? null,
   };
 }
 

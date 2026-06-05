@@ -36,7 +36,7 @@ export function percentRange(selected: Iterable<string>): number {
   return (totalCombos(selected) / TOTAL_COMBOS) * 100;
 }
 
-export function groupOf(hand: string): HandGroup {
+function groupOf(hand: string): HandGroup {
   const k = classify(hand);
   if (k === "pair") return "pair";
   const a = hand[0];

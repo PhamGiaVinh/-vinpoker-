@@ -220,6 +220,8 @@ export function useTodayCheckedOutDealers(clubIds: string[]) {
   const today = new Date().toISOString().split("T")[0];
   return useRealtimeQuery<DealerAttendance>({
     queryFn: async () => {
+      if (!clubIds.length) return [];
+
       // Step 1: get dealers with active checked_in today
       const { data: activeToday } = await supabase
         .from("dealer_attendance")
@@ -251,7 +253,7 @@ export function useTodayCheckedOutDealers(clubIds: string[]) {
   });
 }
 
-export function useActiveAssignments(clubIds: string[], shiftId?: string) {
+function useActiveAssignments(clubIds: string[], shiftId?: string) {
   return useRealtimeQuery<DealerAssignment>({
     queryFn: async () => {
       let q = supabase
@@ -267,7 +269,8 @@ export function useActiveAssignments(clubIds: string[], shiftId?: string) {
         )
         .in("status", ["assigned"])
         .in("game_tables.club_id", clubIds)
-        .neq("dealer_attendance.current_state", "on_break");
+        .neq("dealer_attendance.current_state", "on_break")
+        .neq("dealer_attendance.current_state", "checked_out");
 
       if (shiftId) {
         q = q.eq("game_tables.shift_id", shiftId);
@@ -294,7 +297,10 @@ export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
       const diffMs = due - now;
       const minutesLeft = Math.max(0, diffMs / 60000);
       const showNextDealerSoon = minutesLeft <= 5;
-      const isOverdue = diffMs < 0;
+      // BUG 2 FIX: If a pre-assigned replacement is coming, the dealer is NOT overdue
+      // for swing. The OT is informational only — system has already handled it.
+      const hasReplacementComing = !!a.pre_assigned_attendance_id;
+      const isOverdue = !hasReplacementComing && diffMs < 0;
       return { ...a, minutesLeft, secondsLeft: Math.max(0, Math.floor(diffMs / 1000)), showNextDealerSoon, isOverdue };
     });
   }, [result.data, now]);
@@ -365,9 +371,10 @@ export interface SwingConfig {
   target_ratio?: number;
   min_duration_minutes?: number;
   max_duration_minutes?: number;
+  rotation_planner_enabled?: boolean;
 }
 
-export interface SwingMetrics {
+interface SwingMetrics {
   id: string;
   club_id: string;
   date: string;
@@ -609,7 +616,7 @@ export interface NextDealerPrediction {
   confidence: "confirmed" | "predicted";
 }
 
-export interface OvertimeDealer {
+interface OvertimeDealer {
   assignmentId: string;
   tableId: string;
   tableName: string;
@@ -620,7 +627,7 @@ export interface OvertimeDealer {
   priorityBreakFlag: boolean;
 }
 
-export function useOvertimeDealers(clubIds: string[]) {
+function useOvertimeDealers(clubIds: string[]) {
   return useRealtimeQuery<OvertimeDealer>({
     queryFn: async () => {
       if (!clubIds.length) return { data: [], error: null };
@@ -719,14 +726,14 @@ export function useNextDealerPredictions(clubIds: string[]) {
 // Resolves table → tournament → club hierarchy for swing config
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export interface ResolvedSwingConfig {
+interface ResolvedSwingConfig {
   swing_duration_minutes: number;
   warn_at_minutes: number;
   crit_at_minutes: number;
   source: "table" | "tournament" | "club" | "default";
 }
 
-export function resolveEffectiveSwingConfig(
+function resolveEffectiveSwingConfig(
   tableId: string,
   tournaments: TournamentWithTables[] | undefined,
   tableOverrides: SwingConfigOverride[] | undefined,
@@ -781,7 +788,7 @@ export function resolveEffectiveSwingConfig(
 // Hook: Fetch table-level overrides from swing_configs table
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function useTableConfigOverrides(clubIds: string[]) {
+function useTableConfigOverrides(clubIds: string[]) {
   const [data, setData] = useState<SwingConfigOverride[] | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -806,7 +813,7 @@ export function useTableConfigOverrides(clubIds: string[]) {
 // Combines tournaments + table overrides + club default into a single map
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function useTableSwingConfigMap(
+function useTableSwingConfigMap(
   clubIds: string[],
   tableIds: string[],
   tournaments: TournamentWithTables[] | undefined,

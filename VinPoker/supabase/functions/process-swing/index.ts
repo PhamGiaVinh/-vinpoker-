@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   pickNextDealer,
   evaluateBreakNeed,
@@ -7,6 +8,7 @@ import {
   fillEmptyTables,
   getTableIdsForClub,
 } from "../_shared/dealer-utils.ts";
+import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
 import {
   sendTelegramNotification,
   getClubTelegramChatId,
@@ -23,12 +25,13 @@ import type {
 import {
   calculateBatchSwingDuration,
   resolveSwingConfig,
-  recomputeSwingDueAt,
   type PoolSnapshot,
   type SwingConfig,
 } from "./calculateBatchSwingDuration.ts";
 import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
+import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
+import { runPass3Diagnostic } from "./diagnostics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +39,22 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const STALE_PRE_ASSIGN_MINUTES = 20;
+const SWING_THRESHOLDS = {
+  OVERDUE_THRESHOLD_MINUTES: 60,
+  CRITICALLY_OVERDUE_HOURS: 4,
+  BASE_LOCK_TIMEOUT_SECONDS: 120,
+  LOCK_TIMEOUT_PER_TABLE: 10,
+  MAX_LOCK_TIMEOUT_SECONDS: 300,
+  RELEASE_BATCH_SIZE: 50,
+  MAX_ERRORS_TO_LOG: 3,
+  ALERT_THROTTLE_HOURS: 1,
+  ROLLBACK_MAX_RETRIES: 3,
+  ROLLBACK_BASE_BACKOFF_MS: 100,
+  ROLLBACK_MAX_BACKOFF_MS: 5000,
+  BULK_CLEAR_MAX_RETRIES: 3,
+  BULK_CLEAR_BASE_BACKOFF_MS: 200,
+} as const;
+
 const DEFAULT_PRE_ANNOUNCE_MINUTES = 6;
 const DEFAULT_PRE_ASSIGN_WINDOW_MINUTES = 4;
 const DEFAULT_MAX_WORK_MINUTES = 120;
@@ -135,6 +153,7 @@ interface ClubSwingConfig {
   max_duration_minutes: number;
   sync_swings: boolean;
   sync_window_minutes: number;
+  rotation_planner_enabled: boolean;
 }
 
 // ─── Config fetching ──────────────────────────────────────────────────────────
@@ -178,6 +197,7 @@ async function fetchAllClubConfigs(
       max_duration_minutes: row.max_duration_minutes ?? 60,
       sync_swings: row.sync_swings ?? false,
       sync_window_minutes: row.sync_window_minutes ?? 5,
+      rotation_planner_enabled: row.rotation_planner_enabled ?? false,
     });
   }
   return configMap;
@@ -202,6 +222,7 @@ function getClubConfig(
       max_duration_minutes: 60,
       sync_swings: false,
       sync_window_minutes: 5,
+      rotation_planner_enabled: false,
     }
   );
 }
@@ -212,6 +233,182 @@ async function getClubLocalDate(
 ): Promise<string> {
   const { data } = await admin.rpc("club_local_date", { p_club_id: clubId });
   return data ?? new Date().toISOString().split("T")[0];
+}
+
+// ─── Pass 1b Types ────────────────────────────────────────────────────────
+
+interface StalePreAssignRow {
+  id: string;
+  pre_assigned_attendance_id: string | null;
+  pre_assigned_at: string | null;
+  version: number;
+  status?: string;
+}
+
+interface LockAcquisitionResult {
+  acquired: boolean;
+}
+
+interface DealerAttendanceState {
+  id: string;
+  current_state: string;
+}
+
+// ─── Pass 1b Helpers ──────────────────────────────────────────────────────
+
+function truncateId(id: string | null | undefined): string {
+  if (!id) return "unknown";
+  return id.length > 8 ? `${id.slice(0, 8)}\u2026` : id;
+}
+
+function formatCriticalAlert(
+  rows: StalePreAssignRow[],
+  clubName: string,
+  cid: string
+): string {
+  const MAX_DETAILS = SWING_THRESHOLDS.MAX_ERRORS_TO_LOG;
+  const dealerLines = rows.slice(0, MAX_DETAILS).map((r, i) => {
+    const dealerId = truncateId(r.pre_assigned_attendance_id);
+    const assignmentId = truncateId(r.id);
+    const overdueTime = r.pre_assigned_at
+      ? new Date(r.pre_assigned_at).toISOString()
+      : "unknown";
+    return `${i + 1}. ${dealerId} \u2014 assignment ${assignmentId}, overdue since ${overdueTime}`;
+  }).join("\n");
+
+  const overflow =
+    rows.length > MAX_DETAILS
+      ? `\n\n_...and ${rows.length - MAX_DETAILS} more_`
+      : "";
+
+  return (
+    `\U0001F6D2 *CRITICAL OVERDUE* (${clubName})\n\n` +
+    `${rows.length} pre-assignment(s) stuck \u2265${SWING_THRESHOLDS.CRITICALLY_OVERDUE_HOURS}h \u2014 force-releasing:\n` +
+    (dealerLines ? `\n${dealerLines}` : "") +
+    overflow +
+    `\n\n\U0001F50D Check \`dealer_state_transitions\` for details.`
+  );
+}
+
+async function safeGetTelegramChatId(
+  admin: SupabaseClient,
+  cid: string
+): Promise<string | null> {
+  try {
+    return await getClubTelegramChatId(admin, cid);
+  } catch (err) {
+    console.error(`[Telegram] Failed to get chat ID for club ${cid}:`, (err as Error).message);
+    return null;
+  }
+}
+
+/**
+ * Sends a Telegram alert message. Handles chat ID retrieval and send failures gracefully.
+ * @param admin - Supabase admin client
+ * @param cid - Club ID
+ * @param message - Markdown-formatted message to send
+ * @param botToken - Telegram bot token (optional)
+ */
+async function sendAlert(
+  admin: SupabaseClient,
+  cid: string,
+  message: string,
+  botToken: string | undefined
+): Promise<void> {
+  const chatId = await safeGetTelegramChatId(admin, cid);
+  if (!botToken || !chatId) {
+    if (!chatId) console.warn(`[Pass 1b] No Telegram chat ID for club ${cid}`);
+    return;
+  }
+  await sendTelegramNotification(botToken, chatId, message, { parse_mode: "Markdown" })
+    .catch(err => console.error("[Pass 1b] \u274C Telegram send failed:", err.message));
+}
+
+async function safeSendAlert(
+  admin: SupabaseClient,
+  cid: string,
+  message: string,
+  botToken: string | undefined
+): Promise<void> {
+  await sendAlert(admin, cid, message, botToken)
+    .catch(err => console.error("[Pass 1b] \u274C Alert send failed:", (err as Error).message));
+}
+
+/**
+ * Sends a critical alert with formatted details about stuck pre-assignments.
+ * @param admin - Supabase admin client
+ * @param cid - Club ID
+ * @param clubName - Human-readable club name
+ * @param rows - Array of stuck assignment records
+ * @param botToken - Telegram bot token (optional)
+ */
+async function sendCriticalAlert(
+  admin: SupabaseClient,
+  cid: string,
+  clubName: string,
+  rows: StalePreAssignRow[],
+  botToken: string | undefined
+): Promise<void> {
+  const chatId = await safeGetTelegramChatId(admin, cid);
+  if (!botToken || !chatId) {
+    if (!chatId) console.warn(`[Pass 1b] No Telegram chat ID for club ${cid}`);
+    return;
+  }
+  const message = formatCriticalAlert(rows, clubName, cid);
+  await sendTelegramNotification(botToken, chatId, message, { parse_mode: "Markdown" })
+    .catch(err => console.error("[Pass 1b] \u274C Telegram send failed:", err.message));
+}
+
+/**
+ * Clears pre_assigned fields on dealer_attendance records with retry logic.
+ * @param admin - Supabase admin client
+ * @param dealerAttendanceIds - IDs to clear
+ * @param context - Label for logging (e.g., "critical", "stale")
+ * @returns true if successful, false if failed after retries
+ */
+async function bulkClearDealerPreAssignedFields(
+  admin: SupabaseClient,
+  dealerAttendanceIds: string[],
+  context: string
+): Promise<boolean> {
+  if (dealerAttendanceIds.length === 0) {
+    return true;
+  }
+
+  let success = false;
+  let lastErr: any = null;
+
+  for (let retry = 0; retry < SWING_THRESHOLDS.BULK_CLEAR_MAX_RETRIES; retry++) {
+    const { error } = await admin
+      .from("dealer_attendance")
+      .update({ pre_assigned_table_id: null, pre_assigned_at: null })
+      .in("id", dealerAttendanceIds);
+
+    if (!error) {
+      success = true;
+      if (retry > 0) {
+        console.log(`[Pass 1b] \u2705 ${context} bulk clear succeeded on retry ${retry}`);
+      }
+      break;
+    }
+
+    lastErr = error;
+    console.warn(`[Pass 1b] \u26A0\uFE0F ${context} bulk clear attempt ${retry + 1}/${SWING_THRESHOLDS.BULK_CLEAR_MAX_RETRIES} failed:`, error.message);
+    if (retry < SWING_THRESHOLDS.BULK_CLEAR_MAX_RETRIES - 1) {
+      await new Promise(resolve => setTimeout(resolve, SWING_THRESHOLDS.BULK_CLEAR_BASE_BACKOFF_MS * Math.pow(2, retry)));
+    }
+  }
+
+  if (!success) {
+    console.error(
+      `[Pass 1b] \U0001F6D2 ${context.toUpperCase()}: Bulk clear failed after ${SWING_THRESHOLDS.BULK_CLEAR_MAX_RETRIES} retries for ${dealerAttendanceIds.length} dealers!`
+    );
+    if (lastErr) {
+      console.error("[Pass 1b] Last error:", lastErr);
+    }
+  }
+
+  return success;
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -244,6 +441,8 @@ Deno.serve(async (req: Request) => {
       dry_run: dryRun = false,
       manual_trigger: manualTrigger = false,
       required_game_types,
+      pre_assign_only: preAssignOnly = false,
+      manual_window_minutes: manualWindowMinutes = 15,
     } = body;
 
     const startTime = Date.now();
@@ -265,24 +464,88 @@ Deno.serve(async (req: Request) => {
       { total: number; success: number; failed: number; no_dealer: number; tg_failed: number; skipped: number }
     > = {};
 
+    const executionStartTime = Date.now();
+    let clubsProcessed = 0;
+    let clubsSkippedLocked = 0;
+    let clubsSkippedError = 0;
+
     // ═══════════════════════════════════════════════════════════════════════════
-    //  Process each club independently
-    //  NOTE: Advisory lock removed. Per-row CAS (version column) protects
-    //  against concurrent modifications. Race_lost handling in Pass 3
-    //  deals with the rare CAS failure.
+    //  Process each club independently with club-level locking
     // ═══════════════════════════════════════════════════════════════════════════
     for (const cid of clubIds) {
+      let lockAcquired = false;
+
+      // ── Acquire club processing lock ────────────────────────────
       try {
+        const { data: lockResult, error: lockErr } = await admin.rpc("try_acquire_club_lock", {
+          p_club_id: cid,
+          p_timeout_seconds: SWING_THRESHOLDS.BASE_LOCK_TIMEOUT_SECONDS,
+        });
+
+        if (lockErr) {
+          console.error(`[process-swing] \u274C Lock RPC failed for ${cid}:`, lockErr.message);
+          clubsSkippedError++;
+          continue;
+        }
+
+        if (!lockResult || typeof lockResult !== "object" || !("acquired" in lockResult)) {
+          console.error(`[process-swing] \u274C Invalid lock result for ${cid}:`, JSON.stringify(lockResult));
+          clubsSkippedError++;
+          continue;
+        }
+
+        const acquired = (lockResult as LockAcquisitionResult).acquired === true;
+        if (!acquired) {
+          console.log(`[process-swing] \U0001F512 Club ${cid} locked by another instance`);
+          clubsSkippedLocked++;
+          continue;
+        }
+
+        lockAcquired = true;
+      } catch (err) {
+        console.error(`[process-swing] \u274C Lock acquisition exception for ${cid}:`, err);
+        clubsSkippedError++;
+        continue;
+      }
+
+      try {
+        // ── Guard: club config ───────────────────────────────
+        let clubCfg: ClubSwingConfig;
+        try {
+          clubCfg = getClubConfig(allClubConfigs, cid);
+        } catch (err) {
+          console.error(`[process-swing] \u274C Failed to get config for club ${cid}:`, err);
+          clubsSkippedError++;
+          continue;
+        }
+
+        if (!manualTrigger && !clubCfg.auto_swing_enabled) {
+          console.log(`[process-swing] Club ${cid} auto-swing disabled \u2014 skipping`);
+          continue;
+        }
+
         if (!metricsPerClub[cid]) {
           metricsPerClub[cid] = { total: 0, success: 0, failed: 0, no_dealer: 0, tg_failed: 0, skipped: 0 };
         }
         const metrics = metricsPerClub[cid];
-        const clubCfg = getClubConfig(allClubConfigs, cid);
 
-        if (!manualTrigger && !clubCfg.auto_swing_enabled) {
-          console.log(`[process-swing] Club ${cid} auto-swing disabled — skipping`);
+        // ── Cache table IDs once per club ─────────────────────────
+        let clubTableIds: string[];
+        try {
+          clubTableIds = await getTableIdsForClub(admin, cid);
+        } catch (err) {
+          console.error(`[process-swing] \u274C getTableIdsForClub failed for club ${cid}:`, err);
+          clubsSkippedError++;
           continue;
         }
+
+        // ═════════════════════════════════════════════════════════════════
+        // \U0001F4CC IMPORTANT: Use cached `clubTableIds` for ALL table queries
+        //   \u2713 Pass 1b queries
+        //   \u2713 Pass 3 queries
+        //   \u2713 All-tables-OT alert
+        //   DO NOT call getTableIdsForClub(admin, cid) again in this club loop
+        // ═════════════════════════════════════════════════════════════════
 
         const cycleExcludedIds = new Set<string>();
 
@@ -335,27 +598,34 @@ Deno.serve(async (req: Request) => {
           console.log(`[process-swing] Fallback swingDueAt for club ${cid}: config default ${clubCfg.swing_duration_minutes}min`);
         }
 
+        // ── Pre-fetch club dealer IDs (used by available count, Pass 0c, and seeding) ──
+        const { data: clubDealers } = await admin
+          .from("dealers")
+          .select("id")
+          .eq("club_id", cid);
+        const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+
+        if (cidDealerIds.length === 0) {
+          console.log(`[process-swing] No dealers for club ${cid} — skipping`);
+          continue;
+        }
+
         // ── PASS 0b — Query available dealer count for break deadlock guard ──
         let availableDealerCount: number | undefined;
         if (!dryRun) {
           const { count } = await admin
             .from("dealer_attendance")
             .select("id", { head: true, count: "exact" })
+            .in("dealer_id", cidDealerIds)
             .eq("current_state", "available")
             .eq("status", "checked_in");
           availableDealerCount = count ?? 0;
         }
 
         // ── PASS 0c: Detect & auto-fix stuck dealers ────────────────────────
+
         if (!dryRun) {
           const stuckIssues: Array<{ id: string; dealer_name: string; issue: string }> = [];
-
-          // Get club dealer IDs for scoped queries
-          const { data: clubDealers } = await admin
-            .from("dealers")
-            .select("id")
-            .eq("club_id", cid);
-          const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
 
           // 1. Stuck pre_assigned (no table OR no timestamp — incomplete pre-assign)
           const { data: stuckPre } = await admin
@@ -368,7 +638,6 @@ Deno.serve(async (req: Request) => {
               pre_assigned_at,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "pre_assigned")
             .or("pre_assigned_table_id.is.null,pre_assigned_at.is.null")
             .in("dealer_id", cidDealerIds);
@@ -392,11 +661,9 @@ Deno.serve(async (req: Request) => {
             .select(`
               id,
               dealer_id,
-              updated_at,
               pre_assigned_table_id,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "pre_assigned")
             .eq("status", "checked_in")
             .in("dealer_id", cidDealerIds);
@@ -453,18 +720,19 @@ Deno.serve(async (req: Request) => {
           }
 
           // 3. Stuck in_transition (>5 minutes)
+          // dealer_attendance has no updated_at — use check_in_time as proxy for time-based guard
           const { data: stuckTransition } = await admin
             .from("dealer_attendance")
-            .select("id, dealer_id, updated_at, dealers!inner(full_name)")
+            .select("id, dealer_id, check_in_time, dealers!inner(full_name)")
             .eq("current_state", "in_transition")
             .in("dealer_id", cidDealerIds)
-            .lt("updated_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+            .lt("check_in_time", new Date(Date.now() - 5 * 60 * 1000).toISOString());
 
           if (stuckTransition && stuckTransition.length > 0) {
             console.log(`[Pass 0c] Found ${stuckTransition.length} stuck in_transition dealers (>5min)`);
             for (const s of stuckTransition) {
               const dealerName = (s.dealers as any)?.full_name ?? "Unknown";
-              const stuckMinutes = Math.floor((Date.now() - new Date(s.updated_at).getTime()) / 60000);
+              const stuckMinutes = Math.floor((Date.now() - new Date(s.check_in_time).getTime()) / 60000);
               stuckIssues.push({ id: s.id, dealer_name: dealerName, issue: `in_transition_stuck_${stuckMinutes}m` });
               await transitionDealerState(admin, s.id, "available", `pass0c_stuck_in_transition_${stuckMinutes}m`);
             }
@@ -476,11 +744,9 @@ Deno.serve(async (req: Request) => {
             .select(`
               id,
               dealer_id,
-              current_table_id,
-              updated_at,
+              check_in_time,
               dealers!inner(full_name)
             `)
-            .eq("club_id", cid)
             .eq("current_state", "assigned")
             .eq("status", "checked_in")
             .in("dealer_id", cidDealerIds);
@@ -499,20 +765,19 @@ Deno.serve(async (req: Request) => {
             for (const dealer of toRelease) {
               const dealerName = (dealer.dealers as any)?.full_name ?? "Unknown";
               const stuckMinutes = Math.floor(
-                (Date.now() - new Date(dealer.updated_at).getTime()) / 60000
+                (Date.now() - new Date(dealer.check_in_time).getTime()) / 60000
               );
-              const tableId = (dealer as any).current_table_id ?? "none";
               stuckIssues.push({
                 id: dealer.id,
                 dealer_name: dealerName,
-                issue: `assigned_orphaned_${stuckMinutes}m (table: ${tableId})`,
+                issue: `assigned_orphaned_${stuckMinutes}m`,
               });
               await transitionDealerState(
                 admin, dealer.id, "available",
-                `pass0c_orphaned_assigned_${tableId}_stuck_${stuckMinutes}m`
+                `pass0c_orphaned_assigned_stuck_${stuckMinutes}m`
               );
               cycleExcludedIds.add(dealer.id);
-              console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, table: ${tableId}, stuck: ${stuckMinutes}m)`);
+              console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, stuck: ${stuckMinutes}m)`);
             }
           }
 
@@ -607,6 +872,62 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // ── PASS 0d: Reconcile dealer states ──────────────────────────────────
+        {
+          const RECONCILE_TIMEOUT_MS = 3000;
+
+          try {
+            const response = await Promise.race([
+              admin.rpc('reconcile_dealer_states', { p_club_id: cid }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('reconcile_timeout')), RECONCILE_TIMEOUT_MS)
+              )
+            ]);
+
+            if (response.error) {
+              console.error(`[Pass 0d] ❌ DB error:`, response.error.message);
+            } else {
+              const result = Array.isArray(response.data) ? response.data[0] : response.data;
+              const orphan  = result?.fixed_pre_assigned_orphan ?? 0;
+              const timeout  = result?.fixed_pre_assigned_timeout ?? 0;
+              const orphanAssignments = result?.fixed_orphan_assignments ?? 0;
+              const total    = (result?.fixed_available ?? 0)
+                            + (result?.fixed_assigned ?? 0)
+                            + orphan + timeout
+                            + (result?.cleared_orphaned ?? 0)
+                            + orphanAssignments;
+
+              const ORPHAN_ALERT_THRESHOLD = 3;
+              const TOTAL_FIXES_ALERT_THRESHOLD = 5;
+
+              if (orphan > 0) {
+                console.error(`[Pass 0d] 🚨 B6 pattern: ${orphan} orphaned pre_assigned`);
+              }
+              if (orphanAssignments > 0) {
+                console.warn(
+                  `[Pass 0d] B6 cleanup: ${orphanAssignments} orphan assignments released by Step 1.5`
+                );
+              }
+              if (orphanAssignments > ORPHAN_ALERT_THRESHOLD) {
+                console.error(`[Pass 0d] 🚨 Abnormal orphan count: ${orphanAssignments} — investigate B6 root cause`);
+              }
+              if (total > TOTAL_FIXES_ALERT_THRESHOLD) {
+                console.error(`[Pass 0d] 🚨 Excessive fixes (${total})! Possible systemic issue.`);
+              }
+              if (total > 0) {
+                console.warn(`[Pass 0d] ⚠️ Fixed ${total} inconsistencies:`, result);
+              } else {
+                console.log(`[Pass 0d] ✅ No inconsistencies found`);
+              }
+            }
+          } catch (err: any) {
+            const isTimeout = err.message === 'reconcile_timeout';
+            console[isTimeout ? 'warn' : 'error'](
+              `[Pass 0d] ${isTimeout ? '⏱️ Timed out' : '❌ Network error'} after ${RECONCILE_TIMEOUT_MS}ms`
+            );
+          }
+        }
+
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -625,69 +946,534 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // ── PASS 1b — Clean up stale pre_assign records ──────────────────
-        const staleThreshold = new Date(
-          Date.now() - STALE_PRE_ASSIGN_MINUTES * 60 * 1000
-        ).toISOString();
+        // ── PASS 1b — Three-tier circuit breaker for stale pre-assign cleanup ──
+        // Tier 3 (critical): pre-assign overdue ≥4h → force-release + alert
+        // Tier 1+2 (stale):   pre-assign overdue ≥60min + assignment past due → cleanup
+        if (clubTableIds.length === 0) {
+          console.log(`[Pass 1b] No active tables for club ${cid}`);
+        } else {
+          // ═══ Fetch club info ONCE for all tiers ════════════════════════════
+          const { data: clubInfo, error: clubInfoErr } = await admin
+            .from("clubs")
+            .select("name, last_critical_alert_at")
+            .eq("id", cid)
+            .single();
+          if (clubInfoErr) {
+            console.warn("[Pass 1b] \u26A0\uFE0F Failed to fetch club info:", clubInfoErr.message);
+          }
+          const clubName = clubInfo?.name ?? `Club ${cid.slice(0, 8)}`;
 
-        const { data: staleRows } = await admin
-          .from("dealer_assignments")
-          .select("id, pre_assigned_attendance_id")
-          .eq("status", "assigned")
-          .not("pre_assigned_attendance_id", "is", null)
-          .lt("pre_assigned_at", staleThreshold)
-          .lt("swing_due_at", new Date().toISOString())
-          .in("table_id", await getTableIdsForClub(admin, cid));
+          const overdueThreshold = new Date(
+            Date.now() - SWING_THRESHOLDS.OVERDUE_THRESHOLD_MINUTES * 60 * 1000
+          ).toISOString();
+          const criticalThreshold = new Date(
+            Date.now() - SWING_THRESHOLDS.CRITICALLY_OVERDUE_HOURS * 60 * 60 * 1000
+          ).toISOString();
+          const nowISO = new Date().toISOString();
 
-        if (staleRows && staleRows.length > 0) {
-          const staleAttendanceIds = staleRows
-            .map((r: { pre_assigned_attendance_id: string }) => r.pre_assigned_attendance_id)
-            .filter(Boolean);
-          await admin
+          // ─── Tier 3: Critically overdue (4h+) ────────────────────────────
+          const { data: criticalRows, error: criticalErr } = await admin
             .from("dealer_assignments")
-            .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
-            .in("id", staleRows.map((r: { id: string }) => r.id));
-          if (staleAttendanceIds.length > 0) {
-            console.log(`[Pass 1b] Releasing ${staleAttendanceIds.length} stale pre-assigned dealers...`);
-            let releaseOk = 0;
-            let releaseFail = 0;
-            for (const attId of staleAttendanceIds) {
-              const result = await transitionDealerState(
-                admin, attId, "available", "pass1b_release_stale_pre_assign"
-              );
-              if (!result.success) {
-                releaseFail++;
-                if (releaseFail <= 3) console.error(`[Pass 1b] transitionDealerState failed for ${attId}:`, result.error);
+            .select("id, pre_assigned_attendance_id, pre_assigned_at, version")
+            .eq("status", "assigned")
+            .not("pre_assigned_attendance_id", "is", null)
+            .lt("pre_assigned_at", criticalThreshold)
+            .lt("swing_due_at", nowISO)
+            .in("table_id", clubTableIds)
+            .limit(SWING_THRESHOLDS.RELEASE_BATCH_SIZE);
+
+          if (criticalErr) {
+            console.error("[Pass 1b] \u274C Critical tier query error:", criticalErr.message);
+          }
+
+          let pass1bCriticalReleased = 0;
+          const failedCritical: Array<{ assignmentId: string; reason: string }> = [];
+          const successfulCritical: string[] = [];
+
+          if (criticalRows && criticalRows.length > 0) {
+            console.error(
+              `[Pass 1b] \U0001F6D2 Force-releasing ${criticalRows.length} critical records ` +
+              `(${SWING_THRESHOLDS.CRITICALLY_OVERDUE_HOURS}h+ overdue)`
+            );
+
+            const trulyCritical = criticalRows as StalePreAssignRow[];
+
+            for (const row of trulyCritical) {
+              if (!row.pre_assigned_attendance_id) {
+                console.warn(`[Pass 1b] \u26A0\uFE0F Skipping assignment ${row.id} \u2014 missing attendance ID`);
                 continue;
               }
-              await admin.from("dealer_attendance")
-                .update({ pre_assigned_table_id: null, pre_assigned_at: null })
-                .eq("id", attId);
-              releaseOk++;
+
+              try {
+                const { data: updData, error: updErr } = await admin
+                  .from("dealer_assignments")
+                  .update({
+                    pre_assigned_attendance_id: null,
+                    pre_assigned_at: null,
+                    version: row.version + 1,
+                  })
+                  .eq("id", row.id)
+                  .eq("version", row.version)
+                  .is("released_at", null)
+                  .select("id");
+
+                if (updErr || !updData || updData.length === 0) {
+                  console.warn(`[Pass 1b] \u26A0\uFE0F CAS skip for assignment ${row.id}: already modified`);
+                  continue;
+                }
+
+                const transResult = await transitionDealerState(
+                  admin, row.pre_assigned_attendance_id, "available",
+                  "pass1b_release_critical_overdue"
+                );
+
+                if (!transResult.success && !transResult.noop) {
+                  console.error(
+                    `[Pass 1b] \U0001F6D2 INCONSISTENT: Assignment ${row.id} cleared but dealer ` +
+                    `${row.pre_assigned_attendance_id} transition failed: ${transResult.error}`
+                  );
+                  failedCritical.push({
+                    assignmentId: row.id,
+                    reason: `Dealer transition failed: ${transResult.error}`
+                  });
+
+                  // ── Rollback with CAS protection and state verification ──
+                  let rollbackSuccess = false;
+                  for (let rollbackAttempt = 0; rollbackAttempt < SWING_THRESHOLDS.ROLLBACK_MAX_RETRIES; rollbackAttempt++) {
+                    const { data: rolled, error: rollbackErr } = await admin
+                      .from("dealer_assignments")
+                      .update({
+                        pre_assigned_attendance_id: row.pre_assigned_attendance_id,
+                        pre_assigned_at: row.pre_assigned_at,
+                        version: row.version + 2,
+                      })
+                      .eq("id", row.id)
+                      .eq("version", row.version + 1)
+                      .select("id");
+
+                    if (!rollbackErr && rolled && rolled.length > 0) {
+                      rollbackSuccess = true;
+                      console.log(`[Pass 1b] \u2705 Rollback succeeded for ${row.id}${rollbackAttempt > 0 ? ` (attempt ${rollbackAttempt + 1})` : ""}`);
+                      break;
+                    }
+
+                    // CAS failed or error — verify current state before deciding
+                    if (!rollbackErr && (!rolled || rolled.length === 0)) {
+                      const { data: currentAssignment } = await admin
+                        .from("dealer_assignments")
+                        .select("version, released_at, pre_assigned_attendance_id, status")
+                        .eq("id", row.id)
+                        .single();
+
+                      if (!currentAssignment) {
+                        console.error(
+                          `[Pass 1b] \U0001F6D2 Assignment ${row.id} NOT FOUND during rollback \u2014 ` +
+                          `dealer ${truncateId(row.pre_assigned_attendance_id)} may be stuck!`
+                        );
+                        await safeSendAlert(
+                          admin, cid,
+                          `\U0001F6D2 *ASSIGNMENT MISSING*: Assignment \`${truncateId(row.id)}\` not found during rollback. ` +
+                          `Dealer \`${truncateId(row.pre_assigned_attendance_id)}\` may need manual verification.`,
+                          botToken
+                        );
+                        if (row.pre_assigned_attendance_id) {
+                          try {
+                            await transitionDealerState(admin, row.pre_assigned_attendance_id, "available", "pass1b_rollback_missing_assignment");
+                            console.log(`[Pass 1b] \u2705 Dealer ${row.pre_assigned_attendance_id} recovered to available`);
+                            rollbackSuccess = true;
+                          } catch (recoveryErr) {
+                            console.error(`[Pass 1b] \u274C Failed to recover dealer:`, (recoveryErr as Error).message);
+                          }
+                        } else {
+                          rollbackSuccess = true;
+                        }
+                        break;
+                      }
+
+                      if ((currentAssignment as any).status !== "assigned" || currentAssignment.released_at !== null) {
+                        console.log(`[Pass 1b] Assignment ${row.id} no longer active (status: ${(currentAssignment as any).status})`);
+                        rollbackSuccess = true;
+                        break;
+                      }
+
+                      if (currentAssignment.version > row.version + 1) {
+                        const versionDiff = currentAssignment.version - (row.version + 1);
+                        console.error(
+                          `[Pass 1b] \U0001F6D2 Assignment ${row.id} version jumped by ${versionDiff} ` +
+                          `(expected ${row.version + 1}, found ${currentAssignment.version})`
+                        );
+                        const dealerNeedsRecovery = (currentAssignment as any).status === "assigned" &&
+                                                     currentAssignment.pre_assigned_attendance_id === null &&
+                                                     currentAssignment.released_at === null;
+                        if (dealerNeedsRecovery) {
+                          await safeSendAlert(
+                            admin, cid,
+                            `\U0001F6D2 *VERSION ANOMALY*: Assignment \`${truncateId(row.id)}\` version mismatch ` +
+                            `(expected ${row.version + 1}, found ${currentAssignment.version}). ` +
+                            `Dealer \`${truncateId(row.pre_assigned_attendance_id)}\` may be stuck. Manual check needed.`,
+                            botToken
+                          );
+                        } else {
+                          console.log(`[Pass 1b] Assignment ${row.id} active but appears resolved (version ${currentAssignment.version})`);
+                        }
+                        rollbackSuccess = true;
+                        break;
+                      }
+
+                      console.warn(
+                        `[Pass 1b] \u26A0\uFE0F Rollback attempt ${rollbackAttempt + 1}/${SWING_THRESHOLDS.ROLLBACK_MAX_RETRIES} ` +
+                        `for ${row.id} \u2014 unexpected CAS failure, retrying`
+                      );
+                    } else if (rollbackErr) {
+                      console.warn(
+                        `[Pass 1b] \u26A0\uFE0F Rollback attempt ${rollbackAttempt + 1}/${SWING_THRESHOLDS.ROLLBACK_MAX_RETRIES} ` +
+                        `for ${row.id}:`, rollbackErr.message
+                      );
+                    }
+
+                    if (rollbackAttempt < SWING_THRESHOLDS.ROLLBACK_MAX_RETRIES - 1) {
+                      const backoffMs = Math.min(
+                        SWING_THRESHOLDS.ROLLBACK_BASE_BACKOFF_MS * Math.pow(2, rollbackAttempt),
+                        SWING_THRESHOLDS.ROLLBACK_MAX_BACKOFF_MS
+                      );
+                      await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    }
+                  }
+
+                  if (!rollbackSuccess) {
+                    console.error(`[Pass 1b] \U0001F6D2\U0001F6D2 ROLLBACK FAILED after ${SWING_THRESHOLDS.ROLLBACK_MAX_RETRIES} attempts for ${row.id}`);
+                    await safeSendAlert(
+                      admin, cid,
+                      `\U0001F6D2\U0001F6D2 *ROLLBACK FAILED*: Assignment \`${truncateId(row.id)}\` stuck in inconsistent state. URGENT manual fix required!`,
+                      botToken
+                    );
+                  }
+
+                  continue;
+                }
+
+                successfulCritical.push(row.pre_assigned_attendance_id);
+              } catch (err) {
+                console.error(`[Pass 1b] \u274C Exception processing critical row ${row.id}:`, err);
+                failedCritical.push({
+                  assignmentId: row.id,
+                  reason: `Exception: ${(err as Error).message}`
+                });
+              }
             }
-            if (releaseFail > 0) {
-              console.error(`[Pass 1b] ❌ Released ${releaseOk}/${staleAttendanceIds.length} dealers (${releaseFail} failed)`);
+
+            // Bulk clear dealer_attendance pre-assigned fields for successful critical releases
+            if (successfulCritical.length > 0) {
+              const criticalCleanOk = await bulkClearDealerPreAssignedFields(
+                admin, successfulCritical, "critical"
+              );
+              if (!criticalCleanOk) {
+                await sendAlert(
+                  admin, cid,
+                  `\U0001F6D2 *CRITICAL* (${clubName}): Failed to clear ${successfulCritical.length} dealers after retries. Manual cleanup required!`,
+                  botToken
+                );
+              }
+            }
+
+            pass1bCriticalReleased = successfulCritical.length;
+
+            // ── Throttle Telegram alerts via CAS update ─────────────────────
+            const throttleThreshold = new Date(
+              Date.now() - SWING_THRESHOLDS.ALERT_THROTTLE_HOURS * 60 * 60 * 1000
+            ).toISOString();
+            const { data: alertUpdated, error: alertUpdateErr } = await admin
+              .from("clubs")
+              .update({ last_critical_alert_at: new Date().toISOString() })
+              .eq("id", cid)
+              .or(`last_critical_alert_at.is.null,last_critical_alert_at.lt.${throttleThreshold}`)
+              .select("id");
+
+            const shouldSendAlert = alertUpdateErr || (alertUpdated && alertUpdated.length > 0);
+            if (alertUpdateErr) {
+              console.error("[Pass 1b] \u26A0\uFE0F Alert throttle update failed \u2014 sending anyway:", alertUpdateErr.message);
+            }
+
+            if (shouldSendAlert) {
+              await sendCriticalAlert(admin, cid, clubName, trulyCritical, botToken);
             } else {
-              console.log(`[Pass 1b] ✅ All ${releaseOk} stale pre-assigned dealers released with context`);
+              console.log(`[Pass 1b] \U0001F507 Alert throttled (sent within last ${SWING_THRESHOLDS.ALERT_THROTTLE_HOURS}h)`);
             }
-          } else {
-            console.log(`[Pass 1b] ✅ Cleaned ${staleRows.length} stale pre_assign records for club ${cid}`);
           }
+
+          // ─── Tier 1+2: Stale pre-assign cleanup (60min+) ──────────────
+          // Build exclusion set from Tier 3
+          const criticalAssignmentIds = new Set(
+            (criticalRows ?? []).map((r: any) => (r as StalePreAssignRow).id)
+          );
+
+          // Hoist counters for summary log
+          let staleFoundCount = 0;
+          let trulyStaleCount = 0;
+          let tier2Count = 0;
+          const allSuccessfulAttIds: string[] = [];
+          const failedStaleTransitions: Array<{ rowId: string; dealerId: string; reason: string }> = [];
+
+          let safetyThresholdMin = 15;
+          let blockedRowsCount = 0;
+          let safeStaleRowsCount = 0;
+          let circuitBreakerThreshold = 0;
+
+          const { data: allStaleRaw, error: staleErr } = await admin
+            .from("dealer_assignments")
+            .select("id, pre_assigned_attendance_id, pre_assigned_at, version")
+            .eq("status", "assigned")
+            .not("pre_assigned_attendance_id", "is", null)
+            .lt("pre_assigned_at", overdueThreshold)
+            .lt("swing_due_at", nowISO)
+            .in("table_id", clubTableIds)
+            .limit(SWING_THRESHOLDS.RELEASE_BATCH_SIZE);
+
+          if (staleErr) {
+            console.error("[Pass 1b] \u274C Stale tier query error:", staleErr.message);
+          } else if (allStaleRaw && allStaleRaw.length > 0) {
+            // Filter out critically overdue (already handled above)
+            const staleRecords = (allStaleRaw as StalePreAssignRow[]).filter(
+              r => !criticalAssignmentIds.has(r.id)
+            );
+            staleFoundCount = staleRecords.length;
+
+            if (staleRecords.length > 0) {
+              console.log(`[Pass 1b] Found ${staleRecords.length} stale pre-assign records`);
+
+              // ── Classify into Tier 1 (truly stale) vs Tier 2 (still waiting) ──
+              const attendanceIds = Array.from(new Set(
+                staleRecords
+                  .map(r => r.pre_assigned_attendance_id)
+                  .filter((id): id is string => id !== null)
+              ));
+
+              const { data: staleAttendanceData, error: staleAttErr } = await admin
+                .from("dealer_attendance")
+                .select("id, current_state")
+                .in("id", attendanceIds);
+
+              if (staleAttErr) {
+                console.error("[Pass 1b] \u274C Stale attendance query failed:", staleAttErr.message);
+                console.warn("[Pass 1b] \u26A0\uFE0F Treating all as STILL WAITING (safe default) \u2014 skipping stale cleanup");
+              } else {
+                const attendanceMap = new Map<string, string>(
+                  (staleAttendanceData ?? []).map((a: DealerAttendanceState) => [a.id, a.current_state])
+                );
+
+                const trulyStaleRows: StalePreAssignRow[] = [];
+
+                for (const row of staleRecords) {
+                  if (!row.pre_assigned_attendance_id) continue;
+                  const dealerState = attendanceMap.get(row.pre_assigned_attendance_id);
+                  if (dealerState !== "pre_assigned") {
+                    trulyStaleRows.push(row);
+                  } else {
+                    tier2Count++;
+                  }
+                }
+
+                trulyStaleCount = trulyStaleRows.length;
+
+if (tier2Count > 0) {
+                  console.log(`[Pass 1b] ℹ️ ${tier2Count} stale assignments — dealer still pre_assigned — monitoring only`);
+                }
+
+                // ── Pass 1b SAFEGUARD: Block recently pre-assigned dealers ──
+                let safeStaleRows: StalePreAssignRow[];
+
+                try {
+                  const now = Date.now();
+                  safetyThresholdMin = Math.max(clubCfg.pre_announce_minutes + 5, 15);
+                  const safetyThresholdMs = safetyThresholdMin * 60 * 1000;
+
+                  const blockedRows: Array<{ id: string; age: number }> = [];
+                  safeStaleRows = [];
+
+                  for (const row of trulyStaleRows) {
+                    if (!row.pre_assigned_at) {
+                      safeStaleRows.push(row);
+                      continue;
+                    }
+                    const preAssignTime = new Date(row.pre_assigned_at).getTime();
+                    const ageMs = now - preAssignTime;
+                    const ageMinutes = Math.floor(ageMs / 60000);
+
+                    if (ageMs < safetyThresholdMs) {
+                      blockedRows.push({ id: row.id, age: ageMinutes });
+                      continue;
+                    }
+                    safeStaleRows.push(row);
+                  }
+
+                  if (blockedRows.length > 0) {
+                    const blockedSummary = blockedRows.length > 5
+                      ? `${blockedRows.slice(0, 5).map(r => `${truncateId(r.id)}(${r.age}min)`).join(', ')} +${blockedRows.length - 5} more`
+                      : blockedRows.map(r => `${truncateId(r.id)}(${r.age}min)`).join(', ');
+
+                    console.warn(
+                      `[Pass 1b] 🛡️ SAFEGUARD: Blocked ${blockedRows.length} assignments: ${blockedSummary} ` +
+                      `(threshold: ${safetyThresholdMin}min)`
+                    );
+                  }
+
+                  blockedRowsCount = blockedRows.length;
+
+                  circuitBreakerThreshold = clubTableIds.length === 0
+                    ? 0
+                    : Math.max(
+                        Math.min(Math.floor(clubTableIds.length * 0.3), clubTableIds.length - 1),
+                        Math.min(clubTableIds.length, 3)
+                      );
+
+                  if (safeStaleRows.length === 0) {
+                    console.log(`[Pass 1b] ✅ No stale assignments for ${clubTableIds.length} tables`);
+                    safeStaleRowsCount = 0;
+                  } else if (safeStaleRows.length >= circuitBreakerThreshold) {
+                    const severity = safeStaleRows.length > clubTableIds.length * 0.5 ? '🚨 CRITICAL' : '⚠️ WARNING';
+
+                    console.error(
+                      `[Pass 1b] ${severity}: ${safeStaleRows.length} stale assignments ` +
+                      `(${Math.round(safeStaleRows.length / clubTableIds.length * 100)}% of ${clubTableIds.length} tables) ` +
+                      `exceeds threshold ${circuitBreakerThreshold}`
+                    );
+
+                    await safeSendAlert(admin, cid,
+                      `${severity} *CIRCUIT BREAKER*: ${safeStaleRows.length}/${clubTableIds.length} stale assignments. ` +
+                      `Processing limited to ${circuitBreakerThreshold}. Manual review required.`,
+                      botToken
+                    );
+
+                    const originalCount = safeStaleRows.length;
+                    safeStaleRows.splice(circuitBreakerThreshold);
+                    safeStaleRowsCount = circuitBreakerThreshold;
+                    console.warn(`[Pass 1b] Limited processing from ${originalCount} to ${circuitBreakerThreshold}`);
+                  } else {
+                    console.log(`[Pass 1b] Processing ${safeStaleRows.length} stale assignments (threshold: ${circuitBreakerThreshold})`);
+                    safeStaleRowsCount = safeStaleRows.length;
+                  }
+                } catch (safeguardErr) {
+                  console.error('[Pass 1b] ⚠️ Safeguard failed, falling back to unfiltered:', (safeguardErr as Error).message);
+                  safeStaleRows = trulyStaleRows;
+                  safeStaleRowsCount = trulyStaleRows.length;
+                  blockedRowsCount = 0;
+                  circuitBreakerThreshold = 0;
+                }
+
+                // ── Tier 1: Process safe stale assignments ────────────────
+                if (safeStaleRows.length > 0) {
+                  for (const row of safeStaleRows) {
+                    try {
+                      // Guard: skip rows with missing attendance ID
+                      if (!row.pre_assigned_attendance_id) {
+                        console.warn(`[Pass 1b] \u26A0\uFE0F Skipping row ${row.id} \u2014 missing attendance ID`);
+                        continue;
+                      }
+
+                      const { data: updData, error: updErr } = await admin
+                        .from("dealer_assignments")
+                        .update({
+                          pre_assigned_attendance_id: null,
+                          pre_assigned_at: null,
+                          version: row.version + 1,
+                        })
+                        .eq("id", row.id)
+                        .is("released_at", null)
+                        .select("id");
+
+                      if (updErr || !updData || updData.length === 0) {
+                        failedStaleTransitions.push({
+                          rowId: row.id,
+                          dealerId: row.pre_assigned_attendance_id,
+                          reason: updErr?.message ?? "Update failed \u2014 no rows affected",
+                        });
+                        continue;
+                      }
+
+                      const transResult = await transitionDealerState(
+                        admin, row.pre_assigned_attendance_id,
+                        "available",
+                        "pass1b_release_stale_pre_assign"
+                      );
+
+                      if (transResult.success || transResult.noop) {
+                        allSuccessfulAttIds.push(row.pre_assigned_attendance_id);
+                      } else {
+                        failedStaleTransitions.push({
+                          rowId: row.id,
+                          dealerId: row.pre_assigned_attendance_id,
+                          reason: transResult.error ?? "Unknown transition error",
+                        });
+                      }
+                    } catch (err) {
+                      failedStaleTransitions.push({
+                        rowId: row.id,
+                        dealerId: row.pre_assigned_attendance_id ?? "unknown",
+                        reason: (err as Error).message,
+                      });
+                    }
+                  }
+
+                  if (failedStaleTransitions.length > 0) {
+                    console.error(`[Pass 1b] \u274C ${failedStaleTransitions.length} stale transitions failed:`);
+                    failedStaleTransitions.slice(0, SWING_THRESHOLDS.MAX_ERRORS_TO_LOG).forEach(({ rowId, dealerId, reason }) => {
+                      console.error(`  - ${truncateId(rowId)} (dealer ${truncateId(dealerId)}): ${reason}`);
+                    });
+                    if (failedStaleTransitions.length > SWING_THRESHOLDS.MAX_ERRORS_TO_LOG) {
+                      console.error(`  ... and ${failedStaleTransitions.length - SWING_THRESHOLDS.MAX_ERRORS_TO_LOG} more`);
+                    }
+                  }
+
+                  if (allSuccessfulAttIds.length > 0) {
+                    const staleCleanOk = await bulkClearDealerPreAssignedFields(
+                      admin, allSuccessfulAttIds, "stale"
+                    );
+                    if (!staleCleanOk) {
+                      await sendAlert(
+                        admin, cid,
+                        `\U0001F6D2 *CRITICAL* (${clubName}): Pass 1b bulk clear failed for ${allSuccessfulAttIds.length} dealers. Manual cleanup required!`,
+                        botToken
+                      );
+                    }
+                  }
+
+                  console.log(`[Pass 1b] \u2705 Released ${allSuccessfulAttIds.length}/${safeStaleRows.length} stale dealers`);
+                }
+              }
+            }
+          }
+
+          // ── Pass 1b summary log ──────────────────────────────────────────
+          console.log("[Pass 1b] Summary", JSON.stringify({
+            club_id: cid,
+            critical: {
+              found: criticalRows?.length ?? 0,
+              released: pass1bCriticalReleased,
+              failed: failedCritical?.length ?? 0,
+            },
+            stale: {
+              found: staleFoundCount,
+              truly_stale: trulyStaleCount,
+              safeguard_blocked: blockedRowsCount,
+              safeguard_threshold_min: safetyThresholdMin,
+              circuit_breaker: circuitBreakerThreshold,
+              processed: safeStaleRowsCount,
+              still_waiting: tier2Count,
+              released: allSuccessfulAttIds.length,
+              failed: failedStaleTransitions.length,
+            },
+            timestamp: new Date().toISOString(),
+          }));
         }
 
         // ── Pass 1c: Release orphaned pre_assigned (no table, no assignment) ──
-        const { data: clubDealers } = await admin
-          .from("dealers")
-          .select("id")
-          .eq("club_id", cid);
-        const clubDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
-        if (clubDealerIds.length > 0) {
+        if (cidDealerIds.length > 0) {
           const { data: orphanedAttendances } = await admin
             .from("dealer_attendance")
             .select("id")
             .eq("current_state", "pre_assigned")
             .is("pre_assigned_table_id", null)
-            .in("dealer_id", clubDealerIds);
+            .in("dealer_id", cidDealerIds);
           if (orphanedAttendances && orphanedAttendances.length > 0) {
             const orphanIds = orphanedAttendances.map((r: { id: string }) => r.id);
             console.log(`[Pass 1c] Releasing ${orphanIds.length} orphaned pre_assigned dealers...`);
@@ -715,23 +1501,82 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // ── SEED: Pre-assigned dealers remaining after cleanup ────────────────
+        // Runs AFTER Pass 1b/1c cleanup so only TRULY pre-assigned dealers
+        // (within the 10-min RECENT window) are excluded from Pass 2.
+        // Dealers released by Pass 1b (stale) or Pass 1c (orphaned) are no
+        // longer pre_assigned and correctly remain eligible for pre-assignment.
+        if (!dryRun) {
+          const { data: preAssignedDealers } = await admin
+            .from("dealer_attendance")
+            .select("id")
+            .eq("current_state", "pre_assigned")
+            .eq("status", "checked_in")
+            .in("dealer_id", cidDealerIds);
+
+          if (preAssignedDealers && preAssignedDealers.length > 0) {
+            for (const d of preAssignedDealers) cycleExcludedIds.add(d.id);
+            console.log(`[process-swing] Seeded ${preAssignedDealers.length} pre-assigned dealers into cycleExcludedIds for club ${cid}`);
+          }
+        }
+
+        // ── PASS 1.5 — Rotation Planner (greedy batch pre-assign) ──────────
+        // When enabled, plans assignments for tables in the upcoming rotation
+        // window before Pass 2 runs. Uses greedy solver to find optimal
+        // dealer-table pairings. Feature-flagged per club.
+        if (!forceAll && !preAssignOnly && clubCfg.rotation_planner_enabled) {
+          try {
+            const p15Result = await pass15RotationPlanner(admin, cid, {
+              dryRun: !!dryRun,
+              preAnnounceMinutes: clubCfg.pre_announce_minutes,
+              requiredGameTypes: required_game_types,
+              cycleExcludedIds,
+              clubId: cid,
+            });
+            console.log(
+              `[Pass 1.5] ${p15Result.assigned} assigned, ` +
+              `${p15Result.unassigned} unassigned` +
+              `${p15Result.dryRun ? " (dryRun)" : ""}`
+            );
+            if (p15Result.errors.length > 0) {
+              console.error(
+                `[Pass 1.5] ${p15Result.errors.length} write errors:`,
+                p15Result.errors.map(e => `${e.tableId}: ${e.error}`).join("; ")
+              );
+            }
+          } catch (err: any) {
+            console.error(`[Pass 1.5] ❌ Error:`, err.message);
+          }
+        }
+
         // ── PASS 2 — Pre-assign incoming dealers ────────────────────────
         // Uses pickNextDealer + CAS RPC to atomically pre-assign dealers
         // for tables whose swing due falls within the pre-announce window.
         // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
         if (!forceAll) {
+          const pass2Options: Parameters<typeof pass2PreAssignNext>[3] = {
+            clubZone,
+            notifier,
+            cycleExcludedIds,
+            botToken: botToken ?? "",
+          };
+          if (preAssignOnly) {
+            pass2Options.manualWindowMinutes = manualWindowMinutes;
+          }
           const pass2Result = await pass2PreAssignNext(
             admin, cid, clubCfg.pre_announce_minutes,
-            {
-              clubZone,
-              notifier,
-              cycleExcludedIds,
-              botToken: botToken ?? "",
-            },
+            pass2Options,
           );
           if (pass2Result.pre_assigned_count > 0) {
             console.log(`[Pass 2] ✅ Pre-assigned ${pass2Result.pre_assigned_count} dealers`);
           }
+          metrics.total += pass2Result.pre_assigned_count;
+          metrics.success += pass2Result.pre_assigned_count;
+        }
+
+        if (preAssignOnly) {
+          console.log(`[process-swing] pre_assign_only mode — skipping Pass 2.5+ for club ${cid}`);
+          continue;
         }
 
         // ── PASS 2.5 — Assign initial dealers to empty assignments ──────
@@ -764,6 +1609,31 @@ Deno.serve(async (req: Request) => {
         const nowPlusBuf = new Date(Date.now() + SWING_WINDOW_BUFFER_MINUTES * 60 * 1000).toISOString();
         const now = new Date().toISOString();
 
+        // ═══ DIAGNOSTIC: Compare simple vs nested query (Phase 1) ═══════
+        try {
+          const diagnostic = await runPass3Diagnostic(admin, cid, forceAll);
+          console.log('[Pass 3 Diagnostic] Summary:', {
+            confirmed_bug: diagnostic.confirmed_bug,
+            lost_rows: diagnostic.lost_rows,
+            simple_count: diagnostic.simple_query.count,
+            nested_count: diagnostic.nested_query.data_length
+          });
+          await admin.from("diagnostic_logs").insert({
+            timestamp: diagnostic.timestamp,
+            club_id: diagnostic.club_id,
+            diagnostic_type: 'pass3_query_issue',
+            result: diagnostic,
+            metadata: { force_all: forceAll, pass: 3 }
+          }).then(({ error: insertErr }) => {
+            if (insertErr) {
+              console.warn('[Pass 3 Diagnostic] Failed to save:', insertErr.message);
+            }
+          });
+        } catch (diagErr: any) {
+          console.warn('[Pass 3 Diagnostic] Diagnostic failed (non-blocking):', diagErr?.message);
+        }
+        // ═══ End diagnostic ═════════════════════════════════════════════
+
         const query = admin
           .from("dealer_assignments")
           .select(
@@ -774,8 +1644,9 @@ Deno.serve(async (req: Request) => {
              dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
           )
           .eq("status", "assigned")
+          .is("released_at", null)
           .is("swing_processed_at", null)
-          .eq("club_id", cid);  // Phase 1: use denormalized club_id (NOT NULL + indexed)
+          .eq("club_id", cid);
 
         if (!forceAll) {
           query.lte("swing_due_at", nowPlusBuf);
@@ -828,11 +1699,79 @@ Deno.serve(async (req: Request) => {
 
         for (const assignment of dueAssignments) {
           metrics.total++;
+          try {
           const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
           const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
           const minsLeft = Math.round(
             (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
           );
+
+          // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
+          // If swing is overdue by > 60 minutes, this is likely an infinite retry
+          // loop caused by stale dealer or TOCTOU race.
+          // Release pre-assigned dealer, mark assignment processed, throttle alerts.
+          if (minsLeft < -SWING_THRESHOLDS.OVERDUE_THRESHOLD_MINUTES) {
+            console.error(
+              `[process-swing] 🚨 CIRCUIT BREAKER: ${tableName} overdue by ${-minsLeft}min`
+            );
+            if (!dryRun) {
+              // 1. Release pre-assigned dealer if exists
+              if (assignment.pre_assigned_attendance_id) {
+                await admin
+                  .from("dealer_assignments")
+                  .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
+                  .eq("id", assignment.id)
+                  .is("released_at", null);
+                await transitionDealerState(
+                  admin,
+                  assignment.pre_assigned_attendance_id,
+                  "available",
+                  "circuit_breaker_force_release"
+                );
+              }
+
+              // 2. Mark assignment processed so cron escapes the loop
+              await admin
+                .from("dealer_assignments")
+                .update({
+                  swing_processed_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", assignment.id);
+
+              // 3. Throttled alert using clubs.last_critical_alert_at (CAS update)
+              const throttleThreshold = new Date(
+                Date.now() - SWING_THRESHOLDS.ALERT_THROTTLE_HOURS * 60 * 60 * 1000
+              ).toISOString();
+              const { data: alertUpdated, error: alertUpdateErr } = await admin
+                .from("clubs")
+                .update({ last_critical_alert_at: new Date().toISOString() })
+                .eq("id", cid)
+                .or(`last_critical_alert_at.is.null,last_critical_alert_at.lt.${throttleThreshold}`)
+                .select("id");
+
+              const shouldAlert = !alertUpdateErr && alertUpdated && alertUpdated.length > 0;
+              if (shouldAlert) {
+                const chatId = await getClubTelegramChatId(admin, cid);
+                if (botToken && chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `🚨 *CIRCUIT BREAKER* — Bàn *${tableName}*\n` +
+                    `Dealer *${outgoingDealer?.full_name || "Unknown"}* kẹt ${-minsLeft}ph.\n` +
+                    (assignment.pre_assigned_attendance_id
+                      ? `Pre-assign đã force-release. `
+                      : `Không có pre-assign. `) +
+                    `⚠️ Cần can thiệp thủ công!`,
+                    {}
+                  );
+                }
+              } else {
+                console.log(`[Pass 3] 🔇 Alert throttled for club ${cid} (sent within last ${SWING_THRESHOLDS.ALERT_THROTTLE_HOURS}h)`);
+              }
+            }
+            metrics.failed++;
+            continue;
+          }
 
           if (assignment.pre_assigned_attendance_id) {
             // ── Pre-assigned swing path ───────────────────────────────────
@@ -841,6 +1780,7 @@ Deno.serve(async (req: Request) => {
               minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
               clubId: cid,
               availableDealerCount,
+              clubDealerIds: cidDealerIds,
             });
 
             const { data: rpcResult, error: rpcErr } = await admin.rpc(
@@ -912,6 +1852,7 @@ Deno.serve(async (req: Request) => {
                       minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
                       clubId: cid,
                       availableDealerCount,
+                      clubDealerIds: cidDealerIds,
                     });
 
                 const fbDealer = await pickNextDealer(admin, cid, {
@@ -988,12 +1929,13 @@ Deno.serve(async (req: Request) => {
 
             const breakDecision = isOtDealer
               ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
-              : await evaluateBreakNeed(admin, assignment.attendance_id, {
-                  maxWorkMinutes: swingDurResult.durationMinutes * 3,
-                  minWorkMinutes: swingDurResult.durationMinutes * 2,
-                  clubId: cid,
-                  availableDealerCount,
-                });
+: await evaluateBreakNeed(admin, assignment.attendance_id, {
+                   maxWorkMinutes: swingDurResult.durationMinutes * 3,
+                   minWorkMinutes: swingDurResult.durationMinutes * 2,
+                   clubId: cid,
+                   availableDealerCount,
+                   clubDealerIds: cidDealerIds,
+                 });
 
             const nextExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
 
@@ -1127,6 +2069,12 @@ Deno.serve(async (req: Request) => {
               }
             } else if (outcome === "no_dealer") {
               metrics.no_dealer++;
+              console.warn(
+                `[process-swing] no_dealer for ${tableName}: ` +
+                `level=${isOtDealer ? (otMinutes >= 20 ? 3 : 2) : 1} ` +
+                `nextDealer=${nextDealer?.id ?? "null"} ` +
+                `retry=${swingResult?.retry_attempts ?? 0}`
+              );
               if (swingResult?.is_new_overtime === true) {
                 const chatId = await getClubTelegramChatId(admin, cid);
                 if (botToken && chatId) {
@@ -1176,6 +2124,40 @@ Deno.serve(async (req: Request) => {
             } else {
               metrics.failed++;
             }
+          }
+          } catch (swingErr: any) {
+            metrics.failed++;
+            console.error(
+              `[Pass 3] ❌ Swing failed for assignment ${assignment.id} (table ${assignment.table_id}):`,
+              swingErr?.message ?? swingErr
+            );
+            try {
+              await admin
+                .from("dealer_assignments")
+                .update({
+                  pre_assigned_attendance_id: null,
+                  pre_assigned_at: null,
+                })
+                .eq("id", assignment.id);
+              if (assignment.pre_assigned_attendance_id) {
+                await transitionDealerState(
+                  admin,
+                  assignment.pre_assigned_attendance_id,
+                  "available",
+                  "pass3_swing_failure_cleanup"
+                );
+                console.log(
+                  `[Pass 3] Released stuck dealer ${assignment.pre_assigned_attendance_id} ` +
+                  `from failed assignment ${assignment.id}`
+                );
+              }
+            } catch (cleanupErr: any) {
+              console.error(
+                `[Pass 3] ⚠️ Cleanup failed for ${assignment.id}:`,
+                cleanupErr?.message ?? cleanupErr
+              );
+            }
+            continue;
           }
         }
 
@@ -1266,7 +2248,7 @@ Deno.serve(async (req: Request) => {
         // ── All-tables-OT alert ────────────────────────────────────────────
         // Query total active assignments for this club (not just Pass 3 window).
         // If NO active assignment is free of OT, the entire pool is stuck.
-        const clubTableIds = await getTableIdsForClub(admin, cid);
+        // Note: clubTableIds is cached at the start of club processing
         const { count: totalActiveCount } = await admin
           .from("dealer_assignments")
           .select("id", { count: "exact", head: true })
@@ -1313,17 +2295,40 @@ Deno.serve(async (req: Request) => {
             { onConflict: "club_id,date", ignoreDuplicates: false }
           );
         }
-      } finally {
-        // No advisory lock to release — we use per-row CAS.
-        // Race_lost handling in Pass 3 deals with concurrent modifications.
-      }
-    }
 
-    const processingMs = Date.now() - startTime;
+        clubsProcessed++; // Track successful club processing
+
+      } catch (err) {
+        console.error(`[process-swing] \u274C Unhandled error for club ${cid}:`, err);
+      } finally {
+        if (lockAcquired) {
+          try {
+            await admin.rpc("release_club_lock", { p_club_id: cid });
+          } catch (releaseErr) {
+            console.error(`[process-swing] \u274C Lock release failed for ${cid}:`, releaseErr);
+          }
+        }
+      }
+    } // END club processing loop
+
+    const totalExecutionMs = Date.now() - executionStartTime;
+
+    // ═══════════════════════════════════════════════════════════════
+    // Execution Summary — logged once per invocation after all clubs
+    // ═══════════════════════════════════════════════════════════════
+    console.log("[process-swing] Execution summary", JSON.stringify({
+      total_clubs: clubIds.length,
+      processed: clubsProcessed,
+      skipped_locked: clubsSkippedLocked,
+      skipped_error: clubsSkippedError,
+      execution_time_ms: totalExecutionMs,
+      timestamp: new Date().toISOString(),
+    }));
+
     return new Response(
       JSON.stringify({
         ok: true,
-        processing_ms: processingMs,
+        execution_time_ms: totalExecutionMs,
         metrics: metricsPerClub,
         dry_run: dryRun,
       }),

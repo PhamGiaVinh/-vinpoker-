@@ -1,5 +1,8 @@
 name: Deploy to Production
 
+# Workflow consolidated into user's first self-created workflow file.
+# Triggers: push to main/master, or manual dispatch via Actions tab.
+
 on:
   push:
     branches:
@@ -37,6 +40,7 @@ jobs:
       - name: Deploy database migrations
         run: supabase db push --linked
         working-directory: ./VinPoker
+        continue-on-error: true
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}

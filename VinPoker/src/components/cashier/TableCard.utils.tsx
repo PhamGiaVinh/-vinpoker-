@@ -33,7 +33,7 @@ function glowForMode(mode: TableCardTimerResult["mode"]): number {
   }
 }
 
-export function computeTimer(
+function computeTimer(
   now: Date,
   assignment: TableCardAssignment | null,
   config: TableCardSwingConfig,
@@ -108,7 +108,7 @@ export function computeTimer(
 
 const ClockContext = createContext<Date>(new Date());
 
-export function ClockProvider({ children }: { children: ReactNode }) {
+function ClockProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -130,14 +130,14 @@ export function ClockProvider({ children }: { children: ReactNode }) {
   return <ClockContext.Provider value={now}>{children}</ClockContext.Provider>;
 }
 
-export function useClock(): Date {
+function useClock(): Date {
   return useContext(ClockContext);
 }
 
 // ─── useTableTimer — memoized timer hook ─────────────────────────────────────
 // Uses primitive deps to ensure useMemo actually caches
 
-export function useTableTimer(
+function useTableTimer(
   assignment: TableCardAssignment | null,
   config: TableCardSwingConfig,
 ): TableCardTimerResult {

@@ -1,0 +1,99 @@
+- generic [ref=e2]:
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - link "VBacker logo VBacker" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - img "VBacker logo" [ref=e7]
+          - generic [ref=e8]: VBacker
+        - navigation [ref=e9]:
+          - link "Schedule" [ref=e10] [cursor=pointer]:
+            - /url: /
+          - link "Clubs" [ref=e11] [cursor=pointer]:
+            - /url: /clubs
+          - link "STAKE" [ref=e12] [cursor=pointer]:
+            - /url: /marketplace
+          - link "Marketplace" [ref=e13] [cursor=pointer]:
+            - /url: /find-backer
+          - link "Docs" [ref=e14] [cursor=pointer]:
+            - /url: /documents
+          - link "Ranking" [ref=e15] [cursor=pointer]:
+            - /url: /leaderboard
+          - link "Account" [ref=e16] [cursor=pointer]:
+            - /url: /account
+        - generic [ref=e17]:
+          - combobox [ref=e18] [cursor=pointer]:
+            - generic [ref=e19]:
+              - img [ref=e20]
+              - generic: 🇺🇸 ENG
+            - img [ref=e23]
+          - button "Login" [ref=e25] [cursor=pointer]
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - heading "Tournament Schedule" [level=1] [ref=e30]
+            - paragraph [ref=e31]: Track upcoming poker tournaments, book your stack and head straight to the felt — never miss a hand.
+          - generic [ref=e32]:
+            - button "WEEKLY" [ref=e33] [cursor=pointer]:
+              - generic [ref=e34]: WEEKLY
+            - button "DAILY" [ref=e35] [cursor=pointer]:
+              - generic [ref=e36]: DAILY
+            - button "NEWS" [ref=e37] [cursor=pointer]:
+              - img [ref=e38]
+              - generic [ref=e41]: NEWS
+            - button "INTERNATIONAL SERIES" [ref=e42] [cursor=pointer]:
+              - generic [ref=e43]: INTERNATIONAL SERIES
+            - button "LIVESTREAM" [ref=e44] [cursor=pointer]:
+              - img [ref=e45]
+              - generic [ref=e51]: LIVESTREAM
+            - button "redeem PACKAGES" [ref=e52] [cursor=pointer]:
+              - generic [ref=e53]: redeem
+              - generic [ref=e54]: PACKAGES
+        - generic [ref=e55]:
+          - complementary [ref=e56]:
+            - generic [ref=e58]:
+              - button "Filters":
+                - heading "Filters" [level=3]
+              - generic [ref=e59]:
+                - generic [ref=e60]:
+                  - generic [ref=e61]: Game Type
+                  - generic [ref=e62] [cursor=pointer]:
+                    - checkbox "No Limit Hold'em" [checked] [ref=e63]:
+                      - generic:
+                        - img
+                    - generic [ref=e64]: No Limit Hold'em
+                  - generic [ref=e65] [cursor=pointer]:
+                    - checkbox "Pot Limit Omaha" [checked] [ref=e66]:
+                      - generic:
+                        - img
+                    - generic [ref=e67]: Pot Limit Omaha
+                  - generic [ref=e68] [cursor=pointer]:
+                    - checkbox "Mixed Games" [checked] [ref=e69]:
+                      - generic:
+                        - img
+                    - generic [ref=e70]: Mixed Games
+                - generic [ref=e71]:
+                  - generic [ref=e72]: Buy-In Range
+                  - combobox [ref=e73] [cursor=pointer]:
+                    - generic: All Stakes
+                    - img [ref=e74]
+                - generic [ref=e76]:
+                  - generic [ref=e77]: Status
+                  - generic [ref=e78]:
+                    - button "Upcoming" [ref=e79] [cursor=pointer]
+                    - button "Late Reg" [ref=e80] [cursor=pointer]
+            - generic [ref=e81]:
+              - img [ref=e83]
+              - generic [ref=e89]:
+                - generic [ref=e90]: VIP Main Event
+                - generic [ref=e91]: $1M GTD · Coming Soon
+          - generic [ref=e92]:
+            - generic [ref=e95]:
+              - heading "VIP Main Event" [level=2] [ref=e96]
+              - generic [ref=e97]: $1M GTD · Coming Soon
+            - generic [ref=e99]: Chưa có CLB nào tải lên lịch thi đấu.
+    - button "Cài app VBacker" [ref=e100] [cursor=pointer]:
+      - img [ref=e101]
+      - generic [ref=e104]: Cài app

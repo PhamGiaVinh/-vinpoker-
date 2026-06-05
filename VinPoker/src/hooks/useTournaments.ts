@@ -30,7 +30,7 @@ export function useTournaments(clubId: string | undefined) {
             table_id,
             game_tables (
               id,
-              name
+              table_name
             )
           )
         `
@@ -63,7 +63,7 @@ export function useActiveTournaments(clubId: string | undefined) {
             table_id,
             game_tables (
               id,
-              name
+              table_name
             )
           )
         `

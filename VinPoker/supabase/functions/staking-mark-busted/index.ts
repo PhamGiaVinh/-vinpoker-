@@ -2,15 +2,13 @@
 // Sets player_busted_out=true on the deal, triggering early_closed + backer notifications.
 // Auth: cashier (is_club_cashier or super_admin)
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import {
+  corsHeaders,
+  json,
+  createAdminClient,
+  authenticateUser,
+} from "../_shared/staking-common.ts";
 
 const BodySchema = z.object({
   deal_id: z.string().uuid(),
@@ -20,26 +18,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Missing auth" }, 401);
-
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader }, fetch: retryFetch } }
-    );
-    const { data: userData } = await userClient.auth.getUser();
-    if (!userData?.user) return json({ error: "Invalid token" }, 401);
-    const uid = userData.user.id;
+    const auth = await authenticateUser(req);
+    if (auth instanceof Response) return auth;
+    const uid = auth.uid;
 
     const parsed = await parseBody(req, BodySchema, corsHeaders);
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const admin = createAdminClient();
 
     // Fetch deal to verify cashier has access to the club
     const { data: deal, error: dErr } = await admin
@@ -95,9 +82,4 @@ Deno.serve(async (req) => {
   }
 });
 
-function json(b: unknown, status = 200) {
-  return new Response(JSON.stringify(b), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+

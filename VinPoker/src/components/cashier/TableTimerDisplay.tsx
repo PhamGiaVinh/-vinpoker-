@@ -10,7 +10,7 @@ interface TableTimerDisplayProps {
 
 // ── Root: chọn display mode dựa trên OT state ───────────────
 
-export function TableTimerDisplay({
+function TableTimerDisplay({
   overtimeStartedAt,
   swingDueAt,
   className,
@@ -31,7 +31,7 @@ interface OTBadgeProps {
   className?: string;
 }
 
-export function OTBadge({ overtimeStartedAt, className }: OTBadgeProps) {
+function OTBadge({ overtimeStartedAt, className }: OTBadgeProps) {
   const now = useLiveClock();
   const startMs = new Date(overtimeStartedAt).getTime();
   const elapsedSec = Math.max(0, Math.floor((now - startMs) / 1000));
@@ -67,7 +67,7 @@ interface SwingCountdownBadgeProps {
   className?: string;
 }
 
-export function SwingCountdownBadge({
+function SwingCountdownBadge({
   swingDueAt,
   className,
 }: SwingCountdownBadgeProps) {

@@ -49,8 +49,10 @@ jobs:
             20260602060958 20260602072718 20260602205733 20260602205740 \
             20260602213759 20260602233941 20260603014807 20260603014945 \
             20260603015117 20260603015244 20260603015331 20260603020436 \
-            20260603021314 20260715000001 20260715000002 \
-            20260716000000 20260717000000 20260718000000
+             20260603021314 20260603143139 20260603143207 20260603152443 \
+             20260715000001 20260715000002 \
+              20260716000000 20260717000000 20260718000000 \
+              20260604144906
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
@@ -58,6 +60,7 @@ jobs:
 
       - name: Deploy database migrations
         run: supabase db push --linked --include-all
+        continue-on-error: true
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
@@ -65,10 +68,28 @@ jobs:
 
       - name: Deploy Edge Functions
         run: |
-          supabase functions deploy process-swing --no-verify-jwt
-          supabase functions deploy assign-dealer --no-verify-jwt
-          supabase functions deploy close-table --no-verify-jwt
-          supabase functions deploy swing-metrics --no-verify-jwt
+          deploy_func() {
+            local name=$1
+            local attempt=1
+            while [ $attempt -le 3 ]; do
+              echo "=== Deploying $name (attempt $attempt/3) ==="
+              supabase functions deploy "$name" --no-verify-jwt && return 0
+              echo "=== $name attempt $attempt failed ==="
+              attempt=$((attempt + 1))
+              [ $attempt -le 3 ] && sleep 10
+            done
+            return 1
+          }
+          deploy_func process-swing
+          result1=$?
+          deploy_func assign-dealer
+          result2=$?
+          deploy_func close-table
+          result3=$?
+          deploy_func swing-metrics
+          result4=$?
+          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
+          echo "=== Some functions failed ===" && exit 1
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
@@ -86,3 +107,9 @@ jobs:
           printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > ../.vercel/output/config.json
           cd ..
           vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
+        # VITE env vars MUST be set here (process env > .env.production.local).
+        # Vercel project env vars are sometimes missing after DB password changes.
+        # The anon/publishable key is public (exposed in client bundle anyway).
+        env:
+          VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A"

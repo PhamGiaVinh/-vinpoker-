@@ -39,7 +39,7 @@ function layout(opts: { title: string; intro: string; rows: Array<[string, strin
 const fmtVnd = (n: number | null | undefined) =>
   n == null ? "—" : new Intl.NumberFormat("vi-VN").format(Number(n)) + " ₫";
 
-export function emailDealFunded(opts: { label: string; deal_id: string; escrow_vnd?: number | null }) {
+function emailDealFunded(opts: { label: string; deal_id: string; escrow_vnd?: number | null }) {
   return {
     subject: "Đã xác nhận hỗ trợ — Sẵn sàng tham gia tập huấn",
     html: layout({
