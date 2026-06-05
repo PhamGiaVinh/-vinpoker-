@@ -406,3 +406,58 @@ The `diagnostic_logs` table can be dropped safely if needed.
 - **Manual cleanup:** No auto-cleanup function — I'll purge `diagnostic_logs` manually after Phase 3 confirmed
 - **Branch protection:** Working on branch `fix/phase1-nested-select-diagnostic`, not master
 - **Risk level:** ZERO — only adds logging, no behavior change
+
+---
+
+# 📊 PHASE 1 RESULTS — 2026-06-05 21:36
+
+## Diagnostic Run Stats (6 runs over 2 minutes)
+
+| Metric | Value |
+|--------|-------|
+| Total diagnostic runs | 6 (3 cron cycles × 2 clubs) |
+| Confirmed bugs | **0** |
+| Partial row loss | **0** |
+| Clubs diagnosed | 2 (canary + secondary) |
+| First run | 21:34:03 |
+| Last run | 21:36:05 |
+| Span | 122 seconds |
+
+## Index Performance
+
+```
+EXPLAIN: Index Scan using idx_assignments_due_swing
+  Index Cond: (club_id = '...' AND swing_due_at <= now() + 2min)
+  Buffers: shared hit=1
+  Planning Time: 1.674 ms
+  Execution Time: 0.082 ms  ← VERY FAST
+```
+
+✅ **New index is being used.** Query performance excellent.
+
+## Sample Data Verified
+
+- 2 stuck assignments (Bàn 1: `ae48fd8c`, Bàn 100: `3d6b44b1`) were **processed at 21:36:05**
+- `swing_processed_at` set, `pre_assigned_attendance_id` cleared
+- Both FKs verified intact (`table_exists: true`, `attendance_exists: true`)
+
+## 🎯 Conclusion
+
+**PostgREST nested select bug is NOT confirmed in current state.**
+
+- `simple_count == nested_count` for all 6 runs
+- `lost_rows == 0` for all 6 runs
+- `confirmed_bug == false` for all 6 runs
+
+**Hypothesis:** The original "stuck assignments" issue was likely caused by:
+1. Edge function state from earlier deploys (cold restart fixed it)
+2. Timing window where cron was delayed (auto-recovered)
+3. Original 3 stuck assignments had a **different issue** (e.g., missing FK, different status) that was masked by manual SQL fix
+
+## 🚦 Next Steps
+
+1. ✅ **Phase 1 complete** — Diagnostic deployed, index added, bug not confirmed
+2. ⏭️ **Decision:** Continue monitoring OR proceed to Phase 2 (Lock timeout)
+3. ⏭️ **Phase 2.5:** Decide if nested select fix is still needed (8 other locations) — recommend YES for safety
+4. ⏭️ **Phase 3:** Data integrity fixes still relevant (#4 IMMUTABLE, #5 race, #6 lock)
+5. 📝 **Document** root cause analysis once monitoring confirms no regression
