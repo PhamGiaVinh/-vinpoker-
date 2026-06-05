@@ -52,33 +52,10 @@ export interface PreAssignEvent {
   minutesLeft: number;
 }
 
-export interface OvertimeEvent {
-  type: "overtime";
-  dealerName: string;
-  username: string | null;
-  tableName: string;
-}
-
-export interface TableReopenEvent {
-  type: "table_reopen";
-  tableName: string;
-  dealerName: string;
-  username: string | null;
-}
-
-export interface NoDealerEvent {
-  type: "no_dealer";
-  tableName: string;
-  zone: string | null;
-}
-
 export type DealerEvent =
   | SwingInEvent
   | BreakStartEvent
-  | PreAssignEvent
-  | OvertimeEvent
-  | TableReopenEvent
-  | NoDealerEvent;
+  | PreAssignEvent;
 
 // ── Format helpers ─────────────────────────────────────────────────────────
 
@@ -110,15 +87,6 @@ function formatEventLine(event: DealerEvent): string {
         `${event.inName}${handle(event.inUsername)} vào`,
         `(${hhmm(event.swingAt)}, còn ${event.minutesLeft} phút)`,
       ].join(" ");
-
-    case "overtime":
-      return `⚠️ Tăng ca: ${event.dealerName}${handle(event.username)} @ ${event.tableName}`;
-
-    case "table_reopen":
-      return `Mở lại ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
-
-    case "no_dealer":
-      return `🚨 Không có dealer cho bàn ${event.tableName}`;
   }
 }
 
@@ -126,14 +94,6 @@ function formatEventLine(event: DealerEvent): string {
 
 function buildBatchMessage(events: DealerEvent[]): string {
   if (events.length === 0) return "";
-
-  // Single overtime / reopen → no batch header
-  if (events.length === 1) {
-    const ev = events[0];
-    if (ev.type === "overtime" || ev.type === "table_reopen" || ev.type === "no_dealer") {
-      return formatEventLine(ev);
-    }
-  }
 
   // Detect zone (all events must share the same zone)
   const zones = events
@@ -159,21 +119,12 @@ function groupEventsByType(events: DealerEvent[]): DealerEvent[][] {
   // swing_in (🪑 Vào bàn X: dealer Y) intentionally suppressed:
   // pre_assign already announces who's coming; swing_in is redundant noise.
   // (2026-06-05: user feedback — too many "Vào bàn" messages.)
-  // const swings = events.filter((e) => e.type === "swing_in");
-  // if (swings.length) groups.push(swings);
 
   const breaks = events.filter((e) => e.type === "break_start");
   if (breaks.length) groups.push(breaks);
 
   const preAssigns = events.filter((e) => e.type === "pre_assign");
   if (preAssigns.length) groups.push(preAssigns);
-
-  // Single-event types — each gets its own message
-  for (const e of events) {
-    if (e.type === "overtime" || e.type === "table_reopen" || e.type === "no_dealer") {
-      groups.push([e]);
-    }
-  }
 
   return groups;
 }
