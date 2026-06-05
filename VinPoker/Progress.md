@@ -164,6 +164,55 @@ ORDER BY hour DESC;
 | `confirmed_bug = true` | Any | CRITICAL — PostgREST regression |
 | `stuck_count > 3` | After 30 min | MEDIUM — investigate |
 | Diagnostic runs missing 1+ hours | After 1h | HIGH — cron may be stuck |
+| **`ghost_assignments_health.ghost_count` > 0** | **Immediate** | **CRITICAL — Pass 3 circuit breaker bug** |
+
+---
+
+## 🆕 CRITICAL: Pass 3 Circuit Breaker Ghost Bug (DISCOVERED 2026-06-05 22:25)
+
+### Symptom
+4 tables (Bàn 1, Bàn 11, Bàn 14, Bàn 100) had ghost assignments:
+- `swing_processed_at` SET (system marked as processed)
+- `released_at` NULL (dealer NOT actually released)
+- `pre_assigned_attendance_id` NULL (no next dealer)
+- Table stuck, UI shows OT, current dealer still dealing
+
+### Root Cause
+`process-swing/index.ts:1713-1774` — circuit breaker activates when `minsLeft < -OVERDUE_THRESHOLD_MINUTES (60)`:
+- **Releases pre-assigned dealer** (next dealer, not current)
+- **Sets `swing_processed_at`** to "escape the loop"
+- ❌ **Does NOT release current dealer**
+- ❌ **Does NOT mark assignment as completed**
+- → Ghost state
+
+### Evidence
+- Bàn 11 NEW victim (created AFTER Phase 1 deploy) → bug still active
+- Bàn 1, 14, 100 originally manually fixed by user → same bug re-hit them
+
+### Manual Fix Applied (22:25)
+```sql
+-- 1. Mark 4 ghost assignments as completed
+UPDATE dealer_assignments SET status='completed', released_at=NOW(),
+  release_reason='manual_fix_ghost_state_phase1_bug' WHERE id IN (...4 ids...);
+
+-- 2. Release 4 dealer states via transition_dealer_state RPC
+-- DO $$ ... LOOP ... END $$;
+```
+**Result:** System auto-recovered, 4 new dealers assigned within 60s (dl 1, 10, 13, 15)
+
+### Permanent Fix Design
+**File:** `docs/fixes/CIRCUIT_BREAKER_GHOST_FIX.md`
+
+- **Option A (primary):** Update circuit breaker to fully release current dealer + mark assignment completed
+- **Option B (safety net):** `reconcile_ghost_assignments` RPC runs every 15 min via pg_cron
+- **Combined:** Apply both, monitor via `ghost_assignments_health` view
+
+**Effort:** ~2h total | **Risk:** Low
+
+### New Monitoring
+- **View:** `ghost_assignments_health` (created 2026-06-05)
+  - Returns: `ghost_count`, `processed_not_released_total`, `sample_ghosts` (top 5)
+  - Alert if `ghost_count > 0`
 
 ---
 
