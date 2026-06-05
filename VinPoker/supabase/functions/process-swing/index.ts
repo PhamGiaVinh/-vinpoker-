@@ -1709,37 +1709,63 @@ if (tier2Count > 0) {
           // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
           // If swing is overdue by > 60 minutes, this is likely an infinite retry
           // loop caused by stale dealer or TOCTOU race.
-          // Release pre-assigned dealer, mark assignment processed, throttle alerts.
+          // Release CURRENT + PRE-ASSIGNED dealers, mark assignment COMPLETED.
+          // (Fixed 2026-06-05: was setting swing_processed_at without releasing
+          //  current dealer, creating ghost state)
           if (minsLeft < -SWING_THRESHOLDS.OVERDUE_THRESHOLD_MINUTES) {
             console.error(
               `[process-swing] 🚨 CIRCUIT BREAKER: ${tableName} overdue by ${-minsLeft}min`
             );
             if (!dryRun) {
-              // 1. Release pre-assigned dealer if exists
+              // 1. Release CURRENT dealer (fixes ghost state — was missing in old code)
+              //    CRITICAL: If this fails, ABORT (don't continue with incomplete state)
+              if (assignment.attendance_id) {
+                const currentResult = await transitionDealerState(
+                  admin,
+                  assignment.attendance_id,
+                  "available",
+                  `circuit_breaker_release_current_overdue_${Math.min(-minsLeft, 240)}min`
+                );
+                if (!currentResult.success) {
+                  console.error(`[Pass 3] 🚨 CIRCUIT BREAKER FAILED to release current dealer — skipping assignment:`, currentResult.error);
+                  metrics.failed++;
+                  continue; // ← FIXED: don't continue, skip this assignment entirely
+                }
+              }
+
+              // 2. Release PRE-ASSIGNED dealer (if exists)
               if (assignment.pre_assigned_attendance_id) {
                 await admin
                   .from("dealer_assignments")
                   .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
                   .eq("id", assignment.id)
                   .is("released_at", null);
-                await transitionDealerState(
+                const preassignedResult = await transitionDealerState(
                   admin,
                   assignment.pre_assigned_attendance_id,
                   "available",
-                  "circuit_breaker_force_release"
+                  `circuit_breaker_release_preassigned_overdue_${Math.min(-minsLeft, 240)}min`
                 );
+                if (!preassignedResult.success) {
+                  console.error(`[Pass 3] Circuit breaker failed to release pre-assigned dealer:`, preassignedResult.error);
+                  // Continue anyway — pre-assigned is secondary, current is already released
+                }
               }
 
-              // 2. Mark assignment processed so cron escapes the loop
+              // 3. Mark assignment as COMPLETED (fixes ghost state)
+              const loggedMins = Math.min(-minsLeft, 240); // Cap at 4 hours for logging
               await admin
                 .from("dealer_assignments")
                 .update({
+                  status: "completed",
+                  released_at: new Date().toISOString(),
+                  release_reason: `circuit_breaker_overdue_${loggedMins}min`,
                   swing_processed_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", assignment.id);
 
-              // 3. Throttled alert using clubs.last_critical_alert_at (CAS update)
+              // 4. Throttled alert with conditional message
               const throttleThreshold = new Date(
                 Date.now() - SWING_THRESHOLDS.ALERT_THROTTLE_HOURS * 60 * 60 * 1000
               ).toISOString();
@@ -1754,13 +1780,20 @@ if (tier2Count > 0) {
               if (shouldAlert) {
                 const chatId = await getClubTelegramChatId(admin, cid);
                 if (botToken && chatId) {
+                  // CONDITIONAL alert message (fixes Warning 1)
+                  const currentReleased = !!assignment.attendance_id;
+                  const preassignedReleased = !!assignment.pre_assigned_attendance_id;
+                  const releaseMsg = 
+                    currentReleased && preassignedReleased ? `Cả 2 dealer đã force-release. ` :
+                    currentReleased ? `Current dealer đã force-release. ` :
+                    preassignedReleased ? `Pre-assigned dealer đã force-release. ` :
+                    `Không có dealer để release. `;
+                  
                   await sendTelegramNotification(
                     botToken, chatId,
                     `🚨 *CIRCUIT BREAKER* — Bàn *${tableName}*\n` +
                     `Dealer *${outgoingDealer?.full_name || "Unknown"}* kẹt ${-minsLeft}ph.\n` +
-                    (assignment.pre_assigned_attendance_id
-                      ? `Pre-assign đã force-release. `
-                      : `Không có pre-assign. `) +
+                    releaseMsg +
                     `⚠️ Cần can thiệp thủ công!`,
                     {}
                   );
