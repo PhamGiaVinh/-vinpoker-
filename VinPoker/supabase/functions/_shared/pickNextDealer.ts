@@ -205,20 +205,40 @@ export async function buildDealerCandidates(
   }
 
   // Step 5b: Cross-check dealer_assignments for dealers that appear available
-  // in dealer_attendance but actually have active assignments (B6 defense).
-  // This catches state inconsistencies that slip past the attendance-state filter.
+  // or on_break in dealer_attendance but actually have active assignments at a
+  // different table (B6 defense). Includes on_break and pre_assigned statuses.
+  // Table-aware: excludes assignments at currentTableId since dealer on_break
+  // at the table being picked for is valid (they'll be replaced).
+  // TODO: Add advisory lock per-dealer to prevent race condition when 2 tables
+  // pick the same dealer concurrently (Bug A — club-level lock is sufficient for now).
   if (dealerIds.length > 0) {
-    const { data: assignedDealers } = await admin
+    let busyAssignmentsQuery = admin
       .from("dealer_assignments")
-      .select("dealer_id")
+      .select("dealer_id, table_id, status")
       .in("dealer_id", dealerIds)
-      .eq("status", "assigned")
+      .in("status", ["assigned", "pre_assigned", "on_break"])
       .is("released_at", null);
-    for (const ad of assignedDealers ?? []) {
-      busyDealerIds.add(ad.dealer_id);
+
+    if (currentTableId) {
+      busyAssignmentsQuery = busyAssignmentsQuery.neq("table_id", currentTableId);
+    } else {
+      console.warn(
+        `[pickNextDealer] Club ${clubId}: currentTableId not provided — ` +
+        `table-aware guard disabled. Verify excludeAttendanceIds covers current table dealers.`
+      );
     }
-    if (assignedDealers && assignedDealers.length > 0) {
-      console.log(`[pickNextDealer] Club ${clubId}: ${assignedDealers.length} dealers excluded by assignment cross-check (Step 5b)`);
+
+    const { data: busyAssignments } = await busyAssignmentsQuery;
+
+    for (const ba of busyAssignments ?? []) {
+      busyDealerIds.add(ba.dealer_id);
+    }
+
+    if (busyAssignments && busyAssignments.length > 0) {
+      console.log(
+        `[pickNextDealer] Club ${clubId}: ${busyAssignments.length} dealers excluded by assignment cross-check (Step 5b)` +
+        (currentTableId ? ` [table-aware: excluding table ${currentTableId}]` : " [no table-aware filter]")
+      );
     }
   }
 

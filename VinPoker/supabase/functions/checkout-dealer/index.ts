@@ -226,18 +226,58 @@ async function processOneCheckout(
         currentTableId: needsReplacementTableId,
       });
       if (dealer) {
-        const { data: assignResult } = await admin.rpc(
+        // Compute swing_due_at from swing_config (table_type-aware fallback chain)
+        let swingMinutes: number | null = null;
+        const { data: tableInfo } = await admin
+          .from("game_tables")
+          .select("table_type")
+          .eq("id", needsReplacementTableId)
+          .maybeSingle();
+
+        if (tableInfo?.table_type) {
+          const { data: swingConfig } = await admin
+            .from("swing_config")
+            .select("swing_duration_minutes")
+            .eq("club_id", clubId)
+            .eq("table_type", tableInfo.table_type)
+            .maybeSingle();
+          swingMinutes = swingConfig?.swing_duration_minutes ?? null;
+        }
+
+        if (swingMinutes == null) {
+          const { data: fallbackConfig } = await admin
+            .from("swing_config")
+            .select("swing_duration_minutes")
+            .eq("club_id", clubId)
+            .limit(1)
+            .maybeSingle();
+          swingMinutes = fallbackConfig?.swing_duration_minutes ?? null;
+        }
+
+        const replacementSwingDueAt = new Date(
+          Date.now() + (swingMinutes ?? 45) * 60_000
+        ).toISOString();
+
+        const { data: assignResult, error: assignErr } = await admin.rpc(
           "assign_dealer_to_table",
           {
             p_attendance_id: dealer.id,
             p_table_id: needsReplacementTableId,
+            p_swing_due_at: replacementSwingDueAt,
           }
         );
-        if (assignResult === "ok") {
-          autoAssigned = { dealer_name: dealer.full_name };
-          console.log(
-            `[checkout-dealer] Auto-assigned ${dealer.full_name} to table ${needsReplacementTableId}`
-          );
+        if (assignErr) {
+          console.error(`[checkout-dealer] Auto-replace RPC error: ${assignErr.message}`);
+        } else {
+          const assignOutcome = typeof assignResult === "string" ? assignResult : assignResult?.outcome;
+          if (assignOutcome === "ok") {
+            autoAssigned = { dealer_name: dealer.full_name };
+            console.log(
+              `[checkout-dealer] Auto-assigned ${dealer.full_name} to table ${needsReplacementTableId}`
+            );
+          } else {
+            console.warn(`[checkout-dealer] Auto-replace outcome: ${assignOutcome}`);
+          }
         }
       }
     } catch (err: any) {
@@ -245,7 +285,6 @@ async function processOneCheckout(
         `[checkout-dealer] Auto-replace failed for table ${needsReplacementTableId}:`,
         err.message
       );
-      // Non-blocking — cron will pick up on next cycle
     }
 
     // If auto-assign failed, notify floor manager

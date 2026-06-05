@@ -889,15 +889,28 @@ Deno.serve(async (req: Request) => {
               const result = Array.isArray(response.data) ? response.data[0] : response.data;
               const orphan  = result?.fixed_pre_assigned_orphan ?? 0;
               const timeout  = result?.fixed_pre_assigned_timeout ?? 0;
+              const orphanAssignments = result?.fixed_orphan_assignments ?? 0;
               const total    = (result?.fixed_available ?? 0)
                             + (result?.fixed_assigned ?? 0)
                             + orphan + timeout
-                            + (result?.cleared_orphaned ?? 0);
+                            + (result?.cleared_orphaned ?? 0)
+                            + orphanAssignments;
+
+              const ORPHAN_ALERT_THRESHOLD = 3;
+              const TOTAL_FIXES_ALERT_THRESHOLD = 5;
 
               if (orphan > 0) {
                 console.error(`[Pass 0d] 🚨 B6 pattern: ${orphan} orphaned pre_assigned`);
               }
-              if (total > 5) {
+              if (orphanAssignments > 0) {
+                console.warn(
+                  `[Pass 0d] B6 cleanup: ${orphanAssignments} orphan assignments released by Step 1.5`
+                );
+              }
+              if (orphanAssignments > ORPHAN_ALERT_THRESHOLD) {
+                console.error(`[Pass 0d] 🚨 Abnormal orphan count: ${orphanAssignments} — investigate B6 root cause`);
+              }
+              if (total > TOTAL_FIXES_ALERT_THRESHOLD) {
                 console.error(`[Pass 0d] 🚨 Excessive fixes (${total})! Possible systemic issue.`);
               }
               if (total > 0) {
