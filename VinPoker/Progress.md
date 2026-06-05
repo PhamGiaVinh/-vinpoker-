@@ -82,3 +82,117 @@
 - ✅ B1-B5 bug fixes
 - ✅ Soft-delete pattern
 - ✅ Rotation Planner Phase 1
+
+---
+
+## 🩺 Monitoring Dashboard Queries
+
+**File:** `docs/monitoring/phase1_24h_check.sql` — full version with 4 queries
+**View:** `dealer_state_health` — quick health check (single row)
+
+### 1. Quick health check (run anytime)
+
+```sql
+SELECT * FROM dealer_state_health;
+```
+
+**Returns:** `available_but_assigned`, `assigned_but_no_assignment`, `stuck_pre_assigned`, `total_checked_in`, `on_break_count`, `available_count`, `refreshed_at`
+
+**Healthy state:** all inconsistency counts = 0
+
+### 2. Stuck pre-assigns (run every 2-4 hours)
+
+```sql
+SELECT
+  COUNT(*) as stuck_count,
+  MIN(swing_due_at) as oldest_stuck,
+  array_agg(DISTINCT table_id) as affected_tables
+FROM dealer_assignments
+WHERE status = 'assigned'
+  AND pre_assigned_attendance_id IS NOT NULL
+  AND swing_due_at < NOW() - INTERVAL '5 minutes'
+  AND released_at IS NULL;
+```
+
+**Expected:** `stuck_count = 0`
+
+### 3. Confirmed bugs in diagnostic (run after 24h)
+
+```sql
+SELECT
+  timestamp,
+  club_id,
+  result->>'confirmed_bug' as confirmed_bug,
+  result->>'lost_rows' as lost_rows
+FROM diagnostic_logs
+WHERE diagnostic_type = 'pass3_query_issue'
+  AND timestamp > NOW() - INTERVAL '24 hours'
+  AND (
+    (result->>'confirmed_bug')::boolean = true
+    OR (result->>'lost_rows')::int > 0
+  )
+ORDER BY timestamp DESC;
+```
+
+**Expected:** 0 rows
+
+### 4. Pass 3 execution consistency (run after 24h)
+
+```sql
+SELECT
+  date_trunc('hour', timestamp) as hour,
+  COUNT(*) as diagnostic_runs,
+  AVG((result->'simple_query'->>'count')::int) as avg_assignments_found
+FROM diagnostic_logs
+WHERE diagnostic_type = 'pass3_query_issue'
+  AND timestamp > NOW() - INTERVAL '24 hours'
+GROUP BY hour
+ORDER BY hour DESC;
+```
+
+**Expected:** ~120 runs/hour (60 cycles × 2 clubs)
+
+---
+
+## 🚨 Alert Thresholds
+
+| Metric | Threshold | Severity |
+|--------|-----------|----------|
+| `available_but_assigned` > 0 | Immediate | CRITICAL — B6 regression |
+| `assigned_but_no_assignment` > 0 | Immediate | CRITICAL — orphaned state |
+| `stuck_pre_assigned` > 0 | After 5 min | HIGH — Pass 3 not processing |
+| `confirmed_bug = true` | Any | CRITICAL — PostgREST regression |
+| `stuck_count > 3` | After 30 min | MEDIUM — investigate |
+| Diagnostic runs missing 1+ hours | After 1h | HIGH — cron may be stuck |
+
+---
+
+## 📅 Monitoring Schedule (24-48h)
+
+| Time | Action |
+|------|--------|
+| +2h  | Run Query 1, 2 (health + stuck) |
+| +6h  | Run Query 1, 2 |
+| +12h | Run all 4 queries |
+| +24h | Run all 4 queries + Q4 (log size) |
+| +48h | Decision: continue monitoring OR execute Phase 2-4 |
+
+---
+
+## 🔀 Branch Strategy Notes
+
+**IMPORTANT:** As of 2026-06-05, repo has 3 local branches with DIFFERENT content:
+
+| Branch | Purpose | Last commit | Status |
+|--------|---------|-------------|--------|
+| `master` | Application code (B6, Phase 1) | 7611e28 (Phase 1) | ACTIVE — what I'm working on |
+| `main` | CI/CD workflow fixes | d95cada | DIFFERENT — has CI configs |
+| `opencode/backup` | Feature experiments | 96538ea | DIFFERENT — has features not in master |
+
+**GitHub default:** `origin/HEAD -> origin/main`
+
+**Decision needed:**
+- Is `main` the actual production branch?
+- Should `master` merge into `main` for CI to pick up?
+- Or vice versa?
+- `opencode/backup` — keep, archive, or delete?
