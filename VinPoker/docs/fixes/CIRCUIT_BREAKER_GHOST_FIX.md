@@ -3,6 +3,9 @@
 **File:** `supabase/functions/process-swing/index.ts:1713-1774`
 **Bug:** Ghost assignments created when assignments overdue >60 min
 
+**Status:** ✅ **DEPLOYED 2026-06-05 23:07 (commit `84011ae` on `main`)**
+**Validation:** All 4 RPC/cron/manual/health queries passed
+
 ## Current Behavior (BUGGY)
 
 ```typescript

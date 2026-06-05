@@ -1,6 +1,35 @@
 # VinPoker Progress
 
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-05 23:07 (UTC+7)
+
+---
+
+## 🆕 Phase 2: CIRCUIT BREAKER FIX — DEPLOYED ✅
+
+**Date:** 2026-06-05 23:07
+**Branch:** `main` (commit `84011ae`)
+**Status:** Both Option A (TS fix) + Option B (safety net) deployed
+
+### What was done
+- **Option A:** `process-swing/index.ts:1713-1774` — circuit breaker now releases CURRENT dealer (abort if fails), then PRE-ASSIGNED dealer (best-effort), then marks assignment `completed` with `release_reason='circuit_breaker_overdue_Nmin'`
+- **Option B:** `reconcile_ghost_assignments` RPC + pg_cron `*/15 * * * *` safety net
+- **New table:** `cron_execution_log` for monitoring
+- **Conditional alert:** 'Cả 2', 'Current only', 'Pre-assigned only', or 'None'
+
+### Validation (all 4 passed)
+- ✅ Q1: RPC `reconcile_ghost_assignments` exists (pronargs=1)
+- ✅ Q2: Cron active on `*/15 * * * *` schedule
+- ✅ Q3: Manual test returns `{fixed_count:0, error_count:0}`
+- ✅ Q4: `ghost_count=0`, all inconsistencies=0
+
+### Monitoring window: 24h
+- Run Q4 every 4h: `SELECT * FROM ghost_assignments_health;` → expect `ghost_count=0`
+- Run Q5 after 15 min: check `cron_execution_log` for first run
+
+### Files changed
+- `supabase/functions/process-swing/index.ts` (EDIT, deployed, commit `84011ae`)
+- `supabase/migrations/20260605_reconcile_ghost_assignments_rpc.sql` (NEW, applied)
+- `supabase/migrations/20260605_reconcile_ghost_cron.sql` (NEW, applied)
 
 ---
 
@@ -168,7 +197,7 @@ ORDER BY hour DESC;
 
 ---
 
-## 🆕 CRITICAL: Pass 3 Circuit Breaker Ghost Bug (DISCOVERED 2026-06-05 22:25)
+## 🆕 CRITICAL: Pass 3 Circuit Breaker Ghost Bug (DISCOVERED 2026-06-05 22:25) — FIXED 23:07
 
 ### Symptom
 4 tables (Bàn 1, Bàn 11, Bàn 14, Bàn 100) had ghost assignments:
@@ -200,14 +229,14 @@ UPDATE dealer_assignments SET status='completed', released_at=NOW(),
 ```
 **Result:** System auto-recovered, 4 new dealers assigned within 60s (dl 1, 10, 13, 15)
 
-### Permanent Fix Design
-**File:** `docs/fixes/CIRCUIT_BREAKER_GHOST_FIX.md`
+### Permanent Fix: DEPLOYED ✅
+**File:** `docs/fixes/CIRCUIT_BREAKER_GHOST_FIX.md` (status: DEPLOYED)
 
-- **Option A (primary):** Update circuit breaker to fully release current dealer + mark assignment completed
-- **Option B (safety net):** `reconcile_ghost_assignments` RPC runs every 15 min via pg_cron
-- **Combined:** Apply both, monitor via `ghost_assignments_health` view
+- ✅ **Option A (primary):** `process-swing/index.ts:1713-1774` — release CURRENT dealer (abort if fails) + release PRE-ASSIGNED (best-effort) + mark `completed` with `release_reason='circuit_breaker_overdue_Nmin'`
+- ✅ **Option B (safety net):** `reconcile_ghost_assignments` RPC runs every 15 min via pg_cron (deployed, validated)
+- ✅ **Combined:** Both active, monitoring via `ghost_assignments_health` view
 
-**Effort:** ~2h total | **Risk:** Low
+**Deploy time:** 23:07 UTC+7 | **Risk:** Low | **Effort:** ~30 min
 
 ### New Monitoring
 - **View:** `ghost_assignments_health` (created 2026-06-05)
