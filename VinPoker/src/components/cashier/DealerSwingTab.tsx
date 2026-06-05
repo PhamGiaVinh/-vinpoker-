@@ -184,15 +184,40 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [payrollEditDealer, setPayrollEditDealer] = useState<string | null>(null);
 
   const recalcPay = (row: any, edits: { adjustedHours?: number; adjustedRate?: number }) => {
-    const hours = edits.adjustedHours ?? row.total_hours;
-    const rate = edits.adjustedRate ?? row.hourly_rate_vnd;
     const isPT = row.employment_type === "part_time";
-    const basePay = isPT ? hours * rate : (row.base_rate_vnd ?? hours * rate);
-    // OT pay: shift-based (ot_hours from RPC = max(0, net_hours - 8) per shift)
-    // overtime_minutes (per-swing) is informational only — for dealer awareness
-    // Part-time: no OT pay (per spec)
-    const otPay = isPT ? 0 : (row.ot_hours ?? 0) * rate * 1.5;
-    return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
+    const rate = Math.max(0, parseFloat(edits.adjustedRate ?? row.hourly_rate_vnd ?? 0));
+    if (rate <= 0) {
+      console.warn(`[Payroll] Dealer ${row.dealer_id} has invalid rate`);
+      return { ...row, base_pay: 0, overtime_pay: 0, total_pay: 0 };
+    }
+
+    // === PT: pay all hours, no OT ===
+    if (isPT) {
+      const hours = Math.max(0, parseFloat(edits.adjustedHours ?? row.total_hours ?? 0));
+      const basePay = hours * rate;
+      return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: 0, total_pay: Math.round(basePay) };
+    }
+
+    // === FT: pass-through RPC if no edits (RPC is authoritative) ===
+    const hasHoursEdit = edits.adjustedHours != null;
+    const hasRateEdit = edits.adjustedRate != null;
+    if (!hasHoursEdit && !hasRateEdit) return row;
+
+    // === FT with base_rate_vnd (daily salary) ===
+    if (row.base_rate_vnd != null && row.base_rate_vnd > 0) {
+      const daysWorked = row.days_worked ?? 1;
+      const basePay = daysWorked * row.base_rate_vnd;
+      const otHours = Math.max(0, parseFloat(row.ot_hours ?? 0));
+      const otPay = otHours * rate * 1.5;
+      return { ...row, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
+    }
+
+    // === FT hourly fallback: trust RPC's regular_hours + ot_hours ===
+    const regularHours = Math.max(0, parseFloat(row.regular_hours ?? 0));
+    const otHours = Math.max(0, parseFloat(row.ot_hours ?? 0));
+    const basePay = regularHours * rate;
+    const otPay = otHours * rate * 1.5;
+    return { ...row, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
   };
 
   // Batch checkout confirm dialog
@@ -236,27 +261,34 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     if (!hasTables) setAutoSwingEnabled(false);
   }, [selectedTour, tables]);
 
-  // Real-time payroll refresh: poll every 30s when modal is open
+  // Real-time payroll refresh: poll every 60s when modal is open
   // (Supabase Realtime channels add complexity with RLS; polling is simpler + reliable)
+  const POLL_INTERVAL_MS = 60_000;
   useEffect(() => {
     if (!payrollOpen) return;
     const cid = clubFilter ?? clubIds[0];
     if (!cid) return;
+    let mounted = true;
+    let isLoading = false;
     const tick = async () => {
-      if (payrollLoading) return;  // skip if previous load still running
-      const { from, to } = payrollDateBounds;
+      if (isLoading || !mounted) return;
+      if (!payrollDateBounds?.from || !payrollDateBounds?.to) return;  // defensive
+      isLoading = true;
       try {
+        const { from, to } = payrollDateBounds;
         const { data, error } = await supabase.rpc("get_dealer_payroll", {
           p_club_id: cid,
           p_from_date: from,
           p_to_date: to,
         });
-        if (!error) setPayrollData((data ?? []) as any[]);
+        if (mounted && !error) setPayrollData((data ?? []) as any[]);
       } catch { /* non-critical */ }
+      finally { isLoading = false; }
     };
-    const interval = setInterval(tick, 30_000);
-    return () => clearInterval(interval);
-  }, [payrollOpen, clubFilter, clubIds, payrollDateBounds, payrollLoading]);
+    tick();  // initial fetch on mount + date change
+    const interval = setInterval(tick, POLL_INTERVAL_MS);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [payrollOpen, clubFilter, clubIds, payrollDateBounds]);  // payrollLoading removed: local isLoading flag prevents drift
 
   // Toggle auto-swing
   const toggleAutoSwing = async () => {
