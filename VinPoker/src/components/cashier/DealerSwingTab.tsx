@@ -188,7 +188,10 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     const rate = edits.adjustedRate ?? row.hourly_rate_vnd;
     const isPT = row.employment_type === "part_time";
     const basePay = isPT ? hours * rate : (row.base_rate_vnd ?? hours * rate);
-    const otPay = (row.overtime_minutes ?? 0) / 60 * rate * 1.5;
+    // OT pay: shift-based (ot_hours from RPC = max(0, net_hours - 8) per shift)
+    // overtime_minutes (per-swing) is informational only — for dealer awareness
+    // Part-time: no OT pay (per spec)
+    const otPay = isPT ? 0 : (row.ot_hours ?? 0) * rate * 1.5;
     return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
   };
 
@@ -232,6 +235,28 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     const hasTables = tables.some(t => t.shift_id === selectedTour);
     if (!hasTables) setAutoSwingEnabled(false);
   }, [selectedTour, tables]);
+
+  // Real-time payroll refresh: poll every 30s when modal is open
+  // (Supabase Realtime channels add complexity with RLS; polling is simpler + reliable)
+  useEffect(() => {
+    if (!payrollOpen) return;
+    const cid = clubFilter ?? clubIds[0];
+    if (!cid) return;
+    const tick = async () => {
+      if (payrollLoading) return;  // skip if previous load still running
+      const { from, to } = payrollDateBounds;
+      try {
+        const { data, error } = await supabase.rpc("get_dealer_payroll", {
+          p_club_id: cid,
+          p_from_date: from,
+          p_to_date: to,
+        });
+        if (!error) setPayrollData((data ?? []) as any[]);
+      } catch { /* non-critical */ }
+    };
+    const interval = setInterval(tick, 30_000);
+    return () => clearInterval(interval);
+  }, [payrollOpen, clubFilter, clubIds, payrollDateBounds, payrollLoading]);
 
   // Toggle auto-swing
   const toggleAutoSwing = async () => {
