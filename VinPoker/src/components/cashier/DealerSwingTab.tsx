@@ -261,6 +261,24 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     if (!hasTables) setAutoSwingEnabled(false);
   }, [selectedTour, tables]);
 
+  // Payroll: fetch dealer_scores + today's attendance + pay rates
+  // Declared BEFORE the polling useEffect to avoid TDZ on `payrollDateBounds`
+  // (useEffect callback closure captured it before its source-order declaration).
+  const payrollDateBounds = useMemo(() => {
+    let from: string, to: string;
+    const today = new Date();
+    if (payrollDatePreset === "today") {
+      from = to = today.toISOString().split("T")[0];
+    } else if (payrollDatePreset === "month") {
+      from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+      to = today.toISOString().split("T")[0];
+    } else {
+      from = payrollFromDate.toISOString().split("T")[0];
+      to = payrollToDate.toISOString().split("T")[0];
+    }
+    return { from, to };
+  }, [payrollDatePreset, payrollFromDate, payrollToDate]);
+
   // Real-time payroll refresh: poll every 60s when modal is open
   // (Supabase Realtime channels add complexity with RLS; polling is simpler + reliable)
   const POLL_INTERVAL_MS = 60_000;
@@ -981,22 +999,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     exportToExcel(`shift-report-${today}`, rows);
     toast.success("Đã tải báo cáo ca");
   };
-
-  // Payroll: fetch dealer_scores + today's attendance + pay rates
-  const payrollDateBounds = useMemo(() => {
-    let from: string, to: string;
-    const today = new Date();
-    if (payrollDatePreset === "today") {
-      from = to = today.toISOString().split("T")[0];
-    } else if (payrollDatePreset === "month") {
-      from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
-      to = today.toISOString().split("T")[0];
-    } else {
-      from = payrollFromDate.toISOString().split("T")[0];
-      to = payrollToDate.toISOString().split("T")[0];
-    }
-    return { from, to };
-  }, [payrollDatePreset, payrollFromDate, payrollToDate]);
 
   const openPayroll = async () => {
     if (!clubFilter && clubIds.length > 1) {
