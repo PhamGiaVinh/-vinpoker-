@@ -12,6 +12,12 @@ import { toast } from "sonner";
 
 type Status = "pending" | "approved" | "rejected";
 
+interface ProfileMini {
+  user_id: string;
+  display_name: string;
+  region: string | null;
+}
+
 interface Row {
   player_id: string;
   itm_rate: number;
@@ -39,17 +45,19 @@ export const BackingReviewQueue = () => {
       .select("*")
       .in("backing_status", ["pending", "approved", "rejected"])
       .order("updated_at", { ascending: false });
-    const ids = (stats ?? []).map((s: any) => s.player_id);
-    let profMap = new Map<string, any>();
+    const ids = (stats ?? []).map((s) => s.player_id);
+    let profMap = new Map<string, ProfileMini>();
     if (ids.length) {
       const { data: profs } = await supabase
         .from("profiles")
         .select("user_id,display_name,region")
         .in("user_id", ids);
-      profMap = new Map((profs ?? []).map((p: any) => [p.user_id, p]));
+      profMap = new Map(
+        (profs ?? []).map((p: ProfileMini) => [p.user_id, p])
+      );
     }
     setRows(
-      (stats ?? []).map((s: any) => ({
+      (stats ?? []).map((s) => ({
         ...s,
         display_name: profMap.get(s.player_id)?.display_name ?? "Player",
         region: profMap.get(s.player_id)?.region ?? null,

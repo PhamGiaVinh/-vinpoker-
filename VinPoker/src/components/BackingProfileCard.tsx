@@ -13,12 +13,48 @@ import { toast } from "sonner";
 import { UpcomingEventsManager } from "./UpcomingEventsManager";
 import { ResultsManager } from "./ResultsManager";
 
+interface PlayerStats {
+  player_id: string;
+  tournaments_played: number;
+  tournaments_cashed: number;
+  itm_rate: number;
+  roi_percentage: number;
+  total_profit_loss: number;
+  biggest_cash_amount: number;
+  current_streak: number;
+  avg_finish: number;
+  looking_for_backing: boolean;
+  backing_description: string | null;
+  backing_percentage_available: number | null;
+  backing_status?: "off" | "pending" | "approved" | "rejected";
+  backing_review_note?: string | null;
+  verified: boolean;
+  last_20_results: unknown[];
+}
+
+interface BackingInterestRow {
+  id: string;
+  interested_user_id: string;
+  percentage_interested: number;
+  message: string | null;
+  status: "pending" | "contacted" | "declined";
+  created_at: string;
+  player_id: string;
+  updated_at: string;
+}
+
+interface ProfileMini {
+  user_id: string;
+  display_name: string;
+  phone: string | null;
+}
+
 export const BackingProfileCard = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [stats, setStats] = useState<any>(null);
-  const [interests, setInterests] = useState<any[]>([]);
-  const [interestNames, setInterestNames] = useState<Map<string, any>>(new Map());
+  const [stats, setStats] = useState<PlayerStats | null>(null);
+  const [interests, setInterests] = useState<BackingInterestRow[]>([]);
+  const [interestNames, setInterestNames] = useState<Map<string, ProfileMini>>(new Map());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -26,7 +62,7 @@ export const BackingProfileCard = () => {
     const load = async () => {
       const { data } = await supabase.from("player_stats").select("*").eq("player_id", user.id).maybeSingle();
       setStats(
-        data ?? {
+        (data as PlayerStats | null) ?? {
           player_id: user.id,
           tournaments_played: 0,
           tournaments_cashed: 0,
@@ -48,11 +84,14 @@ export const BackingProfileCard = () => {
         .select("*")
         .eq("player_id", user.id)
         .order("created_at", { ascending: false });
-      setInterests(ints ?? []);
-      const ids = [...new Set((ints ?? []).map((i: any) => i.interested_user_id))];
+      const interestsData = (ints ?? []) as BackingInterestRow[];
+      setInterests(interestsData);
+      const ids = [...new Set(interestsData.map((i) => i.interested_user_id))];
       if (ids.length) {
         const { data: profs } = await supabase.from("profiles").select("user_id,display_name,phone").in("user_id", ids);
-        setInterestNames(new Map((profs ?? []).map((p: any) => [p.user_id, p])));
+        setInterestNames(new Map(
+          ((profs ?? []) as ProfileMini[]).map((p) => [p.user_id, p])
+        ));
       }
     };
     load();

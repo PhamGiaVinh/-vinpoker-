@@ -1,3 +1,14 @@
+type TelegramUpdate = {
+  update_id?: number;
+  message?: {
+    message_id?: number;
+    date?: number;
+    text?: string;
+    chat?: { id?: number | string; type?: string };
+    from?: { id?: number; is_bot?: boolean; first_name?: string };
+  };
+};
+
 async function sendTestWebhook(
   botToken: string,
   functionUrl: string,
@@ -35,12 +46,12 @@ async function getLastTelegramMessage(
     const data = await res.json();
     if (!data?.result?.length) return null;
 
-    const updates = data.result as any[];
+    const updates = data.result as TelegramUpdate[];
     // Chỉ lấy message sau `since` (unix timestamp) và đúng chatId
     const relevant = updates.filter(
-      (u: any) =>
+      (u) =>
         u.message?.chat?.id == Number(chatId) &&
-        u.message?.date >= since,
+        (u.message?.date ?? 0) >= since,
     );
 
     if (!relevant.length) return null;
