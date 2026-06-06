@@ -264,21 +264,33 @@ export async function pass2PreAssignNext(
                 `min 10min) — swing delayed from ${assignment.swing_due_at} ` +
                 `to ${effectiveSwingAt}`,
               );
-              // Diagnostic log only — no Telegram re-announce in v1
-              await admin.from("diagnostic_logs").insert({
-                level: "warn",
-                source: "pass2_pre_assign",
-                event: "soft_min_rest_delay",
+              // Diagnostic log only — no Telegram re-announce in v1.
+              // BUG FIX 2026-06-06: diagnostic_logs schema is
+              //   (id, timestamp, club_id, diagnostic_type, result, metadata, created_at).
+              // Old code used non-existent columns (level, source, event, payload)
+              // so the insert silently dropped fields. Use fire-and-forget to
+              // avoid blocking the pre-assign loop.
+              admin.from("diagnostic_logs").insert({
                 club_id: clubId,
-                table_id: assignment.table_id,
-                dealer_id: result_outcome?.dealer_id ?? nextDealer.dealer_id ?? null,
-                payload: {
+                diagnostic_type: "soft_min_rest_delay",
+                result: {
+                  table_id: assignment.table_id,
+                  assignment_id: assignment.id,
+                  dealer_id: result_outcome?.dealer_id ?? nextDealer.dealer_id ?? null,
+                  dealer_name: nextDealer.full_name,
                   rest_deficit_min: restDeficit,
                   current_rest_min: currentRest,
-                  original_due_at: result_outcome?.original_swing_due_at ?? assignment.swing_due_at,
+                  original_due_at:
+                    result_outcome?.original_swing_due_at ?? assignment.swing_due_at,
                   effective_due_at: effectiveSwingAt,
-                  next_dealer_name: nextDealer.full_name,
                 },
+                metadata: {
+                  source: "pass2_pre_assign",
+                },
+              }).then(({ error }) => {
+                if (error) {
+                  console.warn("[Pass 2] diagnostic log insert failed:", error.message);
+                }
               });
             }
 
