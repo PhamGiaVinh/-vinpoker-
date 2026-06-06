@@ -1644,6 +1644,7 @@ if (tier2Count > 0) {
              dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
           )
           .eq("status", "assigned")
+          .eq("swing_in_progress", false)
           .is("released_at", null)
           .is("swing_processed_at", null)
           .eq("club_id", cid);
@@ -1705,6 +1706,26 @@ if (tier2Count > 0) {
           const minsLeft = Math.round(
             (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
           );
+
+          // ── Optimistic lock: prevent duplicate swing execution (Issue 2) ──
+          // If two cron ticks or RPC retries both grab the same assignment,
+          // the second CAS update will fail (swing_in_progress=true already).
+          // Always reset in finally block, even on error.
+          if (!dryRun) {
+            const { data: lockedAssignment, error: lockErr } = await admin
+              .from("dealer_assignments")
+              .update({ swing_in_progress: true })
+              .eq("id", assignment.id)
+              .eq("swing_in_progress", false)
+              .select("id")
+              .single();
+            if (lockErr || !lockedAssignment) {
+              console.log(`[Pass 3] Skip ${tableName} — already in progress or lock failed`);
+              continue;
+            }
+            // Mark local ref so finally block knows what to reset
+            (assignment as any).__locked = true;
+          }
 
           // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
           // If swing is overdue by > 60 minutes, this is likely an infinite retry
@@ -2189,6 +2210,25 @@ if (tier2Count > 0) {
                 `[Pass 3] ⚠️ Cleanup failed for ${assignment.id}:`,
                 cleanupErr?.message ?? cleanupErr
               );
+            }
+          } finally {
+            // ── Reset swing_in_progress lock (Issue 2) ──────────────────────
+            // Always reset in finally, even on success or error. If the lock
+            // gets stuck, the Pass 3 query filter (swing_in_progress=false)
+            // would permanently skip this assignment.
+            if (!dryRun && (assignment as any).__locked) {
+              try {
+                await admin
+                  .from("dealer_assignments")
+                  .update({ swing_in_progress: false })
+                  .eq("id", assignment.id);
+                (assignment as any).__locked = false;
+              } catch (resetErr: any) {
+                console.error(
+                  `[Pass 3] ⚠️ Failed to reset swing_in_progress for ${assignment.id}:`,
+                  resetErr?.message ?? resetErr
+                );
+              }
             }
             continue;
           }

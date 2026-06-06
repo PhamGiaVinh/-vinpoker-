@@ -324,6 +324,30 @@ export async function buildDealerCandidates(
     // Dealer needs ≥10 min rest between swing cycles.
     if (consecutive > 0 && restMin < 10) { diag.min_rest_excluded++; continue; }
 
+    // ── Soft cap warning (log only, do not block) ────────────────────────────
+    // Issue 6: track high-consecutive dealers for admin review. Fire-and-forget
+    // so the scoring loop isn't blocked by an insert. clubId is in scope from
+    // buildDealerCandidates param (line 87). Warning only, no hard cap (P2).
+    if (consecutive >= 4) {
+      admin.from("diagnostic_logs").insert({
+        club_id: clubId,
+        diagnostic_type: "high_consecutive_warning",
+        result: {
+          attendance_id: row.id,
+          dealer_id: row.dealer_id,
+          dealer_name: d.full_name,
+          consecutive_swings: consecutive,
+          rest_minutes: restMin,
+        },
+        metadata: {
+          table_id: currentTableId,
+          tournament_tier: tourTier,
+        },
+      }).then(({ error }) => {
+        if (error) console.warn("[soft-cap] log failed:", error.message);
+      });
+    }
+
     // ── Game type hard-exclude ──────────────────────────────────────────────
     // If the table requires specific game types (e.g., "Omaha", "Mixed"),
     // and the dealer has NONE of those skills → hard exclude.
