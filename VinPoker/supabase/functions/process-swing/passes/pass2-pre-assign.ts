@@ -16,6 +16,16 @@ interface Pass2Result {
   errors: Array<{ table_id: string; error: string }>;
 }
 
+interface PreAssignResult {
+  outcome: "pre_assigned" | "race_lost" | "dealer_unavailable" | "error";
+  dealer_id?: string;
+  effective_swing_due_at?: string;
+  original_swing_due_at?: string;
+  rest_deficit_min?: number;
+  current_rest_min?: number;
+  detail?: string;
+}
+
 interface Pass2Options {
   clubZone: string | null;
   notifier: TelegramNotifier | null;
@@ -223,7 +233,8 @@ export async function pass2PreAssignNext(
           continue;
         }
 
-        const outcome = (rpcResult as any)?.outcome;
+        const result_outcome = rpcResult as PreAssignResult | null;
+        const outcome = result_outcome?.outcome;
 
         switch (outcome) {
           case "pre_assigned": {
@@ -237,13 +248,50 @@ export async function pass2PreAssignNext(
             // The RPC now handles OT clearing correctly in step [6] on success
             // and preserves the original value on rollback in step [8].
 
+            // Bàn 10 fix: read effective_swing_due_at from RPC (may be delayed
+            // by rest_deficit_min to enforce 10-min soft min rest). Fall back
+            // to assignment.swing_due_at for backward compat if RPC didn't
+            // return the field.
+            const effectiveSwingAt = result_outcome?.effective_swing_due_at
+              ?? assignment.swing_due_at;
+            const restDeficit = result_outcome?.rest_deficit_min ?? 0;
+            const currentRest = result_outcome?.current_rest_min ?? null;
+
+            if (restDeficit > 0) {
+              console.log(
+                `[Pass 2] ⏸ ${tableName}: ${nextDealer.full_name} pre-assigned with ` +
+                `rest deficit ${restDeficit}min (had ${currentRest}min rest, ` +
+                `min 10min) — swing delayed from ${assignment.swing_due_at} ` +
+                `to ${effectiveSwingAt}`,
+              );
+              // Diagnostic log only — no Telegram re-announce in v1
+              await admin.from("diagnostic_logs").insert({
+                level: "warn",
+                source: "pass2_pre_assign",
+                event: "soft_min_rest_delay",
+                club_id: clubId,
+                table_id: assignment.table_id,
+                dealer_id: result_outcome?.dealer_id ?? nextDealer.dealer_id ?? null,
+                payload: {
+                  rest_deficit_min: restDeficit,
+                  current_rest_min: currentRest,
+                  original_due_at: result_outcome?.original_swing_due_at ?? assignment.swing_due_at,
+                  effective_due_at: effectiveSwingAt,
+                  next_dealer_name: nextDealer.full_name,
+                },
+              });
+            }
+
             // Compute minutes until swing for the notification
-            const swingAt = new Date(assignment.swing_due_at).getTime();
+            // Use effectiveSwingAt (post-delay) so notification matches
+            // the actual swing time after server-side delay.
+            const swingAt = new Date(effectiveSwingAt).getTime();
             const minutesLeft = Math.max(0, Math.floor((swingAt - Date.now()) / 60_000));
 
             console.log(
               `[Pass 2] ✅ ${tableName}: ${nextDealer.full_name} pre-assigned ` +
-              `(swing in ~${minutesLeft} min)`
+              `(swing in ~${minutesLeft} min)` +
+              (restDeficit > 0 ? ` [delayed ${restDeficit}min for rest]` : ""),
             );
 
             // Telegram pre-announce notification
@@ -257,7 +305,7 @@ export async function pass2PreAssignNext(
                 outUsername: outgoing.telegram_username ?? null,
                 inName: nextDealer.full_name,
                 inUsername: nextDealer.telegram_username ?? null,
-                swingAt: new Date(assignment.swing_due_at),
+                swingAt: new Date(effectiveSwingAt),
                 minutesLeft,
               } satisfies PreAssignEvent);
             }
