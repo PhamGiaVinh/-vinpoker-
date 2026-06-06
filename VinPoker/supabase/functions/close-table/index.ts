@@ -44,7 +44,12 @@ Deno.serve(async (req) => {
       .eq("id", table_id)
       .maybeSingle();
     if (te || !table) return json({ error: "Table not found" }, 404);
-    if (table.status !== "active") return json({ error: "Table is already inactive" }, 400);
+    // Idempotent: if the table is already inactive (e.g. process-swing cron
+    // just closed it, or a duplicate click raced), return success without
+    // any side effects. This avoids spurious 400s on the cashier map.
+    if (table.status !== "active") {
+      return json({ success: true, already_inactive: true, had_dealer: false }, 200);
+    }
 
     // Verify caller has dealer_control for this club
     const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: table.club_id });

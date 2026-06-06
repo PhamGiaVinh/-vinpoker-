@@ -604,7 +604,10 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         return;
       }
       const r = data as any;
-      if (r.had_dealer) {
+      if (r?.already_inactive) {
+        // process-swing (or another session) closed it first — treat as success.
+        toast.info("Bàn đã được đóng trước đó");
+      } else if (r?.had_dealer) {
         toast.success("Đã đóng bàn và chuyển dealer sang break");
       } else {
         toast.success("Đã đóng bàn");
@@ -2604,8 +2607,12 @@ function TableGrid({
   const nowMs = useLiveClock();
 
   const filteredTables = useMemo(() => {
-    if (!selectedTour) return tables.filter((t) => tableAssignmentMap[t.id] != null);
-    return tables.filter((t) => t.shift_id === selectedTour);
+    // Inactive tables are removed from the map entirely — they sit in the
+    // general pool (shift_id=null) and are not actionable here. Process-swing
+    // can close a table between renders; the next refetch will drop it.
+    const base = tables.filter((t) => t.status === "active");
+    if (!selectedTour) return base.filter((t) => tableAssignmentMap[t.id] != null);
+    return base.filter((t) => t.shift_id === selectedTour);
   }, [tables, selectedTour, tableAssignmentMap]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
