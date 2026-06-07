@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
         club_id,
         game_tables!inner (
           id,
-          name,
+          table_name,
           status
         )
       `)
@@ -128,12 +128,12 @@ Deno.serve(async (req) => {
     // ═══ Step 3: Call perform_swing with rest_deficit (BUG #5 fix) ═══
     const { data: swingResult, error: swingErr } = await admin.rpc("perform_swing", {
       p_assignment_id: overdueTable.id,
-      p_duration_minutes: 30,
+      p_version: null,
+      p_next_attendance_id: verifiedAttendanceId,
       p_send_to_break: false,
       p_break_duration_minutes: 15,
-      p_max_break_minutes: 60,
-      p_expected_version: null,
-      p_next_attendance_id: verifiedAttendanceId,
+      p_swing_duration_minutes: 30,
+      p_swing_due_at: null,
       p_rest_deficit_minutes: restDeficit,
     });
 

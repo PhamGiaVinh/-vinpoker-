@@ -49,18 +49,19 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
     const clubId = (await req.json().catch(() => ({})))?.club_id ?? null;
 
-    // ═══ Step 1: Smart gate — skip if no recent ready events ═══
-    const recentCutoff = new Date(Date.now() - SMITH_GATE_WINDOW_MIN * 60 * 1000).toISOString();
+    // ═══ Step 1: Smart gate — skip if no available dealers ═══
+    // NOTE: dealer_attendance has NO updated_at column.
+    // Use existence check (any available dealer = proceed). Per-dealer
+    // atomic check is the real filter for whether work is needed.
     const { count: recentCount, error: gateErr } = await admin
       .from("dealer_attendance")
       .select("id", { count: "exact", head: true })
-      .eq("current_state", "available")
-      .gte("updated_at", recentCutoff);
+      .eq("current_state", "available");
 
     if (gateErr) {
       console.warn("[run-dealer-ready-backup] smart gate query failed:", gateErr.message);
     } else if (!recentCount || recentCount === 0) {
-      console.log(`[run-dealer-ready-backup] smart gate: no dealers in last ${SMITH_GATE_WINDOW_MIN}min, skipping`);
+      console.log("[run-dealer-ready-backup] smart gate: no available dealers, skipping");
       outcome = "skipped_smart_gate";
       await logMetric(admin, "run-dealer-ready-backup", null, startTime, "success", 0, 0, "smart_gate_skip");
       return json({ outcome, duration_ms: Date.now() - startTime });
@@ -112,7 +113,6 @@ Deno.serve(async (req) => {
           .from("dealer_attendance")
           .select("id, dealer_id")
           .eq("current_state", "available")
-          .gte("updated_at", recentCutoff)
           .limit(20);
 
         if (readyErr) {
@@ -173,12 +173,12 @@ Deno.serve(async (req) => {
 
             const { data: swingResult, error: swingErr } = await admin.rpc("perform_swing", {
               p_assignment_id: overdueTable.id,
-              p_duration_minutes: 30,
+              p_version: null,
+              p_next_attendance_id: dealer.id,
               p_send_to_break: false,
               p_break_duration_minutes: 15,
-              p_max_break_minutes: 60,
-              p_expected_version: null,
-              p_next_attendance_id: dealer.id,
+              p_swing_duration_minutes: 30,
+              p_swing_due_at: null,
               p_rest_deficit_minutes: restDeficit,
             });
 
