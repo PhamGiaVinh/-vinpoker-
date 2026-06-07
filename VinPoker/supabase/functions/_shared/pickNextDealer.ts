@@ -53,6 +53,9 @@ export interface PickDealerOptions {
   skipFatigueHardCap?: boolean;
   /** Club break duration for rest threshold calculation. Defaults to 20 if not provided. */
   clubBreakDurationMinutes?: number;
+  /** Minimum rest minutes between consecutive assignments. Defaults to 10 if not provided.
+   *  Used by graduated escalation: Tier 1=5, Tier 2=3, Tier 3=0 to relax rest enforcement. */
+  minRestMinutes?: number;
 }
 
 export interface DealerCandidate {
@@ -98,6 +101,7 @@ export async function buildDealerCandidates(
     skipPriorityBreakGuard = false,
     skipFatigueHardCap = false,
     clubBreakDurationMinutes = 20,
+    minRestMinutes = 10,
   } = options;
 
   // Step 1: Get active dealer IDs for this club
@@ -321,8 +325,10 @@ export async function buildDealerCandidates(
     if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
     // ── Minimum rest ────────────────────────────────────────────────────────
-    // Dealer needs ≥10 min rest between swing cycles.
-    if (consecutive > 0 && restMin < 10) { diag.min_rest_excluded++; continue; }
+    // Dealer needs ≥N min rest between swing cycles. Default 10 min, but
+    // graduated escalation can lower this (Tier 1=5, Tier 2=3, Tier 3=0)
+    // when a stuck assignment needs aggressive recovery.
+    if (consecutive > 0 && restMin < minRestMinutes) { diag.min_rest_excluded++; continue; }
 
     // ── Soft cap warning (log only, do not block) ────────────────────────────
     // Issue 6: track high-consecutive dealers for admin review. Fire-and-forget
@@ -504,6 +510,7 @@ export async function buildDealerCandidates(
       requiredGameTypes: options.requiredGameTypes || "(none)",
       skipPriorityBreakGuard: options.skipPriorityBreakGuard,
       skipFatigueHardCap: options.skipFatigueHardCap,
+      minRestMinutes: options.minRestMinutes ?? 10,
       busyDealerTotal: busyDealerIds.size,
       busyDealerIds: [...busyDealerIds],
     });

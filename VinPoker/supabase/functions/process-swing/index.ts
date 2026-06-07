@@ -796,12 +796,17 @@ Deno.serve(async (req: Request) => {
             console.log("[Pass 0c] ✅ No stuck dealers found");
           }
 
-          // 6. Phase 4: Critically overdue + extended OT alerting
-          // Detects conditions that Pass 3 cannot catch proactively:
-          //   - swing_due_at > 30 min in the past (Pass 3 only catches window [now, now+2min])
-          //   - overtime_started_at > 45 min ago (extended OT needs floor intervention)
-          // These alert the floor WITHOUT auto-fix (dealers may be in legitimate process).
-          const overdueThreshold = new Date(Date.now() - 30 * 60_000).toISOString();
+          // 6. Phase 4: Force-release stuck assignments + critical alerting
+          // Detects conditions that Pass 3 cannot catch proactively and force-releases
+          //   rows past force_release_at_overdue_min (default 30) via RPC.
+          // Pass 3 also runs this logic but Pass 0c runs FIRST in the cron tick
+          // and can catch rows that Pass 3 wouldn't reach (e.g., already in
+          //   progress locks or pre-assigned race_lost).
+          // Also alerts on extended OT (45+ min) but does NOT auto-fix.
+          const { data: pass0cEsc } = await admin.rpc("get_escalation_config", { p_club_id: cid }).single();
+          const forceReleaseThreshold = pass0cEsc?.force_release_at_overdue_min ?? 30;
+          const overdueThreshold = new Date(Date.now() - forceReleaseThreshold * 60_000).toISOString();
+
           const { data: overdueAssignments, error: overdueErr } = await admin
             .from("dealer_assignments")
             .select(`
@@ -829,25 +834,50 @@ Deno.serve(async (req: Request) => {
             .lt("overtime_started_at", otThreshold);
 
           const criticalAlerts: string[] = [];
+          let forceReleasedCount = 0;
 
+          // Force-release stuck rows past threshold
           if (overdueErr) {
             console.error("[Pass 0c] ❌ Overdue query error:", overdueErr.message);
           } else if (overdueAssignments && overdueAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} critically overdue assignments (>30 min)`);
+            console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — force-releasing`);
             for (const a of overdueAssignments) {
               const overdueMin = Math.floor(
                 (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
               );
               const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
               const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
-              criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: swing_due_at QUÁ HẠN ${overdueMin}ph. Cần xử lý ngay!`);
+
+              // Call force_release_stuck_assignment RPC
+              const forceResult = await admin.rpc("force_release_stuck_assignment", {
+                p_assignment_id: a.id,
+                p_club_id: cid,
+                p_reason: `pass0c_force_release_overdue_${Math.min(overdueMin, 240)}min`,
+              });
+
+              if (forceResult.error) {
+                console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
+                criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
+                continue;
+              }
+
+              const fr = forceResult.data as { success: boolean; reason?: string };
+              if (!fr?.success) {
+                console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
+                criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
+                continue;
+              }
+
+              forceReleasedCount++;
+              console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
+              criticalAlerts.push(`✅ *Bàn ${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
             }
           }
 
           if (otErr) {
             console.error("[Pass 0c] ❌ Extended OT query error:", otErr.message);
           } else if (extendedOtAssignments && extendedOtAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min)`);
+            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min) — alert only`);
             for (const a of extendedOtAssignments) {
               const otMin = Math.floor(
                 (Date.now() - new Date(a.overtime_started_at).getTime()) / 60_000
@@ -858,13 +888,17 @@ Deno.serve(async (req: Request) => {
             }
           }
 
+          // Send Telegram summary if anything happened
           if (criticalAlerts.length > 0) {
             const chatId = await getClubTelegramChatId(admin, cid);
             if (botToken && chatId) {
-              const msg = `🚨 *${criticalAlerts.length} cảnh báo nghiêm trọng*\n\n` +
+              const header = forceReleasedCount > 0
+                ? `🚨 *Pass 0c — ${forceReleasedCount} force-releases + ${criticalAlerts.length - forceReleasedCount} alerts*\n\n`
+                : `🚨 *${criticalAlerts.length} cảnh báo nghiêm trọng*\n\n`;
+              const msg = header +
                 criticalAlerts.slice(0, 10).join("\n\n") +
                 (criticalAlerts.length > 10 ? `\n\n_...và ${criticalAlerts.length - 10} cảnh báo khác_` : "") +
-                `\n\n🔍 Cron sẽ thử lại ở lần chạy tiếp theo. Nếu không tự giải quyết, kiểm tra pool dealer.`;
+                (forceReleasedCount > 0 ? `\n\n✅ Đã force-release ${forceReleasedCount} bàn quá hạn.` : `\n\n🔍 Cron sẽ thử lại ở lần chạy tiếp theo.`);
               await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
             }
           } else {
@@ -1727,101 +1761,40 @@ if (tier2Count > 0) {
             (assignment as any).__locked = true;
           }
 
-          // ── CIRCUIT BREAKER: Stuck swing detection ─────────────────────────
-          // If swing is overdue by > 60 minutes, this is likely an infinite retry
-          // loop caused by stale dealer or TOCTOU race.
-          // Release CURRENT + PRE-ASSIGNED dealers, mark assignment COMPLETED.
-          // (Fixed 2026-06-05: was setting swing_processed_at without releasing
-          //  current dealer, creating ghost state)
-          if (minsLeft < -SWING_THRESHOLDS.OVERDUE_THRESHOLD_MINUTES) {
+          // ── FORCE-RELEASE: Stuck swing detection (REPLACES 60-min circuit breaker) ──
+          // If swing is overdue by > force_release_at_overdue_min (default 30),
+          // call force_release_stuck_assignment RPC for atomic release.
+          // Pass 0c also runs this logic, but Pass 3 catches it first if it gets here.
+          // (The old 60-min CIRCUIT_BREAKER_THRESHOLD is removed — single source of truth
+          //  lives in swing_escalation_config.force_release_at_overdue_min)
+          const forceReleaseThresholdMin = await admin.rpc("get_escalation_config", { p_club_id: cid })
+            .then((r) => r.data?.force_release_at_overdue_min ?? 30)
+            .catch(() => 30);
+          if (minsLeft < -forceReleaseThresholdMin) {
             console.error(
-              `[process-swing] 🚨 CIRCUIT BREAKER: ${tableName} overdue by ${-minsLeft}min`
+              `[Pass 3] 🚨 FORCE-RELEASE: ${tableName} overdue by ${-minsLeft}min (threshold ${forceReleaseThresholdMin}min)`
             );
             if (!dryRun) {
-              // 1. Release CURRENT dealer (fixes ghost state — was missing in old code)
-              //    CRITICAL: If this fails, ABORT (don't continue with incomplete state)
-              if (assignment.attendance_id) {
-                const currentResult = await transitionDealerState(
-                  admin,
-                  assignment.attendance_id,
-                  "available",
-                  `circuit_breaker_release_current_overdue_${Math.min(-minsLeft, 240)}min`
-                );
-                if (!currentResult.success) {
-                  console.error(`[Pass 3] 🚨 CIRCUIT BREAKER FAILED to release current dealer — skipping assignment:`, currentResult.error);
-                  metrics.failed++;
-                  continue; // ← FIXED: don't continue, skip this assignment entirely
-                }
+              const forceResult = await admin.rpc("force_release_stuck_assignment", {
+                p_assignment_id: assignment.id,
+                p_club_id: cid,
+                p_reason: `pass3_force_release_overdue_${Math.min(-minsLeft, 240)}min`,
+              });
+
+              if (forceResult.error) {
+                console.error(`[Pass 3] ❌ force_release_stuck_assignment RPC error:`, forceResult.error.message);
+                metrics.failed++;
+                continue;
               }
 
-              // 2. Release PRE-ASSIGNED dealer (if exists)
-              if (assignment.pre_assigned_attendance_id) {
-                await admin
-                  .from("dealer_assignments")
-                  .update({ pre_assigned_attendance_id: null, pre_assigned_at: null })
-                  .eq("id", assignment.id)
-                  .is("released_at", null);
-                const preassignedResult = await transitionDealerState(
-                  admin,
-                  assignment.pre_assigned_attendance_id,
-                  "available",
-                  `circuit_breaker_release_preassigned_overdue_${Math.min(-minsLeft, 240)}min`
-                );
-                if (!preassignedResult.success) {
-                  console.error(`[Pass 3] Circuit breaker failed to release pre-assigned dealer:`, preassignedResult.error);
-                  // Continue anyway — pre-assigned is secondary, current is already released
-                }
+              const fr = forceResult.data as { success: boolean; reason?: string };
+              if (!fr?.success) {
+                console.warn(`[Pass 3] ⚠️ force_release_stuck_assignment returned:`, fr);
+                metrics.failed++;
+                continue;
               }
 
-              // 3. Mark assignment as COMPLETED (fixes ghost state)
-              const loggedMins = Math.min(-minsLeft, 240); // Cap at 4 hours for logging
-              await admin
-                .from("dealer_assignments")
-                .update({
-                  status: "completed",
-                  released_at: new Date().toISOString(),
-                  release_reason: `circuit_breaker_overdue_${loggedMins}min`,
-                  swing_processed_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", assignment.id);
-
-              // 4. Throttled alert with conditional message
-              const throttleThreshold = new Date(
-                Date.now() - SWING_THRESHOLDS.ALERT_THROTTLE_HOURS * 60 * 60 * 1000
-              ).toISOString();
-              const { data: alertUpdated, error: alertUpdateErr } = await admin
-                .from("clubs")
-                .update({ last_critical_alert_at: new Date().toISOString() })
-                .eq("id", cid)
-                .or(`last_critical_alert_at.is.null,last_critical_alert_at.lt.${throttleThreshold}`)
-                .select("id");
-
-              const shouldAlert = !alertUpdateErr && alertUpdated && alertUpdated.length > 0;
-              if (shouldAlert) {
-                const chatId = await getClubTelegramChatId(admin, cid);
-                if (botToken && chatId) {
-                  // CONDITIONAL alert message (fixes Warning 1)
-                  const currentReleased = !!assignment.attendance_id;
-                  const preassignedReleased = !!assignment.pre_assigned_attendance_id;
-                  const releaseMsg = 
-                    currentReleased && preassignedReleased ? `Cả 2 dealer đã force-release. ` :
-                    currentReleased ? `Current dealer đã force-release. ` :
-                    preassignedReleased ? `Pre-assigned dealer đã force-release. ` :
-                    `Không có dealer để release. `;
-                  
-                  await sendTelegramNotification(
-                    botToken, chatId,
-                    `🚨 *CIRCUIT BREAKER* — Bàn *${tableName}*\n` +
-                    `Dealer *${outgoingDealer?.full_name || "Unknown"}* kẹt ${-minsLeft}ph.\n` +
-                    releaseMsg +
-                    `⚠️ Cần can thiệp thủ công!`,
-                    {}
-                  );
-                }
-              } else {
-                console.log(`[Pass 3] 🔇 Alert throttled for club ${cid} (sent within last ${SWING_THRESHOLDS.ALERT_THROTTLE_HOURS}h)`);
-              }
+              console.log(`[Pass 3] ✅ Force-released ${tableName} (overdue ${-minsLeft}min)`);
             }
             metrics.failed++;
             continue;
@@ -2006,38 +1979,99 @@ if (tier2Count > 0) {
               clubBreakDurationMinutes: clubCfg.break_duration_minutes,
             };
 
-            // ── Level 1: Normal pick ─────────────────────────────────────────
-            // All filters active, priority break flag respected.
-            let nextDealer = await pickNextDealer(admin, cid, basePickOptions);
+            // ── Graduated escalation: config-driven, NOT hardcoded ────────────
+            // Fetch per-club thresholds from swing_escalation_config.
+            // Falls back to defaults (5/15/30, force=30) if no config row.
+            // Tier 0 (normal): default 10-min min_rest from swing_config.break_duration_minutes
+            // Tier 1 (5+ min overdue):  min_rest=5
+            // Tier 2 (15+ min overdue): min_rest=3, skip priority break guard
+            // Tier 3 (30+ min overdue): min_rest=0, skip fatigue cap (last resort)
+            // After Tier 3 fails: force_release_stuck_assignment RPC (Pass 0c also calls)
+            const minutesOverdue = Math.max(0, -minsLeft);
+            const { data: escalationConfig, error: escErr } = await admin
+              .rpc("get_escalation_config", { p_club_id: cid })
+              .single();
+            if (escErr) {
+              console.warn(`[Pass 3] ⚠️ Failed to fetch escalation config for ${cid}, using defaults:`, escErr.message);
+            }
+            const esc = escalationConfig ?? {
+              tier_1_min_overdue_min: 5, tier_1_min_rest_min: 5,
+              tier_2_min_overdue_min: 15, tier_2_min_rest_min: 3, tier_2_skip_priority_break: true,
+              tier_3_min_overdue_min: 30, tier_3_min_rest_min: 0, tier_3_skip_fatigue_cap: true,
+              force_release_at_overdue_min: 30,
+            };
 
-            // ── Level 2: Relax priority break guard (OT first attempt) ────────
-            // When no dealer found and table is OT, skip priority_break_flag
-            // filter so dealers flagged for break but well-rested are eligible.
-            if (!nextDealer && isOtDealer) {
+            // ── Tier 0: Normal pick ──────────────────────────────────────────
+            let nextDealer = await pickNextDealer(admin, cid, {
+              ...basePickOptions,
+              minRestMinutes: clubCfg.break_duration_minutes ?? 10,
+            });
+
+            // ── Tier 1: 5+ min overdue, relax min_rest to 5 ──────────────────
+            if (!nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
               console.log(
-                `[process-swing] Level 2 fallback for ${tableName} ` +
-                `(OT ${otMinutes}min): relaxing priority break guard`
+                `[Pass 3] Tier 1 fallback for ${tableName} ` +
+                `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_1_min_rest_min}`
               );
               nextDealer = await pickNextDealer(admin, cid, {
                 ...basePickOptions,
-                skipPriorityBreakGuard: true,
+                minRestMinutes: esc.tier_1_min_rest_min,
               });
             }
 
-            // ── Level 3: Relax fatigue hard cap (extended OT only) ────────────
-            // When OT extends beyond escalation threshold (default 20 min),
-            // also relax the 105-min fatigue hard cap so heavily worked dealers
-            // can still be picked as absolute last resort.
-            const escalationThreshold = 20;
-            if (!nextDealer && isOtDealer && otMinutes >= escalationThreshold) {
-              console.warn(
-                `[process-swing] Level 3 fallback for ${tableName} ` +
-                `(OT ${otMinutes}min): relaxing fatigue cap — last resort`
+            // ── Tier 2: 15+ min overdue, relax min_rest to 3, skip priority break ──
+            if (!nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
+              console.log(
+                `[Pass 3] Tier 2 fallback for ${tableName} ` +
+                `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_2_min_rest_min}, skipPriorityBreak=${esc.tier_2_skip_priority_break}`
               );
               nextDealer = await pickNextDealer(admin, cid, {
                 ...basePickOptions,
+                minRestMinutes: esc.tier_2_min_rest_min,
+                skipPriorityBreakGuard: esc.tier_2_skip_priority_break,
+              });
+            }
+
+            // ── Tier 3: 30+ min overdue, min_rest=0, skip fatigue cap (last resort) ──
+            if (!nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
+              console.warn(
+                `[Pass 3] Tier 3 fallback for ${tableName} ` +
+                `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_3_min_rest_min}, skipFatigue=${esc.tier_3_skip_fatigue_cap} — LAST RESORT`
+              );
+              nextDealer = await pickNextDealer(admin, cid, {
+                ...basePickOptions,
+                minRestMinutes: esc.tier_3_min_rest_min,
                 skipPriorityBreakGuard: true,
-                skipFatigueHardCap: true,
+                skipFatigueHardCap: esc.tier_3_skip_fatigue_cap,
+              });
+            }
+
+            // ── All tiers exhausted: flag for force-release in Pass 0c ────────
+            // Pass 0c runs FIRST in the cron tick and will force-release any
+            // stuck rows ≥ force_release_at_overdue_min. If Pass 0c is disabled,
+            // the next cron tick will catch it.
+            if (!nextDealer && minutesOverdue >= esc.force_release_at_overdue_min) {
+              console.error(
+                `[Pass 3] 🚨 ALL TIERS EXHAUSTED for ${tableName} ` +
+                `(overdue ${minutesOverdue.toFixed(1)}min ≥ threshold ${esc.force_release_at_overdue_min}) — ` +
+                `flagging for force-release`
+              );
+              // Track for diagnostic logging
+              admin.from("diagnostic_logs").insert({
+                club_id: cid,
+                diagnostic_type: "tiers_exhausted_force_release_pending",
+                result: {
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  minutes_overdue: minutesOverdue,
+                  threshold: esc.force_release_at_overdue_min,
+                  tiers_tried: [0, 1, 2, 3],
+                },
+                metadata: {
+                  attendance_id: assignment.attendance_id,
+                },
+              }).then(({ error }) => {
+                if (error) console.warn("[tiers_exhausted] log failed:", error.message);
               });
             }
 
@@ -2049,8 +2083,8 @@ if (tier2Count > 0) {
                 `(worked ${nextDealer.worked_minutes_since_last_break}min, ` +
                 `priorityBreak=${nextDealer.priority_break_flag})`
               );
-              // Send Telegram alert if this was Level 3 (extended OT)
-              if (otMinutes >= escalationThreshold) {
+              // Send Telegram alert if this was Tier 3 (extended OT, 30+ min)
+              if (minutesOverdue >= esc.tier_3_min_overdue_min) {
                 const chatId = botToken ? await getClubTelegramChatId(admin, cid).catch(() => null) : null;
                 if (botToken && chatId) {
                   await sendTelegramNotification(
