@@ -76,7 +76,7 @@ export interface TournamentHand {
   side_pots: any[];
   community_cards: string[];
   pot_size: number;
-  is_voided: boolean;
+  is_voided?: boolean;
   created_at: string;
 }
 
@@ -94,6 +94,8 @@ export interface HandPlayer {
   created_at: string;
 }
 
+export type PokerStreet = "preflop" | "flop" | "turn" | "river";
+
 export interface HandAction {
   id: string;
   hand_id: string;
@@ -102,7 +104,7 @@ export interface HandAction {
   action_type: string;
   action_amount: number;
   action_order: number;
-  street: string;
+  street: PokerStreet;
   created_at: string;
 }
 
