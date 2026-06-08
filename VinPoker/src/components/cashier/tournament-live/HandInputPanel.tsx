@@ -1,12 +1,12 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  Undo2, RotateCcw, SkipForward, CheckCircle2, XCircle,
-  ChevronRight, Users, Clock, Coins,
+  Undo2, RotateCcw, CheckCircle2, XCircle,
+  ChevronRight, Users, Coins, Send
 } from "lucide-react";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -165,7 +165,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     (profiles || []).forEach((p: any) => nameMap.set(p.user_id, p.display_name || p.user_id.slice(0, 6)));
 
     const seatCount = seats.length;
-    const newPlayers: PlayerState[] = seats.map((s, i) => ({
+    const newPlayers: PlayerState[] = seats.map((s) => ({
       player_id: s.player_id,
       entry_number: s.entry_number,
       seat_number: s.seat_number,
@@ -236,7 +236,6 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       case "raise": {
         amount = parseInt(betAmount) || 0;
         if (amount <= 0) { toast.error("Nhập số chip"); return; }
-        const totalBet = actionType === "bet" ? amount : player.current_bet + amount;
         const actual = Math.min(amount, player.current_stack);
         if (actual >= player.current_stack) {
           newPlayers[idx] = { ...newPlayers[idx], current_stack: 0, current_bet: player.current_bet + actual, total_bet: player.total_bet + actual, is_all_in: true };
@@ -254,13 +253,17 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       case "post_sb": {
         amount = parseInt(betAmount) || 0;
         if (amount <= 0) { toast.error("Nhập SB"); return; }
-        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - amount, current_bet: amount, total_bet: player.total_bet + amount };
+        const actual = Math.min(amount, player.current_stack);
+        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual };
+        amount = actual;
         break;
       }
       case "post_bb": {
         amount = parseInt(betAmount) || 0;
         if (amount <= 0) { toast.error("Nhập BB"); return; }
-        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - amount, current_bet: amount, total_bet: player.total_bet + amount };
+        const actual = Math.min(amount, player.current_stack);
+        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual };
+        amount = actual;
         break;
       }
     }
@@ -301,7 +304,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const completeHand = () => {
     const stacks: Record<string, number> = {};
     players.forEach((p) => {
-      stacks[p.player_id] = p.is_folded ? 0 : p.current_stack;
+      stacks[p.player_id] = p.current_stack;
     });
     setEndingStacks(stacks);
   };
@@ -339,27 +342,27 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           })),
         },
       });
-      if (error || data?.error) { toast.error(data?.error || error?.message); return; }
-      toast.success("Đã ghi nhận hand");
+      if (error || data?.error) { throw new Error(data?.error || error?.message); }
+      toast.success("Hand recorded successfully");
       setLastHandId(data?.data?.hand_id ?? null);
       resetHand();
     } catch (e: any) {
-      toast.error(e.message || "Lỗi");
+      toast.error(e.message || "Failed to record hand");
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleVoid = async () => {
-    if (!lastHandId) { toast.error("Không có hand để void"); return; }
-    if (!confirm("VOID hand này? Chip sẽ hoàn về trước hand.")) return;
+    if (!lastHandId) { toast.error("No hand to void"); return; }
+    if (!confirm("CONFIRM VOID: Toàn bộ chip sẽ hoàn về trạng thái trước hand?")) return;
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: { tournament_id: tournamentId, action: "void_hand", hand_id: lastHandId },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
-      toast.success("Hand đã VOID");
+      toast.success("Hand VOIDED successfully");
       setLastHandId(null);
       resetHand();
     } catch (e: any) {
@@ -390,40 +393,40 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   return (
     <div className="space-y-3">
       {/* HEADER */}
-      <div className="flex items-center justify-between flex-wrap gap-2 p-3 bg-card border border-border/30 rounded-lg border-l-4 border-l-amber-500">
+      <div className="flex items-center justify-between flex-wrap gap-2 p-3 bg-card border border-border/30 rounded-lg border-l-4 border-l-amber-500 shadow-sm">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-medium text-amber-400">
-            {tableId ? `Hand #${handNumber} · ${tableName}` : "Hand Input"}
+            {tableId ? `Hand #${handNumber} · ${tableName}` : "Select Table to Start"}
           </h3>
           {tableId && !isSummary && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium">
-              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
               {STREET_LABELS[currentStreet]}
             </span>
           )}
           {isSummary && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
-              Review
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium border border-blue-500/20">
+              Review Mode
             </span>
           )}
         </div>
         {tableId && !isSummary && (
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {activePlayers.length}/{players.length}</span>
-            <span className="flex items-center gap-1"><Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong></span>
+            <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {activePlayers.length}/{players.length} Active</span>
+            <span className="flex items-center gap-1"><Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot: <strong className="text-emerald-400 text-sm">{formatStack(potSize)}</strong></span>
           </div>
         )}
       </div>
 
       {/* SETUP: Table selector */}
       {!tableId && (
-        <Card className="p-6 text-center space-y-4">
+        <Card className="p-6 text-center space-y-4 border-dashed">
           <div className="text-muted-foreground">Chọn bàn để bắt đầu ghi nhận hand</div>
-          <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">
             <div className="space-y-1">
-              <label className="text-xs font-medium">Chọn Bàn</label>
+              <label className="text-xs font-medium text-muted-foreground">Chọn Bàn</label>
               <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={tableId}
                 onChange={(e) => handleTableChange(e.target.value)}
               >
@@ -434,14 +437,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium">Hand Number</label>
+              <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
               <Input placeholder="Auto" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
           </div>
           {lastHandId && (
-            <Button size="sm" variant="destructive" onClick={handleVoid} disabled={submitting}>
-              <Undo2 className="w-3.5 h-3.5 mr-1" /> Void Last Hand
-            </Button>
+            <div className="pt-2">
+              <Button size="sm" variant="destructive" onClick={handleVoid} disabled={submitting}>
+                <Undo2 className="w-3.5 h-3.5 mr-1" /> Void Last Hand ({lastHandId.slice(0, 8)})
+              </Button>
+            </div>
           )}
         </Card>
       )}
@@ -450,27 +455,27 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       {tableId && !isSummary && (
         <>
           {/* COMMUNITY CARDS */}
-          <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 border border-emerald-700/30">
+          <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 border border-emerald-700/30 shadow-inner">
             {communityCards.map((card, i) => (
-              <div key={i} className="relative">
+              <div key={i} className="relative group">
                 {card ? (
-                  <div className={`w-11 h-15 sm:w-12 sm:h-16 rounded border-2 flex items-center justify-center text-base sm:text-lg font-bold shadow-lg ${isRedCard(card) ? "border-red-500/50 text-red-400 bg-red-950/30" : "border-white/30 text-white bg-white/10"}`}>
+                  <div className={`w-10 h-14 sm:w-12 sm:h-16 rounded border-2 flex items-center justify-center text-base sm:text-lg font-bold shadow-lg transition-transform hover:scale-105 ${isRedCard(card) ? "border-red-500/50 text-red-400 bg-red-950/30" : "border-white/30 text-white bg-white/10"}`}>
                     {displayCard(card)}
                   </div>
                 ) : (
                   <div
-                    className="w-11 h-15 sm:w-12 sm:h-16 rounded border-2 border-dashed border-white/20 flex items-center justify-center text-muted-foreground cursor-pointer hover:border-amber-500/50 hover:bg-amber-950/20 transition-colors"
+                    className={`w-10 h-14 sm:w-12 sm:h-16 rounded border-2 border-dashed flex items-center justify-center text-muted-foreground cursor-pointer transition-colors ${cardSlotIndex(currentStreet).includes(i) ? "border-amber-500/50 bg-amber-950/20 hover:bg-amber-900/30" : "border-white/10 hover:border-white/30"}`}
                     onClick={() => {
                       if (cardSlotIndex(currentStreet).includes(i)) setCardInputIdx(i);
                     }}
                   >
-                    —
+                    {cardSlotIndex(currentStreet).includes(i) ? "+" : ""}
                   </div>
                 )}
                 {card && (
                   <button
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[8px] flex items-center justify-center hover:bg-red-600"
-                    onClick={() => { const c = [...communityCards]; c[i] = ""; setCommunityCards(c); }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[8px] flex items-center justify-center text-white hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => { e.stopPropagation(); const c = [...communityCards]; c[i] = ""; setCommunityCards(c); }}
                   >
                     ×
                   </button>
@@ -478,13 +483,14 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               </div>
             ))}
             {cardInputIdx !== null && (
-              <div className="flex items-center gap-1 ml-2">
+              <div className="flex items-center gap-1 ml-2 animate-in fade-in zoom-in duration-200">
                 <Input
-                  className="w-16 h-8 text-xs"
+                  className="w-16 h-8 text-xs uppercase"
                   placeholder="Ks"
                   value={cardInput}
                   onChange={(e) => setCardInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") applyCard(); }}
+                  onBlur={() => { if (!cardInput) setCardInputIdx(null); }}
                   autoFocus
                 />
                 <Button size="sm" className="h-8 px-2 text-xs" onClick={applyCard}>OK</Button>
@@ -493,14 +499,14 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           </div>
 
           {/* STREET TABS */}
-          <div className="flex gap-1 p-1.5 bg-card border border-border/30 rounded-lg overflow-x-auto">
+          <div className="flex gap-1 p-1.5 bg-card border border-border/30 rounded-lg overflow-x-auto shadow-sm">
             {STREET_ORDER.map((street) => (
               <button
                 key={street}
-                className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${
                   currentStreet === street
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                    : "text-muted-foreground hover:text-amber-400 border border-transparent"
+                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm"
+                    : "text-muted-foreground hover:text-amber-400 border border-transparent hover:bg-secondary/50"
                 }`}
                 onClick={() => setCurrentStreet(street)}
               >
@@ -508,7 +514,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               </button>
             ))}
             <button
-              className="ml-auto px-3 py-1.5 rounded text-xs font-medium text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-colors"
+              className="ml-auto px-3 py-1.5 rounded text-xs font-medium text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={nextStreet}
               disabled={currentStreet === "showdown"}
             >
@@ -523,39 +529,38 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               return (
                 <div
                   key={player.player_id}
-                  className={`rounded-lg border p-2.5 transition-colors ${
+                  className={`rounded-lg border p-2.5 transition-all duration-200 relative overflow-hidden ${
                     player.is_folded
-                      ? "border-border/20 bg-card/30 opacity-50"
+                      ? "border-border/20 bg-card/30 opacity-60 grayscale-[0.5]"
                       : player.is_all_in
-                      ? "border-red-500/30 bg-red-950/10"
-                      : "border-border/30 bg-card hover:border-amber-500/30"
+                      ? "border-red-500/40 bg-red-950/10 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+                      : "border-border/40 bg-card hover:border-amber-500/40 hover:shadow-md"
                   }`}
                 >
-                  {/* Seat header */}
-                  <div className="flex items-start justify-between mb-1.5">
-                    <div>
-                      <div className="text-[10px] text-muted-foreground font-medium">S{player.seat_number}</div>
-                      <div className="text-sm font-medium truncate max-w-[120px]">{player.display_name}</div>
+                  <div className="flex items-start justify-between mb-1.5 relative z-10">
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Seat {player.seat_number}</div>
+                      <div className="text-sm font-medium truncate max-w-[140px] text-foreground">{player.display_name}</div>
                     </div>
                     {player.position && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded font-medium">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${player.position === "BTN" ? "bg-amber-500 text-black" : "bg-amber-500/20 text-amber-400"}`}>
                         {player.position}
                       </span>
                     )}
                   </div>
 
-                  {/* Chip count */}
-                  <div className="text-sm font-semibold text-emerald-400 mb-2">
+                  <div className="text-sm font-bold text-emerald-400 mb-2 relative z-10 font-mono">
                     {formatStack(player.current_stack)}
                     {player.current_bet > 0 && (
-                      <span className="text-xs text-amber-400 ml-2">Bet: {formatStack(player.current_bet)}</span>
+                      <div className="text-[10px] text-amber-400 mt-0.5">Bet: {formatStack(player.current_bet)}</div>
                     )}
-                    {player.is_all_in && <span className="text-xs text-red-400 ml-1">ALL-IN</span>}
                   </div>
 
-                  {/* Action buttons */}
+                  {player.is_all_in && <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg z-20">ALL IN</div>}
+                  {player.is_folded && <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-20 pointer-events-none"><span className="bg-black/70 text-white px-2 py-1 rounded text-xs font-bold rotate-[-10deg]">FOLDED</span></div>}
+
                   {!isOut && (
-                    <div className="grid grid-cols-3 gap-1">
+                    <div className="grid grid-cols-3 gap-1 relative z-10">
                       <button
                         className="px-1 py-1.5 text-[10px] font-medium border border-border/30 rounded hover:border-red-500/50 hover:text-red-400 hover:bg-red-950/20 transition-colors"
                         onClick={() => handleAction(player.player_id, "fold")}
@@ -563,79 +568,68 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
                         Fold
                       </button>
                       <button
-                        className="px-1 py-1.5 text-[10px] font-medium border border-border/30 rounded hover:border-border/60 hover:bg-secondary transition-colors disabled:opacity-30"
+                        className="px-1 py-1.5 text-[10px] font-medium border border-border/30 rounded hover:border-border/60 hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         onClick={() => handleAction(player.player_id, "check")}
                         disabled={highestBet > player.current_bet}
                       >
                         Check
                       </button>
                       <button
-                        className="px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors disabled:opacity-30"
+                        className="px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         onClick={() => handleAction(player.player_id, "call")}
                         disabled={highestBet <= player.current_bet}
                       >
                         Call
                       </button>
+
                       {currentStreet === "preflop" && player.position === "SB" && (
-                        <button
-                          className="px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors"
-                          onClick={() => handleAction(player.player_id, "post_sb")}
-                        >
-                          Post SB
+                        <button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors" onClick={() => handleAction(player.player_id, "post_sb")}>
+                          Post SB ({formatStack(parseInt(betAmount) || 0)})
                         </button>
                       )}
                       {currentStreet === "preflop" && player.position === "BB" && (
-                        <button
-                          className="px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors"
-                          onClick={() => handleAction(player.player_id, "post_bb")}
-                        >
-                          Post BB
+                        <button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors" onClick={() => handleAction(player.player_id, "post_bb")}>
+                          Post BB ({formatStack(parseInt(betAmount) || 0)})
                         </button>
                       )}
+
                       {highestBet === 0 ? (
-                        <button
-                          className="px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors"
-                          onClick={() => handleAction(player.player_id, "bet")}
-                        >
+                        <button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors" onClick={() => handleAction(player.player_id, "bet")}>
                           Bet
                         </button>
                       ) : (
-                        <button
-                          className="px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors"
-                          onClick={() => handleAction(player.player_id, "raise")}
-                        >
+                        <button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors" onClick={() => handleAction(player.player_id, "raise")}>
                           Raise
                         </button>
                       )}
+
                       <button
-                        className="px-1 py-1.5 text-[10px] font-medium border border-red-500/30 text-red-400 rounded hover:bg-red-950/20 transition-colors"
+                        className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-red-500/30 text-red-400 rounded hover:bg-red-950/20 transition-colors"
                         onClick={() => handleAction(player.player_id, "all_in")}
                       >
-                        All-In
+                        ALL IN
                       </button>
                     </div>
                   )}
-                  {player.is_folded && <div className="text-xs text-muted-foreground text-center py-1">Folded</div>}
-                  {player.is_all_in && !player.is_folded && <div className="text-xs text-red-400 text-center py-1 font-medium">ALL-IN</div>}
                 </div>
               );
             })}
           </div>
 
           {/* CONTROLS */}
-          <div className="flex gap-2 p-2.5 bg-card border border-border/30 rounded-lg">
+          <div className="flex gap-2 p-2.5 bg-card border border-border/30 rounded-lg shadow-sm">
             <Input
               type="number"
-              placeholder="Bet / Raise amount..."
+              placeholder="Nhập số chip cược..."
               value={betAmount}
               onChange={(e) => setBetAmount(e.target.value)}
-              className="flex-1 h-9 text-sm"
+              className="flex-1 h-9 text-sm font-mono"
             />
-            <div className="flex gap-1">
-              {["1000", "5000", "10000", "25000"].map((v) => (
+            <div className="flex gap-1 overflow-x-auto">
+              {["1000", "5000", "10000", "25000", "50000"].map((v) => (
                 <button
                   key={v}
-                  className="px-2 py-1 text-[10px] border border-border/30 rounded hover:border-amber-500/50 hover:text-amber-400 transition-colors"
+                  className="px-2 py-1 text-[10px] border border-border/30 rounded hover:border-amber-500/50 hover:text-amber-400 hover:bg-amber-950/10 transition-colors shrink-0"
                   onClick={() => setBetAmount(v)}
                 >
                   {formatStack(Number(v))}
@@ -645,28 +639,29 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           </div>
 
           {/* ACTION LOG */}
-          <div className="bg-card border border-border/30 rounded-lg p-2.5">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Action Log</div>
-            <div className="max-h-48 overflow-y-auto space-y-0.5">
+          <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm max-h-60 flex flex-col">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 sticky top-0 bg-card pb-2 border-b border-border/20">Action Log</div>
+            <div className="overflow-y-auto space-y-0.5 flex-1 pr-1">
               {actions.length === 0 && (
-                <div className="text-xs text-muted-foreground text-center py-3">Chưa có action</div>
+                <div className="text-xs text-muted-foreground text-center py-4 italic">Chưa có action nào được ghi nhận</div>
               )}
               {STREET_ORDER.filter((s) => actions.some((a) => a.street === s)).map((street) => (
-                <div key={street}>
-                  <div className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mt-2 mb-1">
+                <div key={street} className="mb-3">
+                  <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1 sticky top-0 bg-card/50 backdrop-blur-sm py-1">
                     {STREET_LABELS[street]}
-                    {street === "flop" && communityCards[0] && ` (${communityCards.slice(0, 3).map(displayCard).join(" ")})`}
-                    {street === "turn" && communityCards[3] && ` (${displayCard(communityCards[3])})`}
-                    {street === "river" && communityCards[4] && ` (${displayCard(communityCards[4])})`}
+                    {street === "flop" && communityCards[0] && <span className="text-muted-foreground font-normal ml-2">({communityCards.slice(0, 3).map(displayCard).join(" ")})</span>}
+                    {street === "turn" && communityCards[3] && <span className="text-muted-foreground font-normal ml-2">({displayCard(communityCards[3])})</span>}
+                    {street === "river" && communityCards[4] && <span className="text-muted-foreground font-normal ml-2">({displayCard(communityCards[4])})</span>}
                   </div>
                   {actions
                     .filter((a) => a.street === street)
                     .map((action, idx) => (
-                      <div key={idx} className="flex justify-between py-1 px-1 border-b border-border/20 text-xs">
-                        <span className="text-muted-foreground">
-                          S{action.seat_number} {action.display_name}
+                      <div key={idx} className="flex justify-between py-1.5 px-2 border-b border-border/10 last:border-0 text-xs hover:bg-secondary/30 rounded transition-colors">
+                        <span className="text-muted-foreground font-medium">
+                          <span className="text-[10px] text-foreground bg-border/30 px-1 rounded mr-1">S{action.seat_number}</span>
+                          {action.display_name}
                         </span>
-                        <span className={action.amount > 0 ? "text-emerald-400 font-semibold" : "text-muted-foreground"}>
+                        <span className={`font-bold ${action.amount > 0 ? "text-emerald-400" : "text-muted-foreground"}`}>
                           {formatActionLabel(action)}
                         </span>
                       </div>
@@ -677,9 +672,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           </div>
 
           {/* FOOTER */}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/20">
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={resetHand} disabled={submitting}>
+              <Button size="sm" variant="ghost" onClick={resetHand} disabled={submitting}>
                 <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
               </Button>
               {lastHandId && (
@@ -688,7 +683,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
                 </Button>
               )}
             </div>
-            <Button size="sm" onClick={completeHand} disabled={submitting || actions.length === 0} className="bg-amber-500 hover:bg-amber-600 text-black">
+            <Button size="sm" onClick={completeHand} disabled={submitting || actions.length === 0} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
               <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Complete Hand
             </Button>
           </div>
@@ -697,22 +692,32 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
       {/* SUMMARY: Review ending stacks */}
       {isSummary && (
-        <Card className="p-4 space-y-4">
-          <div className="text-sm font-semibold text-amber-400">Review Ending Stacks</div>
-          <div className="text-xs text-muted-foreground mb-2">
-            Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong> · Community: {communityCards.filter(Boolean).map(displayCard).join(" ") || "—"}
+        <Card className="p-4 space-y-4 border-blue-500/30 bg-blue-950/10">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-bold text-blue-400 uppercase tracking-wide">Review Ending Stacks</div>
+            <div className="text-xs text-muted-foreground">
+              Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong>
+            </div>
           </div>
-          <div className="space-y-2">
+
+          <div className="text-xs text-muted-foreground mb-2 bg-black/20 p-2 rounded">
+            Community: {communityCards.filter(Boolean).map(displayCard).join(" ") || "—"}
+          </div>
+
+          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
             {players.map((player) => (
-              <div key={player.player_id} className="flex items-center gap-3 border rounded p-2">
-                <div className="text-sm font-medium flex-1">
-                  S{player.seat_number} {player.display_name}
-                  {player.is_folded && <span className="text-xs text-muted-foreground ml-1">(Folded)</span>}
+              <div key={player.player_id} className="flex items-center gap-3 border border-border/30 rounded p-2 bg-card/50">
+                <div className="text-sm font-medium flex-1 min-w-0">
+                  <div className="truncate">S{player.seat_number} {player.display_name}</div>
+                  {player.is_folded && <span className="text-[10px] text-muted-foreground">(Folded)</span>}
+                  {player.is_all_in && <span className="text-[10px] text-red-400 font-bold">(All-In)</span>}
                 </div>
-                <div className="text-xs text-muted-foreground">Start: {formatStack(player.starting_stack)}</div>
+                <div className="text-[10px] text-muted-foreground text-right">
+                  Start: {formatStack(player.starting_stack)}
+                </div>
                 <Input
                   type="number"
-                  className="w-28 h-8 text-sm"
+                  className="w-24 h-8 text-sm font-mono text-right"
                   value={endingStacks[player.player_id] ?? player.current_stack}
                   onChange={(e) =>
                     setEndingStacks((prev) => ({ ...prev, [player.player_id]: Number(e.target.value) }))
@@ -721,25 +726,17 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between pt-2">
-            <Button size="sm" variant="outline" onClick={() => setEndingStacks({})}>
+
+          <div className="flex items-center justify-between pt-2 border-t border-border/20">
+            <Button size="sm" variant="ghost" onClick={() => setEndingStacks({})}>
               <XCircle className="w-3.5 h-3.5 mr-1" /> Back
             </Button>
-            <Button size="sm" onClick={handleSubmitHand} disabled={submitting} className="bg-amber-500 hover:bg-amber-600 text-black">
+            <Button size="sm" onClick={handleSubmitHand} disabled={submitting} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
               <Send className="w-3.5 h-3.5 mr-1" /> Submit Hand
             </Button>
           </div>
         </Card>
       )}
     </div>
-  );
-}
-
-function Send(props: React.SVGProps<SVGSVGElement> & { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="m22 2-7 20-4-9-9-4Z" />
-      <path d="M22 2 11 13" />
-    </svg>
   );
 }

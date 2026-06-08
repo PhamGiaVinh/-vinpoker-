@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coins, Layers, MapPin, Calendar, Users, Loader2 } from "lucide-react";
+import { ArrowLeft, Coins, Layers, MapPin, Calendar, Users, Loader2, Radio } from "lucide-react";
 import { formatVND, formatStack, formatDateTime } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import { getTournamentPrice } from "@/lib/tournament";
@@ -98,6 +98,33 @@ const TournamentDetail = () => {
           <Info icon={Users} label={tr("tournamentDetail.registered")} value={tr("tournamentDetail.players", { n: Math.max(t.current_players ?? 0, count) })} />
         </div>
       </Card>
+
+      {["live", "break", "final_table", "registering"].includes(t.status) && (
+        <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/40 to-emerald-900/10 p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30 animate-pulse">
+                <Radio className="w-3.5 h-3.5" /> LIVE
+              </div>
+              <div>
+                <div className="text-sm font-bold text-emerald-400">
+                  {t.status === "registering" ? "Đang đăng ký" : t.status === "break" ? "Nghỉ giải lao" : t.status === "final_table" ? "Bàn cuối" : "Đang chơi"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {t.players_remaining != null && `${t.players_remaining} người chơi`}
+                  {t.current_level != null && ` · Lv ${t.current_level}`}
+                  {t.current_blinds && ` · ${t.current_blinds}`}
+                </div>
+              </div>
+            </div>
+            <Link to={`/live/${t.id}`}>
+              <Button size="sm" className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
+                <Radio className="w-4 h-4 mr-1.5" /> Theo dõi Live
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {getTournamentPrice(t).hasDiscount && (
         <Card className="p-4 border-success/30 bg-success/5">

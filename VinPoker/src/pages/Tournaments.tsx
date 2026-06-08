@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatBuyInShort, formatShortDate, formatTime } from "@/lib/format";
+import { formatBuyInShort, formatShortDate, formatTime, formatStack } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
-import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { LivestreamSection } from "@/components/LivestreamSection";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -72,7 +72,7 @@ const Tournaments = () => {
   const [scheduleClubs, setScheduleClubs] = useState<{ id: string; name: string; region: string; daily_schedule_image_url: string | null; weekly_schedule_image_url: string | null; schedule_sort_order: number }[]>([]);
   const [reordering, setReordering] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"daily" | "weekly" | "news" | "series" | "livestream" | "packages">("weekly");
+  const [view, setView] = useState<"daily" | "weekly" | "news" | "series" | "livestream" | "livetracker" | "packages">("weekly");
   const [buyInRange, setBuyInRange] = useState("all");
   const [statusUpcoming, setStatusUpcoming] = useState(true);
   const [statusLateReg, setStatusLateReg] = useState(true);
@@ -194,7 +194,7 @@ const Tournaments = () => {
         </div>
 
         <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:inline-flex rounded-xl bg-card border border-border p-1">
-          {(["weekly", "daily", "news", "series", "livestream", "packages"] as const).map((v) => (
+          {(["weekly", "daily", "livetracker", "news", "series", "livestream", "packages"] as const).map((v) => (
             <button
               key={v}
               onClick={() => { setView(v); setPage(1); }}
@@ -203,11 +203,14 @@ const Tournaments = () => {
                 view === v
                   ? v === "livestream"
                     ? "text-foreground"
+                    : v === "livetracker"
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                     : "gradient-neon text-primary-foreground shadow-neon"
                   : "text-[#aba0a0]"
               )}
             >
               {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
+              {v === "livetracker" && <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400 shrink-0" />}
               {v === "news" && <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
               {v === "packages" && <span className="material-symbols-outlined text-sm sm:text-base shrink-0">redeem</span>}
               <span className="truncate">
@@ -215,6 +218,7 @@ const Tournaments = () => {
                   : v === "weekly" ? tr("tournamentsPage.weekly")
                   : v === "series" ? tr("tournamentsPage.series")
                   : v === "livestream" ? tr("tournamentsPage.livestream")
+                  : v === "livetracker" ? "Live Tracker"
                   : v === "packages" ? tr("tournamentsPage.packages")
                   : tr("tournamentsPage.news")}
               </span>
@@ -225,6 +229,8 @@ const Tournaments = () => {
 
       {view === "livestream" ? (
         <LivestreamSection />
+      ) : view === "livetracker" ? (
+        <LiveTrackerSection />
       ) : view === "news" ? (
         <News />
       ) : view === "packages" ? (
@@ -589,14 +595,27 @@ const Tournaments = () => {
                                 <span className="text-muted-foreground text-xs"> {tr("tournamentsPage.entries")}</span>
                               </td>
                               <td className="px-5 py-4 text-right">
-                                <Button
-                                  size="sm"
-                                  onClick={() => user ? setRegisterFor({ id: t.id, name: t.name }) : nav("/auth")}
-                                  className="bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 font-bold tracking-wider rounded-full px-4 h-8"
-                                  variant="ghost"
-                                >
-                                  {tr("tournamentsPage.register")}
-                                </Button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {isLive && (
+                                    <Link to={`/live/${t.id}`}>
+                                      <Button
+                                        size="sm"
+                                        className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-3 h-8"
+                                        variant="ghost"
+                                      >
+                                        <Eye className="w-3.5 h-3.5 mr-1" /> <span className="hidden sm:inline">Live</span>
+                                      </Button>
+                                    </Link>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    onClick={() => user ? setRegisterFor({ id: t.id, name: t.name }) : nav("/auth")}
+                                    className="bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 font-bold tracking-wider rounded-full px-4 h-8"
+                                    variant="ghost"
+                                  >
+                                    {tr("tournamentsPage.register")}
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -660,6 +679,165 @@ const PageBtn = ({ children, active, disabled, onClick }: any) => (
     {children}
   </button>
 );
+
+const LiveTrackerSection = () => {
+  const [liveTournaments, setLiveTournaments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const nav = useNavigate();
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("tournaments")
+        .select("id, name, status, current_players, current_level, current_blinds, players_remaining, average_stack, buy_in, starting_stack, game_type, club:clubs(id, name, region)")
+        .in("status", ["live", "break", "final_table", "registering"])
+        .order("start_time", { ascending: false });
+      setLiveTournaments((data as any) ?? []);
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("live-tracker-list")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tournaments" }, () => {
+        supabase
+          .from("tournaments")
+          .select("id, name, status, current_players, current_level, current_blinds, players_remaining, average_stack, buy_in, starting_stack, game_type, club:clubs(id, name, region)")
+          .in("status", ["live", "break", "final_table", "registering"])
+          .order("start_time", { ascending: false })
+          .then(({ data }) => { if (data) setLiveTournaments(data as any); });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const STATUS_LABEL: Record<string, string> = {
+    registering: "Đang đăng ký",
+    drawing: "Bốc bàn",
+    live: "Đang chơi",
+    break: "Nghỉ giải lao",
+    final_table: "Bàn cuối",
+  };
+  const STATUS_CLS: Record<string, string> = {
+    registering: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    drawing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    live: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 animate-pulse",
+    break: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+    final_table: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  };
+
+  if (loading) {
+    return (
+      <Card className="p-12 text-center">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-400 mx-auto" />
+      </Card>
+    );
+  }
+
+  if (liveTournaments.length === 0) {
+    return (
+      <Card className="p-12 text-center space-y-3">
+        <Radio className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+        <p className="text-muted-foreground">Chưa có giải đấu nào đang diễn ra</p>
+        <p className="text-xs text-muted-foreground/60">Khi giải đấu bắt đầu, thông tin sẽ xuất hiện tại đây</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {liveTournaments.map((t) => (
+        <Card key={t.id} className="border border-emerald-500/20 bg-gradient-to-r from-card to-emerald-950/10 p-4 hover:border-emerald-500/40 transition-all">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${STATUS_CLS[t.status] || "bg-muted/30 text-muted-foreground border-border"}`}>
+                  {STATUS_LABEL[t.status] || t.status}
+                </span>
+                {t.game_type && (
+                  <span className="text-[10px] text-muted-foreground uppercase">
+                    {GAME_LABEL[t.game_type] || t.game_type}
+                  </span>
+                )}
+              </div>
+              <h3 className="font-display font-bold text-base truncate">{t.name}</h3>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {t.club?.name}
+                {t.club?.region ? ` · ${t.club.region}` : ""}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 shrink-0">
+              <div className="hidden sm:flex items-center gap-4 text-xs">
+                {t.players_remaining != null && (
+                  <div className="text-center">
+                    <div className="text-emerald-400 font-bold text-base">{t.players_remaining}</div>
+                    <div className="text-muted-foreground text-[10px]">Players</div>
+                  </div>
+                )}
+                {t.current_level != null && (
+                  <div className="text-center">
+                    <div className="text-amber-400 font-bold text-base">Lv {t.current_level}</div>
+                    <div className="text-muted-foreground text-[10px]">Level</div>
+                  </div>
+                )}
+                {t.current_blinds && (
+                  <div className="text-center">
+                    <div className="text-white font-bold text-base">{t.current_blinds}</div>
+                    <div className="text-muted-foreground text-[10px]">Blinds</div>
+                  </div>
+                )}
+                {t.average_stack != null && (
+                  <div className="text-center">
+                    <div className="text-white font-bold text-base">{formatStack(t.average_stack)}</div>
+                    <div className="text-muted-foreground text-[10px]">AVG Stack</div>
+                  </div>
+                )}
+              </div>
+
+              <Button
+                size="sm"
+                onClick={() => nav(`/live/${t.id}`)}
+                className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-4 h-9"
+                variant="ghost"
+              >
+                <Eye className="w-4 h-4 mr-1.5" /> Theo dõi
+              </Button>
+            </div>
+          </div>
+
+          <div className="sm:hidden mt-3 grid grid-cols-4 gap-2 text-xs text-center">
+            {t.players_remaining != null && (
+              <div className="rounded-md bg-muted/30 px-2 py-1.5">
+                <div className="text-emerald-400 font-bold">{t.players_remaining}</div>
+                <div className="text-muted-foreground text-[9px]">Players</div>
+              </div>
+            )}
+            {t.current_level != null && (
+              <div className="rounded-md bg-muted/30 px-2 py-1.5">
+                <div className="text-amber-400 font-bold">Lv {t.current_level}</div>
+                <div className="text-muted-foreground text-[9px]">Level</div>
+              </div>
+            )}
+            {t.current_blinds && (
+              <div className="rounded-md bg-muted/30 px-2 py-1.5">
+                <div className="text-white font-bold">{t.current_blinds}</div>
+                <div className="text-muted-foreground text-[9px]">Blinds</div>
+              </div>
+            )}
+            {t.average_stack != null && (
+              <div className="rounded-md bg-muted/30 px-2 py-1.5">
+                <div className="text-white font-bold">{formatStack(t.average_stack)}</div>
+                <div className="text-muted-foreground text-[9px]">AVG</div>
+              </div>
+            )}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+};
 
 const PackagesSection = () => {
   const { data: packages, isLoading } = useTournamentPackages();
