@@ -608,14 +608,23 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       case "total_hours":     return <span className={`${baseRight} text-zinc-300`}>{formatHours(r.total_hours)}</span>;
       case "regular_hours":   return <span className={`${baseRight} text-zinc-300`}>{formatHours(r.regular_hours)}</span>;
       case "ot_hours":        return <span className={`${baseRight} ${r.ot_hours > 0 ? "text-red-400 font-semibold" : "text-zinc-500"}`}>{r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}</span>;
-      case "base_pay":
+      case "base_pay": {
+        const isProrated = isFullTime && r.monthly_salary_vnd > 0 && r.total_shifts < (r.standard_shifts_per_month ?? 26);
         return (
-          <span className={`${baseRight} text-zinc-300`}>
-            {isFullTime
-              ? r.monthly_salary_vnd ? formatVNDShort(r.monthly_salary_vnd) : "—"
-              : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"}
-          </span>
+          <div className={`${baseRight} text-zinc-300`}>
+            <div>
+              {isFullTime
+                ? r.base_salary_vnd > 0 ? formatVNDShort(r.base_salary_vnd) : "—"
+                : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"}
+            </div>
+            {isProrated && (
+              <div className="text-[10px] text-amber-500 leading-tight">
+                {formatVNDShort(r.monthly_salary_vnd)}×{r.total_shifts}/{r.standard_shifts_per_month ?? 26}
+              </div>
+            )}
+          </div>
         );
+      }
       case "regular_pay":     return <span className={`${baseRight} text-zinc-300`}>{formatVND(r.regular_pay_vnd)}</span>;
       case "ot_pay":          return <span className={`${baseRight} ${r.ot_pay_vnd > 0 ? "text-red-400" : "text-zinc-500"}`}>{r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}</span>;
       case "gross_pay":       return <span className={`${baseRight} font-semibold text-emerald-400`}>{formatVND(r.gross_pay_vnd)}</span>;

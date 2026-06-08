@@ -11,6 +11,7 @@ export interface DealerPayrollRow {
   hourly_rate_vnd: number;
   standard_hours_per_shift: number;
   ot_multiplier: number;
+  standard_shifts_per_month: number;
   total_shifts: number;
   total_hours: number;
   regular_hours: number;
@@ -45,6 +46,7 @@ export interface ClubPayrollResult {
   club_id: string;
   period_start: string;
   period_end: string;
+  standard_shifts_per_month: number;
   dealers: Record<string, DealerPayrollRow>;
 }
 
