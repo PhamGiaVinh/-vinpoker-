@@ -1,5 +1,5 @@
 -- Phase 5 PR #2: Schedule process-pre-announce-jobs cron
--- Runs every 30s to drain pre_announce_jobs queue
+-- Runs every minute (pg_cron minimum resolution) to drain pre_announce_jobs queue
 -- Idempotent: schedules only if not already scheduled
 
 DO $$
@@ -9,7 +9,7 @@ BEGIN
   ) THEN
     PERFORM cron.schedule(
       'process-pre-announce-jobs',
-      '*/30 * * * * *',
+      '* * * * *',  -- every minute (pg_cron minimum resolution)
       $cron$
       SELECT
         net.http_post(
