@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
           p_side_pots: side_pots || "[]",
           p_community_cards: community_cards || "[]",
           p_pot_size: pot_size || 0,
+          p_created_by: user.id,
         });
         break;
       }
@@ -75,6 +76,56 @@ Deno.serve(async (req) => {
           p_tournament_id: tournament_id,
           p_player_id: player_id,
           p_new_chip_count: new_chip_count || 0,
+        });
+        break;
+      }
+      case "start_hand": {
+        const { table_id, hand_number, hand_time } = body;
+        result = await supabase.rpc("start_hand", {
+          p_tournament_id: tournament_id,
+          p_table_id: table_id,
+          p_hand_number: hand_number,
+          p_hand_time: hand_time || new Date().toISOString(),
+          p_created_by: user.id,
+        });
+        break;
+      }
+      case "update_community_cards": {
+        const { hand_id, community_cards } = body;
+        result = await supabase.rpc("update_community_cards", {
+          p_hand_id: hand_id,
+          p_community_cards: community_cards,
+          p_user_id: user.id,
+        });
+        break;
+      }
+      case "record_action": {
+        const { hand_id, player_id, entry_number, street, action_type, action_amount, action_order } = body;
+        result = await supabase.rpc("record_action", {
+          p_hand_id: hand_id,
+          p_player_id: player_id,
+          p_entry_number: entry_number || 1,
+          p_street: street || "preflop",
+          p_action_type: action_type,
+          p_action_amount: action_amount || 0,
+          p_action_order: action_order,
+        });
+        break;
+      }
+      case "show_hole_cards": {
+        const { hand_id, player_hole_cards } = body;
+        result = await supabase.rpc("show_hole_cards", {
+          p_hand_id: hand_id,
+          p_player_hole_cards: player_hole_cards,
+          p_user_id: user.id,
+        });
+        break;
+      }
+      case "heartbeat_lock": {
+        const { hand_id } = body;
+        result = await supabase.rpc("heartbeat_lock", {
+          p_hand_id: hand_id,
+          p_user_id: user.id,
         });
         break;
       }

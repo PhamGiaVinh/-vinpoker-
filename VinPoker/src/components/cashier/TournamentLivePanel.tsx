@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye,
+  Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -21,6 +21,7 @@ import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
 import { BlindStructurePanel } from "./tournament-live/BlindStructurePanel";
 import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
 import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
+import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
 
 export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: string[]; clubs: { id: string; name: string }[] }) {
   const { user } = useAuth();
@@ -152,11 +153,12 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
 
       {selectedTournament ? (
         <Tabs defaultValue="live_view" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-7 h-auto">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-8 h-auto">
             <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> Live View</TabsTrigger>
             <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> Clock</TabsTrigger>
             <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> Table Draw</TabsTrigger>
             <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> Hand Input</TabsTrigger>
+            <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> History</TabsTrigger>
             <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> Leaderboard</TabsTrigger>
             <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> Blinds</TabsTrigger>
             <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> Prizes</TabsTrigger>

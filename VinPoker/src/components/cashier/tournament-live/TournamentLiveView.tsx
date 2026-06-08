@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users, Coins, Clock, Layers } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 
 interface SeatInfo {
   player_id: string;
@@ -15,6 +16,7 @@ interface SeatInfo {
   last_action?: string;
   is_folded?: boolean;
   is_all_in?: boolean;
+  hole_cards?: string[];
 }
 
 interface ActionLog {
@@ -62,17 +64,6 @@ function suitSymbol(s: string): string {
   if (s === "d" || s === "\u2666") return "\u2666";
   if (s === "c" || s === "\u2663") return "\u2663";
   return s;
-}
-
-function displayCard(card: string): string {
-  if (!card || card.length < 2) return "";
-  return card.slice(0, -1) + suitSymbol(card.slice(-1));
-}
-
-function isRedCard(card: string): boolean {
-  if (!card) return false;
-  const last = card.slice(-1);
-  return last === "h" || last === "d" || last === "\u2665" || last === "\u2666";
 }
 
 function formatActionLabel(a: ActionLog): string {
@@ -137,7 +128,7 @@ export function TournamentLiveView({
         .order("seat_number"),
       supabase
         .from("tournament_hands")
-        .select("id, hand_number, community_cards, pot_size, is_voided")
+        .select("id, hand_number, community_cards, pot_size, is_voided, status")
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
@@ -185,10 +176,16 @@ export function TournamentLiveView({
 
         const { data: handPlayers } = await supabase
           .from("hand_players")
-          .select("player_id, seat_number")
+          .select("player_id, seat_number, hole_cards")
           .eq("hand_id", hand.id);
         const seatMap = new Map<string, number>();
-        (handPlayers || []).forEach((hp: any) => seatMap.set(hp.player_id, hp.seat_number));
+        const holeCardsMap = new Map<string, string[]>();
+        (handPlayers || []).forEach((hp: any) => {
+          seatMap.set(hp.player_id, hp.seat_number);
+          if (hp.hole_cards && hp.hole_cards.length > 0) {
+            holeCardsMap.set(hp.player_id, hp.hole_cards);
+          }
+        });
 
         const actionLogs: ActionLog[] = actionData.map((a: any) => ({
           street: a.street || "preflop",
@@ -225,6 +222,7 @@ export function TournamentLiveView({
             is_folded: foldedPlayers.has(s.player_id),
             is_all_in: allInPlayers.has(s.player_id),
             last_action: lastActionMap.get(s.player_id),
+            hole_cards: holeCardsMap.get(s.player_id) || s.hole_cards,
           }))
         );
       }
@@ -281,6 +279,11 @@ export function TournamentLiveView({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "tournament_seats", filter: `tournament_id=eq.${tournamentId}` },
+        () => loadAllData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "hand_players", filter: `tournament_id=eq.${tournamentId}` },
         () => loadAllData()
       )
       .on(
@@ -449,6 +452,15 @@ export function TournamentLiveView({
                   {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                     <div className="text-[10px] text-emerald-300 mt-1 truncate">
                       {seat.last_action}
+                    </div>
+                  )}
+                  {seat.hole_cards && seat.hole_cards.length > 0 && (
+                    <div className="flex gap-0.5 justify-center mt-1">
+                      {seat.hole_cards.map((card: string, ci: number) => (
+                        <span key={ci} className={`text-xs font-bold ${isRedCard(card) ? 'text-red-400' : 'text-white'}`}>
+                          {displayCard(card)}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
