@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -27,7 +27,7 @@ const tabsData = [
 
 export const Layout = () => {
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isCashier, isStaffOps, isMedia, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isCashier, isStaffOps, isMedia, isTracker, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -117,6 +117,11 @@ export const Layout = () => {
               {isCashier && !isAdmin && (
                 <NavLink to="/cashier" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
                   {t("layout.cashier")}
+                </NavLink>
+              )}
+              {isTracker && !isAdmin && (
+                <NavLink to="/tracker" className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[11px] font-bold tracking-wider hover:bg-emerald-500/25">
+                  <Radio className="w-3 h-3 mr-1 inline" />TRACKER
                 </NavLink>
               )}
               {isAdmin && (

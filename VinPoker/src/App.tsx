@@ -31,6 +31,7 @@ const Auth = lazy(() => import("./pages/Auth"));
 const ClubAdmin = lazy(() => import("./pages/ClubAdmin"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
+const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -147,6 +148,7 @@ const App = () => (
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
                 <Route path="/cashier" element={<CashierDashboard />} />
+                <Route path="/tracker" element={<TrackerDashboard />} />
                 <Route path="/admin" element={<SuperAdmin />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/media" element={<MediaCenter />} />

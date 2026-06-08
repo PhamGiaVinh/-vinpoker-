@@ -10,7 +10,7 @@ if (import.meta.hot) {
   import.meta.hot.accept(() => import.meta.hot!.invalidate());
 }
 
-type AppRole = "player" | "club_admin" | "super_admin" | "cashier" | "club_cashier" | "media";
+type AppRole = "player" | "club_admin" | "super_admin" | "cashier" | "club_cashier" | "media" | "tracker";
 
 interface AuthContextValue {
   session: Session | null;
@@ -24,6 +24,7 @@ interface AuthContextValue {
   isStaffOps: boolean; // super_admin OR cashier — can access staking ops
   isMedia: boolean; // media role
   isMediaOrAdmin: boolean; // can manage CMS / support
+  isTracker: boolean; // tracker role — can access live tracker
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -84,6 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isStaffOps: roles.includes("super_admin") || roles.includes("cashier") || roles.includes("club_cashier"),
       isMedia: roles.includes("media"),
       isMediaOrAdmin: roles.includes("super_admin") || roles.includes("media"),
+      isTracker: roles.includes("tracker"),
     }}>
       {children}
     </AuthContext.Provider>
