@@ -116,9 +116,11 @@ function buildBatchMessage(events: DealerEvent[]): string {
 function groupEventsByType(events: DealerEvent[]): DealerEvent[][] {
   const groups: DealerEvent[][] = [];
 
-  // swing_in (🪑 Vào bàn X: dealer Y) intentionally suppressed:
-  // pre_assign already announces who's coming; swing_in is redundant noise.
-  // (2026-06-05: user feedback — too many "Vào bàn" messages.)
+  // swing_in enabled (2026-06-09): user feedback — operators need to know
+  // when a dealer is actually assigned, especially when no pre-assign exists.
+
+  const swings = events.filter((e) => e.type === "swing_in");
+  if (swings.length) groups.push(swings);
 
   const breaks = events.filter((e) => e.type === "break_start");
   if (breaks.length) groups.push(breaks);

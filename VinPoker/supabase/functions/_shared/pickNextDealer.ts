@@ -291,6 +291,16 @@ const { data: rows, error } = await admin
     if (busyDealerIds.has(row.dealer_id)) { diag.busy_excluded++; continue; }
     if (excludeAttendanceIds.has(row.id)) { diag.exclude_set_excluded++; continue; }
 
+    // ── Emergency pre-assign guard (defense-in-depth) ─────────────────────────
+    // Dealers already emergency-pre-assigned to another table must NOT be picked.
+    // This is redundant with busyDealerIds (Step 5 queries pre_assigned) but
+    // protects against race conditions if state hasn't propagated yet.
+    if (row.current_state === "pre_assigned") {
+      diag.busy_excluded++;
+      console.warn(`[pickNextDealer] Dealer ${row.dealer_id} skipped: current_state=pre_assigned`);
+      continue;
+    }
+
     const d = row.dealers;
     const tier: "A" | "B" | "C" = d.tier ?? "C";
     const skills: string[] = d.skills ?? [];

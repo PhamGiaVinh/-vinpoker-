@@ -89,6 +89,31 @@ function formatTierWarningMessage(params: {
   return `⚠️ *Tier không phù hợp:* ${dealerName} (${tier}) → ${tableName} (${tableTier}).`;
 }
 
+export function formatEmergencyPreAssignMessage(params: {
+  tableName: string;
+  outName: string;
+  inName: string;
+  swingAt: Date;
+  minutesLeft: number;
+}): string {
+  const hhmm = (d: Date) =>
+    d.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
+  return [
+    `🚨 *EMERGENCY PRE-ASSIGN*`,
+    ``,
+    `📍 Bàn: *${params.tableName}*`,
+    `🔁 Thay thế: *${params.outName}* ➡️ *${params.inName}*`,
+    `⏰ Thời gian vào: *${hhmm(params.swingAt)}* (còn ${params.minutesLeft} phút)`,
+    ``,
+    `_Lý do: Không tìm thấy người thay sớm hơn. Vui lòng chuẩn bị ngay!_`,
+  ].join("\n");
+}
+
 export function formatBreakAlertMessage(params: {
   dealer: { full_name: string; telegram_username?: string | null };
   urgency: string;
