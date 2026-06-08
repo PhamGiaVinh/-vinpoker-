@@ -36,7 +36,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
     let q = supabase
       .from("tournaments")
       .select("*")
-      .in("status", ["upcoming", "registering", "drawing", "live", "break", "final_table"])
+      .in("status", ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"])
       .order("created_at", { ascending: false });
     if (clubIds.length) q = q.in("club_id", clubIds);
     const { data, error } = await q;
