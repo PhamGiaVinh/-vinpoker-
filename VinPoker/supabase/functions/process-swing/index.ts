@@ -1961,6 +1961,201 @@ if (tier2Count > 0) {
                 break;
 
               case "race_lost": {
+                // Phase 2: No-show detection — distinguish actual race_lost from dealer no-show
+                const incomingId = assignment.pre_assigned_attendance_id;
+                let isNoShow = false;
+                let incomingAtt: { current_state: string; status: string; full_name: string } | null = null;
+
+                if (incomingId) {
+                  const { data, error } = await admin
+                    .from("dealer_attendance")
+                    .select("current_state, status, full_name")
+                    .eq("id", incomingId)
+                    .single();
+                  if (error || !data) {
+                    isNoShow = true;
+                  } else {
+                    incomingAtt = data;
+                    if (incomingAtt.current_state !== "pre_assigned" || incomingAtt.status === "checked_out") {
+                      isNoShow = true;
+                    }
+                  }
+                }
+
+                if (isNoShow && incomingId) {
+                  // ── Phase 2: NO-SHOW HANDLING ──
+                  console.warn(`[Pass 3] NO-SHOW detected: ${incomingAtt?.full_name ?? "Unknown"} for ${tableName}`);
+
+                  // 1. Log to diagnostic_logs (no Telegram)
+                  await admin.from("diagnostic_logs").insert({
+                    club_id: cid,
+                    diagnostic_type: "dealer_no_show",
+                    result: {
+                      message: `Dealer ${incomingAtt?.full_name ?? "Unknown"} no-show for ${tableName}`,
+                      level: "WARNING",
+                      attendance_id: incomingId,
+                      table_id: assignment.table_id,
+                      previous_state: incomingAtt?.current_state ?? "not_found",
+                    },
+                    metadata: {
+                      swing_due_at: assignment.swing_due_at,
+                      is_emergency_pre_assign: assignment.is_emergency_pre_assign,
+                    },
+                  }).then(({ error }) => {
+                    if (error) console.warn("[diagnostic_logs] no_show insert failed:", error.message);
+                  });
+
+                  // 2. Clear pre-assign
+                  await admin.from("dealer_assignments").update({
+                    pre_assigned_attendance_id: null,
+                    is_emergency_pre_assign: false,
+                    pre_assigned_at: null,
+                  }).eq("id", assignment.id);
+
+                  // 3. Find replacement (exclude the no-show dealer to prevent ping-pong)
+                  const noShowExcludes = new Set([...cycleExcludedIds, incomingId]);
+                  const basePickOptions = {
+                    currentTableId: assignment.table_id,
+                    excludeAttendanceIds: noShowExcludes,
+                    requiredGameTypes: required_game_types,
+                    minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+                  };
+
+                  let replacementDealer = await pickNextDealer(admin, cid, {
+                    ...basePickOptions,
+                    minRestMinutes: clubCfg.break_duration_minutes ?? 10,
+                  });
+
+                  // Escalation Tiers (copy from Pass 3 non-pre-assigned path)
+                  const minutesOverdue = Math.max(0, -Math.round((new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000));
+                  const { data: escalationConfig } = await admin
+                    .rpc("get_escalation_config", { p_club_id: cid })
+                    .single()
+                    .catch(() => ({ data: null }));
+                  const esc = escalationConfig ?? {
+                    tier_1_min_overdue_min: 5, tier_1_min_rest_min: 5,
+                    tier_2_min_overdue_min: 15, tier_2_min_rest_min: 3, tier_2_skip_priority_break: true,
+                    tier_3_min_overdue_min: 30, tier_3_min_rest_min: 0, tier_3_skip_fatigue_cap: true,
+                    force_release_at_overdue_min: 30,
+                  };
+
+                  if (!replacementDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
+                    replacementDealer = await pickNextDealer(admin, cid, {
+                      ...basePickOptions,
+                      minRestMinutes: esc.tier_1_min_rest_min,
+                    });
+                  }
+                  if (!replacementDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
+                    replacementDealer = await pickNextDealer(admin, cid, {
+                      ...basePickOptions,
+                      minRestMinutes: esc.tier_2_min_rest_min,
+                      skipPriorityBreakGuard: esc.tier_2_skip_priority_break,
+                    });
+                  }
+                  if (!replacementDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
+                    replacementDealer = await pickNextDealer(admin, cid, {
+                      ...basePickOptions,
+                      minRestMinutes: esc.tier_3_min_rest_min,
+                      skipPriorityBreakGuard: true,
+                      skipFatigueHardCap: esc.tier_3_skip_fatigue_cap,
+                    });
+                  }
+
+                  if (replacementDealer) {
+                    // 4a. Emergency Re-assign with delay
+                    const notifyMinutes = clubCfg.pre_announce_minutes ?? 3;
+                    const newSwingDueAt = new Date(Date.now() + notifyMinutes * 60_000);
+
+                    const { error: emErr } = await admin
+                      .from("dealer_assignments")
+                      .update({
+                        pre_assigned_attendance_id: replacementDealer.id,
+                        pre_assigned_at: new Date().toISOString(),
+                        swing_due_at: newSwingDueAt.toISOString(),
+                        is_emergency_pre_assign: true,
+                      })
+                      .eq("id", assignment.id)
+                      .is("pre_assigned_attendance_id", null);
+
+                    if (!emErr) {
+                      await admin.from("dealer_attendance")
+                        .update({ current_state: "pre_assigned" })
+                        .eq("id", replacementDealer.id);
+
+                      // Log success (no Telegram)
+                      await admin.from("diagnostic_logs").insert({
+                        club_id: cid,
+                        diagnostic_type: "emergency_re_assign",
+                        result: {
+                          message: `Re-assigned ${replacementDealer.full_name} to ${tableName} after no-show`,
+                          level: "INFO",
+                          new_attendance_id: replacementDealer.id,
+                          delay_minutes: notifyMinutes,
+                          swing_at: newSwingDueAt.toISOString(),
+                        },
+                        metadata: { no_show_dealer_id: incomingId },
+                      }).then(({ error }) => {
+                        if (error) console.warn("[diagnostic_logs] emergency_re_assign insert failed:", error.message);
+                      });
+
+                      metrics.success++;
+                      cycleExcludedIds.add(replacementDealer.id);
+                      console.log(`[Pass 3] 🔄 No-show re-assign: ${replacementDealer.full_name} → ${tableName} in ${notifyMinutes} min`);
+                    } else {
+                      console.error(`[Pass 3] Failed to re-assign after no-show for ${tableName}:`, emErr);
+                      // Fallback to OT
+                      const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
+                      await admin.rpc("perform_swing", {
+                        p_assignment_id: assignment.id,
+                        p_duration_minutes: swingDurResult.durationMinutes,
+                        p_send_to_break: false,
+                        p_break_duration_minutes: otBreakDur,
+                        p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
+                        p_next_attendance_id: null,
+                      });
+                      metrics.no_dealer++;
+                      await admin.from("diagnostic_logs").insert({
+                        club_id: cid,
+                        diagnostic_type: "swing_ot_fallback",
+                        result: {
+                          message: `No replacement after no-show for ${tableName}. ${outgoingDealer.full_name} continues OT.`,
+                          level: "ERROR",
+                        },
+                        metadata: { table_id: assignment.table_id, outgoing_dealer_id: assignment.attendance_id },
+                      }).then(({ error }) => {
+                        if (error) console.warn("[diagnostic_logs] ot_fallback insert failed:", error.message);
+                      });
+                    }
+                  } else {
+                    // 4b. No replacement → OT mode
+                    const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
+                    await admin.rpc("perform_swing", {
+                      p_assignment_id: assignment.id,
+                      p_duration_minutes: swingDurResult.durationMinutes,
+                      p_send_to_break: false,
+                      p_break_duration_minutes: otBreakDur,
+                      p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
+                      p_next_attendance_id: null,
+                    });
+                    metrics.no_dealer++;
+                    await admin.from("diagnostic_logs").insert({
+                      club_id: cid,
+                      diagnostic_type: "swing_ot_fallback",
+                      result: {
+                        message: `No replacement after no-show for ${tableName}. ${outgoingDealer.full_name} continues OT.`,
+                        level: "ERROR",
+                      },
+                      metadata: { table_id: assignment.table_id, outgoing_dealer_id: assignment.attendance_id },
+                    }).then(({ error }) => {
+                      if (error) console.warn("[diagnostic_logs] ot_fallback insert failed:", error.message);
+                    });
+                    console.log(`[Pass 3] ❌ No-show fallback: ${tableName} -> OT mode`);
+                  }
+
+                  break; // End of no-show handling
+                }
+
+                // ── Normal race_lost fallback (dealer still pre_assigned but lost race) ──
                 cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
                 console.warn(`[process-swing] Pre-assign race_lost for ${tableName}, fallback...`);
 
