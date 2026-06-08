@@ -224,6 +224,7 @@ async function processOneCheckout(
     try {
       const dealer = await pickNextDealer(admin, clubId, {
         currentTableId: needsReplacementTableId,
+        minInterSwingRestMinutes: 0,
       });
       if (dealer) {
         // Compute swing_due_at from swing_config (table_type-aware fallback chain)

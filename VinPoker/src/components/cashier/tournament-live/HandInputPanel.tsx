@@ -144,8 +144,13 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       .eq("is_active", true)
       .order("seat_number");
 
-    if (error || !seats?.length) {
+    if (error) {
       toast.error("Không thể tải danh sách người chơi");
+      setPlayers([]);
+      return;
+    }
+
+    if (!seats?.length) {
       setPlayers([]);
       return;
     }

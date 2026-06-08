@@ -1609,6 +1609,7 @@ if (tier2Count > 0) {
             clubZone,
             cycleExcludedIds,
             chatId: pass2ChatId,
+            minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
           };
           if (preAssignOnly) {
             pass2Options.manualWindowMinutes = manualWindowMinutes;
@@ -1637,7 +1638,7 @@ if (tier2Count > 0) {
         // Runs after Pass 2 so pre-assigned dealers get priority.
         {
           const pass25Result = await pass25InitialAssign(
-            admin, cid, cycleExcludedIds, required_game_types,
+            admin, cid, cycleExcludedIds, required_game_types, clubCfg.min_inter_swing_rest_minutes,
           );
           if (pass25Result.assigned_count > 0) {
             console.log(`[Pass 2.5] ✅ Assigned ${pass25Result.assigned_count} initial dealers`);

@@ -3,9 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { RefreshCw, Save, Plus, UserPlus } from "lucide-react";
+import { RefreshCw, Save, Plus, UserPlus, X } from "lucide-react";
 
 interface SeatData {
   seat_id: string;
@@ -35,11 +34,12 @@ export function TableDrawPanel({
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [addTableOpen, setAddTableOpen] = useState(false);
+  // Add table inline
+  const [showAddTable, setShowAddTable] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [addingTable, setAddingTable] = useState(false);
-  const [addPlayerOpen, setAddPlayerOpen] = useState(false);
-  const [selectedTableId, setSelectedTableId] = useState("");
+  // Add player inline per table
+  const [addingPlayerTableId, setAddingPlayerTableId] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState("");
   const [newPlayerSeat, setNewPlayerSeat] = useState(1);
   const [newPlayerChips, setNewPlayerChips] = useState(0);
@@ -91,7 +91,7 @@ export function TableDrawPanel({
       }
       toast.success(`Đã tạo bàn "${newTableName.trim()}"`);
       setNewTableName("");
-      setAddTableOpen(false);
+      setShowAddTable(false);
       loadSeats();
     } catch (e: any) {
       toast.error(e.message || "Lỗi");
@@ -105,10 +105,7 @@ export function TableDrawPanel({
       toast.error("Nhập tên người chơi");
       return;
     }
-    if (!selectedTableId) {
-      toast.error("Chọn bàn");
-      return;
-    }
+    if (!addingPlayerTableId) return;
     if (newPlayerChips < 0) {
       toast.error("Chips phải >= 0");
       return;
@@ -120,7 +117,7 @@ export function TableDrawPanel({
           tournament_id: tournamentId,
           action: "add_player",
           player_name: playerName.trim(),
-          table_id: selectedTableId,
+          table_id: addingPlayerTableId,
           seat_number: newPlayerSeat,
           chip_count: newPlayerChips,
         },
@@ -129,11 +126,9 @@ export function TableDrawPanel({
         toast.error(data?.error || error?.message || "Lỗi thêm player");
         return;
       }
-      const entryNum = data?.data?.entry_number ?? 1;
-      toast.success(`Đã thêm ${playerName.trim()}${entryNum > 1 ? ` (entry #${entryNum})` : ""}`);
-      setAddPlayerOpen(false);
+      toast.success(`Đã thêm ${playerName.trim()}`);
       setPlayerName("");
-      setNewPlayerSeat(1);
+      setNewPlayerSeat((prev) => prev + 1);
       setNewPlayerChips(0);
       loadSeats();
     } catch (e: any) {
@@ -203,27 +198,9 @@ export function TableDrawPanel({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="font-semibold">Table Draw</div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Dialog open={addTableOpen} onOpenChange={setAddTableOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline" onClick={() => { setNewTableName(""); }}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Thêm bàn
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Tạo bàn mới</DialogTitle></DialogHeader>
-              <div className="space-y-3">
-                <Input
-                  placeholder="Tên bàn (VD: Bàn 1, Table A)"
-                  value={newTableName}
-                  onChange={(e) => setNewTableName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAddTable(); }}
-                />
-                <Button onClick={handleAddTable} disabled={addingTable || !newTableName.trim()} className="w-full">
-                  {addingTable ? "Đang tạo..." : "Tạo bàn"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" variant="outline" onClick={() => setShowAddTable(!showAddTable)}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> Tạo bàn
+          </Button>
           <Button size="sm" variant="outline" onClick={loadSeats} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
             Làm mới
@@ -235,53 +212,147 @@ export function TableDrawPanel({
         </div>
       </div>
 
+      {/* Add table inline form */}
+      {showAddTable && (
+        <div className="flex items-center gap-2 border rounded-lg p-3 bg-muted/30">
+          <Input
+            placeholder="Tên bàn (VD: Bàn 1)"
+            value={newTableName}
+            onChange={(e) => setNewTableName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddTable(); }}
+            className="flex-1"
+          />
+          <Button size="sm" onClick={handleAddTable} disabled={addingTable || !newTableName.trim()}>
+            {addingTable ? "..." : "Tạo"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setShowAddTable(false); setNewTableName(""); }}>
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Tables + Add player forms */}
       {seats == null ? (
         <div className="text-muted-foreground">Đang tải...</div>
-      ) : seats.length === 0 && tables.length === 0 ? (
+      ) : tables.length === 0 && seats.length === 0 ? (
         <div className="text-muted-foreground text-center py-8">
-          Chưa có bàn nào. Nhấn "Thêm bàn" để tạo.
+          Chưa có bàn nào. Nhấn "Tạo bàn" để bắt đầu.
         </div>
       ) : (
         <div className="space-y-4">
-          {Object.entries(groupedByTable).map(([tableId, tableSeats]) => (
-            <div key={tableId} className="border rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">
-                  {tableNameMap[tableId] || tableId.slice(0, 8)}
+          {tables.map((table) => {
+            const tableSeats = groupedByTable[table.table_id] || [];
+            const isAddingPlayer = addingPlayerTableId === table.table_id;
+
+            return (
+              <div key={table.table_id} className="border rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">{table.table_name}</div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setAddingPlayerTableId(isAddingPlayer ? null : table.table_id);
+                      setPlayerName("");
+                      setNewPlayerSeat(tableSeats.length > 0 ? Math.max(...tableSeats.map((s) => s.seat_number)) + 1 : 1);
+                      setNewPlayerChips(0);
+                    }}
+                  >
+                    <UserPlus className="w-3.5 h-3.5 mr-1" />
+                    {isAddingPlayer ? "Đóng" : "Thêm player"}
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setSelectedTableId(tableId);
-                    setNewPlayerSeat(Math.max(0, ...tableSeats.map((s) => s.seat_number)) + 1);
-                    setAddPlayerOpen(true);
-                  }}
-                >
-                  <UserPlus className="w-3.5 h-3.5 mr-1" /> Thêm player
-                </Button>
+
+                {/* Player list */}
+                {tableSeats.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {tableSeats.map((seat) => {
+                      const globalIndex = seats!.findIndex((s) => s.seat_id === seat.seat_id);
+                      return (
+                        <div key={seat.seat_id} className="border rounded p-2 space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            Seat {seat.seat_number}
+                            {seat.entry_number > 1 && (
+                              <span className="ml-1 text-amber-500">R#{seat.entry_number}</span>
+                            )}
+                          </div>
+                          <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
+                          <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
+                          <label className="flex items-center gap-1 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={seat.is_active}
+                              onChange={(e) => updateSeat(globalIndex, "is_active", e.target.checked)}
+                            />
+                            Active
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {tableSeats.length === 0 && !isAddingPlayer && (
+                  <div className="text-xs text-muted-foreground">Chưa có người chơi</div>
+                )}
+
+                {/* Add player inline form */}
+                {isAddingPlayer && (
+                  <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Tên</label>
+                        <Input
+                          placeholder="Tên người chơi"
+                          value={playerName}
+                          onChange={(e) => setPlayerName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddPlayer(); }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Seat</label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={newPlayerSeat}
+                          onChange={(e) => setNewPlayerSeat(Number(e.target.value))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Chips</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={newPlayerChips}
+                          onChange={(e) => setNewPlayerChips(Number(e.target.value))}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddPlayer(); }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button size="sm" onClick={handleAddPlayer} disabled={!playerName.trim() || addingPlayer}>
+                        {addingPlayer ? "Đang thêm..." : "Thêm"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
+            );
+          })}
+
+          {/* Orphan seats (table not in tables list yet) */}
+          {Object.entries(groupedByTable).filter(([tid]) => !tables.find((t) => t.table_id === tid)).map(([tableId, tableSeats]) => (
+            <div key={tableId} className="border rounded-lg p-3">
+              <div className="text-sm font-medium mb-2">{tableNameMap[tableId] || tableId.slice(0, 8)}</div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {tableSeats.map((seat) => {
-                  const globalIndex = seats.findIndex((s) => s.seat_id === seat.seat_id);
+                  const globalIndex = seats!.findIndex((s) => s.seat_id === seat.seat_id);
                   return (
                     <div key={seat.seat_id} className="border rounded p-2 space-y-1">
-                      <div className="text-xs text-muted-foreground">
-                        Seat {seat.seat_number}
-                        {seat.entry_number > 1 && (
-                          <span className="ml-1 text-amber-500">R#{seat.entry_number}</span>
-                        )}
-                      </div>
+                      <div className="text-xs text-muted-foreground">Seat {seat.seat_number}</div>
                       <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
                       <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
-                      <label className="flex items-center gap-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={seat.is_active}
-                          onChange={(e) => updateSeat(globalIndex, "is_active", e.target.checked)}
-                        />
-                        Active
-                      </label>
                     </div>
                   );
                 })}
@@ -290,52 +361,6 @@ export function TableDrawPanel({
           ))}
         </div>
       )}
-
-      <Dialog open={addPlayerOpen} onOpenChange={setAddPlayerOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Thêm player vào {tableNameMap[selectedTableId] || "bàn"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Tên người chơi</label>
-              <Input
-                placeholder="Nhập tên..."
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground">Seat</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={newPlayerSeat}
-                  onChange={(e) => setNewPlayerSeat(Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Chips</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={newPlayerChips}
-                  onChange={(e) => setNewPlayerChips(Number(e.target.value))}
-                />
-              </div>
-            </div>
-            <Button
-              onClick={handleAddPlayer}
-              className="w-full"
-              disabled={!playerName.trim() || addingPlayer}
-            >
-              {addingPlayer ? "Đang thêm..." : "Thêm player"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }

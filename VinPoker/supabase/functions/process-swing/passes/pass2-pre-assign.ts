@@ -34,6 +34,8 @@ interface Pass2Options {
    *  Manual window:  [now, now + manualWindowMinutes]
    *  Used by manual pre-assign trigger so cashier sees immediate results. */
   manualWindowMinutes?: number;
+  /** Minimum inter-swing rest minutes for pickNextDealer cooldown. */
+  minInterSwingRestMinutes?: number;
 }
 
 export async function pass2PreAssignNext(
@@ -206,6 +208,7 @@ export async function pass2PreAssignNext(
         const nextDealer = await pickNextDealer(admin, clubId, {
           currentTableId: assignment.table_id,
           excludeAttendanceIds: cycleExcludedIds,
+          minInterSwingRestMinutes: options.minInterSwingRestMinutes ?? 10,
         });
 
         if (!nextDealer) {

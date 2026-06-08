@@ -149,6 +149,12 @@ Deno.serve(async (req) => {
         console.error(`[close-table] Failed to transition dealer to on_break: ${releaseResult.error}`);
       }
 
+      // Set last_released_at on the dealer so inter-swing cooldown tracks correctly
+      await admin
+        .from("dealer_attendance")
+        .update({ last_released_at: new Date().toISOString() })
+        .eq("id", assignment.attendance_id);
+
       // Create a dealer_breaks record so break tracking is consistent
       const { data: breakRow, error: breakErr } = await admin
         .from("dealer_breaks")
