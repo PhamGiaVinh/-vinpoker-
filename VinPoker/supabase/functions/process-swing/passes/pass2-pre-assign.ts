@@ -8,7 +8,6 @@
 
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
-import { TelegramNotifier, type PreAssignEvent } from "../../_shared/telegramNotifier.ts";
 
 interface Pass2Result {
   pre_assigned_count: number;
@@ -28,9 +27,8 @@ interface PreAssignResult {
 
 interface Pass2Options {
   clubZone: string | null;
-  notifier: TelegramNotifier | null;
+  chatId: string | null;
   cycleExcludedIds: Set<string>;
-  botToken: string;
   /** When set, overrides the window calculation.
    *  Default window: [now + (preAnnounceMinutes-2), now + (preAnnounceMinutes+2)]
    *  Manual window:  [now, now + manualWindowMinutes]
@@ -52,7 +50,7 @@ export async function pass2PreAssignNext(
     errors: [],
   };
 
-  const { clubZone, notifier, cycleExcludedIds, botToken, manualWindowMinutes } = options;
+  const { clubZone, chatId, cycleExcludedIds, manualWindowMinutes } = options;
 
   // Emergency OT pre-announce window: 3 minutes instead of normal 6 min.
   // Tables in overtime get notified sooner so dealers can prepare.
@@ -307,19 +305,66 @@ export async function pass2PreAssignNext(
             );
 
             // Telegram pre-announce notification
-            if (notifier) {
+            // BUG #2 fix: insert into pre_announce_jobs DB queue instead of
+            // an in-memory notifier queue. The DB queue survives EF restarts,
+            // supports retry, and is idempotent via the partial unique index
+            // uq_pre_announce_active (prevents duplicate Telegrams).
+            // A separate cron EF (process-pre-announce-jobs) processes the queue.
+            if (chatId) {
               const outgoing = (assignment as any).dealer_attendance?.dealers ?? {};
-              notifier.enqueue({
-                type: "pre_assign",
-                tableName,
-                zone: clubZone,
-                outName: outgoing.full_name ?? "Unknown",
-                outUsername: outgoing.telegram_username ?? null,
-                inName: nextDealer.full_name,
-                inUsername: nextDealer.telegram_username ?? null,
-                swingAt: new Date(effectiveSwingAt),
-                minutesLeft,
-              } satisfies PreAssignEvent);
+              const outgoingAtt = (assignment as any).dealer_attendance ?? {};
+              const { error: jobErr } = await admin
+                .from("pre_announce_jobs")
+                .insert({
+                  club_id: clubId,
+                  table_id: assignment.table_id,
+                  assignment_id: assignment.id,
+                  attendance_id: nextDealer.id,
+                  out_attendance_id: outgoingAtt.id ?? null,
+                  table_name: tableName,
+                  zone: clubZone,
+                  in_dealer_name: nextDealer.full_name,
+                  in_dealer_username: nextDealer.telegram_username ?? null,
+                  out_dealer_name: outgoing.full_name ?? null,
+                  out_dealer_username: outgoing.telegram_username ?? null,
+                  swing_at: effectiveSwingAt,
+                  minutes_left: minutesLeft,
+                  rest_deficit_min: restDeficit,
+                  chat_id: chatId,
+                  status: "pending",
+                  max_attempts: 3,
+                })
+                .select()
+                .maybeSingle();
+
+              if (jobErr) {
+                // 23505 = unique_violation (duplicate active job) — safe to ignore
+                if (jobErr.code === "23505") {
+                  console.log(
+                    `[Pass 2] ⏭️ ${tableName}: pre-announce job already exists ` +
+                    `for ${nextDealer.full_name} (idempotent — no duplicate Telegram)`,
+                  );
+                } else {
+                  console.warn(
+                    `[Pass 2] ⚠️ ${tableName}: failed to enqueue pre-announce job:`,
+                    jobErr.message,
+                  );
+                  // Do NOT fail the pre-assign — the dealer is still correctly assigned;
+                  // only the Telegram notification was lost. A future cron run can
+                  // backfill missed announcements (out of scope for PR #2).
+                }
+              } else {
+                console.log(
+                  `[Pass 2] 📬 ${tableName}: pre-announce job queued for ` +
+                  `${nextDealer.full_name} (swing in ~${minutesLeft} min)`,
+                );
+              }
+            } else {
+              // No chatId — skip notification but still log so cashier can see
+              console.log(
+                `[Pass 2] ⏭️ ${tableName}: no Telegram chat configured, ` +
+                `pre-assigned ${nextDealer.full_name} (swing in ~${minutesLeft} min)`,
+              );
             }
             break;
           }
