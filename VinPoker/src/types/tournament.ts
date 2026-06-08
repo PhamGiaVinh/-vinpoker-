@@ -7,12 +7,23 @@ export interface Tournament {
   club_id: string;
   name: string;
   description: string | null;
-  status: "active" | "completed" | "cancelled";
+  status: "upcoming" | "registering" | "drawing" | "live" | "break" | "final_table" | "completed" | "cancelled";
   swing_duration_minutes: number;
   warn_at_minutes: number;
   crit_at_minutes: number;
   created_at: string;
   updated_at: string;
+  // Live tracker fields
+  current_level: number | null;
+  current_blinds: string | null;
+  current_level_id: string | null;
+  clock_started_at: string | null;
+  clock_paused_at: string | null;
+  pause_accumulated: number | null;
+  players_remaining: number | null;
+  average_stack: number | null;
+  prize_pool: number | null;
+  itm_places: number | null;
 }
 
 export interface TournamentTable {
@@ -30,6 +41,129 @@ export interface TournamentWithTables extends Tournament {
       table_name: string;
     } | null;
   }[];
+}
+
+export interface TournamentLevel {
+  id: string;
+  tournament_id: string;
+  level_number: number;
+  small_blind: number;
+  big_blind: number;
+  ante: number;
+  duration_minutes: number;
+  is_break: boolean;
+  created_at: string;
+}
+
+export interface TournamentSeat {
+  id: string;
+  tournament_id: string;
+  player_id: string;
+  entry_number: number;
+  table_id: string;
+  seat_number: number;
+  chip_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface TournamentHand {
+  id: string;
+  tournament_id: string;
+  table_id: string;
+  hand_number: number;
+  hand_time: string;
+  side_pots: any[];
+  community_cards: string[];
+  pot_size: number;
+  is_voided: boolean;
+  created_at: string;
+}
+
+export interface HandPlayer {
+  id: string;
+  hand_id: string;
+  tournament_id: string;
+  player_id: string;
+  entry_number: number;
+  seat_number: number;
+  starting_stack: number;
+  ending_stack: number;
+  is_eliminated: boolean;
+  side_pots: any[];
+  created_at: string;
+}
+
+export interface HandAction {
+  id: string;
+  hand_id: string;
+  player_id: string;
+  entry_number: number;
+  action_type: string;
+  action_amount: number;
+  action_order: number;
+  street: string;
+  created_at: string;
+}
+
+export interface TournamentChipCount {
+  id: string;
+  tournament_id: string;
+  player_id: string;
+  entry_number: number;
+  chip_count: number;
+  updated_at: string;
+}
+
+export interface TournamentElimination {
+  id: string;
+  tournament_id: string;
+  player_id: string;
+  entry_number: number;
+  hand_id: string;
+  position: number;
+  prize: number;
+  created_at: string;
+}
+
+export interface TournamentStateTransition {
+  id: string;
+  tournament_id: string;
+  previous_state: string;
+  new_state: string;
+  changed_at: string;
+  changed_by: string | null;
+  reason: string | null;
+}
+
+export interface TournamentPrize {
+  id: string;
+  tournament_id: string;
+  position: number;
+  percentage: number;
+  amount: number;
+  created_at: string;
+}
+
+export interface TournamentLeaderboardPlayer {
+  player_id: string;
+  entry_number: number;
+  chip_count: number;
+  is_active: boolean | null;
+  position: number;
+  prize: number;
+  is_itm: boolean;
+  table_id: string | null;
+  seat_number: number | null;
+}
+
+export interface TournamentLeaderboard {
+  tournament_id: string;
+  players_remaining: number;
+  itm_places: number;
+  average_stack: number | null;
+  prize_pool: number | null;
+  players: TournamentLeaderboardPlayer[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

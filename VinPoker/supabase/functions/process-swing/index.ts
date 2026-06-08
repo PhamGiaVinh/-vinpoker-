@@ -1754,14 +1754,14 @@ if (tier2Count > 0) {
               .update({ swing_in_progress: true })
               .eq("id", assignment.id)
               .eq("swing_in_progress", false)
-              .select("id")
+              .select("id, version")
               .single();
             if (lockErr || !lockedAssignment) {
               console.log(`[Pass 3] Skip ${tableName} — already in progress or lock failed`);
               continue;
             }
-            // Mark local ref so finally block knows what to reset
             (assignment as any).__locked = true;
+            (assignment as any).__lockedVersion = lockedAssignment.version;
           }
 
           // ── FORCE-RELEASE: Stuck swing detection (REPLACES 60-min circuit breaker) ──
@@ -1856,7 +1856,7 @@ if (tier2Count > 0) {
                   p_duration_minutes: swingDurResult.durationMinutes,
                   p_send_to_break: false,
                   p_break_duration_minutes: frBreakDur,
-                  p_expected_version: assignment.version,
+                  p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
                   p_next_attendance_id: replacementDealer.id,
                 });
                 if (frResult?.outcome === "swung") {
@@ -2228,7 +2228,7 @@ if (tier2Count > 0) {
               p_duration_minutes: swingDurResult.durationMinutes,
               p_send_to_break: breakDecision.shouldBreak,
               p_break_duration_minutes: pBreakDuration,
-              p_expected_version: assignment.version,
+              p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
               p_next_attendance_id: nextDealer?.id ?? null,
             });
 
