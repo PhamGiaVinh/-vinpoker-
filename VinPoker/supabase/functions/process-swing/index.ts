@@ -552,11 +552,13 @@ Deno.serve(async (req: Request) => {
         // ── TelegramNotifier for this club cycle ──────────────────────────
         let notifier: TelegramNotifier | null = null;
         let clubZone: string | null = null;
+        let pass2ChatId: string | null = null;  // PR #2: hoisted for pre_announce_jobs
         if (botToken) {
           const [chatId, zoneData] = await Promise.all([
             getClubTelegramChatId(admin, cid),
             admin.from("swing_config").select("club_zone").eq("club_id", cid).maybeSingle(),
           ]);
+          pass2ChatId = chatId;
           if (chatId) {
             notifier = new TelegramNotifier(botToken, chatId);
             clubZone = (zoneData as any)?.club_zone ?? null;
@@ -1588,11 +1590,12 @@ if (tier2Count > 0) {
         // for tables whose swing due falls within the pre-announce window.
         // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
         if (!forceAll) {
+          // PR #2: chatId hoisted to outer scope (line ~557) and passed
+          // to pass2PreAssignNext for the pre_announce_jobs DB queue.
           const pass2Options: Parameters<typeof pass2PreAssignNext>[3] = {
             clubZone,
-            notifier,
             cycleExcludedIds,
-            botToken: botToken ?? "",
+            chatId: pass2ChatId,
           };
           if (preAssignOnly) {
             pass2Options.manualWindowMinutes = manualWindowMinutes;
