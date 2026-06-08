@@ -13,6 +13,7 @@ import {
   sendTelegramNotification,
   getClubTelegramChatId,
   formatPreAnnounceMessage,
+  formatMassAssignMessage,
   notifyIncomingDealer,
   notifyFloorManagerDM,
 } from "../_shared/telegram.ts";
@@ -979,6 +980,15 @@ Deno.serve(async (req: Request) => {
               dealerName: a.full_name,
               username: null,
             } satisfies SwingInEvent);
+          }
+          if (fillResult.assignments.length > 0 && botToken && pass2ChatId) {
+            const mopMsg = formatMassAssignMessage(
+              fillResult.assignments.map(a => ({
+                tableName: a.table_name,
+                dealer: { full_name: a.full_name },
+              }))
+            );
+            sendTelegramNotification(botToken, pass2ChatId, mopMsg).catch(() => {});
           }
         }
 

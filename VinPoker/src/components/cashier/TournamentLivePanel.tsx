@@ -168,7 +168,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
             <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
           </TabsContent>
           <TabsContent value="table_draw" className="mt-4">
-            <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
+            <TableDrawPanel tournamentId={selectedTournament.id} clubId={selectedTournament.club_id} refreshTrigger={refreshTrigger} />
           </TabsContent>
           <TabsContent value="hand_input" className="mt-4">
             <HandInputPanel tournamentId={selectedTournament.id} />

@@ -196,7 +196,7 @@ async function processTick(
   picked = pendingJobs.length;
   console.log(`[process-pre-announce-jobs] picked ${picked} pending jobs`);
 
-  // ═══ Step 4: Process each job ═══
+  // ═══ Step 4: Claim all jobs, then batch-send per chat_id ═══
   if (!botToken) {
     const jobIds = pendingJobs.map((j) => j.id);
     await admin
@@ -219,37 +219,69 @@ async function processTick(
     } as ProcessResult, 500);
   }
 
+  // ── 4a: Claim all pending jobs atomically ──
+  const claimedJobIds: string[] = [];
+  const claimedMap = new Map<string, typeof pendingJobs[number]>();
+
   for (const job of pendingJobs) {
-    try {
-      // Atomic claim: mark as 'processing'
-      const { data: claimed, error: claimErr } = await admin
-        .from("pre_announce_jobs")
-        .update({ status: "processing", last_attempt_at: new Date().toISOString() })
-        .eq("id", job.id)
-        .eq("status", "pending")
-        .select("id")
-        .maybeSingle();
+    const { data: claimed, error: claimErr } = await admin
+      .from("pre_announce_jobs")
+      .update({ status: "processing", last_attempt_at: new Date().toISOString() })
+      .eq("id", job.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
 
-      if (claimErr || !claimed) {
-        continue; // another tick claimed this job
-      }
+    if (claimErr || !claimed) continue;
+    claimedJobIds.push(job.id);
+    claimedMap.set(job.id, job);
+  }
 
-      // Build message matching telegramNotifier formatEventLine
-      const message = formatPreAssignMessage({
-        tableName: job.table_name,
-        zone: job.zone,
-        outName: job.out_dealer_name ?? "Unknown",
-        outUsername: job.out_dealer_username ?? null,
-        inName: job.in_dealer_name,
-        inUsername: job.in_dealer_username ?? null,
-        swingAt: new Date(job.swing_at),
-        minutesLeft: job.minutes_left,
-      });
+  if (claimedJobIds.length === 0) {
+    tickOutcome = "processed";
+    await logMetric(admin, startTime, "success", 0, 0, "no_claimed_jobs");
+    return json({
+      outcome: "processed",
+      picked: 0, sent: 0, retried: 0, failed: 0, cancelled,
+      duration_ms: Date.now() - startTime,
+      errors: [],
+    } as ProcessResult);
+  }
 
-      // Send with timeout + internal retries
-      const sendResult = await sendTelegramWithTimeout(botToken, job.chat_id, message, PER_JOB_TIMEOUT_MS);
+  // ── 4b: Group claimed jobs by (chat_id, zone) ──
+  const groups = new Map<string, { chatId: string; zone: string | null; jobs: typeof pendingJobs[number][] }>();
+  for (const jobId of claimedJobIds) {
+    const job = claimedMap.get(jobId)!;
+    const key = `${job.chat_id}||${job.zone ?? ""}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { chatId: job.chat_id, zone: job.zone, jobs: [] };
+      groups.set(key, group);
+    }
+    group.jobs.push(job);
+  }
 
-      if (sendResult.ok) {
+  // ── 4c: Send one batched message per group ──
+  for (const [key, group] of groups) {
+    const args = group.jobs.map((job) => ({
+      tableName: job.table_name,
+      zone: job.zone,
+      outName: job.out_dealer_name ?? "Unknown",
+      outUsername: job.out_dealer_username ?? null,
+      inName: job.in_dealer_name,
+      inUsername: job.in_dealer_username ?? null,
+      swingAt: new Date(job.swing_at),
+      minutesLeft: job.minutes_left,
+    }));
+
+    const message = group.jobs.length === 1
+      ? formatPreAssignMessage(args[0])
+      : formatBatchPreAssignMessage(args, group.zone);
+
+    const sendResult = await sendTelegramWithTimeout(botToken, group.chatId, message, PER_JOB_TIMEOUT_MS);
+
+    if (sendResult.ok) {
+      for (const job of group.jobs) {
         await admin
           .from("pre_announce_jobs")
           .update({
@@ -259,41 +291,23 @@ async function processTick(
             last_error: null,
           })
           .eq("id", job.id);
-        sent++;
-      } else {
+      }
+      sent += group.jobs.length;
+    } else {
+      for (const job of group.jobs) {
         const newAttempts = (job.attempts ?? 0) + 1;
         const willRetry = newAttempts < (job.max_attempts ?? 3);
-
         await admin
           .from("pre_announce_jobs")
           .update({
             status: willRetry ? "pending" : "failed",
             attempts: newAttempts,
-            last_error: (sendResult.error ?? "unknown").substring(0, 500),
+            last_error: (sendResult.error ?? "send_failed_batch").substring(0, 500),
           })
           .eq("id", job.id);
-
         if (willRetry) { retried++; } else { failed++; }
-        errors.push(`job ${job.id}: ${sendResult.error ?? "send failed"}`);
       }
-    } catch (jobErr) {
-      const msg = jobErr instanceof Error ? jobErr.message : String(jobErr);
-      console.warn(`[process-pre-announce-jobs] job ${job.id} error:`, msg);
-      errors.push(`job ${job.id}: ${msg}`);
-
-      const newAttempts = (job.attempts ?? 0) + 1;
-      const willRetry = newAttempts < (job.max_attempts ?? 3);
-
-      await admin
-        .from("pre_announce_jobs")
-        .update({
-          status: willRetry ? "pending" : "failed",
-          attempts: newAttempts,
-          last_error: msg.substring(0, 500),
-        })
-        .eq("id", job.id);
-
-      if (willRetry) { retried++; } else { failed++; }
+      errors.push(`batch ${key}: ${sendResult.error ?? "send failed"}`);
     }
   }
 
@@ -327,17 +341,27 @@ interface PreAssignMsgArgs {
   minutesLeft: number;
 }
 
-function formatPreAssignMessage(args: PreAssignMsgArgs): string {
+function formatPreAssignLine(args: PreAssignMsgArgs): string {
   const handle = (u: string | null): string => u ? ` @${u}` : "";
   const hhmm = (d: Date): string => d.toLocaleTimeString("vi-VN", {
     hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh",
   });
+  return `📋 Tiếp theo ${args.tableName}: ${args.outName}${handle(args.outUsername)} ra, ${args.inName}${handle(args.inUsername)} vào (${hhmm(args.swingAt)}, còn ${args.minutesLeft} phút)`;
+}
 
+function formatPreAssignMessage(args: PreAssignMsgArgs): string {
   const zoneLabel = args.zone ? ` - ${args.zone}` : "";
   return [
     `Có 1 cập nhật${zoneLabel}:`,
-    ` 📋 Tiếp theo ${args.tableName}: ${args.outName}${handle(args.outUsername)} ra, ${args.inName}${handle(args.inUsername)} vào (${hhmm(args.swingAt)}, còn ${args.minutesLeft} phút)`,
+    ` ${formatPreAssignLine(args)}`,
   ].join("\n");
+}
+
+function formatBatchPreAssignMessage(items: PreAssignMsgArgs[], zone: string | null): string {
+  const zoneLabel = zone ? ` - ${zone}` : "";
+  const header = `Có ${items.length} cập nhật${zoneLabel}:`;
+  const lines = items.map((a) => ` ${formatPreAssignLine(a)}`);
+  return [header, ...lines].join("\n");
 }
 
 interface SendResult {
