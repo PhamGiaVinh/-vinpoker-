@@ -222,6 +222,11 @@ async function processOneCheckout(
   let autoAssigned: { dealer_name: string } | null = null;
   if (needsReplacementTableId && botToken) {
     try {
+      // minInterSwingRestMinutes: 0 — checkout is an emergency replacement;
+      // the dealer is leaving the shift entirely, so the replacement should
+      // be picked immediately without cooldown. The replacement's
+      // last_released_at will be set when they finish their swing (via
+      // perform_swing), so subsequent picks WILL respect the cooldown.
       const dealer = await pickNextDealer(admin, clubId, {
         currentTableId: needsReplacementTableId,
         minInterSwingRestMinutes: 0,

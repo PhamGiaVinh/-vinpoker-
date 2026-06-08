@@ -334,11 +334,20 @@ const { data: rows, error } = await admin
     // Dealer who just left a table must rest ≥ minInterSwingRestMinutes
     // before being picked for another swing. Uses last_released_at timestamp.
     // NULL = never released (first shift) or just finished break → eligible.
-    if (minInterSwingRestMinutes > 0 && row.current_state === "available" && (row as any).last_released_at) {
-      const minutesSinceRelease = (Date.now() - new Date((row as any).last_released_at).getTime()) / 60_000;
-      if (minutesSinceRelease < minInterSwingRestMinutes) {
-        diag.inter_swing_cooldown_excluded++;
-        continue;
+    // Math.floor avoids floating-point edge case (e.g. 9.999 < 10).
+    if (minInterSwingRestMinutes > 0 && row.current_state === "available") {
+      const releasedAt = (row as any).last_released_at;
+      if (releasedAt) {
+        const minutesSinceRelease = Math.floor(
+          (Date.now() - new Date(releasedAt).getTime()) / 60_000
+        );
+        if (minutesSinceRelease < minInterSwingRestMinutes) {
+          diag.inter_swing_cooldown_excluded++;
+          console.log(
+            `[pickNextDealer] Cooldown: dealer ${row.dealer_id} excluded — waited ${minutesSinceRelease}m/${minInterSwingRestMinutes}m, remaining ${minInterSwingRestMinutes - minutesSinceRelease}m`
+          );
+          continue;
+        }
       }
     }
 
