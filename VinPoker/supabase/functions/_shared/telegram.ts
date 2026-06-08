@@ -103,14 +103,10 @@ export function formatEmergencyPreAssignMessage(params: {
       hour12: false,
       timeZone: "Asia/Ho_Chi_Minh",
     });
+  // Match the batch pre_assign format so operators see a consistent "Tiếp theo" message
   return [
-    `🚨 *EMERGENCY PRE-ASSIGN*`,
-    ``,
-    `📍 Bàn: *${params.tableName}*`,
-    `🔁 Thay thế: *${params.outName}* ➡️ *${params.inName}*`,
-    `⏰ Thời gian vào: *${hhmm(params.swingAt)}* (còn ${params.minutesLeft} phút)`,
-    ``,
-    `_Lý do: Không tìm thấy người thay sớm hơn. Vui lòng chuẩn bị ngay!_`,
+    `Có 1 cập nhật:`,
+    ` 📋 Tiếp theo ${params.tableName}: ${params.outName} ra, ${params.inName} vào (${hhmm(params.swingAt)}, còn ${params.minutesLeft} phút)`,
   ].join("\n");
 }
 
