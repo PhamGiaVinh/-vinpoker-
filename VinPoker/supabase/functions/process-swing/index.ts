@@ -2498,7 +2498,96 @@ if (tier2Count > 0) {
               continue; // Skip perform_swing this tick; next tick sẽ chạy path pre-assigned
             }
 
-            // ── Không tìm được dealer → OT path (existing logic) ─────────────
+            // ── Không tìm được dealer → OT path ─────────────────────────────────
+            // NHƯNG: Thử tìm dealer đơn giản từ pool trước (giống perform_swing wrapper).
+            // Nếu có → Emergency Pre-assign để báo trước X phút, tránh gấp gáp.
+            // Nếu không → OT thật sự.
+            const { data: emergencyCandidates } = await admin
+              .from("dealer_attendance")
+              .select(`
+                id,
+                current_state,
+                dealer_id,
+                dealers!inner(id, full_name, telegram_username, club_id)
+              `)
+              .in("dealer_id", cidDealerIds)
+              .eq("status", "checked_in")
+              .is("check_out_time", null)
+              .neq("id", assignment.attendance_id)
+              .or("current_state.eq.available,current_state.eq.on_break")
+              .limit(1);
+
+            if (emergencyCandidates && emergencyCandidates.length > 0) {
+              const nextDealer = emergencyCandidates[0];
+              const notifyMinutes = clubCfg.pre_announce_minutes ?? 3;
+              const newSwingDueAt = new Date(Date.now() + notifyMinutes * 60_000);
+
+              // Cập nhật assignment CHỈ NẾU chưa có pre_assigned (race-safe)
+              const { data: emUpdated, error: emErr } = await admin
+                .from("dealer_assignments")
+                .update({
+                  pre_assigned_attendance_id: nextDealer.id,
+                  pre_assigned_at: new Date().toISOString(),
+                  swing_due_at: newSwingDueAt.toISOString(),
+                  pre_announce_due_at: new Date().toISOString(),
+                  is_emergency_pre_assign: true,
+                })
+                .eq("id", assignment.id)
+                .is("pre_assigned_attendance_id", null)
+                .select("id")
+                .single();
+
+              if (emErr || !emUpdated) {
+                console.error(`[Pass 3] ❌ Emergency pre-assign DB race for ${tableName}:`, emErr?.message);
+                // Fallback: swing ngay lập tức nếu không thể pre-assign
+                const { breakDuration: fbBreakDur } = await getBreakSettings(admin, cid);
+                const { data: fbSwingResult } = await admin.rpc("perform_swing", {
+                  p_assignment_id: assignment.id,
+                  p_duration_minutes: swingDurResult.durationMinutes,
+                  p_send_to_break: breakDecision.shouldBreak,
+                  p_break_duration_minutes: fbBreakDur,
+                  p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
+                  p_next_attendance_id: nextDealer.id,
+                });
+                if (fbSwingResult?.outcome === "swung") {
+                  metrics.success++;
+                  cycleExcludedIds.add(nextDealer.id);
+                  notifier?.enqueue({
+                    type: "swing_in",
+                    tableName,
+                    zone: clubZone,
+                    dealerName: (nextDealer.dealers as any)?.full_name ?? "Unknown",
+                    username: (nextDealer.dealers as any)?.telegram_username ?? null,
+                  } satisfies SwingInEvent);
+                }
+              } else {
+                // Set dealer thành pre_assigned để bàn khác không pick
+                await admin
+                  .from("dealer_attendance")
+                  .update({ current_state: "pre_assigned" })
+                  .eq("id", nextDealer.id);
+
+                // Gửi Telegram Emergency NGAY
+                const emChatId = botToken ? await getClubTelegramChatId(admin, cid).catch(() => null) : null;
+                if (botToken && emChatId) {
+                  const emMsg = formatEmergencyPreAssignMessage({
+                    tableName,
+                    outName: outgoingDealer?.full_name ?? "Unknown",
+                    inName: (nextDealer.dealers as any)?.full_name ?? "Unknown",
+                    swingAt: newSwingDueAt,
+                    minutesLeft: notifyMinutes,
+                  });
+                  await sendTelegramNotification(botToken, emChatId, emMsg, {});
+                }
+
+                console.log(`[Pass 3] 🚨 Emergency pre-assign (from OT path): ${(nextDealer.dealers as any)?.full_name} → ${tableName} in ${notifyMinutes} min`);
+                metrics.success++;
+                cycleExcludedIds.add(nextDealer.id);
+              }
+              continue; // Skip perform_swing this tick; next tick chạy path pre-assigned
+            }
+
+            // ── Thật sự không có dealer → OT path ──────────────────────────────
             const { breakDuration: pBreakDuration } = await getBreakSettings(admin, cid);
             const { data: swingResult } = await admin.rpc("perform_swing", {
               p_assignment_id: assignment.id,
@@ -2512,9 +2601,34 @@ if (tier2Count > 0) {
             const outcome = swingResult?.outcome ?? "failed";
 
             if (outcome === "swung") {
-              // This branch shouldn't happen with null p_next_attendance_id,
-              // but keep for safety.
+              // perform_swing wrapper auto-picked a dealer from pool.
               metrics.success++;
+
+              // Query the NEW assignment to notify the incoming dealer
+              try {
+                const { data: newAssignment } = await admin
+                  .from("dealer_assignments")
+                  .select("id, attendance_id, dealer:attendance_id(dealers(full_name, telegram_username))")
+                  .eq("table_id", assignment.table_id)
+                  .eq("status", "assigned")
+                  .order("assigned_at", { ascending: false })
+                  .limit(1)
+                  .single();
+
+                const incomingDealer = (newAssignment?.dealer as any)?.dealers;
+                if (incomingDealer) {
+                  notifier?.enqueue({
+                    type: "swing_in",
+                    tableName,
+                    zone: clubZone,
+                    dealerName: incomingDealer.full_name,
+                    username: incomingDealer.telegram_username ?? null,
+                  } satisfies SwingInEvent);
+                }
+              } catch (notifyErr) {
+                console.warn(`[Pass 3] Failed to enqueue swing_in for auto-picked dealer at ${tableName}:`, (notifyErr as Error).message);
+              }
+
               try {
                 const { data: freshCount } = await admin
                   .rpc("count_available_dealers", { p_club_id: cid });
@@ -2542,7 +2656,6 @@ if (tier2Count > 0) {
               console.warn(
                 `[process-swing] no_dealer for ${tableName}: ` +
                 `level=${isOtDealer ? (otMinutes >= 20 ? 3 : 2) : 1} ` +
-                `nextDealer=${nextDealer?.id ?? "null"} ` +
                 `retry=${swingResult?.retry_attempts ?? 0}`
               );
               if (swingResult?.is_new_overtime === true) {
