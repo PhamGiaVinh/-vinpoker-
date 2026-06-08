@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
     try {
       const chatId = await getClubTelegramChatId(admin, club_id);
       if (botToken && chatId && assignedEntries.length > 0) {
+        // Group notification: summary of all assignments
         const msg = formatMassAssignMessage(assignedEntries);
         sendTelegramNotification(botToken, chatId, msg, {
           logError: (errMsg) => {
@@ -88,6 +89,14 @@ Deno.serve(async (req) => {
             }).then(() => {}).catch(() => {});
           },
         }).catch(() => {});
+
+        // Individual dealer notifications: each dealer gets a personal message
+        for (const a of assignments) {
+          if (a.telegram_username) {
+            const dealerMsg = `🎲 Bạn được gán vào *${a.table_name}*. Xoay vòng sau ${durResult.durationMinutes} phút.`;
+            sendTelegramNotification(botToken, chatId, dealerMsg).catch(() => {});
+          }
+        }
       }
     } catch { /* non-critical */ }
 

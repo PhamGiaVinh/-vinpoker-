@@ -79,6 +79,15 @@ Deno.serve(async (req) => {
     let hadDealer = false;
     let lastDealerInfo: { full_name: string; telegram_username?: string | null; workedMinutes: number } | null = null;
 
+    // Break duration for this club (used when transitioning dealer to on_break)
+    const { data: breakDurationRow } = await admin
+      .from("swing_config")
+      .select("break_duration_minutes")
+      .eq("club_id", table.club_id)
+      .eq("table_type", "tournament")
+      .maybeSingle();
+    const breakDuration = breakDurationRow?.break_duration_minutes ?? 10;
+
     // Find active assignment on this table (assigned or on_break)
     const { data: assignment } = await admin
       .from("dealer_assignments")
@@ -129,13 +138,32 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Send dealer to break instead of available — they just worked a full
+      // shift and the table is closing. This gives them rest before reassignment.
       const { data: releaseResult } = await admin.rpc("transition_dealer_state", {
         p_attendance_id: assignment.attendance_id,
-        p_new_state: "available",
+        p_new_state: "on_break",
         p_reason: `close_table_${table_id}`,
       });
       if (releaseResult?.ok === false) {
-        console.error(`[close-table] Failed to release dealer state: ${releaseResult.error}`);
+        console.error(`[close-table] Failed to transition dealer to on_break: ${releaseResult.error}`);
+      }
+
+      // Create a dealer_breaks record so break tracking is consistent
+      const { data: breakRow, error: breakErr } = await admin
+        .from("dealer_breaks")
+        .insert({
+          assignment_id: assignment.id,
+          break_start: new Date().toISOString(),
+          expected_duration_minutes: breakDuration,
+          reason: `close_table_break_${table_id}`,
+        })
+        .select("id")
+        .single();
+      if (breakRow) {
+        dealerBreakId = breakRow.id;
+      } else if (breakErr) {
+        console.error(`[close-table] Failed to create break record: ${breakErr.message}`);
       }
     }
 
@@ -191,6 +219,12 @@ Deno.serve(async (req) => {
           tourName: table.tour_tier ?? undefined,
         });
         sendTelegramNotification(botToken, chatId, msg).catch(() => {});
+
+        // Also notify the dealer directly if they have a Telegram username
+        if (lastDealerInfo?.telegram_username && hadDealer) {
+          const dealerMsg = `🛋 Bạn đã được chuyển sang nghỉ sau khi bàn *${table.table_name}* đóng. Nghỉ ${breakDuration} phút.`;
+          sendTelegramNotification(botToken, chatId, dealerMsg).catch(() => {});
+        }
       }
     } catch { /* non-critical */ }
 

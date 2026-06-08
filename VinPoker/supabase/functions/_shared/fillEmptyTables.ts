@@ -24,6 +24,7 @@ export interface FillResult {
     table_name: string;
     attendance_id: string;
     full_name: string;
+    telegram_username?: string | null;
   }>;
   assignedAttendanceIds: Set<string>;
 }
@@ -170,6 +171,7 @@ export async function fillEmptyTables(
           table_name: table.table_name,
           attendance_id: dealer.id,
           full_name: dealer.full_name,
+          telegram_username: dealer.telegram_username ?? null,
         });
         assigned = true;
         break;
