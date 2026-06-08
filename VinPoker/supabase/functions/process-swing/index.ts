@@ -1942,13 +1942,9 @@ if (tier2Count > 0) {
                     .eq("status", "checked_in");
                   availableDealerCount = fb ?? 0;
                 }
-                notifier?.enqueue({
-                  type: "swing_in",
-                  tableName,
-                  zone: clubZone,
-                  dealerName: rpcResult.incoming_name ?? "Unknown",
-                  username: null,
-                } satisfies SwingInEvent);
+                // Swing-in notification intentionally suppressed for pre-assigned swings:
+                // pre_announce_jobs already sent "📋 Tiếp theo..." earlier.
+                // Only notify break if outgoing dealer needs it.
                 if (breakDecision.shouldBreak) {
                   const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
                   notifier?.enqueue({
