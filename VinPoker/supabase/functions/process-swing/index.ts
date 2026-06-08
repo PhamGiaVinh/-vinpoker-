@@ -1795,8 +1795,92 @@ if (tier2Count > 0) {
               }
 
               console.log(`[Pass 3] ✅ Force-released ${tableName} (overdue ${-minsLeft}min)`);
+
+              // BUG #4 FIX: After force-release, try to find a replacement dealer.
+              // The old dealer is released but the table still needs a dealer.
+              // Attempt graduated tier picker; if no replacement, skip perform_swing
+              // so the next tick can re-evaluate with fresh pool state.
+              const forceMinutesOverdue = Math.max(0, -minsLeft);
+              const { data: forceEscData } = await admin
+                .rpc("get_escalation_config", { p_club_id: cid })
+                .single()
+                .catch(() => ({ data: null }));
+              const forceReleaseEsc = forceEscData ?? {
+                tier_1_min_overdue_min: 5, tier_1_min_rest_min: 5,
+                tier_2_min_overdue_min: 15, tier_2_min_rest_min: 3, tier_2_skip_priority_break: true,
+                tier_3_min_overdue_min: 30, tier_3_min_rest_min: 0, tier_3_skip_fatigue_cap: true,
+                force_release_at_overdue_min: 30,
+              };
+              const forceExcludes = new Set([...cycleExcludedIds, assignment.attendance_id]);
+              const forceBaseOpts = {
+                currentTableId: assignment.table_id,
+                excludeAttendanceIds: forceExcludes,
+                requiredGameTypes: required_game_types,
+                clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+              };
+
+              let replacementDealer = await pickNextDealer(admin, cid, {
+                ...forceBaseOpts,
+                minRestMinutes: clubCfg.break_duration_minutes ?? 10,
+              });
+
+              if (!replacementDealer && forceMinutesOverdue >= forceReleaseEsc.tier_1_min_overdue_min) {
+                replacementDealer = await pickNextDealer(admin, cid, {
+                  ...forceBaseOpts,
+                  minRestMinutes: forceReleaseEsc.tier_1_min_rest_min,
+                });
+              }
+              if (!replacementDealer && forceMinutesOverdue >= forceReleaseEsc.tier_2_min_overdue_min) {
+                replacementDealer = await pickNextDealer(admin, cid, {
+                  ...forceBaseOpts,
+                  minRestMinutes: forceReleaseEsc.tier_2_min_rest_min,
+                  skipPriorityBreakGuard: forceReleaseEsc.tier_2_skip_priority_break,
+                });
+              }
+              if (!replacementDealer && forceMinutesOverdue >= forceReleaseEsc.tier_3_min_overdue_min) {
+                replacementDealer = await pickNextDealer(admin, cid, {
+                  ...forceBaseOpts,
+                  minRestMinutes: forceReleaseEsc.tier_3_min_rest_min,
+                  skipPriorityBreakGuard: true,
+                  skipFatigueHardCap: forceReleaseEsc.tier_3_skip_fatigue_cap,
+                });
+              }
+
+              if (replacementDealer) {
+                const { breakDuration: frBreakDur } = await getBreakSettings(admin, cid);
+                const { data: frResult } = await admin.rpc("perform_swing", {
+                  p_assignment_id: assignment.id,
+                  p_duration_minutes: swingDurResult.durationMinutes,
+                  p_send_to_break: false,
+                  p_break_duration_minutes: frBreakDur,
+                  p_expected_version: assignment.version,
+                  p_next_attendance_id: replacementDealer.id,
+                });
+                if (frResult?.outcome === "swung") {
+                  metrics.success++;
+                  cycleExcludedIds.add(replacementDealer.id);
+                  notifier?.enqueue({
+                    type: "swing_in",
+                    tableName,
+                    zone: clubZone,
+                    dealerName: replacementDealer.full_name,
+                    username: replacementDealer.telegram_username ?? null,
+                  } satisfies SwingInEvent);
+                  console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
+                  // BUG #3 FIX: Refresh count after force-release replacement swing
+                  try {
+                    const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
+                    availableDealerCount = fc2 ?? 0;
+                  } catch { /* keep stale count */ }
+                } else {
+                  metrics.no_dealer++;
+                  console.warn(`[Pass 3] ⚠️ perform_swing after force-release returned: ${frResult?.outcome}`);
+                }
+              } else {
+                metrics.no_dealer++;
+                console.warn(`[Pass 3] ⚠️ No replacement after force-release for ${tableName} — table unassigned until next tick`);
+              }
             }
-            metrics.failed++;
             continue;
           }
 
@@ -1832,6 +1916,19 @@ if (tier2Count > 0) {
               case "success":
                 metrics.success++;
                 cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
+                // BUG #3 FIX: Refresh available dealer count after pre-assigned swing success.
+                try {
+                  const { data: fc } = await admin.rpc("count_available_dealers", { p_club_id: cid });
+                  availableDealerCount = fc ?? 0;
+                } catch {
+                  const { count: fb } = await admin
+                    .from("dealer_attendance")
+                    .select("id", { head: true, count: "exact" })
+                    .in("dealer_id", cidDealerIds)
+                    .eq("current_state", "available")
+                    .eq("status", "checked_in");
+                  availableDealerCount = fb ?? 0;
+                }
                 notifier?.enqueue({
                   type: "swing_in",
                   tableName,
@@ -2137,6 +2234,23 @@ if (tier2Count > 0) {
             if (outcome === "swung") {
               metrics.success++;
               if (nextDealer?.id) cycleExcludedIds.add(nextDealer.id);
+              // BUG #3 FIX: Refresh available dealer count after each successful swing.
+              // The pool shrinks when a dealer moves from 'available' to 'assigned',
+              // so the next iteration needs an accurate count for break evaluation.
+              try {
+                const { data: freshCount } = await admin
+                  .rpc("count_available_dealers", { p_club_id: cid });
+                availableDealerCount = freshCount ?? 0;
+              } catch {
+                // Fallback: re-query via Supabase client
+                const { count: fbCount } = await admin
+                  .from("dealer_attendance")
+                  .select("id", { head: true, count: "exact" })
+                  .in("dealer_id", cidDealerIds)
+                  .eq("current_state", "available")
+                  .eq("status", "checked_in");
+                availableDealerCount = fbCount ?? 0;
+              }
               if (nextDealer) {
                 notifier?.enqueue({
                   type: "swing_in",
