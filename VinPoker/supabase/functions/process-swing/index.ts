@@ -2473,9 +2473,14 @@ if (tier2Count > 0) {
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
+                // + ghi metadata để Pass 0c không detect là stuck
                 await admin
                   .from("dealer_attendance")
-                  .update({ current_state: "pre_assigned" })
+                  .update({
+                    current_state: "pre_assigned",
+                    pre_assigned_table_id: assignment.table_id,
+                    pre_assigned_at: new Date().toISOString(),
+                  })
                   .eq("id", nextDealer.id);
 
                 // Gửi Telegram Emergency NGAY
@@ -2562,9 +2567,14 @@ if (tier2Count > 0) {
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
+                // + ghi metadata để Pass 0c không detect là stuck
                 await admin
                   .from("dealer_attendance")
-                  .update({ current_state: "pre_assigned" })
+                  .update({
+                    current_state: "pre_assigned",
+                    pre_assigned_table_id: assignment.table_id,
+                    pre_assigned_at: new Date().toISOString(),
+                  })
                   .eq("id", nextDealer.id);
 
                 // Gửi Telegram Emergency NGAY
