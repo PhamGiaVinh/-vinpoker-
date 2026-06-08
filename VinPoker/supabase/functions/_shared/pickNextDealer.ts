@@ -56,6 +56,9 @@ export interface PickDealerOptions {
   /** Minimum rest minutes between consecutive assignments. Defaults to 10 if not provided.
    *  Used by graduated escalation: Tier 1=5, Tier 2=3, Tier 3=0 to relax rest enforcement. */
   minRestMinutes?: number;
+  /** Minimum rest minutes between two swing assignments (inter-swing cooldown).
+   *  0 = disabled. Defaults to 10. Based on last_released_at timestamp. */
+  minInterSwingRestMinutes?: number;
 }
 
 export interface DealerCandidate {
@@ -102,6 +105,7 @@ export async function buildDealerCandidates(
     skipFatigueHardCap = false,
     clubBreakDurationMinutes = 20,
     minRestMinutes = 10,
+    minInterSwingRestMinutes = 10,
   } = options;
 
   // Step 1: Get active dealer IDs for this club
@@ -136,15 +140,16 @@ export async function buildDealerCandidates(
   // Available dealers always pass this guard since they're not on_break.
   const minBreakMinutes = options.clubBreakDurationMinutes ?? 15;
 
-  const { data: rows, error } = await admin
+const { data: rows, error } = await admin
     .from("dealer_attendance")
     .select(
       `id, dealer_id, current_state, status,
-       worked_minutes_since_last_break, priority_break_flag,
-       dealers!inner(
-         full_name, telegram_username, telegram_user_id,
-         tier, skills
-       )`
+        worked_minutes_since_last_break, priority_break_flag,
+        last_released_at,
+        dealers!inner(
+          full_name, telegram_username, telegram_user_id,
+          tier, skills
+        )`
     )
     .eq("status", "checked_in")
     .in("dealer_id", dealerIds)
@@ -272,6 +277,7 @@ export async function buildDealerCandidates(
     fatigue_excluded: 0,
     priority_break_excluded: 0,
     min_rest_excluded: 0,
+    inter_swing_cooldown_excluded: 0,
     game_type_excluded: 0,
     candidates_count: 0,
   };
@@ -323,6 +329,18 @@ export async function buildDealerCandidates(
     // Dealer who rested ≥ threshold is "rested enough" to reassign.
     const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
     if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
+
+    // ── Inter-swing rest cooldown ──────────────────────────────────────────
+    // Dealer who just left a table must rest ≥ minInterSwingRestMinutes
+    // before being picked for another swing. Uses last_released_at timestamp.
+    // NULL = never released (first shift) or just finished break → eligible.
+    if (minInterSwingRestMinutes > 0 && row.current_state === "available" && (row as any).last_released_at) {
+      const minutesSinceRelease = (Date.now() - new Date((row as any).last_released_at).getTime()) / 60_000;
+      if (minutesSinceRelease < minInterSwingRestMinutes) {
+        diag.inter_swing_cooldown_excluded++;
+        continue;
+      }
+    }
 
     // ── Minimum rest ────────────────────────────────────────────────────────
     // Dealer needs ≥N min rest between swing cycles. Default 10 min, but
@@ -511,6 +529,7 @@ export async function buildDealerCandidates(
       skipPriorityBreakGuard: options.skipPriorityBreakGuard,
       skipFatigueHardCap: options.skipFatigueHardCap,
       minRestMinutes: options.minRestMinutes ?? 10,
+      minInterSwingRestMinutes: options.minInterSwingRestMinutes ?? 10,
       busyDealerTotal: busyDealerIds.size,
       busyDealerIds: [...busyDealerIds],
     });

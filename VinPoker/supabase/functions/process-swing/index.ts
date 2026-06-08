@@ -155,6 +155,7 @@ interface ClubSwingConfig {
   sync_swings: boolean;
   sync_window_minutes: number;
   rotation_planner_enabled: boolean;
+  min_inter_swing_rest_minutes: number;
 }
 
 // ─── Config fetching ──────────────────────────────────────────────────────────
@@ -199,6 +200,7 @@ async function fetchAllClubConfigs(
       sync_swings: row.sync_swings ?? false,
       sync_window_minutes: row.sync_window_minutes ?? 5,
       rotation_planner_enabled: row.rotation_planner_enabled ?? false,
+      min_inter_swing_rest_minutes: row.min_inter_swing_rest_minutes ?? 10,
     });
   }
   return configMap;
@@ -224,6 +226,7 @@ function getClubConfig(
       sync_swings: false,
       sync_window_minutes: 5,
       rotation_planner_enabled: false,
+      min_inter_swing_rest_minutes: 10,
     }
   );
 }
@@ -970,7 +973,7 @@ Deno.serve(async (req: Request) => {
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
         let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
         if (!dryRun) {
-          fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt);
+          fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt, clubCfg.min_inter_swing_rest_minutes);
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           for (const a of fillResult.assignments) {
             notifier?.enqueue({
@@ -1830,6 +1833,7 @@ if (tier2Count > 0) {
                 excludeAttendanceIds: forceExcludes,
                 requiredGameTypes: required_game_types,
                 clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+                minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
               };
 
               let replacementDealer = await pickNextDealer(admin, cid, {
@@ -1996,6 +2000,7 @@ if (tier2Count > 0) {
                   currentTableId: assignment.table_id,
                   excludeAttendanceIds: cycleExcludedIds,
                   requiredGameTypes: required_game_types,
+                  minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
                 });
 
                 if (fbDealer) {
@@ -2087,6 +2092,7 @@ if (tier2Count > 0) {
               excludeAttendanceIds: nextExcludes,
               requiredGameTypes: required_game_types,
               clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+              minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
             };
 
             // ── Graduated escalation: config-driven, NOT hardcoded ────────────
@@ -2151,6 +2157,7 @@ if (tier2Count > 0) {
               nextDealer = await pickNextDealer(admin, cid, {
                 ...basePickOptions,
                 minRestMinutes: esc.tier_3_min_rest_min,
+                minInterSwingRestMinutes: 0,
                 skipPriorityBreakGuard: true,
                 skipFatigueHardCap: esc.tier_3_skip_fatigue_cap,
               });

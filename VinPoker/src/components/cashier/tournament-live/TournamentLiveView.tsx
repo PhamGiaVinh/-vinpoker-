@@ -132,7 +132,7 @@ export function TournamentLiveView({
     const [seatsRes, handsRes, clockRes, tournamentRes] = await Promise.all([
       supabase
         .from("tournament_seats")
-        .select("player_id, seat_number, chip_count, is_active")
+        .select("player_id, seat_number, chip_count, is_active, player_name")
         .eq("tournament_id", tournamentId)
         .order("seat_number"),
       supabase
@@ -147,19 +147,11 @@ export function TournamentLiveView({
     ]);
 
     if (seatsRes.data && seatsRes.data.length > 0) {
-      const playerIds = seatsRes.data.map((s: any) => s.player_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, display_name")
-        .in("user_id", playerIds);
-      const nameMap = new Map<string, string>();
-      (profiles || []).forEach((p: any) => nameMap.set(p.user_id, p.display_name || "\u2014"));
-
       const activeSeats = seatsRes.data.filter((s: any) => s.is_active);
       const btnSeat = 1;
       const seatInfos: SeatInfo[] = seatsRes.data.map((s: any) => ({
         player_id: s.player_id,
-        display_name: nameMap.get(s.player_id) || s.player_id.slice(0, 6),
+        display_name: s.player_name || s.player_id.slice(0, 6),
         seat_number: s.seat_number,
         chip_count: s.chip_count,
         is_active: s.is_active,

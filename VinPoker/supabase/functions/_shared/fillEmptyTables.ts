@@ -39,7 +39,8 @@ export async function fillEmptyTables(
   shiftId: string | undefined,
   botToken: string,
   initialExclude?: Set<string>,
-  swingDueAt?: string
+  swingDueAt?: string,
+  minInterSwingRestMinutes?: number,
 ): Promise<FillResult> {
   const result: FillResult = {
     assignments: [],
@@ -139,6 +140,7 @@ export async function fillEmptyTables(
       const dealer: DealerCandidate | null = await pickNextDealer(admin, clubId, {
         currentTableId: table.id,
         excludeAttendanceIds: excludeSet,
+        minInterSwingRestMinutes: minInterSwingRestMinutes ?? 10,
       });
 
       if (!dealer) break;

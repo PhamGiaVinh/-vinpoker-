@@ -117,18 +117,13 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     if (!tournamentId) return;
     const loadTables = async () => {
       const { data } = await supabase
-        .from("tournament_seats")
-        .select("table_id, game_tables(table_name)")
-        .eq("tournament_id", tournamentId)
-        .eq("is_active", true);
+        .rpc("get_tournament_tables", { p_tournament_id: tournamentId });
       if (data) {
-        const map = new Map<string, string>();
-        (data as any[]).forEach((d) => {
-          if (!map.has(d.table_id)) {
-            map.set(d.table_id, d.game_tables?.table_name || d.table_id.slice(0, 8));
-          }
-        });
-        setAvailableTables(Array.from(map.entries()).map(([id, name]) => ({ id, name })));
+        const tables = (Array.isArray(data) ? data : []).map((t: any) => ({
+          id: t.table_id,
+          name: t.table_name || t.table_id.slice(0, 8),
+        }));
+        setAvailableTables(tables);
       }
     };
     loadTables();
@@ -143,7 +138,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
     const { data: seats, error } = await supabase
       .from("tournament_seats")
-      .select("player_id, entry_number, seat_number, chip_count")
+      .select("player_id, entry_number, seat_number, chip_count, player_name")
       .eq("tournament_id", tournamentId)
       .eq("table_id", newTableId)
       .eq("is_active", true)
@@ -155,21 +150,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       return;
     }
 
-    const playerIds = seats.map((s) => s.player_id);
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", playerIds);
-
-    const nameMap = new Map<string, string>();
-    (profiles || []).forEach((p: any) => nameMap.set(p.user_id, p.display_name || p.user_id.slice(0, 6)));
-
     const seatCount = seats.length;
     const newPlayers: PlayerState[] = seats.map((s) => ({
       player_id: s.player_id,
       entry_number: s.entry_number,
       seat_number: s.seat_number,
-      display_name: nameMap.get(s.player_id) || s.player_id.slice(0, 6),
+      display_name: (s as any).player_name || s.player_id.slice(0, 6),
       starting_stack: s.chip_count,
       current_stack: s.chip_count,
       is_active: true,

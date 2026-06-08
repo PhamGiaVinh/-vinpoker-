@@ -25,6 +25,7 @@ export async function pass25InitialAssign(
   clubId: string,
   cycleExcludedIds: Set<string>,
   requiredGameTypes?: string[],
+  minInterSwingRestMinutes?: number,
 ): Promise<Pass25Result> {
   console.log("[Pass 2.5] 🔍 Checking for assignments without dealer_id...");
 
@@ -121,6 +122,7 @@ export async function pass25InitialAssign(
             currentTableId: assignment.table_id,
             excludeAttendanceIds: cycleExcludedIds,
             requiredGameTypes,
+            minInterSwingRestMinutes: minInterSwingRestMinutes ?? 10,
           });
 
           if (!nextDealer && isOt) {
@@ -130,6 +132,7 @@ export async function pass25InitialAssign(
               excludeAttendanceIds: cycleExcludedIds,
               requiredGameTypes,
               skipPriorityBreakGuard: true,
+              minInterSwingRestMinutes: minInterSwingRestMinutes ?? 10,
             });
           }
 
@@ -141,6 +144,7 @@ export async function pass25InitialAssign(
               requiredGameTypes,
               skipPriorityBreakGuard: true,
               skipFatigueHardCap: true,
+              minInterSwingRestMinutes: 0,
             });
           }
 

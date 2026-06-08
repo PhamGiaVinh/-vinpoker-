@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
             seat_number: seat.seat_number,
             chip_count: seat.chip_count || 0,
             is_active: seat.is_active !== false,
+            player_name: seat.player_name || "",
           })),
           { onConflict: "tournament_id,player_id,entry_number" }
         );
@@ -54,20 +55,20 @@ Deno.serve(async (req) => {
         break;
       }
       case "add_table": {
-        const { table_id } = body;
-        if (!table_id) throw new Error("Missing table_id");
+        const { table_name } = body;
+        if (!table_name) throw new Error("Missing table_name");
 
         const { data: existing } = await supabase
           .from("tournament_tables")
           .select("id")
           .eq("tournament_id", tournament_id)
-          .eq("table_id", table_id)
+          .eq("table_name", table_name)
           .maybeSingle();
-        if (existing) throw new Error("Table already in tournament");
+        if (existing) throw new Error("Table name already exists in this tournament");
 
         const { data, error: addErr } = await supabase
           .from("tournament_tables")
-          .insert({ tournament_id, table_id })
+          .insert({ tournament_id, table_name })
           .select()
           .single();
         if (addErr) throw addErr;
@@ -75,15 +76,15 @@ Deno.serve(async (req) => {
         break;
       }
       case "add_player": {
-        const { player_id, table_id: tbl, seat_number, chip_count } = body;
-        if (!player_id || !tbl || !seat_number) throw new Error("Missing required fields: player_id, table_id, seat_number");
+        const { player_id, player_name, table_id: tbl, seat_number, chip_count } = body;
+        if (!tbl || !seat_number) throw new Error("Missing required fields: table_id, seat_number");
         if ((chip_count ?? 0) < 0) throw new Error("chip_count must be >= 0");
 
         const { data: tblCheck } = await supabase
           .from("tournament_tables")
           .select("id")
+          .eq("id", tbl)
           .eq("tournament_id", tournament_id)
-          .eq("table_id", tbl)
           .maybeSingle();
         if (!tblCheck) throw new Error("Table does not belong to this tournament");
 
@@ -96,11 +97,14 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (seatOccupied) throw new Error("Seat already occupied");
 
+        const pId = player_id || crypto.randomUUID();
+        const pName = player_name || "";
+
         const { data: nextEntry } = await supabase
           .from("tournament_seats")
           .select("entry_number")
           .eq("tournament_id", tournament_id)
-          .eq("player_id", player_id)
+          .eq("player_id", pId)
           .order("entry_number", { ascending: false })
           .limit(1);
         const entryNum = body.entry_number ?? ((nextEntry?.[0]?.entry_number ?? 0) + 1);
@@ -109,12 +113,13 @@ Deno.serve(async (req) => {
           .from("tournament_seats")
           .insert({
             tournament_id,
-            player_id,
+            player_id: pId,
             table_id: tbl,
             seat_number,
             entry_number: entryNum,
             chip_count: chip_count ?? 0,
             is_active: true,
+            player_name: pName,
           })
           .select()
           .single();
