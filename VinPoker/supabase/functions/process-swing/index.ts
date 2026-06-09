@@ -609,11 +609,21 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── Pre-fetch club dealer IDs (used by available count, Pass 0c, and seeding) ──
-        const { data: clubDealers } = await admin
-          .from("dealers")
-          .select("id")
-          .eq("club_id", cid);
-        const cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+        console.log(`[process-swing] Club ${cid}: querying dealers...`);
+        let cidDealerIds: string[];
+        try {
+          const { data: clubDealers } = await admin
+            .from("dealers")
+            .select("id")
+            .eq("club_id", cid);
+          cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+        } catch (err) {
+          console.error(
+            `[process-swing] ❌ Dealer query failed for club ${cid}:`,
+            err instanceof Error ? err.stack : err
+          );
+          continue;
+        }
 
         if (cidDealerIds.length === 0) {
           console.log(`[process-swing] No dealers for club ${cid} — skipping`);
