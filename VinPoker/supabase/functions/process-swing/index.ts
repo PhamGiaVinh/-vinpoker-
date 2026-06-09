@@ -32,11 +32,10 @@ import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 import { runPass3Diagnostic } from "./diagnostics.ts";
 import { endMealBreak } from "../_shared/mealBreakService.ts";
 import {
-  DEFAULT_PRE_ASSIGN_STALE_WINDOW_MS,
   ZOMBIE_LOCK_WINDOW_MS,
   derivePreAssignStatus,
   sortPass3Candidates,
-} from "../../../src/lib/dealerSwingState.ts";
+} from "../_shared/preAssignState.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3206,7 +3205,11 @@ if (tier2Count > 0) {
         clubsProcessed++; // Track successful club processing
 
       } catch (err) {
-        console.error(`[process-swing] \u274C Unhandled error for club ${cid}:`, err);
+        clubsSkippedError++;
+        console.error(
+          `[process-swing] \u274C Unhandled error for club ${cid}:`,
+          err instanceof Error ? err.stack ?? err.message : err
+        );
       } finally {
         if (lockAcquired) {
           try {
