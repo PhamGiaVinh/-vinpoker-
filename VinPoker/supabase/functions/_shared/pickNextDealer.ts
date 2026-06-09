@@ -18,7 +18,6 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isOnBreakStillCooling } from "../../../src/lib/dealerSwingState.ts";
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -328,6 +327,7 @@ export async function buildDealerCandidates(
     fatigue_excluded: 0,
     priority_break_excluded: 0,
     min_rest_excluded: 0,
+    on_break_excluded: 0,
     inter_swing_cooldown_excluded: 0,
     game_type_excluded: 0,
     meal_break_excluded: 0,
@@ -511,15 +511,22 @@ export async function buildDealerCandidates(
 
     // â”€â”€ On-break minimum rest guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Dealers on_break are NOT eligible while they still have an active break
-    // record. If the break record is missing/stale, fall back to the computed
-    // restMin as a safety net.
+    // record (break_end IS NULL) — the break must be explicitly ended first,
+    // regardless of how long it has been running.
+    // Fallback: if the break record is missing/stale, use computed restMin.
     if (row.current_state === "on_break") {
-      const activeBreakStart = activeBreakMap.get(row.id) ?? null;
-      if (isOnBreakStillCooling(activeBreakStart, nowMs, minBreakMinutes)) {
-        diag.min_rest_excluded++;
+      const activeBreakTimestamp = activeBreakMap.get(row.id) ?? null;
+
+      if (activeBreakTimestamp !== null) {
+        diag.on_break_excluded++;
         continue;
       }
-      if (!activeBreakStart && restMin < minBreakMinutes) {
+
+      if (restMin < minBreakMinutes) {
+        console.warn(
+          `[ANOMALY] Dealer ${row.id}: state=on_break, no break record. ` +
+          `Excluded (restMin=${restMin.toFixed(1)}m < minBreak=${minBreakMinutes}m)`
+        );
         diag.min_rest_excluded++;
         continue;
       }
