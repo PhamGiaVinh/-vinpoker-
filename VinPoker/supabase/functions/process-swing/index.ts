@@ -29,6 +29,7 @@ import {
 import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
+import { postSwingPreAssign } from "./passes/pass3-post-swing-assign.ts";
 import { runPass3Diagnostic } from "./diagnostics.ts";
 import { endMealBreak } from "../_shared/mealBreakService.ts";
 import {
@@ -1907,6 +1908,15 @@ if (tier2Count > 0) {
                 const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
                 availableDealerCount = fc2 ?? 0;
               } catch { /* keep stale count */ }
+              const postAssign = await postSwingPreAssign(admin, cid, fbResult.new_assignment_id, fallbackAssignment.table_id, {
+                chatId: pass2ChatId,
+                minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+              });
+              if (postAssign.assigned) {
+                console.log(`[Pass 3] ✅ Post-swing pre-assigned ${postAssign.dealerName} for next swing at table ${fallbackTableName}`);
+              } else if (postAssign.reason !== "no dealer available") {
+                console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign.reason}`);
+              }
               return;
             }
 
@@ -2150,6 +2160,15 @@ if (tier2Count > 0) {
                     const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
                     availableDealerCount = fc2 ?? 0;
                   } catch { /* keep stale count */ }
+                  const postAssign2 = await postSwingPreAssign(admin, cid, frResult.new_assignment_id, assignment.table_id, {
+                    chatId: pass2ChatId,
+                    minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+                  });
+                  if (postAssign2.assigned) {
+                    console.log(`[Pass 3] ✅ Post-swing pre-assigned ${postAssign2.dealerName} for next swing at table ${tableName}`);
+                  } else if (postAssign2.reason !== "no dealer available") {
+                    console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign2.reason}`);
+                  }
                 } else {
                   metrics.no_dealer++;
                   console.warn(`[Pass 3] ⚠️ perform_swing after force-release returned: ${frResult?.outcome}`);
@@ -2251,6 +2270,15 @@ if (tier2Count > 0) {
                     .eq("current_state", "available")
                     .eq("status", "checked_in");
                   availableDealerCount = fb ?? 0;
+                }
+                const postAssign3 = await postSwingPreAssign(admin, cid, rpcResult.new_assignment_id, assignment.table_id, {
+                  chatId: pass2ChatId,
+                  minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+                });
+                if (postAssign3.assigned) {
+                  console.log(`[Pass 3] ✅ Post-swing pre-assigned ${postAssign3.dealerName} for next swing at table ${tableName}`);
+                } else if (postAssign3.reason !== "no dealer available") {
+                  console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign3.reason}`);
                 }
                 // Send swing-in notification for pre-assigned swing
                 if (botToken && pass2ChatId) {
