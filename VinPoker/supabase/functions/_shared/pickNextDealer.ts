@@ -345,7 +345,7 @@ const { data: rows, error } = await admin
     // before being picked for another swing. Uses last_released_at timestamp.
     // NULL = never released (first shift) or just finished break → eligible.
     // Math.floor avoids floating-point edge case (e.g. 9.999 < 10).
-    if (minInterSwingRestMinutes > 0 && row.current_state === "available") {
+    if (minInterSwingRestMinutes > 0 && (row.current_state === "available" || row.current_state === "on_break")) {
       const releasedAt = (row as any).last_released_at;
       if (releasedAt) {
         const minutesSinceRelease = Math.floor(
