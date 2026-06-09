@@ -1,7 +1,7 @@
 export const BREAK_SOON_WARNING_MINUTES = 2;
 export const DEFAULT_BREAK_DURATION_MINUTES = 10;
 
-export type BreakType = "regular" | "meal";
+export type BreakType = "regular" | "meal" | "rest";
 export type BreakVisualState = "active" | "soon" | "overdue";
 
 export interface BreakPoolDealerSource {
@@ -64,7 +64,7 @@ interface BuildBreakPoolEntriesOptions {
   nowMs?: number;
 }
 
-function toMs(value: string | null | undefined): number {
+export function toMs(value: string | null | undefined): number {
   if (!value) return 0;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;

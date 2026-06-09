@@ -22,6 +22,7 @@ import {
 } from "@/lib/dealerSwingState";
 import {
   buildBreakPoolEntries,
+  sortBreakPoolEntries,
   DEFAULT_BREAK_DURATION_MINUTES,
   type BreakPoolEntry,
 } from "@/lib/breakPoolState";
@@ -42,6 +43,7 @@ export interface DealerAttendance {
     | "checked_out";
   worked_minutes_since_last_break: number;
   priority_break_flag: boolean;
+  last_released_at: string | null;
   dealers: {
     full_name: string;
     telegram_username?: string;
@@ -222,7 +224,7 @@ export function useCheckedInDealers(clubIds: string[]) {
         .select(
           `id, dealer_id, shift_date, status, check_in_time, check_out_time,
            overtime_minutes, current_state, worked_minutes_since_last_break,
-           priority_break_flag,
+           priority_break_flag, last_released_at,
            dealers!inner(full_name, telegram_username, tier, club_id)`
         )
         .eq("status", "checked_in")
@@ -281,11 +283,51 @@ export function useBreakPool(
 
   const result = useRealtimeQuery<BreakPoolEntry>({
     queryFn: async () => {
+      const nowMs = Date.now();
+
+      // ── Build rest entries from available dealers with recent last_released_at ──
+      const restMinutesByClub: Record<string, number> = {};
+      for (const c of swingConfigs) {
+        if (c.min_inter_swing_rest_minutes != null && c.min_inter_swing_rest_minutes > 0) {
+          restMinutesByClub[c.club_id] = Math.max(
+            restMinutesByClub[c.club_id] ?? 0,
+            c.min_inter_swing_rest_minutes,
+          );
+        }
+      }
+
+      const restEntries: BreakPoolEntry[] = [];
+      for (const dealer of dealers) {
+        if (dealer.status !== "checked_in") continue;
+        if (dealer.current_state !== "available") continue;
+        if (!dealer.last_released_at) continue;
+        const restMinutes = restMinutesByClub[dealer.dealers.club_id];
+        if (!restMinutes || restMinutes <= 0) continue;
+        const releasedMs = new Date(dealer.last_released_at).getTime();
+        if (!Number.isFinite(releasedMs)) continue;
+        if (nowMs - releasedMs >= restMinutes * 60_000) continue;
+        restEntries.push({
+          id: `rest:${dealer.id}`,
+          attendanceId: dealer.id,
+          dealerId: dealer.dealer_id,
+          clubId: dealer.dealers.club_id ?? null,
+          dealerName: dealer.dealers.full_name,
+          telegramUsername: dealer.dealers.telegram_username ?? null,
+          tier: dealer.dealers.tier ?? null,
+          breakType: "rest",
+          tableName: null,
+          breakStartAt: dealer.last_released_at,
+          expectedReturnAt: new Date(releasedMs + restMinutes * 60_000).toISOString(),
+          durationMinutes: restMinutes,
+          isFallback: false,
+        });
+      }
+
       const onBreakDealers = dealers.filter(
         (dealer) => dealer.status === "checked_in" && dealer.current_state === "on_break",
       );
       if (!clubIds.length || onBreakDealers.length === 0) {
-        return { data: [], error: null };
+        return { data: restEntries, error: null };
       }
 
       const attendanceIds = onBreakDealers.map((dealer) => dealer.id);
@@ -335,42 +377,44 @@ export function useBreakPool(
         return { data: null, error: regularBreakError ?? mealBreakError };
       }
 
+      const breakEntries = buildBreakPoolEntries({
+        nowMs,
+        dealers: onBreakDealers.map((dealer) => ({
+          attendanceId: dealer.id,
+          dealerId: dealer.dealer_id,
+          clubId: dealer.dealers.club_id ?? null,
+          fullName: dealer.dealers.full_name,
+          telegramUsername: dealer.dealers.telegram_username ?? null,
+          tier: dealer.dealers.tier ?? "C",
+          checkInTime: dealer.check_in_time,
+          currentState: dealer.current_state,
+        })),
+        regularAssignments: (breakAssignments ?? []).map((assignment: any) => ({
+          assignmentId: assignment.id,
+          attendanceId: assignment.attendance_id,
+          releasedAt: assignment.released_at,
+          tableName: assignment.game_tables?.table_name ?? null,
+        })) as BreakAssignmentRow[],
+        regularBreaks: (regularBreaks ?? []).map((breakRow: any) => ({
+          id: breakRow.id,
+          assignmentId: breakRow.assignment_id,
+          breakStart: breakRow.break_start,
+          expectedDurationMinutes: breakRow.expected_duration_minutes,
+          reason: breakRow.reason,
+        })) as RegularBreakRow[],
+        mealBreaks: (mealBreaks ?? []).map((breakRow: any) => ({
+          id: breakRow.id,
+          attendanceId: breakRow.attendance_id,
+          breakStart: breakRow.break_start,
+          totalDurationMinutes: breakRow.total_duration_minutes,
+          baseDurationMinutes: breakRow.base_duration_minutes,
+          bonusMinutes: breakRow.bonus_minutes,
+        })) as MealBreakRow[],
+        defaultBreakMinutesByClubId,
+      });
+
       return {
-        data: buildBreakPoolEntries({
-          nowMs: Date.now(),
-          dealers: onBreakDealers.map((dealer) => ({
-            attendanceId: dealer.id,
-            dealerId: dealer.dealer_id,
-            clubId: dealer.dealers.club_id ?? null,
-            fullName: dealer.dealers.full_name,
-            telegramUsername: dealer.dealers.telegram_username ?? null,
-            tier: dealer.dealers.tier ?? "C",
-            checkInTime: dealer.check_in_time,
-            currentState: dealer.current_state,
-          })),
-          regularAssignments: (breakAssignments ?? []).map((assignment: any) => ({
-            assignmentId: assignment.id,
-            attendanceId: assignment.attendance_id,
-            releasedAt: assignment.released_at,
-            tableName: assignment.game_tables?.table_name ?? null,
-          })) as BreakAssignmentRow[],
-          regularBreaks: (regularBreaks ?? []).map((breakRow: any) => ({
-            id: breakRow.id,
-            assignmentId: breakRow.assignment_id,
-            breakStart: breakRow.break_start,
-            expectedDurationMinutes: breakRow.expected_duration_minutes,
-            reason: breakRow.reason,
-          })) as RegularBreakRow[],
-          mealBreaks: (mealBreaks ?? []).map((breakRow: any) => ({
-            id: breakRow.id,
-            attendanceId: breakRow.attendance_id,
-            breakStart: breakRow.break_start,
-            totalDurationMinutes: breakRow.total_duration_minutes,
-            baseDurationMinutes: breakRow.base_duration_minutes,
-            bonusMinutes: breakRow.bonus_minutes,
-          })) as MealBreakRow[],
-          defaultBreakMinutesByClubId,
-        }),
+        data: sortBreakPoolEntries([...breakEntries, ...restEntries]),
         error: null,
       };
     },
@@ -564,6 +608,7 @@ export interface SwingConfig {
   target_ratio?: number;
   min_duration_minutes?: number;
   max_duration_minutes?: number;
+  min_inter_swing_rest_minutes?: number;
   rotation_planner_enabled?: boolean;
 }
 

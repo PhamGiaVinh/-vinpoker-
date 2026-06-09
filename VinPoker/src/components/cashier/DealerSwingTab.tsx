@@ -121,9 +121,19 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
+  const restingAttendanceIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const entry of breakPool ?? []) {
+      if (entry.breakType === "rest") set.add(entry.attendanceId);
+    }
+    return set;
+  }, [breakPool]);
+
   const rosterDealers = useMemo(
-    () => (dealers ?? []).filter((dealer) => dealer.current_state !== "on_break"),
-    [dealers],
+    () => (dealers ?? []).filter(
+      (dealer) => dealer.current_state !== "on_break" && !restingAttendanceIds.has(dealer.id),
+    ),
+    [dealers, restingAttendanceIds],
   );
   const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(rosterDealers.length);
   const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds, assignments);
@@ -2782,71 +2792,97 @@ function BreakPoolCard({
           <div className="text-xs text-muted-foreground py-4 text-center">Chưa có dealer đang nghỉ.</div>
         ) : (
           entries.map((entry) => {
-            const visualState = getBreakVisualState(entry, nowMs, BREAK_SOON_WARNING_MINUTES);
+            const isRest = entry.breakType === "rest";
+            const visualState = isRest ? "active" : getBreakVisualState(entry, nowMs, BREAK_SOON_WARNING_MINUTES);
             const timing = getBreakTiming(entry, nowMs);
-            const isBusy = processing === entry.attendanceId;
+            const isBusy = !isRest && processing === entry.attendanceId;
             const rowClass = cn(
               "flex items-center gap-2 px-2 py-1.5 border rounded-none transition-colors",
-              visualState === "soon"
-                ? "border-amber-500/40 bg-amber-500/5 text-amber-100"
-                : visualState === "overdue"
-                  ? "border-red-500/40 bg-red-500/5 text-red-100"
-                  : "border-border/60 bg-muted/20 text-foreground",
+              isRest
+                ? "border-violet-500/40 bg-violet-500/5 text-violet-100"
+                : visualState === "soon"
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-100"
+                  : visualState === "overdue"
+                    ? "border-red-500/40 bg-red-500/5 text-red-100"
+                    : "border-border/60 bg-muted/20 text-foreground",
             );
+            // For rest entries, compute seconds remaining
+            const remainingSeconds = isRest
+              ? Math.max(0, Math.ceil((new Date(entry.expectedReturnAt).getTime() - nowMs) / 1000))
+              : 0;
             return (
               <div key={entry.id} className={rowClass}>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="text-xs font-semibold truncate">{entry.dealerName}</span>
                     <Badge variant="outline" className="text-[9px] h-5 px-1.5 shrink-0">
-                      {entry.breakType === "meal" ? "Cơm" : "Break"}
+                      {isRest ? "Nghỉ" : entry.breakType === "meal" ? "Cơm" : "Break"}
                     </Badge>
-                    {visualState === "soon" && (
+                    {isRest && remainingSeconds <= 60 && remainingSeconds > 0 && (
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-emerald-500/30 text-emerald-300 shrink-0">
+                        Sắp xong
+                      </Badge>
+                    )}
+                    {!isRest && visualState === "soon" && (
                       <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-amber-500/30 text-amber-300 shrink-0">
                         Sắp hết giờ
                       </Badge>
                     )}
-                    {visualState === "overdue" && (
+                    {!isRest && visualState === "overdue" && (
                       <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-red-500/30 text-red-300 shrink-0">
                         Quá giờ
                       </Badge>
                     )}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-muted-foreground">
-                    <span>Đã nghỉ {timing.elapsedMinutes}p</span>
-                    <span>•</span>
-                    <span>
-                      {visualState === "overdue"
-                        ? `Quá giờ ${timing.overdueMinutes}p`
-                        : `Còn ${timing.remainingMinutes}p`}
-                    </span>
-                    <span>•</span>
-                    <span>Bắt đầu {format(new Date(entry.breakStartAt), "HH:mm")}</span>
-                    {entry.tableName && (
+                    {isRest ? (
                       <>
+                        <span>Nghỉ {timing.elapsedMinutes}p</span>
                         <span>•</span>
-                        <span>{entry.tableName}</span>
+                        <span>Còn {remainingSeconds}s</span>
+                        <span>•</span>
+                        <span>Bắt đầu {format(new Date(entry.breakStartAt), "HH:mm")}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Đã nghỉ {timing.elapsedMinutes}p</span>
+                        <span>•</span>
+                        <span>
+                          {visualState === "overdue"
+                            ? `Quá giờ ${timing.overdueMinutes}p`
+                            : `Còn ${timing.remainingMinutes}p`}
+                        </span>
+                        <span>•</span>
+                        <span>Bắt đầu {format(new Date(entry.breakStartAt), "HH:mm")}</span>
+                        {entry.tableName && (
+                          <>
+                            <span>•</span>
+                            <span>{entry.tableName}</span>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    "h-7 text-[10px] shrink-0",
-                    visualState === "soon"
-                      ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                      : visualState === "overdue"
-                        ? "border-red-500/40 text-red-300 hover:bg-red-500/10"
-                        : "",
-                  )}
-                  disabled={isBusy}
-                  onClick={() => onEndBreak(entry)}
-                >
-                  {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                  <span className="ml-1">Kết thúc nghỉ</span>
-                </Button>
+                {!isRest && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={cn(
+                      "h-7 text-[10px] shrink-0",
+                      visualState === "soon"
+                        ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                        : visualState === "overdue"
+                          ? "border-red-500/40 text-red-300 hover:bg-red-500/10"
+                          : "",
+                    )}
+                    disabled={isBusy}
+                    onClick={() => onEndBreak(entry)}
+                  >
+                    {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                    <span className="ml-1">Kết thúc nghỉ</span>
+                  </Button>
+                )}
               </div>
             );
           })
