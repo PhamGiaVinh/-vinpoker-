@@ -18,6 +18,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isOnBreakStillCooling } from "../../../src/lib/dealerSwingState.ts";
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -103,6 +104,11 @@ interface AttendancePoolRow {
     tier: "A" | "B" | "C" | null;
     skills: string[] | null;
   };
+}
+
+interface ActiveBreakRow {
+  assignment_id: string;
+  break_start: string;
 }
 
 function pickPreferredAttendanceRow(
@@ -232,6 +238,7 @@ export async function buildDealerCandidates(
 
   // Step 3: Query dealer_shift_metrics separately
   const attendanceIds = rows.map((r) => r.id);
+  const nowMs = Date.now();
   const { data: metricsRows } = await admin
     .from("dealer_shift_metrics")
     .select("attendance_id, minutes_since_rest, total_assignments, total_break_minutes, total_worked_minutes")
@@ -252,6 +259,31 @@ export async function buildDealerCandidates(
     if (!lastTableMap.has(a.attendance_id)) {
       lastTableMap.set(a.attendance_id, a.table_id);
       lastTourTierMap.set(a.attendance_id, (a.game_tables as any)?.tour_tier ?? "");
+    }
+  }
+
+  const activeBreakMap = new Map<string, string>();
+  if (attendanceIds.length > 0) {
+    const { data: attendanceAssignments } = await admin
+      .from("dealer_assignments")
+      .select("id, attendance_id")
+      .in("attendance_id", attendanceIds);
+    const attendanceAssignmentIds = (attendanceAssignments ?? []).map((a: { id: string; attendance_id: string }) => a.id);
+    if (attendanceAssignmentIds.length > 0) {
+      const { data: activeBreakRows } = await admin
+        .from("dealer_breaks")
+        .select("assignment_id, break_start")
+        .is("break_end", null)
+        .in("assignment_id", attendanceAssignmentIds);
+      const activeBreakAssignmentIds = new Set((activeBreakRows ?? []).map((r: ActiveBreakRow) => r.assignment_id));
+      if (activeBreakAssignmentIds.size > 0) {
+        for (const row of (activeBreakRows ?? []) as ActiveBreakRow[]) {
+          const assignment = (attendanceAssignments ?? []).find((a: { id: string; attendance_id: string }) => a.id === row.assignment_id);
+          if (assignment && !activeBreakMap.has(assignment.attendance_id)) {
+            activeBreakMap.set(assignment.attendance_id, row.break_start);
+          }
+        }
+      }
     }
   }
 
@@ -472,11 +504,19 @@ export async function buildDealerCandidates(
     const priorityBreak = row.priority_break_flag ?? false;
 
     // â”€â”€ On-break minimum rest guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Dealers on_break are included in the pool query but only eligible if they've
-    // rested >= minimum_break_duration_minutes (10). Available dealers always pass.
-    if (row.current_state === "on_break" && restMin < minBreakMinutes) {
-      diag.min_rest_excluded++;
-      continue;
+    // Dealers on_break are NOT eligible while they still have an active break
+    // record. If the break record is missing/stale, fall back to the computed
+    // restMin as a safety net.
+    if (row.current_state === "on_break") {
+      const activeBreakStart = activeBreakMap.get(row.id) ?? null;
+      if (isOnBreakStillCooling(activeBreakStart, nowMs, minBreakMinutes)) {
+        diag.min_rest_excluded++;
+        continue;
+      }
+      if (!activeBreakStart && restMin < minBreakMinutes) {
+        diag.min_rest_excluded++;
+        continue;
+      }
     }
 
     // â”€â”€ High-stakes tier guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

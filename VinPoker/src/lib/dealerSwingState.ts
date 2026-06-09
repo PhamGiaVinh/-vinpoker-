@@ -21,6 +21,7 @@ export interface Pass3CandidateLike extends DealerAssignmentStateLike {
 
 export const ZOMBIE_LOCK_WINDOW_MS = 2 * 60_000;
 export const DEFAULT_PRE_ASSIGN_STALE_WINDOW_MS = 15 * 60_000;
+export const DEFAULT_MIN_BREAK_MINUTES = 10;
 
 const parseMillis = (value: string | null | undefined): number | null => {
   if (!value) return null;
@@ -46,6 +47,17 @@ export function isFreshInProgress(
   const activityMs = getActivityMs(row);
   if (activityMs === null) return false;
   return nowMs - activityMs <= freshnessWindowMs;
+}
+
+export function isOnBreakStillCooling(
+  breakStartAt: string | null | undefined,
+  nowMs = Date.now(),
+  minBreakMinutes = DEFAULT_MIN_BREAK_MINUTES,
+): boolean {
+  if (!breakStartAt) return false;
+  const breakStartMs = parseMillis(breakStartAt);
+  if (breakStartMs === null) return false;
+  return nowMs - breakStartMs < minBreakMinutes * 60_000;
 }
 
 export function derivePreAssignStatus(

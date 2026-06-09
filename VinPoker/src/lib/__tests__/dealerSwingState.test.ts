@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRE_ASSIGN_STALE_WINDOW_MS,
+  DEFAULT_MIN_BREAK_MINUTES,
   ZOMBIE_LOCK_WINDOW_MS,
   derivePreAssignStatus,
+  isOnBreakStillCooling,
   pickPreferredAssignment,
   sortPass3Candidates,
 } from "../dealerSwingState";
@@ -113,5 +115,11 @@ describe("dealerSwingState", () => {
 
     expect(pickPreferredAssignment(staleShadow, freshInProgress, NOW).id).toBe("fresh");
     expect(pickPreferredAssignment(staleShadow, newerPlain, NOW).id).toBe("newer");
+  });
+
+  it("treats an active break as cooling until the configured minimum break minutes elapse", () => {
+    expect(isOnBreakStillCooling(isoFromNow(-5), NOW, DEFAULT_MIN_BREAK_MINUTES)).toBe(true);
+    expect(isOnBreakStillCooling(isoFromNow(-10), NOW, DEFAULT_MIN_BREAK_MINUTES)).toBe(false);
+    expect(isOnBreakStillCooling(null, NOW, DEFAULT_MIN_BREAK_MINUTES)).toBe(false);
   });
 });
