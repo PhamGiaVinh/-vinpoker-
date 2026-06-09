@@ -2382,12 +2382,14 @@ function RosterPanel({
   const dealerStatuses = useMemo(() => {
     const map: Record<string, { status: string; tableName?: string; checkInTime: string; timerStart: string }> = {};
     for (const d of dealers) {
-      const a = assignments.find((a) => a.attendance_id === d.id);
+      const a = d.current_state === "pre_assigned"
+        ? assignments.find((a) => a.pre_assigned_attendance_id === d.id && a.status === "assigned")
+        : assignments.find((a) => a.attendance_id === d.id);
       const checkInTime = d.check_in_time ?? new Date().toISOString();
-      if (a?.status === "assigned") {
+      if (d.current_state === "pre_assigned") {
+        map[d.id] = { status: "Đang chờ", tableName: (a as any)?.game_tables?.table_name, checkInTime, timerStart: checkInTime };
+      } else if (a?.status === "assigned") {
         map[d.id] = { status: "Đang bàn", tableName: (a as any).game_tables?.table_name, checkInTime, timerStart: a.assigned_at };
-      } else if (d.current_state === "pre_assigned") {
-        map[d.id] = { status: "Đang chờ", tableName: undefined, checkInTime, timerStart: checkInTime };
       } else {
         // available, or orphaned assigned with no active assignment → treat as available
         // Pass 0c will fix the DB, but UI must handle it gracefully

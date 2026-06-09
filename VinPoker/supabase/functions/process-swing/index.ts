@@ -2229,9 +2229,15 @@ if (tier2Count > 0) {
                     .eq("status", "checked_in");
                   availableDealerCount = fb ?? 0;
                 }
-                // Swing-in notification intentionally suppressed for pre-assigned swings:
-                // pre_announce_jobs already sent "📋 Tiếp theo..." earlier.
-                // Only notify break if outgoing dealer needs it.
+                // Send swing-in notification for pre-assigned swing
+                if (botToken && pass2ChatId) {
+                  const incomingName = (rpcResult as any)?.incoming_name ?? "Dealer";
+                  const outgoingName = outgoingDealer.full_name !== "Unknown" ? outgoingDealer.full_name : null;
+                  const swingMsg = outgoingName
+                    ? `🔵 ${incomingName} vào bàn ${tableName} - Thay ${outgoingName}`
+                    : `🔵 ${incomingName} vào bàn ${tableName}`;
+                  sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                }
                 if (breakDecision.shouldBreak) {
                   const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
                   notifier?.enqueue({
