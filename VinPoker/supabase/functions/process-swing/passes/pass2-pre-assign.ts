@@ -205,10 +205,13 @@ export async function pass2PreAssignNext(
         const tableName = (assignment.game_tables as any)?.table_name ?? "??";
 
         // Use pickNextDealer to find the best available dealer
+        // Pass swing_due_at so predictive pre-assignment works for dealers
+        // who will complete their inter-swing rest before the swing time.
         const nextDealer = await pickNextDealer(admin, clubId, {
           currentTableId: assignment.table_id,
           excludeAttendanceIds: cycleExcludedIds,
           minInterSwingRestMinutes: options.minInterSwingRestMinutes ?? 10,
+          swingDueAt: assignment.swing_due_at,
         });
 
         if (!nextDealer) {

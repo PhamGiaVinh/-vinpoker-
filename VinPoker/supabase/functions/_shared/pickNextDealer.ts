@@ -60,6 +60,11 @@ export interface PickDealerOptions {
   /** Minimum rest minutes between two swing assignments (inter-swing cooldown).
    *  0 = disabled. Defaults to 10. Based on last_released_at timestamp. */
   minInterSwingRestMinutes?: number;
+  /** When set, the cooldown check uses this future timestamp (swing_due_at) instead of
+   *  Date.now(). This allows Pass 2 to pre-assign a dealer who will complete their rest
+   *  before the swing due time, even if they aren't available at this exact moment.
+   *  Clamped to max 15 minutes ahead to prevent forward-looking anomalies. */
+  swingDueAt?: string;
 }
 
 export interface DealerCandidate {
@@ -157,6 +162,7 @@ export async function buildDealerCandidates(
     clubBreakDurationMinutes = 20,
     minRestMinutes = 10,
     minInterSwingRestMinutes: rawMinInterSwingRestMinutes = 10,
+    swingDueAt,
   } = options;
   const minInterSwingRestMinutes =
     rawMinInterSwingRestMinutes === 0 ? 0 : Math.max(10, rawMinInterSwingRestMinutes);
@@ -545,18 +551,41 @@ export async function buildDealerCandidates(
     // NULL = never released (first shift) or just finished break â†’ eligible.
     // Math.floor avoids floating-point edge case (e.g. 9.999 < 10).
     if (minInterSwingRestMinutes > 0 && (row.current_state === "available" || row.current_state === "on_break")) {
+      let referenceTime = Date.now();
+      if (swingDueAt) {
+        const swingTime = new Date(swingDueAt).getTime();
+        const maxLookahead = Date.now() + 15 * 60_000;
+        referenceTime = Math.min(swingTime, maxLookahead);
+        if (swingTime > maxLookahead) {
+          console.warn(
+            `[ANOMALY] swingDueAt too far in future: ${swingDueAt}, clamping to +15min`
+          );
+        }
+      }
+      const SAFETY_BUFFER_MINUTES = 0.25;
       const releasedAt = (row as any).last_released_at;
       if (releasedAt) {
         const minutesSinceRelease = Math.floor(
-          (Date.now() - new Date(releasedAt).getTime()) / 60_000
+          (referenceTime - new Date(releasedAt).getTime()) / 60_000
         );
-        if (minutesSinceRelease < minInterSwingRestMinutes) {
+        const effectiveRest = minInterSwingRestMinutes + SAFETY_BUFFER_MINUTES;
+        if (minutesSinceRelease < effectiveRest) {
           diag.inter_swing_cooldown_excluded++;
           console.log(
-            `[pickNextDealer] Cooldown: dealer ${row.dealer_id} excluded â€” waited ${minutesSinceRelease}m/${minInterSwingRestMinutes}m, remaining ${minInterSwingRestMinutes - minutesSinceRelease}m`
+            `[pickNextDealer] Cooldown: dealer ${row.dealer_id} excluded — waited ${minutesSinceRelease}m/${effectiveRest.toFixed(1)}m (reference: ${swingDueAt ? 'swing_due_at' : 'now'}), remaining ${(effectiveRest - minutesSinceRelease).toFixed(1)}m`
           );
           continue;
         }
+        if (swingDueAt) {
+          const nowMinutes = (Date.now() - new Date(releasedAt).getTime()) / 60_000;
+          if (nowMinutes < minInterSwingRestMinutes) {
+            console.log(
+              `[PREDICTIVE] Dealer ${row.dealer_id}: now=${nowMinutes.toFixed(1)}m < min=${minInterSwingRestMinutes}m, but swing_due_at=${swingDueAt} → eligible`
+            );
+          }
+        }
+      }
+    }
       }
     }
 
