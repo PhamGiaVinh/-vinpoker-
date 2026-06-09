@@ -4,8 +4,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 /*  Format helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-export function mention(dealer: { full_name: string; telegram_username?: string | null }): string {
-  return dealer.telegram_username ? `@${dealer.telegram_username}` : dealer.full_name;
+export function mention(dealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null }): string {
+  if (dealer.telegram_username) return `@${dealer.telegram_username}`;
+  if (dealer.telegram_user_id) {
+    const safe = dealer.full_name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<a href="tg://user?id=${dealer.telegram_user_id}">${safe}</a>`;
+  }
+  return dealer.full_name;
 }
 
 function formatSwingMessage(params: {
@@ -211,7 +216,7 @@ export function formatForceBreakMessage(params: {
 /* Meal Break */
 
 export function formatMealBreakMessage(params: {
-  dealer: { full_name: string };
+  dealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null };
   baseDuration: number;
   bonusMinutes: number;
   totalDuration: number;
@@ -219,7 +224,8 @@ export function formatMealBreakMessage(params: {
   tablesActive: number;
 }): string {
   const { dealer, baseDuration, bonusMinutes, totalDuration, poolSize, tablesActive } = params;
-  return `🍚 ${dealer.full_name} nghỉ ăn cơm\n` +
+  const d = mention(dealer);
+  return `🍚 ${d} nghỉ ăn cơm\n` +
     `⏱ ${totalDuration}p (${baseDuration}p + ${bonusMinutes}p bonus)\n` +
     `📊 ${tablesActive} bàn / ${poolSize} dealer`;
 }

@@ -50,21 +50,22 @@ Deno.serve(async (req: Request) => {
   const chatType = message.chat.type;
   const text = message.text.trim();
   const userId = message.from?.id;
-  const username = message.from?.username;
+  const username = message.from?.username ?? null;
 
-  // Only allow private chats (DMs)
   if (chatType !== "private") {
     await sendDM(botToken, chatId, "Vui lòng nhắn tin riêng (DM) với bot để sử dụng lệnh.");
     return json({ ok: true });
   }
 
-  // Verify webhook secret if configured
   if (webhookSecret) {
     const receivedHash = req.headers.get("x-telegram-bot-api-secret-hash");
-    // Simple secret comparison (upgrade to HMAC in production)
     if (!receivedHash || receivedHash !== webhookSecret) {
       return json({ error: "Unauthorized" }, 403);
     }
+  }
+
+  if (!userId) {
+    return json({ ok: true });
   }
 
   try {
@@ -73,7 +74,50 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Find dealer by telegram_user_id
+    // Auto-update telegram_username on every message
+    if (username) {
+      await admin
+        .from("dealers")
+        .update({ telegram_username: username })
+        .eq("telegram_user_id", userId)
+        .neq("telegram_username", username);
+    }
+
+    // Parse command (handle /cmd@botname and /start param)
+    const cmdParts = text.split(/\s+/);
+    const rawCmd = cmdParts[0].split("@")[0].toLowerCase();
+    const cmdArgs = cmdParts.slice(1).join(" ").trim();
+
+    // ── /start <param> (deep link) ──────────────────────────────────────
+    if (rawCmd === "/start" && cmdArgs) {
+      const dealerName = decodeURIComponent(cmdArgs);
+      await handleSetup(admin, botToken, chatId, userId, username, dealerName);
+      return json({ ok: true });
+    }
+
+    // ── /setup <exact name> ──────────────────────────────────────────────
+    if (rawCmd === "/setup") {
+      if (!cmdArgs) {
+        await sendDM(botToken, chatId, "Cách dùng: /setup <Tên chính xác>\nVí dụ: /setup Nguyễn Văn A");
+        return json({ ok: true });
+      }
+      await handleSetup(admin, botToken, chatId, userId, username, cmdArgs);
+      return json({ ok: true });
+    }
+
+    // ── /unlink ──────────────────────────────────────────────────────────
+    if (rawCmd === "/unlink") {
+      await handleUnlink(admin, botToken, chatId, userId, false);
+      return json({ ok: true });
+    }
+
+    // ── /unlink_yes (confirmation) ───────────────────────────────────────
+    if (rawCmd === "/unlink_yes") {
+      await handleUnlink(admin, botToken, chatId, userId, true);
+      return json({ ok: true });
+    }
+
+    // ── Find linked dealer for remaining commands ────────────────────────
     const { data: dealer } = await admin
       .from("dealers")
       .select("id, club_id, full_name, telegram_user_id")
@@ -81,7 +125,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!dealer) {
-      // Fallback: try telegram_username
       if (username) {
         const { data: dealer2 } = await admin
           .from("dealers")
@@ -89,20 +132,17 @@ Deno.serve(async (req: Request) => {
           .eq("telegram_username", username)
           .maybeSingle();
 
-        if (dealer2) {
-          // Link telegram_user_id for future lookups
+        if (dealer2 && !dealer2.telegram_user_id) {
           await admin
             .from("dealers")
-            .update({ telegram_user_id: userId })
+            .update({ telegram_user_id: userId, telegram_username: username })
             .eq("id", dealer2.id);
-
-          // Proceed with this dealer
-          await handleCommand(admin, botToken, chatId, text, dealer2, userId);
+          await handleCommand(admin, botToken, chatId, text, { ...dealer2, telegram_user_id: userId }, userId);
           return json({ ok: true });
         }
       }
 
-      await sendDM(botToken, chatId, "Bạn chưa liên kết Telegram với tài khoản dealer. Vui lòng liên hệ DC.");
+      await sendDM(botToken, chatId, "Bạn chưa liên kết Telegram với tài khoản dealer.\nDùng /setup <Tên> hoặc liên hệ DC.");
       return json({ ok: true });
     }
 
@@ -114,6 +154,115 @@ Deno.serve(async (req: Request) => {
 
   return json({ ok: true });
 });
+
+// ── /setup handler ────────────────────────────────────────────────────────
+
+async function handleSetup(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  userId: number,
+  username: string | null,
+  dealerName: string,
+) {
+  // 1. Check if already linked
+  const { data: existing } = await admin
+    .from("dealers")
+    .select("id, full_name")
+    .eq("telegram_user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
+    await sendDM(botToken, chatId, `Đã liên kết với "${existing.full_name}".\nDùng /unlink để hủy trước khi liên kết mới.`);
+    return;
+  }
+
+  // 2. Find dealer (case-insensitive exact match)
+  const { data: candidates } = await admin
+    .from("dealers")
+    .select("id, full_name, club_id, telegram_user_id")
+    .ilike("full_name", dealerName)
+    .limit(5);
+
+  if (!candidates || candidates.length === 0) {
+    await sendDM(botToken, chatId, `Không tìm thấy dealer "${dealerName}". Kiểm tra chính tả hoặc liên hệ DC.`);
+    return;
+  }
+
+  if (candidates.length > 1) {
+    const list = candidates.map((c: any, i: number) =>
+      `${i + 1}. ${c.full_name} (ID: ${String(c.id).slice(0, 8)})`
+    ).join("\n");
+    await sendDM(botToken, chatId, `Tìm thấy nhiều người cùng tên:\n${list}\nVui lòng liên hệ DC để hỗ trợ.`);
+    return;
+  }
+
+  const target = candidates[0];
+
+  if (target.telegram_user_id) {
+    await sendDM(botToken, chatId, `"${target.full_name}" đã được liên kết với tài khoản Telegram khác.\nVui lòng liên hệ DC.`);
+    return;
+  }
+
+  // 3. Verify checked-in today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { data: att } = await admin
+    .from("dealer_attendance")
+    .select("id")
+    .eq("dealer_id", target.id)
+    .eq("status", "checked_in")
+    .gte("created_at", today.toISOString())
+    .maybeSingle();
+
+  if (!att) {
+    await sendDM(botToken, chatId, `⚠️ "${target.full_name}" chưa check-in hôm nay. Vui lòng check-in trước khi setup.`);
+    return;
+  }
+
+  // 4. Link
+  await admin
+    .from("dealers")
+    .update({ telegram_user_id: userId, telegram_username: username })
+    .eq("id", target.id);
+
+  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Trạng thái\n• /an_com — Nghỉ ăn cơm\n• /unlink — Hủy liên kết`);
+}
+
+// ── /unlink handler ───────────────────────────────────────────────────────
+
+async function handleUnlink(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  userId: number,
+  confirmed: boolean,
+) {
+  const { data: dealer } = await admin
+    .from("dealers")
+    .select("id, full_name")
+    .eq("telegram_user_id", userId)
+    .maybeSingle();
+
+  if (!dealer) {
+    await sendDM(botToken, chatId, "Bạn chưa liên kết tài khoản nào.");
+    return;
+  }
+
+  if (!confirmed) {
+    await sendDM(botToken, chatId, `Bạn có chắc muốn hủy liên kết với "${dealer.full_name}"?\nGõ /unlink_yes để xác nhận.`);
+    return;
+  }
+
+  await admin
+    .from("dealers")
+    .update({ telegram_user_id: null, telegram_username: null })
+    .eq("id", dealer.id);
+
+  await sendDM(botToken, chatId, `✅ Đã hủy liên kết với "${dealer.full_name}".\nDùng /setup <Tên> để liên kết lại.`);
+}
+
+// ── Existing commands ──────────────────────────────────────────────────────
 
 async function handleCommand(
   admin: any,
@@ -131,8 +280,10 @@ async function handleCommand(
       chatId,
       `🤖 *VinPoker Dealer Bot*\n\n` +
         `Lệnh:\n` +
+        `• /setup <Tên> — Liên kết tài khoản\n` +
         `• /checkin — Kiểm tra trạng thái\n` +
-        `• /an_com — Đăng ký nghỉ ăn cơm (+15p bonus)\n\n` +
+        `• /an_com — Đăng ký nghỉ ăn cơm (+15p bonus)\n` +
+        `• /unlink — Hủy liên kết Telegram\n\n` +
         `💡 Nghỉ ăn cơm: 1 lần/7 tiếng. Thời gian nghỉ linh hoạt theo tỉ lệ bàn/dealer.`,
     );
     return;
@@ -157,13 +308,13 @@ async function handleCommand(
       on_break: "Đang nghỉ",
       pre_assigned: "Đang chờ",
       in_transition: "Đang chuyển bàn",
+      swing_ready: "Sẵn sàng swing",
     };
 
     await sendDM(
       botToken,
       chatId,
-      `✅ *${dealer.full_name}*\n` +
-        `Trạng thái: ${stateLabels[att.current_state] ?? att.current_state}`,
+      `✅ *${dealer.full_name}*\nTrạng thái: ${stateLabels[att.current_state] ?? att.current_state}`,
     );
     return;
   }
@@ -212,6 +363,5 @@ async function handleCommand(
     return;
   }
 
-  // Unknown command
   await sendDM(botToken, chatId, "Lệnh không xác định. Gõ /help để xem lệnh.");
 }

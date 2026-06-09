@@ -1909,6 +1909,7 @@ if (tier2Count > 0) {
                     zone: clubZone,
                     dealerName: replacementDealer.full_name,
                     username: replacementDealer.telegram_username ?? null,
+                    telegramUserId: replacementDealer.telegram_user_id ? Number(replacementDealer.telegram_user_id) : null,
                   } satisfies SwingInEvent);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
                   // BUG #3 FIX: Refresh count after force-release replacement swing
@@ -1982,6 +1983,7 @@ if (tier2Count > 0) {
                     type: "break_start",
                     dealerName: outgoingDealer.full_name,
                     username: outgoingUsername,
+                    telegramUserId: (outgoingDealer as any)?.telegram_user_id ? Number((outgoingDealer as any).telegram_user_id) : null,
                     durationMin: clubCfg.break_duration_minutes,
                   } satisfies BreakStartEvent);
                 }
@@ -2241,6 +2243,7 @@ if (tier2Count > 0) {
                       zone: clubZone,
                       dealerName: fbDealer.full_name,
                       username: fbDealer.telegram_username ?? null,
+                      telegramUserId: fbDealer.telegram_user_id ? Number(fbDealer.telegram_user_id) : null,
                     } satisfies SwingInEvent);
                   } else if (fbResult?.outcome === "no_dealer") {
                     metrics.no_dealer++;
@@ -2500,6 +2503,7 @@ if (tier2Count > 0) {
                     zone: clubZone,
                     dealerName: nextDealer.full_name,
                     username: nextDealer.telegram_username ?? null,
+                    telegramUserId: nextDealer.telegram_user_id ? Number(nextDealer.telegram_user_id) : null,
                   } satisfies SwingInEvent);
                 }
               } else {
@@ -2594,6 +2598,7 @@ if (tier2Count > 0) {
                     zone: clubZone,
                     dealerName: (nextDealer.dealers as any)?.full_name ?? "Unknown",
                     username: (nextDealer.dealers as any)?.telegram_username ?? null,
+                    telegramUserId: (nextDealer.dealers as any)?.telegram_user_id ? Number((nextDealer.dealers as any).telegram_user_id) : null,
                   } satisfies SwingInEvent);
                 }
               } else {
@@ -2649,7 +2654,7 @@ if (tier2Count > 0) {
               try {
                 const { data: newAssignment } = await admin
                   .from("dealer_assignments")
-                  .select("id, attendance_id, dealer:attendance_id(dealers(full_name, telegram_username))")
+                  .select("id, attendance_id, dealer:attendance_id(dealers(full_name, telegram_username, telegram_user_id))")
                   .eq("table_id", assignment.table_id)
                   .eq("status", "assigned")
                   .order("assigned_at", { ascending: false })
@@ -2664,6 +2669,7 @@ if (tier2Count > 0) {
                     zone: clubZone,
                     dealerName: incomingDealer.full_name,
                     username: incomingDealer.telegram_username ?? null,
+                    telegramUserId: incomingDealer.telegram_user_id ? Number(incomingDealer.telegram_user_id) : null,
                   } satisfies SwingInEvent);
                 }
               } catch (notifyErr) {
@@ -2689,6 +2695,7 @@ if (tier2Count > 0) {
                   type: "break_start",
                   dealerName: outgoingDealer.full_name,
                   username: outgoingUsername,
+                  telegramUserId: (outgoingDealer as any)?.telegram_user_id ? Number((outgoingDealer as any).telegram_user_id) : null,
                   durationMin: clubCfg.break_duration_minutes,
                 } satisfies BreakStartEvent);
               }

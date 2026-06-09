@@ -18,6 +18,8 @@ export interface DealerRecord {
   joined_date: string | null;
   notes: string | null;
   phone: string | null;
+  telegram_user_id: number | null;
+  telegram_username: string | null;
 }
 
 export interface DealerScore {
@@ -88,7 +90,7 @@ export function useAllDealers(clubIds: string[]): {
       const { data, error } = await supabase
         .from("dealers")
         .select(
-          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone"
+          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username"
         )
         .in("club_id", clubIds)
         .is("deleted_at", null)

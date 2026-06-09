@@ -21,7 +21,7 @@
  *     📋 Tiếp theo T29: Nguyễn Tuấn Minh @minhminhh2 ra, Lương Ngọc Khánh @ace23072001 vào (11:54, còn 3 phút)"
  */
 
-import { sendTelegramNotification } from "./telegram.ts";
+import { mention, sendTelegramNotification } from "./telegram.ts";
 
 // ── Event types ────────────────────────────────────────────────────────────
 
@@ -31,6 +31,7 @@ export interface SwingInEvent {
   zone: string | null;
   dealerName: string;
   username: string | null;
+  telegramUserId: number | null;
 }
 
 export interface BreakStartEvent {
@@ -38,6 +39,7 @@ export interface BreakStartEvent {
   dealerName: string;
   username: string | null;
   durationMin: number;
+  telegramUserId: number | null;
 }
 
 export interface PreAssignEvent {
@@ -46,8 +48,10 @@ export interface PreAssignEvent {
   zone: string | null;
   outName: string;
   outUsername: string | null;
+  outTelegramUserId: number | null;
   inName: string;
   inUsername: string | null;
+  inTelegramUserId: number | null;
   swingAt: Date;
   minutesLeft: number;
 }
@@ -59,8 +63,8 @@ export type DealerEvent =
 
 // ── Format helpers ─────────────────────────────────────────────────────────
 
-function handle(username: string | null): string {
-  return username ? ` @${username}` : "";
+function fmt(name: string, username: string | null, telegramUserId: number | null): string {
+  return mention({ full_name: name, telegram_username: username, telegram_user_id: telegramUserId });
 }
 
 function hhmm(date: Date): string {
@@ -75,16 +79,16 @@ function hhmm(date: Date): string {
 function formatEventLine(event: DealerEvent): string {
   switch (event.type) {
     case "swing_in":
-      return `🪑 Vào ${event.tableName}: ${event.dealerName}${handle(event.username)}`;
+      return `🪑 Vào ${event.tableName}: ${fmt(event.dealerName, event.username, event.telegramUserId)}`;
 
     case "break_start":
-      return `☕ Đang break: ${event.dealerName}${handle(event.username)} (${event.durationMin} phút)`;
+      return `☕ Đang break: ${fmt(event.dealerName, event.username, event.telegramUserId)} (${event.durationMin} phút)`;
 
     case "pre_assign":
       return [
         `📋 Tiếp theo ${event.tableName}:`,
-        `${event.outName}${handle(event.outUsername)} ra,`,
-        `${event.inName}${handle(event.inUsername)} vào`,
+        `${fmt(event.outName, event.outUsername, event.outTelegramUserId)} ra,`,
+        `${fmt(event.inName, event.inUsername, event.inTelegramUserId)} vào`,
         `(${hhmm(event.swingAt)}, còn ${event.minutesLeft} phút)`,
       ].join(" ");
   }
