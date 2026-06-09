@@ -9,7 +9,7 @@ import {
   ChevronRight, Users, Coins, Send, Play, Eye, Radio
 } from "lucide-react";
 import { CardSlotPicker, type Card, RANKS, SUIT_SYMBOL, SUIT_COLOR, isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
-import { nextButton } from "@/lib/tournament/button";
+import { nextButton, getPosition } from "@/lib/tournament/button";
 import type { User } from "@supabase/supabase-js";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -47,16 +47,6 @@ const STREET_LABELS: Record<Street, string> = {
   river: "River",
   showdown: "Showdown",
 };
-
-function getPosition(seat: number, btnSeat: number, total: number): string {
-  if (total <= 2) return seat === btnSeat ? "BTN/SB" : "BB";
-  if (seat === btnSeat) return "BTN";
-  const sb = ((btnSeat - 2 + total) % total) + 1;
-  const bb = ((btnSeat - 3 + total) % total) + 1;
-  if (seat === sb) return "SB";
-  if (seat === bb) return "BB";
-  return "";
-}
 
 function formatStack(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";

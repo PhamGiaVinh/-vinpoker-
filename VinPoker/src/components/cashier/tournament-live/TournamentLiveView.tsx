@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Users, Coins, Clock, Layers } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
+import { getPosition } from "@/lib/tournament/button";
 
 interface SeatInfo {
   player_id: string;
@@ -78,16 +79,6 @@ function formatActionLabel(a: ActionLog): string {
   if (t === "post_bb") return `BB ${formatStack(a.action_amount)}`;
   if (t === "post_ante") return `Ante ${formatStack(a.action_amount)}`;
   return `${t} ${formatStack(a.action_amount)}`;
-}
-
-function getPosition(seat: number, btnSeat: number, total: number): string {
-  if (total <= 2) return seat === btnSeat ? "BTN/SB" : "BB";
-  if (seat === btnSeat) return "BTN";
-  const sb = ((btnSeat - 2 + total) % total) + 1;
-  const bb = ((btnSeat - 3 + total) % total) + 1;
-  if (seat === sb) return "SB";
-  if (seat === bb) return "BB";
-  return "";
 }
 
 export function TournamentLiveView({
