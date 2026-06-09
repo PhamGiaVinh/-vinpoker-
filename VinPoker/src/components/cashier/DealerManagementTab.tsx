@@ -73,7 +73,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
   };
 
   const handleCopyInviteLink = (dealerName: string) => {
-    const link = `https://t.me/VBACKERSBOT?start=${encodeURIComponent(dealerName)}`;
+    const link = `https://t.me/VBACKERBOT?start=${encodeURIComponent(dealerName)}`;
     navigator.clipboard.writeText(link).then(
       () => toast.success("Đã sao chép liên kết mời"),
       () => toast.error("Không thể sao chép")
