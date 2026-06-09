@@ -2669,14 +2669,7 @@ if (tier2Count > 0) {
                 `retry=${swingResult?.retry_attempts ?? 0}`
               );
               if (swingResult?.is_new_overtime === true) {
-                const chatId = await getClubTelegramChatId(admin, cid);
-                if (botToken && chatId) {
-                  await sendTelegramNotification(
-                    botToken, chatId,
-                    `⏱ *Bàn ${tableName}* — ${outgoingDealer.full_name} đang làm thêm giờ (không có dealer thay).\nSẽ xoay vòng khi có dealer mới hoặc bàn đóng.`,
-                    {}
-                  );
-                }
+                // Telegram suppressed per user request
               } else if ((assignment as any).overtime_started_at) {
                 const lastAlertAt = (assignment as any).last_ot_alert_at;
                 const minutesSinceLastAlert = lastAlertAt
@@ -2686,14 +2679,7 @@ if (tier2Count > 0) {
                 if (minutesSinceLastAlert >= 5) {
                   const otMs = Date.now() - new Date((assignment as any).overtime_started_at).getTime();
                   const otMinutes = Math.floor(otMs / 60_000);
-                  const chatId = await getClubTelegramChatId(admin, cid);
-                  if (botToken && chatId) {
-                    await sendTelegramNotification(
-                      botToken, chatId,
-                      `⏱ *OT ${otMinutes}ph* — ${outgoingDealer.full_name} @ ${tableName} — vẫn chưa có người thay. Cần can thiệp!`,
-                      {}
-                    );
-                  }
+                  // Telegram suppressed per user request
 
                   try {
                     await admin
