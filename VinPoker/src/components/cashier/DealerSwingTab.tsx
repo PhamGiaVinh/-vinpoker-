@@ -2980,7 +2980,8 @@ function TableGrid({
                 else if (secs <= 180) timerColor = "text-orange-400";
                 else if (secs <= 300) timerColor = "text-amber-400";
               } else if (isPastDue) {
-                timerLabel = "00:00";
+                const overdueSec = Math.floor(Math.abs(remainingMs) / 1000);
+                timerLabel = `+${String(Math.floor(overdueSec / 60)).padStart(2, "0")}:${String(overdueSec % 60).padStart(2, "0")}`;
                 timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
               }
             }

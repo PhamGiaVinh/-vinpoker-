@@ -2122,6 +2122,10 @@ if (tier2Count > 0) {
                   metrics.success++;
                   cycleExcludedIds.add(replacementDealer.id);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
+                  if (botToken && pass2ChatId) {
+                    const swingMsg = `🔵 ${replacementDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                  }
                   // BUG #3 FIX: Refresh count after force-release replacement swing
                   try {
                     const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
@@ -2498,6 +2502,10 @@ if (tier2Count > 0) {
                   if (fbResult?.outcome === "swung") {
                     metrics.success++;
                     cycleExcludedIds.add(fbDealer.id);
+                    if (botToken && pass2ChatId) {
+                      const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                      sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                    }
                   } else if (fbResult?.outcome === "no_dealer") {
                     metrics.no_dealer++;
                     if (fbResult.is_new_overtime) {
@@ -2750,6 +2758,10 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
+                  if (botToken && pass2ChatId) {
+                    const swingMsg = `🔵 ${nextDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                  }
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
@@ -2837,6 +2849,11 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
+                  if (botToken && pass2ChatId) {
+                    const inName = (nextDealer.dealers as any)?.full_name ?? "Dealer";
+                    const swingMsg = `🔵 ${inName} vào bàn ${tableName}${outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                  }
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
@@ -2901,6 +2918,10 @@ if (tier2Count > 0) {
                 const incomingDealer = (newAssignment?.dealer as any)?.dealers;
                 if (incomingDealer) {
                   console.log(`[Pass 3] Auto-picked dealer confirmed for ${tableName}: ${incomingDealer.full_name}`);
+                  if (botToken && pass2ChatId) {
+                    const swingMsg = `🔵 ${incomingDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                  }
                 }
               } catch (notifyErr) {
                 console.warn(`[Pass 3] Failed to confirm auto-picked dealer at ${tableName}:`, (notifyErr as Error).message);
