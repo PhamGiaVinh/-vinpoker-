@@ -128,7 +128,7 @@ export function TournamentLiveView({
         .order("seat_number"),
       supabase
         .from("tournament_hands")
-        .select("id, hand_number, community_cards, pot_size, is_voided, status")
+        .select("id, hand_number, community_cards, pot_size, is_voided, status, button_seat")
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
@@ -139,7 +139,7 @@ export function TournamentLiveView({
 
     if (seatsRes.data && seatsRes.data.length > 0) {
       const activeSeats = seatsRes.data.filter((s: any) => s.is_active);
-      const btnSeat = 1;
+      const btnSeat = (handsRes.data && handsRes.data.length > 0) ? (handsRes.data[0].button_seat || 1) : 1;
       const seatInfos: SeatInfo[] = seatsRes.data.map((s: any) => ({
         player_id: s.player_id,
         display_name: s.player_name || s.player_id.slice(0, 6),

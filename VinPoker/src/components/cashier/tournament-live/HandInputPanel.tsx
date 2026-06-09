@@ -9,6 +9,7 @@ import {
   ChevronRight, Users, Coins, Send, Play, Eye, Radio
 } from "lucide-react";
 import { CardSlotPicker, type Card, RANKS, SUIT_SYMBOL, SUIT_COLOR, isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
+import { nextButton } from "@/lib/tournament/button";
 import type { User } from "@supabase/supabase-js";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -162,7 +163,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setTableName(tbl?.name || newTableId.slice(0, 8));
     if (!newTableId) { setPlayers([]); return; }
 
-    const { data: seats, error } = await supabase
+    const { data: loadedSeats, error } = await supabase
       .from("tournament_seats")
       .select("player_id, entry_number, seat_number, chip_count, player_name")
       .eq("tournament_id", tournamentId)
@@ -171,10 +172,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       .order("seat_number");
 
     if (error) { toast.error("Không thể tải danh sách người chơi"); setPlayers([]); return; }
-    if (!seats?.length) { setPlayers([]); return; }
+    if (!loadedSeats?.length) { setPlayers([]); return; }
 
-    const seatCount = seats.length;
-    const newPlayers: PlayerState[] = seats.map((s) => ({
+    const newPlayers: PlayerState[] = loadedSeats.map((s) => ({
       player_id: s.player_id,
       entry_number: s.entry_number,
       seat_number: s.seat_number,
@@ -182,15 +182,34 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       starting_stack: s.chip_count,
       current_stack: s.chip_count,
       is_active: true,
-      position: getPosition(s.seat_number, 1, seatCount),
+      position: "",
       current_bet: 0,
       total_bet: 0,
       is_folded: false,
       is_all_in: false,
     }));
     setPlayers(newPlayers);
-    setButtonSeat(1);
     resetHand();
+
+    const activeNums = loadedSeats
+      .filter((s) => s.player_id)
+      .map((s) => s.seat_number)
+      .sort((a, b) => a - b);
+
+    const { data: lastHand } = await supabase
+      .from("tournament_hands")
+      .select("button_seat")
+      .eq("tournament_id", tournamentId)
+      .eq("table_id", newTableId)
+      .order("hand_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastHand?.button_seat) {
+      setButtonSeat(nextButton(activeNums, lastHand.button_seat));
+    } else {
+      setButtonSeat(activeNums[0] ?? 1);
+    }
 
     const { data: nextHand } = await supabase.rpc("get_next_hand_number", {
       p_tournament_id: tournamentId,
@@ -231,6 +250,15 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     return s;
   }, [communityCards, playerHoleCards]);
 
+  const positionMap = useMemo(() => {
+    const map = new Map<string, string>()
+    const total = players.length
+    players.forEach(p => {
+      map.set(p.player_id, getPosition(p.seat_number, buttonSeat, total))
+    })
+    return map
+  }, [players, buttonSeat])
+
   const handleStartHand = async () => {
     if (!tableId || !handNumber || !user?.id) return;
     setSubmitting(true);
@@ -242,6 +270,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           table_id: tableId,
           hand_number: Number(handNumber),
           hand_time: new Date().toISOString(),
+          button_seat: buttonSeat,
         },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to start hand");
@@ -442,6 +471,19 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       if (error || data?.error) throw new Error(data?.error || error?.message);
       toast.success("Hand recorded successfully");
       setLastHandId(data?.data?.hand_id ?? null);
+      // Advance button to next active seat
+      const { data: refreshedSeats } = await supabase
+        .from("tournament_seats")
+        .select("seat_number, player_id, is_active")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", tableId)
+        .eq("is_active", true)
+        .order("seat_number");
+      const activeNums = (refreshedSeats ?? [])
+        .filter((s) => s.player_id && s.is_active !== false)
+        .map((s) => s.seat_number)
+        .sort((a, b) => a - b);
+      setButtonSeat(nextButton(activeNums, buttonSeat));
       resetHand();
     } catch (e: any) {
       toast.error(e.message || "Failed to record hand");
@@ -559,6 +601,25 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
             <Input className="w-24" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
           </div>
+          {players.length > 0 && (
+            <div className="flex items-center justify-center gap-2">
+              <label className="text-xs font-medium text-muted-foreground">BTN:</label>
+              <select
+                className="h-7 rounded border border-input bg-background px-2 text-xs"
+                value={buttonSeat}
+                onChange={(e) => setButtonSeat(Number(e.target.value))}
+              >
+                {players
+                  .filter((p) => p.seat_number)
+                  .sort((a, b) => a.seat_number - b.seat_number)
+                  .map((p) => (
+                    <option key={p.seat_number} value={p.seat_number}>
+                      Seat {p.seat_number}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <Button onClick={handleStartHand} disabled={submitting || !handNumber} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
             <Play className="w-4 h-4 mr-2" /> Bắt đầu Hand
           </Button>
@@ -654,7 +715,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
                       <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Seat {player.seat_number}</div>
                       <div className="text-sm font-medium truncate max-w-[140px] text-foreground">{player.display_name}</div>
                     </div>
-                    {player.position && (<span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${player.position === "BTN" ? "bg-amber-500 text-black" : "bg-amber-500/20 text-amber-400"}`}>{player.position}</span>)}
+                    {(positionMap.get(player.player_id)) && (<span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${(positionMap.get(player.player_id)) === "BTN" ? "bg-amber-500 text-black" : "bg-amber-500/20 text-amber-400"}`}>{positionMap.get(player.player_id)}</span>)}
                   </div>
                   <div className="text-sm font-bold text-emerald-400 mb-2 relative z-10 font-mono">
                     {formatStack(player.current_stack)}

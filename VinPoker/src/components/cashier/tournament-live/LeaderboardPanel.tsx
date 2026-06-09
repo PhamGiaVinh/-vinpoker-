@@ -55,7 +55,7 @@ export function LeaderboardPanel({ tournamentId, refreshTrigger }: { tournamentI
                 {leaderboard.players.map((p, idx) => (
                   <tr key={`${p.player_id}-${p.entry_number}`} className={`border-b ${p.is_itm ? "bg-emerald-500/10" : ""}`}>
                     <td className="p-2">{idx + 1}</td>
-                    <td className="p-2 font-medium">{p.player_id.slice(0, 8)}</td>
+                    <td className="p-2 font-medium">{p.player_name?.trim() || p.player_id.slice(0, 8)}</td>
                     <td className="p-2 text-right font-mono">{p.chip_count.toLocaleString()}</td>
                     <td className="p-2 text-right">{p.position || "—"}</td>
                     <td className="p-2 text-right">{p.prize ? p.prize.toLocaleString() : "—"}</td>

@@ -165,9 +165,12 @@ BEGIN
   );
 
   -- [6] Close old assignment
+  -- Bug #5 fix: clear pre_assigned references on old assignment to prevent stale data
   UPDATE dealer_assignments
   SET
     status              = CASE WHEN p_send_to_break THEN 'on_break' ELSE 'completed' END,
+    pre_assigned_attendance_id = NULL,
+    pre_assigned_at     = NULL,
     swing_processed_at  = v_now,
     overtime_started_at = NULL,
     updated_at          = v_now
@@ -418,9 +421,12 @@ BEGIN
   );
 
   -- [6] Close old assignment
+  -- Bug #5 fix: clear pre_assigned references on old assignment to prevent stale data
   UPDATE dealer_assignments
   SET
     status              = CASE WHEN p_send_to_break THEN 'on_break' ELSE 'completed' END,
+    pre_assigned_attendance_id = NULL,
+    pre_assigned_at     = NULL,
     swing_processed_at  = v_now,
     overtime_started_at = NULL,
     updated_at          = v_now
@@ -551,6 +557,22 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'RPC validation passed: 2 overloads, both have pre_assigned cleanup logic';
+END;
+$$;
+
+-- Validate: no stale pre_assigned references remain on completed/on_break assignments
+DO $$
+DECLARE
+  v_stale_count INT;
+BEGIN
+  SELECT COUNT(*) INTO v_stale_count
+  FROM dealer_assignments
+  WHERE status IN ('completed', 'on_break')
+    AND pre_assigned_attendance_id IS NOT NULL;
+
+  IF v_stale_count > 0 THEN
+    RAISE WARNING 'Found % stale pre_assigned references on completed/on_break assignments', v_stale_count;
+  END IF;
 END;
 $$;
 

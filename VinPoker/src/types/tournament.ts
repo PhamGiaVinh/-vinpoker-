@@ -149,6 +149,7 @@ export interface TournamentPrize {
 
 export interface TournamentLeaderboardPlayer {
   player_id: string;
+  player_name?: string;
   entry_number: number;
   chip_count: number;
   is_active: boolean | null;

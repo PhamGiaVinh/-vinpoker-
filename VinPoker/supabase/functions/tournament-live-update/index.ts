@@ -80,13 +80,18 @@ Deno.serve(async (req) => {
         break;
       }
       case "start_hand": {
-        const { table_id, hand_number, hand_time } = body;
+        const { table_id, hand_number, hand_time, button_seat } = body;
+        const normalizedButtonSeat =
+          Number.isInteger(button_seat) && button_seat >= 1 && button_seat <= 10
+            ? button_seat
+            : 1;
         result = await supabase.rpc("start_hand", {
           p_tournament_id: tournament_id,
           p_table_id: table_id,
           p_hand_number: hand_number,
           p_hand_time: hand_time || new Date().toISOString(),
           p_created_by: user.id,
+          p_button_seat: normalizedButtonSeat,
         });
         break;
       }

@@ -13,6 +13,7 @@ interface HandRecord {
   status: string;
   is_voided: boolean;
   created_at: string;
+  button_seat?: number;
   players: {
     player_id: string;
     display_name: string;
@@ -91,7 +92,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 
     let query = supabase
       .from("tournament_hands")
-      .select("id, hand_number, hand_time, community_cards, pot_size, status, is_voided, created_at, table_id")
+      .select("id, hand_number, hand_time, community_cards, pot_size, status, is_voided, created_at, table_id, button_seat")
       .eq("tournament_id", tournamentId)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -176,6 +177,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       status: h.status || "completed",
       is_voided: h.is_voided || false,
       created_at: h.created_at,
+      button_seat: h.button_seat,
       players: playerMap.get(h.id) || [],
       actions: actionMap.get(h.id) || [],
     }));
@@ -279,6 +281,11 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                 }`}>
                   {selectedHand.status}
                 </span>
+                {selectedHand.button_seat && (
+                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400">
+                    BTN S{selectedHand.button_seat}
+                  </span>
+                )}
               </div>
               <div className="text-xs text-muted-foreground">
                 {new Date(selectedHand.hand_time || selectedHand.created_at).toLocaleString()}
