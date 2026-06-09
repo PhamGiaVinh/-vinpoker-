@@ -713,7 +713,11 @@ Deno.serve(async (req: Request) => {
           } else if (stuckBreaks && stuckBreaks.length > 0) {
             console.log(`[Pass 0c] Found ${stuckBreaks.length} stuck breaks (overdue)`);
             for (const b of stuckBreaks) {
-              stuckIssues.push({ id: b.attendance_id, dealer_name: b.dealer_name, issue: `break_overdue_${b.overdue_min}m` });
+              // Only alert if break is significantly overdue (>5 min); otherwise
+              // it's just a normal expired break and auto-end without noise.
+              if (b.overdue_min > 5) {
+                stuckIssues.push({ id: b.attendance_id, dealer_name: b.dealer_name, issue: `break_overdue_${b.overdue_min}m` });
+              }
               const { data: endResult, error: endErr } = await admin.rpc("end_dealer_break", {
                 p_break_id: b.break_id,
                 p_attendance_id: b.attendance_id,
