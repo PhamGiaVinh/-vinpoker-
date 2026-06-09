@@ -74,10 +74,10 @@ export async function pass2PreAssignNext(
     // ════════════════════════════════════════════════════════
 
     const normalWindowStart = new Date(
-      Date.now() + (manualWindowMinutes ? 0 : (preAnnounceMinutes - 2) * 60_000)
+      Date.now() + (manualWindowMinutes ? 0 : (preAnnounceMinutes - 5) * 60_000)
     ).toISOString();
     const normalWindowEnd = new Date(
-      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 2)) * 60_000
+      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 5)) * 60_000
     ).toISOString();
 
     // Emergency OT window: shorter notification window
@@ -144,7 +144,7 @@ export async function pass2PreAssignNext(
         .is("pre_assigned_attendance_id", null)
         .is("overtime_started_at", null)
         .gte("swing_due_at", normalWindowStart)
-        .lt("swing_due_at", normalWindowEnd);
+        .lte("swing_due_at", normalWindowEnd);
 
       if (normalErr) {
         console.error("[Pass 2] ❌ Normal window query error:", normalErr.message);
@@ -168,7 +168,7 @@ export async function pass2PreAssignNext(
         .is("pre_assigned_attendance_id", null)
         .not("overtime_started_at", "is", null)
         .gte("swing_due_at", otWindowStart)
-        .lt("swing_due_at", otWindowEnd);
+        .lte("swing_due_at", otWindowEnd);
 
       if (otErr) {
         console.error("[Pass 2] ❌ OT window query error:", otErr.message);
@@ -185,7 +185,11 @@ export async function pass2PreAssignNext(
     }
 
     if (upcomingAssignments.length === 0) {
-      console.log("[Pass 2] No tables needing pre-assignment in window");
+      console.log(
+        `[Pass 2] No tables needing pre-assignment in window ` +
+        `[${normalWindowStart}, ${normalWindowEnd}] ` +
+        `(N=${preAnnounceMinutes}, width=10min)`
+      );
       return result;
     }
 

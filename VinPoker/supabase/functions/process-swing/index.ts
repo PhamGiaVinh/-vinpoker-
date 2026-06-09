@@ -1643,10 +1643,19 @@ if (tier2Count > 0) {
           if (preAssignOnly) {
             pass2Options.manualWindowMinutes = manualWindowMinutes;
           }
-          const pass2Result = await pass2PreAssignNext(
-            admin, cid, clubCfg.pre_announce_minutes,
-            pass2Options,
-          );
+          let pass2Result: Awaited<ReturnType<typeof pass2PreAssignNext>>;
+          try {
+            pass2Result = await pass2PreAssignNext(
+              admin, cid, clubCfg.pre_announce_minutes,
+              pass2Options,
+            );
+          } catch (err) {
+            console.error(
+              `[Pass 2] ❌ Unhandled error for club ${cid}:`,
+              err instanceof Error ? err.stack : err
+            );
+            pass2Result = { pre_assigned_count: 0 };
+          }
           if (pass2Result.pre_assigned_count > 0) {
             console.log(`[Pass 2] ✅ Pre-assigned ${pass2Result.pre_assigned_count} dealers`);
           }
