@@ -268,6 +268,24 @@ const { data: rows, error } = await admin
     if (totalW > 0) avgBreakRatio = totalB / totalW;
   }
 
+  // ── Meal break exclusion (defense-in-depth) ──────────────────────────────
+  // Dealers currently in an active meal break must NOT be picked, even if
+  // state transition hasn't happened yet (cron delay).
+  const { data: activeMealBreaks } = await admin
+    .from("dealer_meal_breaks")
+    .select("attendance_id, break_start, total_duration_minutes")
+    .in("attendance_id", attendanceIds)
+    .eq("status", "active");
+
+  const now = Date.now();
+  const mealBreakExcludedIds = new Set<string>();
+  for (const mb of activeMealBreaks ?? []) {
+    const elapsed = (now - new Date(mb.break_start).getTime()) / 60_000;
+    if (elapsed < mb.total_duration_minutes) {
+      mealBreakExcludedIds.add(mb.attendance_id);
+    }
+  }
+
   // ── Diagnostics counters (zero-candidate debugging) ────────────────────
   const diag = {
     total_rows: (rows ?? []).length,
@@ -279,6 +297,7 @@ const { data: rows, error } = await admin
     min_rest_excluded: 0,
     inter_swing_cooldown_excluded: 0,
     game_type_excluded: 0,
+    meal_break_excluded: 0,
     candidates_count: 0,
   };
 
@@ -290,6 +309,9 @@ const { data: rows, error } = await admin
     // are excluded from later phases (Pass 3). The caller manages the set.
     if (busyDealerIds.has(row.dealer_id)) { diag.busy_excluded++; continue; }
     if (excludeAttendanceIds.has(row.id)) { diag.exclude_set_excluded++; continue; }
+
+    // ── Meal break exclusion (defense-in-depth) ─────────────────────────────
+    if (mealBreakExcludedIds.has(row.id)) { diag.meal_break_excluded++; continue; }
 
     // ── Emergency pre-assign guard (defense-in-depth) ─────────────────────────
     // Dealers already emergency-pre-assigned to another table must NOT be picked.

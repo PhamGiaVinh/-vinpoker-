@@ -14,6 +14,7 @@ import {
   formatTournamentBreakMessage,
   formatBreakMessage,
 } from "../_shared/telegram.ts";
+import { startMealBreak, endMealBreak } from "../_shared/mealBreakService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -246,6 +247,77 @@ Deno.serve(async (req: Request) => {
       }
 
       return response;
+    }
+
+    case "meal_break": {
+      const { data: att } = await admin
+        .from("dealer_attendance")
+        .select("id, dealer_id, current_state, status, dealers!inner(club_id, full_name, telegram_user_id)")
+        .eq("id", attendance_id)
+        .eq("status", "checked_in")
+        .maybeSingle();
+
+      if (!att) {
+        return json({ error: "Không tìm thấy dealer attendance" }, 404);
+      }
+
+      const attDealer = att.dealers as any;
+      if (attDealer?.club_id !== club_id) {
+        return json({ error: "Attendance does not belong to this club" }, 403);
+      }
+
+      if (att.current_state !== "available") {
+        return json({ error: `Dealer không sẵn sàng (trạng thái: ${att.current_state})` }, 400);
+      }
+
+      const result = await startMealBreak(admin, att.id, club_id, att.dealer_id);
+
+      if (!result.ok) {
+        const status = result.error?.includes("7 tiếng") ? 429 : 500;
+        return json({ error: result.error }, status);
+      }
+
+      // Telegram notification
+      if (botToken) {
+        withTimeout(
+          (async () => {
+            const chatId = await getClubTelegramChatId(admin, club_id);
+            if (chatId) {
+              await sendTelegramNotification(
+                botToken,
+                chatId,
+                `🍚 ${attDealer?.full_name ?? "Dealer"} nghỉ ăn cơm: ${result.totalDuration}p (${result.baseDuration}p + ${result.bonusMinutes}p bonus)`,
+                {},
+              );
+            }
+            if (attDealer?.telegram_user_id) {
+              await notifyDealerDM(
+                botToken,
+                { telegram_user_id: attDealer.telegram_user_id, full_name: attDealer?.full_name },
+                `🍚 Đã đăng ký nghỉ ăn cơm! ${result.totalDuration} phút. Hết giờ sẽ tự động trở lại pool.`,
+              );
+            }
+          })(),
+          5000,
+          "manage-break meal_break Telegram notification",
+        ).catch(() => {});
+      }
+
+      return json({
+        ok: true,
+        action: "meal_break",
+        base_duration_minutes: result.baseDuration,
+        bonus_minutes: result.bonusMinutes,
+        total_duration_minutes: result.totalDuration,
+      });
+    }
+
+    case "end_meal_break": {
+      const result = await endMealBreak(admin, attendance_id);
+      if (!result.ok) {
+        return json({ error: result.error }, 500);
+      }
+      return json({ ok: true, already_ended: result.alreadyEnded ?? false });
     }
 
     default:

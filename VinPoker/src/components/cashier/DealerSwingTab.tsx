@@ -47,7 +47,7 @@ import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
-  FileSpreadsheet, Loader2, Clock, AlertTriangle,
+  FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
   Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -588,6 +588,57 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       setProcessing(null);
     }
   };
+
+  // Meal break handler
+  const handleMealBreak = async (attendanceId: string) => {
+    const clubId = filteredClubIds[0];
+    if (!clubId) { toast.error("Chưa chọn club"); return; }
+    setProcessing(attendanceId);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-break", {
+        body: { attendance_id: attendanceId, action: "meal_break", club_id: clubId },
+      });
+      if (error) {
+        const msg = (error as any)?.context ? await (error as any).context?.json?.() : null;
+        toast.error(msg?.error ?? error.message);
+        return;
+      }
+      if (data?.ok) {
+        toast.success(`Đã đăng ký nghỉ ăn cơm: ${data.total_duration_minutes}p (${data.base_duration_minutes}p + ${data.bonus_minutes}p bonus)`);
+        const mbDealer = (dealers ?? []).find((d) => d.id === attendanceId);
+        const mbName = mbDealer?.dealers?.full_name ?? "";
+        const tourName = getTourName();
+        sendTelegram(`🍚 ${mbName} nghỉ ăn cơm ${data.total_duration_minutes}p${tourName ? ` (${tourName})` : ""}`);
+      } else {
+        toast.error(data?.error ?? "Không thể đăng ký nghỉ ăn cơm");
+      }
+      refetchDealers();
+      refetchAssignments();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // Compute meal break availability for each dealer
+  const mealBreakAvailability = useMemo(() => {
+    const map: Record<string, { available: boolean; nextAvailableAt: string | null }> = {};
+    for (const d of dealers ?? []) {
+      const lastMealBreak = (d as any).last_meal_break_at as string | null;
+      if (!lastMealBreak) {
+        map[d.id] = { available: true, nextAvailableAt: null };
+        continue;
+      }
+      // 7 hours from last meal break start (approximation; backend calculates precisely)
+      const nextAt = new Date(new Date(lastMealBreak).getTime() + 7 * 60 * 60 * 1000);
+      map[d.id] = {
+        available: Date.now() >= nextAt.getTime(),
+        nextAvailableAt: nextAt.toISOString(),
+      };
+    }
+    return map;
+  }, [dealers]);
 
   // Close table with dealer cleanup
   const closeTable = async () => {
@@ -1167,7 +1218,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* LEFT COLUMN — 25% */}
           <div className="lg:col-span-3">
-            <RosterPanel
+<RosterPanel
               dealers={dealers ?? []}
               assignments={assignments ?? []}
               swingConfigs={swingConfigs ?? []}
@@ -1182,6 +1233,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onBatchCheckout={handleBatchCheckoutClick}
               onReCheckin={doReCheckin}
               breakPolicies={breakPolicies ?? []}
+              onMealBreak={handleMealBreak}
+              mealBreakAvailability={mealBreakAvailability}
             />
           </div>
 
@@ -2213,7 +2266,7 @@ function BreakDurationDialog({
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
   checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
-  onBatchCheckout, onReCheckin, breakPolicies,
+  onBatchCheckout, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
 }: {
   dealers: DealerAttendance[];
   assignments: DealerAssignment[];
@@ -2229,6 +2282,8 @@ function RosterPanel({
   onBatchCheckout: (ids: string[]) => void;
   onReCheckin: (dealerId: string) => void;
   breakPolicies: ShiftBreakPolicy[];
+  onMealBreak: (attendanceId: string) => void;
+  mealBreakAvailability: Record<string, { available: boolean; nextAvailableAt: string | null }>;
 }) {
   const nowMs = useLiveClock();
   const [batchMode, setBatchMode] = useState(false);
@@ -2466,8 +2521,34 @@ function RosterPanel({
                           />
                         )}
 
-                        {/* Action: break / end break */}
-                        <div className="flex-shrink-0">
+                        {/* Action: break / meal break / end break */}
+                        <div className="flex-shrink-0 flex gap-1">
+                          {ready && (() => {
+                            const mba = mealBreakAvailability[d.id];
+                            const canMealBreak = mba?.available !== false;
+                            const nextAt = mba?.nextAvailableAt ? new Date(mba.nextAvailableAt) : null;
+                            if (!canMealBreak && nextAt) {
+                              const remMin = Math.max(0, Math.floor((nextAt.getTime() - Date.now()) / 60000));
+                              const h = Math.floor(remMin / 60);
+                              const m = remMin % 60;
+                              return (
+                                <button disabled className="text-zinc-600 cursor-not-allowed flex items-center gap-0.5" title={`Còn ${h}h${m}m`}>
+                                  <Coffee className="w-3 h-3" />
+                                  <span className="text-[8px] leading-none">{h > 0 ? `${h}h` : `${m}m`}</span>
+                                </button>
+                              );
+                            }
+                            return (
+                              <button
+                                className="text-amber-400 hover:text-amber-300 transition-colors"
+                                title="Nghỉ ăn cơm (+15p)"
+                                onClick={() => onMealBreak(d.id)}
+                                disabled={isBusy}
+                              >
+                                <Coffee className="w-3 h-3" />
+                              </button>
+                            );
+                          })()}
                           {ready && (
                             <button className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Gửi nghỉ"
                               onClick={() => onSendToBreak(d.id)} disabled={isBusy}>

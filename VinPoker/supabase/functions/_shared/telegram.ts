@@ -208,6 +208,22 @@ export function formatForceBreakMessage(params: {
   return `🔴 *FORCE BREAK*\n${d} — ${reason}\nThời gian: ${durationMinutes} phút`;
 }
 
+/* Meal Break */
+
+export function formatMealBreakMessage(params: {
+  dealer: { full_name: string };
+  baseDuration: number;
+  bonusMinutes: number;
+  totalDuration: number;
+  poolSize: number;
+  tablesActive: number;
+}): string {
+  const { dealer, baseDuration, bonusMinutes, totalDuration, poolSize, tablesActive } = params;
+  return `🍚 ${dealer.full_name} nghỉ ăn cơm\n` +
+    `⏱ ${totalDuration}p (${baseDuration}p + ${bonusMinutes}p bonus)\n` +
+    `📊 ${tablesActive} bàn / ${poolSize} dealer`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  DM helpers                                                         */
 /* ------------------------------------------------------------------ */

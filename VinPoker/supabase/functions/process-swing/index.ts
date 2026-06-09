@@ -34,6 +34,7 @@ import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 import { runPass3Diagnostic } from "./diagnostics.ts";
+import { endMealBreak } from "../_shared/mealBreakService.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -971,6 +972,32 @@ Deno.serve(async (req: Request) => {
               `[Pass 0d] ${isTimeout ? '⏱️ Timed out' : '❌ Network error'} after ${RECONCILE_TIMEOUT_MS}ms`
             );
           }
+        }
+
+        // ── PASS 0e — Auto-end expired meal breaks ──────────────────────────────
+        // End meal breaks that have exceeded their total_duration_minutes.
+        // Runs before Pass 1 so dealers are back in pool for fillEmptyTables.
+        try {
+          const { data: expiredMealBreaks } = await admin
+            .from("dealer_meal_breaks")
+            .select("attendance_id, dealer_id, break_start, total_duration_minutes")
+            .eq("status", "active")
+            .eq("club_id", cid);
+
+          if (expiredMealBreaks && expiredMealBreaks.length > 0) {
+            const nowMs = Date.now();
+            for (const mb of expiredMealBreaks) {
+              const elapsedMin = (nowMs - new Date(mb.break_start).getTime()) / 60_000;
+              if (elapsedMin >= mb.total_duration_minutes) {
+                const result = await endMealBreak(admin, mb.attendance_id);
+                if (result.ok && !result.alreadyEnded) {
+                  console.log(`[Pass 0e] Auto-ended meal break for dealer ${mb.dealer_id} (${Math.floor(elapsedMin)}m elapsed, limit ${mb.total_duration_minutes}m)`);
+                }
+              }
+            }
+          }
+        } catch (pass0eErr) {
+          console.error("[Pass 0e] Meal break auto-end error:", pass0eErr instanceof Error ? pass0eErr.message : pass0eErr);
         }
 
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
