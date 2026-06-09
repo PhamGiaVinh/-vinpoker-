@@ -27,9 +27,9 @@ import { toast } from "sonner";
 import {
   useCheckedInDealers, useActiveTables, useActiveAssignmentsWithTimeline, useSwingConfigs, useAuditLogs,
   useSwingMetrics, useBreakPolicies, useSpecialDates, useAvailableTables, usePreAssignedDealers, usePoolTables,
-  useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers,
+  useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers, useBreakPool,
 } from "@/hooks/useDealerSwing";
-import type { DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import type { BreakPoolEntry, DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
 import { useActiveTournaments } from "@/hooks/useTournaments";
 import type { TournamentWithTables } from "@/types/tournament";
 import AttentionQueue from "./command-center/AttentionQueue";
@@ -37,6 +37,8 @@ import OperationsCard from "./command-center/OperationsCard";
 import SystemHealthCard from "./command-center/SystemHealthCard";
 import QuickLinksCard from "./command-center/QuickLinksCard";
 import { useLiveClock } from "@/hooks/useLiveClock";
+import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
+import { BREAK_SOON_WARNING_MINUTES, getBreakTiming, getBreakVisualState } from "@/lib/breakPoolState";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
@@ -95,6 +97,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignmentsWithTimeline(filteredClubIds);
   const preAssignedMap = usePreAssignedDealers(assignments);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
+  const { data: breakPool, loading: breakPoolLoading, error: breakPoolError, refetch: refetchBreakPool } =
+    useBreakPool(filteredClubIds, dealers ?? [], swingConfigs ?? []);
 
   const timelineByTableId = useMemo(() => {
     const map: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }> = {};
@@ -117,8 +121,12 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
   const { data: tours, refetch: refetchTours } = useTours(filteredClubIds);
-  const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(dealers?.length ?? 0);
-  const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds);
+  const rosterDealers = useMemo(
+    () => (dealers ?? []).filter((dealer) => dealer.current_state !== "on_break"),
+    [dealers],
+  );
+  const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(rosterDealers.length);
+  const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds, assignments);
 
   // ── Tournament config for swing override display ─────────────────────────
   const { data: tournaments } = useActiveTournaments(
@@ -258,7 +266,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   useEffect(() => {
     if (!selectedTour || !tables) return;
     const hasTables = tables.some(t => t.shift_id === selectedTour);
-    if (!hasTables) setAutoSwingEnabled(false);
+    const hasActivePoolTables = tables.some(t => t.status === "active" && t.shift_id == null);
+    if (!hasTables && !hasActivePoolTables) setAutoSwingEnabled(false);
   }, [selectedTour, tables]);
 
   // Payroll: fetch dealer_scores + today's attendance + pay rates
@@ -567,21 +576,73 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   };
 
   // End break for dealer
-  const endBreak = async (attendanceId: string) => {
+  const endBreak = async (entry: BreakPoolEntry) => {
+    const attendanceId = entry.attendanceId;
+    const clubId = clubFilter ?? filteredClubIds[0];
+    if (!clubId) {
+      toast.error("Chưa chọn club");
+      return;
+    }
     setProcessing(attendanceId);
     try {
       const { data, error } = await supabase.functions.invoke("manage-break", {
-        body: { attendance_id: attendanceId, action: "end", requested_by: user?.id },
+        body: {
+          attendance_id: attendanceId,
+          action: entry.breakType === "meal" ? "end_meal_break" : "end",
+          requested_by: user?.id,
+          club_id: clubId,
+        },
       });
-      if (error) { toast.error(error.message); return; }
-      toast.success("Dealer đã quay lại");
-      // Telegram notification
-      const backDealer = (dealers ?? []).find((d) => d.id === attendanceId);
-      const backName = backDealer?.dealers?.full_name ?? "";
-      const tourName = getTourName();
-      sendTelegram(`✅ ${backName} đã quay lại từ break${tourName ? ` (Tour: ${tourName})` : ""}.`);
-      refetchAssignments();
-      refetchDealers();
+      let response = data as any;
+      let idempotent = false;
+
+      if (error) {
+        let errorBody: any = null;
+        if (error instanceof FunctionsHttpError) {
+          try {
+            errorBody = await error.context?.json?.();
+          } catch {
+            errorBody = null;
+          }
+        }
+        const status = errorBody?.status ?? errorBody?.result?.status ?? "";
+        if (status === "no_open_break" || errorBody?.already_ended || errorBody?.alreadyEnded) {
+          response = errorBody ?? response;
+          idempotent = true;
+        } else {
+          toast.error(errorBody?.error ?? error.message);
+          return;
+        }
+      } else {
+        const status = response?.result?.status ?? response?.status ?? "";
+        idempotent = status === "no_open_break" || response?.result?.already_ended || response?.already_ended || response?.alreadyEnded;
+      }
+
+      toast[idempotent ? "info" : "success"](idempotent ? "Dealer đã rời break trước đó" : "Dealer đã quay lại");
+
+      if (!idempotent) {
+        const backName = entry.dealerName ?? "";
+        const tourName = getTourName();
+        const message =
+          entry.breakType === "meal"
+            ? `🍚 ${backName} đã kết thúc nghỉ ăn cơm${tourName ? ` (${tourName})` : ""}.`
+            : `✅ ${backName} đã quay lại từ break${tourName ? ` (Tour: ${tourName})` : ""}.`;
+        sendTelegram(message);
+      }
+
+      await Promise.allSettled([
+        refetchAssignments(),
+        refetchDealers(),
+        refetchBreakPool(),
+      ]);
+
+      if (autoSwingEnabled) {
+        try {
+          await autoSwingAll(clubId, selectedTour);
+        } catch (autoErr) {
+          console.error("[endBreak] autoSwingAll failed", autoErr);
+        }
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -1217,9 +1278,17 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* LEFT COLUMN — 25% */}
-          <div className="lg:col-span-3">
-<RosterPanel
-              dealers={dealers ?? []}
+          <div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
+            <BreakPoolCard
+              entries={breakPool ?? []}
+              loading={breakPoolLoading}
+              error={breakPoolError}
+              processing={processing}
+              onEndBreak={endBreak}
+              onRetry={refetchBreakPool}
+            />
+            <RosterPanel
+              dealers={rosterDealers}
               assignments={assignments ?? []}
               swingConfigs={swingConfigs ?? []}
               processing={processing}
@@ -1227,7 +1296,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               checkedInCount={checkedInCount}
               checkedOutDealers={checkedOutDealers ?? []}
               onSendToBreak={(attId) => setBreakDurationOpen(attId)}
-              onEndBreak={endBreak}
               onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
               onCheckoutOpen={() => setCheckoutOpen(true)}
               onBatchCheckout={handleBatchCheckoutClick}
@@ -2265,7 +2333,7 @@ function BreakDurationDialog({
 
 function RosterPanel({
   dealers, assignments, swingConfigs, processing, totalDealers, checkedInCount,
-  checkedOutDealers, onSendToBreak, onEndBreak, onCheckinOpen, onCheckoutOpen,
+  checkedOutDealers, onSendToBreak, onCheckinOpen, onCheckoutOpen,
   onBatchCheckout, onReCheckin, breakPolicies, onMealBreak, mealBreakAvailability,
 }: {
   dealers: DealerAttendance[];
@@ -2276,7 +2344,6 @@ function RosterPanel({
   checkedInCount?: number;
   checkedOutDealers: DealerAttendance[];
   onSendToBreak: (attendanceId: string) => void;
-  onEndBreak: (attendanceId: string) => void;
   onCheckinOpen: () => void;
   onCheckoutOpen: () => void;
   onBatchCheckout: (ids: string[]) => void;
@@ -2319,8 +2386,6 @@ function RosterPanel({
       const checkInTime = d.check_in_time ?? new Date().toISOString();
       if (a?.status === "assigned") {
         map[d.id] = { status: "Đang bàn", tableName: (a as any).game_tables?.table_name, checkInTime, timerStart: a.assigned_at };
-      } else if (a?.status === "on_break") {
-        map[d.id] = { status: "Đang nghỉ", tableName: undefined, checkInTime, timerStart: a.released_at ?? checkInTime };
       } else if (d.current_state === "pre_assigned") {
         map[d.id] = { status: "Đang chờ", tableName: undefined, checkInTime, timerStart: checkInTime };
       } else {
@@ -2370,12 +2435,11 @@ function RosterPanel({
   const sections = [
     { key: "Sẵn sàng", icon: Users, color: "text-emerald-400", dot: "bg-emerald-500" },
     { key: "Đang bàn", icon: Table2, color: "text-blue-400", dot: "bg-blue-500" },
-    { key: "Đang nghỉ", icon: Clock, color: "text-amber-400", dot: "bg-amber-500" },
     { key: "Đang chờ", icon: Clock, color: "text-purple-400", dot: "bg-purple-500" },
   ] as const;
 
   return (
-    <Card className="p-3 h-full flex flex-col">
+    <Card className="p-3 flex flex-col flex-1 min-h-0">
       {/* ── Header: title + batch toggle ── */}
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
@@ -2451,12 +2515,11 @@ function RosterPanel({
                     const info = dealerStatuses[d.id];
                     const isBusy = processing === d.id;
                     const ready = sec.key === "Sẵn sàng";
-                    const onBreak = sec.key === "Đang nghỉ";
 
                     // Detect OT for this dealer
                     const assignment = assignments.find((a) => a.attendance_id === d.id);
-                    const isOt = assignment?.overtime_started_at !== null &&
-                      ((assignment?.overtime_started_at ?? '') !== '' || new Date(assignment?.swing_due_at ?? '').getTime() <= nowMs);
+                    const isOt = !!assignment?.overtime_started_at && !assignment?.swing_processed_at;
+                    const preAssignStatusLabel = getPreAssignStatusLabel(assignment?.pre_assign_status ?? "none");
 
                     return (
                       <div key={d.id} className={[
@@ -2498,28 +2561,30 @@ function RosterPanel({
                             {info.tableName}
                           </span>
                         )}
+                        {preAssignStatusLabel && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 leading-none flex-shrink-0">
+                            {preAssignStatusLabel}
+                          </span>
+                        )}
 
                         {/* Fatigue dot — computed live from assignment timestamps */}
                         <FatigueDot workedMinutes={liveWorkedMin[d.id] ?? 0} priorityBreakFlag={d.priority_break_flag ?? false} />
 
                         {/* Timer */}
-                        {info && (sec.key === "Đang bàn" || sec.key === "Đang nghỉ") && (
+                        {info && sec.key === "Đang bàn" && (
                           <span className={[
                             "font-mono text-[10px] flex-shrink-0 tabular-nums",
                             isOt ? "text-red-400 font-bold" : "text-zinc-400",
                           ].join(" ")}>
-                            {sec.key === "Đang nghỉ" ? "Nghỉ " : ""}
                             <DealerTimer startTime={info.timerStart} />
                           </span>
                         )}
 
-                        {/* Priority break indicator — chỉ hiển thị cho dealer đang làm việc, không hiển thị khi đã nghỉ */}
-                        {sec.key !== "Đang nghỉ" && (
-                          <PriorityBreakIndicator
-                            priorityBreakFlag={d.priority_break_flag}
-                            workedMinutesSinceLastBreak={liveWorkedMin[d.id] ?? 0}
-                          />
-                        )}
+                        {/* Priority break indicator — chỉ hiển thị cho dealer đang làm việc */}
+                        <PriorityBreakIndicator
+                          priorityBreakFlag={d.priority_break_flag}
+                          workedMinutesSinceLastBreak={liveWorkedMin[d.id] ?? 0}
+                        />
 
                         {/* Action: break / meal break / end break */}
                         <div className="flex-shrink-0 flex gap-1">
@@ -2553,12 +2618,6 @@ function RosterPanel({
                             <button className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Gửi nghỉ"
                               onClick={() => onSendToBreak(d.id)} disabled={isBusy}>
                               <Clock className="w-3 h-3" />
-                            </button>
-                          )}
-                          {onBreak && (
-                            <button className="text-emerald-500 hover:text-emerald-400 transition-colors" title="Kết thúc nghỉ"
-                              onClick={() => onEndBreak(d.id)} disabled={isBusy}>
-                              <Play className="w-3 h-3" />
                             </button>
                           )}
                         </div>
@@ -2651,6 +2710,150 @@ function RosterPanel({
   );
 }
 
+function BreakPoolCard({
+  entries,
+  loading,
+  error,
+  processing,
+  onEndBreak,
+  onRetry,
+}: {
+  entries: BreakPoolEntry[];
+  loading: boolean;
+  error: unknown;
+  processing: string | null;
+  onEndBreak: (entry: BreakPoolEntry) => void;
+  onRetry: () => void;
+}) {
+  const nowMs = useLiveClock();
+  const summary = useMemo(() => {
+    let soon = 0;
+    let overdue = 0;
+    for (const entry of entries) {
+      const state = getBreakVisualState(entry, nowMs, BREAK_SOON_WARNING_MINUTES);
+      if (state === "soon") soon += 1;
+      if (state === "overdue") overdue += 1;
+    }
+    return { soon, overdue };
+  }, [entries, nowMs]);
+
+  const errorMessage =
+    error instanceof Error ? error.message : typeof error === "string" ? error : error ? String(error) : "";
+
+  return (
+    <Card className="p-3 flex flex-col min-h-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Coffee className="w-4 h-4 text-amber-400" />
+          <span className="font-display text-sm tracking-wider">BREAK POOL</span>
+          {loading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="flex items-center gap-1">
+          <Badge variant="outline" className="text-[9px]">{entries.length}</Badge>
+          {summary.soon > 0 && (
+            <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-300">
+              Sắp hết {summary.soon}
+            </Badge>
+          )}
+          {summary.overdue > 0 && (
+            <Badge variant="outline" className="text-[9px] border-red-500/30 text-red-300">
+              Quá giờ {summary.overdue}
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {errorMessage && (
+        <div className="mt-2 flex items-center gap-2 border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="min-w-0 flex-1 truncate">Lỗi tải break pool: {errorMessage}</span>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={onRetry}>
+            Thử lại
+          </Button>
+        </div>
+      )}
+
+      <div className="mt-2 space-y-1.5 overflow-y-auto min-h-0 max-h-72">
+        {loading && entries.length === 0 ? (
+          <div className="text-xs text-muted-foreground py-4 text-center">Đang tải dealer nghỉ...</div>
+        ) : entries.length === 0 ? (
+          <div className="text-xs text-muted-foreground py-4 text-center">Chưa có dealer đang nghỉ.</div>
+        ) : (
+          entries.map((entry) => {
+            const visualState = getBreakVisualState(entry, nowMs, BREAK_SOON_WARNING_MINUTES);
+            const timing = getBreakTiming(entry, nowMs);
+            const isBusy = processing === entry.attendanceId;
+            const rowClass = cn(
+              "flex items-center gap-2 px-2 py-1.5 border rounded-none transition-colors",
+              visualState === "soon"
+                ? "border-amber-500/40 bg-amber-500/5 text-amber-100"
+                : visualState === "overdue"
+                  ? "border-red-500/40 bg-red-500/5 text-red-100"
+                  : "border-border/60 bg-muted/20 text-foreground",
+            );
+            return (
+              <div key={entry.id} className={rowClass}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-semibold truncate">{entry.dealerName}</span>
+                    <Badge variant="outline" className="text-[9px] h-5 px-1.5 shrink-0">
+                      {entry.breakType === "meal" ? "Cơm" : "Break"}
+                    </Badge>
+                    {visualState === "soon" && (
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-amber-500/30 text-amber-300 shrink-0">
+                        Sắp hết giờ
+                      </Badge>
+                    )}
+                    {visualState === "overdue" && (
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-red-500/30 text-red-300 shrink-0">
+                        Quá giờ
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-muted-foreground">
+                    <span>Đã nghỉ {timing.elapsedMinutes}p</span>
+                    <span>•</span>
+                    <span>
+                      {visualState === "overdue"
+                        ? `Quá giờ ${timing.overdueMinutes}p`
+                        : `Còn ${timing.remainingMinutes}p`}
+                    </span>
+                    <span>•</span>
+                    <span>Bắt đầu {format(new Date(entry.breakStartAt), "HH:mm")}</span>
+                    {entry.tableName && (
+                      <>
+                        <span>•</span>
+                        <span>{entry.tableName}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "h-7 text-[10px] shrink-0",
+                    visualState === "soon"
+                      ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                      : visualState === "overdue"
+                        ? "border-red-500/40 text-red-300 hover:bg-red-500/10"
+                        : "",
+                  )}
+                  disabled={isBusy}
+                  onClick={() => onEndBreak(entry)}
+                >
+                  {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                  <span className="ml-1">Kết thúc nghỉ</span>
+                </Button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Card>
+  );
+}
+
 /* ==============================================================
    TABLE GRID — Center Column
    ============================================================== */
@@ -2693,7 +2896,9 @@ function TableGrid({
     // can close a table between renders; the next refetch will drop it.
     const base = tables.filter((t) => t.status === "active");
     if (!selectedTour) return base.filter((t) => tableAssignmentMap[t.id] != null);
-    return base.filter((t) => t.shift_id === selectedTour);
+    const tourTables = base.filter((t) => t.shift_id === selectedTour);
+    if (tourTables.length > 0) return tourTables;
+    return base.filter((t) => t.shift_id == null);
   }, [tables, selectedTour, tableAssignmentMap]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
@@ -2749,22 +2954,22 @@ function TableGrid({
 
             // ── Timer / OT / Progress computations ──────────────────────────
             const swingDueMs = a ? new Date(a.swing_due_at).getTime() : 0;
-            const isOt = a && (a.overtime_started_at !== null || swingDueMs <= nowMs);
-            const isActualOt = a && a.overtime_started_at !== null && !a.swing_processed_at;
-            const canSwing = !a?.swing_processed_at && !!isOt;
+            const preAssignStatus = a?.pre_assign_status ?? "none";
+            const preAssignLabel = getPreAssignStatusLabel(preAssignStatus);
+            const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
+            const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
+            const canSwing = !!a && !a.swing_processed_at && (isOt || swingDueMs <= nowMs);
 
             let otLabel = "";
-            if (isOt) {
-              const otStartMs = a.overtime_started_at
-                ? new Date(a.overtime_started_at).getTime()
-                : new Date(a.swing_due_at).getTime();
+            if (isOt && a?.overtime_started_at) {
+              const otStartMs = new Date(a.overtime_started_at).getTime();
               const otSec = Math.max(0, Math.floor((nowMs - otStartMs) / 1000));
               otLabel = `+${String(Math.floor(otSec / 60)).padStart(2, "0")}:${String(otSec % 60).padStart(2, "0")}`;
             }
 
             let timerLabel = "--:--";
-            let timerColor = "text-emerald-400";
-            if (!isOt && a) {
+            let timerColor = preAssignStatus === "in_progress" ? "text-purple-400" : preAssignLabel ? "text-amber-400" : "text-emerald-400";
+            if (a && !isOt) {
               const remainingMs = swingDueMs - nowMs;
               if (remainingMs > 0) {
                 const secs = Math.floor(remainingMs / 1000);
@@ -2772,8 +2977,12 @@ function TableGrid({
                 if (secs <= 60) timerColor = "text-red-400";
                 else if (secs <= 180) timerColor = "text-orange-400";
                 else if (secs <= 300) timerColor = "text-amber-400";
+              } else if (isPastDue) {
+                timerLabel = "00:00";
+                timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
               }
             }
+            const statusLabel = isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
 
             let progress = 0;
             if (a && a.assigned_at) {
@@ -2784,6 +2993,8 @@ function TableGrid({
 
             const progressColor = isOt
               ? "bg-red-500"
+              : preAssignStatus === "in_progress" ? "bg-purple-500"
+              : preAssignLabel ? "bg-amber-500"
               : progress > 85 ? "bg-orange-500"
               : progress > 70 ? "bg-amber-500"
               : "bg-emerald-500";
@@ -2870,7 +3081,7 @@ function TableGrid({
                         {isOt ? otLabel : timerLabel}
                       </span>
                       <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                        {isOt ? "OT" : "còn lại"}
+                        {statusLabel}
                       </span>
                     </div>
                   )}
@@ -2940,7 +3151,7 @@ function TableGrid({
                         <Button size="sm" variant="outline"
                           className={[
                             "flex-1 text-xs h-7",
-                            isActualOt
+                            isOt
                               ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
                               : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
                           ].join(" ")}
@@ -2949,7 +3160,7 @@ function TableGrid({
                           {swingingAssignmentId === a.id
                             ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                             : <RefreshCw className="w-3 h-3 mr-1" />}
-                          {isActualOt ? "Swing ngay" : "Swing"}
+                          {isOt ? "Swing ngay" : "Swing"}
                         </Button>
                       </>
                     )}
@@ -3554,20 +3765,20 @@ function SwingConfigDialog({ open, onOpenChange, clubId, currentConfigs, onSaved
     const next = defaultForm();
     for (const cfg of currentConfigs) {
       if (next[cfg.table_type]) {
-        next[cfg.table_type] = {
-          swing_duration_minutes: Math.max(30, cfg.swing_duration_minutes),
-          break_duration_minutes: cfg.break_duration_minutes,
-          warn_at_minutes: cfg.warn_at_minutes,
-          crit_at_minutes: cfg.crit_at_minutes,
+          next[cfg.table_type] = {
+            swing_duration_minutes: Math.max(30, cfg.swing_duration_minutes),
+            break_duration_minutes: cfg.break_duration_minutes,
+            warn_at_minutes: cfg.warn_at_minutes,
+            crit_at_minutes: cfg.crit_at_minutes,
           tournament_mode: (cfg as any).tournament_mode ?? "time",
           pre_announce_minutes: (cfg as any).pre_announce_minutes ?? 10,
           auto_adjust_duration: (cfg as any).auto_adjust_duration ?? false,
           base_duration_minutes: Math.max(30, (cfg as any).base_duration_minutes ?? 30),
-          target_ratio: (cfg as any).target_ratio ?? 1.2,
+            target_ratio: (cfg as any).target_ratio ?? 1.2,
 min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 25, Math.max(30, (cfg as any).base_duration_minutes ?? 30) - 1)),
       max_duration_minutes: Math.max((cfg as any).max_duration_minutes ?? 60, Math.max(30, (cfg as any).base_duration_minutes ?? 30) + 5),
            rotation_planner_enabled: (cfg as any).rotation_planner_enabled ?? false,
-           min_inter_swing_rest_minutes: (cfg as any).min_inter_swing_rest_minutes ?? 10,
+           min_inter_swing_rest_minutes: Math.max(10, (cfg as any).min_inter_swing_rest_minutes ?? 10),
         };
       }
     }
@@ -3600,7 +3811,7 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
         min_duration_minutes: vals.min_duration_minutes ?? 20,
         max_duration_minutes: vals.max_duration_minutes ?? 60,
         rotation_planner_enabled: vals.rotation_planner_enabled ?? false,
-        min_inter_swing_rest_minutes: vals.min_inter_swing_rest_minutes ?? 10,
+        min_inter_swing_rest_minutes: Math.max(10, vals.min_inter_swing_rest_minutes ?? 10),
       }, { onConflict: "club_id, table_type" });
       if (error) { toast.error(`Lỗi lưu ${t}: ${error.message}`); setSaving(false); return; }
     }
@@ -3671,11 +3882,11 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
           </div>
           <div>
             <Label className="text-[11px]">Nghỉ tối thiểu giữa swing (phút)</Label>
-            <Input type="number" min={0} max={30}
+            <Input type="number" min={10} max={30}
               className="h-8 font-mono text-xs"
               value={v.min_inter_swing_rest_minutes ?? 10}
               onChange={(e) => update(type, "min_inter_swing_rest_minutes", Number(e.target.value))} />
-            <p className="text-[10px] text-muted-foreground mt-1">Dealer phải nghỉ tối thiểu số phút này trước khi được xếp ca mới. Để 0 để tắt.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Dealer phải nghỉ tối thiểu 10 phút trước khi được xếp ca mới.</p>
           </div>
         </div>
       </div>

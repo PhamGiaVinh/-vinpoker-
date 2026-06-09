@@ -15,6 +15,16 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import type { TournamentWithTables, SwingConfigOverride, EffectiveSwingConfig } from "@/types/tournament";
+import {
+  derivePreAssignStatus,
+  pickPreferredAssignment,
+  type PreAssignStatus,
+} from "@/lib/dealerSwingState";
+import {
+  buildBreakPoolEntries,
+  DEFAULT_BREAK_DURATION_MINUTES,
+  type BreakPoolEntry,
+} from "@/lib/breakPoolState";
 
 export interface DealerAttendance {
   id: string;
@@ -36,6 +46,7 @@ export interface DealerAttendance {
     full_name: string;
     telegram_username?: string;
     tier: "A" | "B" | "C";
+    club_id: string;
   };
 }
 
@@ -47,11 +58,15 @@ export interface DealerAssignment {
   released_at: string | null;
   status: "assigned" | "on_break" | "completed";
   version: number;
+  updated_at: string;
+  last_swing_attempted_at: string | null;
+  swing_in_progress: boolean | null;
   swing_processed_at: string | null;
   swing_due_at: string | null;
   pre_assigned_attendance_id: string | null;
   pre_assigned_at: string | null;
   overtime_started_at: string | null;
+  pre_assign_status: PreAssignStatus;
   game_tables: {
     id: string;
     table_name: string;
@@ -72,6 +87,32 @@ export interface PreAssignedInfo {
   full_name: string;
   telegram_username: string | null;
   tier: string;
+}
+
+interface BreakAssignmentRow {
+  id: string;
+  attendance_id: string;
+  released_at: string | null;
+  game_tables: {
+    table_name: string;
+  } | null;
+}
+
+interface RegularBreakRow {
+  id: string;
+  assignment_id: string;
+  break_start: string;
+  expected_duration_minutes: number | null;
+  reason: string | null;
+}
+
+interface MealBreakRow {
+  id: string;
+  attendance_id: string;
+  break_start: string;
+  total_duration_minutes: number;
+  base_duration_minutes: number | null;
+  bonus_minutes: number | null;
 }
 
 interface UseRealtimeQueryOptions<T> {
@@ -216,6 +257,134 @@ export function useCheckedInDealers(clubIds: string[]) {
  *  still appear in the checked-out list because their OLD checked_out record
  *  is shadowed by their NEW checked_in record.
  */
+export type { BreakPoolEntry } from "@/lib/breakPoolState";
+
+export function useBreakPool(
+  clubIds: string[],
+  dealers: DealerAttendance[],
+  swingConfigs: SwingConfig[] = [],
+) {
+  const dealersKey = useMemo(
+    () => dealers
+      .map((dealer) => `${dealer.id}:${dealer.current_state}:${dealer.check_in_time ?? ""}`)
+      .sort()
+      .join("|"),
+    [dealers],
+  );
+  const configKey = useMemo(
+    () => swingConfigs
+      .map((config) => `${config.club_id}:${config.table_type}:${config.break_duration_minutes}`)
+      .sort()
+      .join("|"),
+    [swingConfigs],
+  );
+
+  const result = useRealtimeQuery<BreakPoolEntry>({
+    queryFn: async () => {
+      const onBreakDealers = dealers.filter(
+        (dealer) => dealer.status === "checked_in" && dealer.current_state === "on_break",
+      );
+      if (!clubIds.length || onBreakDealers.length === 0) {
+        return { data: [], error: null };
+      }
+
+      const attendanceIds = onBreakDealers.map((dealer) => dealer.id);
+      const defaultBreakMinutesByClubId = Object.fromEntries(
+        swingConfigs
+          .filter((config) => config.table_type === "tournament")
+          .map((config) => [
+            config.club_id,
+            config.break_duration_minutes ?? DEFAULT_BREAK_DURATION_MINUTES,
+          ]),
+      );
+
+      const { data: breakAssignments, error: assignmentError } = await supabase
+        .from("dealer_assignments")
+        .select(`
+          id,
+          attendance_id,
+          released_at,
+          game_tables(table_name)
+        `)
+        .in("attendance_id", attendanceIds)
+        .eq("status", "on_break")
+        .order("released_at", { ascending: false });
+
+      if (assignmentError) {
+        return { data: null, error: assignmentError };
+      }
+
+      const assignmentIds = (breakAssignments ?? []).map((assignment: any) => assignment.id);
+      const [{ data: regularBreaks, error: regularBreakError }, { data: mealBreaks, error: mealBreakError }] =
+        await Promise.all([
+          assignmentIds.length > 0
+            ? supabase
+                .from("dealer_breaks")
+                .select("id, assignment_id, break_start, expected_duration_minutes, reason")
+                .in("assignment_id", assignmentIds)
+                .is("break_end", null)
+            : Promise.resolve({ data: [], error: null }),
+          supabase
+            .from("dealer_meal_breaks")
+            .select("id, attendance_id, break_start, total_duration_minutes, base_duration_minutes, bonus_minutes")
+            .in("attendance_id", attendanceIds)
+            .eq("status", "active"),
+        ]);
+
+      if (regularBreakError || mealBreakError) {
+        return { data: null, error: regularBreakError ?? mealBreakError };
+      }
+
+      return {
+        data: buildBreakPoolEntries({
+          nowMs: Date.now(),
+          dealers: onBreakDealers.map((dealer) => ({
+            attendanceId: dealer.id,
+            dealerId: dealer.dealer_id,
+            clubId: dealer.dealers.club_id ?? null,
+            fullName: dealer.dealers.full_name,
+            telegramUsername: dealer.dealers.telegram_username ?? null,
+            tier: dealer.dealers.tier ?? "C",
+            checkInTime: dealer.check_in_time,
+            currentState: dealer.current_state,
+          })),
+          regularAssignments: (breakAssignments ?? []).map((assignment: any) => ({
+            assignmentId: assignment.id,
+            attendanceId: assignment.attendance_id,
+            releasedAt: assignment.released_at,
+            tableName: assignment.game_tables?.table_name ?? null,
+          })) as BreakAssignmentRow[],
+          regularBreaks: (regularBreaks ?? []).map((breakRow: any) => ({
+            id: breakRow.id,
+            assignmentId: breakRow.assignment_id,
+            breakStart: breakRow.break_start,
+            expectedDurationMinutes: breakRow.expected_duration_minutes,
+            reason: breakRow.reason,
+          })) as RegularBreakRow[],
+          mealBreaks: (mealBreaks ?? []).map((breakRow: any) => ({
+            id: breakRow.id,
+            attendanceId: breakRow.attendance_id,
+            breakStart: breakRow.break_start,
+            totalDurationMinutes: breakRow.total_duration_minutes,
+            baseDurationMinutes: breakRow.base_duration_minutes,
+            bonusMinutes: breakRow.bonus_minutes,
+          })) as MealBreakRow[],
+          defaultBreakMinutesByClubId,
+        }),
+        error: null,
+      };
+    },
+    realtimeTables: ["dealer_breaks", "dealer_meal_breaks", "dealer_assignments", "dealer_attendance"],
+    clubIds,
+  });
+
+  useEffect(() => {
+    result.refetch();
+  }, [dealersKey, configKey, result.refetch]);
+
+  return result;
+}
+
 export function useTodayCheckedOutDealers(clubIds: string[]) {
   const today = new Date().toISOString().split("T")[0];
   return useRealtimeQuery<DealerAttendance>({
@@ -256,16 +425,17 @@ export function useTodayCheckedOutDealers(clubIds: string[]) {
 function useActiveAssignments(clubIds: string[], shiftId?: string) {
   return useRealtimeQuery<DealerAssignment>({
     queryFn: async () => {
-      let q = supabase
-        .from("dealer_assignments")
-        .select(
-           `id, attendance_id, table_id, assigned_at, released_at, status,
-            version, swing_processed_at, swing_due_at,
-            pre_assigned_attendance_id, pre_assigned_at,
-            overtime_started_at,
-            game_tables!inner(id, table_name, table_type, status, club_id),
-            dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username)),
-            pre_assigned:dealer_attendance!pre_assigned_attendance_id(dealers(full_name, telegram_username, tier))`
+       let q = supabase
+         .from("dealer_assignments")
+         .select(
+            `id, attendance_id, table_id, assigned_at, released_at, status,
+             version, updated_at, last_swing_attempted_at, swing_in_progress,
+             swing_processed_at, swing_due_at,
+             pre_assigned_attendance_id, pre_assigned_at,
+             overtime_started_at,
+             game_tables!inner(id, table_name, table_type, status, club_id),
+             dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username)),
+             pre_assigned:dealer_attendance!pre_assigned_attendance_id(dealers(full_name, telegram_username, tier))`
         )
         .in("status", ["assigned"])
         .in("game_tables.club_id", clubIds)
@@ -288,22 +458,45 @@ export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
   const now = useLiveClock();
   const result = useActiveAssignments(clubIds);
 
+  const canonicalAssignments = useMemo(() => {
+    const byTableId = new Map<string, DealerAssignment>();
+    for (const assignment of result.data ?? []) {
+      byTableId.set(
+        assignment.table_id,
+        pickPreferredAssignment(byTableId.get(assignment.table_id), assignment, now)
+      );
+    }
+    return Array.from(byTableId.values());
+  }, [result.data, now]);
+
   const enriched = useMemo(() => {
-    return (result.data ?? []).map((a) => {
+    return canonicalAssignments.map((a) => {
       const due = a.swing_due_at ? new Date(a.swing_due_at).getTime() : null;
       if (!due) {
-        return { ...a, minutesLeft: null, secondsLeft: null, showNextDealerSoon: false, isOverdue: false };
+        return {
+          ...a,
+          pre_assign_status: derivePreAssignStatus(a, now),
+          minutesLeft: null,
+          secondsLeft: null,
+          showNextDealerSoon: false,
+          isOverdue: false,
+        };
       }
       const diffMs = due - now;
       const minutesLeft = Math.max(0, diffMs / 60000);
       const showNextDealerSoon = minutesLeft <= 5;
-      // BUG 2 FIX: If a pre-assigned replacement is coming, the dealer is NOT overdue
-      // for swing. The OT is informational only — system has already handled it.
-      const hasReplacementComing = !!a.pre_assigned_attendance_id;
-      const isOverdue = !hasReplacementComing && diffMs < 0;
-      return { ...a, minutesLeft, secondsLeft: Math.max(0, Math.floor(diffMs / 1000)), showNextDealerSoon, isOverdue };
+      const preAssignStatus = derivePreAssignStatus(a, now);
+      const isOverdue = diffMs < 0 && preAssignStatus !== "valid" && preAssignStatus !== "in_progress";
+      return {
+        ...a,
+        pre_assign_status: preAssignStatus,
+        minutesLeft,
+        secondsLeft: Math.max(0, Math.floor(diffMs / 1000)),
+        showNextDealerSoon,
+        isOverdue,
+      };
     });
-  }, [result.data, now]);
+  }, [canonicalAssignments, now]);
 
   return { ...result, data: enriched };
 }
@@ -614,6 +807,7 @@ export interface NextDealerPrediction {
   nextDealerName: string | null;
   nextDealerId: string | null;
   confidence: "confirmed" | "predicted";
+  preAssignStatus: PreAssignStatus;
 }
 
 interface OvertimeDealer {
@@ -670,13 +864,14 @@ function useOvertimeDealers(clubIds: string[]) {
   });
 }
 
-export function useNextDealerPredictions(clubIds: string[]) {
+export function useNextDealerPredictions(clubIds: string[], assignments: DealerAssignment[] = []) {
   const [data, setData] = useState<Record<string, NextDealerPrediction> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (clubIds.length === 0) { setData({}); setLoading(false); return; }
     const cid = clubIds[0];
+    const assignmentByTableId = new Map(assignments.map((assignment) => [assignment.table_id, assignment]));
     setLoading(true);
     const { data: rows, error } = await supabase
       .rpc("get_table_assignments_with_next", { p_club_id: cid });
@@ -703,12 +898,13 @@ export function useNextDealerPredictions(clubIds: string[]) {
           nextDealerName: r.next_dealer,
           nextDealerId: null,
           confidence: r.next_dealer ? "confirmed" : "predicted",
+          preAssignStatus: assignmentByTableId.get(r.table_id)?.pre_assign_status ?? "none",
         };
       }
       setData(map);
     }
     setLoading(false);
-  }, [clubIds.join(",")]);
+  }, [clubIds.join(","), assignments]);
 
   useEffect(() => {
     load();
