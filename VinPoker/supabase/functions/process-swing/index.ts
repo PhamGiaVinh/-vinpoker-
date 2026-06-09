@@ -601,6 +601,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        console.log(`[process-swing] Club ${cid}: checking swingDueAt fallback (dryRun=${dryRun}, hasDueAt=${!!batchSwingDueAt})`);
         if (!dryRun && !batchSwingDueAt) {
           batchSwingDueAt = new Date(
             Date.now() + clubCfg.swing_duration_minutes * 60_000
