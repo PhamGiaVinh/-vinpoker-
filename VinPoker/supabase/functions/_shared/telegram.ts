@@ -63,9 +63,8 @@ export function formatCloseTableMessage(params: {
   dealerName: string;
   tourName?: string;
 }): string {
-  const { tableName, dealerName, tourName } = params;
-  const tourInfo = tourName ? ` (${tourName})` : "";
-  return `🛑 ${tableName}${tourInfo}: ĐÃ ĐÓNG. Dealer ${dealerName} được nghỉ.`;
+  const { tableName, dealerName } = params;
+  return `Đóng bàn : ${tableName} - Dealer ${dealerName} được nghỉ.`;
 }
 
 export function formatMassAssignMessage(assignments: Array<{
