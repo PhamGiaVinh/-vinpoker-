@@ -249,6 +249,71 @@ const { data: rows, error } = await admin
         (currentTableId ? ` [table-aware: excluding table ${currentTableId}]` : " [no table-aware filter]")
       );
     }
+
+    // ── Step 5b-ext: Check pre_assigned_attendance_id references ──
+    // A dealer's attendance_id may be referenced as pre_assigned_attendance_id
+    // in another active assignment. This catches the gap where pre-assign RPC
+    // sets dealer_attendance.state='pre_assigned' but doesn't create an assignment
+    // record for the incoming dealer.
+    const { data: preAssignedRefs } = await admin
+      .from("dealer_assignments")
+      .select("pre_assigned_attendance_id")
+      .in("pre_assigned_attendance_id", attendanceIds)
+      .in("status", ["assigned", "on_break"])
+      .is("released_at", null);
+
+    const preAssignedRefIds = new Set(
+      (preAssignedRefs ?? []).map((r) => r.pre_assigned_attendance_id)
+    );
+
+    for (const row of rows ?? []) {
+      if (preAssignedRefIds.has(row.id)) {
+        if (!busyDealerIds.has(row.dealer_id)) {
+          diag.step5b_pre_assigned_refs++;
+          console.warn(
+            `[pickNextDealer] Step 5b-ext: Dealer ${row.dealer_id} excluded ` +
+            `(attendance ${row.id} referenced as pre_assigned_attendance_id in another active assignment)`
+          );
+        }
+        busyDealerIds.add(row.dealer_id);
+      }
+    }
+
+    if (diag.step5b_pre_assigned_refs > 0) {
+      console.log(
+        `[pickNextDealer] Club ${clubId}: ${diag.step5b_pre_assigned_refs} dealers ` +
+        `excluded by Step 5b-ext (pre_assigned_attendance_id reference)`
+      );
+    }
+  }
+
+  // ── Step 5c: Safety net — catch pre_assigned dealers without assignment record ──
+  // Pre-assign RPC sets dealer_attendance.current_state='pre_assigned' but does NOT
+  // create a dealer_assignments record. Step 5b misses them. This catches the gap.
+  const { data: preAssignedDealers } = await admin
+    .from("dealer_attendance")
+    .select("dealer_id, id, pre_assigned_table_id")
+    .in("dealer_id", dealerIds)
+    .eq("current_state", "pre_assigned")
+    .is("check_out_time", null);
+
+  for (const pad of preAssignedDealers ?? []) {
+    if (!busyDealerIds.has(pad.dealer_id)) {
+      diag.step5c_pre_assigned++;
+      console.warn(
+        `[pickNextDealer] Step 5c: Dealer ${pad.dealer_id} excluded ` +
+        `(attendance ${pad.id} pre_assigned to table ${pad.pre_assigned_table_id}, ` +
+        `no assignment record yet)`
+      );
+    }
+    busyDealerIds.add(pad.dealer_id);
+  }
+
+  if (diag.step5c_pre_assigned > 0) {
+    console.log(
+      `[pickNextDealer] Club ${clubId}: ${diag.step5c_pre_assigned} dealers ` +
+      `excluded by Step 5c (pre_assigned without assignment record)`
+    );
   }
 
   // Step 6: Fetch club average break ratio once if needed for equity scoring
@@ -298,6 +363,8 @@ const { data: rows, error } = await admin
     inter_swing_cooldown_excluded: 0,
     game_type_excluded: 0,
     meal_break_excluded: 0,
+    step5b_pre_assigned_refs: 0,
+    step5c_pre_assigned: 0,
     candidates_count: 0,
   };
 
