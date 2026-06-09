@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
       .from("dealer_assignments")
       .select(`
         id,
+        version,
         table_id,
         attendance_id,
         swing_due_at,
@@ -128,7 +129,7 @@ Deno.serve(async (req) => {
     // ═══ Step 3: Call perform_swing with rest_deficit (BUG #5 fix) ═══
     const { data: swingResult, error: swingErr } = await admin.rpc("perform_swing", {
       p_assignment_id: overdueTable.id,
-      p_version: null,
+      p_version: overdueTable.version,
       p_next_attendance_id: verifiedAttendanceId,
       p_send_to_break: false,
       p_break_duration_minutes: 15,

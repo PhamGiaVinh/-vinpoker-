@@ -48,16 +48,32 @@ export async function fillEmptyTables(
   };
 
   // Step 1: Fetch active tables for this club
-  let tableQuery = admin
+  const { data: tables, error: tableErr } = await admin
     .from("game_tables")
-    .select("id, table_name, table_type, current_blind_level")
+    .select("id, table_name, table_type, shift_id, current_blind_level")
     .eq("club_id", clubId)
     .eq("status", "active");
-
-  if (shiftId) tableQuery = tableQuery.eq("shift_id", shiftId);
-
-  const { data: tables, error: tableErr } = await tableQuery;
   if (tableErr || !tables) return result;
+
+  const activeTables = tables ?? [];
+  const shiftScopedTables = shiftId
+    ? activeTables.filter((t: { shift_id: string | null }) => t.shift_id === shiftId)
+    : activeTables;
+
+  // Compatibility fallback:
+  // Some clubs keep active tables with shift_id = null even while working a tour.
+  // If the requested shift has no rows, fall back to the active pool tables so
+  // mass-assign and process-swing still see the room.
+  const scopedTables =
+    shiftId && shiftScopedTables.length === 0
+      ? activeTables.filter((t: { shift_id: string | null }) => t.shift_id == null)
+      : shiftScopedTables;
+
+  if (shiftId && shiftScopedTables.length === 0) {
+    console.warn(
+      `[fillEmptyTables] No active tables matched shift ${shiftId}; falling back to ${scopedTables.length} active null-shift tables`
+    );
+  }
 
   // Step 2: Find tables with existing active assignments
   const { data: activeAssignments } = await admin
@@ -66,7 +82,7 @@ export async function fillEmptyTables(
     .in("status", ["assigned", "pre_assigned"])
     .in(
       "table_id",
-      tables.map((t: { id: string }) => t.id)
+      scopedTables.map((t: { id: string }) => t.id)
     );
 
   const assignedTableIds = new Set(
@@ -79,7 +95,7 @@ export async function fillEmptyTables(
       .from("tournaments")
       .select("id, swing_duration_minutes, tournament_tables!inner(table_id)")
       .eq("club_id", clubId)
-      .eq("status", "active"),
+       .eq("status", "live"),
     admin
       .from("swing_configs")
       .select("scope_id, swing_duration_minutes")
@@ -100,7 +116,7 @@ export async function fillEmptyTables(
   }
 
   // Step 4: Filter empty tables, sort by blind level descending (highest first)
-  const emptyTables = tables
+  const emptyTables = scopedTables
     .filter((t: { id: string }) => !assignedTableIds.has(t.id))
     .sort((a: { current_blind_level: number }, b: { current_blind_level: number }) =>
       (b.current_blind_level ?? 0) - (a.current_blind_level ?? 0)

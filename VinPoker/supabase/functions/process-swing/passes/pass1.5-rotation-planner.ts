@@ -60,7 +60,7 @@ export async function pass15RotationPlanner(
   const { data: upcomingAssignments, error: queryErr } = await admin
     .from("dealer_assignments")
     .select(`
-      id, table_id, version, pre_assigned_attendance_id,
+      id, table_id, attendance_id, version, pre_assigned_attendance_id,
       game_tables!inner(id, table_name, table_type, game_type, tour_tier)
     `)
     .eq("club_id", clubId)
@@ -114,7 +114,6 @@ export async function pass15RotationPlanner(
     admin, clubId, {
       excludeAttendanceIds: cycleExcludedIds,
       includeScoreBreakdown: true,
-      clubAvgBreakRatio: avgBreakRatio ?? undefined,
       clubBreakDurationMinutes: 20,
     }
   );

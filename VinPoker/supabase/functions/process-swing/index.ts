@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   pickNextDealer,
@@ -12,17 +12,13 @@ import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
 import {
   sendTelegramNotification,
   getClubTelegramChatId,
-  formatPreAnnounceMessage,
   formatMassAssignMessage,
   formatEmergencyPreAssignMessage,
-  notifyIncomingDealer,
   notifyFloorManagerDM,
 } from "../_shared/telegram.ts";
 import { TelegramNotifier } from "../_shared/telegramNotifier.ts";
 import type {
-  SwingInEvent,
   BreakStartEvent,
-  PreAssignEvent,
 } from "../_shared/telegramNotifier.ts";
 import {
   calculateBatchSwingDuration,
@@ -35,6 +31,12 @@ import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 import { runPass3Diagnostic } from "./diagnostics.ts";
 import { endMealBreak } from "../_shared/mealBreakService.ts";
+import {
+  DEFAULT_PRE_ASSIGN_STALE_WINDOW_MS,
+  ZOMBIE_LOCK_WINDOW_MS,
+  derivePreAssignStatus,
+  sortPass3Candidates,
+} from "../../../src/lib/dealerSwingState.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -765,7 +767,6 @@ Deno.serve(async (req: Request) => {
 
           if (orphanedAssigned && orphanedAssigned.length > 0) {
             const { data: activeAssignments } = await admin
-              .from("dealer_assignments")
               .select("attendance_id")
               .in("attendance_id", orphanedAssigned.map((d: any) => d.id))
               .eq("status", "assigned")
@@ -785,7 +786,9 @@ Deno.serve(async (req: Request) => {
                 issue: `assigned_orphaned_${stuckMinutes}m`,
               });
               await transitionDealerState(
-                admin, dealer.id, "available",
+                admin,
+                dealer.id,
+                "available",
                 `pass0c_orphaned_assigned_stuck_${stuckMinutes}m`
               );
               cycleExcludedIds.add(dealer.id);
@@ -1513,8 +1516,8 @@ if (tier2Count > 0) {
                   }
 
                   console.log(`[Pass 1b] \u2705 Released ${allSuccessfulAttIds.length}/${safeStaleRows.length} stale dealers`);
+                  }
                 }
-              }
             }
           }
 
@@ -1711,49 +1714,60 @@ if (tier2Count > 0) {
         }
         // ═══ End diagnostic ═════════════════════════════════════════════
 
-        const query = admin
+        const dueColumns = `
+          id, table_id, attendance_id, swing_due_at, version, updated_at,
+          last_swing_attempted_at, pre_assigned_attendance_id, pre_assigned_at,
+          overtime_started_at, last_ot_alert_at, swing_in_progress,
+          game_tables(table_name, table_type),
+          dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))
+        `;
+
+        const buildDueQuery = () => admin
           .from("dealer_assignments")
-          .select(
-            `id, table_id, attendance_id, swing_due_at, version,
-             pre_assigned_attendance_id, overtime_started_at,
-             last_ot_alert_at,
-             game_tables(table_name, table_type),
-             dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))`
-          )
+          .select(dueColumns)
           .eq("status", "assigned")
-          .eq("swing_in_progress", false)
           .is("released_at", null)
           .is("swing_processed_at", null)
-          .eq("club_id", cid);
+          .eq("club_id", cid)
+          .lte("swing_due_at", forceAll ? now : nowPlusBuf);
 
-        if (!forceAll) {
-          query.lte("swing_due_at", nowPlusBuf);
-        } else {
-          query.lte("swing_due_at", now);
-        }
+        const zombieCutoff = new Date(Date.now() - ZOMBIE_LOCK_WINDOW_MS).toISOString();
 
-        // LIMIT 8: Each perform_swing ~200-500ms, cron budget ~50s.
-        // 8 × 500ms = 4s for swings, leaving headroom for Pass 1/2 queries.
-        // Remaining OT tables caught on next tick (55s swing_due_at ensures re-entry).
-        query.limit(8);
+        const [{ data: preAssignedDueAssignments, error: preAssignedDueErr }, { data: normalDueAssignments, error: normalDueErr }, { data: zombieDueAssignments, error: zombieDueErr }] = await Promise.all([
+          buildDueQuery()
+            .eq("swing_in_progress", false)
+            .not("pre_assigned_attendance_id", "is", null)
+            .order("swing_due_at", { ascending: true })
+            .order("updated_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(100),
+          buildDueQuery()
+            .eq("swing_in_progress", false)
+            .is("pre_assigned_attendance_id", null)
+            .order("swing_due_at", { ascending: true })
+            .order("updated_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(100),
+          buildDueQuery()
+            .eq("swing_in_progress", true)
+            .lt("updated_at", zombieCutoff)
+            .order("updated_at", { ascending: true })
+            .order("swing_due_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(100),
+        ]);
 
-        const { data: rawDueAssignments, error: dueErr } = await query;
-        if (dueErr) {
-          console.error(`[process-swing] Pass 3 query error for club ${cid}:`, dueErr.message);
+        if (preAssignedDueErr || normalDueErr || zombieDueErr) {
+          const err = preAssignedDueErr ?? normalDueErr ?? zombieDueErr;
+          console.error(`[process-swing] Pass 3 query error for club ${cid}:`, err?.message);
           continue;
         }
 
-        // ═══ CRITICAL: Sort due assignments by swing_due_at ASC ═════════════
-        // Oldest-due (furthest past due) first. This ensures fairness:
-        // dealers who've been waiting longest get relief first.
-        const dueAssignments = (rawDueAssignments ?? []).sort(
-          (a: any, b: any) => {
-            const aOt = a.overtime_started_at ? 1 : 0;
-            const bOt = b.overtime_started_at ? 1 : 0;
-            if (aOt !== bOt) return bOt - aOt;
-            return new Date(a.swing_due_at).getTime() - new Date(b.swing_due_at).getTime();
-          }
-        );
+        const dueAssignments = sortPass3Candidates([
+          ...(preAssignedDueAssignments ?? []),
+          ...(normalDueAssignments ?? []),
+          ...(zombieDueAssignments ?? []),
+        ]).slice(0, 8);
 
         const validatedBreakDuration = clubCfg.break_duration_minutes == null
           ? DEFAULT_BREAK_DURATION_MINUTES
@@ -1764,6 +1778,142 @@ if (tier2Count > 0) {
           swingDurResult.durationMinutes,
           clubCfg.sync_swings ? { sync_swings: true, sync_window_minutes: clubCfg.sync_window_minutes } : undefined
         );
+
+        const logPass3Diagnostic = async (
+          diagnosticType: string,
+          assignment: any,
+          result: Record<string, unknown>,
+          metadata: Record<string, unknown> = {},
+        ) => {
+          await admin.from("diagnostic_logs").insert({
+            club_id: cid,
+            diagnostic_type: diagnosticType,
+            result,
+            metadata: {
+              table_id: assignment.table_id,
+              attendance_id: assignment.attendance_id,
+              assignment_id: assignment.id,
+              ...metadata,
+            },
+          }).then(({ error }) => {
+            if (error) console.warn(`[diagnostic_logs] ${diagnosticType} insert failed:`, error.message);
+          });
+        };
+
+        const fetchAssignmentSnapshot = async (assignmentId: string) => {
+          const { data, error } = await admin
+            .from("dealer_assignments")
+            .select("id, version, status, swing_processed_at, overtime_started_at, pre_assigned_attendance_id, swing_in_progress, updated_at, last_swing_attempted_at")
+            .eq("id", assignmentId)
+            .single();
+          if (error) {
+            console.warn(`[Pass 3] Failed to refresh assignment ${assignmentId}:`, error.message);
+            return null;
+          }
+          return data as {
+            id: string;
+            version: number;
+            status: string | null;
+            swing_processed_at: string | null;
+            overtime_started_at: string | null;
+            pre_assigned_attendance_id: string | null;
+            swing_in_progress: boolean | null;
+            updated_at: string | null;
+            last_swing_attempted_at: string | null;
+          } | null;
+        };
+
+        const runReplacementFallback = async (
+          fallbackAssignment: any,
+          fallbackTableName: string,
+          fallbackOutgoingDealer: any,
+          fallbackReason: string,
+          snapshot?: {
+            version: number;
+            status: string | null;
+            swing_processed_at: string | null;
+            overtime_started_at: string | null;
+          } | null,
+        ) => {
+          const effectiveRow = snapshot ?? await fetchAssignmentSnapshot(fallbackAssignment.id);
+          if (effectiveRow?.status === "completed" || effectiveRow?.swing_processed_at) {
+            console.log(`[Pass 3] ${fallbackTableName} already completed after ${fallbackReason}`);
+            metrics.success++;
+            return;
+          }
+
+          const activeVersion = effectiveRow?.version ?? fallbackAssignment.version;
+          const isOtFallback = !!effectiveRow?.overtime_started_at;
+          const fbBreakDecision = isOtFallback
+            ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
+            : await evaluateBreakNeed(admin, fallbackAssignment.attendance_id, {
+                maxWorkMinutes: Math.max(DEFAULT_MAX_WORK_MINUTES, swingDurResult.durationMinutes * 3),
+                minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
+                clubId: cid,
+                availableDealerCount,
+                clubDealerIds: cidDealerIds,
+              });
+
+          const fbDealer = await pickNextDealer(admin, cid, {
+            currentTableId: fallbackAssignment.table_id,
+            excludeAttendanceIds: cycleExcludedIds,
+            requiredGameTypes: required_game_types,
+            minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+          });
+
+          if (fbDealer) {
+            const { breakDuration: fbBreakDuration } = await getBreakSettings(admin, cid);
+            const { data: fbResult } = await admin.rpc("perform_swing", {
+              p_assignment_id: fallbackAssignment.id,
+              p_duration_minutes: swingDurResult.durationMinutes,
+              p_send_to_break: fbBreakDecision.shouldBreak,
+              p_break_duration_minutes: fbBreakDuration,
+              p_expected_version: activeVersion,
+              p_next_attendance_id: fbDealer.id,
+            });
+
+            if (fbResult?.outcome === "swung") {
+              metrics.success++;
+              cycleExcludedIds.add(fbDealer.id);
+              if (fbBreakDecision.shouldBreak) {
+                notifier?.enqueue({
+                  type: "break_start",
+                  dealerName: fallbackOutgoingDealer.full_name,
+                  username: fallbackOutgoingDealer.telegram_username ?? null,
+                  telegramUserId: fallbackOutgoingDealer.telegram_user_id ? Number(fallbackOutgoingDealer.telegram_user_id) : null,
+                  durationMin: clubCfg.break_duration_minutes,
+                } satisfies BreakStartEvent);
+              }
+              try {
+                const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
+                availableDealerCount = fc2 ?? 0;
+              } catch { /* keep stale count */ }
+              return;
+            }
+
+            if (fbResult?.outcome === "no_dealer") {
+              metrics.no_dealer++;
+            } else {
+              metrics.failed++;
+              console.warn(`[process-swing] Replacement perform_swing outcome after ${fallbackReason}: ${fbResult?.outcome}`);
+            }
+            return;
+          }
+
+          const { breakDuration: otBreakDur } = await getBreakSettings(admin, cid);
+          const { data: otResult } = await admin.rpc("perform_swing", {
+            p_assignment_id: fallbackAssignment.id,
+            p_duration_minutes: swingDurResult.durationMinutes,
+            p_send_to_break: false,
+            p_break_duration_minutes: otBreakDur,
+            p_expected_version: activeVersion,
+            p_next_attendance_id: null,
+          });
+          metrics.no_dealer++;
+          if (otResult?.outcome !== "no_dealer") {
+            metrics.failed++;
+          }
+        };
 
         // ── DRY RUN ───────────────────────────────────────────────────────
         if (dryRun && dueAssignments.length > 0) {
@@ -1780,30 +1930,98 @@ if (tier2Count > 0) {
           try {
           const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
           const outgoingDealer = assignment.dealer_attendance?.dealers ?? { full_name: "Unknown" };
+          const nowMs = Date.now();
           const minsLeft = Math.round(
-            (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60000
+            (new Date(assignment.swing_due_at).getTime() - nowMs) / 60000
           );
+          const preAssignStatus = derivePreAssignStatus(assignment, nowMs);
+          const isZombieLock = !!assignment.swing_in_progress && nowMs - new Date(assignment.updated_at).getTime() > ZOMBIE_LOCK_WINDOW_MS;
+
+          if (assignment.pre_assigned_attendance_id && preAssignStatus === "stale" && !assignment.swing_in_progress) {
+            await logPass3Diagnostic(
+              "stale_lock_warning",
+              assignment,
+              {
+                message: `Stale pre-assigned row for ${tableName}`,
+                level: "WARNING",
+                pre_assign_status: preAssignStatus,
+              },
+              {
+                swing_due_at: assignment.swing_due_at,
+                pre_assigned_at: assignment.pre_assigned_at,
+                updated_at: assignment.updated_at,
+                swing_in_progress: assignment.swing_in_progress,
+              },
+            );
+          }
+          if (isZombieLock) {
+            await logPass3Diagnostic(
+              "zombie_lock_warning",
+              assignment,
+              {
+                message: `Zombie lock detected for ${tableName}`,
+                level: "WARNING",
+                updated_at: assignment.updated_at,
+                version: assignment.version,
+              },
+              {
+                swing_due_at: assignment.swing_due_at,
+                last_swing_attempted_at: assignment.last_swing_attempted_at,
+              },
+            );
+          }
 
           // ── Optimistic lock: prevent duplicate swing execution (Issue 2) ──
           // If two cron ticks or RPC retries both grab the same assignment,
-          // the second CAS update will fail (swing_in_progress=true already).
-          // Always reset in finally block, even on error.
+          // the second CAS update will fail.
           if (!dryRun) {
-            const { data: lockedAssignment, error: lockErr } = await admin
+            const lockAttemptAt = new Date().toISOString();
+            const lockQuery = admin
               .from("dealer_assignments")
-              .update({ swing_in_progress: true })
-              .eq("id", assignment.id)
-              .eq("swing_in_progress", false)
-              .select("id, version")
-              .single();
+              .update({
+                swing_in_progress: true,
+                last_swing_attempted_at: lockAttemptAt,
+              });
+            const lockResult = isZombieLock
+              ? await lockQuery
+                  .eq("id", assignment.id)
+                  .eq("swing_in_progress", true)
+                  .eq("version", assignment.version)
+                  .eq("updated_at", assignment.updated_at)
+                  .select("id, version, updated_at, last_swing_attempted_at")
+                  .maybeSingle()
+              : await lockQuery
+                  .eq("id", assignment.id)
+                  .eq("swing_in_progress", false)
+                  .select("id, version, updated_at, last_swing_attempted_at")
+                  .maybeSingle();
+            const lockedAssignment = lockResult.data;
+            const lockErr = lockResult.error;
             if (lockErr || !lockedAssignment) {
               console.log(`[Pass 3] Skip ${tableName} — already in progress or lock failed`);
+              if (isZombieLock) {
+                await logPass3Diagnostic(
+                  "zombie_lock_warning",
+                  assignment,
+                  {
+                    message: `Zombie lock reclaim race lost for ${tableName}`,
+                    level: "WARNING",
+                    reason: "reclaim_race_lost",
+                  },
+                  {
+                    updated_at: assignment.updated_at,
+                    version: assignment.version,
+                  },
+                );
+              }
               continue;
             }
             (assignment as any).__locked = true;
             (assignment as any).__lockedVersion = lockedAssignment.version;
+            assignment.version = lockedAssignment.version;
+            assignment.updated_at = lockedAssignment.updated_at ?? assignment.updated_at;
+            assignment.last_swing_attempted_at = lockedAssignment.last_swing_attempted_at ?? lockAttemptAt;
           }
-
           // ── FORCE-RELEASE: Stuck swing detection (REPLACES 60-min circuit breaker) ──
           // If swing is overdue by > force_release_at_overdue_min (default 30),
           // call force_release_stuck_assignment RPC for atomic release.
@@ -1903,14 +2121,6 @@ if (tier2Count > 0) {
                 if (frResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(replacementDealer.id);
-                  notifier?.enqueue({
-                    type: "swing_in",
-                    tableName,
-                    zone: clubZone,
-                    dealerName: replacementDealer.full_name,
-                    username: replacementDealer.telegram_username ?? null,
-                    telegramUserId: replacementDealer.telegram_user_id ? Number(replacementDealer.telegram_user_id) : null,
-                  } satisfies SwingInEvent);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
                   // BUG #3 FIX: Refresh count after force-release replacement swing
                   try {
@@ -1931,6 +2141,29 @@ if (tier2Count > 0) {
 
           if (assignment.pre_assigned_attendance_id) {
             // ── Pre-assigned swing path ───────────────────────────────────
+            const { data: preflightAtt } = await admin
+              .from("dealer_attendance")
+              .select("current_state, status, full_name")
+              .eq("id", assignment.pre_assigned_attendance_id)
+              .maybeSingle();
+            const preflightInvalid = !preflightAtt
+              || preflightAtt.current_state === "checked_out"
+              || preflightAtt.current_state === "on_break"
+              || preflightAtt.status === "checked_out";
+            if (preflightInvalid) {
+              await logPass3Diagnostic(
+                "preflight_invalid_pre_assign",
+                assignment,
+                {
+                  message: `Preflight invalid for ${tableName}`,
+                  level: "WARNING",
+                  current_state: preflightAtt?.current_state ?? "missing",
+                  status: preflightAtt?.status ?? "missing",
+                  dealer_name: preflightAtt?.full_name ?? "Unknown",
+                },
+                { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
+              );
+            }
             const breakDecision = await evaluateBreakNeed(admin, assignment.attendance_id, {
               maxWorkMinutes: Math.max(DEFAULT_MAX_WORK_MINUTES, swingDurResult.durationMinutes * 3),
               minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
@@ -1940,7 +2173,7 @@ if (tier2Count > 0) {
             });
 
             const { data: rpcResult, error: rpcErr } = await admin.rpc(
-              "execute_pre_assigned_swing",
+              "execute_pre_assigned_swing_rpc",
               {
                 p_old_assignment_id:    assignment.id,
                 p_next_attendance_id:   assignment.pre_assigned_attendance_id,
@@ -1954,6 +2187,15 @@ if (tier2Count > 0) {
             if (rpcErr) {
               console.error("[process-swing] execute_pre_assigned_swing RPC error:", rpcErr.message);
               metrics.failed++;
+              if (preflightInvalid) {
+                await runReplacementFallback(
+                  assignment,
+                  tableName,
+                  outgoingDealer,
+                  "refresh_failed",
+                  null,
+                );
+              }
               continue;
             }
 
@@ -1961,7 +2203,20 @@ if (tier2Count > 0) {
               case "success":
                 metrics.success++;
                 cycleExcludedIds.add(assignment.pre_assigned_attendance_id);
-                // BUG #3 FIX: Refresh available dealer count after pre-assigned swing success.
+                {
+                  const refreshed = await fetchAssignmentSnapshot(assignment.id).catch(() => null);
+                  if (!refreshed || (refreshed.status !== "completed" && !refreshed.swing_processed_at)) {
+                    console.warn(`[process-swing] Post-RPC refresh failed or incomplete for ${tableName}, triggering replacement fallback`);
+                    await runReplacementFallback(
+                      assignment,
+                      tableName,
+                      outgoingDealer,
+                      "refresh_failed",
+                      refreshed,
+                    );
+                    break;
+                  }
+                }
                 try {
                   const { data: fc } = await admin.rpc("count_available_dealers", { p_club_id: cid });
                   availableDealerCount = fc ?? 0;
@@ -2237,14 +2492,6 @@ if (tier2Count > 0) {
                   if (fbResult?.outcome === "swung") {
                     metrics.success++;
                     cycleExcludedIds.add(fbDealer.id);
-                    notifier?.enqueue({
-                      type: "swing_in",
-                      tableName,
-                      zone: clubZone,
-                      dealerName: fbDealer.full_name,
-                      username: fbDealer.telegram_username ?? null,
-                      telegramUserId: fbDealer.telegram_user_id ? Number(fbDealer.telegram_user_id) : null,
-                    } satisfies SwingInEvent);
                   } else if (fbResult?.outcome === "no_dealer") {
                     metrics.no_dealer++;
                     if (fbResult.is_new_overtime) {
@@ -2497,14 +2744,6 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
-                  notifier?.enqueue({
-                    type: "swing_in",
-                    tableName,
-                    zone: clubZone,
-                    dealerName: nextDealer.full_name,
-                    username: nextDealer.telegram_username ?? null,
-                    telegramUserId: nextDealer.telegram_user_id ? Number(nextDealer.telegram_user_id) : null,
-                  } satisfies SwingInEvent);
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
@@ -2592,14 +2831,6 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
-                  notifier?.enqueue({
-                    type: "swing_in",
-                    tableName,
-                    zone: clubZone,
-                    dealerName: (nextDealer.dealers as any)?.full_name ?? "Unknown",
-                    username: (nextDealer.dealers as any)?.telegram_username ?? null,
-                    telegramUserId: (nextDealer.dealers as any)?.telegram_user_id ? Number((nextDealer.dealers as any).telegram_user_id) : null,
-                  } satisfies SwingInEvent);
                 }
               } else {
                 // Set dealer thành pre_assigned để bàn khác không pick
@@ -2663,17 +2894,10 @@ if (tier2Count > 0) {
 
                 const incomingDealer = (newAssignment?.dealer as any)?.dealers;
                 if (incomingDealer) {
-                  notifier?.enqueue({
-                    type: "swing_in",
-                    tableName,
-                    zone: clubZone,
-                    dealerName: incomingDealer.full_name,
-                    username: incomingDealer.telegram_username ?? null,
-                    telegramUserId: incomingDealer.telegram_user_id ? Number(incomingDealer.telegram_user_id) : null,
-                  } satisfies SwingInEvent);
+                  console.log(`[Pass 3] Auto-picked dealer confirmed for ${tableName}: ${incomingDealer.full_name}`);
                 }
               } catch (notifyErr) {
-                console.warn(`[Pass 3] Failed to enqueue swing_in for auto-picked dealer at ${tableName}:`, (notifyErr as Error).message);
+                console.warn(`[Pass 3] Failed to confirm auto-picked dealer at ${tableName}:`, (notifyErr as Error).message);
               }
 
               try {

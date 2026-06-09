@@ -25,15 +25,6 @@ import { mention, sendTelegramNotification } from "./telegram.ts";
 
 // ── Event types ────────────────────────────────────────────────────────────
 
-export interface SwingInEvent {
-  type: "swing_in";
-  tableName: string;
-  zone: string | null;
-  dealerName: string;
-  username: string | null;
-  telegramUserId: number | null;
-}
-
 export interface BreakStartEvent {
   type: "break_start";
   dealerName: string;
@@ -57,7 +48,6 @@ export interface PreAssignEvent {
 }
 
 export type DealerEvent =
-  | SwingInEvent
   | BreakStartEvent
   | PreAssignEvent;
 
@@ -78,9 +68,6 @@ function hhmm(date: Date): string {
 
 function formatEventLine(event: DealerEvent): string {
   switch (event.type) {
-    case "swing_in":
-      return `🪑 Vào ${event.tableName}: ${fmt(event.dealerName, event.username, event.telegramUserId)}`;
-
     case "break_start":
       return `☕ Đang break: ${fmt(event.dealerName, event.username, event.telegramUserId)} (${event.durationMin} phút)`;
 
@@ -119,12 +106,6 @@ function buildBatchMessage(events: DealerEvent[]): string {
 
 function groupEventsByType(events: DealerEvent[]): DealerEvent[][] {
   const groups: DealerEvent[][] = [];
-
-  // swing_in enabled (2026-06-09): user feedback — operators need to know
-  // when a dealer is actually assigned, especially when no pre-assign exists.
-
-  const swings = events.filter((e) => e.type === "swing_in");
-  if (swings.length) groups.push(swings);
 
   const breaks = events.filter((e) => e.type === "break_start");
   if (breaks.length) groups.push(breaks);

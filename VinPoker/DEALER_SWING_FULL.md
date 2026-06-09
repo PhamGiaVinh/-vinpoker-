@@ -34,12 +34,10 @@ import {
   sendTelegramNotification,
   getClubTelegramChatId,
   formatPreAnnounceMessage,
-  notifyIncomingDealer,
   notifyFloorManagerDM,
 } from "../_shared/telegram.ts";
 import { TelegramNotifier } from "../_shared/telegramNotifier.ts";
 import type {
-  SwingInEvent,
   BreakStartEvent,
   PreAssignEvent,
 } from "../_shared/telegramNotifier.ts";

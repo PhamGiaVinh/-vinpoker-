@@ -45,17 +45,18 @@ export function solveGreedyLazy(
 
   const dedupedMap = new Map<string, RotationCandidate>();
   for (const c of candidates) {
-    if (!dedupedMap.has(c.attendanceId)) {
-      dedupedMap.set(c.attendanceId, c);
+    const key = c.dealerId || c.attendanceId;
+    if (!dedupedMap.has(key)) {
+      dedupedMap.set(key, c);
     }
   }
   const uniqueCandidates = [...dedupedMap.values()];
 
-  const usedAttendanceIds = new Set<string>();
+  const usedDealerIds = new Set<string>();
 
   for (const table of sortedTables) {
     const eligible = uniqueCandidates.filter(c => {
-      if (usedAttendanceIds.has(c.attendanceId)) return false;
+      if (usedDealerIds.has(c.dealerId)) return false;
       if (table.currentAttendanceId && c.attendanceId === table.currentAttendanceId) return false;
       if (table.tourTier === "HIGH" && c.tier === "C") return false;
       if (table.gameTypes.length > 0) {
@@ -68,7 +69,7 @@ export function solveGreedyLazy(
 
     if (eligible.length === 0) {
       const hasAnyCandidate = uniqueCandidates.some(c =>
-        !usedAttendanceIds.has(c.attendanceId) &&
+        !usedDealerIds.has(c.dealerId) &&
         (!table.currentAttendanceId || c.attendanceId !== table.currentAttendanceId)
       );
       let reason: MissedTableReason;
@@ -76,17 +77,17 @@ export function solveGreedyLazy(
         reason = "all_busy";
       } else if (table.tourTier === "HIGH") {
         const hasNonC = uniqueCandidates.some(c =>
-          !usedAttendanceIds.has(c.attendanceId) &&
-          c.tier !== "C" &&
-          (!table.currentAttendanceId || c.attendanceId !== table.currentAttendanceId)
-        );
+        !usedDealerIds.has(c.dealerId) &&
+        c.tier !== "C" &&
+        (!table.currentAttendanceId || c.attendanceId !== table.currentAttendanceId)
+      );
         reason = hasNonC ? "game_type_excluded" : "tier_excluded";
       } else if (table.gameTypes.length > 0) {
         const normalizedTableTypes = table.gameTypes.map(g => g.toLowerCase());
         const hasMatchingSkill = uniqueCandidates.some(c =>
-          !usedAttendanceIds.has(c.attendanceId) &&
-          c.skills.some(s => normalizedTableTypes.includes(s))
-        );
+        !usedDealerIds.has(c.dealerId) &&
+        c.skills.some(s => normalizedTableTypes.includes(s))
+      );
         reason = hasMatchingSkill ? "no_candidates" : "game_type_excluded";
       } else {
         reason = "no_candidates";
@@ -102,7 +103,7 @@ export function solveGreedyLazy(
     eligible.sort((a, b) => b.score - a.score);
 
     const best = eligible[0];
-    usedAttendanceIds.add(best.attendanceId);
+    usedDealerIds.add(best.dealerId);
     pairs.push({
       tableId: table.id,
       attendanceId: best.attendanceId,
