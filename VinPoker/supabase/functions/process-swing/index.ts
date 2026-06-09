@@ -1895,6 +1895,10 @@ if (tier2Count > 0) {
             if (fbResult?.outcome === "swung") {
               metrics.success++;
               cycleExcludedIds.add(fbDealer.id);
+              if (botToken && pass2ChatId) {
+                const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${fallbackTableName}${fallbackOutgoingDealer.full_name !== "Unknown" ? ` - Thay ${fallbackOutgoingDealer.full_name}` : ""}`;
+                sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+              }
               if (fbBreakDecision.shouldBreak) {
                 notifier?.enqueue({
                   type: "break_start",
