@@ -163,8 +163,7 @@ export async function buildDealerCandidates(
     minInterSwingRestMinutes: rawMinInterSwingRestMinutes = 10,
     swingDueAt,
   } = options;
-  const minInterSwingRestMinutes =
-    rawMinInterSwingRestMinutes === 0 ? 0 : Math.max(10, rawMinInterSwingRestMinutes);
+  const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? 10);
 
   // Step 1: Get active dealer IDs for this club
   const { data: clubDealers } = await admin
@@ -318,6 +317,31 @@ export async function buildDealerCandidates(
   if (busyDealerIds.size > 0) {
     console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
   }
+  // ── Step 4b: Break pool guard (independent check, runs BEFORE OR logic) ──
+  // Physically excludes dealers still within the inter-swing rest period.
+  // Uses NOW() as reference (not swingDueAt) — dealer MUST have completed
+  // rest at this moment to be eligible. This is a HARD requirement that
+  // cannot be bypassed by the OR logic below.
+  const restGuardExcludedIds = new Set<string>();
+  if (minInterSwingRestMinutes > 0) {
+    const restCutoff = new Date(Date.now() - minInterSwingRestMinutes * 60_000).toISOString();
+    const { data: restingDealers } = await admin
+      .from("dealer_attendance")
+      .select("id")
+      .in("id", attendanceIds)
+      .not("last_released_at", "is", null)
+      .gt("last_released_at", restCutoff);
+    for (const rd of restingDealers ?? []) {
+      restGuardExcludedIds.add(rd.id);
+    }
+    if (restingDealers && restingDealers.length > 0) {
+      console.log(
+        `[pickNextDealer] Break pool guard: ${restingDealers.length} dealers excluded ` +
+        `(rest not completed, cutoff=${restCutoff})`
+      );
+    }
+  }
+
   const diag = {
     total_rows: rows.length,
     duplicate_dealer_rows: duplicateDealerRows,
@@ -326,6 +350,7 @@ export async function buildDealerCandidates(
     tier_excluded: 0,
     fatigue_excluded: 0,
     priority_break_excluded: 0,
+    break_pool_guard_excluded: 0,
     min_rest_excluded: 0,
     on_break_excluded: 0,
     inter_swing_cooldown_excluded: 0,
@@ -498,6 +523,11 @@ export async function buildDealerCandidates(
       continue;
     }
 
+    // ── Break pool guard ──────────────────────────────────────────────
+    // Dealer still within inter-swing rest period → hard exclude.
+    // Runs before every other check (tier, fatigue, rest cooldown, etc).
+    if (restGuardExcludedIds.has(row.id)) { diag.break_pool_guard_excluded++; continue; }
+
     const d = row.dealers;
     const tier: "A" | "B" | "C" = d.tier ?? "C";
     const skills: string[] = d.skills ?? [];
@@ -511,7 +541,7 @@ export async function buildDealerCandidates(
 
     // ── On-break minimum rest guard ──────────────────────────────────────────────
     // Dealers on_break are NOT eligible while they still have an active break
-    // record (break_end IS NULL) � the break must be explicitly ended first,
+    // record (break_end IS NULL) � the break must be explicitly ended first,
     // regardless of how long it has been running.
     // Fallback: if the break record is missing/stale, use computed restMin.
     if (row.current_state === "on_break") {
@@ -552,53 +582,45 @@ export async function buildDealerCandidates(
     const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
     if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
-    // ── Inter-swing rest cooldown ──────────────────────────────────────────
-    // Dealer who just left a table must rest ≥ minInterSwingRestMinutes
-    // before being picked for another swing. Uses last_released_at timestamp.
-    // NULL = never released (first shift) or just finished break → eligible.
-    // Math.floor avoids floating-point edge case (e.g. 9.999 < 10).
+    // ── Rest cooldown (OR logic) ────────────────────────────────────────────
+    // Two checks — dealer passes if EITHER is satisfied:
+    //   1. minutes_since_rest ≥ minRestMinutes (shift fatigue — can be
+    //      lowered by escalation: Tier 1=5, Tier 2=3, Tier 3=0)
+    //   2. last_released_at ≥ minInterSwingRestMinutes ago (inter-swing gap
+    //      — uses swingDueAt for predictive pre-assignment)
+    // NULL last_released_at → treated as "very old" → passes check #2.
     if (minInterSwingRestMinutes > 0 && (row.current_state === "available" || row.current_state === "on_break")) {
+      const passedMinutesSinceRest = restMin >= minRestMinutes;
+
       let referenceTime = Date.now();
       if (swingDueAt) {
-        const swingTime = new Date(swingDueAt).getTime();
-        const maxLookahead = Date.now() + 15 * 60_000;
-        referenceTime = Math.min(swingTime, maxLookahead);
-        if (swingTime > maxLookahead) {
-          console.warn(
-            `[ANOMALY] swingDueAt too far in future: ${swingDueAt}, clamping to +15min`
-          );
-        }
-      }
-      const SAFETY_BUFFER_MINUTES = 0.25;
-      const releasedAt = (row as any).last_released_at;
-      if (releasedAt) {
-        const minutesSinceRelease = Math.floor(
-          (referenceTime - new Date(releasedAt).getTime()) / 60_000
+        referenceTime = Math.min(
+          new Date(swingDueAt).getTime(),
+          Date.now() + 15 * 60_000,
         );
-        const effectiveRest = minInterSwingRestMinutes + SAFETY_BUFFER_MINUTES;
-        if (minutesSinceRelease < effectiveRest) {
-          diag.inter_swing_cooldown_excluded++;
-          console.log(
-            `[pickNextDealer] Cooldown: dealer ${row.dealer_id} excluded � waited ${minutesSinceRelease}m/${effectiveRest.toFixed(1)}m (reference: ${swingDueAt ? 'swing_due_at' : 'now'}), remaining ${(effectiveRest - minutesSinceRelease).toFixed(1)}m`
-          );
-          continue;
-        }
-        if (swingDueAt) {
-          const nowMinutes = (Date.now() - new Date(releasedAt).getTime()) / 60_000;
-          if (nowMinutes < minInterSwingRestMinutes) {
-            console.log(
-              `[PREDICTIVE] Dealer ${row.dealer_id}: now=${nowMinutes.toFixed(1)}m < min=${minInterSwingRestMinutes}m, but swing_due_at=${swingDueAt} ? eligible`
-            );
-          }
-        }
+      }
+      const releasedAt = (row as any).last_released_at;
+      const minutesSinceRelease = releasedAt
+        ? (referenceTime - new Date(releasedAt).getTime()) / 60_000
+        : Infinity;
+      const passedLastReleased = minutesSinceRelease >= minInterSwingRestMinutes;
+
+      if (!passedMinutesSinceRest && !passedLastReleased) {
+        console.log(
+          `[pickNextDealer] Rest: dealer ${row.dealer_id} excluded — ` +
+          `minutes_since_rest=${restMin.toFixed(1)}m (need ${minRestMinutes}m), ` +
+          `last_released=${releasedAt ? minutesSinceRelease.toFixed(1) + 'm' : 'NULL'} (need ${minInterSwingRestMinutes}m)`
+        );
+        diag.min_rest_excluded++;
+        continue;
+      }
+      if (passedMinutesSinceRest && !passedLastReleased) {
+        console.log(
+          `[PREDICTIVE] Dealer ${row.dealer_id}: minutes_since_rest=${restMin.toFixed(1)}m ≥ ${minRestMinutes}m, ` +
+          `last_released=${minutesSinceRelease.toFixed(1)}m < ${minInterSwingRestMinutes}m. Allowing via shift rest.`
+        );
       }
     }
-
-    // ── Minimum rest ────────────────────────────────────────────────────────
-    // Dealer needs ≥N min rest between swing cycles. Default 10 min, but
-    // graduated escalation can lower this (Tier 1=5, Tier 2=3, Tier 3=0)
-    // when a stuck assignment needs aggressive recovery.
-    if (consecutive > 0 && restMin < minRestMinutes) { diag.min_rest_excluded++; continue; }
 
     // ── Soft cap warning (log only, do not block) ────────────────────────────
     // Issue 6: track high-consecutive dealers for admin review. Fire-and-forget
