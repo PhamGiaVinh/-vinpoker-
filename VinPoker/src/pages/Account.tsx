@@ -333,9 +333,9 @@ const Account = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <Card className="gradient-card border-gold p-5 shadow-gold">
-        <div className="flex items-start gap-3">
+    <div className="space-y-6">
+      <Card className="bg-gradient-to-br from-card/60 to-card/40 border-gold/40 p-6 backdrop-blur-sm">
+        <div className="flex items-start gap-4">
           <AvatarUploader
             avatarUrl={profile?.avatar_url}
             displayName={profile?.display_name || user.email}
@@ -385,10 +385,10 @@ const Account = () => {
 
       {isClubScope && (
         <>
-          <Card className="p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-gold" />
-              <h3 className="font-semibold text-gold text-sm">{t("account.bookings7d")}</h3>
+          <Card className="p-5 space-y-4 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="w-5 h-5 text-gold" />
+              <h3 className="font-semibold text-gold text-base">{t("account.bookings7d")}</h3>
             </div>
             <div className="h-40">
               <ResponsiveContainer width="100%" height="100%">
@@ -403,10 +403,10 @@ const Account = () => {
             </div>
           </Card>
 
-          <Card className="p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-primary text-sm">{t("account.bookings4w")}</h3>
+          <Card className="p-5 space-y-4 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold text-primary text-base">{t("account.bookings4w")}</h3>
             </div>
             <div className="h-40">
               <ResponsiveContainer width="100%" height="100%">
@@ -424,11 +424,11 @@ const Account = () => {
       )}
 
       {profile && (
-        <Card className="p-4 space-y-3">
-          <h3 className="font-semibold text-gold">{t("account.profile")}</h3>
+        <Card className="p-6 space-y-5 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+          <h3 className="font-semibold text-gold text-lg">{t("account.profile")}</h3>
           <Field label={t("account.displayName")} v={profile.display_name ?? ""} set={(v: string) => setProfile({ ...profile, display_name: v })} />
           <Field label={t("account.phone")} v={profile.phone ?? ""} set={(v: string) => setProfile({ ...profile, phone: v })} />
-          <div className="space-y-2 rounded-md border border-border/60 p-3 bg-muted/20">
+          <div className="space-y-3 rounded-lg border border-border/40 p-4 bg-muted/20 backdrop-blur-sm">
             <div className="text-sm font-semibold text-gold">{t("account.bankSection")}</div>
             <Field
               label={t("account.bankNameLabel")}
@@ -468,7 +468,7 @@ const Account = () => {
 
       <EnableNotificationsCard />
 
-      <Card className="p-4">
+      <Card className="p-6 border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
         <NotificationPreferences />
       </Card>
 

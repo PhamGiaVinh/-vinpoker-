@@ -228,24 +228,24 @@ const Marketplace = () => {
   }, [availableDeals, search, tournamentFilter, markupRange, verifFilter, sortBy, playerFilter, statsByPlayer]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
         <div>
-          <h1 className="font-bebas text-4xl md:text-5xl tracking-[0.05em] text-primary leading-none">
+          <h1 className="font-bebas text-5xl md:text-6xl tracking-[0.05em] text-primary leading-none">
             {t("marketplace.title")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-2 max-w-xl font-sans">
+          <p className="text-sm text-muted-foreground mt-3 max-w-xl font-sans leading-relaxed">
             {t("marketplace.subtitle")}{" "}
-            <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80">
+            <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors">
               {t("marketplace.findPlayerLink")}
             </button>.
           </p>
           {/* Chronograph divider */}
-          <div className="flex items-center gap-2 mt-4">
-            <div className="flex-1 h-[1px] bg-[#10B981]" />
+          <div className="flex items-center gap-2 mt-5">
+            <div className="flex-1 h-px bg-gradient-to-r from-[#10B981] to-transparent" />
             <div className="w-2 h-2 bg-[#10B981] rotate-45 shrink-0" />
-            <div className="flex-1 h-[1px] bg-[#10B981]" />
+            <div className="flex-1 h-px bg-gradient-to-l from-[#10B981] to-transparent" />
           </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
@@ -266,7 +266,7 @@ const Marketplace = () => {
       </header>
 
       {/* Filter bar */}
-      <div className="grid gap-3 md:grid-cols-[1fr_180px_200px_160px_140px] items-end bg-[#121212] border border-[#1F1F1F] p-4">
+      <div className="grid gap-4 md:grid-cols-[1fr_180px_200px_160px_140px] items-end bg-[#121212]/50 border border-[#1F1F1F]/50 p-5 rounded-lg backdrop-blur-sm">
         <div>
           <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
             {t("marketplace.filterSearchLabel")}
@@ -382,7 +382,7 @@ const Marketplace = () => {
           ))}
         </div>
       ) : filtered.length === 0 && soldDeals.length === 0 ? (
-        <div className="text-center py-20 border border-dashed border-[#1F1F1F] bg-[#121212] space-y-3">
+        <div className="text-center py-24 border border-dashed border-[#1F1F1F]/50 bg-[#121212]/50 space-y-4 rounded-lg backdrop-blur-sm">
           <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground" />
           <h3 className="font-semibold font-sans">
             {playerFilter ? t("marketplace.emptyPlayerNoDeals") : t("marketplace.emptyNoMatch")}
