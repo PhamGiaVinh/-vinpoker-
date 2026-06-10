@@ -68,23 +68,58 @@ Deno.serve(async (req: Request) => {
 
     switch (action) {
     case "start": {
-      // Fetch assignment with INNER JOIN on game_tables to validate club at query level.
-      // The !inner + .eq("game_tables.club_id", clubId) combo should filter out
-      // assignments whose table belongs to a different club.
-      // Safety check below covers PostgREST versions that silently ignore nested filters.
-      const { data: assignment, error: aErr } = await admin
-        .from("dealer_assignments")
-        .select("id, version, game_tables!inner(club_id, table_name)")
-        .eq("attendance_id", attendance_id)
-        .eq("status", "assigned")
-        .eq("game_tables.club_id", club_id)
+      // Allow starting break from either assigned dealers or checked-in dealers
+      // already sitting in the pool. For pool dealers, reuse the latest
+      // assignment as the break carrier so the break pool can render it.
+      const { data: att, error: attErr } = await admin
+        .from("dealer_attendance")
+        .select("id, current_state, status, dealers!inner(club_id, full_name, telegram_user_id)")
+        .eq("id", attendance_id)
+        .eq("status", "checked_in")
         .maybeSingle();
 
-      if (aErr || !assignment) {
-        return json({ error: "No active assignment found for this club" }, 404);
+      if (attErr || !att) {
+        return json({ error: "Không tìm thấy dealer attendance" }, 404);
       }
 
-      // Safety check: verify club_id was actually enforced (PostgREST nested filter quirk)
+      const attDealer = (att as any).dealers as any;
+      if (attDealer?.club_id !== club_id) {
+        console.error(
+          `[manage-break] Club mismatch (safety): attendance=${attendance_id} ` +
+          `dealer_club=${attDealer?.club_id} request_club=${club_id}`
+        );
+        return json({ error: "Attendance does not belong to this club" }, 403);
+      }
+
+      if (!["available", "assigned", "on_break"].includes(att.current_state)) {
+        return json({ error: `Dealer không sẵn sàng (trạng thái: ${att.current_state})` }, 400);
+      }
+
+      const { data: activeAssignment } = await admin
+        .from("dealer_assignments")
+        .select("id, version, status, assigned_at, released_at, game_tables!inner(club_id, table_name)")
+        .eq("attendance_id", attendance_id)
+        .in("status", ["assigned", "on_break"])
+        .order("assigned_at", { ascending: false })
+        .maybeSingle();
+
+      let latestAssignment: typeof activeAssignment | null = null;
+      if (!activeAssignment) {
+        const { data } = await admin
+          .from("dealer_assignments")
+          .select("id, version, status, assigned_at, released_at, game_tables!inner(club_id, table_name)")
+          .eq("attendance_id", attendance_id)
+          .order("assigned_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        latestAssignment = data ?? null;
+      }
+
+      const assignment = activeAssignment ?? latestAssignment;
+      if (!assignment) {
+        return json({ error: "No assignment history found for this dealer" }, 404);
+      }
+
       const gameTable = Array.isArray(assignment.game_tables)
         ? assignment.game_tables[0]
         : assignment.game_tables;
@@ -96,20 +131,68 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Attendance does not belong to this club" }, 403);
       }
 
-      const { error: casErr } = await admin
-        .from("dealer_assignments")
-        .update({ status: "on_break", version: assignment.version + 1 })
-        .eq("id", assignment.id)
-        .eq("version", assignment.version);
+      const nowIso = new Date().toISOString();
+      const openBreakQuery = admin
+        .from("dealer_breaks")
+        .select("id, break_start, expected_duration_minutes")
+        .eq("assignment_id", assignment.id)
+        .is("break_end", null)
+        .order("break_start", { ascending: false })
+        .limit(1);
+      const { data: openBreak, error: breakErr } = await openBreakQuery.maybeSingle();
+      if (breakErr) {
+        return json({ error: breakErr.message }, 500);
+      }
 
-      if (casErr) return json({ error: "CAS conflict, try again" }, 409);
+      if (att.current_state === "on_break" && openBreak) {
+        const elapsedMinutes = Math.max(
+          0,
+          Math.floor((Date.now() - new Date(openBreak.break_start).getTime()) / 60_000),
+        );
+        const newExpectedDuration = Math.max(
+          openBreak.expected_duration_minutes ?? 0,
+          elapsedMinutes + duration_minutes,
+        );
 
-      await admin.from("dealer_breaks").insert({
+        const { error: updateBreakErr } = await admin
+          .from("dealer_breaks")
+          .update({
+            expected_duration_minutes: newExpectedDuration,
+            reason: "manual_extend",
+          })
+          .eq("id", openBreak.id);
+
+        if (updateBreakErr) {
+          return json({ error: `Failed to extend break: ${updateBreakErr.message}` }, 500);
+        }
+
+        return json({
+          ok: true,
+          action: "extended",
+          break_minutes: newExpectedDuration,
+          added_minutes: duration_minutes,
+        });
+      }
+
+      if (assignment.status !== "on_break") {
+        const { error: casErr } = await admin
+          .from("dealer_assignments")
+          .update({ status: "on_break", version: assignment.version + 1 })
+          .eq("id", assignment.id)
+          .eq("version", assignment.version);
+
+        if (casErr) return json({ error: "CAS conflict, try again" }, 409);
+      }
+
+      const { error: insertBreakErr } = await admin.from("dealer_breaks").insert({
         assignment_id: assignment.id,
-        break_start: new Date().toISOString(),
+        break_start: nowIso,
         expected_duration_minutes: duration_minutes,
-        reason: "manual",
+        reason: att.current_state === "available" ? "manual_available" : "manual",
       });
+      if (insertBreakErr) {
+        return json({ error: insertBreakErr.message }, 500);
+      }
 
       const { data: stateResult } = await admin.rpc("transition_dealer_state", {
         p_attendance_id: attendance_id,
@@ -134,9 +217,12 @@ Deno.serve(async (req: Request) => {
               .eq("id", attendance_id)
               .single();
 
-            if (!dealer?.dealers) return;
-            const name = dealer.dealers.full_name ?? "Dealer";
-            const chatId = await getClubTelegramChatId(admin, club_id);
+            const dealerInfo = Array.isArray(dealer?.dealers)
+              ? dealer.dealers[0]
+              : dealer?.dealers;
+            if (!dealerInfo) return;
+            const name = dealerInfo.full_name ?? "Dealer";
+            const chatId = await getClubTelegramChatId(admin as any, club_id);
             if (chatId) {
               await sendTelegramNotification(
                 botToken,
@@ -214,7 +300,7 @@ Deno.serve(async (req: Request) => {
       if (botToken && tableCount > 0) {
         withTimeout(
           (async () => {
-            const chatId = await getClubTelegramChatId(admin, club_id);
+            const chatId = await getClubTelegramChatId(admin as any, club_id);
             if (chatId) {
               await sendTelegramNotification(
                 botToken,
@@ -281,7 +367,7 @@ Deno.serve(async (req: Request) => {
       if (botToken) {
         withTimeout(
           (async () => {
-            const chatId = await getClubTelegramChatId(admin, club_id);
+            const chatId = await getClubTelegramChatId(admin as any, club_id);
             if (chatId) {
               await sendTelegramNotification(
                 botToken,
