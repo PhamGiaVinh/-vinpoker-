@@ -3141,46 +3141,18 @@ if (tier2Count > 0) {
 
             const { data: settingsRow } = await admin
               .from("club_settings")
-              .select("shortage_auto_close_enabled, shortage_close_threshold, shortage_notify_telegram")
+              .select("shortage_notify_telegram")
               .eq("club_id", cid)
               .maybeSingle();
 
-            const autoCloseEnabled = (settingsRow as any)?.shortage_auto_close_enabled ?? false;
-            const closeThreshold = (settingsRow as any)?.shortage_close_threshold ?? 4;
             const notifyTelegram = (settingsRow as any)?.shortage_notify_telegram ?? true;
-
-            let closedTables: Array<{ table_id: string; table_name: string }> = [];
-
-            if (autoCloseEnabled && metrics.no_dealer >= closeThreshold) {
-              console.log(`[Shortage] Auto-closing low-priority tables (no_dealer=${metrics.no_dealer} >= threshold=${closeThreshold})...`);
-              try {
-                const { data: closeResult, error: closeErr } = await admin.rpc(
-                  "auto_close_low_priority_tables", { p_club_id: cid }
-                );
-                if (closeErr) {
-                  console.error("[Shortage] ❌ auto_close_low_priority_tables RPC failed:", closeErr);
-                } else if (closeResult && closeResult.length > 0) {
-                  closedTables = closeResult;
-                  console.log(`[Shortage] ✅ Auto-closed ${closedTables.length} tables:`, closedTables.map((t: any) => t.table_name).join(", "));
-                }
-              } catch (err: any) {
-                console.error("[Shortage] ❌ Exception during auto-close:", err.message);
-              }
-            }
 
             if (notifyTelegram) {
               const chatId = await getClubTelegramChatId(admin, cid);
               if (botToken && chatId) {
-                let msg = `🚨 *THIẾU DEALER* — ${metrics.no_dealer}/${metrics.total} bàn không có người thay.\n\n`;
-                if (closedTables.length > 0) {
-                  msg += `🔴 *Đã tự động đóng ${closedTables.length} bàn:*\n` +
-                    closedTables.map((t: any) => `  • ${t.table_name}`).join("\n") + `\n\n`;
-                } else if (autoCloseEnabled && metrics.no_dealer >= closeThreshold) {
-                  msg += `⚠️ Auto-close enabled nhưng không có bàn low-priority.\n\n`;
-                } else if (autoCloseEnabled) {
-                  msg += `⏳ Auto-close enabled nhưng chưa đạt threshold (${metrics.no_dealer}/${closeThreshold}).\n\n`;
-                }
-                msg += `💡 *Khuyến nghị:*\n  • Check-in thêm dealers\n  • Hoặc đóng bàn thủ công\n\n🔄 Cron sẽ thử lại ở lần chạy tiếp theo.`;
+                const msg = `🚨 *THIẾU DEALER* — ${metrics.no_dealer}/${metrics.total} bàn không có người thay.\n\n` +
+                  `💡 *Khuyến nghị:*\n  • Check-in thêm dealers\n  • Hoặc đóng bàn thủ công bởi Dealer control\n\n` +
+                  `🔄 Cron sẽ thử lại ở lần chạy tiếp theo.`;
                 await sendTelegramNotification(botToken, chatId, msg, { parse_mode: "Markdown" });
               }
             }
