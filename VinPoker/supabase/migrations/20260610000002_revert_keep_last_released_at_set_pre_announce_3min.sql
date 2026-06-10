@@ -1,13 +1,7 @@
--- Fix break pool guard: do NOT clear last_released_at when break ends.
--- The guard in pickNextDealer needs last_released_at to remain set so it can
--- enforce minInterSwingRestMinutes from the moment the dealer was released
--- (entered break pool). Clearing it on break exit defeats the guard.
---
--- Affected functions:
---   1. end_expired_breaks       (auto-ending expired breaks)
---   2. transition_dealer_state  (manual/regular break end)
+-- Revert keep_last_released_at_on_break_end: restore last_released_at = NULL on break end
+-- The 10-minute break IS the cooldown. After it ends, dealer can be pre-assigned immediately.
 
--- 1. Fix end_expired_breaks
+-- 1. Fix end_expired_breaks: restore last_released_at = NULL
 CREATE OR REPLACE FUNCTION public.end_expired_breaks(
   p_club_id UUID DEFAULT NULL
 )
@@ -45,6 +39,7 @@ BEGIN
     current_state = 'available',
     priority_break_flag = false,
     worked_minutes_since_last_break = 0,
+    last_released_at = NULL,
     updated_at = NOW()
   FROM expired
   WHERE da.id = expired.att_id
@@ -56,7 +51,7 @@ BEGIN
 END;
 $$;
 
--- 2. Fix transition_dealer_state: remove last_released_at = NULL on break end
+-- 2. Fix transition_dealer_state: restore last_released_at = NULL on break end
 CREATE OR REPLACE FUNCTION public.transition_dealer_state(
   p_attendance_id UUID,
   p_new_state     TEXT,
@@ -111,29 +106,22 @@ BEGIN
     true
   );
 
-  -- Branch on reason for worked_minutes handling
   IF p_new_state = 'available' AND p_reason = 'meal_break_end' THEN
-    -- FREEZE: meal break end — do NOT reset worked_minutes
     UPDATE dealer_attendance
     SET current_state = p_new_state,
         updated_at = NOW()
     WHERE id = p_attendance_id;
 
   ELSIF p_new_state = 'available' AND p_reason IN ('regular_break_end', 'complete_dealer_break', 'end_expired_break') THEN
-    -- RESET: regular break end — reset worked_minutes to 0
-    -- NOTE: last_released_at is intentionally NOT cleared here.
-    -- The break pool guard (pickNextDealer) relies on last_released_at to
-    -- enforce minInterSwingRestMinutes from when the dealer entered break pool.
-    -- Clearing it would defeat the guard and allow immediate re-assignment.
     UPDATE dealer_attendance
     SET current_state = p_new_state,
         worked_minutes_since_last_break = 0,
         priority_break_flag = false,
+        last_released_at = NULL,
         updated_at = NOW()
     WHERE id = p_attendance_id;
 
   ELSIF p_new_state = 'checked_out' THEN
-    -- Cancel any active meal break on check-out
     UPDATE public.dealer_meal_breaks
     SET status = 'cancelled', break_end = NOW()
     WHERE attendance_id = p_attendance_id AND status = 'active';
@@ -144,7 +132,6 @@ BEGIN
     WHERE id = p_attendance_id;
 
   ELSE
-    -- Default transition (no special handling)
     UPDATE dealer_attendance
     SET current_state = p_new_state,
         updated_at = NOW()
@@ -154,3 +141,9 @@ BEGIN
   RETURN jsonb_build_object('ok', true, 'from', v_old_state, 'to', p_new_state);
 END;
 $$;
+
+-- 3. Set pre_announce_minutes = 3 for club 22222
+UPDATE swing_config
+SET pre_announce_minutes = 3
+WHERE club_id = '22222222-2222-2222-2222-222222222222'
+  AND pre_announce_minutes != 3;
