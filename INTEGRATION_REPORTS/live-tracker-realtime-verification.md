@@ -1,5 +1,27 @@
 # Live Tracker — Realtime Verification (Milestone A)
 
+> **HOLD — Migration intentionally removed from `main` (2026-06-11)**
+>
+> `20260808000000_tracker_realtime_publication.sql` has been **removed from `main`** as a
+> precautionary measure during Supabase migration pipeline recovery (Milestone 0).
+>
+> **Current production state:**
+> - The migration has **NOT been applied** to the production database.
+> - The tracker realtime publication is **still pending** — the four tables
+>   (`tournament_hands`, `tournament_chip_counts`, `tournament_seats`, `hand_players`)
+>   are **not** in the `supabase_realtime` publication on prod.
+> - The live viewer still requires a manual refresh to see updates.
+>
+> **Where the migration lives:**
+> - Branch `feature/live-tracker-realtime-a-clean` holds the migration file.
+> - It must **not** be merged to `main` until Milestone 0 (migration pipeline recovery)
+>   is complete and the CI `supabase db push` pipeline is verified working.
+> - Applying the migration before the pipeline is healthy risks running it outside of
+>   the repair sequence, which could cause ordering conflicts.
+>
+> Once Milestone 0 is complete, cherry-pick the migration from
+> `feature/live-tracker-realtime-a-clean` back into `main` and re-run verification below.
+
 How to verify `20260808000000_tracker_realtime_publication.sql`. The migration only adds tables
 to the `supabase_realtime` publication — it does not change schema, RLS, or any `src` code.
 
