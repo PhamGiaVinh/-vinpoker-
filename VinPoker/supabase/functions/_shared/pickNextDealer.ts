@@ -318,6 +318,30 @@ export async function buildDealerCandidates(
     console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
   }
 
+  // ── Break pool guard (independent check, runs BEFORE OR logic) ──
+  // Hard wall-clock check using NOW(): excludes dealers still within the
+  // inter-swing rest period. This is a HARD requirement that cannot be
+  // bypassed by the OR logic (passedMinutesSinceRest via swingDueAt).
+  const restGuardExcludedIds = new Set<string>();
+  if (minInterSwingRestMinutes > 0) {
+    const restCutoff = new Date(Date.now() - minInterSwingRestMinutes * 60_000).toISOString();
+    const { data: restingDealers } = await admin
+      .from("dealer_attendance")
+      .select("id")
+      .in("id", attendanceIds)
+      .not("last_released_at", "is", null)
+      .gt("last_released_at", restCutoff);
+    for (const rd of restingDealers ?? []) {
+      restGuardExcludedIds.add(rd.id);
+    }
+    if (restingDealers && restingDealers.length > 0) {
+      console.log(
+        `[pickNextDealer] Break pool guard: ${restingDealers.length} dealers excluded ` +
+        `(rest not completed, cutoff=${restCutoff})`
+      );
+    }
+  }
+
   const diag = {
     total_rows: rows.length,
     duplicate_dealer_rows: duplicateDealerRows,
@@ -488,6 +512,11 @@ export async function buildDealerCandidates(
 
     // ── Meal break exclusion (defense-in-depth) ─────────────────────────────
     if (mealBreakExcludedIds.has(row.id)) { diag.meal_break_excluded++; continue; }
+
+    // ── Break pool guard ────────────────────────────────────────────────────
+    // Dealer still within inter-swing rest period → hard exclude.
+    // Runs before every other check (tier, fatigue, rest cooldown, etc).
+    if (restGuardExcludedIds.has(row.id)) { diag.break_pool_guard_excluded++; continue; }
 
     // ── Emergency pre-assign guard (defense-in-depth) ─────────────────────────
     // Dealers already emergency-pre-assigned to another table must NOT be picked.
