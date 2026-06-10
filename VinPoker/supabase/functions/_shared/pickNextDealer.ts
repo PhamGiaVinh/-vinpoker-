@@ -344,6 +344,41 @@ export async function buildDealerCandidates(
     }
   }
 
+  // ── Pool cooldown guard (1 phút cho Telegram kịp gửi pre-assign) ──
+  // Dealer vừa vào pool (vừa release hoặc break vừa kết thúc) cần tối
+  // thiểu 1 phút để Telegram kịp gửi thông báo pre-assigned trước khi
+  // bị pick lại. pool_entered_at được set = NOW() khi:
+  //   - perform_swing release dealer
+  //   - execute_pre_assigned_swing release dealer
+  //   - end_expired_breaks kết thúc break
+  // NULL → dealer chưa từng release (new hire) → skip.
+  const poolCooldownMinutes = 1;
+  if (poolCooldownMinutes > 0) {
+    try {
+      const poolCutoff = new Date(Date.now() - poolCooldownMinutes * 60_000).toISOString();
+      const { data: poolDealers, error: poolErr } = await admin
+        .from("dealer_attendance")
+        .select("id")
+        .in("id", attendanceIds)
+        .in("current_state", ["available", "on_break"])
+        .not("pool_entered_at", "is", null)
+        .gt("pool_entered_at", poolCutoff);
+      if (poolErr) {
+        console.error(`[pickNextDealer] Pool cooldown query error: ${poolErr.message}`);
+      } else if (poolDealers && poolDealers.length > 0) {
+        for (const pd of poolDealers) {
+          restGuardExcludedIds.add(pd.id);
+        }
+        console.log(
+          `[pickNextDealer] Pool cooldown guard: ${poolDealers.length} dealers excluded ` +
+          `(entered pool < ${poolCooldownMinutes}min ago, cutoff=${poolCutoff})`
+        );
+      }
+    } catch (poolCatchErr) {
+      console.error(`[pickNextDealer] Pool cooldown exception:`, poolCatchErr);
+    }
+  }
+
   const diag = {
     total_rows: rows.length,
     duplicate_dealer_rows: duplicateDealerRows,
