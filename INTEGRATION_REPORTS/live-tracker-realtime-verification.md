@@ -65,9 +65,14 @@ refresh, §3 shows no channel growth, and §5 shows no regressions.
 
 ## Actual verification results (static, 2026-06-11)
 
-**Checked by:** Claude Code, branch `feature/live-tracker-integration` (commit `540459c`).
+**Checked by:** Claude Code, branch `feature/live-tracker-realtime-a-clean` (commits `cee518e`, `b8485c1`).
 **DB tested:** None — Docker not running on this machine; no local Supabase stack available.
 **Remaining for you:** §0 (apply migration) + §1 (publication query) + §2 (two-tab test) + §3 (channel-leak) + §5 (regression smoke).
+
+> **Branch note:** `feature/live-tracker-realtime-a-clean` was created from `origin/main` and
+> contains only the 2 Milestone A commits (cherry-picked from the previous dirty branch
+> `feature/live-tracker-integration`). The old dirty branch can be deleted once this branch
+> is verified and merged.
 
 ### What was verified statically
 
@@ -107,19 +112,16 @@ fire (old row carries only PK), but deletes here are rare (voids use `is_voided`
 The only file in the diff that belongs to Milestone A is the migration SQL. The three `src`
 components that own realtime subscriptions are untouched.
 
-### Known open item — vercel.json divergence (not Milestone A)
-
-After my Milestone A commit (`540459c`), a parallel session added commit `cd48fc8` on the feature
-branch changing `VinPoker/vercel.json` to:
-```json
-"buildCommand": "cd VinPoker && npm run build",
-"outputDirectory": "VinPoker/dist",
-"installCommand": "cd VinPoker && npm install"
+**S8 — Branch diff is clean ✓ (verified on `feature/live-tracker-realtime-a-clean`)**
+`git diff --name-status origin/main...HEAD` returns exactly:
 ```
-`main` also has its own different `vercel.json` change (`dfea668`). These two changes conflict.
-This is **not** a Milestone A issue, but a PR to `main` will surface a `vercel.json` merge
-conflict that needs manual resolution before merging. Recommend resolving it in a separate commit
-before opening the PR, or addressing it when the PR is reviewed.
+A  INTEGRATION_REPORTS/live-tracker-audit.md
+A  INTEGRATION_REPORTS/live-tracker-realtime-verification.md
+A  VinPoker/supabase/migrations/20260808000000_tracker_realtime_publication.sql
+```
+No `vercel.json`, no `version.json`, no seat-assignment files, no `src` files present.
+The old dirty branch (`feature/live-tracker-integration`) which contained a parallel session's
+`vercel.json` commit (`cd48fc8`) has been superseded by this clean branch.
 
 ### Required to close Milestone A
 
