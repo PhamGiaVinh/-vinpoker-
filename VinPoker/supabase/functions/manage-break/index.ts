@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
       // assignment as the break carrier so the break pool can render it.
       const { data: att, error: attErr } = await admin
         .from("dealer_attendance")
-        .select("id, current_state, status, dealers!inner(club_id, full_name, telegram_user_id)")
+        .select("id, current_state, status, last_released_at, dealers!inner(club_id, full_name, telegram_user_id)")
         .eq("id", attendance_id)
         .eq("status", "checked_in")
         .maybeSingle();
@@ -132,6 +132,17 @@ Deno.serve(async (req: Request) => {
       }
 
       const nowIso = new Date().toISOString();
+      const { data: restCfg } = await admin
+        .from("swing_config")
+        .select("min_inter_swing_rest_minutes")
+        .eq("club_id", club_id)
+        .eq("table_type", "tournament")
+        .maybeSingle();
+      const restWindowMinutes = restCfg?.min_inter_swing_rest_minutes ?? 10;
+      const lastReleasedAtMs = att.last_released_at ? new Date(att.last_released_at).getTime() : 0;
+      const nowMs = Date.now();
+      const elapsedRestMinutes = lastReleasedAtMs > 0 ? Math.max(0, Math.floor((nowMs - lastReleasedAtMs) / 60_000)) : 0;
+      const isRecentRest = att.current_state === "available" && lastReleasedAtMs > 0 && elapsedRestMinutes < restWindowMinutes;
       const openBreakQuery = admin
         .from("dealer_breaks")
         .select("id, break_start, expected_duration_minutes")
@@ -174,6 +185,10 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      const insertedDurationMinutes = isRecentRest
+        ? elapsedRestMinutes + duration_minutes
+        : duration_minutes;
+
       if (assignment.status !== "on_break") {
         const { error: casErr } = await admin
           .from("dealer_assignments")
@@ -187,8 +202,8 @@ Deno.serve(async (req: Request) => {
       const { error: insertBreakErr } = await admin.from("dealer_breaks").insert({
         assignment_id: assignment.id,
         break_start: nowIso,
-        expected_duration_minutes: duration_minutes,
-        reason: att.current_state === "available" ? "manual_available" : "manual",
+        expected_duration_minutes: insertedDurationMinutes,
+        reason: isRecentRest ? "manual_rest_extend" : att.current_state === "available" ? "manual_available" : "manual",
       });
       if (insertBreakErr) {
         return json({ error: insertBreakErr.message }, 500);

@@ -1318,6 +1318,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               error={breakPoolError}
               processing={processing}
               onEndBreak={endBreak}
+              onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
               onRetry={refetchBreakPool}
             />
             <RosterPanel
@@ -2751,6 +2752,7 @@ function BreakPoolCard({
   error,
   processing,
   onEndBreak,
+  onSendToBreak,
   onRetry,
 }: {
   entries: BreakPoolEntry[];
@@ -2758,6 +2760,7 @@ function BreakPoolCard({
   error: unknown;
   processing: string | null;
   onEndBreak: (entry: BreakPoolEntry) => void;
+  onSendToBreak: (attendanceId: string) => void;
   onRetry: () => void;
 }) {
   const nowMs = useLiveClock();
@@ -2887,7 +2890,17 @@ function BreakPoolCard({
                     )}
                   </div>
                 </div>
-                {!isRest && (
+                {isRest ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[10px] shrink-0 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                    disabled={processing === entry.attendanceId}
+                    onClick={() => onSendToBreak(entry.attendanceId)}
+                  >
+                    Nghỉ thêm
+                  </Button>
+                ) : (
                   <Button
                     size="sm"
                     variant="outline"
