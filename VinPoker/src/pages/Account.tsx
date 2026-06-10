@@ -334,21 +334,27 @@ const Account = () => {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-br from-card/60 to-card/40 border-gold/40 p-6 backdrop-blur-sm">
-        <div className="flex items-start gap-4">
-          <AvatarUploader
-            avatarUrl={profile?.avatar_url}
-            displayName={profile?.display_name || user.email}
-            onUploaded={(url) => setProfile((p: any) => ({ ...p, avatar_url: url }))}
-          />
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display text-xl truncate">{profile?.display_name || "Player"}</h1>
+      <Card className="relative rounded-2xl bg-gradient-to-br from-card/60 to-card/40 border border-gold/30 p-6 backdrop-blur-sm overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl opacity-30" />
+          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary/10 rounded-full blur-[120px] opacity-20" />
+        </div>
+        <div className="relative">
+          <div className="flex items-start gap-4">
+            <AvatarUploader
+              avatarUrl={profile?.avatar_url}
+              displayName={profile?.display_name || user.email}
+              onUploaded={(url) => setProfile((p: any) => ({ ...p, avatar_url: url }))}
+            />
+            <div className="flex-1 min-w-0">
+              <h1 className="font-display text-2xl md:text-3xl font-bold truncate">{profile?.display_name || "Player"}</h1>
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {roles.map(r => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-gold border border-gold/30">{r}</span>)}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {roles.map(r => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-gold border border-gold/30">{r}</span>)}
+              </div>
             </div>
+            <LanguageSwitcher />
           </div>
-          <LanguageSwitcher />
         </div>
 
         <div className="mt-4">
