@@ -100,26 +100,36 @@ export default function Documents() {
 
   return (
     <div className="space-y-8">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight flex items-center gap-3">
-            <BookOpen className="w-7 h-7 text-primary" />
+      <section className="relative rounded-2xl bg-gradient-to-br from-card/60 to-card/40 border border-gold/30 p-6 backdrop-blur-sm overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl opacity-30" />
+          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary/10 rounded-full blur-[120px] opacity-20" />
+        </div>
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 mb-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary">
+              <BookOpen className="w-3.5 h-3.5" />
+              {t("documentsPage.title")}
+            </span>
+          </div>
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground mb-2">
             {t("documentsPage.title")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-2">{t("documentsPage.subtitle")}</p>
+          <p className="text-sm text-muted-foreground">{t("documentsPage.subtitle")}</p>
+          {isAdmin && (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setUploadOpen(true);
+              }}
+              className="mt-4 gradient-gold text-primary-foreground border-0"
+            >
+              <Plus className="w-4 h-4" />
+              {t("documentsPage.uploadBtn")}
+            </Button>
+          )}
         </div>
-        {isAdmin && (
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setUploadOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            {t("documentsPage.uploadBtn")}
-          </Button>
-        )}
-      </header>
+      </section>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

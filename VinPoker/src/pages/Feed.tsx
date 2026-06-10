@@ -158,7 +158,23 @@ export default function Feed() {
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-4">
-      <h1 className="text-2xl font-display">{t("feed.title")}</h1>
+      <section className="relative rounded-2xl bg-gradient-to-br from-card/60 to-card/40 border border-gold/30 p-6 backdrop-blur-sm overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full blur-3xl opacity-30" />
+          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary/10 rounded-full blur-[120px] opacity-20" />
+        </div>
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 mb-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary">
+              <Spade className="w-3.5 h-3.5" />
+              FEED
+            </span>
+          </div>
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">
+            {t("feed.title")}
+          </h1>
+        </div>
+      </section>
 
       {/* Stories row */}
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
