@@ -193,20 +193,20 @@ const Tournaments = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:inline-flex rounded-xl bg-card border border-border p-1">
+        <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:inline-flex rounded-xl bg-card/50 border border-border/40 p-1.5 backdrop-blur-sm">
           {(["weekly", "daily", "livetracker", "news", "series", "livestream", "packages"] as const).map((v) => (
             <button
               key={v}
               onClick={() => { setView(v); setPage(1); }}
               className={cn(
-                "px-2 sm:px-4 py-1.5 text-[10px] sm:text-xs font-bold tracking-wider rounded-lg transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
+                "px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider rounded-lg transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
                 view === v
                   ? v === "livestream"
                     ? "text-foreground"
                     : v === "livetracker"
-                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                     : "gradient-neon text-primary-foreground shadow-neon"
-                  : "text-[#aba0a0]"
+                  : "text-muted-foreground hover:text-foreground transition-colors"
               )}
             >
               {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
@@ -236,9 +236,9 @@ const Tournaments = () => {
       ) : view === "packages" ? (
         <PackagesSection />
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
-        <aside className="space-y-4">
-          <Card className="p-5 gradient-card border border-border">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+        <aside className="space-y-5">
+          <Card className="p-6 bg-gradient-to-br from-card/60 to-card/40 border border-border/40 backdrop-blur-sm">
             <Collapsible open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
               <CollapsibleTrigger asChild>
                 <button
@@ -313,9 +313,9 @@ const Tournaments = () => {
           </Card>
 
           {/* VIP Card (sidebar small) */}
-          <Card className="relative overflow-hidden border border-primary/30 p-0">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/30 via-transparent to-transparent pointer-events-none" />
-            <div className="aspect-[4/3] bg-gradient-to-br from-secondary to-background flex items-center justify-center overflow-hidden">
+          <Card className="relative overflow-hidden border border-primary/20 p-0 bg-gradient-to-br from-card/60 to-card/40">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-transparent pointer-events-none" />
+            <div className="aspect-[4/3] bg-gradient-to-br from-secondary/50 to-background/50 flex items-center justify-center overflow-hidden">
               {banner?.image_url ? (
                 <img src={banner.image_url} alt={banner.title} className="w-full h-full object-cover" />
               ) : (
@@ -332,11 +332,11 @@ const Tournaments = () => {
         </aside>
 
         {/* Right column: VIP HERO Banner + Tournament Table */}
-        <div className="space-y-5">
+        <div className="space-y-6">
           {/* Big rotating Banner Carousel */}
           {banner && (
-            <Card className="relative overflow-hidden border border-primary/40 p-0 shadow-neon">
-              <div className="relative aspect-[16/6] md:aspect-[16/5] bg-gradient-to-br from-secondary via-background to-secondary">
+            <Card className="relative overflow-hidden border border-primary/20 p-0 shadow-neon">
+              <div className="relative aspect-[16/6] md:aspect-[16/5] bg-gradient-to-br from-secondary/40 via-background/60 to-secondary/40">
                 {banner.image_url && (
                   <img
                     key={banner.image_url}
@@ -438,12 +438,12 @@ const Tournaments = () => {
               }
             };
             return (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {visible.length === 0 ? (
-                  <Card className="p-12 text-center text-sm text-muted-foreground">Chưa có CLB nào tải lên lịch thi đấu.</Card>
+                  <Card className="p-12 text-center text-sm text-muted-foreground border border-border/40 bg-card/40">Chưa có CLB nào tải lên lịch thi đấu.</Card>
                 ) : (
                   visible.map((c, idx) => (
-                    <Card key={c.id} className="p-4 border border-border bg-card">
+                    <Card key={c.id} className="p-5 border border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
                       <div className="flex items-center justify-between mb-3 gap-2">
                         <Link to={`/club/${c.id}`} className="font-display font-bold text-lg hover:text-primary transition-colors truncate">
                           {c.name}
@@ -483,7 +483,7 @@ const Tournaments = () => {
             );
           })()
           : view === "series" ? (
-            <Card className="border border-border bg-card overflow-hidden p-0">
+            <Card className="border border-border/40 bg-gradient-to-br from-card/60 to-card/40 overflow-hidden p-0 backdrop-blur-sm">
               {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
               ) : series.length === 0 ? (
@@ -517,7 +517,7 @@ const Tournaments = () => {
               )}
             </Card>
           ) : (
-            <Card className="border border-border bg-card overflow-hidden p-0">
+            <Card className="border border-border/40 bg-gradient-to-br from-card/60 to-card/40 overflow-hidden p-0 backdrop-blur-sm">
               {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
               ) : (

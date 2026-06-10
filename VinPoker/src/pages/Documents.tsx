@@ -99,14 +99,14 @@ export default function Documents() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl md:text-3xl font-display font-black tracking-wider flex items-center gap-2">
-            <BookOpen className="w-6 h-6 text-primary" />
+          <h1 className="text-3xl md:text-4xl font-display font-bold tracking-tight flex items-center gap-3">
+            <BookOpen className="w-7 h-7 text-primary" />
             {t("documentsPage.title")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("documentsPage.subtitle")}</p>
+          <p className="text-sm text-muted-foreground mt-2">{t("documentsPage.subtitle")}</p>
         </div>
         {isAdmin && (
           <Button
@@ -123,7 +123,7 @@ export default function Documents() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("documentsPage.search")} className="pl-9" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("documentsPage.search")} className="pl-9 bg-card/50 border-border/40" />
       </div>
 
       <Tabs defaultValue="files">
@@ -140,9 +140,9 @@ export default function Documents() {
           ) : files.length === 0 ? (
             <p className="text-muted-foreground py-12 text-center">{t("documentsPage.empty")}</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {files.map((f) => (
-                <Card key={f.id} className="p-3 flex items-center gap-3">
+                <Card key={f.id} className="p-4 flex items-center gap-4 border-border/40 bg-gradient-to-r from-card/60 to-card/40 backdrop-blur-sm hover:border-border/60 transition-colors">
                   {f.thumbnail_url ? (
                     <img
                       src={f.thumbnail_url}
@@ -196,16 +196,16 @@ export default function Documents() {
           ) : videos.length === 0 ? (
             <p className="text-muted-foreground py-12 text-center">{t("documentsPage.empty")}</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {videos.map((v) => {
                 const ytId = (v.file_url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/) || [])[1];
                 const hasCC = !!v.subtitle_url;
                 return (
-                  <Card key={v.id} className="overflow-hidden flex flex-col">
+                  <Card key={v.id} className="overflow-hidden flex flex-col border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm hover:border-border/60 transition-colors">
                     <button
                       type="button"
                       onClick={() => openVideo(v)}
-                      className="relative aspect-video bg-muted group"
+                      className="relative aspect-video bg-muted/40 group"
                     >
                       {v.thumbnail_url ? (
                         <img src={v.thumbnail_url} alt={v.title} className="w-full h-full object-cover" />

@@ -45,19 +45,19 @@ const Clubs = () => {
   }, [clubs, region, sort]);
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-2xl gradient-card border border-gold/40 p-5 shadow-card">
-        <h1 className="font-display text-2xl text-gold">{t("clubsPage.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t("clubsPage.subtitle")}</p>
+    <div className="space-y-6">
+      <section className="rounded-2xl bg-gradient-to-br from-card/60 to-card/40 border border-gold/30 p-6 backdrop-blur-sm">
+        <h1 className="font-display text-3xl font-bold text-gold">{t("clubsPage.title")}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t("clubsPage.subtitle")}</p>
       </section>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-3">
         <Select value={region} onValueChange={setRegion}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger className="bg-card/50 border-border/40"><SelectValue /></SelectTrigger>
           <SelectContent>{REGIONS.map(r => <SelectItem key={r} value={r}>{r === "All" ? t("clubsPage.allRegions") : r}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={sort} onValueChange={setSort}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger className="bg-card/50 border-border/40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="curated">{t("clubsPage.sortCurated")}</SelectItem>
             <SelectItem value="rating">{t("clubsPage.sortRating")}</SelectItem>
@@ -69,10 +69,10 @@ const Clubs = () => {
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {filtered.map(c => (
             <Link key={c.id} to={`/club/${c.id}`}>
-              <Card className="gradient-card border-border hover:border-gold transition-all p-4 shadow-card">
+              <Card className="bg-gradient-to-br from-card/60 to-card/40 border-border/40 hover:border-gold/40 transition-all p-5 backdrop-blur-sm">
                 <div className="flex gap-3">
                   <div className="w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center shrink-0 shadow-gold bg-background">
                     {c.cover_url ? (

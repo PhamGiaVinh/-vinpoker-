@@ -223,10 +223,10 @@ const Leaderboard = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Trophy className="w-6 h-6 text-gold" />
-        <h1 className="font-display text-2xl text-gold">{t("leaderboardPage.title")}</h1>
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <Trophy className="w-7 h-7 text-gold" />
+        <h1 className="font-display text-3xl font-bold text-gold">{t("leaderboardPage.title")}</h1>
       </div>
 
       <Tabs
@@ -247,13 +247,13 @@ const Leaderboard = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overall" className="mt-3">
+        <TabsContent value="overall" className="mt-6">
           <div className="text-xs text-muted-foreground">{t("leaderboardPage.allTimeSubtitle", { n: overallList.length })}</div>
         </TabsContent>
 
-        <TabsContent value="club" className="mt-3">
+        <TabsContent value="club" className="mt-6">
           <Select value={clubFilter !== "all" ? clubFilter : ""} onValueChange={(v) => { setClubFilter(v); setPage(1); }}>
-            <SelectTrigger><SelectValue placeholder={t("leaderboardPage.selectClub")} /></SelectTrigger>
+            <SelectTrigger className="bg-card/50 border-border/40"><SelectValue placeholder={t("leaderboardPage.selectClub")} /></SelectTrigger>
             <SelectContent>
               {clubs.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
@@ -265,10 +265,10 @@ const Leaderboard = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="trusted" className="mt-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <TabsContent value="trusted" className="mt-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
             <Select value={timeFilter} onValueChange={(v: any) => { setTimeFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[140px] bg-card/50 border-border/40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="week">{t("leaderboardPage.timeWeek")}</SelectItem>
                 <SelectItem value="month">{t("leaderboardPage.timeMonth")}</SelectItem>
@@ -276,7 +276,7 @@ const Leaderboard = () => {
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={(v: any) => { setSortBy(v); setPage(1); }}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[180px] bg-card/50 border-border/40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="total">{t("leaderboardPage.sortByTotal")}</SelectItem>
                 <SelectItem value="played">{t("leaderboardPage.sortByPlayed")}</SelectItem>
@@ -302,20 +302,20 @@ const Leaderboard = () => {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           placeholder={t("leaderboardPage.searchPlaceholder")}
-          className="pl-9"
+          className="pl-9 bg-card/50 border-border/40"
         />
       </div>
 
       {isTrusted ? (
         <>
           {filteredTrusted.length === 0 ? (
-            <Card className="p-6 text-center text-sm text-muted-foreground">
+            <Card className="p-8 text-center text-sm text-muted-foreground border-border/40 bg-card/40">
               {q ? t("leaderboardPage.noPlayers") : t("leaderboardPage.trustedEmpty")}
             </Card>
           ) : (
             <>
               {/* Desktop table */}
-              <Card className="hidden md:block overflow-hidden">
+              <Card className="hidden md:block overflow-hidden border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
                 <Table>
                   <TableHeader>
                     <TableRow>
