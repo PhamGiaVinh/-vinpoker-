@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -13,11 +14,15 @@ import { DuplicateNameGuard } from "@/components/DuplicateNameGuard";
 import { SupportFloatingButton } from "@/components/SupportFloatingButton";
 import { InstallPWAButton } from "@/components/InstallPWAButton";
 import { OpenInBrowserMenu } from "@/components/OpenInBrowserMenu";
+import { MyQrSheet } from "@/components/MyQrSheet";
 import appLogo from "@/assets/app-logo.png";
 
 const tabsData = [
   { to: "/", labelKey: "schedule", icon: Calendar, end: true, label: "Lịch giải" },
+  { to: "/feed", labelKey: "feed", icon: Rss, label: "Bảng tin" },
   { to: "/clubs", labelKey: "clubs", icon: Building2, label: "CLB" },
+  { to: "/news", labelKey: "news", icon: Newspaper, label: "Tin tức" },
+  { to: "/international", labelKey: "international", icon: Globe, label: "Giải quốc tế" },
   { to: "/marketplace", labelKey: "marketplace", icon: Sparkles, label: " STAKE" },
   { to: "/find-backer", labelKey: "backer", icon: Sparkles, label: "Marketplace" },
   { to: "/documents", labelKey: "documents", icon: BookOpen, label: "Tài liệu" },
@@ -26,6 +31,7 @@ const tabsData = [
 ];
 
 export const Layout = () => {
+  const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
   const { user, isAdmin, isClubAdmin, isCashier, isStaffOps, isMedia, isTracker, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
@@ -139,6 +145,17 @@ export const Layout = () => {
                   MEDIA
                 </NavLink>
               )}
+              {user && (
+                <Button
+                  onClick={() => setQrOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  className="text-[11px] font-bold tracking-wider px-2.5 py-1.5 h-auto border-primary/40 hover:bg-primary/10"
+                  title="QR code"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
 
             {user ? (
@@ -197,6 +214,15 @@ export const Layout = () => {
           ))}
         </div>
       </nav>
+
+      {user && (
+        <MyQrSheet
+          open={qrOpen}
+          onOpenChange={setQrOpen}
+          userId={user.id}
+          displayName={(user.user_metadata as any)?.display_name ?? user.email ?? null}
+        />
+      )}
     </div>
   );
 };
