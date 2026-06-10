@@ -229,44 +229,64 @@ const Marketplace = () => {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-        <div>
-          <h1 className="font-bebas text-5xl md:text-6xl tracking-[0.05em] text-primary leading-none">
-            {t("marketplace.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-3 max-w-xl font-sans leading-relaxed">
-            {t("marketplace.subtitle")}{" "}
-            <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors">
-              {t("marketplace.findPlayerLink")}
-            </button>.
-          </p>
-          {/* Chronograph divider */}
-          <div className="flex items-center gap-2 mt-5">
-            <div className="flex-1 h-px bg-gradient-to-r from-[#10B981] to-transparent" />
-            <div className="w-2 h-2 bg-[#10B981] rotate-45 shrink-0" />
-            <div className="flex-1 h-px bg-gradient-to-l from-[#10B981] to-transparent" />
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-background px-6 py-12 md:px-10 md:py-16">
+        {/* Decorative glow effects */}
+        <div className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full bg-primary/10 blur-[120px]" />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end md:justify-between gap-8">
+          <div className="space-y-4">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit">
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">HỢP TÁC</span>
+            </div>
+
+            {/* Title */}
+            <h1 className="font-display text-5xl md:text-7xl tracking-[0.04em] text-primary leading-[0.9] drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]">
+              {t("marketplace.title")}
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-sm md:text-base text-muted-foreground leading-relaxed max-w-2xl">
+              {t("marketplace.subtitle")}{" "}
+              <button onClick={() => nav("/find-backer")} className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors">
+                {t("marketplace.findPlayerLink")}
+              </button>.
+            </p>
+
+            {/* Chronograph divider */}
+            <div className="flex items-center gap-2 pt-2 max-w-md">
+              <div className="flex-1 h-[1px] bg-primary/60" />
+              <div className="w-2 h-2 bg-primary rotate-45 shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
+              <div className="flex-1 h-[1px] bg-primary/30" />
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap gap-3 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => nav(user ? "/staking/my-deals" : "/auth")}
+              className="rounded-full border-border/60 hover:border-primary/60 hover:text-primary font-sans h-11 px-6"
+            >
+              {t("marketplace.myDealsBtn")}
+            </Button>
+            <Button
+              onClick={() => nav(user ? "/staking/new" : "/auth")}
+              className="rounded-full gradient-neon text-primary-foreground border-0 font-bold shadow-neon hover:opacity-95 h-11 px-6"
+            >
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              {t("marketplace.createDealBtn")}
+            </Button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <Button
-            variant="outline"
-            onClick={() => nav(user ? "/staking/my-deals" : "/auth")}
-            className="border-[#1F1F1F] text-foreground hover:bg-[#1F1F1F] hover:text-primary font-sans rounded-none h-10 px-5"
-          >
-            {t("marketplace.myDealsBtn")}
-          </Button>
-          <Button
-            onClick={() => nav(user ? "/staking/new" : "/auth")}
-            className="bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none h-10 px-5"
-          >
-            {t("marketplace.createDealBtn")}
-          </Button>
-        </div>
-      </header>
+      </div>
 
       {/* Filter bar */}
-      <div className="grid gap-4 md:grid-cols-[1fr_180px_200px_160px_140px] items-end bg-[#121212]/50 border border-[#1F1F1F]/50 p-5 rounded-lg backdrop-blur-sm">
+      <div className="grid gap-3 md:grid-cols-[1fr_220px_200px] items-end bg-card/60 backdrop-blur-xl border border-border/50 rounded-xl p-4 shadow-[0_4px_30px_-12px_hsl(var(--primary)/0.2)]">
         <div>
           <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
             {t("marketplace.filterSearchLabel")}
@@ -277,7 +297,7 @@ const Marketplace = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("marketplace.filterSearchPh")}
-              className="pl-9 bg-transparent border-[#1F1F1F] rounded-none h-9 text-sm font-sans"
+              className="pl-9 bg-transparent border-border rounded-none h-9 text-sm font-sans"
             />
           </div>
         </div>
@@ -286,10 +306,10 @@ const Marketplace = () => {
             {t("marketplace.filterTournament")}
           </label>
           <Select value={tournamentFilter} onValueChange={setTournamentFilter}>
-            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
+            <SelectTrigger className="mt-1 bg-transparent border-border rounded-none h-9 font-sans">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
+            <SelectContent className="rounded-none border-border bg-card">
               <SelectItem value="all" className="font-sans">{t("marketplace.filterAllTournaments")}</SelectItem>
               {tournaments.map((t) => (
                 <SelectItem key={t.id} value={t.id} className="font-sans">{t.name}</SelectItem>
@@ -309,35 +329,6 @@ const Marketplace = () => {
             onValueChange={(v) => setMarkupRange([v[0], v[1]] as [number, number])}
             className="mt-3"
           />
-        </div>
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
-            {t("marketplace.filterVerified")}
-          </label>
-          <Select value={verifFilter} onValueChange={setVerifFilter}>
-            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
-              <SelectItem value="all" className="font-sans">{t("marketplace.filterAllVerified")}</SelectItem>
-              <SelectItem value="verified" className="font-sans">{t("marketplace.filterVerifiedOnly")}</SelectItem>
-              <SelectItem value="unverified" className="font-sans">{t("marketplace.filterUnverifiedOnly")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold font-sans">
-            {t("marketplace.filterSort")}
-          </label>
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="mt-1 bg-transparent border-[#1F1F1F] rounded-none h-9 font-sans">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="rounded-none border-[#1F1F1F] bg-[#121212]">
-              <SelectItem value="closing" className="font-sans">{t("marketplace.sortClosing")}</SelectItem>
-              <SelectItem value="roi" className="font-sans">{t("marketplace.sortRoi")}</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
