@@ -113,3 +113,5 @@ function StackDepthSelector() {
     </div>
   );
 }
+
+export default StackDepthSelector;

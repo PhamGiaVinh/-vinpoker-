@@ -21,7 +21,7 @@ const STATUS_CLS: Record<LiveStatus, string> = {
   finished: "bg-muted/30 text-muted-foreground border-border",
 };
 
-const LiveStateBanner = ({ current_players, current_level, current_blinds, live_status }: Props) => {
+export const LiveStateBanner = ({ current_players, current_level, current_blinds, live_status }: Props) => {
   const status = (live_status ?? "registering") as LiveStatus;
   return (
     <div className="rounded-lg border border-neon/40 bg-gradient-to-br from-neon/5 to-transparent p-3 space-y-2">

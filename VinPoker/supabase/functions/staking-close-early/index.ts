@@ -60,12 +60,21 @@ Deno.serve(async (req) => {
     if (upErr) return json({ error: upErr.message }, 500);
 
     await admin.from("staking_audit_logs").insert({
+      deal_id: deal.id,
+      action: "player_close_early",
+      performed_by: uid,
+      old_status: deal.status,
+      new_status: newStatus,
+      metadata: {
+        filled_percent: totalLive,
+        early_closed: true,
+      },
+    });
 
     return json({ success: true, deal_status: newStatus, filled_percent: totalLive });
   } catch (e: any) {
     return json({ error: e?.message ?? "internal" }, 500);
   }
-});
 });
 
 function j(b: unknown, status = 200) {

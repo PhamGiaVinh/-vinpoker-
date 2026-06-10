@@ -1546,33 +1546,46 @@ export type Database = {
       }
       dealer_breaks: {
         Row: {
-          assignment_id: string
+          attendance_id: string | null
+          assignment_id: string | null
           break_end: string | null
           break_start: string
+          club_id: string | null
           created_at: string
           expected_duration_minutes: number
           id: string
           reason: string | null
         }
         Insert: {
-          assignment_id: string
+          attendance_id?: string | null
+          assignment_id?: string | null
           break_end?: string | null
           break_start?: string
+          club_id?: string | null
           created_at?: string
           expected_duration_minutes?: number
           id?: string
           reason?: string | null
         }
         Update: {
-          assignment_id?: string
+          attendance_id?: string | null
+          assignment_id?: string | null
           break_end?: string | null
           break_start?: string
+          club_id?: string | null
           created_at?: string
           expected_duration_minutes?: number
           id?: string
           reason?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "dealer_breaks_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_attendance"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "dealer_breaks_assignment_id_fkey"
             columns: ["assignment_id"]
@@ -1585,6 +1598,13 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_breaks_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
             referencedColumns: ["id"]
           },
         ]

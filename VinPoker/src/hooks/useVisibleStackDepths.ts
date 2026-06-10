@@ -42,7 +42,7 @@ async function init() {
     .subscribe();
 }
 
-function useVisibleStackDepths() {
+export function useVisibleStackDepths() {
   const [depths, setDepths] = useState<StackDepth[]>(cache ?? DEFAULT);
 
   useEffect(() => {

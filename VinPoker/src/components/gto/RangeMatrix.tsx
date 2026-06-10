@@ -80,3 +80,5 @@ function RangeMatrix({ range, editable }: Props) {
     </div>
   );
 }
+
+export default RangeMatrix;

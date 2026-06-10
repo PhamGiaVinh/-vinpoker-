@@ -72,7 +72,7 @@ export default function DealerAdjustDialog({
   useEffect(() => {
     if (!open || !dealer?.id) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("dealer_scores")
         .select("score, total_hours, worked_hours, overridden_score")
         .eq("dealer_id", dealer.id)
@@ -172,7 +172,7 @@ export default function DealerAdjustDialog({
         if (editScore !== "") overrides.score = Number(editScore);
         if (editWorkedHours !== "") overrides.worked_hours = Number(editWorkedHours);
 
-        const { error: scoreErr } = await supabase
+        const { error: scoreErr } = await (supabase as any)
           .from("dealer_score_overrides")
           .upsert(overrides, { onConflict: "dealer_id" });
 

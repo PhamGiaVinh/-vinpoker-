@@ -13,7 +13,7 @@
  * over upcoming swing windows.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer, type DealerCandidate } from "./pickNextDealer.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -29,7 +29,38 @@ export interface FillResult {
   assignedAttendanceIds: Set<string>;
 }
 
-export type SupabaseAdmin = ReturnType<typeof createClient>;
+export type SupabaseAdmin = any;
+
+interface GameTableRow {
+  id: string;
+  table_name: string;
+  table_type: string | null;
+  shift_id: string | null;
+  current_blind_level: number | null;
+}
+
+interface ActiveAssignmentRow {
+  table_id: string | null;
+}
+
+interface TournamentRow {
+  id: string;
+  swing_duration_minutes: number;
+  tournament_tables: Array<{ table_id: string }>;
+}
+
+interface TableOverrideRow {
+  scope_id: string;
+  swing_duration_minutes: number;
+}
+
+interface AssignTableRpcResult {
+  outcome?: string | null;
+}
+
+interface AssignTableRpcError {
+  message: string;
+}
 
 // ─── fillEmptyTables ──────────────────────────────────────────────────────────
 
@@ -48,11 +79,14 @@ export async function fillEmptyTables(
   };
 
   // Step 1: Fetch active tables for this club
-  const { data: tables, error: tableErr } = await admin
+  const { data: tables, error: tableErr } = (await admin
     .from("game_tables")
     .select("id, table_name, table_type, shift_id, current_blind_level")
     .eq("club_id", clubId)
-    .eq("status", "active");
+    .eq("status", "active")) as unknown as {
+      data: GameTableRow[] | null;
+      error: { message: string } | null;
+    };
   if (tableErr || !tables) return result;
 
   const activeTables = tables ?? [];
@@ -76,21 +110,21 @@ export async function fillEmptyTables(
   }
 
   // Step 2: Find tables with existing active assignments
-  const { data: activeAssignments } = await admin
+  const { data: activeAssignments } = (await admin
     .from("dealer_assignments")
     .select("table_id")
     .in("status", ["assigned", "pre_assigned"])
     .in(
       "table_id",
       scopedTables.map((t: { id: string }) => t.id)
-    );
+    )) as unknown as { data: ActiveAssignmentRow[] | null };
 
   const assignedTableIds = new Set(
-    (activeAssignments ?? []).map((a: { table_id: string }) => a.table_id)
+    (activeAssignments ?? []).flatMap((a) => a.table_id ? [a.table_id] : [])
   );
 
   // Step 3: Pre-fetch tournament configs + table overrides (2 fixed queries, no N+1)
-  const [tournamentsResult, tableOverridesResult] = await Promise.all([
+  const [tournamentsResult, tableOverridesResult] = (await Promise.all([
     admin
       .from("tournaments")
       .select("id, swing_duration_minutes, tournament_tables!inner(table_id)")
@@ -101,7 +135,10 @@ export async function fillEmptyTables(
       .select("scope_id, swing_duration_minutes")
       .eq("club_id", clubId)
       .eq("scope_type", "table"),
-  ]);
+  ])) as [
+    { data: TournamentRow[] | null },
+    { data: TableOverrideRow[] | null },
+  ];
 
   const tournamentConfig = new Map<string, number>();
   for (const trn of tournamentsResult.data ?? []) {
@@ -118,7 +155,7 @@ export async function fillEmptyTables(
   // Step 4: Filter empty tables, sort by blind level descending (highest first)
   const emptyTables = scopedTables
     .filter((t: { id: string }) => !assignedTableIds.has(t.id))
-    .sort((a: { current_blind_level: number }, b: { current_blind_level: number }) =>
+    .sort((a: GameTableRow, b: GameTableRow) =>
       (b.current_blind_level ?? 0) - (a.current_blind_level ?? 0)
     );
 
@@ -161,7 +198,13 @@ export async function fillEmptyTables(
 
       if (!dealer) break;
 
-      const { data: rpcResult, error: rpcErr } = await admin.rpc(
+      const rpcClient = admin as unknown as {
+        rpc: (
+          name: string,
+          args?: Record<string, unknown>,
+        ) => Promise<{ data: AssignTableRpcResult | string | null; error: AssignTableRpcError | null }>;
+      };
+      const { data: rpcResult, error: rpcErr } = await rpcClient.rpc(
         "assign_dealer_to_table",
         {
           p_table_id: table.id,

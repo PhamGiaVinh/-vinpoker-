@@ -19,18 +19,18 @@ export const POSITIONS = ["UTG", "UTG1", "LJ", "HJ", "CO", "BTN", "SB", "BB"] as
 export type Position = (typeof POSITIONS)[number];
 
 export type TreePos = Position;
-const ALL_POS: Position[] = [...POSITIONS];
+export const ALL_POS: Position[] = [...POSITIONS];
 
 export const STACK_DEPTHS = [10, 15, 20, 25, 40, 50, 75, 100, 200] as const;
 export type StackDepth = (typeof STACK_DEPTHS)[number];
 
 // -------------------- CONSTANTS --------------------
 
-const STACK_BB = 50;
-const TOTAL_COMBOS = TOTAL_COMBOS_MATH;
-const combosOf = combosOfFromMath;
+export const STACK_BB = 50;
+export const TOTAL_COMBOS = TOTAL_COMBOS_MATH;
+export const combosOf = combosOfFromMath;
 
-const OPEN_SIZE: Record<Position, number> = {
+export const OPEN_SIZE: Record<Position, number> = {
   UTG: 2.3, UTG1: 2.3, LJ: 2.3, HJ: 2.3, CO: 2.3, BTN: 2.3, SB: 3.5, BB: 0,
 };
 

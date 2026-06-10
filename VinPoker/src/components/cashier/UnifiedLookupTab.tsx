@@ -78,11 +78,11 @@ export default function UnifiedLookupTab({ clubIds, clubs }: { clubIds: string[]
     ]));
     const dealMap: Record<string, any[]> = {};
     const logMap: Record<string, any[]> = {};
-    await Promise.all(userIds.map(async (uid) => {
-      const [dealRes, logRes] = await Promise.all([
-        supabase.functions.invoke("cashier-lookup-player", { body: { user_id: uid } }),
-        supabase.from("profile_update_log").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(5),
-      ]);
+      await Promise.all(userIds.map(async (uid) => {
+        const [dealRes, logRes] = await Promise.all([
+          supabase.functions.invoke("cashier-lookup-player", { body: { user_id: uid } }),
+          (supabase as any).from("profile_update_log").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(5),
+        ]);
       if (!dealRes.error && (dealRes.data as any)?.deals) dealMap[uid] = (dealRes.data as any).deals;
       if (logRes.data) logMap[uid] = logRes.data;
     }));

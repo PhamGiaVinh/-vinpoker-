@@ -193,3 +193,5 @@ function GTOOpenRangeView({ personalMode = false }: { personalMode?: boolean } =
     </RangeTreeProvider>
   );
 }
+
+export default GTOOpenRangeView;

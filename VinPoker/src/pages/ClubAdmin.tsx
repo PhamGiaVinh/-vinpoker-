@@ -78,20 +78,20 @@ const ClubAdmin = () => {
     setBookings((bc ?? []).map((b: any) => ({ ...b, player: pmap[b.player_id], tournament: tourMap[b.tournament_id] })));
 
     // Profile update logs for this club
-    const { data: logs } = await supabase
+    const { data: logs } = await (supabase as any)
       .from("profile_update_log")
       .select("*")
       .eq("club_id", clubId)
       .order("created_at", { ascending: false })
       .limit(50);
     if (logs) {
-      const logPlayerIds = Array.from(new Set(logs.map((l: any) => l.user_id)));
+      const logPlayerIds = Array.from(new Set((logs as any[]).map((l: any) => l.user_id)));
       let lpmap: Record<string, any> = {};
       if (logPlayerIds.length) {
         const { data: lprofs } = await supabase.from("profiles").select("user_id,display_name,phone").in("user_id", logPlayerIds);
         lpmap = Object.fromEntries((lprofs ?? []).map((p: any) => [p.user_id, p]));
       }
-      setProfileLogs(logs.map((l: any) => ({ ...l, player: lpmap[l.user_id] })));
+      setProfileLogs((logs as any[]).map((l: any) => ({ ...l, player: lpmap[l.user_id] })));
     }
 
     // Dealer shifts (tours) for this club

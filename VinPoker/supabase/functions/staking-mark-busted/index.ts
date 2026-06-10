@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     // Fetch deal to verify cashier has access to the club
     const { data: deal, error: dErr } = await admin
       .from("staking_deals")
-      .select("id, club_id, status, player_id, custom_event_name")
+      .select("id, club_id, status, player_id, custom_event_name, player_busted_out")
       .eq("id", body.deal_id)
       .maybeSingle();
     if (dErr) return json({ error: dErr.message }, 500);

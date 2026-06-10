@@ -37,7 +37,7 @@ function fallbackSolve(key: ScenarioKey): HandStrategy[] {
   return fallbackSolver.solve(key.pos, key.facing, key.betSize, key.raiserPos);
 }
 
-function solveCachedAsync(key: ScenarioKey): Promise<HandStrategy[]> {
+export function solveCachedAsync(key: ScenarioKey): Promise<HandStrategy[]> {
   const k = scenarioKeyToString(key);
   const hit = cache.get(k);
   if (hit) return Promise.resolve(hit);
@@ -63,7 +63,7 @@ function solveCachedAsync(key: ScenarioKey): Promise<HandStrategy[]> {
 }
 
 /** Sync wrapper kept for back-compat (uses cached value or falls back to main thread). */
-function solveCached(key: ScenarioKey): HandStrategy[] {
+export function solveCached(key: ScenarioKey): HandStrategy[] {
   const k = scenarioKeyToString(key);
   const hit = cache.get(k);
   if (hit) return hit;
@@ -72,7 +72,7 @@ function solveCached(key: ScenarioKey): HandStrategy[] {
   return result;
 }
 
-function clearSolverCache() {
+export function clearSolverCache() {
   cache.clear();
   pending.clear();
 }

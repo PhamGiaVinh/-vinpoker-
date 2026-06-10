@@ -130,7 +130,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         .select("user_id, display_name")
         .in(
           "user_id",
-          [...new Set((await supabase.from("hand_players").select("player_id").in("hand_id", handIds)).data || []).map((p: any) => p.player_id)]
+          [...new Set(((await supabase.from("hand_players").select("player_id").in("hand_id", handIds)).data || []).map((p: any) => p.player_id))]
         ),
     ]);
 

@@ -1,4 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+export type SupabaseAdmin = any;
 
 /* ------------------------------------------------------------------ */
 /*  Format helpers                                                     */
@@ -236,7 +238,7 @@ export function formatMealBreakMessage(params: {
 
 export async function notifyFloorManagerDM(
   botToken: string,
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   clubId: string,
   text: string,
 ): Promise<void> {
@@ -306,7 +308,7 @@ export async function notifyIncomingDealer(
 /* ------------------------------------------------------------------ */
 
 export async function getClubTelegramChatId(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   clubId: string,
 ): Promise<string | null> {
   const { data } = await admin
@@ -324,6 +326,9 @@ export async function sendTelegramNotification(
   options?: {
     retries?: number;
     logError?: (msg: string) => void;
+    parse_mode?: string;
+    disable_web_page_preview?: boolean;
+    [key: string]: unknown;
   },
 ): Promise<boolean> {
   if (!botToken || !chatId) return false;

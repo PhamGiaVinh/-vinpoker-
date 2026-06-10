@@ -1,6 +1,6 @@
 // Phase 6 multi-backer (VND bank transfer): a Backer commits to buy `percent` of a deal.
 // Returns escrow bank info; Backer must transfer VND within 30 minutes.
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
 
@@ -27,11 +27,11 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader }, fetch: retryFetch } },
     );
     const token = authHeader.replace(/^Bearer\s+/i, "");
-    const { data: claimsData, error: cErr } = await userClient.auth.getClaims(token);
-    if (cErr || !claimsData?.claims?.sub) {
+    const { data: userData, error: cErr } = await userClient.auth.getUser(token);
+    if (cErr || !userData?.user?.id) {
       return j({ error: "Invalid token", details: cErr?.message }, 401);
     }
-    const uid = claimsData.claims.sub as string;
+    const uid = userData.user.id;
 
     const parsed = await parseBody(req, BodySchema, corsHeaders);
     if (!parsed.ok) return parsed.response;

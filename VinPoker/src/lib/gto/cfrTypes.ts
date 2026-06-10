@@ -31,7 +31,7 @@ export interface ScenarioKey {
   history?: ActionStep[];       // optional full history (stack/pot reconstruction)
 }
 
-function scenarioKeyToString(k: ScenarioKey): string {
+export function scenarioKeyToString(k: ScenarioKey): string {
   const h = (k.history ?? []).map((s) => `${s.pos}:${s.action}:${s.size.toFixed(2)}`).join(">");
   return `${k.pos}|${k.facing}|${k.betSize.toFixed(2)}|${k.raiserPos ?? "-"}|${h}`;
 }

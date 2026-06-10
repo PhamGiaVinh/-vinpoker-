@@ -116,7 +116,7 @@ interface Ctx {
 
 const RangeCtx = createContext<Ctx | null>(null);
 
-function RangeTreeProvider({ children, personalMode = false }: { children: ReactNode; personalMode?: boolean }) {
+export function RangeTreeProvider({ children, personalMode = false }: { children: ReactNode; personalMode?: boolean }) {
   const [state, dispatch] = useReducer(reduce, initial);
   const isHydrating = useRef(true);
 
@@ -245,7 +245,7 @@ function RangeTreeProvider({ children, personalMode = false }: { children: React
   return createElement(RangeCtx.Provider, { value }, children);
 }
 
-function useRangeTree(): Ctx {
+export function useRangeTree(): Ctx {
   const ctx = useContext(RangeCtx);
   if (!ctx) throw new Error("useRangeTree must be used inside RangeTreeProvider");
   return ctx;

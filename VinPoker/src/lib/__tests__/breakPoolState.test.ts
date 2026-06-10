@@ -105,6 +105,42 @@ describe("breakPoolState", () => {
     expect(entry.durationMinutes).toBe(12);
   });
 
+  it("renders attendance-backed regular breaks without assignment history", () => {
+    const [entry] = buildBreakPoolEntries({
+      nowMs: NOW,
+      defaultBreakMinutesByClubId: { clubA: 10 },
+      dealers: [
+        {
+          attendanceId: "att-5",
+          dealerId: "dealer-5",
+          clubId: "clubA",
+          fullName: "Pool Break Dealer",
+          telegramUsername: null,
+          tier: "B",
+          checkInTime: isoFromNow(-70),
+          currentState: "on_break",
+        },
+      ],
+      regularAssignments: [],
+      regularBreaks: [
+        {
+          id: "break-5",
+          assignmentId: null,
+          attendanceId: "att-5",
+          breakStart: isoFromNow(-4),
+          expectedDurationMinutes: 14,
+          reason: "manual_available",
+        },
+      ],
+      mealBreaks: [],
+    });
+
+    expect(entry.id).toBe("regular:break-5");
+    expect(entry.isFallback).toBe(false);
+    expect(entry.tableName).toBeNull();
+    expect(entry.durationMinutes).toBe(14);
+  });
+
   it("marks entries as soon or overdue from remaining break time", () => {
     const [entry] = buildBreakPoolEntries({
       nowMs: NOW,

@@ -30,7 +30,15 @@ import { toast } from "sonner";
 import type { TournamentWithTables } from "@/types/tournament";
 
 export default function TournamentConfigPage() {
-  const { user, loading: authLoading, isAdmin, role } = useAuth();
+  const { user, loading: authLoading, isAdmin, roles } = useAuth();
+  const hasDealerControl = (roles as any[]).some((r) => r === "dealer_control");
+  const role = isAdmin
+    ? "super_admin"
+    : hasDealerControl
+      ? ("dealer_control" as any)
+      : roles.includes("club_admin")
+        ? "club_admin"
+        : null;
   const { clubId } = useParams<{ clubId: string }>();
   const clubIdStr = clubId ?? "";
 
@@ -85,7 +93,7 @@ export default function TournamentConfigPage() {
   const assignedTableIds = new Set(
     tournaments?.flatMap((t) => t.tournament_tables.map((tt) => tt.table_id)) ?? []
   );
-  const unassignedTables = allTables?.filter((t) => !assignedTableIds.has(t.id)) ?? [];
+  const unassignedTables = (allTables as any[] | undefined)?.filter((t) => !assignedTableIds.has(t.id)) ?? [];
 
   return (
     <div className="p-6 space-y-6">
@@ -236,9 +244,9 @@ function TournamentCard({
             Bàn ({tournament.tournament_tables.length})
           </div>
           <div className="flex flex-wrap gap-1">
-            {tournament.tournament_tables.map((tt) => (
+              {tournament.tournament_tables.map((tt) => (
               <Badge key={tt.table_id} variant="secondary" className="text-xs">
-                {tt.game_tables?.name ?? tt.table_id.slice(0, 8)}
+                {tt.game_tables?.table_name ?? tt.table_id.slice(0, 8)}
               </Badge>
             ))}
             {tournament.tournament_tables.length === 0 && (

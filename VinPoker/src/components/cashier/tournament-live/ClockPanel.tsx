@@ -48,7 +48,7 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
     const { data, error } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
     setLoading(false);
     if (error) { toast.error(error.message); return; }
-    const c = data as ClockData;
+    const c = data as unknown as ClockData;
     setClock(c);
     setLocalRemaining(c.remaining_seconds);
     setIsRunning(c.is_running);

@@ -18,7 +18,7 @@ export function useCurrencyRates() {
         .single()
 
       if (error) throw error
-      return (data?.value || { usd: 0, cny: 0, krw: 0 }) as CurrencyRates
+      return (data?.value || { usd: 0, cny: 0, krw: 0 }) as unknown as CurrencyRates
     },
     staleTime: 5 * 60 * 1000,
   })

@@ -35,7 +35,7 @@ export function useTournamentPackages() {
       return (data || []).map((pkg: any) => ({
         ...pkg,
         tournaments: (pkg.tournaments || []).map((pt: any) => pt.tournaments).filter(Boolean),
-      })) as TournamentPackage[]
+      })) as unknown as TournamentPackage[]
     },
   })
 }
@@ -56,7 +56,7 @@ export function useTournamentPackage(id: string | undefined) {
       return {
         ...data,
         tournaments: (data.tournaments || []).map((pt: any) => pt.tournaments).filter(Boolean),
-      } as TournamentPackage
+      } as unknown as TournamentPackage
     },
   })
 }

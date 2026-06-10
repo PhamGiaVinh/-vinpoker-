@@ -83,7 +83,7 @@ interface SolveOpts {
   pot?: number;
 }
 
-class PreflopSolver {
+export class PreflopSolver {
   iterations: number;
   stack: number;
   pot: number;

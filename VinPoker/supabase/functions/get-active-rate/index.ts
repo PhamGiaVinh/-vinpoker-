@@ -1,5 +1,5 @@
 // Public: returns active USDT/VND exchange rate (for backers + UI display).
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 
 import { retryFetch } from "../_shared/retry.ts";
 const corsHeaders = {

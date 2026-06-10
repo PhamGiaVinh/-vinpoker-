@@ -83,10 +83,10 @@ Deno.serve(async (req) => {
         const msg = formatMassAssignMessage(assignedEntries);
         sendTelegramNotification(botToken, chatId, msg, {
           logError: (errMsg) => {
-            admin.from("swing_audit_logs").insert({
+            void admin.from("swing_audit_logs").insert({
               club_id, action: "mass_assign_telegram_failed",
               error_message: errMsg, triggered_by: uid,
-            }).then(() => {}).catch(() => {});
+            });
           },
         }).catch(() => {});
 

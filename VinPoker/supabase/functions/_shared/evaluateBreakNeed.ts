@@ -11,7 +11,7 @@
  *   5. NONE       — no break needed.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,27 +28,63 @@ export interface BreakEvalOptions {
   /** Caller-supplied snapshot of how many available dealers exist (skip DB query). */
   availableDealerCount?: number;
   /** Club-scoped dealer IDs for filtering the Rule 4 fallback query. Required. */
-  clubDealerIds: string[];
+  clubDealerIds?: string[];
 }
 
 const DEFAULT_MAX_WORK = 120;
 const DEFAULT_MIN_WORK = 60;
 
+export type SupabaseAdmin = any;
+
+interface AttendanceBreakEvalRow {
+  priority_break_flag: boolean | null;
+  dealer_id: string | null;
+}
+
+interface ShiftMetricsRow {
+  minutes_since_rest: number | null;
+  total_break_minutes: number | null;
+  total_worked_minutes: number | null;
+}
+
+interface AttendanceWorkRow {
+  worked_minutes_since_last_break: number | null;
+  check_in_time: string | null;
+}
+
+interface AssignmentIdRow {
+  id: string;
+}
+
+interface BreakEndRow {
+  break_end: string | null;
+}
+
+interface ClubMetricRow {
+  total_worked_minutes: number | null;
+  total_break_minutes: number | null;
+}
+
+interface OvertimeAssignmentRow {
+  overtime_started_at: string | null;
+}
+
 // ─── evaluateBreakNeed ────────────────────────────────────────────────────────
 
 export async function evaluateBreakNeed(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   attendanceId: string,
   options: BreakEvalOptions = {}
 ): Promise<BreakDecision> {
   const maxWork = options.maxWorkMinutes ?? DEFAULT_MAX_WORK;
   const minWork = options.minWorkMinutes ?? DEFAULT_MIN_WORK;
+  const clubDealerIds = options.clubDealerIds ?? [];
 
   const { data: attendance } = await admin
     .from("dealer_attendance")
     .select("priority_break_flag, dealer_id")
     .eq("id", attendanceId)
-    .single();
+    .single() as unknown as { data: AttendanceBreakEvalRow | null };
 
   if (!attendance) {
     return { shouldBreak: false, reason: "none", workedMinutes: 0 };
@@ -58,7 +94,7 @@ export async function evaluateBreakNeed(
     .from("dealer_shift_metrics")
     .select("minutes_since_rest, total_break_minutes, total_worked_minutes")
     .eq("attendance_id", attendanceId)
-    .maybeSingle();
+    .maybeSingle() as unknown as { data: ShiftMetricsRow | null };
 
   let worked = 0;
   if (shiftMetrics) {
@@ -69,7 +105,7 @@ export async function evaluateBreakNeed(
       .from("dealer_attendance")
       .select("worked_minutes_since_last_break, check_in_time")
       .eq("id", attendanceId)
-      .single();
+      .single() as unknown as { data: AttendanceWorkRow | null };
 
     if (att?.worked_minutes_since_last_break != null) {
       worked = att.worked_minutes_since_last_break;
@@ -81,7 +117,7 @@ export async function evaluateBreakNeed(
         .select("id")
         .eq("attendance_id", attendanceId)
         .eq("status", "assigned")
-        .maybeSingle();
+        .maybeSingle() as unknown as { data: AssignmentIdRow | null };
 
       if (currentAssignment) {
         const { data: lastBreak } = await admin
@@ -91,8 +127,20 @@ export async function evaluateBreakNeed(
           .not("break_end", "is", null)
           .order("break_end", { ascending: false })
           .limit(1)
-          .maybeSingle();
+          .maybeSingle() as unknown as { data: BreakEndRow | null };
         if (lastBreak?.break_end) baseline = new Date(lastBreak.break_end);
+      }
+
+      if (!baseline) {
+        const { data: lastAttendanceBreak } = await admin
+          .from("dealer_breaks")
+          .select("break_end")
+          .eq("attendance_id", attendanceId)
+          .not("break_end", "is", null)
+          .order("break_end", { ascending: false })
+          .limit(1)
+          .maybeSingle() as unknown as { data: BreakEndRow | null };
+        if (lastAttendanceBreak?.break_end) baseline = new Date(lastAttendanceBreak.break_end);
       }
 
       if (!baseline && att?.check_in_time) baseline = new Date(att.check_in_time);
@@ -128,14 +176,10 @@ export async function evaluateBreakNeed(
     const { data: allMetrics } = await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
-      .eq("club_id", options.clubId);
+      .eq("club_id", options.clubId) as unknown as { data: ClubMetricRow[] | null };
 
-    const totalWorked = (allMetrics ?? []).reduce(
-      (s: number, m: { total_worked_minutes: number }) => s + (m.total_worked_minutes ?? 0), 0
-    );
-    const totalBreak = (allMetrics ?? []).reduce(
-      (s: number, m: { total_break_minutes: number }) => s + (m.total_break_minutes ?? 0), 0
-    );
+    const totalWorked = (allMetrics ?? []).reduce((s: number, m) => s + (m.total_worked_minutes ?? 0), 0);
+    const totalBreak = (allMetrics ?? []).reduce((s: number, m) => s + (m.total_break_minutes ?? 0), 0);
     const avgBreakRatio = totalWorked > 0 ? totalBreak / totalWorked : 0.15;
 
     const thisDealerBreak = metrics?.total_break_minutes ?? 0;
@@ -155,11 +199,11 @@ export async function evaluateBreakNeed(
     let poolEmpty = false;
     if (options.availableDealerCount !== undefined) {
       poolEmpty = options.availableDealerCount === 0;
-    } else if (options.clubId && options.clubDealerIds.length > 0) {
+    } else if (options.clubId && clubDealerIds.length > 0) {
       const { count } = await admin
         .from("dealer_attendance")
         .select("id", { head: true, count: "exact" })
-        .in("dealer_id", options.clubDealerIds)
+        .in("dealer_id", clubDealerIds)
         .eq("current_state", "available")
         .eq("status", "checked_in");
       poolEmpty = (count ?? 0) === 0;
@@ -174,7 +218,7 @@ export async function evaluateBreakNeed(
         .select("overtime_started_at")
         .eq("attendance_id", attendanceId)
         .eq("status", "assigned")
-        .maybeSingle();
+        .maybeSingle() as unknown as { data: OvertimeAssignmentRow | null };
 
       const otMinutes = assignment?.overtime_started_at
         ? Math.floor((Date.now() - new Date(assignment.overtime_started_at as string).getTime()) / 60_000)

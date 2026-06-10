@@ -44,7 +44,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
     if (clubIds.length) q = q.in("club_id", clubIds);
     const { data, error } = await q;
     if (error) { toast.error(error.message); setTournaments([]); setLoading(false); return; }
-    setTournaments(data ?? []);
+    setTournaments((data as unknown as Tournament[]) ?? []);
     setLoading(false);
   }, [clubIds]);
 

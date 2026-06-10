@@ -65,7 +65,7 @@ export async function pasteRangeFromClipboard(): Promise<Range | null> {
   return cb ? normalizeRange(cb.range) : null;
 }
 
-function subscribeClipboard(cb: () => void): () => void {
+export function subscribeClipboard(cb: () => void): () => void {
   subs.add(cb);
   return () => { subs.delete(cb); };
 }

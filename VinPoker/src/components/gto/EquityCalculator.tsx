@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Calculator, Sparkles, Zap, RotateCcw, Share2, Shuffle, Dices } from "lucide-react";
+import { Calculator, Sparkles, Zap, RotateCcw, Share2, Shuffle, Dices, X, Plus } from "lucide-react";
 import { CardSlotPicker, RANKS, SUITS, SUIT_SYMBOL, SUIT_COLOR } from "@/components/shared/CardSlotPicker";
 export type { Card } from "@/components/shared/CardSlotPicker";
 import type { Card as CardType } from "@/components/shared/CardSlotPicker";

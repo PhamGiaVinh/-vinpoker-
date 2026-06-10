@@ -102,7 +102,8 @@ interface BreakAssignmentRow {
 
 interface RegularBreakRow {
   id: string;
-  assignment_id: string;
+  assignment_id: string | null;
+  attendance_id: string | null;
   break_start: string;
   expected_duration_minutes: number | null;
   reason: string | null;
@@ -117,8 +118,20 @@ interface MealBreakRow {
   bonus_minutes: number | null;
 }
 
+export interface GameTableRow {
+  id: string;
+  club_id: string;
+  shift_id: string | null;
+  status: string;
+  table_name: string;
+  name?: string | null;
+  table_type?: string | null;
+  table_priority?: number | null;
+  current_blind_level?: number | null;
+}
+
 interface UseRealtimeQueryOptions<T> {
-  queryFn: () => Promise<{ data: T[] | null; error: unknown }>;
+  queryFn: () => Promise<any>;
   realtimeTables: string[];
   clubIds: string[];
   pollFallbackMs?: number;
@@ -135,7 +148,7 @@ function useRealtimeQuery<T>(
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const generationRef = useRef(0);
-  const queryFnRef = useRef(queryFn);
+  const queryFnRef = useRef<() => Promise<any>>(queryFn);
   /** Unique per-hook-instance id to prevent channel name collision when
    *  multiple hooks subscribe to the same table (e.g. useCheckedInDealers
    *  + useTodayCheckedOutDealers both on dealer_attendance). */
@@ -145,8 +158,10 @@ function useRealtimeQuery<T>(
   const refetch = useCallback(async () => {
     const gen = ++generationRef.current;
     try {
-      const { data: rows, error } = await queryFnRef.current();
+      const result = await queryFnRef.current();
       if (gen !== generationRef.current) return;
+      const rows = Array.isArray(result) ? result : result?.data;
+      const error = Array.isArray(result) ? null : result?.error;
       if (error) {
         const msg = (error as any)?.message || JSON.stringify(error);
         console.error("[useRealtimeQuery] error:", msg);
@@ -154,7 +169,7 @@ function useRealtimeQuery<T>(
         setData([]);
       } else {
         setError(null);
-        setData(rows ?? []);
+        setData((rows ?? []) as T[]);
       }
     } catch (e) {
       if (gen !== generationRef.current) return;
@@ -357,15 +372,24 @@ export function useBreakPool(
       }
 
       const assignmentIds = (breakAssignments ?? []).map((assignment: any) => assignment.id);
-      const [{ data: regularBreaks, error: regularBreakError }, { data: mealBreaks, error: mealBreakError }] =
+      const [
+        { data: regularBreaksByAssignment, error: regularBreakAssignmentError },
+        { data: regularBreaksByAttendance, error: regularBreakAttendanceError },
+        { data: mealBreaks, error: mealBreakError },
+      ] =
         await Promise.all([
           assignmentIds.length > 0
             ? supabase
                 .from("dealer_breaks")
-                .select("id, assignment_id, break_start, expected_duration_minutes, reason")
+                .select("id, assignment_id, attendance_id, break_start, expected_duration_minutes, reason")
                 .in("assignment_id", assignmentIds)
                 .is("break_end", null)
             : Promise.resolve({ data: [], error: null }),
+          supabase
+            .from("dealer_breaks")
+            .select("id, assignment_id, attendance_id, break_start, expected_duration_minutes, reason")
+            .in("attendance_id", attendanceIds)
+            .is("break_end", null),
           supabase
             .from("dealer_meal_breaks")
             .select("id, attendance_id, break_start, total_duration_minutes, base_duration_minutes, bonus_minutes")
@@ -373,9 +397,18 @@ export function useBreakPool(
             .eq("status", "active"),
         ]);
 
-      if (regularBreakError || mealBreakError) {
-        return { data: null, error: regularBreakError ?? mealBreakError };
+      if (regularBreakAssignmentError || regularBreakAttendanceError || mealBreakError) {
+        return { data: null, error: regularBreakAssignmentError ?? regularBreakAttendanceError ?? mealBreakError };
       }
+
+      const regularBreakMap = new Map<string, any>();
+      for (const breakRow of [
+        ...(regularBreaksByAssignment ?? []),
+        ...(regularBreaksByAttendance ?? []),
+      ] as any[]) {
+        regularBreakMap.set(breakRow.id, breakRow);
+      }
+      const regularBreaks = [...regularBreakMap.values()];
 
       const breakEntries = buildBreakPoolEntries({
         nowMs,
@@ -394,14 +427,15 @@ export function useBreakPool(
           attendanceId: assignment.attendance_id,
           releasedAt: assignment.released_at,
           tableName: assignment.game_tables?.table_name ?? null,
-        })) as BreakAssignmentRow[],
+        })) as unknown as BreakAssignmentRow[],
         regularBreaks: (regularBreaks ?? []).map((breakRow: any) => ({
           id: breakRow.id,
-          assignmentId: breakRow.assignment_id,
+          assignmentId: breakRow.assignment_id ?? null,
+          attendanceId: breakRow.attendance_id ?? null,
           breakStart: breakRow.break_start,
           expectedDurationMinutes: breakRow.expected_duration_minutes,
           reason: breakRow.reason,
-        })) as RegularBreakRow[],
+        })) as unknown as RegularBreakRow[],
         mealBreaks: (mealBreaks ?? []).map((breakRow: any) => ({
           id: breakRow.id,
           attendanceId: breakRow.attendance_id,
@@ -409,9 +443,9 @@ export function useBreakPool(
           totalDurationMinutes: breakRow.total_duration_minutes,
           baseDurationMinutes: breakRow.base_duration_minutes,
           bonusMinutes: breakRow.bonus_minutes,
-        })) as MealBreakRow[],
+        })) as unknown as MealBreakRow[],
         defaultBreakMinutesByClubId,
-      });
+      } as any);
 
       return {
         data: sortBreakPoolEntries([...breakEntries, ...restEntries]),
@@ -546,7 +580,7 @@ export function useActiveAssignmentsWithTimeline(clubIds: string[]) {
 }
 
 export function useActiveTables(clubIds: string[]) {
-  return useRealtimeQuery({
+  return useRealtimeQuery<GameTableRow>({
     queryFn: async () =>
       supabase
         .from("game_tables")
@@ -688,7 +722,7 @@ export function useBreakPolicies(clubIds: string[]) {
         .from("shift_break_policies")
         .select("*")
         .in("club_id", clubIds);
-      setData(d ?? []);
+      setData((d ?? []) as ShiftBreakPolicy[]);
     })();
   }, [clubIds.join(",")]);
 

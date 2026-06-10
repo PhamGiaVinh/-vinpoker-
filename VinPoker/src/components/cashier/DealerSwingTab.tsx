@@ -43,7 +43,6 @@ import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
-import { TableTimerDisplay } from "./TableTimerDisplay";
 import { TableCardKebab } from "./TableCardKebab";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -59,6 +58,16 @@ import { Calendar } from "@/components/ui/calendar";
 
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
+type TableTimeline = {
+  minutesLeft: number;
+  showNextDealerSoon: boolean;
+  isOverdue: boolean;
+  nominalDueAt: string | null;
+  actualDueAt: string | null;
+  actualMinutesLeft: number;
+  waitingForDealerReady: boolean;
+  waitMinutes: number;
+};
 
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
@@ -77,6 +86,66 @@ function useTours(clubIds: string[]) {
   return { data, loading, refetch: load };
 }
 
+function formatTimeHHmm(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return "--:--";
+  return new Date(ms).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function resolveTableSwingTiming(
+  assignment: DealerAssignment,
+  table: any | undefined,
+  tournaments: TournamentWithTables[] | undefined,
+  swingConfigs: SwingConfig[] | null | undefined,
+  nowMs: number,
+): TableTimeline {
+  const tableType = table?.table_type ?? assignment.game_tables?.table_type ?? "tournament";
+  const tableTournament = tournaments?.find((tr) =>
+    tr.tournament_tables.some((tt) => tt.table_id === assignment.table_id)
+  );
+  const swingDurationMinutes =
+    tableTournament?.swing_duration_minutes
+    ?? swingConfigs?.find((c) => c.table_type === tableType)?.swing_duration_minutes
+    ?? 30;
+  const warnAtMinutes =
+    tableTournament?.warn_at_minutes
+    ?? swingConfigs?.find((c) => c.table_type === tableType)?.warn_at_minutes
+    ?? 5;
+
+  const assignedAtMs = new Date(assignment.assigned_at).getTime();
+  const nominalDueMs = Number.isFinite(assignedAtMs)
+    ? assignedAtMs + swingDurationMinutes * 60_000
+    : null;
+  const actualDueMs = assignment.swing_due_at
+    ? new Date(assignment.swing_due_at).getTime()
+    : nominalDueMs;
+
+  const nominalRemainingMs = nominalDueMs != null ? nominalDueMs - nowMs : 0;
+  const actualRemainingMs = actualDueMs != null ? actualDueMs - nowMs : 0;
+  const minutesLeft = nominalDueMs != null ? Math.max(0, nominalRemainingMs / 60_000) : 0;
+  const actualMinutesLeft = actualDueMs != null ? Math.max(0, actualRemainingMs / 60_000) : 0;
+  const waitingForDealerReady =
+    !!assignment.pre_assigned_attendance_id
+    && nominalDueMs != null
+    && actualDueMs != null
+    && nominalRemainingMs <= 0
+    && actualRemainingMs > 0;
+
+  return {
+    minutesLeft,
+    showNextDealerSoon: nominalDueMs != null ? minutesLeft <= warnAtMinutes : false,
+    isOverdue: nominalDueMs != null ? nominalRemainingMs <= 0 : false,
+    nominalDueAt: nominalDueMs != null ? new Date(nominalDueMs).toISOString() : null,
+    actualDueAt: actualDueMs != null ? new Date(actualDueMs).toISOString() : null,
+    actualMinutesLeft,
+    waitingForDealerReady,
+    waitMinutes: waitingForDealerReady ? Math.max(1, Math.ceil(actualRemainingMs / 60_000)) : 0,
+  };
+}
+
 /* ==============================================================
    SWING PANEL — Main 3-Column Layout
    ============================================================== */
@@ -87,6 +156,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return [...ids].sort();
   }, [clubFilter, clubIds]);
   const [selectedTour, setSelectedTour] = useState<string | null>(null);
+  const nowMs = useLiveClock();
 
   const { data: dealers, loading: dealersLoading, error: dealersError, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
   const { data: checkedOutDealers, refetch: refetchCheckedOut } = useTodayCheckedOutDealers(filteredClubIds);
@@ -97,25 +167,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignmentsWithTimeline(filteredClubIds);
   const preAssignedMap = usePreAssignedDealers(assignments);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
+  const { data: tournaments } = useActiveTournaments(clubFilter ?? filteredClubIds[0]);
+  const tablesById = useMemo(() => {
+    return new Map((tables ?? []).map((table) => [table.id, table]));
+  }, [tables]);
   const { data: breakPool, loading: breakPoolLoading, error: breakPoolError, refetch: refetchBreakPool } =
     useBreakPool(filteredClubIds, dealers ?? [], swingConfigs ?? []);
 
   const timelineByTableId = useMemo(() => {
-    const map: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }> = {};
+    const map: Record<string, TableTimeline> = {};
     for (const a of assignments ?? []) {
-      const minutesLeft = (a as any).minutesLeft ?? 0;
-      // Use configured warn_at_minutes instead of hardcoded 5
-      const tableType = (a as any).game_tables?.table_type;
-      const warnAt = swingConfigs?.find((c) => c.table_type === tableType)?.warn_at_minutes ?? 5;
-      const showNextDealerSoon = minutesLeft <= warnAt;
-      map[a.table_id] = {
-        minutesLeft,
-        showNextDealerSoon,
-        isOverdue: (a as any).isOverdue ?? false,
-      };
+      const table = tablesById.get(a.table_id);
+      map[a.table_id] = resolveTableSwingTiming(a, table, tournaments, swingConfigs, nowMs);
     }
     return map;
-  }, [assignments, swingConfigs]);
+  }, [assignments, tablesById, tournaments, swingConfigs, nowMs]);
   const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
   const breakPolicies = useBreakPolicies(filteredClubIds);
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
@@ -139,10 +205,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds, assignments);
 
   // ── Tournament config for swing override display ─────────────────────────
-  const { data: tournaments } = useActiveTournaments(
-    clubFilter ?? filteredClubIds[0]
-  );
-
   const [processing, setProcessing] = useState<string | null>(null);
   const [swingAllBusy, setSwingAllBusy] = useState(false);
   const [swingingTableId, setSwingingTableId] = useState<string | null>(null);
@@ -1144,7 +1206,15 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       "Bắt đầu": a.assigned_at ? new Date(a.assigned_at).toLocaleTimeString("vi-VN") : "",
       "Trạng thái": a.status === "assigned" ? "Đang bàn" : a.status === "on_break" ? "Đang nghỉ" : "",
     }));
-    exportToExcel(`shift-report-${today}`, rows);
+    const columns = [
+      { header: "Bàn", get: (row: any) => row["Bàn"] },
+      { header: "Loại bàn", get: (row: any) => row["Loại bàn"] },
+      { header: "Dealer", get: (row: any) => row["Dealer"] },
+      { header: "Hạng", get: (row: any) => row["Hạng"] },
+      { header: "Bắt đầu", get: (row: any) => row["Bắt đầu"] },
+      { header: "Trạng thái", get: (row: any) => row["Trạng thái"] },
+    ];
+    exportToExcel(rows, columns, `shift-report-${today}`, "Shift report");
     toast.success("Đã tải báo cáo ca");
   };
 
@@ -1184,7 +1254,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     if (!payrollData?.length) return;
     const today = new Date().toISOString().split("T")[0];
     const label = `${payrollClubSlug}-${payrollDateBounds.from}-${payrollDateBounds.to}`;
-    exportToExcel(`bang-luong-${label}-${today}`, payrollData.map((r: any) => {
+    const rows = payrollData.map((r: any) => {
       const edits = payrollEdits[r.dealer_id] ?? {};
       const displayRow = recalcPay(r, edits);
       return {
@@ -1199,7 +1269,20 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         "Lương OT": Number(displayRow.overtime_pay).toLocaleString("vi-VN"),
         "Tổng lương": Number(displayRow.total_pay).toLocaleString("vi-VN"),
       };
-    }));
+    });
+    const columns = [
+      { header: "Dealer", get: (row: any) => row["Dealer"] },
+      { header: "Hạng", get: (row: any) => row["Hạng"] },
+      { header: "Loại", get: (row: any) => row["Loại"] },
+      { header: "Tổng giờ", get: (row: any) => row["Tổng giờ"] },
+      { header: "OT phút", get: (row: any) => row["OT phút"] },
+      { header: "Số swing", get: (row: any) => row["Số swing"] },
+      { header: "Giờ (VND)", get: (row: any) => row["Giờ (VND)"] },
+      { header: "Lương CB", get: (row: any) => row["Lương CB"] },
+      { header: "Lương OT", get: (row: any) => row["Lương OT"] },
+      { header: "Tổng lương", get: (row: any) => row["Tổng lương"] },
+    ];
+    exportToExcel(rows, columns, `bang-luong-${label}-${today}`, "Payroll");
     toast.success("Đã tải bảng lương");
   };
 
@@ -2941,7 +3024,7 @@ function TableGrid({
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
   preAssignedMap: Record<string, PreAssignedInfo | null>;
-  timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
+  timelineByTableId: Record<string, TableTimeline>;
   swingConfigs: SwingConfig[];
   tournaments: TournamentWithTables[] | undefined;
   processing: string | null;
@@ -3025,14 +3108,28 @@ function TableGrid({
             const critAt = tableTournament?.crit_at_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.crit_at_minutes ?? 1;
 
             const dealer = a ? (a as any).dealer_attendance?.dealers : null;
+            const tl = timelineByTableId[t.id];
+            const pred = nextDealerMap?.[t.id];
 
             // ── Timer / OT / Progress computations ──────────────────────────
-            const swingDueMs = a ? new Date(a.swing_due_at).getTime() : 0;
+            const swingDueMs = tl?.nominalDueAt
+              ? new Date(tl.nominalDueAt).getTime()
+              : a?.assigned_at
+                ? new Date(a.assigned_at).getTime() +
+                  ((tableTournament?.swing_duration_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes ?? 30) * 60_000)
+                : 0;
+            const actualDueMs = tl?.actualDueAt
+              ? new Date(tl.actualDueAt).getTime()
+              : a?.swing_due_at
+                ? new Date(a.swing_due_at).getTime()
+                : swingDueMs;
             const preAssignStatus = a?.pre_assign_status ?? "none";
             const preAssignLabel = getPreAssignStatusLabel(preAssignStatus);
             const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
             const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
-            const canSwing = !!a && !a.swing_processed_at && (isOt || swingDueMs <= nowMs);
+            const canSwing = !!a && !a.swing_processed_at && (isOt || actualDueMs <= nowMs);
+            const waitingForDealerReady = !!tl?.waitingForDealerReady;
+            const waitMinutes = tl?.waitMinutes ?? 0;
 
             let otLabel = "";
             if (isOt && a?.overtime_started_at) {
@@ -3075,9 +3172,6 @@ function TableGrid({
               : "bg-emerald-500";
 
             const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
-
-            const tl = timelineByTableId[t.id];
-            const pred = nextDealerMap?.[t.id];
 
             return (
               <div key={t.id} id={`table-card-${t.id}`} className={[
@@ -3156,7 +3250,7 @@ function TableGrid({
                         {isOt ? otLabel : timerLabel}
                       </span>
                       <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                        {statusLabel}
+                        {waitingForDealerReady ? `Đợi dealer ~${waitMinutes}p đến ${formatTimeHHmm(actualDueMs)}` : statusLabel}
                       </span>
                     </div>
                   )}
@@ -3284,7 +3378,7 @@ function CommandCenter({
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
   dealers: DealerAttendance[];
-  swingMetrics: SwingMetrics[];
+  swingMetrics: any[];
   tables: any[];
   assignments: DealerAssignment[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -3339,7 +3433,10 @@ function CommandCenter({
     [assignments],
   );
   const availableDealersCount = useMemo(
-    () => dealers?.filter((d) => d.current_state === "available" || d.current_state === "waiting")?.length ?? 0,
+    () => dealers?.filter((d) => {
+      const state = (d as any).current_state;
+      return state === "available" || state === "waiting";
+    })?.length ?? 0,
     [dealers],
   );
 

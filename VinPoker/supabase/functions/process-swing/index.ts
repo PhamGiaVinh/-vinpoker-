@@ -82,7 +82,7 @@ interface StateTransitionResult {
 }
 
 async function transitionDealerState(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   attendanceId: string,
   newState: string,
   reason?: string
@@ -119,7 +119,7 @@ async function transitionDealerState(
 const breakSettingsCache = new Map<string, { breakDuration: number; maxBreak: number; cachedAt: number }>();
 
 async function getBreakSettings(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   clubId: string
 ): Promise<{ breakDuration: number; maxBreak: number }> {
   const CACHE_TTL = 5 * 60 * 1000;
@@ -165,7 +165,7 @@ interface ClubSwingConfig {
 // ─── Config fetching ──────────────────────────────────────────────────────────
 
 async function fetchAllClubConfigs(
-  admin: ReturnType<typeof createClient>
+  admin: any
 ): Promise<Map<string, ClubSwingConfig>> {
   const configMap = new Map<string, ClubSwingConfig>();
 
@@ -236,7 +236,7 @@ function getClubConfig(
 }
 
 async function getClubLocalDate(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   clubId: string
 ): Promise<string> {
   const { data } = await admin.rpc("club_local_date", { p_club_id: clubId });
@@ -427,7 +427,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const admin = createClient(
+    const admin: any = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
@@ -745,19 +745,20 @@ Deno.serve(async (req: Request) => {
           }
 
           // 3. Stuck in_transition (>5 minutes)
-          // dealer_attendance has no updated_at — use check_in_time as proxy for time-based guard
+          // Use updated_at, not check_in_time. check_in_time is the shift start
+          // and can be many hours old, which would force-release healthy swaps.
           const { data: stuckTransition } = await admin
             .from("dealer_attendance")
-            .select("id, dealer_id, check_in_time, dealers!inner(full_name)")
+            .select("id, dealer_id, updated_at, dealers!inner(full_name)")
             .eq("current_state", "in_transition")
             .in("dealer_id", cidDealerIds)
-            .lt("check_in_time", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+            .lt("updated_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
 
           if (stuckTransition && stuckTransition.length > 0) {
             console.log(`[Pass 0c] Found ${stuckTransition.length} stuck in_transition dealers (>5min)`);
             for (const s of stuckTransition) {
               const dealerName = (s.dealers as any)?.full_name ?? "Unknown";
-              const stuckMinutes = Math.floor((Date.now() - new Date(s.check_in_time).getTime()) / 60000);
+              const stuckMinutes = Math.floor((Date.now() - new Date(s.updated_at).getTime()) / 60000);
               stuckIssues.push({ id: s.id, dealer_name: dealerName, issue: `in_transition_stuck_${stuckMinutes}m` });
               await transitionDealerState(admin, s.id, "available", `pass0c_stuck_in_transition_${stuckMinutes}m`);
             }
@@ -1666,7 +1667,7 @@ if (tier2Count > 0) {
               `[Pass 2] ❌ Unhandled error for club ${cid}:`,
               err instanceof Error ? err.stack : err
             );
-            pass2Result = { pre_assigned_count: 0 };
+            pass2Result = { pre_assigned_count: 0, skipped_count: 0, errors: [] };
           }
           if (pass2Result.pre_assigned_count > 0) {
             console.log(`[Pass 2] ✅ Pre-assigned ${pass2Result.pre_assigned_count} dealers`);
@@ -1725,7 +1726,8 @@ if (tier2Count > 0) {
             diagnostic_type: 'pass3_query_issue',
             result: diagnostic,
             metadata: { force_all: forceAll, pass: 3 }
-          }).then(({ error: insertErr }) => {
+          }).then((result: any) => {
+            const { error: insertErr } = result ?? {};
             if (insertErr) {
               console.warn('[Pass 3 Diagnostic] Failed to save:', insertErr.message);
             }
@@ -1738,7 +1740,7 @@ if (tier2Count > 0) {
         const dueColumns = `
           id, table_id, attendance_id, swing_due_at, version, updated_at,
           last_swing_attempted_at, pre_assigned_attendance_id, pre_assigned_at,
-          overtime_started_at, last_ot_alert_at, swing_in_progress,
+          overtime_started_at, last_ot_alert_at, swing_in_progress, is_emergency_pre_assign,
           game_tables(table_name, table_type),
           dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))
         `;
@@ -1816,7 +1818,8 @@ if (tier2Count > 0) {
               assignment_id: assignment.id,
               ...metadata,
             },
-          }).then(({ error }) => {
+          }).then((result: any) => {
+            const { error } = result ?? {};
             if (error) console.warn(`[diagnostic_logs] ${diagnosticType} insert failed:`, error.message);
           });
         };
@@ -2064,7 +2067,7 @@ if (tier2Count > 0) {
           // (The old 60-min CIRCUIT_BREAKER_THRESHOLD is removed — single source of truth
           //  lives in swing_escalation_config.force_release_at_overdue_min)
           const forceReleaseThresholdMin = await admin.rpc("get_escalation_config", { p_club_id: cid })
-            .then((r) => r.data?.force_release_at_overdue_min ?? 30)
+            .then((r: any) => r.data?.force_release_at_overdue_min ?? 30)
             .catch(() => 30);
           if (minsLeft < -forceReleaseThresholdMin) {
             console.error(
@@ -2288,15 +2291,9 @@ if (tier2Count > 0) {
                 } else if (postAssign3.reason !== "no dealer available") {
                   console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign3.reason}`);
                 }
-                // Send swing-in notification for pre-assigned swing
-                if (botToken && pass2ChatId) {
-                  const incomingName = (rpcResult as any)?.incoming_name ?? "Dealer";
-                  const outgoingName = outgoingDealer.full_name !== "Unknown" ? outgoingDealer.full_name : null;
-                  const swingMsg = outgoingName
-                    ? `🔵 ${incomingName} vào bàn ${tableName} - Thay ${outgoingName}`
-                    : `🔵 ${incomingName} vào bàn ${tableName}`;
-                  sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
-                }
+                // Pre-assign notification was already sent when the reservation was created.
+                // Do not send a second swing-in Telegram here, or the user will receive
+                // a duplicate message when the delayed handoff finally executes.
                 if (breakDecision.shouldBreak) {
                   const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
                   notifier?.enqueue({
@@ -2325,7 +2322,7 @@ if (tier2Count > 0) {
                     isNoShow = true;
                   } else {
                     incomingAtt = data;
-                    if (incomingAtt.current_state !== "pre_assigned" || incomingAtt.status === "checked_out") {
+                    if (!incomingAtt || incomingAtt.current_state !== "pre_assigned" || incomingAtt.status === "checked_out") {
                       isNoShow = true;
                     }
                   }
@@ -2350,7 +2347,8 @@ if (tier2Count > 0) {
                       swing_due_at: assignment.swing_due_at,
                       is_emergency_pre_assign: assignment.is_emergency_pre_assign,
                     },
-                  }).then(({ error }) => {
+                  }).then((result: any) => {
+                    const { error } = result ?? {};
                     if (error) console.warn("[diagnostic_logs] no_show insert failed:", error.message);
                   });
 
@@ -2443,7 +2441,8 @@ if (tier2Count > 0) {
                           swing_at: newSwingDueAt.toISOString(),
                         },
                         metadata: { no_show_dealer_id: incomingId },
-                      }).then(({ error }) => {
+                      }).then((result: any) => {
+                        const { error } = result ?? {};
                         if (error) console.warn("[diagnostic_logs] emergency_re_assign insert failed:", error.message);
                       });
 
@@ -2471,7 +2470,8 @@ if (tier2Count > 0) {
                           level: "ERROR",
                         },
                         metadata: { table_id: assignment.table_id, outgoing_dealer_id: assignment.attendance_id },
-                      }).then(({ error }) => {
+                      }).then((result: any) => {
+                        const { error } = result ?? {};
                         if (error) console.warn("[diagnostic_logs] ot_fallback insert failed:", error.message);
                       });
                     }
@@ -2495,7 +2495,8 @@ if (tier2Count > 0) {
                         level: "ERROR",
                       },
                       metadata: { table_id: assignment.table_id, outgoing_dealer_id: assignment.attendance_id },
-                    }).then(({ error }) => {
+                    }).then((result: any) => {
+                      const { error } = result ?? {};
                       if (error) console.warn("[diagnostic_logs] ot_fallback insert failed:", error.message);
                     });
                     console.log(`[Pass 3] ❌ No-show fallback: ${tableName} -> OT mode`);
@@ -2724,7 +2725,8 @@ if (tier2Count > 0) {
                 metadata: {
                   attendance_id: assignment.attendance_id,
                 },
-              }).then(({ error }) => {
+              }).then((result: any) => {
+                const { error } = result ?? {};
                 if (error) console.warn("[tiers_exhausted] log failed:", error.message);
               });
             }

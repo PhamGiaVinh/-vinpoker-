@@ -7,7 +7,7 @@
 //   if (!parsed.ok) return parsed.response;
 //   const { deal_id } = parsed.data;
 
-import { z } from "npm:zod@3.23.8";
+import { z } from "npm:zod@3.25.76";
 
 export { z };
 

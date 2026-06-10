@@ -464,7 +464,7 @@ function resolveDeadline(deal: DealRow): Date | null {
 }
 
 const DealCard = ({
-  deal, stats, breakdown, onClick, onViewProfile, sold,
+  deal, stats, breakdown, onClick, onViewProfile, sold, now,
 }: {
   deal: DealRow; stats?: PlayerStats; breakdown?: DealBreakdown; onClick: () => void;
   onViewProfile: () => void; sold?: boolean; now: number;

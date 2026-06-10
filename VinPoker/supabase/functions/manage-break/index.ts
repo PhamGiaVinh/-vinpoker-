@@ -69,11 +69,12 @@ Deno.serve(async (req: Request) => {
     switch (action) {
     case "start": {
       // Allow starting break from either assigned dealers or checked-in dealers
-      // already sitting in the pool. For pool dealers, reuse the latest
-      // assignment as the break carrier so the break pool can render it.
+      // already sitting in the pool. If the dealer has assignment history,
+      // reuse the latest assignment as the break carrier; otherwise create an
+      // attendance-backed break row so the pool can still render it.
       const { data: att, error: attErr } = await admin
         .from("dealer_attendance")
-        .select("id, current_state, status, last_released_at, dealers!inner(club_id, full_name, telegram_user_id)")
+        .select("id, current_state, status, last_released_at, pool_entered_at, dealers!inner(club_id, full_name, telegram_user_id)")
         .eq("id", attendance_id)
         .eq("status", "checked_in")
         .maybeSingle();
@@ -116,19 +117,17 @@ Deno.serve(async (req: Request) => {
       }
 
       const assignment = activeAssignment ?? latestAssignment;
-      if (!assignment) {
-        return json({ error: "No assignment history found for this dealer" }, 404);
-      }
-
-      const gameTable = Array.isArray(assignment.game_tables)
-        ? assignment.game_tables[0]
-        : assignment.game_tables;
-      if (gameTable?.club_id !== club_id) {
-        console.error(
-          `[manage-break] Club mismatch (safety): attendance=${attendance_id} ` +
-          `table_club=${gameTable?.club_id} request_club=${club_id}`
-        );
-        return json({ error: "Attendance does not belong to this club" }, 403);
+      if (assignment) {
+        const gameTable = Array.isArray(assignment.game_tables)
+          ? assignment.game_tables[0]
+          : assignment.game_tables;
+        if (gameTable?.club_id !== club_id) {
+          console.error(
+            `[manage-break] Club mismatch (safety): attendance=${attendance_id} ` +
+            `table_club=${gameTable?.club_id} request_club=${club_id}`
+          );
+          return json({ error: "Attendance does not belong to this club" }, 403);
+        }
       }
 
       const nowIso = new Date().toISOString();
@@ -139,23 +138,40 @@ Deno.serve(async (req: Request) => {
         .eq("table_type", "tournament")
         .maybeSingle();
       const restWindowMinutes = restCfg?.min_inter_swing_rest_minutes ?? 10;
-      const lastReleasedAtMs = att.last_released_at ? new Date(att.last_released_at).getTime() : 0;
+      const restEntryAt = att.pool_entered_at ?? att.last_released_at;
+      const lastReleasedAtMs = restEntryAt ? new Date(restEntryAt).getTime() : 0;
       const nowMs = Date.now();
       const elapsedRestMinutes = lastReleasedAtMs > 0 ? Math.max(0, Math.floor((nowMs - lastReleasedAtMs) / 60_000)) : 0;
       const isRecentRest = att.current_state === "available" && lastReleasedAtMs > 0 && elapsedRestMinutes < restWindowMinutes;
       const openBreakQuery = admin
         .from("dealer_breaks")
         .select("id, break_start, expected_duration_minutes")
-        .eq("assignment_id", assignment.id)
+        .eq("attendance_id", attendance_id)
         .is("break_end", null)
         .order("break_start", { ascending: false })
         .limit(1);
-      const { data: openBreak, error: breakErr } = await openBreakQuery.maybeSingle();
+      const { data: openBreakByAttendance, error: breakErr } = await openBreakQuery.maybeSingle();
       if (breakErr) {
         return json({ error: breakErr.message }, 500);
       }
 
-      if (att.current_state === "on_break" && openBreak) {
+      let openBreak = openBreakByAttendance ?? null;
+      if (!openBreak && assignment?.id) {
+        const { data: openBreakByAssignment, error: assignmentBreakErr } = await admin
+          .from("dealer_breaks")
+          .select("id, break_start, expected_duration_minutes")
+          .eq("assignment_id", assignment.id)
+          .is("break_end", null)
+          .order("break_start", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (assignmentBreakErr) {
+          return json({ error: assignmentBreakErr.message }, 500);
+        }
+        openBreak = openBreakByAssignment ?? null;
+      }
+
+      if (openBreak) {
         const elapsedMinutes = Math.max(
           0,
           Math.floor((Date.now() - new Date(openBreak.break_start).getTime()) / 60_000),
@@ -177,6 +193,18 @@ Deno.serve(async (req: Request) => {
           return json({ error: `Failed to extend break: ${updateBreakErr.message}` }, 500);
         }
 
+        if (att.current_state !== "on_break") {
+          const { data: stateResult } = await admin.rpc("transition_dealer_state", {
+            p_attendance_id: attendance_id,
+            p_new_state: "on_break",
+            p_reason: "manage_break_extend",
+          });
+          if (stateResult?.ok === false) {
+            console.error(`[manage-break] State transition failed while extending break: ${stateResult.error}`);
+            return json({ error: `State transition failed: ${stateResult.error}` }, 500);
+          }
+        }
+
         return json({
           ok: true,
           action: "extended",
@@ -189,7 +217,7 @@ Deno.serve(async (req: Request) => {
         ? elapsedRestMinutes + duration_minutes
         : duration_minutes;
 
-      if (assignment.status !== "on_break") {
+      if (assignment && assignment.status !== "on_break") {
         const { error: casErr } = await admin
           .from("dealer_assignments")
           .update({ status: "on_break", version: assignment.version + 1 })
@@ -200,7 +228,9 @@ Deno.serve(async (req: Request) => {
       }
 
       const { error: insertBreakErr } = await admin.from("dealer_breaks").insert({
-        assignment_id: assignment.id,
+        assignment_id: assignment?.id ?? null,
+        attendance_id,
+        club_id,
         break_start: nowIso,
         expected_duration_minutes: insertedDurationMinutes,
         reason: isRecentRest ? "manual_rest_extend" : att.current_state === "available" ? "manual_available" : "manual",

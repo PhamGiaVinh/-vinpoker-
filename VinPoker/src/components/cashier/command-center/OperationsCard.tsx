@@ -10,10 +10,10 @@ interface Props {
   onToggleAutoSwing: () => void;
   onAutoSwingAll: () => void;
   onMassAssign: () => void;
-  onPreAssign: () => void;
   swingAllBusy: boolean;
   massAssignBusy: boolean;
-  preAssignBusy: boolean;
+  onPreAssign?: () => void;
+  preAssignBusy?: boolean;
 }
 
 function HealthBadge({ enabled, coverageRatio, exceptions }: {
@@ -95,16 +95,18 @@ export default function OperationsCard({
           {massAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <LayoutDashboard className="w-3 h-3 mr-1" />}
           Gán loạt
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-[11px] h-7"
-          onClick={onPreAssign}
-          disabled={preAssignBusy}
-        >
-          {preAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserCheck className="w-3 h-3 mr-1" />}
-          Pre-assign
-        </Button>
+        {onPreAssign ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-[11px] h-7"
+            onClick={onPreAssign}
+            disabled={preAssignBusy}
+          >
+            {preAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserCheck className="w-3 h-3 mr-1" />}
+            Pre-assign
+          </Button>
+        ) : null}
       </div>
     </div>
   );

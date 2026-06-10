@@ -2,8 +2,10 @@
 // Extracted by fallow duplication analysis (9 instances of boilerplate).
 // All corsHeaders/json/auth/role/club patterns now live here.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { retryFetch } from "./retry.ts";
+
+export type SupabaseAdmin = any;
 
 /** Standard CORS headers for all staking functions. */
 export const corsHeaders = {
@@ -55,7 +57,7 @@ export async function authenticateUser(
  * Returns `{ isSuper, isCashier }` on success, or an error Response if forbidden.
  */
 export async function requireAdminRoles(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   uid: string,
 ): Promise<{ isSuper: boolean; isCashier: boolean } | Response> {
   const { data: roles } = await admin
@@ -75,7 +77,7 @@ export async function requireAdminRoles(
  * Returns void on success, or an error Response if forbidden.
  */
 export async function requireClubAccess(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   uid: string,
   clubId: string | null,
 ): Promise<void | Response> {

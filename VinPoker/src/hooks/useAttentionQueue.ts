@@ -113,7 +113,7 @@ export function useAttentionQueue({
         const pred = nextDealerMap[t.id];
         if (pred?.nextDealerName) continue;
 
-        const minutesToSwing = pred?.minutesUntilSwing ?? tl.minutesLeft;
+        const minutesToSwing = tl.minutesLeft;
         const timeFactor = cap(30 - minutesToSwing, 0, 30);
         const score = BASE_SCORE.missing_next_dealer + timeFactor;
         const tableName = t.table_name ?? "??";

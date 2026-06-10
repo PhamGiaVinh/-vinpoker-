@@ -18,8 +18,9 @@ export function BlindStructurePanel({ tournamentId }: { tournamentId: string }) 
         p_tournament_id: tournamentId,
         p_csv_data: csv.trim(),
       });
-      if (error || data?.error) { toast.error(data?.error || error?.message); return; }
-      toast.success(`Đã import ${data?.levels_imported ?? 0} levels`);
+      const result = data as any;
+      if (error || result?.error) { toast.error(result?.error || error?.message); return; }
+      toast.success(`Đã import ${result?.levels_imported ?? 0} levels`);
       setCsv("");
     } catch (e: any) {
       toast.error(e.message || "Lỗi");

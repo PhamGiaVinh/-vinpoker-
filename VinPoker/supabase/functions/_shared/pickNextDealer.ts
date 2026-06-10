@@ -17,7 +17,7 @@
  *  - consecutive_high_penalty: rest from HIGH tables after back-to-back HIGH
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,10 @@ export interface PickDealerOptions {
    *  before the swing due time, even if they aren't available at this exact moment.
    *  Clamped to max 15 minutes ahead to prevent forward-looking anomalies. */
   swingDueAt?: string;
+  /** Reservation mode relaxes the hard wall-clock rest guard so Pass 2 / post-swing
+   *  can reserve a dealer who will be ready by the delayed handoff time.
+   *  The pool cooldown guard still applies. */
+  reservationMode?: boolean;
 }
 
 export interface DealerCandidate {
@@ -90,7 +94,7 @@ export interface BuildCandidatesResult {
   avgBreakRatio: number | null;
 }
 
-export type SupabaseAdmin = ReturnType<typeof createClient>;
+export type SupabaseAdmin = any;
 
 interface AttendancePoolRow {
   id: string;
@@ -111,8 +115,71 @@ interface AttendancePoolRow {
 }
 
 interface ActiveBreakRow {
-  assignment_id: string;
+  assignment_id: string | null;
+  attendance_id: string | null;
   break_start: string;
+}
+
+interface DealerIdRow {
+  id: string;
+}
+
+interface PrioritySwingAssignmentRow {
+  priority_swing_at: string | null;
+}
+
+interface AssignmentMetricRow {
+  attendance_id: string;
+  minutes_since_rest: number | null;
+  total_assignments: number | null;
+  total_break_minutes: number | null;
+  total_worked_minutes: number | null;
+}
+
+interface LastAssignmentRow {
+  attendance_id: string;
+  table_id: string | null;
+  game_tables: { tour_tier: string | null } | null;
+}
+
+interface AttendanceAssignmentRow {
+  id: string;
+  attendance_id: string;
+}
+
+interface BusyDealerRow {
+  dealer_id: string;
+}
+
+interface RestingDealerRow {
+  id: string;
+}
+
+interface BusyAssignmentRow {
+  dealer_id: string;
+  table_id: string | null;
+  status: string | null;
+}
+
+interface PreAssignedRefRow {
+  pre_assigned_attendance_id: string | null;
+}
+
+interface PreAssignedDealerRow {
+  dealer_id: string;
+  id: string;
+  pre_assigned_table_id: string | null;
+}
+
+interface ClubMetricRow {
+  total_worked_minutes: number | null;
+  total_break_minutes: number | null;
+}
+
+interface ActiveMealBreakRow {
+  attendance_id: string;
+  break_start: string;
+  total_duration_minutes: number | null;
 }
 
 function pickPreferredAttendanceRow(
@@ -162,15 +229,16 @@ export async function buildDealerCandidates(
     minRestMinutes = 10,
     minInterSwingRestMinutes: rawMinInterSwingRestMinutes = 10,
     swingDueAt,
+    reservationMode = false,
   } = options;
   const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? 10);
 
   // Step 1: Get active dealer IDs for this club
-  const { data: clubDealers } = await admin
+  const { data: clubDealers } = (await admin
     .from("dealers")
     .select("id")
     .eq("club_id", clubId)
-    .eq("status", "active");
+    .eq("status", "active")) as unknown as { data: DealerIdRow[] | null };
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
   // Step 1 edge case: no dealers → return empty with null avgBreakRatio
   if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
@@ -181,13 +249,13 @@ export async function buildDealerCandidates(
   // +300 bonus ensures the priority table gets next available dealer.
   let isPrioritySwing = false;
   if (currentTableId) {
-    const { data: currentAssignment } = await admin
+    const { data: currentAssignment } = (await admin
       .from("dealer_assignments")
       .select("priority_swing_at")
       .eq("table_id", currentTableId)
       .eq("status", "assigned")
       .is("swing_processed_at", null)
-      .maybeSingle();
+      .maybeSingle()) as unknown as { data: PrioritySwingAssignmentRow | null };
     isPrioritySwing = !!(currentAssignment as any)?.priority_swing_at;
   }
 
@@ -197,7 +265,7 @@ export async function buildDealerCandidates(
   // Available dealers always pass this guard since they're not on_break.
   const minBreakMinutes = options.clubBreakDurationMinutes ?? 15;
 
-  const { data: rawRows, error } = await admin
+  const { data: rawRows, error } = (await admin
     .from("dealer_attendance")
     .select(
       `id, dealer_id, current_state, status,
@@ -210,7 +278,10 @@ export async function buildDealerCandidates(
     )
     .eq("status", "checked_in")
     .in("dealer_id", dealerIds)
-    .or(`current_state.eq.available,current_state.eq.on_break`);
+    .or(`current_state.eq.available,current_state.eq.on_break`)) as unknown as {
+      data: AttendancePoolRow[] | null;
+      error: { message: string } | null;
+    };
 
   // Step 2 edge case: query error or empty rows
   if (error) {
@@ -243,46 +314,60 @@ export async function buildDealerCandidates(
   // Step 3: Query dealer_shift_metrics separately
   const attendanceIds = rows.map((r) => r.id);
   const nowMs = Date.now();
-  const { data: metricsRows } = await admin
+  const { data: metricsRows } = (await admin
     .from("dealer_shift_metrics")
     .select("attendance_id, minutes_since_rest, total_assignments, total_break_minutes, total_worked_minutes")
-    .in("attendance_id", attendanceIds);
+    .in("attendance_id", attendanceIds)) as unknown as { data: AssignmentMetricRow[] | null };
   const metricsMap = new Map(
-    (metricsRows ?? []).map((m: { attendance_id: string; minutes_since_rest: number; total_assignments: number; total_break_minutes: number; total_worked_minutes: number }) => [m.attendance_id, m])
+    (metricsRows ?? []).map((m) => [m.attendance_id, m])
   );
 
   // Step 4: Query last 2 assignments per attendance for back-to-back detection
-  const { data: lastAssignments } = await admin
+  const { data: lastAssignments } = (await admin
     .from("dealer_assignments")
     .select("attendance_id, table_id, game_tables!inner(tour_tier)")
     .in("attendance_id", attendanceIds)
-    .order("assigned_at", { ascending: false });
+    .order("assigned_at", { ascending: false })) as unknown as { data: LastAssignmentRow[] | null };
   const lastTableMap = new Map<string, string>();
   const lastTourTierMap = new Map<string, string>();
   for (const a of lastAssignments ?? []) {
     if (!lastTableMap.has(a.attendance_id)) {
-      lastTableMap.set(a.attendance_id, a.table_id);
+      if (a.table_id) {
+        lastTableMap.set(a.attendance_id, a.table_id);
+      }
       lastTourTierMap.set(a.attendance_id, (a.game_tables as any)?.tour_tier ?? "");
     }
   }
 
   const activeBreakMap = new Map<string, string>();
   if (attendanceIds.length > 0) {
-    const { data: attendanceAssignments } = await admin
+    const { data: attendanceAssignments } = (await admin
       .from("dealer_assignments")
       .select("id, attendance_id")
-      .in("attendance_id", attendanceIds);
-    const attendanceAssignmentIds = (attendanceAssignments ?? []).map((a: { id: string; attendance_id: string }) => a.id);
+      .in("attendance_id", attendanceIds)) as unknown as { data: AttendanceAssignmentRow[] | null };
+    const attendanceAssignmentIds = (attendanceAssignments ?? []).map((a) => a.id);
+    const { data: activeAttendanceBreaks } = (await admin
+      .from("dealer_breaks")
+      .select("attendance_id, break_start")
+      .is("break_end", null)
+      .in("attendance_id", attendanceIds)) as unknown as { data: ActiveBreakRow[] | null };
+
+    for (const row of activeAttendanceBreaks ?? []) {
+      if (row.attendance_id && !activeBreakMap.has(row.attendance_id)) {
+        activeBreakMap.set(row.attendance_id, row.break_start);
+      }
+    }
+
     if (attendanceAssignmentIds.length > 0) {
-      const { data: activeBreakRows } = await admin
+      const { data: activeBreakRows } = (await admin
         .from("dealer_breaks")
         .select("assignment_id, break_start")
         .is("break_end", null)
-        .in("assignment_id", attendanceAssignmentIds);
-      const activeBreakAssignmentIds = new Set((activeBreakRows ?? []).map((r: ActiveBreakRow) => r.assignment_id));
-      if (activeBreakAssignmentIds.size > 0) {
-        for (const row of (activeBreakRows ?? []) as ActiveBreakRow[]) {
-          const assignment = (attendanceAssignments ?? []).find((a: { id: string; attendance_id: string }) => a.id === row.assignment_id);
+        .in("assignment_id", attendanceAssignmentIds)) as unknown as { data: ActiveBreakRow[] | null };
+      if ((activeBreakRows ?? []).length > 0) {
+        for (const row of activeBreakRows ?? []) {
+          if (!row.assignment_id) continue;
+          const assignment = (attendanceAssignments ?? []).find((a) => a.id === row.assignment_id);
           if (assignment && !activeBreakMap.has(assignment.attendance_id)) {
             activeBreakMap.set(assignment.attendance_id, row.break_start);
           }
@@ -303,13 +388,13 @@ export async function buildDealerCandidates(
   // "today" is wrong — 24h rolling window is safe for any shift length.
   const busyDealerIds = new Set<string>();
   const busyWindow = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: busyDealers } = await admin
+  const { data: busyDealers } = (await admin
     .from("dealer_attendance")
     .select("dealer_id")
     .in("dealer_id", dealerIds)
     .in("current_state", ["assigned", "pre_assigned", "in_transition"])
     .is("check_out_time", null)
-    .gte("check_in_time", busyWindow);
+    .gte("check_in_time", busyWindow)) as unknown as { data: BusyDealerRow[] | null };
   for (const bd of busyDealers ?? []) {
     busyDealerIds.add(bd.dealer_id);
   }
@@ -325,14 +410,14 @@ export async function buildDealerCandidates(
   // by escalation tiers — always enforces minimum 10 minutes of rest.
   const restGuardExcludedIds = new Set<string>();
   const guardMinutes = Math.max(minInterSwingRestMinutes, 10);
-  if (guardMinutes > 0) {
+  if (!reservationMode && guardMinutes > 0) {
     const restCutoff = new Date(Date.now() - guardMinutes * 60_000).toISOString();
-    const { data: restingDealers } = await admin
+    const { data: restingDealers } = (await admin
       .from("dealer_attendance")
       .select("id")
       .in("id", attendanceIds)
       .not("last_released_at", "is", null)
-      .gt("last_released_at", restCutoff);
+      .gt("last_released_at", restCutoff)) as unknown as { data: RestingDealerRow[] | null };
     for (const rd of restingDealers ?? []) {
       restGuardExcludedIds.add(rd.id);
     }
@@ -356,13 +441,16 @@ export async function buildDealerCandidates(
   if (poolCooldownMinutes > 0) {
     try {
       const poolCutoff = new Date(Date.now() - poolCooldownMinutes * 60_000).toISOString();
-      const { data: poolDealers, error: poolErr } = await admin
+      const { data: poolDealers, error: poolErr } = (await admin
         .from("dealer_attendance")
         .select("id")
         .in("id", attendanceIds)
         .in("current_state", ["available", "on_break"])
         .not("pool_entered_at", "is", null)
-        .gt("pool_entered_at", poolCutoff);
+        .gt("pool_entered_at", poolCutoff)) as unknown as {
+          data: RestingDealerRow[] | null;
+          error: { message: string } | null;
+        };
       if (poolErr) {
         console.error(`[pickNextDealer] Pool cooldown query error: ${poolErr.message}`);
       } else if (poolDealers && poolDealers.length > 0) {
@@ -423,7 +511,7 @@ export async function buildDealerCandidates(
       );
     }
 
-    const { data: busyAssignments } = await busyAssignmentsQuery;
+    const { data: busyAssignments } = (await busyAssignmentsQuery) as unknown as { data: BusyAssignmentRow[] | null };
 
     for (const ba of busyAssignments ?? []) {
       busyDealerIds.add(ba.dealer_id);
@@ -441,12 +529,12 @@ export async function buildDealerCandidates(
     // in another active assignment. This catches the gap where pre-assign RPC
     // sets dealer_attendance.state='pre_assigned' but doesn't create an assignment
     // record for the incoming dealer.
-    const { data: preAssignedRefs } = await admin
+    const { data: preAssignedRefs } = (await admin
       .from("dealer_assignments")
       .select("pre_assigned_attendance_id")
       .in("pre_assigned_attendance_id", attendanceIds)
       .in("status", ["assigned", "on_break"])
-      .is("released_at", null);
+      .is("released_at", null)) as unknown as { data: PreAssignedRefRow[] | null };
 
     const preAssignedRefIds = new Set(
       (preAssignedRefs ?? []).map((r) => r.pre_assigned_attendance_id)
@@ -476,12 +564,12 @@ export async function buildDealerCandidates(
   // ── Step 5c: Safety net — catch pre_assigned dealers without assignment record ──
   // Pre-assign RPC sets dealer_attendance.current_state='pre_assigned' but does NOT
   // create a dealer_assignments record. Step 5b misses them. This catches the gap.
-  const { data: preAssignedDealers } = await admin
+    const { data: preAssignedDealers } = (await admin
     .from("dealer_attendance")
     .select("dealer_id, id, pre_assigned_table_id")
     .in("dealer_id", dealerIds)
     .eq("current_state", "pre_assigned")
-    .is("check_out_time", null);
+    .is("check_out_time", null)) as unknown as { data: PreAssignedDealerRow[] | null };
 
   for (const pad of preAssignedDealers ?? []) {
     if (!busyDealerIds.has(pad.dealer_id)) {
@@ -506,15 +594,15 @@ export async function buildDealerCandidates(
   // null = insufficient data → skip break equity penalty entirely
   let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
   if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
-    const { data: allMetricsRaw } = await admin
+    const { data: allMetricsRaw } = (await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
-      .eq("club_id", clubId);
+      .eq("club_id", clubId)) as unknown as { data: ClubMetricRow[] | null };
     const totalW = (allMetricsRaw ?? []).reduce(
-      (s: number, m: { total_worked_minutes: number }) => s + (m.total_worked_minutes ?? 0), 0
+      (s: number, m) => s + (m.total_worked_minutes ?? 0), 0
     );
     const totalB = (allMetricsRaw ?? []).reduce(
-      (s: number, m: { total_break_minutes: number }) => s + (m.total_break_minutes ?? 0), 0
+      (s: number, m) => s + (m.total_break_minutes ?? 0), 0
     );
     if (totalW > 0) avgBreakRatio = totalB / totalW;
   }
@@ -522,17 +610,18 @@ export async function buildDealerCandidates(
   // ── Meal break exclusion (defense-in-depth) ──────────────────────────────
   // Dealers currently in an active meal break must NOT be picked, even if
   // state transition hasn't happened yet (cron delay).
-  const { data: activeMealBreaks } = await admin
+  const { data: activeMealBreaks } = (await admin
     .from("dealer_meal_breaks")
     .select("attendance_id, break_start, total_duration_minutes")
     .in("attendance_id", attendanceIds)
-    .eq("status", "active");
+    .eq("status", "active")) as unknown as { data: ActiveMealBreakRow[] | null };
 
   const now = Date.now();
   const mealBreakExcludedIds = new Set<string>();
   for (const mb of activeMealBreaks ?? []) {
     const elapsed = (now - new Date(mb.break_start).getTime()) / 60_000;
-    if (elapsed < mb.total_duration_minutes) {
+    const durationMinutes = mb.total_duration_minutes ?? 0;
+    if (elapsed < durationMinutes) {
       mealBreakExcludedIds.add(mb.attendance_id);
     }
   }
@@ -665,7 +754,11 @@ export async function buildDealerCandidates(
     // so the scoring loop isn't blocked by an insert. clubId is in scope from
     // buildDealerCandidates param (line 87). Warning only, no hard cap (P2).
     if (consecutive >= 4) {
-      admin.from("diagnostic_logs").insert({
+      void (admin as unknown as {
+        from: (table: string) => {
+          insert: (values: Record<string, unknown>) => Promise<unknown>;
+        };
+      }).from("diagnostic_logs").insert({
         club_id: clubId,
         diagnostic_type: "high_consecutive_warning",
         result: {
@@ -679,7 +772,8 @@ export async function buildDealerCandidates(
           table_id: currentTableId,
           tournament_tier: tourTier,
         },
-      }).then(({ error }) => {
+      }).then((result) => {
+        const { error } = result as { error?: { message: string } };
         if (error) console.warn("[soft-cap] log failed:", error.message);
       });
     }
@@ -809,12 +903,12 @@ export async function buildDealerCandidates(
       id: row.id,
       dealer_id: row.dealer_id,
       full_name: d.full_name,
-      telegram_username: d.telegram_username,
-      telegram_user_id: d.telegram_user_id,
+      telegram_username: d.telegram_username ?? undefined,
+      telegram_user_id: d.telegram_user_id ?? undefined,
       tier,
       skills,
       worked_minutes_since_last_break: workedMin,
-      last_table_id: lastTableId,
+      last_table_id: lastTableId ?? undefined,
       consecutive_assignments: consecutive,
       rest_minutes: restMin,
       priority_break_flag: priorityBreak,

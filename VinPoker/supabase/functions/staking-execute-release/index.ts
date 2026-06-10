@@ -191,7 +191,18 @@ Deno.serve(async (req) => {
     // Mirror to payout_recipients checklist (idempotent: delete prior rows for this deal first)
     try {
       await admin.from("payout_recipients").delete().eq("deal_id", rr.deal_id);
-      const recipientRows = perBacker.map((b) => ({
+      const recipientRows: Array<{
+        deal_id: string;
+        user_id: string;
+        role: string;
+        purchase_id: string | null;
+        amount_vnd: number;
+        platform_fee_vnd: number;
+        method: string;
+        status: string;
+        proof_image_url: string | null;
+        paid_at: string;
+      }> = perBacker.map((b) => ({
         deal_id: rr.deal_id,
         user_id: b.backer_id,
         role: "backer" as const,

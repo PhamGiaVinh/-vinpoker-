@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" }, 500);
     }
 
-    const admin = createClient(url, service);
+    const admin: any = createClient(url, service);
     const clubId = (await req.json().catch(() => ({})))?.club_id ?? null;
 
     // ═══ Step 1: Smart gate — skip if no available dealers ═══
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
         await logMetric(admin, "run-dealer-ready-backup", null, startTime, "failure", 1, 0, errors.join("; "));
         return json({ outcome, errors, duration_ms: Date.now() - startTime }, 500);
       }
-      clubIds = (clubs ?? []).map((c) => c.id);
+      clubIds = (clubs ?? []).map((c: any) => c.id);
     }
 
     if (clubIds.length === 0) {
@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     try {
       const url = Deno.env.get("SUPABASE_URL")!;
       const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const admin = createClient(url, service);
+      const admin: any = createClient(url, service);
       await logMetric(admin, "run-dealer-ready-backup", null, startTime, "failure", 1, 0, errorMsg);
     } catch (_) {
       // best-effort
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
   }
 });
 
-async function tryAcquireLock(admin: ReturnType<typeof createClient>, clubId: string): Promise<boolean> {
+async function tryAcquireLock(admin: any, clubId: string): Promise<boolean> {
   try {
     const { data, error } = await admin.rpc("try_acquire_cron_lock", {
       p_lock_name: `dealer_ready_backup_${clubId}`,
@@ -257,7 +257,7 @@ async function tryAcquireLock(admin: ReturnType<typeof createClient>, clubId: st
   }
 }
 
-async function releaseLock(admin: ReturnType<typeof createClient>, clubId: string): Promise<void> {
+async function releaseLock(admin: any, clubId: string): Promise<void> {
   try {
     await admin.rpc("release_cron_lock", {
       p_lock_name: `dealer_ready_backup_${clubId}`,
@@ -268,7 +268,7 @@ async function releaseLock(admin: ReturnType<typeof createClient>, clubId: strin
 }
 
 async function logMetric(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   cronName: string,
   clubId: string | null,
   startTime: number,

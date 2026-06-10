@@ -158,7 +158,7 @@ export default function BulkCreateTournaments() {
       club_id: r.club_id,
       schedule_upload_id: scheduleUploadId,
     }));
-    const { error } = await supabase.from("tournaments").insert(payload);
+    const { error } = await (supabase as any).from("tournaments").insert(payload as any);
     setCreating(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Đã tạo ${rows.length} tournament`);

@@ -46,7 +46,8 @@ export function PrizeStructurePanel({ tournamentId }: { tournamentId: string }) 
           amount: r.amount,
         })),
       });
-      if (error || data?.error) { toast.error(data?.error || error?.message); return; }
+      const result = data as any;
+      if (error || result?.error) { toast.error(result?.error || error?.message); return; }
       toast.success("Đã lưu prize structure");
     } catch (e: any) {
       toast.error(e.message || "Lỗi");

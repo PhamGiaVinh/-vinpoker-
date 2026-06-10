@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
 });
 
 async function logMetric(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   cronName: string,
   clubId: string,
   startTime: number,

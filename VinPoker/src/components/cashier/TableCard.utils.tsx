@@ -137,7 +137,7 @@ function useClock(): Date {
 // ─── useTableTimer — memoized timer hook ─────────────────────────────────────
 // Uses primitive deps to ensure useMemo actually caches
 
-function useTableTimer(
+export function useTableTimer(
   assignment: TableCardAssignment | null,
   config: TableCardSwingConfig,
 ): TableCardTimerResult {

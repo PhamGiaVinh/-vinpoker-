@@ -37,13 +37,14 @@ const MAX_HTTP_RETRIES = 3;
 
 interface ProcessResult {
   outcome: "processed" | "skipped_circuit_breaker" | "no_jobs" | "error";
-  picked: number;
-  sent: number;
-  retried: number;
-  failed: number;
-  cancelled: number;
+  picked?: number;
+  sent?: number;
+  retried?: number;
+  failed?: number;
+  cancelled?: number;
   duration_ms: number;
-  errors: string[];
+  errors?: string[];
+  error?: string;
 }
 
 interface PreAnnounceJobRow {
@@ -136,7 +137,7 @@ Deno.serve(async (req) => {
 // ── Core tick logic ────────────────────────────────────────────────────────
 
 async function processTick(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   clubIdFilter: string | null,
   botToken: string,
   startTime: number,
@@ -190,7 +191,7 @@ async function processTick(
   }
 
   const { data: pendingJobsRaw, error: pickErr } = await query;
-  const pendingJobs = (pendingJobsRaw ?? []) as PreAnnounceJobRow[];
+  const pendingJobs = (pendingJobsRaw ?? []) as unknown as PreAnnounceJobRow[];
 
   if (pickErr) {
     errors.push(`pick_query: ${pickErr.message}`);
@@ -406,7 +407,7 @@ async function sendTelegramWithTimeout(
 }
 
 async function logMetric(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   startTime: number,
   status: "success" | "failure" | "partial",
   errorCount: number,

@@ -1,5 +1,5 @@
 // Super-admin only: set new active USDT/VND rate. Trigger auto-deactivates the previous one.
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 
 import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
@@ -26,11 +26,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader }, fetch: retryFetch } },
     );
-    const { data: claimsData, error: cErr } = await userClient.auth.getClaims(
+    const { data: userData, error: cErr } = await userClient.auth.getUser(
       authHeader.replace(/^Bearer\s+/i, ""),
     );
-    if (cErr || !claimsData?.claims?.sub) return j({ error: "Invalid token" }, 401);
-    const uid = claimsData.claims.sub as string;
+    if (cErr || !userData?.user?.id) return j({ error: "Invalid token" }, 401);
+    const uid = userData.user.id;
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,

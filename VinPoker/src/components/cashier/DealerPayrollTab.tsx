@@ -600,7 +600,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           <div className={`${baseRight.replace("text-right", "text-center")} text-zinc-300`}>
             <div className="flex items-center justify-center gap-1">
               {r.total_shifts || "—"}
-              {hasOvernight && <Moon className="w-3 h-3 text-indigo-400" title="Có ca qua đêm" />}
+              {hasOvernight && <Moon className="w-3 h-3 text-indigo-400" />}
             </div>
           </div>
         );

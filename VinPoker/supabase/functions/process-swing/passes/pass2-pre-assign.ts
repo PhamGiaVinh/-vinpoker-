@@ -50,7 +50,7 @@ function normalizeTelegramUserId(value: unknown): string | number | null {
 }
 
 export async function pass2PreAssignNext(
-  admin: SupabaseClient,
+  admin: any,
   clubId: string,
   preAnnounceMinutes: number,
   options: Pass2Options,
@@ -74,7 +74,7 @@ export async function pass2PreAssignNext(
     // STEP 1: Find assignments needing pre-assignment
     //
     // Normal tables: window [now + (preAnnounceMins - 2), now + (preAnnounceMins + 2)]
-    //   e.g. preAnnounceMins=6 → window [T+4min, T+8min]
+    //   e.g. preAnnounceMins=5 → window [T+3min, T+7min]
     //
     // OT emergency: window [now + (EMERGENCY_OT - 2), now + (EMERGENCY_OT + 2)]
     //   i.e. EMERGENCY_OT=3 → window [T+1min, T+5min]
@@ -85,10 +85,10 @@ export async function pass2PreAssignNext(
     // ════════════════════════════════════════════════════════
 
     const normalWindowStart = new Date(
-      Date.now() + (manualWindowMinutes ? 0 : (preAnnounceMinutes - 5) * 60_000)
+      Date.now() + (manualWindowMinutes ? 0 : Math.max(0, preAnnounceMinutes - 2) * 60_000)
     ).toISOString();
     const normalWindowEnd = new Date(
-      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 5)) * 60_000
+      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 2)) * 60_000
     ).toISOString();
 
     // Emergency OT window: shorter notification window
@@ -199,7 +199,7 @@ export async function pass2PreAssignNext(
       console.log(
         `[Pass 2] No tables needing pre-assignment in window ` +
         `[${normalWindowStart}, ${normalWindowEnd}] ` +
-        `(N=${preAnnounceMinutes}, width=10min)`
+        `(N=${preAnnounceMinutes}, window=±2min)`
       );
       return result;
     }
@@ -219,14 +219,21 @@ export async function pass2PreAssignNext(
       try {
         const tableName = (assignment.game_tables as any)?.table_name ?? "??";
 
-        // Use pickNextDealer to find the best available dealer
-        // Pass swing_due_at so predictive pre-assignment works for dealers
-        // who will complete their inter-swing rest before the swing time.
+        // Use pickNextDealer to find the best available dealer.
+        // Reservation mode allows us to reserve a dealer who is still
+        // finishing rest, as long as they will be ready by the delayed
+        // handoff window.
+        const minInterSwingRestMinutes = options.minInterSwingRestMinutes ?? 10;
+        const nominalSwingAtMs = new Date(assignment.swing_due_at).getTime();
+        const reservationSwingAt = new Date(
+          nominalSwingAtMs + minInterSwingRestMinutes * 60_000
+        ).toISOString();
         const nextDealer = await pickNextDealer(admin, clubId, {
           currentTableId: assignment.table_id,
           excludeAttendanceIds: cycleExcludedIds,
-          minInterSwingRestMinutes: options.minInterSwingRestMinutes ?? 10,
-          swingDueAt: assignment.swing_due_at,
+          minInterSwingRestMinutes,
+          swingDueAt: reservationSwingAt,
+          reservationMode: true,
         });
 
         if (!nextDealer) {
@@ -271,8 +278,10 @@ export async function pass2PreAssignNext(
             // by rest_deficit_min to enforce 10-min soft min rest). Fall back
             // to assignment.swing_due_at for backward compat if RPC didn't
             // return the field.
-            const effectiveSwingAt = result_outcome?.effective_swing_due_at
+            const nominalSwingAt = result_outcome?.original_swing_due_at
               ?? assignment.swing_due_at;
+            const effectiveSwingAt = result_outcome?.effective_swing_due_at
+              ?? nominalSwingAt;
             const restDeficit = result_outcome?.rest_deficit_min ?? 0;
             const currentRest = result_outcome?.current_rest_min ?? null;
 
@@ -299,29 +308,27 @@ export async function pass2PreAssignNext(
                   dealer_name: nextDealer.full_name,
                   rest_deficit_min: restDeficit,
                   current_rest_min: currentRest,
-                  original_due_at:
-                    result_outcome?.original_swing_due_at ?? assignment.swing_due_at,
+                  original_due_at: nominalSwingAt,
                   effective_due_at: effectiveSwingAt,
                 },
                 metadata: {
                   source: "pass2_pre_assign",
                 },
-              }).then(({ error }) => {
+              }).then((result: any) => {
+                const { error } = result ?? {};
                 if (error) {
                   console.warn("[Pass 2] diagnostic log insert failed:", error.message);
                 }
               });
             }
 
-            // Compute minutes until swing for the notification
-            // Use effectiveSwingAt (post-delay) so notification matches
-            // the actual swing time after server-side delay.
-            const swingAt = new Date(effectiveSwingAt).getTime();
+            // Compute minutes until the nominal swing time for the notification.
+            const swingAt = new Date(nominalSwingAt).getTime();
             const minutesLeft = Math.max(0, Math.floor((swingAt - Date.now()) / 60_000));
 
             console.log(
               `[Pass 2] ✅ ${tableName}: ${nextDealer.full_name} pre-assigned ` +
-              `(swing in ~${minutesLeft} min)` +
+              `(notify in ~${minutesLeft} min, handoff at ${new Date(effectiveSwingAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` +
               (restDeficit > 0 ? ` [delayed ${restDeficit}min for rest]` : ""),
             );
 
@@ -346,7 +353,7 @@ export async function pass2PreAssignNext(
                   inName: nextDealer.full_name,
                   inUsername: nextDealer.telegram_username ?? null,
                   inTelegramUserId: normalizeTelegramUserId(nextDealer.telegram_user_id),
-                  swingAt: new Date(effectiveSwingAt),
+                  swingAt: new Date(nominalSwingAt),
                   minutesLeft,
                   restDeficitMin: restDeficit,
                   chatId,

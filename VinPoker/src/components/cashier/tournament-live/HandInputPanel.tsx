@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card as UiCard } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
@@ -554,7 +554,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
       {/* SETUP: Table selector */}
       {!tableId && (
-        <Card className="p-6 text-center space-y-4 border-dashed">
+        <UiCard className="p-6 text-center space-y-4 border-dashed">
           <div className="text-muted-foreground">Chọn bàn để bắt đầu ghi nhận hand</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">
             <div className="space-y-1">
@@ -569,24 +569,24 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               <Input placeholder="Auto" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
           </div>
-        </Card>
+        </UiCard>
       )}
 
       {/* ORPHAN HAND DETECTION */}
       {orphanHand && !handStarted && (
-        <Card className="p-4 border-amber-500/50 bg-amber-950/20 space-y-3">
+        <UiCard className="p-4 border-amber-500/50 bg-amber-950/20 space-y-3">
           <div className="text-sm font-medium text-amber-400">Hand #{orphanHand.hand_number} đang diễn ra</div>
           <div className="text-xs text-muted-foreground">Bàn này có hand chưa hoàn tất. Bạn muốn tiếp tục hay hủy?</div>
           <div className="flex gap-2">
             <Button size="sm" onClick={handleContinueOrphan} className="bg-amber-500 hover:bg-amber-600 text-black font-bold"><Play className="w-3.5 h-3.5 mr-1" /> Tiếp tục</Button>
             <Button size="sm" variant="destructive" onClick={handleVoidOrphan} disabled={submitting}><Undo2 className="w-3.5 h-3.5 mr-1" /> Hủy hand</Button>
           </div>
-        </Card>
+        </UiCard>
       )}
 
       {/* START HAND BUTTON */}
       {tableId && !handStarted && !orphanHand && (
-        <Card className="p-6 text-center space-y-4 border-dashed">
+        <UiCard className="p-6 text-center space-y-4 border-dashed">
           <div className="flex items-center gap-3 justify-center">
             <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
             <Input className="w-24" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
@@ -620,7 +620,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               </Button>
             </div>
           )}
-        </Card>
+        </UiCard>
       )}
 
       {/* ACTIVE: Hand tracking */}
@@ -776,7 +776,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
       {/* SUMMARY: Review ending stacks */}
       {isSummary && (
-        <Card className="p-4 space-y-4 border-blue-500/30 bg-blue-950/10">
+        <UiCard className="p-4 space-y-4 border-blue-500/30 bg-blue-950/10">
           <div className="flex items-center justify-between">
             <div className="text-sm font-bold text-blue-400 uppercase tracking-wide">Review Ending Stacks</div>
             <div className="text-xs text-muted-foreground">Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong></div>
@@ -801,7 +801,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               <Send className="w-3.5 h-3.5 mr-1" /> Submit Hand
             </Button>
           </div>
-        </Card>
+        </UiCard>
       )}
     </div>
   );

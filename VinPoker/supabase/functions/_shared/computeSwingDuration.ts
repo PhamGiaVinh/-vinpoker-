@@ -7,7 +7,7 @@
  * - Pool snapshot support for batch consistency
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,10 +29,12 @@ export interface SwingDurationConfig {
   sync_window_minutes?: number;
 }
 
+export type SupabaseAdmin = any;
+
 // ─── computeSwingDuration ─────────────────────────────────────────────────────
 
 export async function computeSwingDuration(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   clubId: string,
   config: SwingDurationConfig
 ): Promise<SwingDurationResult> {
@@ -52,7 +54,13 @@ export async function computeSwingDuration(
   //   duration = CLAMP(base / factor, min, max)
   // When ratio < target_ratio (tight pool): factor > 1 → duration SHORTER than base ✓
   // When ratio > target_ratio (generous pool): factor < 1 → duration LONGER than base ✓
-  const { data: rpcResult } = await admin.rpc("calculate_dynamic_swing_duration", {
+  const rpcClient = admin as unknown as {
+    rpc: (
+      fn: string,
+      args?: Record<string, unknown>,
+    ) => Promise<{ data: number | null }>;
+  };
+  const { data: rpcResult } = await rpcClient.rpc("calculate_dynamic_swing_duration", {
     p_club_id: clubId,
     p_table_type: "tournament",
   });

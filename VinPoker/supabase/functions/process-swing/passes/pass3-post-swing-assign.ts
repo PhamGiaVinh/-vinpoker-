@@ -9,7 +9,7 @@ export interface PostSwingPreAssignOptions {
 }
 
 export async function postSwingPreAssign(
-  admin: SupabaseClient,
+  admin: any,
   clubId: string,
   newAssignmentId: string,
   tableId: string,
@@ -36,10 +36,15 @@ export async function postSwingPreAssign(
       return { assigned: false, reason: "assignment not found" };
     }
 
+    const minInterSwingRestMinutes = options.minInterSwingRestMinutes ?? 10;
+    const reservationSwingAt = new Date(
+      new Date(assignment.swing_due_at).getTime() + minInterSwingRestMinutes * 60_000
+    ).toISOString();
     const nextDealer = await pickNextDealer(admin, clubId, {
       currentTableId: tableId,
-      swingDueAt: assignment.swing_due_at,
-      minInterSwingRestMinutes: options.minInterSwingRestMinutes ?? 10,
+      swingDueAt: reservationSwingAt,
+      minInterSwingRestMinutes,
+      reservationMode: true,
     });
 
     if (!nextDealer) {

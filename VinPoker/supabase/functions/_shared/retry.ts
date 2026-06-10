@@ -112,7 +112,7 @@ export const retryFetch: typeof fetch = async (input, init) => {
     : input instanceof URL
     ? input.toString()
     : input.url;
-  const method = (init?.method ?? "GET").toUpperCase();
+  const method = (((init as { method?: string } | undefined)?.method) ?? "GET").toUpperCase();
   const name = `fetch:${method} ${url.replace(/\?.*$/, "").split("/").slice(-2).join("/")}`;
 
   return await withRetry(async () => {

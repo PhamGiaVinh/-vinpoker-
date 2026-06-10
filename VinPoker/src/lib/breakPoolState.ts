@@ -24,7 +24,8 @@ export interface RegularBreakAssignmentSource {
 
 export interface RegularBreakSource {
   id: string;
-  assignmentId: string;
+  assignmentId: string | null;
+  attendanceId?: string | null;
   breakStart: string;
   expectedDurationMinutes: number | null;
   reason: string | null;
@@ -160,11 +161,20 @@ export function buildBreakPoolEntries({
   }
 
   const regularBreakByAssignment = new Map<string, RegularBreakSource>();
+  const regularBreakByAttendance = new Map<string, RegularBreakSource>();
   for (const breakRow of regularBreaks) {
-    regularBreakByAssignment.set(
-      breakRow.assignmentId,
-      pickLatestRegularBreak(regularBreakByAssignment.get(breakRow.assignmentId), breakRow),
-    );
+    if (breakRow.assignmentId) {
+      regularBreakByAssignment.set(
+        breakRow.assignmentId,
+        pickLatestRegularBreak(regularBreakByAssignment.get(breakRow.assignmentId), breakRow),
+      );
+    }
+    if (breakRow.attendanceId) {
+      regularBreakByAttendance.set(
+        breakRow.attendanceId,
+        pickLatestRegularBreak(regularBreakByAttendance.get(breakRow.attendanceId), breakRow),
+      );
+    }
   }
 
   const mealBreakByAttendance = new Map<string, MealBreakSource>();
@@ -207,8 +217,8 @@ export function buildBreakPoolEntries({
 
     const assignment = assignmentByAttendance.get(dealer.attendanceId);
     const regularBreak = assignment
-      ? regularBreakByAssignment.get(assignment.assignmentId)
-      : undefined;
+      ? regularBreakByAttendance.get(dealer.attendanceId) ?? regularBreakByAssignment.get(assignment.assignmentId)
+      : regularBreakByAttendance.get(dealer.attendanceId);
     const breakStartMs =
       toMs(regularBreak?.breakStart) ||
       toMs(assignment?.releasedAt) ||

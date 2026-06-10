@@ -1,9 +1,11 @@
 // Shared helper: look up the platform fixed fee for a given buy-in amount (VND).
 // Falls back to the lowest tier (49.000 ₫) if no match.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+export type SupabaseAdmin = any;
 
 export async function getFixedFeeForBuyIn(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   buyInVnd: number,
 ): Promise<{ fixed_fee: number; percent_fee: number }> {
   try {

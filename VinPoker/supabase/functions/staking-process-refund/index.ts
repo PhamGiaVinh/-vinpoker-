@@ -1,5 +1,5 @@
 // Cashier/SuperAdmin refunds a staking deal: refunds all funded backers.
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
 import {
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
         amount_vnd: p.amount_vnd,
         performed_by_admin_id: uid,
         note: `Refund to backer ${p.backer_id} (${p.percent}%) — ${reason}`,
-      }).catch(() => {});
+      }).then(() => undefined, () => undefined);
     }
 
     // Audit

@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
     const maxWork = policy?.max_work_before_mandatory_break_minutes ?? 120;
     const detectionThreshold = maxWork - DETECTION_BUFFER_MINUTES;
 
-    const { data: dealers } = await admin
+    const { data: dealers } = (await admin
       .from("dealer_attendance")
       .select(
         `id, current_state, worked_minutes_since_last_break, priority_break_flag,
@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
          dealer_assignments!attendance_id(id, assigned_at, status)`
       )
       .eq("status", "checked_in")
-      .eq("dealers.club_id", cid);
+      .eq("dealers.club_id", cid)) as unknown as { data: any[] | null };
 
     // Compute live worked minutes from assignment timestamps (never stale)
     const computeWorkedMin = (d: any): number => {
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
         }
 
         console.log(`[enforceBreakBalance] Deadlock recovery for club ${cid}: ` +
-          `freed ${longestAssigned.length} dealers, ${overdueSwings!.length} swings overdue`);
+          `freed ${worstAssigned.length} dealers, ${overdueSwings!.length} swings overdue`);
       }
     }
 
@@ -311,10 +311,11 @@ Deno.serve(async (req: Request) => {
               await sendTelegramNotification(
                 botToken,
                 chatId,
-                formatBreakAlertMessage(
-                  name,
-                  `Đã làm ${worked} phút. Sẽ nghỉ sau swing tiếp theo.`
-                ),
+                formatBreakAlertMessage({
+                  dealer: { full_name: name },
+                  urgency: "soon",
+                  reason: `Đã làm ${worked} phút. Sẽ nghỉ sau swing tiếp theo.`,
+                }),
                 {}
               );
             }

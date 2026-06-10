@@ -954,7 +954,7 @@ function RefundHistoryTab({ clubIds }: { clubIds: string[] }) {
     let q = supabase.from("staking_deals")
       .select(`id, custom_event_name, status, created_at, refund_reason, refunded_at, refunded_by, buy_in_amount_vnd, filled_percent, club_id, player_id,
                tournament:tournament_id(name)`)
-      .eq("status", "deal_refunded")
+      .eq("status", "deal_refunded" as any)
       .order("refunded_at", { ascending: false })
       .limit(500);
     if (clubIds.length) q = q.in("club_id", clubIds);

@@ -111,7 +111,7 @@ export function useDealerScores(clubId: string): {
 } {
   return usePollingQuery<DealerScore>(
     async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("dealer_scores")
         .select("*")
         .eq("club_id", clubId)

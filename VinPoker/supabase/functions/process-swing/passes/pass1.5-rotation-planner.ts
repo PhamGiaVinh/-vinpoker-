@@ -17,10 +17,10 @@ const RPC_TIMEOUT_MS = parseInt(Deno.env.get("PASS15_RPC_TIMEOUT_MS") ?? "5000")
 const MAX_PAIRS_PER_RUN = parseInt(Deno.env.get("PASS15_MAX_PAIRS") ?? "10");
 
 async function callWithTimeout<T>(
-  promise: Promise<T>,
+  promise: any,
   ms: number,
   label: string
-): Promise<T> {
+): Promise<any> {
   const timer = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
   );
@@ -28,7 +28,7 @@ async function callWithTimeout<T>(
 }
 
 async function verifyStillUnassigned(
-  admin: SupabaseClient,
+  admin: any,
   tableIds: string[],
   clubId: string
 ): Promise<Set<string>> {
@@ -41,11 +41,11 @@ async function verifyStillUnassigned(
     .is("swing_processed_at", null)
     .is("pre_assigned_attendance_id", null)
     .in("table_id", tableIds);
-  return new Set((data ?? []).map(r => r.table_id));
+  return new Set((data ?? []).map((r: any) => r.table_id));
 }
 
 export async function pass15RotationPlanner(
-  admin: SupabaseClient,
+  admin: any,
   clubId: string,
   options: Pass15Options
 ): Promise<Pass15Result> {

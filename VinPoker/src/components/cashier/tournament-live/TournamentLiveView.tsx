@@ -145,7 +145,7 @@ export function TournamentLiveView({
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0];
       setHandNumber(hand.hand_number);
-      setCommunityCards(hand.community_cards || []);
+      setCommunityCards((hand.community_cards as string[]) || []);
       setPotSize(hand.pot_size || 0);
 
       const { data: actionData } = await supabase
@@ -225,7 +225,7 @@ export function TournamentLiveView({
     }
 
     if (clockRes.data) {
-      const c = clockRes.data;
+      const c = clockRes.data as any;
       setClockData({
         is_running: c.is_running || false,
         remaining_seconds: c.remaining_seconds || 0,
@@ -239,8 +239,9 @@ export function TournamentLiveView({
     }
 
     if (tournamentRes.data) {
-      setPlayersRemaining(tournamentRes.data.players_remaining || 0);
-      setAverageStack(tournamentRes.data.average_stack || 0);
+      const tournament = tournamentRes.data as any;
+      setPlayersRemaining(tournament.players_remaining || 0);
+      setAverageStack(tournament.average_stack || 0);
     }
 
     setLoading(false);

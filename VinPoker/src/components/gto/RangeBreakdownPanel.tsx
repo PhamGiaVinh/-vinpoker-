@@ -110,3 +110,5 @@ function RangeBreakdownPanel({ range }: Props) {
     </div>
   );
 }
+
+export default RangeBreakdownPanel;

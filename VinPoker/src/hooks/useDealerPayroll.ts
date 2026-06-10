@@ -114,7 +114,7 @@ export function useDealerPayroll(clubIds: string[]): {
         p_end_date: end,
       });
       if (rpcError) throw rpcError;
-      const result = data as ClubPayrollResult;
+      const result = data as unknown as ClubPayrollResult;
       setPeriod({ start: result.period_start, end: result.period_end });
       const allRows = Object.values(result.dealers ?? {});
       // Filter out error objects (inactive dealers return {error: "..."})
@@ -156,7 +156,7 @@ export async function savePayroll(
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
 
-  const { data: periodId, error } = await supabase.rpc("save_payroll_period", {
+  const { data: periodId, error } = await (supabase as any).rpc("save_payroll_period", {
     p_club_id: clubId,
     p_year: year,
     p_month: month,
@@ -377,7 +377,7 @@ export async function getPayrollAuditLog(
   periodId: string,
   limit: number = 100
 ): Promise<any[]> {
-  const { data, error } = await supabase.rpc("get_payroll_audit_log", {
+  const { data, error } = await (supabase as any).rpc("get_payroll_audit_log", {
     p_period_id: periodId,
     p_limit: limit,
   });
@@ -401,7 +401,7 @@ async function getAuditLog(
   changed_by: string | null;
   changed_at: string;
 }>> {
-  const { data, error } = await supabase.rpc("get_payroll_audit_log", {
+  const { data, error } = await (supabase as any).rpc("get_payroll_audit_log", {
     p_period_id: periodId,
     p_limit: limit,
   });

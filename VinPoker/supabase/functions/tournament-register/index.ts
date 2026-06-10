@@ -1,6 +1,6 @@
 // Player self-register a tournament: creates a tournament_registration row and returns CLB bank info
 // for the player to transfer the buy-in (+ optional platform fixed fee).
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { createClient } from "npm:@supabase/supabase-js@2.105.4";
 
 import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";
@@ -24,9 +24,9 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader }, fetch: retryFetch } },
     );
     const token = authHeader.replace(/^Bearer\s+/i, "");
-    const { data: claimsData, error: cErr } = await userClient.auth.getClaims(token);
-    if (cErr || !claimsData?.claims?.sub) return j({ error: "Invalid token" }, 401);
-    const uid = claimsData.claims.sub as string;
+    const { data: userData, error: cErr } = await userClient.auth.getUser(token);
+    if (cErr || !userData?.user?.id) return j({ error: "Invalid token" }, 401);
+    const uid = userData.user.id;
 
     const parsed = await parseBody(req, BodySchema, corsHeaders);
     if (!parsed.ok) return parsed.response;
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     // Already-registered guard
     const { data: existing } = await admin
       .from("tournament_registrations")
-      .select("id, status, reference_code, total_pay, buy_in, platform_fixed_fee, transfer_proof_image_url, transfer_proof_submitted, committed_at")
+      .select("id, status, reference_code, total_pay, buy_in, platform_fixed_fee, transfer_proof_image_url, transfer_proof_submitted, committed_at, used_free_rake")
       .eq("tournament_id", tour.id)
       .eq("player_id", uid)
       .in("status", ["pending", "confirmed"])

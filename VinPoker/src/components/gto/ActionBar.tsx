@@ -153,3 +153,5 @@ function ActionBar() {
     </div>
   );
 }
+
+export default ActionBar;

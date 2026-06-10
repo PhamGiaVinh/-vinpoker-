@@ -71,9 +71,9 @@ export type {
 
 // ─── Shared utilities (not extracted) ─────────────────────────────────────────
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export type SupabaseAdmin = ReturnType<typeof createClient>;
+export type SupabaseAdmin = any;
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,7 +95,7 @@ export function jsonResponse(
 // ─── getTableIdsForClub ──────────────────────────────────────────────────────
 
 export async function getTableIdsForClub(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseAdmin,
   clubId: string
 ): Promise<string[]> {
   const { data } = await admin

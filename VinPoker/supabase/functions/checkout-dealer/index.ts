@@ -4,6 +4,61 @@ import {
   sendTelegramNotification, getClubTelegramChatId,
 } from "../_shared/telegram.ts";
 
+interface AttendanceRow {
+  id: string;
+  dealer_id: string;
+  status: string;
+  current_state: string;
+  shift_id: string | null;
+  check_in_time: string | null;
+  pre_assigned_table_id: string | null;
+}
+
+interface DealerRow {
+  id: string;
+  club_id: string;
+  full_name: string;
+  telegram_username: string | null;
+  telegram_user_id: string | null;
+}
+
+interface TableNameRow {
+  table_name: string | null;
+}
+
+interface AssignmentIdRow {
+  id: string;
+}
+
+interface BreakRow {
+  id: string;
+  assignment_id: string | null;
+  attendance_id: string | null;
+  break_start: string;
+  break_end: string | null;
+}
+
+interface TxResultRow {
+  ok?: boolean;
+  error?: string;
+  outcome?: string;
+  assignment_id?: string | null;
+  idempotent?: boolean;
+  orphan_count?: number;
+}
+
+interface ClubSettingsRow {
+  floor_manager_chat_id: string | null;
+}
+
+interface TableTypeRow {
+  table_type: string | null;
+}
+
+interface SwingConfigRow {
+  swing_duration_minutes: number | null;
+}
+
 function decodeJWT(token: string): { sub: string } | null {
   try {
     const parts = token.split(".");
@@ -13,17 +68,17 @@ function decodeJWT(token: string): { sub: string } | null {
 }
 
 async function processOneCheckout(
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   botToken: string,
   uid: string,
   attendanceId: string,
 ): Promise<Record<string, unknown>> {
   // 1. Get attendance info
-  const { data: att, error: attErr } = await admin
+  const { data: att, error: attErr } = (await admin
     .from("dealer_attendance")
     .select("id, dealer_id, status, current_state, shift_id, check_in_time, pre_assigned_table_id")
     .eq("id", attendanceId)
-    .single();
+    .single()) as unknown as { data: AttendanceRow | null; error: { message: string } | null };
 
   if (attErr) return { attendance_id: attendanceId, success: false, error: `DB error: ${attErr.message}` };
   if (!att) return { attendance_id: attendanceId, success: false, error: "Attendance not found" };
@@ -32,11 +87,11 @@ async function processOneCheckout(
   }
 
   // 1b. Get dealer info (separate query to avoid join syntax issues)
-  const { data: dealer } = await admin
+  const { data: dealer } = (await admin
     .from("dealers")
     .select("id, full_name, club_id, telegram_username, telegram_user_id")
     .eq("id", att.dealer_id)
-    .single();
+    .single()) as unknown as { data: DealerRow | null };
 
   const clubId = dealer?.club_id ?? "";
   const dealerName = dealer?.full_name ?? "";
@@ -56,11 +111,11 @@ async function processOneCheckout(
     preAssignedDealerName = dealerName;
 
     // Get table name trước khi cleanup
-    const { data: tableInfo } = await admin
+    const { data: tableInfo } = (await admin
       .from("game_tables")
       .select("table_name")
       .eq("id", (att as any).pre_assigned_table_id)
-      .maybeSingle();
+      .maybeSingle()) as unknown as { data: TableNameRow | null };
     preAssignedTableName = tableInfo?.table_name ?? null;
 
     await admin.rpc("transition_dealer_state", {
@@ -102,22 +157,46 @@ async function processOneCheckout(
     const nowMs = Date.now();
     const totalMinutes = Math.round((nowMs - checkInMs) / 60000);
 
-    // Subtract break time (dealer_breaks has assignment_id → dealer_assignments.id → attendance_id)
-    const { data: assignments } = await admin
+    // Subtract break time from both assignment-linked and attendance-linked rows.
+    const { data: assignments } = (await admin
       .from("dealer_assignments")
       .select("id")
-      .eq("attendance_id", attendanceId);
-    const assignmentIds = (assignments ?? []).map((a: { id: string }) => a.id);
+      .eq("attendance_id", attendanceId)) as unknown as { data: AssignmentIdRow[] | null };
+    const assignmentIds = (assignments ?? []).map((a) => a.id);
 
-    const { data: breaks } = await admin
-      .from("dealer_breaks")
-      .select("break_start, break_end")
-      .in("assignment_id", assignmentIds)
-      .not("break_end", "is", null);
+    const [attendanceBreakResult, assignmentBreakResult] = (await Promise.all([
+      admin
+        .from("dealer_breaks")
+        .select("id, assignment_id, attendance_id, break_start, break_end")
+        .eq("attendance_id", attendanceId)
+        .not("break_end", "is", null),
+      assignmentIds.length > 0
+        ? admin
+            .from("dealer_breaks")
+            .select("id, assignment_id, attendance_id, break_start, break_end")
+            .in("assignment_id", assignmentIds)
+            .not("break_end", "is", null)
+        : Promise.resolve({ data: [], error: null }),
+    ])) as [
+      { data: BreakRow[] | null; error: { message: string } | null },
+      { data: BreakRow[] | null; error: { message: string } | null },
+    ];
 
-    const totalBreakMinutes = (breaks ?? []).reduce((sum: number, b: { break_start: string; break_end: string }) => {
+    if (attendanceBreakResult.error) {
+      return { attendance_id: attendanceId, success: false, error: `DB error: ${attendanceBreakResult.error.message}` };
+    }
+    if (assignmentBreakResult.error) {
+      return { attendance_id: attendanceId, success: false, error: `DB error: ${assignmentBreakResult.error.message}` };
+    }
+
+    const breaksById = new Map<string, { break_start: string; break_end: string | null }>();
+    for (const b of [...(attendanceBreakResult.data ?? []), ...(assignmentBreakResult.data ?? [])]) {
+      breaksById.set(b.id, { break_start: b.break_start, break_end: b.break_end });
+    }
+
+    const totalBreakMinutes = [...breaksById.values()].reduce((sum: number, b: { break_start: string; break_end: string | null }) => {
       const duration = Math.round(
-        (new Date(b.break_end).getTime() - new Date(b.break_start).getTime()) / 60000
+        ((b.break_end ? new Date(b.break_end).getTime() : Date.now()) - new Date(b.break_start).getTime()) / 60000
       );
       return sum + Math.max(duration, 0);
     }, 0);
@@ -128,11 +207,11 @@ async function processOneCheckout(
   }
 
   // 3. State transition via RPC (validated + audited)
-  const { data: txResult } = await admin.rpc("transition_dealer_state", {
-    p_attendance_id: attendanceId,
-    p_new_state: "checked_out",
-    p_reason: "dealer_checkout",
-  });
+    const { data: txResult } = (await admin.rpc("transition_dealer_state", {
+      p_attendance_id: attendanceId,
+      p_new_state: "checked_out",
+      p_reason: "dealer_checkout",
+    })) as unknown as { data: TxResultRow | null };
   if (txResult?.ok === false) {
     return { attendance_id: attendanceId, success: false, error: `State transition failed: ${txResult.error}` };
   }
@@ -170,11 +249,11 @@ async function processOneCheckout(
 
     // If pre_assigned → also send alerts (existing behavior)
     if (releasedPreAssigned) {
-      const { data: cs } = await admin
+      const { data: cs } = (await admin
         .from("club_settings")
         .select("floor_manager_chat_id")
         .eq("club_id", clubId)
-        .maybeSingle();
+        .maybeSingle()) as unknown as { data: ClubSettingsRow | null };
 
       const fmChatId = (cs as any)?.floor_manager_chat_id;
       if (fmChatId) {
@@ -197,12 +276,12 @@ async function processOneCheckout(
   // so the table is no longer considered "occupied" by fillEmptyTables.
   // Set needs_replacement=true so process-swing prioritizes refilling it.
   let needsReplacementTableId: string | null = null;
-  const { data: activeAss } = await admin
-    .from("dealer_assignments")
-    .select("id, table_id")
-    .eq("attendance_id", attendanceId)
-    .eq("status", "assigned")
-    .is("released_at", null);
+      const { data: activeAss } = (await admin
+        .from("dealer_assignments")
+        .select("id, table_id")
+        .eq("attendance_id", attendanceId)
+        .eq("status", "assigned")
+        .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null }> | null };
 
   if (activeAss && activeAss.length > 0) {
     needsReplacementTableId = activeAss[0].table_id;
@@ -234,29 +313,29 @@ async function processOneCheckout(
       if (dealer) {
         // Compute swing_due_at from swing_config (table_type-aware fallback chain)
         let swingMinutes: number | null = null;
-        const { data: tableInfo } = await admin
+        const { data: tableInfo } = (await admin
           .from("game_tables")
           .select("table_type")
           .eq("id", needsReplacementTableId)
-          .maybeSingle();
+          .maybeSingle()) as unknown as { data: TableTypeRow | null };
 
         if (tableInfo?.table_type) {
-          const { data: swingConfig } = await admin
+          const { data: swingConfig } = (await admin
             .from("swing_config")
             .select("swing_duration_minutes")
             .eq("club_id", clubId)
             .eq("table_type", tableInfo.table_type)
-            .maybeSingle();
+            .maybeSingle()) as unknown as { data: SwingConfigRow | null };
           swingMinutes = swingConfig?.swing_duration_minutes ?? null;
         }
 
         if (swingMinutes == null) {
-          const { data: fallbackConfig } = await admin
+          const { data: fallbackConfig } = (await admin
             .from("swing_config")
             .select("swing_duration_minutes")
             .eq("club_id", clubId)
             .limit(1)
-            .maybeSingle();
+            .maybeSingle()) as unknown as { data: SwingConfigRow | null };
           swingMinutes = fallbackConfig?.swing_duration_minutes ?? null;
         }
 
@@ -264,14 +343,14 @@ async function processOneCheckout(
           Date.now() + (swingMinutes ?? 45) * 60_000
         ).toISOString();
 
-        const { data: assignResult, error: assignErr } = await admin.rpc(
+        const { data: assignResult, error: assignErr } = (await admin.rpc(
           "assign_dealer_to_table",
           {
             p_attendance_id: dealer.id,
             p_table_id: needsReplacementTableId,
             p_swing_due_at: replacementSwingDueAt,
           }
-        );
+        )) as unknown as { data: TxResultRow | string | null; error: { message: string } | null };
         if (assignErr) {
           console.error(`[checkout-dealer] Auto-replace RPC error: ${assignErr.message}`);
         } else {
@@ -296,11 +375,11 @@ async function processOneCheckout(
     // If auto-assign failed, notify floor manager
     if (!autoAssigned) {
       try {
-        const { data: cs } = await admin
+        const { data: cs } = (await admin
           .from("club_settings")
           .select("floor_manager_chat_id")
           .eq("club_id", clubId)
-          .maybeSingle();
+          .maybeSingle()) as unknown as { data: ClubSettingsRow | null };
         const fmChatId = (cs as any)?.floor_manager_chat_id;
         if (fmChatId) {
           await sendTelegramNotification(
@@ -317,7 +396,7 @@ async function processOneCheckout(
   }
 
   // 7. Audit log
-  await admin.from("audit_logs").insert({
+  void admin.from("audit_logs").insert({
     club_id: clubId,
     actor_id: uid,
     action: "checkout_dealer",
@@ -331,7 +410,7 @@ async function processOneCheckout(
       needs_replacement_table: needsReplacementTableId,
       auto_assigned: autoAssigned?.dealer_name ?? null,
     },
-  }).then(() => {}).catch(() => {});
+  });
 
   return {
     attendance_id: attendanceId,
@@ -371,14 +450,14 @@ Deno.serve(async (req) => {
       .from("dealer_attendance")
       .select("dealer_id")
       .eq("id", ids[0])
-      .maybeSingle();
+      .maybeSingle() as unknown as { data: { dealer_id: string } | null };
     if (!row) return jsonResponse({ error: "First attendance not found" }, 404);
 
     const { data: dealer, error: dealerErr } = await admin
       .from("dealers")
       .select("club_id")
       .eq("id", row.dealer_id)
-      .single();
+      .single() as unknown as { data: { club_id: string } | null; error: { message: string } | null };
     if (dealerErr || !dealer) return jsonResponse({ error: "Cannot determine club" }, 400);
     const clubId = dealer.club_id;
 

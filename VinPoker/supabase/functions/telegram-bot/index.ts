@@ -269,7 +269,7 @@ async function handleCommand(
   botToken: string,
   chatId: number,
   text: string,
-  dealer: { id: string; club_id: string; full_name: string },
+  dealer: { id: string; club_id: string; full_name: string; telegram_user_id?: number | null },
   userId: number,
 ) {
   const normalizedText = text.toLowerCase().trim();

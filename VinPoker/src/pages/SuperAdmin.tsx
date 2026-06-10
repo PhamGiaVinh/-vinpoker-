@@ -67,19 +67,19 @@ const SuperAdmin = () => {
       setRegs(r.map((x: any) => ({ ...x, profile: profileMap[x.user_id] })));
 
       // Profile update logs
-      const { data: plogs } = await supabase
+      const { data: plogs } = await (supabase as any)
         .from("profile_update_log")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
       if (plogs) {
-        const plUserIds = Array.from(new Set(plogs.map((l: any) => l.user_id)));
+        const plUserIds = Array.from(new Set((plogs as any[]).map((l: any) => l.user_id)));
         let plMap: Record<string, any> = {};
         if (plUserIds.length) {
           const { data: plProfs } = await supabase.from("profiles").select("user_id, display_name, phone").in("user_id", plUserIds);
           plMap = Object.fromEntries((plProfs ?? []).map((p: any) => [p.user_id, p]));
         }
-        setProfileLogs(plogs.map((l: any) => ({ ...l, profile: plMap[l.user_id] })));
+        setProfileLogs((plogs as any[]).map((l: any) => ({ ...l, profile: plMap[l.user_id] })));
       }
     } catch (e: any) {
       console.error("SuperAdmin load failed", e);
