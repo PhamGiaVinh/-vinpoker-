@@ -302,22 +302,25 @@ const StakingNew = () => {
   }
 
   return (
-    <div className="staking-scope space-y-8 max-w-5xl mx-auto">
-      <header className="flex items-center gap-3">
-        <Sparkles className="w-6 h-6 text-primary" />
-        <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground">{t("stakingNew.title")}</h1>
-      </header>
+    <div className="staking-scope">
+      {/* HERO SECTION - Prominent page header with context */}
+      <div className="bg-gradient-to-b from-primary/8 via-transparent to-transparent py-16 border-b border-border/10 mb-12">
+        <div className="max-w-5xl mx-auto px-4">
+          <header className="flex items-center gap-4 mb-4">
+            <Sparkles className="w-8 h-8 text-primary flex-shrink-0" />
+            <h1 className="text-4xl md:text-5xl font-display font-bold text-foreground">{t("stakingNew.title")}</h1>
+          </header>
+          <p className="text-base text-muted-foreground max-w-2xl leading-relaxed">
+            {t("stakingNew.infoBanner")}
+          </p>
+        </div>
+      </div>
 
-      <Alert className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
-        <Info className="h-4 w-4 text-primary flex-shrink-0" />
-        <AlertDescription className="text-sm text-muted-foreground">
-          {t("stakingNew.infoBanner")}
-        </AlertDescription>
-      </Alert>
-
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-        {/* FORM */}
-        <div className="space-y-6 p-6 rounded-xl border border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
+      {/* MAIN CONTENT - Form and preview side-by-side */}
+      <div className="max-w-5xl mx-auto px-4 space-y-8 pb-12">
+        <div className="grid gap-10 lg:grid-cols-[1fr_minmax(0,420px)]">
+          {/* FORM CARD */}
+          <div className="space-y-8 p-8 rounded-2xl border border-border/30 bg-gradient-to-br from-card/80 via-card/60 to-background/40 backdrop-blur-md">
           <div className="space-y-2">
             <Label>{t("stakingNew.tournamentLbl")}</Label>
             <Select value={tournamentId} onValueChange={setTournamentId}>
@@ -493,14 +496,15 @@ const StakingNew = () => {
           </Button>
         </div>
 
-        {/* SIMULATION PREVIEW */}
-        <SimulationPreview
-          buyIn={buyIn}
-          percentage={percentage}
-          markup={markup}
-          askingPrice={askingPrice}
-          selectedTournament={selectedTournament}
-        />
+          {/* SIMULATION PREVIEW */}
+          <SimulationPreview
+            buyIn={buyIn}
+            percentage={percentage}
+            markup={markup}
+            askingPrice={askingPrice}
+            selectedTournament={selectedTournament}
+          />
+        </div>
       </div>
     </div>
   );
