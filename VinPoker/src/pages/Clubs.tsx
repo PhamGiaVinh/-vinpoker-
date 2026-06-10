@@ -45,11 +45,38 @@ const Clubs = () => {
   }, [clubs, region, sort]);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl bg-gradient-to-br from-card/60 to-card/40 border border-gold/30 p-6 backdrop-blur-sm">
-        <h1 className="font-display text-3xl font-bold text-gold">{t("clubsPage.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-2">{t("clubsPage.subtitle")}</p>
-      </section>
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-background px-6 py-12 md:px-10 md:py-16">
+        {/* Decorative glow effects */}
+        <div className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full bg-primary/10 blur-[120px]" />
+
+        {/* Content */}
+        <div className="relative z-10 space-y-4">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit">
+            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">CLB</span>
+          </div>
+
+          {/* Title */}
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl tracking-[0.04em] text-primary leading-[0.9] drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)]">
+            {t("clubsPage.title")}
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-sm md:text-base text-muted-foreground leading-relaxed max-w-2xl">
+            {t("clubsPage.subtitle")}
+          </p>
+
+          {/* Chronograph divider */}
+          <div className="flex items-center gap-2 pt-2 max-w-md">
+            <div className="flex-1 h-[1px] bg-primary/60" />
+            <div className="w-2 h-2 bg-primary rotate-45 shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
+            <div className="flex-1 h-[1px] bg-primary/30" />
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Select value={region} onValueChange={setRegion}>
