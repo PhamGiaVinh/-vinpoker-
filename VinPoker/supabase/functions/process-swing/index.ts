@@ -1031,7 +1031,7 @@ Deno.serve(async (req: Request) => {
                 dealer: { full_name: a.full_name },
               }))
             );
-            sendTelegramNotification(botToken, pass2ChatId, mopMsg).catch(() => {});
+            sendTelegramNotification(botToken, pass2ChatId, mopMsg).catch(err => console.error("[process-swing] Telegram error:", err));
           }
         }
 
@@ -1897,7 +1897,7 @@ if (tier2Count > 0) {
               cycleExcludedIds.add(fbDealer.id);
               if (botToken && pass2ChatId) {
                 const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${fallbackTableName}${fallbackOutgoingDealer.full_name !== "Unknown" ? ` - Thay ${fallbackOutgoingDealer.full_name}` : ""}`;
-                sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
               }
               if (fbBreakDecision.shouldBreak) {
                 notifier?.enqueue({
@@ -2157,7 +2157,7 @@ if (tier2Count > 0) {
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
                   if (botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${replacementDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
-                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                   // BUG #3 FIX: Refresh count after force-release replacement swing
                   try {
@@ -2291,7 +2291,7 @@ if (tier2Count > 0) {
                   const swingMsg = outgoingName
                     ? `🔵 ${incomingName} vào bàn ${tableName} - Thay ${outgoingName}`
                     : `🔵 ${incomingName} vào bàn ${tableName}`;
-                  sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                  sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                 }
                 if (breakDecision.shouldBreak) {
                   const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
@@ -2555,7 +2555,7 @@ if (tier2Count > 0) {
                     cycleExcludedIds.add(fbDealer.id);
                     if (botToken && pass2ChatId) {
                       const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
-                      sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                      sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                     }
                   } else if (fbResult?.outcome === "no_dealer") {
                     metrics.no_dealer++;
@@ -2741,7 +2741,7 @@ if (tier2Count > 0) {
                     botToken, chatId,
                     `⚠️ *Bàn ${tableName}* — Cấp cứu OT ${otMinutes}ph: đã gán ${nextDealer.full_name} theo luật nới lỏng.\nCần theo dõi sát!`,
                     {}
-                  ).catch(() => {});
+                  ).catch(err => console.error("[process-swing] Telegram error:", err));
                 }
               }
             }
@@ -2811,7 +2811,7 @@ if (tier2Count > 0) {
                   cycleExcludedIds.add(nextDealer.id);
                   if (botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${nextDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
-                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
               } else {
@@ -2903,7 +2903,7 @@ if (tier2Count > 0) {
                   if (botToken && pass2ChatId) {
                     const inName = (nextDealer.dealers as any)?.full_name ?? "Dealer";
                     const swingMsg = `🔵 ${inName} vào bàn ${tableName}${outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
-                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
               } else {
@@ -2971,7 +2971,7 @@ if (tier2Count > 0) {
                   console.log(`[Pass 3] Auto-picked dealer confirmed for ${tableName}: ${incomingDealer.full_name}`);
                   if (botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${incomingDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
-                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(() => {});
+                    sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
               } catch (notifyErr) {

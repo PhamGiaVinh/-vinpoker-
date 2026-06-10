@@ -317,30 +317,6 @@ export async function buildDealerCandidates(
   if (busyDealerIds.size > 0) {
     console.log(`[pickNextDealer] Club ${clubId}: ${busyDealerIds.size} dealers excluded as busy (24h window)`);
   }
-  // ── Step 4b: Break pool guard (independent check, runs BEFORE OR logic) ──
-  // Physically excludes dealers still within the inter-swing rest period.
-  // Uses NOW() as reference (not swingDueAt) — dealer MUST have completed
-  // rest at this moment to be eligible. This is a HARD requirement that
-  // cannot be bypassed by the OR logic below.
-  const restGuardExcludedIds = new Set<string>();
-  if (minInterSwingRestMinutes > 0) {
-    const restCutoff = new Date(Date.now() - minInterSwingRestMinutes * 60_000).toISOString();
-    const { data: restingDealers } = await admin
-      .from("dealer_attendance")
-      .select("id")
-      .in("id", attendanceIds)
-      .not("last_released_at", "is", null)
-      .gt("last_released_at", restCutoff);
-    for (const rd of restingDealers ?? []) {
-      restGuardExcludedIds.add(rd.id);
-    }
-    if (restingDealers && restingDealers.length > 0) {
-      console.log(
-        `[pickNextDealer] Break pool guard: ${restingDealers.length} dealers excluded ` +
-        `(rest not completed, cutoff=${restCutoff})`
-      );
-    }
-  }
 
   const diag = {
     total_rows: rows.length,
@@ -523,11 +499,6 @@ export async function buildDealerCandidates(
       continue;
     }
 
-    // ── Break pool guard ──────────────────────────────────────────────
-    // Dealer still within inter-swing rest period → hard exclude.
-    // Runs before every other check (tier, fatigue, rest cooldown, etc).
-    if (restGuardExcludedIds.has(row.id)) { diag.break_pool_guard_excluded++; continue; }
-
     const d = row.dealers;
     const tier: "A" | "B" | "C" = d.tier ?? "C";
     const skills: string[] = d.skills ?? [];
@@ -603,7 +574,8 @@ export async function buildDealerCandidates(
       const minutesSinceRelease = releasedAt
         ? (referenceTime - new Date(releasedAt).getTime()) / 60_000
         : Infinity;
-      const passedLastReleased = minutesSinceRelease >= minInterSwingRestMinutes;
+      const EPSILON_SEC = 1 / 60; // 1-second grace for millisecond timing edge cases
+      const passedLastReleased = minutesSinceRelease >= minInterSwingRestMinutes - EPSILON_SEC;
 
       if (!passedMinutesSinceRest && !passedLastReleased) {
         console.log(
