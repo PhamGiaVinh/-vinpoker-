@@ -321,10 +321,12 @@ export async function buildDealerCandidates(
   // ── Break pool guard (independent check, runs BEFORE OR logic) ──
   // Hard wall-clock check using NOW(): excludes dealers still within the
   // inter-swing rest period. This is a HARD requirement that cannot be
-  // bypassed by the OR logic (passedMinutesSinceRest via swingDueAt).
+  // bypassed by the OR logic (passedMinutesSinceRest via swingDueAt) NOR
+  // by escalation tiers — always enforces minimum 10 minutes of rest.
   const restGuardExcludedIds = new Set<string>();
-  if (minInterSwingRestMinutes > 0) {
-    const restCutoff = new Date(Date.now() - minInterSwingRestMinutes * 60_000).toISOString();
+  const guardMinutes = Math.max(minInterSwingRestMinutes, 10);
+  if (guardMinutes > 0) {
+    const restCutoff = new Date(Date.now() - guardMinutes * 60_000).toISOString();
     const { data: restingDealers } = await admin
       .from("dealer_attendance")
       .select("id")
