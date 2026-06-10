@@ -16,6 +16,11 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  formatBatchPreAssignMessage,
+  formatPreAssignMessage,
+  type PreAssignMessageItem,
+} from "../_shared/preAssignTelegram.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +44,22 @@ interface ProcessResult {
   cancelled: number;
   duration_ms: number;
   errors: string[];
+}
+
+interface PreAnnounceJobRow {
+  id: string;
+  club_id: string;
+  chat_id: string;
+  zone: string | null;
+  table_name: string;
+  out_dealer_name: string | null;
+  out_dealer_username: string | null;
+  in_dealer_name: string;
+  in_dealer_username: string | null;
+  swing_at: string;
+  minutes_left: number;
+  attempts: number;
+  max_attempts: number;
 }
 
 const json = (data: unknown, status = 200) =>
@@ -168,7 +189,8 @@ async function processTick(
     query = query.eq("club_id", clubIdFilter);
   }
 
-  const { data: pendingJobs, error: pickErr } = await query;
+  const { data: pendingJobsRaw, error: pickErr } = await query;
+  const pendingJobs = (pendingJobsRaw ?? []) as PreAnnounceJobRow[];
 
   if (pickErr) {
     errors.push(`pick_query: ${pickErr.message}`);
@@ -221,7 +243,7 @@ async function processTick(
 
   // ── 4a: Claim all pending jobs atomically ──
   const claimedJobIds: string[] = [];
-  const claimedMap = new Map<string, typeof pendingJobs[number]>();
+  const claimedMap = new Map<string, PreAnnounceJobRow>();
 
   for (const job of pendingJobs) {
     const { data: claimed, error: claimErr } = await admin
@@ -249,7 +271,7 @@ async function processTick(
   }
 
   // ── 4b: Group claimed jobs by (chat_id, zone) ──
-  const groups = new Map<string, { chatId: string; zone: string | null; jobs: typeof pendingJobs[number][] }>();
+  const groups = new Map<string, { chatId: string; zone: string | null; jobs: PreAnnounceJobRow[] }>();
   for (const jobId of claimedJobIds) {
     const job = claimedMap.get(jobId)!;
     const key = `${job.chat_id}||${job.zone ?? ""}`;
@@ -263,20 +285,22 @@ async function processTick(
 
   // ── 4c: Send one batched message per group ──
   for (const [key, group] of groups) {
-    const args = group.jobs.map((job) => ({
+    const args: PreAssignMessageItem[] = group.jobs.map((job) => ({
       tableName: job.table_name,
       zone: job.zone,
       outName: job.out_dealer_name ?? "Unknown",
       outUsername: job.out_dealer_username ?? null,
+      outTelegramUserId: null,
       inName: job.in_dealer_name,
       inUsername: job.in_dealer_username ?? null,
+      inTelegramUserId: null,
       swingAt: new Date(job.swing_at),
       minutesLeft: job.minutes_left,
     }));
 
     const message = group.jobs.length === 1
       ? formatPreAssignMessage(args[0])
-      : formatBatchPreAssignMessage(args, group.zone);
+      : formatBatchPreAssignMessage(args);
 
     const sendResult = await sendTelegramWithTimeout(botToken, group.chatId, message, PER_JOB_TIMEOUT_MS);
 
@@ -329,40 +353,6 @@ async function processTick(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-interface PreAssignMsgArgs {
-  tableName: string;
-  zone: string | null;
-  outName: string;
-  outUsername: string | null;
-  inName: string;
-  inUsername: string | null;
-  swingAt: Date;
-  minutesLeft: number;
-}
-
-function formatPreAssignLine(args: PreAssignMsgArgs): string {
-  const handle = (u: string | null): string => u ? ` @${u}` : "";
-  const hhmm = (d: Date): string => d.toLocaleTimeString("vi-VN", {
-    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh",
-  });
-  return `📋 Tiếp theo ${args.tableName}: ${args.outName}${handle(args.outUsername)} ra, ${args.inName}${handle(args.inUsername)} vào (${hhmm(args.swingAt)}, còn ${args.minutesLeft} phút)`;
-}
-
-function formatPreAssignMessage(args: PreAssignMsgArgs): string {
-  const zoneLabel = args.zone ? ` - ${args.zone}` : "";
-  return [
-    `Có 1 cập nhật${zoneLabel}:`,
-    ` ${formatPreAssignLine(args)}`,
-  ].join("\n");
-}
-
-function formatBatchPreAssignMessage(items: PreAssignMsgArgs[], zone: string | null): string {
-  const zoneLabel = zone ? ` - ${zone}` : "";
-  const header = `Có ${items.length} cập nhật${zoneLabel}:`;
-  const lines = items.map((a) => ` ${formatPreAssignLine(a)}`);
-  return [header, ...lines].join("\n");
-}
 
 interface SendResult {
   ok: boolean;

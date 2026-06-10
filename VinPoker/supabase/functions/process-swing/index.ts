@@ -560,7 +560,7 @@ Deno.serve(async (req: Request) => {
         // ── TelegramNotifier for this club cycle ──────────────────────────
         let notifier: TelegramNotifier | null = null;
         let clubZone: string | null = null;
-        let pass2ChatId: string | null = null;  // PR #2: hoisted for pre_announce_jobs
+        let pass2ChatId: string | null = null;  // hoisted for pre-assign notification fallback
         if (botToken) {
           const [chatId, zoneData] = await Promise.all([
             getClubTelegramChatId(admin, cid),
@@ -1643,12 +1643,13 @@ if (tier2Count > 0) {
         // for tables whose swing due falls within the pre-announce window.
         // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
         if (!forceAll) {
-          // PR #2: chatId hoisted to outer scope (line ~557) and passed
-          // to pass2PreAssignNext for the pre_announce_jobs DB queue.
+          // chatId hoisted to outer scope and passed into the pre-assign
+          // notification helper (direct send with queue fallback).
           const pass2Options: Parameters<typeof pass2PreAssignNext>[3] = {
             clubZone,
             cycleExcludedIds,
             chatId: pass2ChatId,
+            botToken,
             minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
           };
           if (preAssignOnly) {
@@ -1914,6 +1915,7 @@ if (tier2Count > 0) {
               } catch { /* keep stale count */ }
               const postAssign = await postSwingPreAssign(admin, cid, fbResult.new_assignment_id, fallbackAssignment.table_id, {
                 chatId: pass2ChatId,
+                botToken,
                 minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
               });
               if (postAssign.assigned) {
@@ -2166,6 +2168,7 @@ if (tier2Count > 0) {
                   } catch { /* keep stale count */ }
                   const postAssign2 = await postSwingPreAssign(admin, cid, frResult.new_assignment_id, assignment.table_id, {
                     chatId: pass2ChatId,
+                    botToken,
                     minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
                   });
                   if (postAssign2.assigned) {
@@ -2277,6 +2280,7 @@ if (tier2Count > 0) {
                 }
                 const postAssign3 = await postSwingPreAssign(admin, cid, rpcResult.new_assignment_id, assignment.table_id, {
                   chatId: pass2ChatId,
+                  botToken,
                   minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
                 });
                 if (postAssign3.assigned) {

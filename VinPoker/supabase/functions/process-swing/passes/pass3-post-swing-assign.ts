@@ -1,8 +1,10 @@
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
+import { sendPreAssignTelegramWithFallback } from "../../_shared/preAssignTelegram.ts";
 
 export interface PostSwingPreAssignOptions {
   chatId: string | null;
+  botToken?: string | null;
   minInterSwingRestMinutes?: number;
 }
 
@@ -16,7 +18,14 @@ export async function postSwingPreAssign(
   try {
     const { data: assignment, error: fetchErr } = await admin
       .from("dealer_assignments")
-      .select("id, swing_due_at, version, table_id, game_tables!inner(table_name)")
+      .select(`
+        id, swing_due_at, version, table_id,
+        game_tables!inner(table_name),
+        dealer_attendance!attendance_id(
+          id,
+          dealers!inner(full_name, telegram_username, telegram_user_id)
+        )
+      `)
       .eq("id", newAssignmentId)
       .single();
 
@@ -66,25 +75,39 @@ export async function postSwingPreAssign(
     }
 
     if (options.chatId) {
-      try {
-        await admin.from("pre_announce_jobs").insert({
-          club_id: clubId,
-          table_id: tableId,
-          assignment_id: newAssignmentId,
-          attendance_id: nextDealer.id,
-          table_name: (assignment.game_tables as any)?.table_name || "Unknown",
-          in_dealer_name: nextDealer.full_name,
-          swing_at: assignment.swing_due_at,
-          minutes_left: Math.floor(
+      const outgoingDealer = ((assignment as any).dealer_attendance as any)?.dealers ?? {};
+      const outgoingAtt = (assignment as any).dealer_attendance ?? {};
+      const notification = await sendPreAssignTelegramWithFallback(
+        admin,
+        {
+          clubId,
+          tableId,
+          assignmentId: newAssignmentId,
+          attendanceId: nextDealer.id,
+          outAttendanceId: outgoingAtt.id ?? null,
+          tableName: (assignment.game_tables as any)?.table_name || "Unknown",
+          zone: null,
+          outName: outgoingDealer.full_name ?? "Unknown",
+          outUsername: outgoingDealer.telegram_username ?? null,
+          outTelegramUserId: outgoingDealer.telegram_user_id ?? null,
+          inName: nextDealer.full_name,
+          inUsername: nextDealer.telegram_username ?? null,
+          inTelegramUserId: nextDealer.telegram_user_id ?? null,
+          swingAt: new Date(assignment.swing_due_at),
+          minutesLeft: Math.floor(
             (new Date(assignment.swing_due_at).getTime() - Date.now()) / 60_000
           ),
-          chat_id: options.chatId,
-          status: "pending",
-          max_attempts: 3,
-        });
-      } catch (notiErr) {
+          restDeficitMin: 0,
+          chatId: options.chatId,
+        },
+        options.botToken,
+        "[Post-swing]",
+      );
+
+      if (!notification.delivered && !notification.queued) {
         console.warn(
-          `[Post-swing] Failed to enqueue notification: ${notiErr instanceof Error ? notiErr.message : String(notiErr)}`
+          `[Post-swing] ⚠️ Notification lost for assignment ${newAssignmentId}: ` +
+          `direct=${notification.directError ?? "unknown"}, fallback=${notification.fallbackError ?? "none"}`
         );
       }
     }
