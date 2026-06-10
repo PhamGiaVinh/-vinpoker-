@@ -71,6 +71,8 @@ const RangeEditor = lazy(() => import("./components/RangeEditor"));
 const PackageListing = lazy(() => import("./pages/PackageListing"));
 const PackageDetail = lazy(() => import("./pages/PackageDetail"));
 const Feed = lazy(() => import("./pages/Feed"));
+const NotificationSettings = lazy(() => import("./pages/NotificationSettings"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,6 +143,8 @@ const App = () => (
                 <Route path="/staking/portfolio" element={<StakingPortfolio />} />
                 <Route path="/admin/staking" element={<AdminStaking />} />
                 <Route path="/notifications" element={<Notifications />} />
+                <Route path="/notification-settings" element={<NotificationSettings />} />
+                <Route path="/unsubscribe" element={<Unsubscribe />} />
                 <Route path="/feed" element={<Feed />} />
                 <Route path="/news" element={<News />} />
                 <Route path="/news/:slug" element={<NewsDetail />} />
