@@ -182,18 +182,40 @@ const Tournaments = () => {
   }, [buyInRange, gameTypes, statusUpcoming, statusLateReg]);
 
   return (
-    <div className="space-y-6">
-      <section className="flex items-end justify-between flex-wrap gap-4">
-        <div className="max-w-2xl">
-          <h1 className="font-display font-black text-4xl md:text-5xl tracking-tight leading-[1.05] font-mono">
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-background px-6 py-12 md:px-10 md:py-16">
+        {/* Decorative glow effects */}
+        <div className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full bg-primary/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full bg-primary/10 blur-[120px]" />
+
+        {/* Content */}
+        <div className="relative z-10">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit mb-4">
+            <Trophy className="w-3.5 h-3.5 text-primary" />
+            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">{tr("tournamentsPage.title")}</span>
+          </div>
+
+          {/* Title */}
+          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl tracking-[0.04em] text-primary leading-[0.9] drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)] mb-4">
             {tr("tournamentsPage.title")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+
+          {/* Subtitle */}
+          <p className="text-sm md:text-base text-muted-foreground leading-relaxed max-w-2xl mb-4">
             {tr("tournamentsPage.subtitle")}
           </p>
-        </div>
 
-        <div className="flex flex-wrap gap-1 w-full sm:w-auto sm:inline-flex rounded-xl bg-card/50 border border-border/40 p-1.5 backdrop-blur-sm">
+          {/* Chronograph divider */}
+          <div className="flex items-center gap-2 pt-2 max-w-md mb-6">
+            <div className="flex-1 h-[1px] bg-primary/60" />
+            <div className="w-2 h-2 bg-primary rotate-45 shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
+            <div className="flex-1 h-[1px] bg-primary/30" />
+          </div>
+
+          {/* View selector tabs */}
+          <div className="flex flex-wrap gap-1 w-full sm:w-auto rounded-xl bg-card/50 border border-border/40 p-1.5 backdrop-blur-sm">
           {(["weekly", "daily", "livetracker", "news", "series", "livestream", "packages"] as const).map((v) => (
             <button
               key={v}
@@ -224,8 +246,9 @@ const Tournaments = () => {
               </span>
             </button>
           ))}
+          </div>
         </div>
-      </section>
+      </div>
 
       {view === "livestream" ? (
         <LivestreamSection />
