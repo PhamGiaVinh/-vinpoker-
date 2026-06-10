@@ -1,7 +1,7 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm install",
+  "buildCommand": "cd VinPoker && npm run build",
+  "outputDirectory": "VinPoker/dist",
+  "installCommand": "cd VinPoker && npm install",
   "framework": "vite",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
