@@ -60,3 +60,73 @@ This reverts to the pre-migration state (viewer stops live-updating; no data los
 ## Acceptance
 Milestone A is done when §1 lists the 4 tables, §2 shows a hand appearing in `/live` with no
 refresh, §3 shows no channel growth, and §5 shows no regressions.
+
+---
+
+## Actual verification results (static, 2026-06-11)
+
+**Checked by:** Claude Code, branch `feature/live-tracker-integration` (commit `540459c`).
+**DB tested:** None — Docker not running on this machine; no local Supabase stack available.
+**Remaining for you:** §0 (apply migration) + §1 (publication query) + §2 (two-tab test) + §3 (channel-leak) + §5 (regression smoke).
+
+### What was verified statically
+
+**S1 — SQL syntax and structure ✓**
+All 4 `DO $$ BEGIN … EXCEPTION WHEN duplicate_object THEN NULL; END $$;` blocks are correctly
+formed. Each wraps a single `ALTER PUBLICATION supabase_realtime ADD TABLE` statement. No syntax
+issues found.
+
+**S2 — No prior migration publishes these tables ✓**
+Searched all `VinPoker/supabase/migrations/` for every `ADD TABLE` to `supabase_realtime`.
+`tournament_hands`, `tournament_chip_counts`, `tournament_seats`, and `hand_players` do **not**
+appear in any migration before `20260808000000`. The gap is confirmed real; this migration fills it
+exactly and nothing else will conflict.
+
+**S3 — No prior migration drops these tables ✓**
+No migration contains `DROP TABLE … tournament_hands/seats/chip_counts/hand_players`. The
+idempotency guard exists for live-DB drift only (not to undo a prior explicit drop).
+
+**S4 — hand_actions correctly excluded ✓**
+Searched `src/` for any `postgres_changes` subscription referencing `hand_actions` — **none
+found**. Excluding it from the publication is correct; publishing it would add WAL cost for zero
+realtime benefit.
+
+**S5 — RLS posture reviewed ✓**
+`tournament_hands`, `tournament_chip_counts`, `tournament_seats`, `hand_players` all have
+`FOR SELECT TO authenticated USING (true)` in `20260608000001_tournament_live_tracker.sql`
+(~lines 916–985). No RLS change is needed for logged-in realtime. anon cannot receive events —
+by design.
+
+**S6 — Subscription filter / replica identity match ✓**
+Both `TournamentLiveView.tsx:259` and `TournamentLivePanel.tsx:72` subscribe with
+`filter: tournament_id=eq.<id>`. For INSERT/UPDATE, the filter evaluates the NEW row (all columns
+present), so DEFAULT replica identity (PK only) is sufficient. Filtered hard-DELETE events won't
+fire (old row carries only PK), but deletes here are rare (voids use `is_voided`/`status`).
+
+**S7 — No src/RLS/schema changes ✓**
+The only file in the diff that belongs to Milestone A is the migration SQL. The three `src`
+components that own realtime subscriptions are untouched.
+
+### Known open item — vercel.json divergence (not Milestone A)
+
+After my Milestone A commit (`540459c`), a parallel session added commit `cd48fc8` on the feature
+branch changing `VinPoker/vercel.json` to:
+```json
+"buildCommand": "cd VinPoker && npm run build",
+"outputDirectory": "VinPoker/dist",
+"installCommand": "cd VinPoker && npm install"
+```
+`main` also has its own different `vercel.json` change (`dfea668`). These two changes conflict.
+This is **not** a Milestone A issue, but a PR to `main` will surface a `vercel.json` merge
+conflict that needs manual resolution before merging. Recommend resolving it in a separate commit
+before opening the PR, or addressing it when the PR is reviewed.
+
+### Required to close Milestone A
+
+| # | Test | Who | Status |
+|---|------|-----|--------|
+| §0 | Apply migration to staging/branch DB | You | ⏳ pending |
+| §1 | `pg_publication_tables` query shows 4 tables | You | ⏳ pending |
+| §2 | `/tracker` → hand → `/live` updates without refresh | You | ⏳ pending |
+| §3 | `supabase.getChannels().length` stable on mount/unmount | You | ⏳ pending |
+| §5 | Dealer Swing / Account / Bankroll / Feed load without errors | You | ⏳ pending |
