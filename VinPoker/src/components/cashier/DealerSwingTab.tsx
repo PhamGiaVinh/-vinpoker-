@@ -3278,6 +3278,12 @@ function TableGrid({
                     <div className="flex items-center gap-2 pt-0.5 text-primary">
                       <span className="text-xs">⬆</span>
                       <span className="text-xs font-semibold">{preAssignedMap[t.id]!.full_name}</span>
+                      {preAssignLabel ? (
+                        <span className={[
+                          "text-[9px] font-medium",
+                          preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
+                        ].join(" ")}>· {preAssignLabel}</span>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center py-4 text-zinc-500">
@@ -3293,17 +3299,28 @@ function TableGrid({
                   )}
 
                   {/* ── Next dealer inline (inside card body) ── */}
-                  {dealer && pred?.nextDealerName && (
+                  {/* Prefer realtime preAssignedMap (confirmed truth) over pred (prediction RPC). */}
+                  {dealer && (preAssignedMap[t.id] || pred?.nextDealerName) && (
                     <>
                       <div className="border-t border-zinc-800" />
                       <div className="flex items-center gap-2 pt-0.5">
                         <span className="text-[10px] text-zinc-500">Tiếp:</span>
-                        {pred.confidence === "confirmed" ? (
+                        {preAssignedMap[t.id] ? (
                           <span className="text-[11px] text-emerald-400 font-medium">
-                            <span className="text-emerald-500">✓</span> {pred.nextDealerName}
+                            <span className="text-emerald-500">✓</span> {preAssignedMap[t.id]!.full_name}
+                            {preAssignLabel ? (
+                              <span className={[
+                                "ml-1",
+                                preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
+                              ].join(" ")}>· {preAssignLabel}</span>
+                            ) : null}
+                          </span>
+                        ) : pred!.confidence === "confirmed" ? (
+                          <span className="text-[11px] text-emerald-400 font-medium">
+                            <span className="text-emerald-500">✓</span> {pred!.nextDealerName}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-zinc-400">~ {pred.nextDealerName}</span>
+                          <span className="text-[11px] text-zinc-400">~ {pred!.nextDealerName}</span>
                         )}
                       </div>
                     </>

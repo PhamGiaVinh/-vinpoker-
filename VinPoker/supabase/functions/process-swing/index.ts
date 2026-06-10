@@ -2216,6 +2216,27 @@ if (tier2Count > 0) {
                 { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
               );
             }
+            // Stale pre-assign guard: incoming dealer is no longer in pre_assigned state.
+            // preflightInvalid already handles checked_out/on_break; this catches "available"
+            // (dealer cleanly released since this tick's query ran). Without this guard,
+            // the RPC fires anyway and returns race_lost with no fallback triggered.
+            if (preflightAtt?.current_state === "available") {
+              console.warn("[process-swing][pass3][guard-stale-preassign]", {
+                club_id: cid,
+                table_id: assignment.table_id,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                incoming_dealer_name: preflightAtt.full_name,
+                current_state: preflightAtt.current_state,
+                attendance_status: preflightAtt.status,
+                pre_assign_status: preAssignStatus,
+                reason: "dealer_released_to_available",
+              });
+              metrics.skipped++;
+              continue;
+            }
+
             const breakDecision = await evaluateBreakNeed(admin, assignment.attendance_id, {
               maxWorkMinutes: Math.max(DEFAULT_MAX_WORK_MINUTES, swingDurResult.durationMinutes * 3),
               minWorkMinutes: Math.max(DEFAULT_MIN_WORK_MINUTES, swingDurResult.durationMinutes * 2),
@@ -2238,6 +2259,16 @@ if (tier2Count > 0) {
 
             if (rpcErr) {
               console.error("[process-swing] execute_pre_assigned_swing RPC error:", rpcErr.message);
+              console.error("[process-swing][pass3][execute-failed]", {
+                club_id: cid,
+                table_id: assignment.table_id,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                incoming_dealer_name: preflightAtt?.full_name,
+                reason: "rpc_error",
+                error: rpcErr.message,
+              });
               metrics.failed++;
               if (preflightInvalid) {
                 await runReplacementFallback(
@@ -2269,6 +2300,51 @@ if (tier2Count > 0) {
                     break;
                   }
                 }
+
+                // Patch 2: send a present-tense completion confirmation now that
+                // the pre-assigned swing has actually committed (refresh guard passed).
+                // This is distinct from the Pass 2 pre-announce ("📋 Tiếp theo …",
+                // future tense, fired minutes earlier): this branch confirms the
+                // handoff is DONE. Fire-and-forget so a Telegram failure can never
+                // fail the swing.
+                if (botToken && pass2ChatId) {
+                  const incomingName = preflightAtt?.full_name ?? "Dealer";
+                  const outgoingName =
+                    outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown"
+                      ? outgoingDealer.full_name
+                      : null;
+                  const swingMsg = outgoingName
+                    ? `🔵 ${incomingName} vừa vào bàn ${tableName}\nThay thế: ${outgoingName}`
+                    : `🔵 ${incomingName} vừa vào bàn ${tableName} (Bàn trống)`;
+                  console.log("[process-swing][pass3][telegram-confirmation-dispatched]", {
+                    club_id: cid,
+                    table_id: assignment.table_id,
+                    table_name: tableName,
+                    incoming_dealer_name: incomingName,
+                    outgoing_dealer_name: outgoingName,
+                  });
+                  sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch((err) =>
+                    console.error("[process-swing][pass3][telegram-confirmation-failed]", {
+                      club_id: cid,
+                      table_id: assignment.table_id,
+                      table_name: tableName,
+                      incoming_dealer_name: incomingName,
+                      error: err?.message ?? String(err),
+                    })
+                  );
+                }
+
+                console.log("[process-swing][pass3][execute-success]", {
+                  club_id: cid,
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  assignment_id: assignment.id,
+                  incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                  incoming_dealer_name: preflightAtt?.full_name,
+                  outgoing_dealer_name: outgoingDealer?.full_name,
+                  new_assignment_id: rpcResult?.new_assignment_id,
+                });
+
                 try {
                   const { data: fc } = await admin.rpc("count_available_dealers", { p_club_id: cid });
                   availableDealerCount = fc ?? 0;
@@ -2291,9 +2367,9 @@ if (tier2Count > 0) {
                 } else if (postAssign3.reason !== "no dealer available") {
                   console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign3.reason}`);
                 }
-                // Pre-assign notification was already sent when the reservation was created.
-                // Do not send a second swing-in Telegram here, or the user will receive
-                // a duplicate message when the delayed handoff finally executes.
+                // Swing-in confirmation already sent above (right after the refresh
+                // guard). Pass 2 sends the future-tense pre-announce; the send above
+                // is the present-tense "đã vào" confirmation — distinct, not a duplicate.
                 if (breakDecision.shouldBreak) {
                   const outgoingUsername = (outgoingDealer as any)?.telegram_username ?? null;
                   notifier?.enqueue({
@@ -2600,6 +2676,16 @@ if (tier2Count > 0) {
 
               default:
                 console.error("[process-swing] execute_pre_assigned_swing failed:", rpcResult);
+                console.error("[process-swing][pass3][execute-failed]", {
+                  club_id: cid,
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  assignment_id: assignment.id,
+                  incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                  incoming_dealer_name: preflightAtt?.full_name,
+                  reason: "unknown_status",
+                  rpc_result: rpcResult,
+                });
                 metrics.failed++;
                 break;
             }

@@ -331,6 +331,17 @@ export async function pass2PreAssignNext(
               `(notify in ~${minutesLeft} min, handoff at ${new Date(effectiveSwingAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` +
               (restDeficit > 0 ? ` [delayed ${restDeficit}min for rest]` : ""),
             );
+            console.log("[process-swing][pass2][preassign-created]", {
+              club_id: clubId,
+              table_id: assignment.table_id,
+              table_name: tableName,
+              assignment_id: assignment.id,
+              incoming_dealer_id: nextDealer.id,
+              incoming_dealer_name: nextDealer.full_name,
+              outgoing_dealer_name: (assignment as any).dealer_attendance?.dealers?.full_name ?? null,
+              minutes_left: minutesLeft,
+              rest_deficit_min: restDeficit,
+            });
 
             // Telegram pre-announce notification: send immediately, then
             // queue to pre_announce_jobs only if the direct send fails.
@@ -369,6 +380,34 @@ export async function pass2PreAssignNext(
                   `fallback=${notification.fallbackError ?? "none"})`,
                 );
               }
+              if (notification.delivered) {
+                console.log("[process-swing][pass2][telegram-preannounce-sent]", {
+                  club_id: clubId,
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  assignment_id: assignment.id,
+                  incoming_dealer_name: nextDealer.full_name,
+                });
+              } else if (notification.queued) {
+                console.log("[process-swing][pass2][telegram-preannounce-queued]", {
+                  club_id: clubId,
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  assignment_id: assignment.id,
+                  incoming_dealer_name: nextDealer.full_name,
+                  direct_error: notification.directError,
+                });
+              } else {
+                console.warn("[process-swing][pass2][telegram-preannounce-failed]", {
+                  club_id: clubId,
+                  table_id: assignment.table_id,
+                  table_name: tableName,
+                  assignment_id: assignment.id,
+                  incoming_dealer_name: nextDealer.full_name,
+                  direct_error: notification.directError,
+                  fallback_error: notification.fallbackError,
+                });
+              }
             } else {
               // No chatId — skip notification but still log so cashier can see
               console.log(
@@ -382,6 +421,13 @@ export async function pass2PreAssignNext(
           case "race_lost": {
             result.skipped_count++;
             console.log(`[Pass 2] ⏭️ ${tableName}: race_lost (concurrent swing)`);
+            console.warn("[process-swing][pass2][preassign-skipped]", {
+              club_id: clubId,
+              table_id: assignment.table_id,
+              table_name: tableName,
+              assignment_id: assignment.id,
+              reason: "race_lost",
+            });
             break;
           }
 
@@ -389,6 +435,14 @@ export async function pass2PreAssignNext(
             result.skipped_count++;
             console.log(`[Pass 2] ⏭️ ${tableName}: dealer ${nextDealer.full_name} unavailable (taken by another tick)`);
             // Don't add to cycleExcludedIds — dealer wasn't actually assigned
+            console.warn("[process-swing][pass2][preassign-skipped]", {
+              club_id: clubId,
+              table_id: assignment.table_id,
+              table_name: tableName,
+              assignment_id: assignment.id,
+              reason: "dealer_unavailable",
+              dealer_name: nextDealer.full_name,
+            });
             break;
           }
 
