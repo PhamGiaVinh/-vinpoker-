@@ -281,11 +281,11 @@ const StakingNew = () => {
 
   if (!isVerified) {
     return (
-      <div className="staking-scope max-w-2xl mx-auto py-8">
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-6 space-y-4">
+      <div className="staking-scope max-w-2xl mx-auto py-12">
+        <div className="rounded-lg border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-orange-500/5 p-8 space-y-4 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <Lock className="w-6 h-6 text-amber-500" />
-            <h1 className="text-xl font-display font-bold">Cần xác minh danh tính</h1>
+            <h1 className="text-2xl font-display font-bold text-foreground">Cần xác minh danh tính</h1>
           </div>
           <p className="text-sm text-muted-foreground">
             🔒 Bạn cần xác minh danh tính qua CLB để tạo deal gọi vốn. Đây là bước bắt buộc để bảo vệ cả Player và Backer.
@@ -302,22 +302,22 @@ const StakingNew = () => {
   }
 
   return (
-    <div className="staking-scope space-y-6 max-w-5xl mx-auto">
-      <header className="flex items-center gap-2">
-        <Sparkles className="w-5 h-5 text-primary" />
-        <h1 className="text-2xl md:text-3xl font-display font-bold">{t("stakingNew.title")}</h1>
+    <div className="staking-scope space-y-8 max-w-5xl mx-auto">
+      <header className="flex items-center gap-3">
+        <Sparkles className="w-6 h-6 text-primary" />
+        <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground">{t("stakingNew.title")}</h1>
       </header>
 
-      <Alert className="border-primary/40 bg-primary/5">
-        <Info className="h-4 w-4 text-primary" />
-        <AlertDescription className="text-sm">
+      <Alert className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+        <Info className="h-4 w-4 text-primary flex-shrink-0" />
+        <AlertDescription className="text-sm text-muted-foreground">
           {t("stakingNew.infoBanner")}
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         {/* FORM */}
-        <div className="space-y-5 p-5 rounded-xl border border-border bg-card/40">
+        <div className="space-y-6 p-6 rounded-xl border border-border/40 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm">
           <div className="space-y-2">
             <Label>{t("stakingNew.tournamentLbl")}</Label>
             <Select value={tournamentId} onValueChange={setTournamentId}>
@@ -334,15 +334,15 @@ const StakingNew = () => {
           </div>
 
           {!isCustom && existingDealForTournament && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="text-sm">
+            <Alert variant="destructive" className="border-destructive/30 bg-destructive/5">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <AlertDescription className="text-sm text-destructive/90">
                 ⚠️ Bạn đã có 1 phiếu hợp tác đang mở cho giải này
                 ({existingDealForTournament.filled_percent}/{existingDealForTournament.percentage_sold}% đã được hỗ trợ).
                 <Button
                   variant="link"
                   size="sm"
-                  className="px-1 h-auto"
+                  className="px-0.5 h-auto text-destructive hover:text-destructive/80"
                   onClick={() => nav("/staking/my-deals")}
                 >
                   Xem phiếu cũ →
@@ -352,18 +352,18 @@ const StakingNew = () => {
           )}
 
           {isCustom && (
-            <div className="space-y-3 p-3 rounded-lg border border-dashed border-border">
-              <div className="space-y-1">
-                <Label>{t("stakingNew.eventName")}</Label>
+            <div className="space-y-3 p-4 rounded-lg border border-dashed border-border/40 bg-muted/20">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">{t("stakingNew.eventName")}</Label>
                 <Input value={customName} maxLength={120} onChange={(e) => setCustomName(e.target.value)} placeholder={t("stakingNew.eventNamePh")} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>{t("stakingNew.date")}</Label>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t("stakingNew.date")}</Label>
                   <Input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
                 </div>
-                <div className="space-y-1">
-                  <Label>{t("stakingNew.venue")}</Label>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t("stakingNew.venue")}</Label>
                   <Input value={customVenue} maxLength={120} onChange={(e) => setCustomVenue(e.target.value)} placeholder={t("stakingNew.venuePh")} />
                 </div>
               </div>
@@ -473,10 +473,10 @@ const StakingNew = () => {
           </div>
 
           {blockers.length > 0 && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
+            <Alert variant="destructive" className="border-destructive/30 bg-destructive/5">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <AlertDescription>
-                <ul className="list-disc pl-4 space-y-1 text-sm">
+                <ul className="list-disc pl-4 space-y-1 text-sm text-destructive/90">
                   {blockers.map((b, i) => <li key={i}>{b}</li>)}
                 </ul>
               </AlertDescription>
@@ -512,9 +512,9 @@ const SimulationPreview = ({
   const { t } = useTranslation();
   const fp = selectedTournament ? getTournamentPrice(selectedTournament) : null;
   return (
-    <aside className="space-y-3 p-5 rounded-xl border border-primary/30 bg-card/40 sticky top-20 h-fit">
+    <aside className="space-y-4 p-6 rounded-xl border border-primary/20 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm sticky top-20 h-fit">
       {fp?.hasDiscount && (
-        <div className="rounded-lg border border-success/30 bg-success/5 p-2.5 text-xs text-success font-semibold">
+        <div className="rounded-lg border border-success/30 bg-gradient-to-r from-success/10 to-emerald-500/5 p-3 text-xs text-success font-semibold">
           🎉 Giải này đang có ưu đãi miễn phí DV CLB cho {fp.remainingSlots} suất đầu tiên. Còn {fp.remainingSlots} suất.
         </div>
       )}
@@ -542,29 +542,29 @@ const SimulationPreview = ({
         {SIM_PRIZES.map((prize) => {
           const p = computeStakingPayouts(prize, percentage, markup);
           return (
-            <div key={prize} className="rounded-lg border border-border p-2.5 bg-background/40 text-xs space-y-1">
-              <div className="font-semibold text-foreground">{t("stakingNew.ifPrize", { prize: formatStack(prize) + " điểm" })}</div>
-              <div className="grid grid-cols-3 gap-1 text-[11px]">
-                <div>
-                  <div className="text-muted-foreground">{t("stakingNew.backer")}</div>
-                   <div className="font-bold text-success">{formatStack(p.backer)}</div>
+            <div key={prize} className="rounded-lg border border-border/40 p-3 bg-muted/20 text-xs space-y-2">
+              <div className="font-semibold text-foreground text-sm">{t("stakingNew.ifPrize", { prize: formatStack(prize) + " điểm" })}</div>
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="space-y-1">
+                  <div className="text-muted-foreground text-xs">{t("stakingNew.backer")}</div>
+                   <div className="font-bold text-success text-sm">{formatStack(p.backer)}</div>
                 </div>
-                <div>
-                  <div className="text-muted-foreground">{t("stakingNew.youGet")}</div>
-                  <div className="font-bold text-primary">{formatStack(p.player)}</div>
+                <div className="space-y-1">
+                  <div className="text-muted-foreground text-xs">{t("stakingNew.youGet")}</div>
+                  <div className="font-bold text-primary text-sm">{formatStack(p.player)}</div>
                 </div>
-                <div>
-                  <div className="text-muted-foreground">{t("stakingNew.fee2")}</div>
-                  <div className="font-bold text-muted-foreground">{formatStack(p.fee)}</div>
+                <div className="space-y-1">
+                  <div className="text-muted-foreground text-xs">{t("stakingNew.fee2")}</div>
+                  <div className="font-bold text-muted-foreground text-sm">{formatStack(p.fee)}</div>
                 </div>
               </div>
             </div>
           );
         })}
 
-        <div className="rounded-lg border border-destructive/30 p-2.5 bg-destructive/5 text-xs">
-          <div className="font-semibold text-destructive">{t("stakingNew.ifBust")}</div>
-          <div className="text-[11px] mt-1">
+        <div className="rounded-lg border border-destructive/30 p-3 bg-destructive/5 text-xs">
+          <div className="font-semibold text-destructive text-sm">{t("stakingNew.ifBust")}</div>
+          <div className="text-[11px] mt-2 text-destructive/80">
             <Trans
               i18nKey="stakingNew.bustText"
               values={{ price: formatStack(askingPrice) + " điểm" }}
