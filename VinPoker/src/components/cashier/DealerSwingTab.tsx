@@ -567,16 +567,39 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       const { data, error } = await supabase.functions.invoke("manage-break", {
         body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0], duration_minutes: durationMinutes },
       });
-      if (error) { toast.error(error.message); return; }
-      toast.success(`Đã gửi dealer đi nghỉ ${durationMinutes} phút`);
+      if (error) {
+        let errorBody: any = null;
+        if (error instanceof FunctionsHttpError) {
+          try {
+            errorBody = await error.context?.json?.();
+          } catch {
+            errorBody = null;
+          }
+        }
+        toast.error(errorBody?.error ?? error.message);
+        return;
+      }
+      const response = data as any;
+      const isExtended = response?.action === "extended";
+      if (isExtended) {
+        toast.success(`Đã gia hạn nghỉ thêm ${response.added_minutes ?? durationMinutes} phút, tổng ${response.break_minutes ?? "?"} phút`);
+      } else {
+        toast.success(`Đã gửi dealer đi nghỉ ${durationMinutes} phút`);
+      }
       const breakDealer = (dealers ?? []).find((d) => d.id === attendanceId);
       const breakName = breakDealer?.dealers?.full_name ?? "";
-      const breakEnd = new Date(Date.now() + durationMinutes * 60_000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const tourName = getTourName();
-      sendTelegram(`☕ ${breakName} bắt đầu nghỉ ${durationMinutes} phút${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
-        .catch(() => {});
+      if (isExtended) {
+        sendTelegram(`☕ ${breakName} được gia hạn nghỉ thêm ${response.added_minutes ?? durationMinutes} phút, tổng ${response.break_minutes ?? durationMinutes} phút${tourName ? ` (Tour: ${tourName})` : ""}.`)
+          .catch(() => {});
+      } else {
+        const breakEnd = new Date(Date.now() + durationMinutes * 60_000).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+        sendTelegram(`☕ ${breakName} bắt đầu nghỉ ${durationMinutes} phút${tourName ? ` (Tour: ${tourName})` : ""}. Dự kiến quay lại lúc: ${breakEnd}.`)
+          .catch(() => {});
+      }
       refetchAssignments();
       refetchDealers();
+      refetchBreakPool();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
