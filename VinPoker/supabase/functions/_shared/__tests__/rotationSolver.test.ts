@@ -213,3 +213,28 @@ Deno.test("8. forecast slots are emitted and never carry an assignmentId (predic
     assertEq(r.assignmentId, null, `forecast slot ${r.slotIndex} carries no assignmentId`);
   }
 });
+
+Deno.test("9. game-type table + generalist dealers (empty skills) → matched, NOT false shortage", () => {
+  // Regression guard: every active table carries a default game_type ("NLH")
+  // and clubs that don't track dealer skills leave skills empty. A generalist
+  // must still be picked — skills are an additive specialty whitelist, never a
+  // hard requirement. Bug symptom: 100% shortage on every tick.
+  const tables = [mkTable({ tableId: "T1", swingDueAtMs: NOW - 5 * MIN, gameTypes: ["NLH"] })];
+  const dealers = [mkDealer({ attendanceId: "gen", skills: [] })];
+
+  const plan = solveRotationPlan(tables, dealers, OPTS);
+  const row = plan.rows.find((r) => r.tableId === "T1" && r.slotIndex === 0)!;
+  assertEq(row.inAttendanceId, "gen", "generalist dealer is matched to a game-typed table");
+  assertEq(row.isShortage, false, "no false shortage when a generalist is available");
+
+  // Specialty constraint preserved: a dealer who HAS skills but matches none
+  // of the table's game types is still excluded (→ honest shortage).
+  const specialistOnly = solveRotationPlan(
+    [mkTable({ tableId: "T2", swingDueAtMs: NOW - 5 * MIN, gameTypes: ["PLO"] })],
+    [mkDealer({ attendanceId: "nlhOnly", skills: ["NLH"] })],
+    OPTS
+  );
+  const r2 = specialistOnly.rows.find((r) => r.tableId === "T2" && r.slotIndex === 0)!;
+  assertEq(r2.inAttendanceId, null, "specialist with non-matching skill is excluded");
+  assertEq(r2.isShortage, true, "PLO table with only an NLH-skilled dealer → shortage");
+});

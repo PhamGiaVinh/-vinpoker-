@@ -172,6 +172,14 @@ function tierFitRank(required: DealerTier | null, tier: DealerTier): number {
 
 function skillsMatch(table: RotationPlanTable, c: RotationPlanCandidate): boolean {
   if (table.gameTypes.length === 0) return true;
+  // Generalist dealers (no specialty skills tracked) can deal the standard
+  // game. Skills are an ADDITIVE specialty whitelist, never a hard requirement
+  // — an empty skills array must never starve the pool. This mirrors the
+  // supply-side game-type filter in buildDealerCandidates, which only excludes
+  // a dealer who HAS skills listed but matches none of the required types.
+  // Without this, a table carrying the default game_type (e.g. "NLH") rejects
+  // every dealer in a club that doesn't track skills → 100% false shortage.
+  if (c.skills.length === 0) return true;
   const wanted = table.gameTypes.map((g) => g.toLowerCase());
   return c.skills.some((s) => wanted.includes(s.toLowerCase()));
 }
