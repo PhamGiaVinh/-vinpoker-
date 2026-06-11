@@ -1977,6 +1977,12 @@ if (tier2Count > 0) {
         // Schedule-driven execution trigger: an announced lock whose honest
         // planned_relief_at has arrived. swing_due_at deliberately NOT in the
         // filter — under shortage relief is later than due (visible OT).
+        // Uses `now` (NOT nowPlusBuf): planned_relief_at IS the exact intended
+        // entry time and announce_at was set to relief − 3min. Firing the
+        // 2-min legacy look-ahead buffer here would execute the swing up to
+        // 2 min early, collapsing the 3-min announce lead and violating R2
+        // (announce ≥3 min before entry). Slightly late (next 60s tick) is
+        // safe; early is not.
         const buildScheduleDueQuery = () => admin
           .from("dealer_assignments")
           .select(dueColumns)
@@ -1985,7 +1991,7 @@ if (tier2Count > 0) {
           .is("swing_processed_at", null)
           .eq("club_id", cid)
           .not("planned_relief_at", "is", null)
-          .lte("planned_relief_at", nowPlusBuf);
+          .lte("planned_relief_at", now);
 
         const zombieCutoff = new Date(Date.now() - ZOMBIE_LOCK_WINDOW_MS).toISOString();
 
