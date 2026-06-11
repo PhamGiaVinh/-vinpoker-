@@ -1296,12 +1296,13 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {clubs.length > 1 && (
-          <Select value={clubFilter ?? ""} onValueChange={(v) => setClubFilter(v || null)}>
+          <Select value={clubFilter ?? "all"} onValueChange={(v) => setClubFilter(v === "all" ? null : v)}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Tất cả CLB" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tất cả CLB</SelectItem>
+              {/* Radix forbids empty-string SelectItem values; use "all" sentinel mapped to null (= no club filter). */}
+              <SelectItem value="all">Tất cả CLB</SelectItem>
               {clubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
