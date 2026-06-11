@@ -887,6 +887,92 @@ Deno.serve(async (req: Request) => {
             }
           }
 
+          // ── 4c. Stale dealer_breaks rows: dealer already left on_break but break_end not set ──
+          // Swing RPCs transition the outgoing dealer's attendance state (on_break→assigned/
+          // pre_assigned) without closing the dealer_breaks row. end_expired_breaks (Pass 4)
+          // only handles dealers still in on_break — it never catches these orphaned rows.
+          // Fix: close break rows where attendance state is no longer on_break.
+          // Data hygiene only — does NOT change dealer_attendance state, does NOT fix pool starvation.
+          try {
+            const staleCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
+
+            const { data: staleBreakRows, error: staleBreakError } = await admin
+              .from("dealer_breaks")
+              .select("id, attendance_id, break_start")
+              .eq("club_id", cid)
+              .is("break_end", null)
+              .not("attendance_id", "is", null)
+              .lt("break_start", staleCutoff);
+
+            if (staleBreakError) {
+              console.warn("[Pass 0c] stale dealer_breaks scan failed", staleBreakError.message);
+            } else if (staleBreakRows && staleBreakRows.length > 0) {
+              const attendanceIds = [
+                ...new Set(
+                  (staleBreakRows as any[])
+                    .map((r: any) => r.attendance_id)
+                    .filter(Boolean),
+                ),
+              ];
+
+              const { data: attendanceRows, error: attendanceError } = await admin
+                .from("dealer_attendance")
+                .select("id, current_state")
+                .in("id", attendanceIds);
+
+              if (attendanceError) {
+                console.warn(
+                  "[Pass 0c] stale dealer_breaks attendance lookup failed",
+                  attendanceError.message,
+                );
+              } else {
+                const stateByAttId = new Map(
+                  (attendanceRows ?? []).map((r: any) => [r.id, r.current_state]),
+                );
+
+                const idsToClose = (staleBreakRows as any[])
+                  .filter((row: any) => {
+                    const state = stateByAttId.get(row.attendance_id);
+                    return state !== undefined && state !== "on_break";
+                  })
+                  .map((row: any) => row.id);
+
+                const stillOnBreakCount = (staleBreakRows as any[]).filter(
+                  (row: any) => stateByAttId.get(row.attendance_id) === "on_break",
+                ).length;
+
+                const missingAttendanceCount = (staleBreakRows as any[]).filter(
+                  (row: any) => !stateByAttId.has(row.attendance_id),
+                ).length;
+
+                if (idsToClose.length > 0) {
+                  const nowIso = new Date().toISOString();
+                  const { error: closeError } = await admin
+                    .from("dealer_breaks")
+                    .update({ break_end: nowIso })
+                    .in("id", idsToClose)
+                    .is("break_end", null);
+
+                  if (closeError) {
+                    console.warn(
+                      "[Pass 0c] stale dealer_breaks close failed",
+                      closeError.message,
+                    );
+                  } else {
+                    console.log("[Pass 0c] 🩹 Closed stale dealer_breaks rows", {
+                      scanned: staleBreakRows.length,
+                      closed: idsToClose.length,
+                      stillOnBreak: stillOnBreakCount,
+                      missingAttendance: missingAttendanceCount,
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err: any) {
+            console.warn("[Pass 0c] stale dealer_breaks cleanup unexpected error", err?.message ?? err);
+          }
+
           // 5. Telegram notification
           if (stuckIssues.length > 0) {
             console.warn(`[Pass 0c] ⚠️ Found ${stuckIssues.length} stuck dealers (auto-fixed)`);
