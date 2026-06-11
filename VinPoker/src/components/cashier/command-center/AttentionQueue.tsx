@@ -1,5 +1,6 @@
 import { useAttentionQueue, type AttentionItem as AttentionItemData } from "@/hooks/useAttentionQueue";
 import type { DealerAssignment, DealerAttendance, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import type { RotationTableSlots } from "@/hooks/useRotationSchedule";
 import AttentionItem from "./AttentionItem";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
+  scheduleByTableId?: Record<string, RotationTableSlots> | null;
   nowMs: number;
   autoSwingEnabled: boolean;
   onSwing: (attendanceId: string) => void;
@@ -19,12 +21,12 @@ interface Props {
 
 export default function AttentionQueue({
   assignments, tables, dealers, tableAssignmentMap,
-  timelineByTableId, nextDealerMap, nowMs, autoSwingEnabled,
+  timelineByTableId, nextDealerMap, scheduleByTableId, nowMs, autoSwingEnabled,
   onSwing, onAssign, onSendToBreak, onFocusTable,
 }: Props) {
   const { criticalItems, warningItems, totalCount } = useAttentionQueue({
     assignments, tables, dealers, tableAssignmentMap,
-    timelineByTableId, nextDealerMap, nowMs,
+    timelineByTableId, nextDealerMap, scheduleByTableId, nowMs,
   });
 
   // ── Empty state ──
