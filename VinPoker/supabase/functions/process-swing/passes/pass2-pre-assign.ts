@@ -154,7 +154,6 @@ export async function pass2PreAssignNext(
         .is("swing_processed_at", null)
         .is("pre_assigned_attendance_id", null)
         .is("overtime_started_at", null)
-        .gte("swing_due_at", normalWindowStart)
         .lte("swing_due_at", normalWindowEnd);
 
       if (normalErr) {
@@ -178,7 +177,6 @@ export async function pass2PreAssignNext(
         .is("swing_processed_at", null)
         .is("pre_assigned_attendance_id", null)
         .not("overtime_started_at", "is", null)
-        .gte("swing_due_at", otWindowStart)
         .lte("swing_due_at", otWindowEnd);
 
       if (otErr) {
@@ -198,17 +196,29 @@ export async function pass2PreAssignNext(
     if (upcomingAssignments.length === 0) {
       console.log(
         `[Pass 2] No tables needing pre-assignment in window ` +
-        `[${normalWindowStart}, ${normalWindowEnd}] ` +
-        `(N=${preAnnounceMinutes}, window=±2min)`
+        `(overdue-inclusive, ≤${normalWindowEnd}) ` +
+        `(N=${preAnnounceMinutes})`
       );
       return result;
     }
+
+    // ── PATCH D: sort by urgency (most overdue / nearest deadline first) ──
+    upcomingAssignments.sort((a: any, b: any) => {
+      const tA = new Date(a.swing_due_at).getTime();
+      const tB = new Date(b.swing_due_at).getTime();
+      return tA !== tB ? tA - tB : a.id.localeCompare(b.id);
+    });
 
     const otCount = upcomingAssignments.filter((a: any) => a.overtime_started_at).length;
     console.log(
       `[Pass 2] Found ${upcomingAssignments.length} tables needing pre-assignment ` +
       `(${otCount} OT emergency at ${EMERGENCY_OT_PRE_ANNOUNCE_MINUTES}min, ` +
       `${upcomingAssignments.length - otCount} normal at ${preAnnounceMinutes}min)`
+    );
+    // ── PATCH D: starvation diagnostic ──────────────────────────────────
+    console.log(
+      `[Pass 2] 📊 Pool pressure: ${upcomingAssignments.length} tables_due, ` +
+      `${cycleExcludedIds.size} dealers_excluded_from_pool_this_tick`,
     );
 
     // ════════════════════════════════════════════════════════
@@ -219,240 +229,259 @@ export async function pass2PreAssignNext(
       try {
         const tableName = (assignment.game_tables as any)?.table_name ?? "??";
 
-        // Use pickNextDealer to find the best available dealer.
-        // Reservation mode allows us to reserve a dealer who is still
-        // finishing rest, as long as they will be ready by the delayed
-        // handoff window.
-        const minInterSwingRestMinutes = options.minInterSwingRestMinutes ?? 10;
-        const nominalSwingAtMs = new Date(assignment.swing_due_at).getTime();
-        const reservationSwingAt = new Date(
-          nominalSwingAtMs + minInterSwingRestMinutes * 60_000
-        ).toISOString();
-        const nextDealer = await pickNextDealer(admin, clubId, {
-          currentTableId: assignment.table_id,
-          excludeAttendanceIds: cycleExcludedIds,
-          minInterSwingRestMinutes,
-          swingDueAt: reservationSwingAt,
-          reservationMode: true,
-        });
+        // PATCH D: per-table exclude set starts from shared pool snapshot.
+        // Failed candidates are added here so the next attempt tries a different
+        // dealer without polluting cycleExcludedIds (which spans all tables this tick).
+        const localExcludes = new Set(cycleExcludedIds);
+        let succeeded = false;
 
-        if (!nextDealer) {
-          result.skipped_count++;
-          console.log(`[Pass 2] ⏭️ ${tableName}: no available dealer`);
-          continue;
-        }
+        retry: for (let attempt = 1; attempt <= 3; attempt++) {
+          const minInterSwingRestMinutes = options.minInterSwingRestMinutes ?? 10;
+          const nominalSwingAtMs = new Date(assignment.swing_due_at).getTime();
+          const reservationSwingAt = new Date(
+            nominalSwingAtMs + minInterSwingRestMinutes * 60_000
+          ).toISOString();
+          const nextDealer = await pickNextDealer(admin, clubId, {
+            currentTableId: assignment.table_id,
+            excludeAttendanceIds: localExcludes,
+            minInterSwingRestMinutes,
+            swingDueAt: reservationSwingAt,
+            reservationMode: true,
+          });
 
-        // Call CAS-based RPC for atomic pre-assignment
-        const { data: rpcResult, error: rpcErr } = await admin.rpc(
-          "pre_assign_next_dealer_for_table",
-          {
-            p_assignment_id: assignment.id,
-            p_club_id: clubId,
-            p_next_attendance_id: nextDealer.id,
-            p_version: assignment.version,
-          },
-        );
+          if (!nextDealer) {
+            console.log(`[Pass 2] ⏭️ ${tableName}: no available dealer (attempt ${attempt})`);
+            break retry;
+          }
 
-        if (rpcErr) {
-          result.errors.push({ table_id: assignment.table_id, error: rpcErr.message });
-          console.error(`[Pass 2] ❌ RPC error for ${tableName}:`, rpcErr.message);
-          continue;
-        }
+          // Call CAS-based RPC for atomic pre-assignment
+          const { data: rpcResult, error: rpcErr } = await admin.rpc(
+            "pre_assign_next_dealer_for_table",
+            {
+              p_assignment_id: assignment.id,
+              p_club_id: clubId,
+              p_next_attendance_id: nextDealer.id,
+              p_version: assignment.version,
+            },
+          );
 
-        const result_outcome = rpcResult as PreAssignResult | null;
-        const outcome = result_outcome?.outcome;
-
-        switch (outcome) {
-          case "pre_assigned": {
-            result.pre_assigned_count++;
-            cycleExcludedIds.add(nextDealer.id);
-
-            // NOTE: overtime_started_at is NOT cleared here. It was
-            // previously cleared prematurely (before the RPC committed),
-            // which broke the rollback path in execute_pre_assigned_swing
-            // (step [8] would restore NULL instead of the original OT timestamp).
-            // The RPC now handles OT clearing correctly in step [6] on success
-            // and preserves the original value on rollback in step [8].
-
-            // Bàn 10 fix: read effective_swing_due_at from RPC (may be delayed
-            // by rest_deficit_min to enforce 10-min soft min rest). Fall back
-            // to assignment.swing_due_at for backward compat if RPC didn't
-            // return the field.
-            const nominalSwingAt = result_outcome?.original_swing_due_at
-              ?? assignment.swing_due_at;
-            const effectiveSwingAt = result_outcome?.effective_swing_due_at
-              ?? nominalSwingAt;
-            const restDeficit = result_outcome?.rest_deficit_min ?? 0;
-            const currentRest = result_outcome?.current_rest_min ?? null;
-
-            if (restDeficit > 0) {
-              console.log(
-                `[Pass 2] ⏸ ${tableName}: ${nextDealer.full_name} pre-assigned with ` +
-                `rest deficit ${restDeficit}min (had ${currentRest}min rest, ` +
-                `min 10min) — swing delayed from ${assignment.swing_due_at} ` +
-                `to ${effectiveSwingAt}`,
-              );
-              // Diagnostic log only — no Telegram re-announce in v1.
-              // BUG FIX 2026-06-06: diagnostic_logs schema is
-              //   (id, timestamp, club_id, diagnostic_type, result, metadata, created_at).
-              // Old code used non-existent columns (level, source, event, payload)
-              // so the insert silently dropped fields. Use fire-and-forget to
-              // avoid blocking the pre-assign loop.
-              admin.from("diagnostic_logs").insert({
-                club_id: clubId,
-                diagnostic_type: "soft_min_rest_delay",
-                result: {
-                  table_id: assignment.table_id,
-                  assignment_id: assignment.id,
-                  dealer_id: result_outcome?.dealer_id ?? nextDealer.dealer_id ?? null,
-                  dealer_name: nextDealer.full_name,
-                  rest_deficit_min: restDeficit,
-                  current_rest_min: currentRest,
-                  original_due_at: nominalSwingAt,
-                  effective_due_at: effectiveSwingAt,
-                },
-                metadata: {
-                  source: "pass2_pre_assign",
-                },
-              }).then((result: any) => {
-                const { error } = result ?? {};
-                if (error) {
-                  console.warn("[Pass 2] diagnostic log insert failed:", error.message);
-                }
-              });
-            }
-
-            // Compute minutes until the nominal swing time for the notification.
-            const swingAt = new Date(nominalSwingAt).getTime();
-            const minutesLeft = Math.max(0, Math.floor((swingAt - Date.now()) / 60_000));
-
-            console.log(
-              `[Pass 2] ✅ ${tableName}: ${nextDealer.full_name} pre-assigned ` +
-              `(notify in ~${minutesLeft} min, handoff at ${new Date(effectiveSwingAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` +
-              (restDeficit > 0 ? ` [delayed ${restDeficit}min for rest]` : ""),
-            );
-            console.log("[process-swing][pass2][preassign-created]", {
-              club_id: clubId,
-              table_id: assignment.table_id,
-              table_name: tableName,
-              assignment_id: assignment.id,
-              incoming_dealer_id: nextDealer.id,
-              incoming_dealer_name: nextDealer.full_name,
-              outgoing_dealer_name: (assignment as any).dealer_attendance?.dealers?.full_name ?? null,
-              minutes_left: minutesLeft,
-              rest_deficit_min: restDeficit,
+          if (rpcErr) {
+            result.errors.push({ table_id: assignment.table_id, error: rpcErr.message });
+            console.error(`[Pass 2] ❌ RPC error for ${tableName}:`, rpcErr.message, {
+              code: rpcErr.code, detail: rpcErr.details,
             });
+            break retry;
+          }
 
-            // Telegram pre-announce notification: send immediately, then
-            // queue to pre_announce_jobs only if the direct send fails.
-            if (chatId) {
-              const outgoing = (assignment as any).dealer_attendance?.dealers ?? {};
-              const outgoingAtt = (assignment as any).dealer_attendance ?? {};
-              const notification = await sendPreAssignTelegramWithFallback(
-                admin,
-                {
-                  clubId,
-                  tableId: assignment.table_id,
-                  assignmentId: assignment.id,
-                  attendanceId: nextDealer.id,
-                  outAttendanceId: outgoingAtt.id ?? null,
-                  tableName,
-                  zone: clubZone,
-                  outName: outgoing.full_name ?? "Unknown",
-                  outUsername: outgoing.telegram_username ?? null,
-                  outTelegramUserId: normalizeTelegramUserId(outgoing.telegram_user_id),
-                  inName: nextDealer.full_name,
-                  inUsername: nextDealer.telegram_username ?? null,
-                  inTelegramUserId: normalizeTelegramUserId(nextDealer.telegram_user_id),
-                  swingAt: new Date(nominalSwingAt),
-                  minutesLeft,
-                  restDeficitMin: restDeficit,
-                  chatId,
-                },
-                botToken,
-                "[Pass 2]",
+          const result_outcome = rpcResult as PreAssignResult | null;
+          const outcome = result_outcome?.outcome;
+
+          switch (outcome) {
+            case "pre_assigned": {
+              result.pre_assigned_count++;
+              // Only mutate shared exclude set on confirmed success
+              cycleExcludedIds.add(nextDealer.id);
+              succeeded = true;
+
+              // NOTE: overtime_started_at is NOT cleared here. It was
+              // previously cleared prematurely (before the RPC committed),
+              // which broke the rollback path in execute_pre_assigned_swing
+              // (step [8] would restore NULL instead of the original OT timestamp).
+              // The RPC now handles OT clearing correctly in step [6] on success
+              // and preserves the original value on rollback in step [8].
+
+              // Bàn 10 fix: read effective_swing_due_at from RPC (may be delayed
+              // by rest_deficit_min to enforce 10-min soft min rest). Fall back
+              // to assignment.swing_due_at for backward compat if RPC didn't
+              // return the field.
+              const nominalSwingAt = result_outcome?.original_swing_due_at
+                ?? assignment.swing_due_at;
+              const effectiveSwingAt = result_outcome?.effective_swing_due_at
+                ?? nominalSwingAt;
+              const restDeficit = result_outcome?.rest_deficit_min ?? 0;
+              const currentRest = result_outcome?.current_rest_min ?? null;
+
+              if (restDeficit > 0) {
+                console.log(
+                  `[Pass 2] ⏸ ${tableName}: ${nextDealer.full_name} pre-assigned with ` +
+                  `rest deficit ${restDeficit}min (had ${currentRest}min rest, ` +
+                  `min 10min) — swing delayed from ${assignment.swing_due_at} ` +
+                  `to ${effectiveSwingAt}`,
+                );
+                // Diagnostic log only — no Telegram re-announce in v1.
+                // BUG FIX 2026-06-06: diagnostic_logs schema is
+                //   (id, timestamp, club_id, diagnostic_type, result, metadata, created_at).
+                // Old code used non-existent columns (level, source, event, payload)
+                // so the insert silently dropped fields. Use fire-and-forget to
+                // avoid blocking the pre-assign loop.
+                admin.from("diagnostic_logs").insert({
+                  club_id: clubId,
+                  diagnostic_type: "soft_min_rest_delay",
+                  result: {
+                    table_id: assignment.table_id,
+                    assignment_id: assignment.id,
+                    dealer_id: result_outcome?.dealer_id ?? nextDealer.dealer_id ?? null,
+                    dealer_name: nextDealer.full_name,
+                    rest_deficit_min: restDeficit,
+                    current_rest_min: currentRest,
+                    original_due_at: nominalSwingAt,
+                    effective_due_at: effectiveSwingAt,
+                  },
+                  metadata: {
+                    source: "pass2_pre_assign",
+                  },
+                }).then((result: any) => {
+                  const { error } = result ?? {};
+                  if (error) {
+                    console.warn("[Pass 2] diagnostic log insert failed:", error.message);
+                  }
+                });
+              }
+
+              // Compute minutes until the nominal swing time for the notification.
+              const swingAt = new Date(nominalSwingAt).getTime();
+              const minutesLeft = Math.max(0, Math.floor((swingAt - Date.now()) / 60_000));
+
+              console.log(
+                `[Pass 2] ✅ ${tableName}: ${nextDealer.full_name} pre-assigned ` +
+                `(notify in ~${minutesLeft} min, handoff at ${new Date(effectiveSwingAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })})` +
+                (restDeficit > 0 ? ` [delayed ${restDeficit}min for rest]` : ""),
               );
+              console.log("[process-swing][pass2][preassign-created]", {
+                club_id: clubId,
+                table_id: assignment.table_id,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                incoming_dealer_id: nextDealer.id,
+                incoming_dealer_name: nextDealer.full_name,
+                outgoing_dealer_name: (assignment as any).dealer_attendance?.dealers?.full_name ?? null,
+                minutes_left: minutesLeft,
+                rest_deficit_min: restDeficit,
+              });
 
-              if (!notification.delivered && !notification.queued) {
-                console.warn(
-                  `[Pass 2] ⚠️ ${tableName}: pre-assign notification lost ` +
-                  `(direct=${notification.directError ?? "unknown"}, ` +
-                  `fallback=${notification.fallbackError ?? "none"})`,
+              // Telegram pre-announce notification: send immediately, then
+              // queue to pre_announce_jobs only if the direct send fails.
+              if (chatId) {
+                const outgoing = (assignment as any).dealer_attendance?.dealers ?? {};
+                const outgoingAtt = (assignment as any).dealer_attendance ?? {};
+                const notification = await sendPreAssignTelegramWithFallback(
+                  admin,
+                  {
+                    clubId,
+                    tableId: assignment.table_id,
+                    assignmentId: assignment.id,
+                    attendanceId: nextDealer.id,
+                    outAttendanceId: outgoingAtt.id ?? null,
+                    tableName,
+                    zone: clubZone,
+                    outName: outgoing.full_name ?? "Unknown",
+                    outUsername: outgoing.telegram_username ?? null,
+                    outTelegramUserId: normalizeTelegramUserId(outgoing.telegram_user_id),
+                    inName: nextDealer.full_name,
+                    inUsername: nextDealer.telegram_username ?? null,
+                    inTelegramUserId: normalizeTelegramUserId(nextDealer.telegram_user_id),
+                    swingAt: new Date(nominalSwingAt),
+                    minutesLeft,
+                    restDeficitMin: restDeficit,
+                    chatId,
+                  },
+                  botToken,
+                  "[Pass 2]",
+                );
+
+                if (!notification.delivered && !notification.queued) {
+                  console.warn(
+                    `[Pass 2] ⚠️ ${tableName}: pre-assign notification lost ` +
+                    `(direct=${notification.directError ?? "unknown"}, ` +
+                    `fallback=${notification.fallbackError ?? "none"})`,
+                  );
+                }
+                if (notification.delivered) {
+                  console.log("[process-swing][pass2][telegram-preannounce-sent]", {
+                    club_id: clubId,
+                    table_id: assignment.table_id,
+                    table_name: tableName,
+                    assignment_id: assignment.id,
+                    incoming_dealer_name: nextDealer.full_name,
+                  });
+                } else if (notification.queued) {
+                  console.log("[process-swing][pass2][telegram-preannounce-queued]", {
+                    club_id: clubId,
+                    table_id: assignment.table_id,
+                    table_name: tableName,
+                    assignment_id: assignment.id,
+                    incoming_dealer_name: nextDealer.full_name,
+                    direct_error: notification.directError,
+                  });
+                } else {
+                  console.warn("[process-swing][pass2][telegram-preannounce-failed]", {
+                    club_id: clubId,
+                    table_id: assignment.table_id,
+                    table_name: tableName,
+                    assignment_id: assignment.id,
+                    incoming_dealer_name: nextDealer.full_name,
+                    direct_error: notification.directError,
+                    fallback_error: notification.fallbackError,
+                  });
+                }
+              } else {
+                // No chatId — skip notification but still log so cashier can see
+                console.log(
+                  `[Pass 2] ⏭️ ${tableName}: no Telegram chat configured, ` +
+                  `pre-assigned ${nextDealer.full_name} (swing in ~${minutesLeft} min)`,
                 );
               }
-              if (notification.delivered) {
-                console.log("[process-swing][pass2][telegram-preannounce-sent]", {
-                  club_id: clubId,
-                  table_id: assignment.table_id,
-                  table_name: tableName,
-                  assignment_id: assignment.id,
-                  incoming_dealer_name: nextDealer.full_name,
-                });
-              } else if (notification.queued) {
-                console.log("[process-swing][pass2][telegram-preannounce-queued]", {
-                  club_id: clubId,
-                  table_id: assignment.table_id,
-                  table_name: tableName,
-                  assignment_id: assignment.id,
-                  incoming_dealer_name: nextDealer.full_name,
-                  direct_error: notification.directError,
-                });
-              } else {
-                console.warn("[process-swing][pass2][telegram-preannounce-failed]", {
-                  club_id: clubId,
-                  table_id: assignment.table_id,
-                  table_name: tableName,
-                  assignment_id: assignment.id,
-                  incoming_dealer_name: nextDealer.full_name,
-                  direct_error: notification.directError,
-                  fallback_error: notification.fallbackError,
-                });
-              }
-            } else {
-              // No chatId — skip notification but still log so cashier can see
-              console.log(
-                `[Pass 2] ⏭️ ${tableName}: no Telegram chat configured, ` +
-                `pre-assigned ${nextDealer.full_name} (swing in ~${minutesLeft} min)`,
-              );
+              break retry;
             }
-            break;
-          }
 
-          case "race_lost": {
-            result.skipped_count++;
-            console.log(`[Pass 2] ⏭️ ${tableName}: race_lost (concurrent swing)`);
-            console.warn("[process-swing][pass2][preassign-skipped]", {
-              club_id: clubId,
-              table_id: assignment.table_id,
-              table_name: tableName,
-              assignment_id: assignment.id,
-              reason: "race_lost",
-            });
-            break;
-          }
+            case "race_lost": {
+              console.log(`[Pass 2] ⏭️ ${tableName}: race_lost (concurrent swing)`);
+              console.warn("[process-swing][pass2][preassign-skipped]", {
+                club_id: clubId,
+                table_id: assignment.table_id,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                reason: "race_lost",
+                detail: result_outcome?.detail,
+              });
+              break retry;
+            }
 
-          case "dealer_unavailable": {
-            result.skipped_count++;
-            console.log(`[Pass 2] ⏭️ ${tableName}: dealer ${nextDealer.full_name} unavailable (taken by another tick)`);
-            // Don't add to cycleExcludedIds — dealer wasn't actually assigned
-            console.warn("[process-swing][pass2][preassign-skipped]", {
-              club_id: clubId,
-              table_id: assignment.table_id,
-              table_name: tableName,
-              assignment_id: assignment.id,
-              reason: "dealer_unavailable",
-              dealer_name: nextDealer.full_name,
-            });
-            break;
-          }
+            case "dealer_unavailable": {
+              // PATCH D: add to local excludes for in-tick re-pick;
+              // cycleExcludedIds (shared across tables) is deliberately NOT mutated
+              // so other tables this tick can still try this dealer.
+              localExcludes.add(nextDealer.id);
+              console.log(
+                `[Pass 2] ↩️ ${tableName}: ${nextDealer.full_name} unavailable — ` +
+                `retry ${attempt}/3 (detail=${result_outcome?.detail ?? "none"})`,
+              );
+              console.warn("[process-swing][pass2][preassign-retry]", {
+                club_id: clubId,
+                table_id: assignment.table_id,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                reason: "dealer_unavailable",
+                dealer_name: nextDealer.full_name,
+                attempt,
+                detail: result_outcome?.detail,
+              });
+              break; // break switch only; retry loop continues to next attempt
+            }
 
-          default: {
-            result.errors.push({
-              table_id: assignment.table_id,
-              error: `Unknown outcome: ${outcome}`,
-            });
-            console.error(`[Pass 2] ❌ ${tableName}: unknown outcome "${outcome}"`);
+            default: {
+              result.errors.push({
+                table_id: assignment.table_id,
+                error: `Unknown outcome: ${outcome}`,
+              });
+              console.error(`[Pass 2] ❌ ${tableName}: unknown outcome "${outcome}"`);
+              break retry;
+            }
           }
+        } // end retry loop
+
+        if (!succeeded) {
+          result.skipped_count++;
         }
       } catch (error: any) {
         result.errors.push({

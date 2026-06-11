@@ -779,6 +779,7 @@ Deno.serve(async (req: Request) => {
 
           if (orphanedAssigned && orphanedAssigned.length > 0) {
             const { data: activeAssignments } = await admin
+              .from("dealer_assignments")
               .select("attendance_id")
               .in("attendance_id", orphanedAssigned.map((d: any) => d.id))
               .eq("status", "assigned")
@@ -805,6 +806,84 @@ Deno.serve(async (req: Request) => {
               );
               cycleExcludedIds.add(dealer.id);
               console.log(`[Pass 0c] Released orphaned dealer ${dealerName} (was: assigned, stuck: ${stuckMinutes}m)`);
+            }
+          }
+
+          // ── 4b. Dangling on_break assignment rows blocking the pool ──────────
+          // Break-end RPCs (end_dealer_break, complete_dealer_break) transition
+          // dealer_attendance to available but never release the old on_break
+          // dealer_assignments row. pickNextDealer step-5b sees that row as
+          // "dealer busy" → excludes from pool → amplifies starvation.
+          // Fix: release any on_break assignment row where the dealer is available.
+          {
+            const danglingCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
+            const { data: danglingRows } = await admin
+              .from("dealer_assignments")
+              .select(`
+                id, attendance_id, table_id, assigned_at,
+                dealer_attendance!attendance_id(
+                  id, current_state,
+                  dealers(full_name)
+                )
+              `)
+              .eq("club_id", cid)
+              .eq("status", "on_break")
+              .is("released_at", null)
+              .lt("assigned_at", danglingCutoff);
+
+            if (danglingRows && danglingRows.length > 0) {
+              const healCandidates = (danglingRows as any[]).filter((row) => {
+                return (row.dealer_attendance as any)?.current_state === "available";
+              });
+
+              if (healCandidates.length > 0) {
+                const candidateAttIds = healCandidates.map((r: any) => r.attendance_id);
+                const { data: activeAssigned } = await admin
+                  .from("dealer_assignments")
+                  .select("attendance_id")
+                  .in("attendance_id", candidateAttIds)
+                  .eq("status", "assigned")
+                  .is("released_at", null);
+
+                const busyAttIds = new Set(
+                  (activeAssigned ?? []).map((a: any) => a.attendance_id)
+                );
+                const toHeal = healCandidates.filter(
+                  (r: any) => !busyAttIds.has(r.attendance_id)
+                );
+
+                for (const row of toHeal) {
+                  const dealerName =
+                    (row.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+                  const { error: healErr } = await admin
+                    .from("dealer_assignments")
+                    .update({
+                      status: "completed",
+                      released_at: new Date().toISOString(),
+                      release_reason: "pass0c_dangling_available_cleanup",
+                    })
+                    .eq("id", row.id)
+                    .eq("status", "on_break")
+                    .is("released_at", null);
+
+                  if (healErr) {
+                    console.error(
+                      `[Pass 0c] ❌ Failed to heal dangling on_break row for ${dealerName}:`,
+                      healErr.message,
+                    );
+                  } else {
+                    stuckIssues.push({
+                      id: row.attendance_id,
+                      dealer_name: dealerName,
+                      issue: "on_break_dangling_healed",
+                    });
+                    console.log(
+                      `[Pass 0c] 🩹 Healed dangling on_break assignment for ${dealerName} ` +
+                      `(row ${row.id.slice(0, 8)}…)`,
+                    );
+                  }
+                }
+              }
             }
           }
 
