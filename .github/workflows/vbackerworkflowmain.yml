@@ -9,6 +9,15 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      deploy_db:
+        description: "Run Supabase db push"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   deploy:
@@ -42,7 +51,12 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
 
+      - name: Database migration deployment is manual-gated
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_db != 'true'
+        run: echo "Skipping Supabase migration repair/db push. Use workflow_dispatch deploy_db=true after migration review."
+
       - name: Repair migration history
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy_db == 'true'
         run: |
           supabase migration repair --status reverted \
             20260602042631 20260602050206 20260602050407 20260602050446 \
@@ -59,6 +73,7 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Deploy database migrations
+        if: github.event_name == 'workflow_dispatch' && inputs.deploy_db == 'true'
         run: supabase db push --linked --include-all
         continue-on-error: true
         working-directory: ./VinPoker
