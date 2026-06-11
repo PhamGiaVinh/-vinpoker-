@@ -235,6 +235,16 @@ async function reconcileAndAdopt(
         p_schedule_id: s.id,
         p_reason: "reconcile_lock_lost",
       });
+      // cancel_rotation_slot cleared the assignment's pre-assign fields in
+      // the DB (WHERE pre_assigned_attendance_id = in_attendance_id). Mirror
+      // that in the in-memory snapshot — phase C consumes this same array,
+      // and a stale lockedInAttendanceId makes the solver treat the table as
+      // sticky CHỐT (no slot-0 re-plan) AND drops the just-freed dealer from
+      // the pool for the whole tick. Same symmetry as the A2 invalid branch.
+      if (assignment && assignment.pre_assigned_attendance_id === s.in_attendance_id) {
+        assignment.pre_assigned_attendance_id = null;
+        assignment.planned_relief_at = null;
+      }
       cancelled++;
       console.warn("[Pass R] reconcile: cancelled stale announced slot", {
         schedule_id: s.id,

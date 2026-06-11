@@ -282,8 +282,18 @@ export function solveRotationPlan(
 
       if (eligible.length === 0) {
         // Honest shortage placeholder: relief at the earliest future supply event, if any.
+        // skillsMatch mirrors the eligible filter above — relief can only come
+        // from a dealer who can actually deal this table. Without it, a
+        // skill-mismatched dealer's rest completion becomes a phantom relief
+        // promise, and the sim advance below anchors every later forecast
+        // round for this table to an impossible event.
         const futureSupply = pool
-          .filter((c) => !usedThisRound.has(c.attendanceId) && c.attendanceId !== sim.simOutAttendanceId)
+          .filter(
+            (c) =>
+              !usedThisRound.has(c.attendanceId) &&
+              c.attendanceId !== sim.simOutAttendanceId &&
+              skillsMatch(t, c)
+          )
           .map((c) => Math.max(c.eligibleAtMs, nowMs) + announceLeadMs);
         const reliefMs = futureSupply.length > 0
           ? Math.max(needAtMs, Math.min(...futureSupply))

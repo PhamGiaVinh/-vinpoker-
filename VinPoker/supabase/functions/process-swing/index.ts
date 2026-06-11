@@ -3059,6 +3059,21 @@ if (tier2Count > 0) {
             }
           } else {
             // ── Non-pre-assigned path ─────────────────────────────────────
+            // Under the scheduler this branch is unreachable via the normal
+            // queries (the schedule query requires a pre-assigned lock; the
+            // legacy no-lock query is disabled) — only the shared zombie-
+            // reclaim query can route a stuck no-lock row here. The legacy
+            // path below mutates the immutable swing_due_at and falls back
+            // to perform_swing auto-pick, both forbidden under the scheduler
+            // (R1/R3/R4). Recover the stuck lock instead — the finally below
+            // resets swing_in_progress — and let Pass R re-plan the table.
+            if (scheduleDriven) {
+              console.warn(
+                `[Pass 3] zombie reclaim on un-locked ${tableName} under scheduler — ` +
+                `releasing stuck swing_in_progress; Pass R re-plans next tick`
+              );
+              continue;
+            }
             const isOtDealer = !!(assignment as any).overtime_started_at;
 
             const breakDecision = isOtDealer

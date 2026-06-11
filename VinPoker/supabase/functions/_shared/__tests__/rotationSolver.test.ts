@@ -238,3 +238,33 @@ Deno.test("9. game-type table + generalist dealers (empty skills) → matched, N
   assertEq(r2.inAttendanceId, null, "specialist with non-matching skill is excluded");
   assertEq(r2.isShortage, true, "PLO table with only an NLH-skilled dealer → shortage");
 });
+
+Deno.test("10. shortage relief estimate never sourced from a skill-incapable dealer (phantom supply)", () => {
+  // Regression guard: the shortage branch's futureSupply must apply the same
+  // skillsMatch as the eligible filter. A resting NLH-only dealer must not
+  // become the relief promise for a PLO table — skill-incapable supply has to
+  // produce the SAME estimate as no supply at all (idealReliefMs fallback).
+  const ploTable = () => mkTable({ tableId: "T1", swingDueAtMs: NOW - 5 * MIN, gameTypes: ["PLO"] });
+  const restingMismatch = mkDealer({
+    attendanceId: "nlhOnly",
+    skills: ["NLH"],
+    eligibleAtMs: NOW + 20 * MIN, // resting — phantom would promise relief at +23m
+  });
+
+  const withMismatch = solveRotationPlan([ploTable()], [restingMismatch], OPTS);
+  const withNoSupply = solveRotationPlan([ploTable()], [], OPTS);
+  const rowMismatch = withMismatch.rows.find((r) => r.tableId === "T1" && r.slotIndex === 0)!;
+  const rowEmpty = withNoSupply.rows.find((r) => r.tableId === "T1" && r.slotIndex === 0)!;
+
+  assertEq(rowMismatch.isShortage, true, "still an honest shortage");
+  assertEq(rowMismatch.inAttendanceId, null, "incapable dealer never planned in");
+  assertEq(
+    rowMismatch.plannedReliefAtMs,
+    rowEmpty.plannedReliefAtMs,
+    "skill-incapable supply must yield the same relief estimate as no supply (no phantom promise)"
+  );
+  assert(
+    rowMismatch.plannedReliefAtMs !== NOW + 23 * MIN,
+    "relief must not anchor to the incapable dealer's rest completion (+20m rest +3m lead)"
+  );
+});
