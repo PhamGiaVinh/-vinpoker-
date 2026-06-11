@@ -156,6 +156,7 @@ CREATE OR REPLACE FUNCTION public.is_club_tracker(_user_id uuid, _club_id uuid)
   RETURNS boolean
   LANGUAGE sql
   STABLE
+  SET search_path TO 'public'
 AS $function$
   SELECT EXISTS (
     SELECT 1 FROM public.club_trackers ct
@@ -172,6 +173,7 @@ CREATE OR REPLACE FUNCTION public.tracker_club_ids(_user_id uuid)
   RETURNS SETOF uuid
   LANGUAGE sql
   STABLE
+  SET search_path TO 'public'
 AS $function$
   SELECT club_id FROM public.club_trackers WHERE user_id = _user_id
   UNION
@@ -293,6 +295,7 @@ CREATE OR REPLACE FUNCTION public.audit_tournament_hand()
   RETURNS trigger
   LANGUAGE plpgsql
   SECURITY DEFINER
+  SET search_path TO 'public'
 AS $function$
 BEGIN
   IF TG_OP = 'INSERT' THEN
@@ -497,6 +500,7 @@ CREATE OR REPLACE FUNCTION public.club_local_date(p_club_id uuid)
   LANGUAGE sql
   STABLE
   SECURITY DEFINER
+  SET search_path TO 'public'
 AS $function$
   SELECT (NOW() AT TIME ZONE COALESCE(
     (SELECT timezone FROM public.club_settings WHERE club_id = p_club_id),
@@ -521,6 +525,7 @@ CREATE OR REPLACE FUNCTION public.tournament_break_all_tables(
   RETURNS jsonb
   LANGUAGE plpgsql
   SECURITY DEFINER
+  SET search_path TO 'public'
 AS $function$
 DECLARE
   v_assignment RECORD;
@@ -1066,6 +1071,13 @@ $function$;
 -- Confirmed absent from all local migration files. Must be created here.
 -- Fires after every INSERT and UPDATE on tournament_hands.
 -- Calls audit_tournament_hand() defined in Section 6 above.
+--
+-- Ordering note:
+-- audit_tournament_hand() references tournament_hands.status, created_by,
+-- locked_by_user_id, and locked_at, which are added by
+-- 20260617000000_realtime_hand_tracking.sql.
+-- No migrations between 20260611000001 and 20260617000000 write to
+-- tournament_hands, so the trigger is safe during sequential fresh builds.
 DROP TRIGGER IF EXISTS trg_audit_tournament_hand ON public.tournament_hands;
 CREATE TRIGGER trg_audit_tournament_hand
   AFTER INSERT OR UPDATE ON public.tournament_hands
@@ -1110,14 +1122,21 @@ BEGIN
 END;
 $function$;
 
-DO $$
-BEGIN
-  CREATE EVENT TRIGGER rls_auto_enable_trigger
-    ON ddl_command_end
-    WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
-    EXECUTE PROCEDURE public.rls_auto_enable();
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- EVENT TRIGGER DEFERRED:
+-- The remote DB already has rls_auto_enable_trigger.
+-- This baseline keeps the function definition but intentionally does not create
+-- the global ddl_command_end event trigger here, because it affects all future
+-- CREATE TABLE migrations. Create/repair/mark this separately only after explicit approval.
+--
+-- Original DDL (do NOT uncomment without explicit approval):
+-- DO $$
+-- BEGIN
+--   CREATE EVENT TRIGGER rls_auto_enable_trigger
+--     ON ddl_command_end
+--     WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+--     EXECUTE PROCEDURE public.rls_auto_enable();
+-- EXCEPTION WHEN duplicate_object THEN NULL;
+-- END $$;
 
 
 -- ─────────────────────────────────────────────────────────────────────────

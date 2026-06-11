@@ -78,9 +78,9 @@
 
 ### Event Trigger
 
-| Event Trigger | On | Function |
-|---|---|---|
-| `rls_auto_enable_trigger` | `ddl_command_end` | `rls_auto_enable()` |
+| Event Trigger | On | Function | Status |
+|---|---|---|---|
+| `rls_auto_enable_trigger` | `ddl_command_end` | `rls_auto_enable()` | **Function included; `CREATE EVENT TRIGGER` deferred (see Stage 3D)** |
 
 ---
 
@@ -209,3 +209,67 @@ All of the above are created by existing local migration files. This baseline mi
 | D5a | Mark `20260611000001` as `--status applied` on remote dev DB (objects already exist) | After D4a |
 | Stage 3, Step 4 | Test push on remote dev DB | After D4a + D5a |
 | Stage 7 | Reintroduce Milestone A (`20260808000000`) from `feature/live-tracker-realtime-a-clean` | After pipeline confirmed healthy |
+
+---
+
+## Stage 3D — Baseline Safety Patches (2026-06-11)
+
+Applied after Stage 3C static review. All changes are to `20260611000001_remote_only_schema_baseline.sql` only.
+
+### Fixes applied
+
+| ID | Issue | Fix applied |
+|---|---|---|
+| F1 | `audit_tournament_hand()` — `SECURITY DEFINER` without `SET search_path` | Added `SET search_path TO 'public'` to function header |
+| F2 | `CREATE EVENT TRIGGER rls_auto_enable_trigger` — global DDL interceptor that silently affects all future `CREATE TABLE` operations in all subsequent migrations | Commented out the entire `DO $$ BEGIN CREATE EVENT TRIGGER ... END $$` block. `rls_auto_enable()` function definition retained. `CREATE EVENT TRIGGER` replaced with explanatory deferred comment. |
+| F3 | `is_club_tracker()` and `tracker_club_ids()` — used in RLS policies without `SET search_path` | Added `SET search_path TO 'public'` to both function headers. **SECURITY INVOKER intentionally preserved** — not changed to SECURITY DEFINER in this baseline. |
+| F4 | `club_local_date()` — `SECURITY DEFINER` without `SET search_path` | Added `SET search_path TO 'public'` to function header |
+| F5 | `tournament_break_all_tables()` — `SECURITY DEFINER` without `SET search_path` | Added `SET search_path TO 'public'` to function header |
+| F6 | Trigger `trg_audit_tournament_hand` — undocumented column dependency on `20260617000000_realtime_hand_tracking.sql` | Added ordering comment above `DROP TRIGGER IF EXISTS` noting that `tournament_hands.{status, created_by, locked_by_user_id, locked_at}` are added by `20260617000000`, and that no migrations in the window write to `tournament_hands` |
+
+### Pre-existing live DB bugs intentionally NOT fixed
+
+The following bugs exist on the live DB and are faithfully preserved in the baseline. Fixing them here would diverge the baseline from the live DB state and is out of scope.
+
+| Bug | Location | Future action |
+|---|---|---|
+| `result->>'success'` vs `'ok'` in `reconcile_ghost_assignments` | Function body | Separate bugfix migration post-baseline |
+| `started_at`/`duration_minutes` vs `break_start`/`expected_duration_minutes` in `tournament_break_all_tables` | Function body | Separate bugfix migration post-baseline |
+| `payroll_calculation_log` RLS policies use `TO public` (anon-readable) | Section 5 policies | Separate RLS tightening migration |
+| `tournament_hand_audit_log` INSERT policy `WITH CHECK (true)` (any auth user can insert) | Section 5 policies | Separate RLS tightening migration |
+| `p_released_by` dead parameter in `release_dealer_from_table` | Function signature | Low priority |
+| `Dass.status` cosmetic case inconsistency in `reconcile_dealer_states` | Function body | Low priority (harmless in PostgreSQL) |
+
+### Static verification after patches
+
+```
+SELECT-STRING CREATE EVENT TRIGGER rls_auto_enable_trigger:
+  → Only at line 1134, inside a comment (-- prefix). No executable SQL.
+
+SET search_path TO 'public' occurrences (8 total):
+  → is_club_tracker()            line 159  (new)
+  → tracker_club_ids()           line 176  (new)
+  → audit_tournament_hand()      line 298  (new)
+  → get_escalation_config()      line 356  (pre-existing)
+  → club_local_date()            line 503  (new)
+  → tournament_break_all_tables() line 528  (new)
+  → get_swing_metrics()          line 843  (pre-existing)
+  → force_release_stuck_assignment() line 983 (pre-existing)
+
+UPDATE dealer_payroll: absent
+Placeholder UUID 22222222-...: absent
+PR diff: still exactly 2 files (A INTEGRATION_REPORTS/remote-schema-baseline-draft-review.md + A VinPoker/supabase/migrations/20260611000001_remote_only_schema_baseline.sql)
+```
+
+### Confirmations
+
+| Item | Status |
+|---|---|
+| No DB command run | Confirmed |
+| D4a not approved | Confirmed |
+| Baseline not applied | Confirmed |
+| No CI workflow edit | Confirmed |
+| PR #9 not merged | Confirmed (remains Draft) |
+| Milestone B remains blocked | Confirmed |
+| Tracker helpers changed to SECURITY DEFINER | **No — SECURITY INVOKER preserved intentionally** |
+| Pre-existing live bugs fixed in baseline | **No — faithfully preserved** |
