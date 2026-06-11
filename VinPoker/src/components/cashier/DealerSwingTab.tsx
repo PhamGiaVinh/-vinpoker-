@@ -30,6 +30,8 @@ import {
   useOptimisticDealerCount, useNextDealerPredictions, useTodayCheckedOutDealers, useBreakPool,
 } from "@/hooks/useDealerSwing";
 import type { BreakPoolEntry, DealerAssignment, DealerAttendance, SwingConfig, ShiftBreakPolicy, PreAssignedInfo, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import { useRotationSchedule } from "@/hooks/useRotationSchedule";
+import type { RotationScheduleRow, RotationTableSlots } from "@/hooks/useRotationSchedule";
 import { useActiveTournaments } from "@/hooks/useTournaments";
 import type { TournamentWithTables } from "@/types/tournament";
 import AttentionQueue from "./command-center/AttentionQueue";
@@ -65,8 +67,8 @@ type TableTimeline = {
   nominalDueAt: string | null;
   actualDueAt: string | null;
   actualMinutesLeft: number;
-  waitingForDealerReady: boolean;
-  waitMinutes: number;
+  /** Slot-0 read-cache from dealer_assignments — prefer the schedule row when one exists. */
+  plannedReliefAt: string | null;
 };
 
 function useTours(clubIds: string[]) {
@@ -127,22 +129,20 @@ function resolveTableSwingTiming(
   const actualRemainingMs = actualDueMs != null ? actualDueMs - nowMs : 0;
   const minutesLeft = nominalDueMs != null ? Math.max(0, nominalRemainingMs / 60_000) : 0;
   const actualMinutesLeft = actualDueMs != null ? Math.max(0, actualRemainingMs / 60_000) : 0;
-  const waitingForDealerReady =
-    !!assignment.pre_assigned_attendance_id
-    && nominalDueMs != null
-    && actualDueMs != null
-    && nominalRemainingMs <= 0
-    && actualRemainingMs > 0;
+  // isOverdue is strictly `now > swing_due_at` (fall back to nominal due only
+  // when the assignment has no swing_due_at at all).
+  const swingDueMs = assignment.swing_due_at
+    ? new Date(assignment.swing_due_at).getTime()
+    : nominalDueMs;
 
   return {
     minutesLeft,
     showNextDealerSoon: nominalDueMs != null ? minutesLeft <= warnAtMinutes : false,
-    isOverdue: nominalDueMs != null ? nominalRemainingMs <= 0 : false,
+    isOverdue: swingDueMs != null ? nowMs > swingDueMs : false,
     nominalDueAt: nominalDueMs != null ? new Date(nominalDueMs).toISOString() : null,
     actualDueAt: actualDueMs != null ? new Date(actualDueMs).toISOString() : null,
     actualMinutesLeft,
-    waitingForDealerReady,
-    waitMinutes: waitingForDealerReady ? Math.max(1, Math.ceil(actualRemainingMs / 60_000)) : 0,
+    plannedReliefAt: assignment.planned_relief_at ?? null,
   };
 }
 
@@ -166,6 +166,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const { data: poolTables, loading: poolLoading, error: poolError, refetch: refetchPoolTables } = usePoolTables(filteredClubIds);
   const { data: assignments, loading: assignsLoading, refetch: refetchAssignments } = useActiveAssignmentsWithTimeline(filteredClubIds);
   const preAssignedMap = usePreAssignedDealers(assignments);
+  const { byTableId: scheduleByTableId } = useRotationSchedule(filteredClubIds);
   const { data: swingConfigs, refetch: refetchSwingConfigs } = useSwingConfigs(filteredClubIds);
   const { data: tournaments } = useActiveTournaments(clubFilter ?? filteredClubIds[0]);
   const tablesById = useMemo(() => {
@@ -1441,6 +1442,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
                     tableAssignmentMap={tableAssignmentMap}
                     nextDealerMap={nextDealerMap}
                     preAssignedMap={preAssignedMap}
+                    scheduleByTableId={scheduleByTableId}
                     timelineByTableId={timelineByTableId}
                     swingConfigs={swingConfigs ?? []}
                     tournaments={tournaments}
@@ -1490,6 +1492,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               tableAssignmentMap={tableAssignmentMap}
               timelineByTableId={timelineByTableId}
               nextDealerMap={nextDealerMap}
+              scheduleByTableId={scheduleByTableId}
               onFocusTable={focusTable}
             />
           </div>
@@ -3015,7 +3018,7 @@ function BreakPoolCard({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, scheduleByTableId, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
@@ -3024,6 +3027,7 @@ function TableGrid({
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
   preAssignedMap: Record<string, PreAssignedInfo | null>;
+  scheduleByTableId?: Record<string, RotationTableSlots>;
   timelineByTableId: Record<string, TableTimeline>;
   swingConfigs: SwingConfig[];
   tournaments: TournamentWithTables[] | undefined;
@@ -3128,8 +3132,44 @@ function TableGrid({
             const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
             const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
             const canSwing = !!a && !a.swing_processed_at && (isOt || actualDueMs <= nowMs);
-            const waitingForDealerReady = !!tl?.waitingForDealerReady;
-            const waitMinutes = tl?.waitMinutes ?? 0;
+
+            // ── Rotation schedule (source of truth for relief plans) ──
+            const slots = scheduleByTableId?.[t.id];
+            const slot0 = slots?.slot0;
+            const slot0HasDealer = !!slot0?.in_attendance_id;
+            const slot0Locked = !!slot0 && (slot0.status === "announced" || slot0.status === "executing");
+            const slot0Name = slot0?.in_dealer_name ?? "dealer";
+            const slot0ReliefLabel = slot0?.planned_relief_at
+              ? formatTimeHHmm(new Date(slot0.planned_relief_at).getTime())
+              : null;
+            const forecastSlots = [slots?.slot1, slots?.slot2].filter(
+              (s): s is RotationScheduleRow => !!s?.in_attendance_id,
+            );
+            const isTableOverdue = !!tl?.isOverdue;
+
+            // Honest overdue states — driven by the rotation schedule.
+            let overdueState: { label: string; className: string } | null = null;
+            if (isTableOverdue && a) {
+              if (slot0 && slot0Locked && slot0HasDealer) {
+                overdueState = {
+                  label: `✓ CHỐT ${slot0Name}${slot0ReliefLabel ? ` vào ${slot0ReliefLabel}` : ""}`,
+                  className: "text-emerald-400",
+                };
+              } else if (slot0 && slot0.status === "predicted" && !slot0.is_shortage && slot0HasDealer) {
+                overdueState = {
+                  label: `~ DỰ ĐOÁN ${slot0Name}${slot0ReliefLabel ? ` ${slot0ReliefLabel}` : ""}`,
+                  className: "text-amber-400",
+                };
+              } else {
+                const shortageTime = slot0?.is_shortage && slot0.planned_relief_at
+                  ? formatTimeHHmm(new Date(slot0.planned_relief_at).getTime())
+                  : null;
+                overdueState = {
+                  label: shortageTime ? `⚠ THIẾU DEALER · dự kiến ${shortageTime}` : "⚠ THIẾU DEALER",
+                  className: "text-red-400",
+                };
+              }
+            }
 
             let otLabel = "";
             if (isOt && a?.overtime_started_at) {
@@ -3249,9 +3289,15 @@ function TableGrid({
                       ].join(" ")}>
                         {isOt ? otLabel : timerLabel}
                       </span>
-                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                        {waitingForDealerReady ? `Đợi dealer ~${waitMinutes}p đến ${formatTimeHHmm(actualDueMs)}` : statusLabel}
-                      </span>
+                      {overdueState ? (
+                        <span className={["text-[9px] uppercase tracking-wider font-mono font-semibold", overdueState.className].join(" ")}>
+                          {overdueState.label}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
+                          {statusLabel}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -3299,30 +3345,60 @@ function TableGrid({
                   )}
 
                   {/* ── Next dealer inline (inside card body) ── */}
-                  {/* Prefer realtime preAssignedMap (confirmed truth) over pred (prediction RPC). */}
-                  {dealer && (preAssignedMap[t.id] || pred?.nextDealerName) && (
+                  {/* Schedule slot0 (source of truth) → preAssignedMap (confirmed) → pred (prediction RPC). */}
+                  {dealer && (slot0HasDealer || forecastSlots.length > 0 || preAssignedMap[t.id] || pred?.nextDealerName) && (
                     <>
                       <div className="border-t border-zinc-800" />
-                      <div className="flex items-center gap-2 pt-0.5">
-                        <span className="text-[10px] text-zinc-500">Tiếp:</span>
-                        {preAssignedMap[t.id] ? (
-                          <span className="text-[11px] text-emerald-400 font-medium">
-                            <span className="text-emerald-500">✓</span> {preAssignedMap[t.id]!.full_name}
-                            {preAssignLabel ? (
-                              <span className={[
-                                "ml-1",
-                                preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
-                              ].join(" ")}>· {preAssignLabel}</span>
-                            ) : null}
+                      {(slot0HasDealer || preAssignedMap[t.id] || pred?.nextDealerName) && (
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span className="text-[10px] text-zinc-500">Tiếp:</span>
+                          {slot0HasDealer ? (
+                            slot0Locked ? (
+                              <span className="text-[11px] text-emerald-400 font-medium">
+                                <span className="text-emerald-500">✓</span> CHỐT {slot0Name}
+                                {slot0ReliefLabel ? (
+                                  <span className="ml-1 text-emerald-500/80">· {slot0ReliefLabel}</span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-amber-400">
+                                ~ DỰ ĐOÁN {slot0Name}
+                                {slot0ReliefLabel ? (
+                                  <span className="ml-1 text-amber-400/80">· {slot0ReliefLabel}</span>
+                                ) : null}
+                              </span>
+                            )
+                          ) : preAssignedMap[t.id] ? (
+                            <span className="text-[11px] text-emerald-400 font-medium">
+                              <span className="text-emerald-500">✓</span> {preAssignedMap[t.id]!.full_name}
+                              {preAssignLabel ? (
+                                <span className={[
+                                  "ml-1",
+                                  preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
+                                ].join(" ")}>· {preAssignLabel}</span>
+                              ) : null}
+                            </span>
+                          ) : pred?.nextDealerName ? (
+                            pred.confidence === "confirmed" ? (
+                              <span className="text-[11px] text-emerald-400 font-medium">
+                                <span className="text-emerald-500">✓</span> {pred.nextDealerName}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
+                            )
+                          ) : null}
+                        </div>
+                      )}
+                      {forecastSlots.length > 0 && (
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <span className="text-[9px] text-zinc-600 uppercase tracking-wider">~ Dự đoán:</span>
+                          <span className="text-[10px] text-zinc-500 truncate">
+                            {forecastSlots
+                              .map((s) => `${s.in_dealer_name ?? "dealer"}${s.planned_relief_at ? ` ${formatTimeHHmm(new Date(s.planned_relief_at).getTime())}` : ""}`)
+                              .join(" · ")}
                           </span>
-                        ) : pred!.confidence === "confirmed" ? (
-                          <span className="text-[11px] text-emerald-400 font-medium">
-                            <span className="text-emerald-500">✓</span> {pred!.nextDealerName}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-zinc-400">~ {pred!.nextDealerName}</span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -3377,6 +3453,7 @@ function CommandCenter({
   clubFilter, clubs, onOpenSwingConfig,
   onOpenSpecialDates, dealers, swingMetrics, tables,
   assignments, tableAssignmentMap, timelineByTableId, nextDealerMap,
+  scheduleByTableId,
   onAssign, onSendToBreak, onFocusTable,
 }: {
   auditLogs: any[];
@@ -3401,6 +3478,7 @@ function CommandCenter({
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
+  scheduleByTableId?: Record<string, RotationTableSlots>;
   onFocusTable?: (tableId: string) => void;
 }) {
   const clubName = useMemo(() => Object.fromEntries(clubs.map((c) => [c.id, c.name])), [clubs]);
@@ -3445,9 +3523,16 @@ function CommandCenter({
     () => assignments.filter((a) => a.status === "assigned").length,
     [assignments],
   );
+  // OT = live clock past swing_due_at — exactly the same condition the table
+  // cards use, recomputed every tick so the KPI stays in sync with the grid.
   const otTablesCount = useMemo(
-    () => assignments.filter((a) => a.status === "assigned" && a.overtime_started_at).length,
-    [assignments],
+    () => assignments.filter((a) =>
+      a.status === "assigned"
+      && !a.swing_processed_at
+      && a.swing_due_at
+      && new Date(a.swing_due_at).getTime() < nowMs
+    ).length,
+    [assignments, nowMs],
   );
   const availableDealersCount = useMemo(
     () => dealers?.filter((d) => {
@@ -3513,6 +3598,7 @@ function CommandCenter({
           tableAssignmentMap={tableAssignmentMap}
           timelineByTableId={timelineByTableId}
           nextDealerMap={nextDealerMap}
+          scheduleByTableId={scheduleByTableId}
           nowMs={nowMs}
           autoSwingEnabled={autoSwingEnabled}
           onSwing={(attendanceId) => {

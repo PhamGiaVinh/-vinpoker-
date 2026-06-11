@@ -6,13 +6,15 @@ export type SupabaseAdmin = any;
 /*  Format helpers                                                     */
 /* ------------------------------------------------------------------ */
 
+// R8: full name everywhere, @mention appended when available —
+// "Trần Ngọc Anh @Synsyn223", never a bare @username without the name.
 export function mention(dealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null }): string {
-  if (dealer.telegram_username) return `@${dealer.telegram_username}`;
+  const safe = dealer.full_name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (dealer.telegram_username) return `${safe} @${dealer.telegram_username}`;
   if (dealer.telegram_user_id) {
-    const safe = dealer.full_name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return `<a href="tg://user?id=${dealer.telegram_user_id}">${safe}</a>`;
   }
-  return dealer.full_name;
+  return safe;
 }
 
 function formatSwingMessage(params: {
@@ -62,7 +64,7 @@ function formatBreakEndMessage(params: {
 }): string {
   const { dealer, tableName } = params;
   const d = mention(dealer);
-  return `✅ ${d} đã nghỉ xong, quay lại bàn ${tableName}.`;
+  return `✅ ${d} đã nghỉ xong, quay lại ${tableName}.`;
 }
 
 export function formatCloseTableMessage(params: {
@@ -76,11 +78,11 @@ export function formatCloseTableMessage(params: {
 
 export function formatMassAssignMessage(assignments: Array<{
   tableName: string;
-  dealer: { full_name: string };
+  dealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null };
 }>): string {
   if (!assignments.length) return "";
   const lines = assignments.map(
-    (a, i) => `${i + 1}.${a.tableName} → ${a.dealer.full_name}`
+    (a, i) => `${i + 1}.${a.tableName} → ${mention(a.dealer)}`
   );
   return `Mở Bàn (${assignments.length} bàn)\n${lines.join("\n")}`;
 }

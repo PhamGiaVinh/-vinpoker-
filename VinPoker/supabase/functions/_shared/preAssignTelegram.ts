@@ -9,6 +9,8 @@ export interface DealerMention {
 export interface PreAssignMessageItem {
   tableName: string;
   zone: string | null;
+  /** R8: batch header groups by tournament name; zone is the fallback label. */
+  tournamentName?: string | null;
   outName: string;
   outUsername: string | null;
   outTelegramUserId?: number | string | null;
@@ -50,13 +52,15 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// R8: full name everywhere, @mention appended when the dealer has one.
+// "Trần Ngọc Anh @Synsyn223" — never a bare @username without the name.
 function mentionDealer(dealer: {
   full_name: string;
   telegram_username?: string | null;
   telegram_user_id?: number | string | null;
 }): string {
   if (dealer.telegram_username) {
-    return `@${dealer.telegram_username}`;
+    return `${escapeHtml(dealer.full_name)} @${dealer.telegram_username}`;
   }
 
   const telegramUserId = dealer.telegram_user_id;
@@ -99,6 +103,125 @@ export function formatBatchPreAssignMessage(items: PreAssignMessageItem[]): stri
   const header = `Có ${items.length} cập nhật${zoneLabel}:`;
   const lines = items.map((item) => ` ${formatPreAssignLine(item)}`);
   return [header, ...lines].join("\n");
+}
+
+/** Telegram hard-limits messages at 4096 chars; stay well under it. */
+const BATCH_MESSAGE_CHAR_LIMIT = 3500;
+
+/**
+ * R8 batch format: one message per (tournament | zone) group —
+ *   `Có N cập nhật - MEGASTACK-1M2:` + one line per table.
+ * Splits into `(i/k)`-suffixed chunks when a group would exceed the
+ * Telegram length limit (e.g. 30-50 tables announcing at once).
+ */
+export function formatBatchPreAssignMessages(
+  items: PreAssignMessageItem[],
+  groupLabel: string | null,
+): string[] {
+  if (items.length === 0) return [];
+
+  const label = groupLabel ? ` - ${groupLabel}` : "";
+  const lines = items.map((item) => ` ${formatPreAssignLine(item)}`);
+
+  // First pass: greedy chunking by char budget (header estimated at worst case).
+  const headerBudget = `Có ${items.length} cập nhật${label} (9/9):`.length + 1;
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentLen = headerBudget;
+  for (const line of lines) {
+    if (current.length > 0 && currentLen + line.length + 1 > BATCH_MESSAGE_CHAR_LIMIT) {
+      chunks.push(current);
+      current = [];
+      currentLen = headerBudget;
+    }
+    current.push(line);
+    currentLen += line.length + 1;
+  }
+  if (current.length > 0) chunks.push(current);
+
+  const total = chunks.length;
+  return chunks.map((chunkLines, i) => {
+    const part = total > 1 ? ` (${i + 1}/${total})` : "";
+    const header = `Có ${items.length} cập nhật${label}${part}:`;
+    return [header, ...chunkLines].join("\n");
+  });
+}
+
+/**
+ * Batch-send pre-announce notifications grouped per tournament (zone fallback),
+ * chunked under the Telegram length limit. The per-row `pre_announce_jobs`
+ * fallback queue is preserved exactly: any payload in a failed chunk is
+ * enqueued individually, same as the single-send path.
+ */
+export async function sendBatchPreAssignWithFallback(
+  admin: SupabaseClient,
+  payloads: PreAssignNotificationPayload[],
+  botToken?: string | null,
+  logPrefix = "[pre-assign-batch]",
+): Promise<{ delivered: number; queued: number; failed: number }> {
+  const summary = { delivered: 0, queued: 0, failed: 0 };
+  if (payloads.length === 0) return summary;
+
+  // Group by tournament name; zone is the legacy fallback label.
+  const groups = new Map<string, PreAssignNotificationPayload[]>();
+  for (const p of payloads) {
+    const key = p.tournamentName ?? p.zone ?? "";
+    const list = groups.get(key) ?? [];
+    list.push(p);
+    groups.set(key, list);
+  }
+
+  for (const [label, groupPayloads] of groups) {
+    const chatId = groupPayloads[0].chatId;
+    const messages = formatBatchPreAssignMessages(groupPayloads, label || null);
+
+    // Map each chunk back to the payload rows it contains for per-row fallback.
+    let cursor = 0;
+    const headerBudget = `Có ${groupPayloads.length} cập nhật - ${label} (9/9):`.length + 1;
+    const chunkRows: PreAssignNotificationPayload[][] = [];
+    {
+      let current: PreAssignNotificationPayload[] = [];
+      let currentLen = headerBudget;
+      for (const p of groupPayloads) {
+        const line = ` ${formatPreAssignLine(p)}`;
+        if (current.length > 0 && currentLen + line.length + 1 > BATCH_MESSAGE_CHAR_LIMIT) {
+          chunkRows.push(current);
+          current = [];
+          currentLen = headerBudget;
+        }
+        current.push(p);
+        currentLen += line.length + 1;
+      }
+      if (current.length > 0) chunkRows.push(current);
+    }
+
+    for (const message of messages) {
+      const rows = chunkRows[cursor] ?? [];
+      cursor++;
+
+      let direct: { ok: boolean; error?: string } = { ok: false, error: "missing_bot_token" };
+      if (botToken && chatId) {
+        direct = await sendTelegramHtmlWithRetry(botToken, chatId, message);
+      }
+
+      if (direct.ok) {
+        summary.delivered += rows.length;
+        continue;
+      }
+
+      console.warn(`${logPrefix} direct batch send failed (${rows.length} rows): ${direct.error}`);
+      for (const p of rows) {
+        const fallback = await enqueuePreAnnounceFallback(admin, p);
+        if (fallback.queued) summary.queued++;
+        else {
+          summary.failed++;
+          console.error(`${logPrefix} fallback enqueue failed for ${p.tableName}: ${fallback.error ?? "unknown"}`);
+        }
+      }
+    }
+  }
+
+  return summary;
 }
 
 async function sendTelegramHtmlWithRetry(

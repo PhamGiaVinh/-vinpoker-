@@ -30,6 +30,11 @@ import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 import { postSwingPreAssign } from "./passes/pass3-post-swing-assign.ts";
+import {
+  passRRotationPlanner,
+  replanSingleTable,
+  type PassRContext,
+} from "./passes/passR-rotation-planner.ts";
 import { runPass3Diagnostic } from "./diagnostics.ts";
 import { endMealBreak } from "../_shared/mealBreakService.ts";
 import {
@@ -160,6 +165,8 @@ interface ClubSwingConfig {
   sync_window_minutes: number;
   rotation_planner_enabled: boolean;
   min_inter_swing_rest_minutes: number;
+  tier_a_min_buyin: number;
+  tier_b_min_buyin: number;
 }
 
 // ─── Config fetching ──────────────────────────────────────────────────────────
@@ -205,6 +212,8 @@ async function fetchAllClubConfigs(
       sync_window_minutes: row.sync_window_minutes ?? 5,
       rotation_planner_enabled: row.rotation_planner_enabled ?? false,
       min_inter_swing_rest_minutes: row.min_inter_swing_rest_minutes ?? 10,
+      tier_a_min_buyin: row.tier_a_min_buyin ?? 10_000_000,
+      tier_b_min_buyin: row.tier_b_min_buyin ?? 3_000_000,
     });
   }
   return configMap;
@@ -231,6 +240,8 @@ function getClubConfig(
       sync_window_minutes: 5,
       rotation_planner_enabled: false,
       min_inter_swing_rest_minutes: 10,
+      tier_a_min_buyin: 10_000_000,
+      tier_b_min_buyin: 3_000_000,
     }
   );
 }
@@ -1049,20 +1060,20 @@ Deno.serve(async (req: Request) => {
 
               if (forceResult.error) {
                 console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
-                criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
+                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
                 continue;
               }
 
               const fr = forceResult.data as { success: boolean; reason?: string };
               if (!fr?.success) {
                 console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
-                criticalAlerts.push(`🔴 *Bàn ${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
+                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
                 continue;
               }
 
               forceReleasedCount++;
               console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
-              criticalAlerts.push(`✅ *Bàn ${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
+              criticalAlerts.push(`✅ *${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
             }
           }
 
@@ -1076,7 +1087,7 @@ Deno.serve(async (req: Request) => {
               );
               const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
               const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
-              criticalAlerts.push(`⏱ *Bàn ${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+              criticalAlerts.push(`⏱ *${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
             }
           }
 
@@ -1194,7 +1205,10 @@ Deno.serve(async (req: Request) => {
             const mopMsg = formatMassAssignMessage(
               fillResult.assignments.map(a => ({
                 tableName: a.table_name,
-                dealer: { full_name: a.full_name },
+                dealer: {
+                  full_name: a.full_name,
+                  telegram_username: (a as any).telegram_username ?? null,
+                },
               }))
             );
             sendTelegramNotification(botToken, pass2ChatId, mopMsg).catch(err => console.error("[process-swing] Telegram error:", err));
@@ -1775,11 +1789,50 @@ if (tier2Count > 0) {
           }
         }
 
-        // ── PASS 1.5 — Rotation Planner (greedy batch pre-assign) ──────────
-        // When enabled, plans assignments for tables in the upcoming rotation
-        // window before Pass 2 runs. Uses greedy solver to find optimal
-        // dealer-table pairings. Feature-flagged per club.
-        if (!forceAll && !preAssignOnly && clubCfg.rotation_planner_enabled) {
+        // ── Scheduler switch ─────────────────────────────────────────────
+        // rotation_planner_enabled now selects the Forward Rotation Scheduler
+        // (Pass R) instead of the legacy Pass 1.5 greedy planner. forceAll
+        // ("Swing All") always uses the legacy execution semantics — manual
+        // override means "swing everything due now".
+        const scheduleDriven = !forceAll && clubCfg.rotation_planner_enabled === true;
+        const passRCtx: PassRContext = {
+          clubId: cid,
+          clubZone,
+          chatId: pass2ChatId,
+          botToken: botToken ?? null,
+          cycleExcludedIds,
+          preAnnounceMinutes: clubCfg.pre_announce_minutes,
+          minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+          clubBreakDurationMinutes: clubCfg.break_duration_minutes,
+          swingDurationMinutes: clubCfg.swing_duration_minutes,
+          tierAMinBuyin: clubCfg.tier_a_min_buyin,
+          tierBMinBuyin: clubCfg.tier_b_min_buyin,
+          requiredGameTypes: required_game_types,
+        };
+
+        // ── PASS R — Forward Rotation Scheduler ─────────────────────────
+        // Reconcile/adopt → snapshot → honest OT marking → solve (R1-R6) →
+        // persist schedule → CHỐT due slots + per-tournament Telegram batch.
+        // swing_due_at is never written; shortage = honest later relief.
+        if (scheduleDriven && !dryRun) {
+          try {
+            const passRResult = await passRRotationPlanner(admin, passRCtx);
+            metrics.total += passRResult.locked;
+            metrics.success += passRResult.locked;
+            if (passRResult.errors.length > 0) {
+              console.error(
+                `[Pass R] ${passRResult.errors.length} errors:`,
+                passRResult.errors.map((e) => `${e.scope}: ${e.error}`).join("; ")
+              );
+            }
+          } catch (err: any) {
+            console.error(`[Pass R] ❌ Unhandled error:`, err?.message ?? err);
+          }
+        }
+
+        // ── PASS 1.5 — LEGACY Rotation Planner (greedy batch pre-assign) ──
+        // Only runs on the legacy path (scheduler off). Removed in Stage 4.
+        if (!forceAll && !preAssignOnly && !scheduleDriven && clubCfg.rotation_planner_enabled) {
           try {
             const p15Result = await pass15RotationPlanner(admin, cid, {
               dryRun: !!dryRun,
@@ -1804,11 +1857,12 @@ if (tier2Count > 0) {
           }
         }
 
-        // ── PASS 2 — Pre-assign incoming dealers ────────────────────────
+        // ── PASS 2 — LEGACY pre-assign (scheduler off) ───────────────────
         // Uses pickNextDealer + CAS RPC to atomically pre-assign dealers
         // for tables whose swing due falls within the pre-announce window.
         // forceAll: skip pre-assign to preserve dealer pool for backlog processing.
-        if (!forceAll) {
+        // Under the scheduler, Pass R owns pre-assignment entirely.
+        if (!forceAll && !scheduleDriven) {
           // chatId hoisted to outer scope and passed into the pre-assign
           // notification helper (direct send with queue fallback).
           const pass2Options: Parameters<typeof pass2PreAssignNext>[3] = {
@@ -1905,6 +1959,7 @@ if (tier2Count > 0) {
         const dueColumns = `
           id, table_id, attendance_id, swing_due_at, version, updated_at,
           last_swing_attempted_at, pre_assigned_attendance_id, pre_assigned_at,
+          planned_relief_at,
           overtime_started_at, last_ot_alert_at, swing_in_progress, is_emergency_pre_assign,
           game_tables(table_name, table_type),
           dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))
@@ -1919,23 +1974,46 @@ if (tier2Count > 0) {
           .eq("club_id", cid)
           .lte("swing_due_at", forceAll ? now : nowPlusBuf);
 
+        // Schedule-driven execution trigger: an announced lock whose honest
+        // planned_relief_at has arrived. swing_due_at deliberately NOT in the
+        // filter — under shortage relief is later than due (visible OT).
+        // Uses `now` (NOT nowPlusBuf): planned_relief_at IS the exact intended
+        // entry time and announce_at was set to relief − 3min. Firing the
+        // 2-min legacy look-ahead buffer here would execute the swing up to
+        // 2 min early, collapsing the 3-min announce lead and violating R2
+        // (announce ≥3 min before entry). Slightly late (next 60s tick) is
+        // safe; early is not.
+        const buildScheduleDueQuery = () => admin
+          .from("dealer_assignments")
+          .select(dueColumns)
+          .eq("status", "assigned")
+          .is("released_at", null)
+          .is("swing_processed_at", null)
+          .eq("club_id", cid)
+          .not("planned_relief_at", "is", null)
+          .lte("planned_relief_at", now);
+
         const zombieCutoff = new Date(Date.now() - ZOMBIE_LOCK_WINDOW_MS).toISOString();
 
         const [{ data: preAssignedDueAssignments, error: preAssignedDueErr }, { data: normalDueAssignments, error: normalDueErr }, { data: zombieDueAssignments, error: zombieDueErr }] = await Promise.all([
-          buildDueQuery()
+          (scheduleDriven ? buildScheduleDueQuery() : buildDueQuery())
             .eq("swing_in_progress", false)
             .not("pre_assigned_attendance_id", "is", null)
             .order("swing_due_at", { ascending: true })
             .order("updated_at", { ascending: true })
             .order("id", { ascending: true })
             .limit(100),
-          buildDueQuery()
-            .eq("swing_in_progress", false)
-            .is("pre_assigned_attendance_id", null)
-            .order("swing_due_at", { ascending: true })
-            .order("updated_at", { ascending: true })
-            .order("id", { ascending: true })
-            .limit(100),
+          // Under the scheduler, tables without an announced lock are NOT
+          // executed — they show honest OT with their predicted relief.
+          scheduleDriven
+            ? Promise.resolve({ data: [], error: null })
+            : buildDueQuery()
+                .eq("swing_in_progress", false)
+                .is("pre_assigned_attendance_id", null)
+                .order("swing_due_at", { ascending: true })
+                .order("updated_at", { ascending: true })
+                .order("id", { ascending: true })
+                .limit(100),
           buildDueQuery()
             .eq("swing_in_progress", true)
             .lt("updated_at", zombieCutoff)
@@ -2065,7 +2143,7 @@ if (tier2Count > 0) {
               metrics.success++;
               cycleExcludedIds.add(fbDealer.id);
               if (botToken && pass2ChatId) {
-                const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${fallbackTableName}${fallbackOutgoingDealer.full_name !== "Unknown" ? ` - Thay ${fallbackOutgoingDealer.full_name}` : ""}`;
+                const swingMsg = `🔵 ${fbDealer.full_name} vào ${fallbackTableName}${fallbackOutgoingDealer.full_name !== "Unknown" ? ` - Thay ${fallbackOutgoingDealer.full_name}` : ""}`;
                 sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
               }
               if (fbBreakDecision.shouldBreak) {
@@ -2260,6 +2338,27 @@ if (tier2Count > 0) {
 
               console.log(`[Pass 3] ✅ Force-released ${tableName} (overdue ${-minsLeft}min)`);
 
+              if (scheduleDriven) {
+                // Scheduler path: cancel any live slot for this assignment so
+                // the lock holder (if any) is released cleanly, then leave the
+                // now-empty table to fillEmptyTables next tick. No escalation
+                // tiers — R1 rest is absolute; shortage = honest later relief.
+                const { data: frSlots } = await admin
+                  .from("dealer_rotation_schedule")
+                  .select("id")
+                  .eq("assignment_id", assignment.id)
+                  .in("status", ["predicted", "announced", "executing"]);
+                for (const slot of frSlots ?? []) {
+                  await admin.rpc("cancel_rotation_slot", {
+                    p_schedule_id: slot.id,
+                    p_reason: "force_released",
+                  });
+                }
+                metrics.no_dealer++;
+                console.log(`[Pass 3] ${tableName}: slots cancelled after force-release — fillEmptyTables re-staffs next tick`);
+                continue;
+              }
+
               // BUG #4 FIX: After force-release, try to find a replacement dealer.
               // The old dealer is released but the table still needs a dealer.
               // Attempt graduated tier picker; if no replacement, skip perform_swing
@@ -2355,7 +2454,7 @@ if (tier2Count > 0) {
                   cycleExcludedIds.add(replacementDealer.id);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
                   if (botToken && pass2ChatId) {
-                    const swingMsg = `🔵 ${replacementDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    const swingMsg = `🔵 ${replacementDealer.full_name} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                   // Refresh available count after force-release replacement.
@@ -2420,6 +2519,23 @@ if (tier2Count > 0) {
                 pre_assign_status: preAssignStatus,
                 reason: "dealer_released_to_available",
               });
+              if (scheduleDriven) {
+                // Dead lock at execution time: cancel the slot, clear the
+                // stale pre-assign, and re-plan + re-lock THIS tick.
+                // The table never sits stuck waiting for zombie cleanup.
+                const staleExcludes = new Set([
+                  ...cycleExcludedIds,
+                  assignment.attendance_id,
+                  assignment.pre_assigned_attendance_id,
+                ]);
+                const replan = await replanSingleTable(
+                  admin, passRCtx, assignment.id, staleExcludes, "preflight_stale_lock",
+                );
+                console.log(`[Pass 3] ${tableName}: stale lock re-planned — ${replan.detail}`);
+                if (replan.relocked) metrics.success++;
+                else metrics.skipped++;
+                continue;
+              }
               metrics.skipped++;
               continue;
             }
@@ -2488,6 +2604,21 @@ if (tier2Count > 0) {
                   }
                 }
 
+                // Scheduler bookkeeping: the announced slot is now executed.
+                if (scheduleDriven) {
+                  const { data: doneSlots } = await admin
+                    .from("dealer_rotation_schedule")
+                    .select("id")
+                    .eq("assignment_id", assignment.id)
+                    .in("status", ["announced", "executing"]);
+                  for (const slot of doneSlots ?? []) {
+                    await admin.rpc("complete_rotation_slot", {
+                      p_schedule_id: slot.id,
+                      p_new_assignment_id: rpcResult?.new_assignment_id ?? null,
+                    });
+                  }
+                }
+
                 // Patch 2: send a present-tense completion confirmation now that
                 // the pre-assigned swing has actually committed (refresh guard passed).
                 // This is distinct from the Pass 2 pre-announce ("📋 Tiếp theo …",
@@ -2501,8 +2632,8 @@ if (tier2Count > 0) {
                       ? outgoingDealer.full_name
                       : null;
                   const swingMsg = outgoingName
-                    ? `🔵 ${incomingName} vừa vào bàn ${tableName}\nThay thế: ${outgoingName}`
-                    : `🔵 ${incomingName} vừa vào bàn ${tableName} (Bàn trống)`;
+                    ? `🔵 ${incomingName} vừa vào ${tableName}\nThay thế: ${outgoingName}`
+                    : `🔵 ${incomingName} vừa vào ${tableName} (Bàn trống)`;
                   console.log("[process-swing][pass3][telegram-confirmation-dispatched]", {
                     club_id: cid,
                     table_id: assignment.table_id,
@@ -2627,6 +2758,25 @@ if (tier2Count > 0) {
                     const { error } = result ?? {};
                     if (error) console.warn("[diagnostic_logs] no_show insert failed:", error.message);
                   });
+
+                  if (scheduleDriven) {
+                    // Scheduler path: mark the slot no_show (cancel_rotation_slot
+                    // clears the lock + frees the dealer atomically), then plan
+                    // and lock a replacement THIS tick with the 3-min lead.
+                    // swing_due_at untouched — OT keeps accruing honestly.
+                    const noShowExcludes = new Set([
+                      ...cycleExcludedIds,
+                      assignment.attendance_id,
+                      incomingId,
+                    ]);
+                    const replan = await replanSingleTable(
+                      admin, passRCtx, assignment.id, noShowExcludes, "no_show",
+                    );
+                    console.log(`[Pass 3] ${tableName}: no-show re-planned — ${replan.detail}`);
+                    if (replan.relocked) metrics.success++;
+                    else metrics.no_dealer++;
+                    break; // End of no-show handling (scheduler path)
+                  }
 
                   // 2. Clear pre-assign
                   await admin.from("dealer_assignments").update({
@@ -2802,6 +2952,24 @@ if (tier2Count > 0) {
                   break;
                 }
 
+                if (scheduleDriven) {
+                  // Scheduler path: NO perform_swing fallback (it would bypass
+                  // R1/R3 ordering via its internal auto-pick). Cancel the dead
+                  // slot and re-plan + re-lock this tick; the table stays
+                  // honestly OT until its replacement's relief time.
+                  const raceExcludes = new Set([
+                    ...cycleExcludedIds,
+                    assignment.attendance_id,
+                  ]);
+                  const replan = await replanSingleTable(
+                    admin, passRCtx, assignment.id, raceExcludes, "race_lost",
+                  );
+                  console.log(`[Pass 3] ${tableName}: race_lost re-planned — ${replan.detail}`);
+                  if (replan.relocked) metrics.success++;
+                  else metrics.no_dealer++;
+                  break;
+                }
+
                 const isOtFallback = !!(freshRow as any).overtime_started_at;
                 const fbBreakDecision = isOtFallback
                   ? { shouldBreak: true, reason: "mandatory" as const, workedMinutes: 999 }
@@ -2835,7 +3003,7 @@ if (tier2Count > 0) {
                     metrics.success++;
                     cycleExcludedIds.add(fbDealer.id);
                     if (botToken && pass2ChatId) {
-                      const swingMsg = `🔵 ${fbDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                      const swingMsg = `🔵 ${fbDealer.full_name} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                       sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                     }
                   } else if (fbResult?.outcome === "no_dealer") {
@@ -2844,7 +3012,7 @@ if (tier2Count > 0) {
                       const chatId = await getClubTelegramChatId(admin, cid);
                       if (botToken && chatId) {
                         await sendTelegramNotification(botToken, chatId,
-                          `⏱ *Bàn ${tableName}* — Dealer đang OT (fallback sau race_lost).`, {});
+                          `⏱ *${tableName}* — Dealer đang OT (fallback sau race_lost).`, {});
                       }
                     }
                   } else {
@@ -2867,7 +3035,7 @@ if (tier2Count > 0) {
                     const chatId = await getClubTelegramChatId(admin, cid);
                     if (botToken && chatId) {
                       await sendTelegramNotification(botToken, chatId,
-                        `⏱ *Bàn ${tableName}* — Dealer OT (không người thay sau race_lost).`, {});
+                        `⏱ *${tableName}* — Dealer OT (không người thay sau race_lost).`, {});
                     }
                   }
                 }
@@ -2891,6 +3059,21 @@ if (tier2Count > 0) {
             }
           } else {
             // ── Non-pre-assigned path ─────────────────────────────────────
+            // Under the scheduler this branch is unreachable via the normal
+            // queries (the schedule query requires a pre-assigned lock; the
+            // legacy no-lock query is disabled) — only the shared zombie-
+            // reclaim query can route a stuck no-lock row here. The legacy
+            // path below mutates the immutable swing_due_at and falls back
+            // to perform_swing auto-pick, both forbidden under the scheduler
+            // (R1/R3/R4). Recover the stuck lock instead — the finally below
+            // resets swing_in_progress — and let Pass R re-plan the table.
+            if (scheduleDriven) {
+              console.warn(
+                `[Pass 3] zombie reclaim on un-locked ${tableName} under scheduler — ` +
+                `releasing stuck swing_in_progress; Pass R re-plans next tick`
+              );
+              continue;
+            }
             const isOtDealer = !!(assignment as any).overtime_started_at;
 
             const breakDecision = isOtDealer
@@ -3031,7 +3214,7 @@ if (tier2Count > 0) {
                 if (botToken && chatId) {
                   await sendTelegramNotification(
                     botToken, chatId,
-                    `⚠️ *Bàn ${tableName}* — Cấp cứu OT ${otMinutes}ph: đã gán ${nextDealer.full_name} theo luật nới lỏng.\nCần theo dõi sát!`,
+                    `⚠️ *${tableName}* — Cấp cứu OT ${otMinutes}ph: đã gán ${nextDealer.full_name} theo luật nới lỏng.\nCần theo dõi sát!`,
                     {}
                   ).catch(err => console.error("[process-swing] Telegram error:", err));
                 }
@@ -3102,7 +3285,7 @@ if (tier2Count > 0) {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
                   if (botToken && pass2ChatId) {
-                    const swingMsg = `🔵 ${nextDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    const swingMsg = `🔵 ${nextDealer.full_name} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
@@ -3194,7 +3377,7 @@ if (tier2Count > 0) {
                   cycleExcludedIds.add(nextDealer.id);
                   if (botToken && pass2ChatId) {
                     const inName = (nextDealer.dealers as any)?.full_name ?? "Dealer";
-                    const swingMsg = `🔵 ${inName} vào bàn ${tableName}${outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    const swingMsg = `🔵 ${inName} vào ${tableName}${outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
@@ -3262,7 +3445,7 @@ if (tier2Count > 0) {
                 if (incomingDealer) {
                   console.log(`[Pass 3] Auto-picked dealer confirmed for ${tableName}: ${incomingDealer.full_name}`);
                   if (botToken && pass2ChatId) {
-                    const swingMsg = `🔵 ${incomingDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
+                    const swingMsg = `🔵 ${incomingDealer.full_name} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
                 }
@@ -3553,5 +3736,5 @@ if (tier2Count > 0) {
 });
 
 function formatSwingSkippedAlert(tableName: string, retryCount: number): string {
-  return `🚨 *Bàn ${tableName}* — Không có dealer thay sau ${retryCount} lần thử. Cần can thiệp thủ công!`;
+  return `🚨 *${tableName}* — Không có dealer thay sau ${retryCount} lần thử. Cần can thiệp thủ công!`;
 }

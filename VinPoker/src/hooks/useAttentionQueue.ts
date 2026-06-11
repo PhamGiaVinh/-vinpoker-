@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import type { DealerAssignment, DealerAttendance, NextDealerPrediction } from "@/hooks/useDealerSwing";
+import type { RotationTableSlots } from "@/hooks/useRotationSchedule";
 
-export type AttentionType = "ot" | "empty_table" | "break_due" | "missing_next_dealer";
+export type AttentionType = "ot" | "empty_table" | "break_due" | "missing_next_dealer" | "shortage";
 
 export interface AttentionItem {
   id: string;
@@ -30,12 +31,15 @@ interface UseAttentionQueueProps {
   tableAssignmentMap: Record<string, DealerAssignment | null>;
   timelineByTableId: Record<string, { minutesLeft: number; showNextDealerSoon: boolean; isOverdue: boolean }>;
   nextDealerMap: Record<string, NextDealerPrediction> | null;
+  /** Live rotation-schedule slots per table — when slot0 exists, automation owns the next-dealer plan. */
+  scheduleByTableId?: Record<string, RotationTableSlots> | null;
   nowMs: number;
 }
 
 const BASE_SCORE: Record<AttentionType, number> = {
   ot: 100,
   empty_table: 90,
+  shortage: 70,
   break_due: 55,
   missing_next_dealer: 40,
 };
@@ -44,9 +48,17 @@ function cap(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function formatTimeHHmm(ms: number): string {
+  return new Date(ms).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export function useAttentionQueue({
   assignments, tables, dealers, tableAssignmentMap,
-  timelineByTableId, nextDealerMap, nowMs,
+  timelineByTableId, nextDealerMap, scheduleByTableId, nowMs,
 }: UseAttentionQueueProps): AttentionQueueResult {
   return useMemo(() => {
     const items: AttentionItem[] = [];
@@ -105,9 +117,42 @@ export function useAttentionQueue({
       });
     }
 
+    // ── 3. Shortage — rotation schedule slot-0 flagged is_shortage ──
+    for (const t of tables ?? []) {
+      const slot0 = scheduleByTableId?.[t.id]?.slot0;
+      if (!slot0?.is_shortage) continue;
+
+      const tableName = t.table_name ?? "??";
+      const a = tableAssignmentMap[t.id];
+      const dueMs = a?.swing_due_at ? new Date(a.swing_due_at).getTime() : null;
+      const reliefMs = slot0.planned_relief_at ? new Date(slot0.planned_relief_at).getTime() : null;
+      // OT minutes the sitting dealer will absorb: planned relief vs swing due
+      // (falls back to "how overdue right now" when no relief time is known).
+      const otMin = dueMs != null
+        ? Math.max(0, Math.round(((reliefMs ?? nowMs) - dueMs) / 60000))
+        : 0;
+      const score = BASE_SCORE.shortage + cap(otMin, 0, 30);
+
+      items.push({
+        id: `shortage-${slot0.id}`,
+        type: "shortage",
+        severity: otMin > 10 ? "critical" : "warning",
+        score,
+        title: `Thiếu dealer — ${tableName}`,
+        subtitle: reliefMs != null
+          ? `Dự kiến thay ${formatTimeHHmm(reliefMs)} (+${otMin}m OT)`
+          : "Chưa có giờ thay dự kiến",
+        tableId: t.id,
+        tableName,
+      });
+    }
+
     // ── 4. Missing next dealer ──
     if (nextDealerMap) {
       for (const t of tables ?? []) {
+        // Automation owns the plan when a live slot-0 schedule row exists —
+        // skip the manual "missing next dealer" nag for that table.
+        if (scheduleByTableId?.[t.id]?.slot0) continue;
         const tl = timelineByTableId[t.id];
         if (!tl?.showNextDealerSoon) continue;
         const pred = nextDealerMap[t.id];
@@ -141,5 +186,5 @@ export function useAttentionQueue({
       totalCount: items.length,
       criticalCount: items.filter((i) => i.severity === "critical").length,
     };
-  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, nowMs]);
+  }, [assignments, tables, dealers, tableAssignmentMap, timelineByTableId, nextDealerMap, scheduleByTableId, nowMs]);
 }

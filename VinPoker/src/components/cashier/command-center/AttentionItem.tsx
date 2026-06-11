@@ -1,4 +1,4 @@
-import { Clock, Table2, UserMinus, HelpCircle, ChevronRight } from "lucide-react";
+import { Clock, Table2, UserMinus, HelpCircle, ChevronRight, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AttentionItem as AttentionItemData } from "@/hooks/useAttentionQueue";
 
@@ -15,6 +15,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   empty_table: <Table2 className="w-3 h-3" />,
   break_due: <UserMinus className="w-3 h-3" />,
   missing_next_dealer: <HelpCircle className="w-3 h-3" />,
+  shortage: <AlertTriangle className="w-3 h-3" />,
 };
 
 export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, onFocusTable }: Props) {

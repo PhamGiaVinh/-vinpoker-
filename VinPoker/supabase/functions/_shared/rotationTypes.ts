@@ -135,6 +135,106 @@ export function toRotationCandidate(
   };
 }
 
+// ============================================================
+// Forward Rotation Scheduler (Pass R) — pure-solver contracts
+// ============================================================
+
+export type DealerTier = "A" | "B" | "C";
+
+/** R5 — map tournament buy-in to the preferred dealer tier.
+ *  Thresholds are club-configurable (swing_config.tier_a_min_buyin / tier_b_min_buyin). */
+export function tierForBuyIn(
+  buyIn: number | null | undefined,
+  tierAMin = 10_000_000,
+  tierBMin = 3_000_000
+): DealerTier | null {
+  if (buyIn == null || !Number.isFinite(buyIn) || buyIn <= 0) return null;
+  if (buyIn > tierAMin) return "A";
+  if (buyIn >= tierBMin) return "B";
+  return "C";
+}
+
+/** A table with an active dealer that will eventually need relief. */
+export interface RotationPlanTable {
+  tableId: string;
+  tableName: string;
+  assignmentId: string;
+  outAttendanceId: string;
+  outDealerName: string;
+  /** When the current dealer sat in (ms epoch). R4 urgency key. */
+  assignedAtMs: number;
+  /** Immutable contract time — never pushed by the planner. */
+  swingDueAtMs: number;
+  /** This table's swing duration, used to project forecast rounds. */
+  swingDurationMs: number;
+  /** R5 preferred dealer tier (from buy_in), null = any. */
+  requiredTier: DealerTier | null;
+  tournamentId: string | null;
+  tournamentName: string | null;
+  gameTypes: string[];
+  /** Existing CHỐT: solver must NOT re-plan slot 0 for this table. */
+  lockedInAttendanceId?: string | null;
+  lockedPlannedReliefAtMs?: number | null;
+}
+
+/** A dealer who is (or will become) available to take a table. */
+export interface RotationPlanCandidate {
+  attendanceId: string;
+  dealerId: string;
+  fullName: string;
+  tier: DealerTier;
+  skills: string[];
+  /** R3 fairness key — minutes of the PREVIOUS dealing session (0 = never dealt). */
+  prevSessionMinutes: number;
+  /** R1 — earliest moment the dealer may ENTER a table (rest + cooldown complete). */
+  eligibleAtMs: number;
+  /** Existing health score — final tie-break only. */
+  score: number;
+}
+
+export interface RotationPlanOptions {
+  /** Injected clock — the solver never reads Date.now(). */
+  nowMs: number;
+  /** R2 hard minimum announce→entry lead (3 min). */
+  announceLeadMs: number;
+  /** Normal announce lead for non-emergency rotations (pre_announce_minutes). */
+  preAnnounceMs: number;
+  /** R1 rest applied to out-dealers in forecast simulation (10 min). */
+  restMs: number;
+  /** How many forecast slots beyond slot 0 (2 → slots 1..2). */
+  forecastSlots: number;
+  solverVersion: string;
+}
+
+export interface RotationPlanRow {
+  tableId: string;
+  /** Assignment being relieved. Null on forecast slots (future assignments don't exist yet). */
+  assignmentId: string | null;
+  /** 0 = TIẾP THEO (lockable), 1..2 = DỰ ĐOÁN (never locks a dealer). */
+  slotIndex: number;
+  outAttendanceId: string | null;
+  inAttendanceId: string | null;
+  inDealerName: string | null;
+  /** Honest relief time: >= max(swing_due_at, eligible_at + 3min, now + 3min). */
+  plannedReliefAtMs: number;
+  announceAtMs: number | null;
+  /** Relief is later than the table's ideal time because the pool can't cover it. */
+  isShortage: boolean;
+  /** Table already overdue at plan time → 3-min announce lead instead of full pre-announce. */
+  isEmergency: boolean;
+  requiredTier: DealerTier | null;
+  tierMatched: boolean;
+  score: number | null;
+  reason: Record<string, unknown>;
+}
+
+export interface RotationPlan {
+  rows: RotationPlanRow[];
+  solverVersion: string;
+  /** Tables whose slot 0 was left alone because an existing CHỐT is sticky. */
+  lockedTableIds: string[];
+}
+
 export function toScoreCandidateInput(
   c: RotationCandidate,
   table: RotationTable,

@@ -91,7 +91,23 @@ Deno.serve(async (req) => {
 
     console.log(`[process-swing-on-dealer-ready] verified attendance=${verifiedAttendanceId} rest=${restMin}min threshold=${restThreshold}min deficit=${restDeficit}min`);
 
-    // ═══ Step 2: Find most overdue table in this club ═══
+    // ═══ Scheduler gate (Forward Rotation Scheduler) ═══
+    // "Dealer ready" NEVER swings under the scheduler — instant perform_swing
+    // would bypass the 3-minute announce guarantee (R2) and the R3/R4 fairness
+    // order. The 30s planner tick picks this dealer up with full semantics.
+    const { data: swingCfg } = await admin
+      .from("swing_config")
+      .select("rotation_planner_enabled")
+      .eq("club_id", body.club_id)
+      .eq("table_type", "tournament")
+      .maybeSingle();
+    if (swingCfg?.rotation_planner_enabled === true) {
+      console.log(`[process-swing-on-dealer-ready] scheduler active for club ${body.club_id} — deferring to planner tick`);
+      await logMetric(admin, "process-swing-on-dealer-ready", body.club_id, startTime, "success", 0, 0, "deferred_to_planner");
+      return json({ skipped: "deferred_to_planner", verified: true });
+    }
+
+    // ═══ Step 2 (LEGACY): Find most overdue table in this club ═══
     const { data: overdueTable, error: overdueErr } = await admin
       .from("dealer_assignments")
       .select(`

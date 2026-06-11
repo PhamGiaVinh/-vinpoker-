@@ -65,6 +65,8 @@ export interface DealerAssignment {
   swing_in_progress: boolean | null;
   swing_processed_at: string | null;
   swing_due_at: string | null;
+  /** Slot-0 read-cache ONLY — prefer the dealer_rotation_schedule row whenever one exists. */
+  planned_relief_at?: string | null;
   pre_assigned_attendance_id: string | null;
   pre_assigned_at: string | null;
   overtime_started_at: string | null;
@@ -508,7 +510,7 @@ function useActiveAssignments(clubIds: string[], shiftId?: string) {
          .select(
             `id, attendance_id, table_id, assigned_at, released_at, status,
              version, updated_at, last_swing_attempted_at, swing_in_progress,
-             swing_processed_at, swing_due_at,
+             swing_processed_at, swing_due_at, planned_relief_at,
              pre_assigned_attendance_id, pre_assigned_at,
              overtime_started_at,
              game_tables!inner(id, table_name, table_type, status, club_id),
