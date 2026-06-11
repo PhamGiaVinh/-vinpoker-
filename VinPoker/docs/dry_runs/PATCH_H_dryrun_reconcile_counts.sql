@@ -101,19 +101,22 @@ WHERE d.club_id = :club_id
       AND dass.released_at IS NULL
   );
 
--- ── STEP 4: pre_assigned stuck >30s WITH assignment reference → 'available' ─────
+-- ── STEP 4: pre_assigned stale (dual-clock: pre_assigned_at >15min AND swing overdue >10min) ──
+--    PATCH H v2: was `pre_assigned_at < NOW() - 30 seconds` — too aggressive, released valid
+--    active pre-assigns. New guard requires BOTH the reservation AND the swing itself to be stale.
 SELECT 'step4_pre_assigned_timeout' AS step, COUNT(*) AS rows
 FROM dealer_attendance da
 JOIN dealers d ON d.id = da.dealer_id
 WHERE d.club_id = :club_id
   AND da.status = 'checked_in'
   AND da.current_state = 'pre_assigned'
-  AND da.pre_assigned_at < NOW() - INTERVAL '30 seconds'
+  AND da.pre_assigned_at < NOW() - INTERVAL '15 minutes'
   AND EXISTS (
     SELECT 1 FROM dealer_assignments dass
     WHERE dass.pre_assigned_attendance_id = da.id
       AND dass.status = 'assigned'
       AND dass.released_at IS NULL
+      AND dass.swing_due_at < NOW() - INTERVAL '10 minutes'
   );
 
 -- ── STEP 5: assigned rows carrying an orphaned pre_assigned_attendance_id ───────
@@ -136,3 +139,9 @@ WHERE d.club_id = :club_id
 --   Non-zero  → expected first-run cleanup; confirm the numbers are plausible for
 --               the current pool size before approving apply. Steps 1.6 may be
 --               near-zero already because Pass 0c step 4b has been compensating.
+--
+-- PATCH H v2 note: STEP 4 now requires BOTH da.pre_assigned_at > 15 min AND
+--   dass.swing_due_at overdue > 10 min. Dry-run (2026-06-11) showed old 30s
+--   threshold would have returned 1 (dl 18, valid active pre-assign). New
+--   condition returns 0. If STEP 4 is still non-zero, inspect sample rows:
+--   any row here should be a genuinely stale swing (both clocks expired).

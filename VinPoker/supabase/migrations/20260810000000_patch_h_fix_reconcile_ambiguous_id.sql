@@ -19,18 +19,23 @@
 --   rolls back → reconcile_dealer_states has been a complete no-op every tick,
 --   surfacing in logs as `[Pass 0d] ❌ DB error: column reference "id" is ambiguous`.
 --
--- Fix (the ONLY change vs the live body — see
+-- Fix v2 (three changes vs the live body — see
 --      docs/emergency_rollbacks/PATCH_H_rollback_reconcile_dealer_states_oid_150751.sql)
 --   STEP 1.5: RETURNING id → RETURNING dass.id
 --   STEP 1.6: RETURNING id → RETURNING dass.id
 --   (dass = the UPDATE target dealer_assignments; this is the row whose id the
 --    surrounding `SELECT COUNT(*) FROM fixed` counts.)
+--   STEP 4: 30-second stale threshold corrected to dual-clock guard:
+--           da.pre_assigned_at < NOW() - 15 min
+--           AND dass.swing_due_at < NOW() - 10 min
+--           Dry-run showed the 30s threshold would release valid active pre-assigns
+--           (dl 18, Bàn 1, swing_due_at +7 min). New condition: 0 rows.
 --
 -- Behaviour-change flag
 --   Because the function has been dead every tick, this fix makes it execute for
 --   real for the FIRST time. Its first successful runs may report a burst of
 --   fixed_* counts as it clears accumulated state drift. This is the intended
---   purpose, but DRY-RUN the STEP 1.5/1.6 counts before applying (see
+--   purpose, but DRY-RUN the counts before applying (see
 --   docs/dry_runs/PATCH_H_dryrun_reconcile_counts.sql) so the burst is expected.
 --
 -- Not changed: signature, return type, language, security attributes (none /
@@ -199,7 +204,23 @@ BEGIN
   SELECT COUNT(*) INTO v_fixed_pre_assigned_orphan FROM fixed;
 
   -- ═══════════════════════════════════════════════════════════════════
-  -- STEP 4: Fix pre_assigned stuck > 30s WITH assignment reference
+  -- STEP 4: Fix pre_assigned stuck WITH assignment reference — STALE ONLY
+  --
+  -- PATCH H v2: Fixed the original 30-second threshold, which was far too
+  -- aggressive. A normal Pass 2 pre-assign sits in the pre_assigned state
+  -- for up to ~6–8 minutes before process-swing executes the swing.
+  -- The 30s threshold therefore released VALID pre-assigns on every tick.
+  --
+  -- New guard: dual-clock approach using both pre_assigned_at and the
+  -- matching assignment's swing_due_at as the real business clock.
+  --   • da.pre_assigned_at < NOW() - 15 min : reservation held too long
+  --   • dass.swing_due_at  < NOW() - 10 min : swing itself is already overdue
+  -- Both must be true → release only when the swing is genuinely stale,
+  -- not merely because the dealer has been waiting a while.
+  --
+  -- Dry-run verification (2026-06-11): dl 18 pre_assigned to Bàn 1,
+  -- swing_due_at = 22:40 (+7 min). Old condition would have released them
+  -- incorrectly. New condition: swing_due_at is NOT < NOW()-10min → 0 rows.
   -- ═══════════════════════════════════════════════════════════════════
   WITH fixed AS (
     UPDATE dealer_attendance da
@@ -211,12 +232,13 @@ BEGIN
       AND d.club_id = p_club_id
       AND da.status = 'checked_in'
       AND da.current_state = 'pre_assigned'
-      AND da.pre_assigned_at < NOW() - INTERVAL '30 seconds'
+      AND da.pre_assigned_at < NOW() - INTERVAL '15 minutes'   -- PATCH H v2: was 30 seconds
       AND EXISTS (
         SELECT 1 FROM dealer_assignments dass
         WHERE dass.pre_assigned_attendance_id = da.id
           AND dass.status = 'assigned'
           AND dass.released_at IS NULL
+          AND dass.swing_due_at < NOW() - INTERVAL '10 minutes' -- PATCH H v2: swing must be stale
       )
     RETURNING da.id
   )
