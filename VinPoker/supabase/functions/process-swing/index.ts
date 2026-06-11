@@ -2312,16 +2312,45 @@ if (tier2Count > 0) {
               }
 
               if (replacementDealer) {
-                const { breakDuration: frBreakDur } = await getBreakSettings(admin, cid);
-                const { data: frResult } = await admin.rpc("perform_swing", {
-                  p_assignment_id: assignment.id,
-                  p_duration_minutes: swingDurResult.durationMinutes,
-                  p_send_to_break: false,
-                  p_break_duration_minutes: frBreakDur,
-                  p_expected_version: (assignment as any).__lockedVersion ?? assignment.version,
-                  p_next_attendance_id: replacementDealer.id,
+                // ── PATCH J ──────────────────────────────────────────────────
+                // force_release_stuck_assignment already set the old assignment to
+                // status='completed', so the table is now EMPTY. perform_swing
+                // requires status='assigned' and would therefore always return
+                // 'not_found' here (the replacement was picked but never assigned).
+                // Assign the replacement to the now-empty table via the same atomic
+                // RPC fillEmptyTables uses (assign_dealer_to_table): it releases the
+                // dealer's other active rows and honors idx_one_active_per_dealer.
+                // ─────────────────────────────────────────────────────────────
+                const frSwingDueAt = new Date(
+                  Date.now() + Math.max(1, swingDurResult.durationMinutes) * 60_000,
+                ).toISOString();
+
+                // assign_dealer_to_table requires the replacement to be 'available'.
+                // Under escalation, pickNextDealer can return an 'on_break' dealer; end
+                // their break first so they can cover this overdue table (mirrors the
+                // inline break-close the old perform_swing path performed). Guarded by
+                // current_state='on_break' (CAS) and safe under the per-club cron lock.
+                if (replacementDealer.current_state === "on_break") {
+                  const frNowIso = new Date().toISOString();
+                  await admin.from("dealer_breaks")
+                    .update({ break_end: frNowIso })
+                    .eq("attendance_id", replacementDealer.id)
+                    .is("break_end", null);
+                  await admin.from("dealer_attendance")
+                    .update({ current_state: "available", worked_minutes_since_last_break: 0 })
+                    .eq("id", replacementDealer.id)
+                    .eq("current_state", "on_break");
+                }
+
+                const { data: frAssign, error: frAssignErr } = await admin.rpc("assign_dealer_to_table", {
+                  p_attendance_id: replacementDealer.id,
+                  p_table_id: assignment.table_id,
+                  p_swing_due_at: frSwingDueAt,
+                  p_club_id: cid,
                 });
-                if (frResult?.outcome === "swung") {
+                const frOutcome = typeof frAssign === "string" ? frAssign : (frAssign as any)?.outcome;
+
+                if (!frAssignErr && frOutcome === "ok") {
                   metrics.success++;
                   cycleExcludedIds.add(replacementDealer.id);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
@@ -2329,24 +2358,17 @@ if (tier2Count > 0) {
                     const swingMsg = `🔵 ${replacementDealer.full_name} vào bàn ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
-                  // BUG #3 FIX: Refresh count after force-release replacement swing
+                  // Refresh available count after force-release replacement.
                   try {
                     const { data: fc2 } = await admin.rpc("count_available_dealers", { p_club_id: cid });
                     availableDealerCount = fc2 ?? 0;
                   } catch { /* keep stale count */ }
-                  const postAssign2 = await postSwingPreAssign(admin, cid, frResult.new_assignment_id, assignment.table_id, {
-                    chatId: pass2ChatId,
-                    botToken,
-                    minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
-                  });
-                  if (postAssign2.assigned) {
-                    console.log(`[Pass 3] ✅ Post-swing pre-assigned ${postAssign2.dealerName} for next swing at table ${tableName}`);
-                  } else if (postAssign2.reason !== "no dealer available") {
-                    console.warn(`[Pass 3] ⚠️ Post-swing pre-assign issue: ${postAssign2.reason}`);
-                  }
                 } else {
                   metrics.no_dealer++;
-                  console.warn(`[Pass 3] ⚠️ perform_swing after force-release returned: ${frResult?.outcome}`);
+                  console.warn(
+                    `[Pass 3] ⚠️ assign_dealer_to_table after force-release for ${tableName} returned: ` +
+                    `${frAssignErr?.message ?? frOutcome} — fillEmptyTables will fill it next tick`,
+                  );
                 }
               } else {
                 metrics.no_dealer++;
@@ -2563,7 +2585,20 @@ if (tier2Count > 0) {
                     isNoShow = true;
                   } else {
                     incomingAtt = data;
-                    if (!incomingAtt || incomingAtt.current_state !== "pre_assigned" || incomingAtt.status === "checked_out") {
+                    // PATCH J: a dealer who cleanly released to 'available' between the
+                    // preflight check and the RPC is a BENIGN race, not a no-show — do
+                    // not blame them. Fall through to the normal race_lost fallback
+                    // below, which swings a fresh dealer (the old dealer is still
+                    // 'assigned' since race_lost rolled back, so the table is not
+                    // dealer-less). Only flag a genuine no-show for truly invalid
+                    // states (checked_out, missing, or assigned/in_transition/on_break
+                    // elsewhere — i.e. neither 'pre_assigned' nor 'available').
+                    if (
+                      !incomingAtt ||
+                      incomingAtt.status === "checked_out" ||
+                      (incomingAtt.current_state !== "pre_assigned" &&
+                        incomingAtt.current_state !== "available")
+                    ) {
                       isNoShow = true;
                     }
                   }
