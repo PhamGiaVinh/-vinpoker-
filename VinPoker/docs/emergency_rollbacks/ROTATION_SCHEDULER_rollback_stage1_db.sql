@@ -13,7 +13,7 @@ DROP VIEW IF EXISTS public.dealer_my_rotation;
 
 DROP FUNCTION IF EXISTS public.get_rotation_board(UUID);
 DROP FUNCTION IF EXISTS public.complete_rotation_slot(UUID, UUID);
-DROP FUNCTION IF EXISTS public.upsert_rotation_plan(UUID, UUID, JSONB);
+DROP FUNCTION IF EXISTS public.upsert_rotation_plan(UUID, UUID, JSONB, UUID[]);
 DROP FUNCTION IF EXISTS public.cancel_rotation_slot(UUID, TEXT);
 DROP FUNCTION IF EXISTS public.lock_rotation_slot(UUID, INT);
 

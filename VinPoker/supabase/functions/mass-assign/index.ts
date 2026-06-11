@@ -73,7 +73,10 @@ Deno.serve(async (req) => {
     // Telegram
     const assignedEntries = assignments.map(a => ({
       tableName: a.table_name,
-      dealer: { full_name: a.full_name },
+      dealer: {
+        full_name: a.full_name,
+        telegram_username: a.telegram_username ?? null,
+      },
     }));
 
     try {

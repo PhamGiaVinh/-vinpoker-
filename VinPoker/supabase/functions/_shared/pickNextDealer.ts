@@ -970,6 +970,93 @@ export async function pickTopDealers(
   return candidates.slice(0, topN);
 }
 
+// ─── buildRotationSupply (Forward Rotation Scheduler) ─────────────────────────
+// Wraps buildDealerCandidates (reservation mode: still-resting dealers are
+// admitted) and augments each candidate with the two solver timing fields:
+//   prev_session_minutes — R3 fairness key (previous dealing session length)
+//   eligible_at_ms       — R1: earliest moment the dealer may ENTER a table
+//                          = max(last_released_at + rest, pool_entered_at + 1min)
+// Existing exports are untouched; legacy callers are unaffected.
+
+export interface RotationSupplyEntry extends DealerCandidate {
+  prev_session_minutes: number;
+  eligible_at_ms: number;
+}
+
+export async function buildRotationSupply(
+  admin: SupabaseAdmin,
+  clubId: string,
+  options: {
+    excludeAttendanceIds?: Set<string>;
+    minInterSwingRestMinutes?: number;
+    clubBreakDurationMinutes?: number;
+    requiredGameTypes?: string[];
+  } = {}
+): Promise<{ supply: RotationSupplyEntry[]; avgBreakRatio: number | null }> {
+  const restMinutes = Math.max(options.minInterSwingRestMinutes ?? 10, 10);
+  const poolCooldownMs = 60_000;
+
+  const { candidates, avgBreakRatio } = await buildDealerCandidates(admin, clubId, {
+    excludeAttendanceIds: options.excludeAttendanceIds,
+    clubBreakDurationMinutes: options.clubBreakDurationMinutes ?? 20,
+    minInterSwingRestMinutes: restMinutes,
+    requiredGameTypes: options.requiredGameTypes,
+    reservationMode: true,
+    // Admit dealers whose rest completes within the planning horizon.
+    swingDueAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+  });
+
+  if (candidates.length === 0) return { supply: [], avgBreakRatio };
+
+  const attendanceIds = candidates.map((c) => c.id);
+
+  // Latest released session per candidate → prev session length + rest anchor.
+  const { data: releasedRows } = await admin
+    .from("dealer_assignments")
+    .select("attendance_id, assigned_at, released_at")
+    .in("attendance_id", attendanceIds)
+    .not("released_at", "is", null)
+    .order("released_at", { ascending: false })
+    // Global ordering means a prolific dealer's rows could crowd others out;
+    // ~25 sessions/dealer/day is well above any real shift.
+    .limit(Math.min(1000, attendanceIds.length * 25));
+
+  const lastSession = new Map<string, { assignedAtMs: number; releasedAtMs: number }>();
+  for (const row of (releasedRows ?? []) as Array<{ attendance_id: string; assigned_at: string | null; released_at: string }>) {
+    if (lastSession.has(row.attendance_id)) continue;
+    lastSession.set(row.attendance_id, {
+      assignedAtMs: row.assigned_at ? new Date(row.assigned_at).getTime() : new Date(row.released_at).getTime(),
+      releasedAtMs: new Date(row.released_at).getTime(),
+    });
+  }
+
+  const { data: poolRows } = await admin
+    .from("dealer_attendance")
+    .select("id, pool_entered_at")
+    .in("id", attendanceIds);
+
+  const poolEnteredAt = new Map<string, number>();
+  for (const row of (poolRows ?? []) as Array<{ id: string; pool_entered_at: string | null }>) {
+    if (row.pool_entered_at) poolEnteredAt.set(row.id, new Date(row.pool_entered_at).getTime());
+  }
+
+  const supply: RotationSupplyEntry[] = candidates.map((c) => {
+    const session = lastSession.get(c.id);
+    const prevSessionMinutes = session
+      ? Math.max(0, Math.round((session.releasedAtMs - session.assignedAtMs) / 60_000))
+      : 0;
+    const restEligible = session ? session.releasedAtMs + restMinutes * 60_000 : 0;
+    const poolEligible = (poolEnteredAt.get(c.id) ?? 0) + poolCooldownMs;
+    return {
+      ...c,
+      prev_session_minutes: prevSessionMinutes,
+      eligible_at_ms: Math.max(restEligible, poolEligible),
+    };
+  });
+
+  return { supply, avgBreakRatio };
+}
+
 // ─── buildScoreLabel ──────────────────────────────────────────────────────────
 
 export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): string {

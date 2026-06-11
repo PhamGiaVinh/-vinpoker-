@@ -109,6 +109,22 @@ Deno.serve(async (req) => {
       }
 
       try {
+        // ═══ Scheduler gate (Forward Rotation Scheduler) ═══
+        // Under the scheduler, "dealer ready" never swings — instant
+        // perform_swing would bypass the 3-minute announce guarantee and
+        // R3/R4 fairness. The 30s planner tick owns this club's rotation.
+        const { data: backupSwingCfg } = await admin
+          .from("swing_config")
+          .select("rotation_planner_enabled")
+          .eq("club_id", cid)
+          .eq("table_type", "tournament")
+          .maybeSingle();
+        if (backupSwingCfg?.rotation_planner_enabled === true) {
+          console.log(`[run-dealer-ready-backup] scheduler active for club ${cid} — deferring to planner tick`);
+          consecutiveFailures = 0;
+          continue;
+        }
+
         const { data: readyDealers, error: readyErr } = await admin
           .from("dealer_attendance")
           .select("id, dealer_id")

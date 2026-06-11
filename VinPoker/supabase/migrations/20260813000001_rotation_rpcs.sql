@@ -215,7 +215,10 @@ $$;
 CREATE OR REPLACE FUNCTION public.upsert_rotation_plan(
   p_club_id     UUID,
   p_plan_run_id UUID,
-  p_rows        JSONB
+  p_rows        JSONB,
+  -- NULL = full-club plan run (supersede all predictions);
+  -- array = single/partial re-plan, supersede only those tables' predictions.
+  p_table_ids   UUID[] DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -228,11 +231,12 @@ DECLARE
   v_skipped    INT := 0;
   r JSONB;
 BEGIN
-  -- Retire every previous prediction for this club in one stroke.
+  -- Retire previous predictions in scope in one stroke.
   UPDATE dealer_rotation_schedule
   SET status = 'superseded', version = version + 1, updated_at = NOW()
   WHERE club_id = p_club_id
-    AND status = 'predicted';
+    AND status = 'predicted'
+    AND (p_table_ids IS NULL OR table_id = ANY(p_table_ids));
   GET DIAGNOSTICS v_superseded = ROW_COUNT;
 
   FOR r IN SELECT * FROM jsonb_array_elements(COALESCE(p_rows, '[]'::jsonb))
@@ -440,13 +444,13 @@ $$;
 -- Grants: planner RPCs are service-role only; the board feed is also for staff UIs.
 REVOKE EXECUTE ON FUNCTION public.lock_rotation_slot(UUID, INT)        FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.cancel_rotation_slot(UUID, TEXT)     FROM PUBLIC, anon;
-REVOKE EXECUTE ON FUNCTION public.upsert_rotation_plan(UUID, UUID, JSONB) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.upsert_rotation_plan(UUID, UUID, JSONB, UUID[]) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.complete_rotation_slot(UUID, UUID)   FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.get_rotation_board(UUID)             FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.lock_rotation_slot(UUID, INT)            TO service_role;
 GRANT EXECUTE ON FUNCTION public.cancel_rotation_slot(UUID, TEXT)         TO service_role;
-GRANT EXECUTE ON FUNCTION public.upsert_rotation_plan(UUID, UUID, JSONB)  TO service_role;
+GRANT EXECUTE ON FUNCTION public.upsert_rotation_plan(UUID, UUID, JSONB, UUID[])  TO service_role;
 GRANT EXECUTE ON FUNCTION public.complete_rotation_slot(UUID, UUID)       TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_rotation_board(UUID)                 TO service_role, authenticated;
 
