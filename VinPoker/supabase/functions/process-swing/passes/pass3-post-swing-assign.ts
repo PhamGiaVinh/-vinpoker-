@@ -2,6 +2,13 @@ import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
 import { sendPreAssignTelegramWithFallback } from "../../_shared/preAssignTelegram.ts";
 
+// PATCH E — reversible kill switch.
+// Disabled: reserves dealer ~30–44 min early after each swing, draining the pool
+// and starving OT/near-due tables. Pass 2 (overdue-inclusive + urgency-sorted)
+// now covers all pre-assign needs. Flip to `true` to restore when tier-aware /
+// surplus-gated version is built.
+const POST_SWING_PRE_ASSIGN_ENABLED = false;
+
 export interface PostSwingPreAssignOptions {
   chatId: string | null;
   botToken?: string | null;
@@ -15,6 +22,10 @@ export async function postSwingPreAssign(
   tableId: string,
   options: PostSwingPreAssignOptions,
 ): Promise<{ assigned: boolean; dealerName?: string; reason?: string }> {
+  if (!POST_SWING_PRE_ASSIGN_ENABLED) {
+    return { assigned: false, reason: "no dealer available" };
+  }
+
   try {
     const { data: assignment, error: fetchErr } = await admin
       .from("dealer_assignments")
