@@ -27,14 +27,15 @@ import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import SwingPanel from "@/components/cashier/DealerSwingTab";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
+import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Table2, Calculator,
+  Table2, Calculator, ClipboardList,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll" | "tournament_live";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "swing" | "payroll" | "tournament_live";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -100,6 +101,7 @@ export default function CashierDashboard() {
     { key: "staking", label: "Staking", icon: Coins },
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
+    ...(clubIds.length > 0 ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: ClipboardList }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "payroll" as SectionKey, label: "Bảng lương", icon: Calculator }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "tournament_live" as SectionKey, label: "Tournament Live", icon: Table2 }] : []),
@@ -156,6 +158,7 @@ export default function CashierDashboard() {
           {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "payroll" && <DealerPayrollTab clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "tournament_live" && <TournamentLivePanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
+          {section === "tournament_registrations" && <TournamentRegistrationsTab clubIds={clubIds} />}
         </main>
       </div>
     </div>
