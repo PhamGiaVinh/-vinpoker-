@@ -131,12 +131,12 @@ COMMIT;
 -- Part 2: Concurrent index (cannot run in transaction)
 -- ─────────────────────────────────────────────────────────────────────────
 
--- Drop old index if exists (safe - CONCURRENTLY drops without blocking)
-DROP INDEX CONCURRENTLY IF EXISTS idx_dealer_assignments_pass1b_stale;
+-- Drop old index if exists (D3c decision 2026-06-11: CONCURRENTLY removed — forbidden in transaction)
+DROP INDEX IF EXISTS idx_dealer_assignments_pass1b_stale;
 
 -- Create with correct definition: table_id first for .in() queries,
 -- swing_due_at DESC for .lt() ordering, INCLUDE for index-only scan
-CREATE INDEX CONCURRENTLY idx_dealer_assignments_pass1b_stale
+CREATE INDEX IF NOT EXISTS idx_dealer_assignments_pass1b_stale
   ON dealer_assignments (table_id, swing_due_at DESC)
   INCLUDE (id, pre_assigned_attendance_id, pre_assigned_at, version)
   WHERE status = 'assigned'
