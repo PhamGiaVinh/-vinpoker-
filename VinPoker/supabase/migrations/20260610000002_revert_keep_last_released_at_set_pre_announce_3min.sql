@@ -142,8 +142,6 @@ BEGIN
 END;
 $$;
 
--- 3. Set pre_announce_minutes = 3 for club 22222
-UPDATE swing_config
-SET pre_announce_minutes = 3
-WHERE club_id = '22222222-2222-2222-2222-222222222222'
-  AND pre_announce_minutes != 3;
+-- 3. [REMOVED] Placeholder club UUID config update removed (D3b decision 2026-06-11).
+-- UPDATE swing_config SET pre_announce_minutes = 3 WHERE club_id = '22222222-...'
+-- was a dev placeholder UUID (all-twos sentinel). Apply manually with correct club_id if needed.
