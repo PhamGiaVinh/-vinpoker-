@@ -75,6 +75,8 @@ const Feed = lazy(() => import("./pages/Feed"));
 const NotificationSettings = lazy(() => import("./pages/NotificationSettings"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const TournamentTv = lazy(() => import("./pages/TournamentTv"));
+const TvPair = lazy(() => import("./pages/TvPair"));
+const TournamentDisplay = lazy(() => import("./pages/TournamentDisplay"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -121,8 +123,10 @@ const App = () => (
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/setup-davinci" element={<SetupDavinci />} />
-              {/* TV projection screen — no Layout chrome (PR A: mock data) */}
+              {/* TV projection screens — no Layout chrome */}
+              <Route path="/tv/pair" element={<TvPair />} />
               <Route path="/tv/:tournamentId" element={<TournamentTv />} />
+              <Route path="/display/:displayToken" element={<TournamentDisplay />} />
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
                 <Route path="/tournament/:id" element={<TournamentDetail />} />

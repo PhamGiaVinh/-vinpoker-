@@ -27,7 +27,14 @@
     "authRequiredHint": "Sign in to VinPoker on this device, then reopen the TV link",
     "loadError": "Could not load tournament data",
     "loadErrorHint": "Retrying automatically…",
-    "offline": "Realtime connection lost — using fallback polling"
+    "offline": "Realtime connection lost — using fallback polling",
+    "pairTitle": "Pair this TV display",
+    "pairInstruction": "Enter this code in the VinPoker dashboard (Tournament Live → TV Displays) to assign a tournament to this TV",
+    "pairWaiting": "Waiting for pairing…",
+    "pairExpires": "New code in",
+    "pairError": "Cannot reach the server — retrying…",
+    "displayStandby": "No tournament assigned",
+    "displayStandbyHint": "Assign a tournament to this TV from the dashboard"
   },
   "nav": {
     "schedule": "Schedule",
