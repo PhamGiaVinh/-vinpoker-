@@ -179,7 +179,7 @@ export function LogoFanButton({ onQR, onPoker, quickLinks, onNavigate }: Props) 
         transition={{ type: "spring", stiffness: 320, damping: 22 }}
         aria-label="Menu nhanh"
         aria-expanded={open}
-        className="absolute left-1/2 -translate-x-1/2 -ml-[26px] -top-[60px] z-50 w-[52px] h-[52px] rounded-full bg-gradient-to-b from-background to-card ring-[2px] ring-primary shadow-[0_0_24px_hsl(var(--primary)/0.85),0_6px_16px_rgba(0,0,0,0.6)] flex items-center justify-center overflow-hidden touch-none select-none"
+        className="absolute left-1/2 -translate-x-1/2 -ml-[26px] -top-[46px] z-50 w-[52px] h-[52px] rounded-full bg-gradient-to-b from-background to-card ring-[2px] ring-primary shadow-[0_0_24px_hsl(var(--primary)/0.85),0_6px_16px_rgba(0,0,0,0.6)] flex items-center justify-center overflow-hidden touch-none select-none"
       >
         <img
           src={appLogo}

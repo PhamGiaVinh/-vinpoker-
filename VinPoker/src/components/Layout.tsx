@@ -207,7 +207,7 @@ export const Layout = () => {
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(7.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
