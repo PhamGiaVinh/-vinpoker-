@@ -19,7 +19,15 @@
     "cancelled": "Đã hủy",
     "demo": "Demo",
     "fullscreenPrompt": "Bấm để bật toàn màn hình",
-    "fullscreenSkip": "Bỏ qua"
+    "fullscreenSkip": "Bỏ qua",
+    "loading": "Đang tải dữ liệu giải đấu…",
+    "notFound": "Không tìm thấy giải đấu",
+    "notFoundHint": "Kiểm tra lại đường dẫn TV",
+    "authRequired": "Cần đăng nhập để hiển thị",
+    "authRequiredHint": "Đăng nhập VinPoker trên thiết bị này rồi mở lại đường dẫn TV",
+    "loadError": "Không tải được dữ liệu giải đấu",
+    "loadErrorHint": "Hệ thống sẽ tự động thử lại…",
+    "offline": "Mất kết nối realtime — đang dùng chế độ dự phòng"
   },
   "nav": {
     "schedule": "Lịch giải",

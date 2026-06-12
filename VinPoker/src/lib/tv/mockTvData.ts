@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TvData, TvLevel } from "@/types/tv";
+import { computeNextBreak } from "@/lib/tv/computeNextBreak";
 
 // Self-ticking mock for the TV shell (PR A). PR B replaces this with
 // useTournamentTvData; the TvData contract is identical so TvClockScreen
@@ -49,21 +50,6 @@ function tickMock(state: MockState): MockState {
   };
 }
 
-function nextBreakSeconds(
-  levels: TvLevel[],
-  levelIndex: number,
-  remainingSeconds: number,
-): number | null {
-  const current = levels[levelIndex];
-  if (!current || current.isBreak) return null;
-  let total = remainingSeconds;
-  for (let i = levelIndex + 1; i < levels.length; i++) {
-    if (levels[i].isBreak) return total;
-    total += levels[i].durationMinutes * 60;
-  }
-  return null;
-}
-
 function toTvData(state: MockState): TvData {
   const currentLevel = MOCK_LEVELS[state.levelIndex] ?? null;
   const nextLevel = MOCK_LEVELS[state.levelIndex + 1] ?? null;
@@ -78,7 +64,11 @@ function toTvData(state: MockState): TvData {
     remainingSeconds: state.remainingSeconds,
     currentLevel,
     nextLevel,
-    nextBreakSeconds: nextBreakSeconds(MOCK_LEVELS, state.levelIndex, state.remainingSeconds),
+    nextBreakSeconds: computeNextBreak(
+      MOCK_LEVELS,
+      currentLevel?.levelNumber ?? null,
+      state.remainingSeconds,
+    ),
     playersRemaining: 42,
     totalEntries: 97,
     reEntries: 12,
@@ -98,14 +88,15 @@ function toTvData(state: MockState): TvData {
   };
 }
 
-/** Mock TvData ticking once per second. PR A demo source only. */
-export function useMockTvData(): TvData {
+/** Mock TvData ticking once per second. Demo source only (?mock=1). */
+export function useMockTvData(enabled = true): TvData {
   const [state, setState] = useState<MockState>(INITIAL_STATE);
 
   useEffect(() => {
+    if (!enabled) return;
     const id = setInterval(() => setState(tickMock), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [enabled]);
 
   return toTvData(state);
 }
