@@ -1396,8 +1396,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Skeleton className="h-96 rounded-none" />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* LEFT COLUMN — 25% */}
-          <div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
+          {/* LEFT COLUMN — 25% (reference info → last on mobile) */}
+          <div className="order-last lg:order-none lg:col-span-3 flex flex-col gap-4 min-h-0">
             <BreakPoolCard
               entries={breakPool ?? []}
               loading={breakPoolLoading}
@@ -1471,8 +1471,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             )}
           </div>
 
-          {/* RIGHT COLUMN — 25% */}
-          <div className="lg:col-span-3">
+          {/* RIGHT COLUMN — 25% (attention queue + KPIs → first on mobile) */}
+          <div className="order-first lg:order-none lg:col-span-3">
             <CommandCenter
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
@@ -1530,20 +1530,15 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="relative" title={`Điểm: ${s.score}`}>
-                          <span className="text-xs font-mono text-primary cursor-help border border-primary/30 px-1.5 py-0.5"
-                            onMouseEnter={(e) => {
-                              const el = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (el) el.style.display = "block";
-                            }}
-                            onMouseLeave={(e) => {
-                              const el = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (el) el.style.display = "none";
-                            }}>
-                            {s.score}
-                          </span>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button type="button" title={`Điểm: ${s.score}`}
+                              className="text-xs font-mono text-primary cursor-help border border-primary/30 px-1.5 py-0.5">
+                              {s.score}
+                            </button>
+                          </PopoverTrigger>
                           {bd && (
-                            <div className="hidden absolute bottom-full right-0 mb-1 z-50 bg-black border border-border p-2 rounded-none shadow-lg min-w-[160px]">
+                            <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-black border-border shadow-lg">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
                                 <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
                                 <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.fairness}</span></div>
@@ -1556,9 +1551,9 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                                   <span>Tổng</span><span className="text-primary">{s.score}</span>
                                 </div>
                               </div>
-                            </div>
+                            </PopoverContent>
                           )}
-                        </div>
+                        </Popover>
                         <Button size="sm" onClick={() => confirmAssign(s.dealer_id)} disabled={assigning}>
                           {assigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Gán"}
                         </Button>
@@ -2242,7 +2237,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           {/* Add form */}
           <div className="space-y-3 pb-4 border-b border-border">
             <p className="text-xs text-muted-foreground font-medium">Thêm ngày mới</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Ngày</label>
                 <Input
@@ -2323,7 +2318,7 @@ function DealerTimer({ startTime }: { startTime: string }) {
   const h = Math.floor(elapsed / 60);
   const m = elapsed % 60;
   return (
-    <span className="font-mono text-[10px]">
+    <span className="font-jetbrains tabular-nums text-[10px]">
       {h > 0 ? `${h}h ` : ""}{m}m
     </span>
   );
@@ -3796,8 +3791,9 @@ function CommandCenter({
             ) : (
               auditLogs.map((log: any) => (
                 <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                  <span className="font-semibold text-foreground">{log.action}</span>
-                  <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+                  <span className="font-semibold text-foreground">{auditActionLabel(log.action)}</span>
+                  {auditLogNames(log.payload) && <span className="ml-1">{auditLogNames(log.payload)}</span>}
+                  <span className="block truncate">{new Date(log.created_at).toLocaleString("vi-VN")}</span>
                 </div>
               ))
             )}
@@ -3873,7 +3869,7 @@ function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onE
   else if (timeLeft <= warnAt) color = "text-amber-500";
 
   return (
-    <div className={`font-mono text-lg font-bold ${color}`}>
+    <div className={`font-jetbrains tabular-nums text-lg font-bold ${color}`}>
       {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
     </div>
   );
@@ -4091,7 +4087,7 @@ function AutoAdjustSection({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-[11px]">Base Duration (phút)</Label>
               <Input type="number" min={30} max={120}
@@ -4235,7 +4231,7 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
         <div className="text-xs font-display tracking-wider text-muted-foreground border-b border-border pb-1 mb-3 uppercase">
           {label}
         </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
           <div>
             <Label className="text-[11px]">Swing Duration (min)</Label>
             <Input type="number" min={30} max={240}
@@ -4346,7 +4342,40 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
 /* ==============================================================
    AUDIT LOG SECTION — auto-scroll with unread badge
    ============================================================== */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  assign: "Gán dealer",
+  mass_assign: "Gán loạt",
+  checkout_dealer: "Check-out dealer",
+  table_closed: "Đóng bàn",
+  telegram_failed: "Lỗi gửi Telegram",
+  tournament_break: "Nghỉ giải đấu",
+};
+
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+/** Display-only: dealer/table names already present in the fetched log row payload. */
+function auditLogNames(payload: any): string {
+  if (!payload || typeof payload !== "object") return "";
+  const parts: string[] = [];
+  if (payload.dealer_name) parts.push(String(payload.dealer_name));
+  if (payload.table_name) parts.push(`bàn ${payload.table_name}`);
+  return parts.join(" · ");
+}
+
+function timeAgoVi(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "vừa xong";
+  if (mins < 60) return `${mins} phút trước`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  return new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+}
+
 function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; totalCount: number; onViewAll: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? logs : logs.slice(0, 3);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -4357,13 +4386,23 @@ function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; t
       ) : (
         <>
           <div className="space-y-1">
-            {logs.map((log: any) => (
-              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                <span className="font-mono text-[10px]">{new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
-                <span className="ml-1.5 font-semibold text-foreground">{log.action}</span>
+            {visible.map((log: any) => (
+              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5"
+                title={new Date(log.created_at).toLocaleString("vi-VN")}>
+                <span className="font-semibold text-foreground">{auditActionLabel(log.action)}</span>
+                {auditLogNames(log.payload) && <span className="ml-1">{auditLogNames(log.payload)}</span>}
+                <span className="ml-1.5 text-[10px]">{timeAgoVi(log.created_at)}</span>
               </div>
             ))}
           </div>
+          {!expanded && logs.length > 3 && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-[10px] text-muted-foreground hover:text-foreground w-full text-left"
+            >
+              Xem thêm…
+            </button>
+          )}
           {totalCount > logs.length && (
             <button
               onClick={onViewAll}
