@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, Radio } from "lucide-react";
+import { AlertTriangle, Radio, RefreshCw } from "lucide-react";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 
 type ClubRow = { id: string; name: string };
@@ -13,6 +14,8 @@ export default function TrackerDashboard() {
   const { user, loading, isAdmin } = useAuth();
   const nav = useNavigate();
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
+  const [clubsError, setClubsError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (loading) return;
@@ -22,16 +25,44 @@ export default function TrackerDashboard() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data: ids } = await supabase.rpc("tracker_club_ids", { _user_id: user.id });
+      const { data: ids, error: idsError } = await supabase.rpc("tracker_club_ids", { _user_id: user.id });
+      if (idsError) {
+        // A transient RPC failure must not masquerade as "no clubs assigned".
+        setClubsError(idsError.message);
+        return;
+      }
       const idArr = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.tracker_club_ids ?? r));
-      if (!idArr.length) { setClubs([]); return; }
-      const { data: cs } = await supabase.from("clubs").select("id, name").in("id", idArr);
+      if (!idArr.length) { setClubsError(null); setClubs([]); return; }
+      const { data: cs, error: clubsErr } = await supabase.from("clubs").select("id, name").in("id", idArr);
+      if (clubsErr) {
+        setClubsError(clubsErr.message);
+        return;
+      }
+      setClubsError(null);
       setClubs((cs ?? []) as ClubRow[]);
     })();
-  }, [user]);
+  }, [user, reloadKey]);
 
   if (loading || !user) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
+  }
+  if (clubsError) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card className="p-8 text-center space-y-3">
+          <AlertTriangle className="w-10 h-10 mx-auto text-destructive" />
+          <div className="text-lg font-bold">Không tải được danh sách CLB</div>
+          <p className="text-xs text-muted-foreground break-all">{clubsError}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setClubsError(null); setClubs(null); setReloadKey((k) => k + 1); }}
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Thử lại
+          </Button>
+        </Card>
+      </div>
+    );
   }
   if (clubs === null) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
