@@ -34,7 +34,12 @@
     "pairExpires": "Mã mới sau",
     "pairError": "Không thể kết nối máy chủ — đang thử lại…",
     "displayStandby": "Chưa gán giải đấu",
-    "displayStandbyHint": "Chọn giải đấu cho TV này từ bảng điều khiển"
+    "displayStandbyHint": "Chọn giải đấu cho TV này từ bảng điều khiển",
+    "payoutsTitle": "Cơ cấu giải thưởng",
+    "noPayouts": "Chưa có cơ cấu giải thưởng",
+    "noAnnouncement": "Chưa có nội dung thông báo",
+    "multiBoard": "Bảng nhiều giải",
+    "multiBoardSoon": "Sẽ có trong bản cập nhật sau — TV tạm hiển thị chế độ chờ"
   },
   "nav": {
     "schedule": "Lịch giải",

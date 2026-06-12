@@ -2,8 +2,12 @@ import { useEffect, type HTMLAttributes } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { TvClockScreen } from "@/components/tv/TvClockScreen";
+import { TvBreakScreen } from "@/components/tv/TvBreakScreen";
+import { TvPayoutsScreen } from "@/components/tv/TvPayoutsScreen";
+import { TvAnnouncementScreen } from "@/components/tv/TvAnnouncementScreen";
 import { TvChrome } from "@/components/tv/TvChrome";
 import { useTvDisplayState } from "@/lib/tv/useTvDisplayState";
+import { selectTvScreen } from "@/lib/tv/selectTvScreen";
 import { clearDisplayToken, storeDisplayToken } from "@/lib/tv/displayToken";
 
 function CenterMessage({ title, hint }: { title: string; hint?: string }) {
@@ -67,22 +71,47 @@ const TournamentDisplay = () => {
         ) : null
       }
     >
-      {state === "ready" && data ? (
-        <TvClockScreen data={data} />
-      ) : state === "standby" ? (
-        <CenterMessage
-          title={t("tv.displayStandby")}
-          hint={
-            payload?.display?.name
-              ? `${payload.display.name} · ${t("tv.displayStandbyHint")}`
-              : t("tv.displayStandbyHint")
-          }
-        />
-      ) : state === "error" ? (
-        <CenterMessage title={t("tv.loadError")} hint={t("tv.loadErrorHint")} />
-      ) : (
-        <CenterMessage title={t("tv.loading")} />
-      )}
+      {(() => {
+        if (state !== "ready" && state !== "standby") {
+          return state === "error" ? (
+            <CenterMessage title={t("tv.loadError")} hint={t("tv.loadErrorHint")} />
+          ) : (
+            <CenterMessage title={t("tv.loading")} />
+          );
+        }
+        // Operator-chosen layout (PR C3 dashboard) → screen variant (PR C4).
+        const screen = selectTvScreen(payload?.display?.layout, !!data);
+        switch (screen) {
+          case "clock":
+            return data ? <TvClockScreen data={data} /> : null;
+          case "break":
+            return data ? <TvBreakScreen data={data} /> : null;
+          case "payouts":
+            return data ? <TvPayoutsScreen data={data} /> : null;
+          case "announcement":
+            return (
+              <TvAnnouncementScreen
+                announcement={payload?.display?.announcement ?? null}
+                clubName={payload?.display?.club_name ?? null}
+                data={data}
+              />
+            );
+          case "multi_placeholder":
+            return <CenterMessage title={t("tv.multiBoard")} hint={t("tv.multiBoardSoon")} />;
+          case "standby":
+          default:
+            return (
+              <CenterMessage
+                title={t("tv.displayStandby")}
+                hint={
+                  payload?.display?.name
+                    ? `${payload.display.name} · ${t("tv.displayStandbyHint")}`
+                    : t("tv.displayStandbyHint")
+                }
+              />
+            );
+        }
+      })()}
     </TvChrome>
   );
 };

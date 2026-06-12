@@ -34,7 +34,12 @@
     "pairExpires": "New code in",
     "pairError": "Cannot reach the server — retrying…",
     "displayStandby": "No tournament assigned",
-    "displayStandbyHint": "Assign a tournament to this TV from the dashboard"
+    "displayStandbyHint": "Assign a tournament to this TV from the dashboard",
+    "payoutsTitle": "Payout structure",
+    "noPayouts": "No payout structure yet",
+    "noAnnouncement": "No announcement yet",
+    "multiBoard": "Multi-tournament board",
+    "multiBoardSoon": "Coming in a later update — the TV stays in standby"
   },
   "nav": {
     "schedule": "Schedule",
