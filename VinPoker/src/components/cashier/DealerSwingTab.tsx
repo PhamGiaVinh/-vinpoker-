@@ -2202,7 +2202,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           {/* Add form */}
           <div className="space-y-3 pb-4 border-b border-border">
             <p className="text-xs text-muted-foreground font-medium">Thêm ngày mới</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Ngày</label>
                 <Input
@@ -3966,7 +3966,7 @@ function AutoAdjustSection({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-[11px]">Base Duration (phút)</Label>
               <Input type="number" min={30} max={120}
@@ -4110,7 +4110,7 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
         <div className="text-xs font-display tracking-wider text-muted-foreground border-b border-border pb-1 mb-3 uppercase">
           {label}
         </div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
           <div>
             <Label className="text-[11px]">Swing Duration (min)</Label>
             <Input type="number" min={30} max={240}
