@@ -1,0 +1,22 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PAYROLL P0 DRIFT FIX: payroll_periods.calculated_by
+--
+-- The live save_payroll_period function (committed in 20260716000000 and carried
+-- forward through 20260801000000) INSERTs/UPDATEs payroll_periods.calculated_by,
+-- but NO migration ever defined that column on payroll_periods. On the live test
+-- DB (orlesggcjamwuknxwcpk) the sibling column dealer_payroll.calculated_by was
+-- hand-added at some point, payroll_periods.calculated_by was not — so every
+-- payroll save fails with SQLSTATE 42703.
+--
+-- This migration aligns the table schema with the existing live (and committed)
+-- save_payroll_period function expectation. One column, idempotent, no FK to keep
+-- the patch minimal (sibling *_by columns reference auth.users; an FK can be added
+-- later in a reviewed patch if desired).
+--
+-- ZERO formula/RPC change. Discovered during PR #13 saved-path UAT 2026-06-12.
+-- Pre-fix snapshot + rollback:
+--   docs/emergency_rollbacks/PRE_FIX_payroll_periods_calculated_by_20260612.md
+-- Rollback: ALTER TABLE public.payroll_periods DROP COLUMN IF EXISTS calculated_by;
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.payroll_periods ADD COLUMN IF NOT EXISTS calculated_by UUID;
