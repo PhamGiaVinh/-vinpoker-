@@ -19,7 +19,15 @@
     "cancelled": "Cancelled",
     "demo": "Demo",
     "fullscreenPrompt": "Tap to go fullscreen",
-    "fullscreenSkip": "Skip"
+    "fullscreenSkip": "Skip",
+    "loading": "Loading tournament data…",
+    "notFound": "Tournament not found",
+    "notFoundHint": "Check the TV link",
+    "authRequired": "Sign-in required",
+    "authRequiredHint": "Sign in to VinPoker on this device, then reopen the TV link",
+    "loadError": "Could not load tournament data",
+    "loadErrorHint": "Retrying automatically…",
+    "offline": "Realtime connection lost — using fallback polling"
   },
   "nav": {
     "schedule": "Schedule",
