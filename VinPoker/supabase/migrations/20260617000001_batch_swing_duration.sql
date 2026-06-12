@@ -92,7 +92,7 @@ GRANT EXECUTE ON FUNCTION get_dealer_pool_snapshot(UUID, TEXT) TO service_role;
 -- when the app pre-calculates it from a pool snapshot.
 DROP FUNCTION IF EXISTS perform_swing(UUID, INT, UUID, BOOLEAN, INT, INT);
 
-CREATE FUNCTION perform_swing(
+CREATE OR REPLACE FUNCTION perform_swing(
   p_assignment_id          UUID,
   p_version                INT,
   p_next_attendance_id     UUID DEFAULT NULL,
