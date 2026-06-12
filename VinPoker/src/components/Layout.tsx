@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -101,6 +101,18 @@ export const Layout = () => {
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 MEDIA
+              </NavLink>
+            )}
+
+            {/* Mobile-only operator entry — /cashier guards itself; this is UI entry only */}
+            {(isCashier || isAdmin) && (
+              <NavLink
+                to="/cashier"
+                className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25"
+                title="Vận hành CLB — Cashier · Floor · Tracker · Swing"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                VẬN HÀNH
               </NavLink>
             )}
 
