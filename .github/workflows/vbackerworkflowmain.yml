@@ -53,25 +53,15 @@ jobs:
 
       - name: Database migration deployment is manual-gated
         if: github.event_name != 'workflow_dispatch' || inputs.deploy_db != 'true'
-        run: echo "Skipping Supabase migration repair/db push. Use workflow_dispatch deploy_db=true after migration review."
+        run: echo "Skipping Supabase db push. Use workflow_dispatch deploy_db=true after migration review."
 
-      - name: Repair migration history
-        if: github.event_name == 'workflow_dispatch' && inputs.deploy_db == 'true'
-        run: |
-          supabase migration repair --status reverted \
-            20260602042631 20260602050206 20260602050407 20260602050446 \
-            20260602060958 20260602072718 20260602205733 20260602205740 \
-            20260602213759 20260602233941 20260603014807 20260603014945 \
-            20260603015117 20260603015244 20260603015331 20260603020436 \
-             20260603021314 20260603143139 20260603143207 20260603152443 \
-             20260715000001 20260715000002 \
-              20260716000000 20260717000000 20260718000000 \
-              20260604144906
-        working-directory: ./VinPoker
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-
+      # ⚠️ deploy_db=true applies ALL pending migrations at once (db push --include-all).
+      # As of 2026-06-12 this is NOT SAFE: pending chain 20260801→20260813 must not be
+      # replayed (perform_swing overload bomb in 20260812000000, da.dealers bug in
+      # 20260804000000). See VinPoker/PENDING_MIGRATION_AUDIT_20260612.md. Do not enable
+      # until migration reconciliation is complete and the owner explicitly approves.
+      # The legacy "Repair migration history" step (revert+reapply of live-applied
+      # versions) was removed 2026-06-12 — never reintroduce it.
       - name: Deploy database migrations
         if: github.event_name == 'workflow_dispatch' && inputs.deploy_db == 'true'
         run: supabase db push --linked --include-all
