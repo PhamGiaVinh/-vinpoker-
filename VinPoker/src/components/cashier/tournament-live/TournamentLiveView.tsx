@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,6 +85,7 @@ function formatActionLabel(a: ActionLog): string {
 }
 
 export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
+  const { t } = useTranslation();
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
@@ -549,7 +551,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" /> {playersRemaining} players
+            <Users className="w-3.5 h-3.5" /> {playersRemaining} {t("tournamentLive.liveView.players")}
           </span>
           <span className="flex items-center gap-1">
             <Layers className="w-3.5 h-3.5" /> AVG: {formatStack(averageStack)}
@@ -739,12 +741,12 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
         <div className="space-y-3">
           <div className="bg-card border border-emerald-500/20 rounded-xl p-3">
             <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2 pb-2 border-b border-emerald-500/10">
-              Action Timeline
+              {t("tournamentLive.liveView.actionTimeline")}
             </div>
             <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1">
               {actions.length === 0 && (
                 <div className="text-xs text-muted-foreground text-center py-4 italic">
-                  No actions yet
+                  {t("tournamentLive.liveView.noActions")}
                 </div>
               )}
               {STREET_ORDER.filter((s) => actions.some((a) => a.street === s)).map((street) => (
@@ -800,40 +802,40 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
 
           <div className="bg-card border border-emerald-500/20 rounded-xl p-3">
             <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2 pb-2 border-b border-emerald-500/10">
-              Table Stats
+              {t("tournamentLive.liveView.tableStats")}
             </div>
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between text-muted-foreground">
-                <span>Players Remaining</span>
+                <span>{t("tournamentLive.liveView.playersRemaining")}</span>
                 <span className="text-emerald-400 font-semibold">{playersRemaining}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Average Stack</span>
+                <span>{t("tournamentLive.liveView.averageStack")}</span>
                 <span className="text-emerald-400 font-semibold">
                   {formatStack(averageStack)}
                 </span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Current Pot</span>
+                <span>{t("tournamentLive.liveView.currentPot")}</span>
                 <span className="text-emerald-400 font-semibold">{formatStack(potSize)}</span>
               </div>
               {clockData && (
                 <>
                   <div className="flex justify-between text-muted-foreground pt-1.5 border-t border-border/20">
-                    <span>Level</span>
+                    <span>{t("tournamentLive.liveView.level")}</span>
                     <span className="text-emerald-400 font-semibold">
                       {clockData.current_level || "—"}
                     </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Blinds</span>
+                    <span>{t("tournamentLive.liveView.blinds")}</span>
                     <span className="text-amber-400 font-semibold">
                       {formatStack(clockData.small_blind)}/{formatStack(clockData.big_blind)}
                     </span>
                   </div>
                   {clockData.ante > 0 && (
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Ante</span>
+                      <span>{t("tournamentLive.liveView.ante")}</span>
                       <span className="text-amber-400 font-semibold">
                         {formatStack(clockData.ante)}
                       </span>
