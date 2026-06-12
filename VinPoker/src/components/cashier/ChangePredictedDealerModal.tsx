@@ -1,5 +1,6 @@
 /**
- * ChangePredictedDealerModal — "Đổi & CHỐT dealer thay thế" (Dealer Swing, Phase 4).
+ * ChangePredictedDealerModal — "Sửa dealer" (Dealer Swing, Phase 4).
+ * Opened from the per-table "Sửa dealer" action-row button on each table card.
  *
  * Planning-only action: changes WHICH dealer is planned/locked as the next
  * replacement for one table. It never executes the handoff, never releases
@@ -63,6 +64,9 @@ export default function ChangePredictedDealerModal({
 
   const plannedReliefMs = slot0?.planned_relief_at ? new Date(slot0.planned_relief_at).getTime() : null;
   const oldName = slot0?.in_dealer_name ?? "dealer hiện dự kiến";
+  const currentDealerName =
+    dealers.find((d) => d.id === currentTableAttendanceId)?.dealers?.full_name ?? "—";
+  const predictedName = slot0?.in_dealer_name ?? (slot0?.is_shortage ? "Thiếu dealer" : "—");
 
   const candidates: CandidateRow[] = useMemo(() => {
     if (!slot0 || plannedReliefMs == null) return [];
@@ -204,12 +208,36 @@ export default function ChangePredictedDealerModal({
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Đổi &amp; CHỐT dealer thay thế — {tableName}</DialogTitle>
+          <DialogTitle>Sửa dealer — {tableName}</DialogTitle>
           <DialogDescription>
             Chỉ thay đổi kế hoạch: dealer đang chia vẫn giữ bàn, giờ swing giữ nguyên
             {plannedReliefMs ? ` (${hhmm(plannedReliefMs)})` : ""}. Handoff thật vẫn chờ "Chốt đổi dealer".
           </DialogDescription>
         </DialogHeader>
+
+        {/* Exact-table context summary — hidden during the confirm step, where the
+            from→to sentence already names old/new and predictedName would be stale. */}
+        {!pending && (
+          <div className="text-xs border border-border bg-muted/20 p-2 space-y-0.5">
+            <div>
+              <span className="text-muted-foreground">Bàn:</span>{" "}
+              <span className="font-semibold">{tableName}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Dealer hiện tại:</span>{" "}
+              <span className="font-medium">{currentDealerName}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Thay thế dự kiến:</span>{" "}
+              <span className="font-medium">{predictedName}</span>
+              {slot0?.status === "announced" ? (
+                <span className="text-emerald-400"> · đã CHỐT</span>
+              ) : slot0?.status === "predicted" ? (
+                <span className="text-amber-400"> · dự kiến</span>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         {!slot0 ? (
           <div className="text-sm text-muted-foreground">Bàn này chưa có kế hoạch thay dealer.</div>
@@ -221,6 +249,7 @@ export default function ChangePredictedDealerModal({
               <span className="font-semibold">{pending.attendance.dealers?.full_name}</span> cho{" "}
               <span className="font-semibold">{tableName}</span>?
             </div>
+            <div className="text-sm font-medium text-emerald-400">Chỉ áp dụng cho {tableName}.</div>
             <div className="text-xs text-muted-foreground space-y-1">
               <div>Giờ swing giữ nguyên: {hhmm(plannedReliefMs)}.</div>
               <div>Dealer mới sẽ được giữ slot này và không bị planner thay lại.</div>
