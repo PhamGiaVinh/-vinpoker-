@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Coins, Clock, Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { getPosition } from "@/lib/tournament/button";
@@ -13,6 +14,7 @@ interface SeatInfo {
   seat_number: number;
   chip_count: number;
   is_active: boolean;
+  table_id: string | null;
   position: string;
   last_action?: string;
   is_folded?: boolean;
@@ -28,6 +30,8 @@ interface ActionLog {
   action_amount: number;
   action_order: number;
 }
+
+type RealtimeStatus = "connecting" | "online" | "offline";
 
 const STREET_ORDER = ["preflop", "flop", "turn", "river"];
 const STREET_LABELS: Record<string, string> = {
@@ -53,18 +57,16 @@ const SEAT_POSITIONS: Record<
   10: { top: "35%", left: "3%" },
 };
 
+const POLL_INTERVAL_MS = 30_000;
+
 function formatStack(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
   return n.toString();
 }
 
-function suitSymbol(s: string): string {
-  if (s === "s" || s === "\u2660") return "\u2660";
-  if (s === "h" || s === "\u2665") return "\u2665";
-  if (s === "d" || s === "\u2666") return "\u2666";
-  if (s === "c" || s === "\u2663") return "\u2663";
-  return s;
+function formatClockTime(d: Date): string {
+  return d.toLocaleTimeString("vi-VN", { hour12: false });
 }
 
 function formatActionLabel(a: ActionLog): string {
@@ -81,17 +83,13 @@ function formatActionLabel(a: ActionLog): string {
   return `${t} ${formatStack(a.action_amount)}`;
 }
 
-export function TournamentLiveView({
-  tournamentId,
-  refreshTrigger,
-}: {
-  tournamentId: string;
-  refreshTrigger?: number;
-}) {
+export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
   const [handNumber, setHandNumber] = useState<number | null>(null);
+  const [handTableId, setHandTableId] = useState<string | null>(null);
+  const [buttonSeat, setButtonSeat] = useState(1);
   const [actions, setActions] = useState<ActionLog[]>([]);
   const [clockData, setClockData] = useState<{
     is_running: boolean;
@@ -104,22 +102,32 @@ export function TournamentLiveView({
   const [playersRemaining, setPlayersRemaining] = useState(0);
   const [averageStack, setAverageStack] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [softErrorAt, setSoftErrorAt] = useState<Date | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("connecting");
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const requestSeqRef = useRef(0);
+  const initialLoadedRef = useRef(false);
+  const pollingRef = useRef<number | null>(null);
+  const zeroRefetchDoneRef = useRef(false);
 
   const loadAllData = useCallback(async () => {
-    setLoading(true);
+    const seq = ++requestSeqRef.current;
 
     const [seatsRes, handsRes, clockRes, tournamentRes] = await Promise.all([
       supabase
         .from("tournament_seats")
-        .select("player_id, seat_number, chip_count, is_active, player_name")
+        .select("player_id, seat_number, chip_count, is_active, player_name, table_id")
         .eq("tournament_id", tournamentId)
         .order("seat_number"),
       supabase
         .from("tournament_hands")
-        .select("id, hand_number, community_cards, pot_size, is_voided, status, button_seat")
+        .select("id, hand_number, community_cards, pot_size, is_voided, status, button_seat, table_id")
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
@@ -128,25 +136,45 @@ export function TournamentLiveView({
       supabase.from("tournaments").select("players_remaining, average_stack").eq("id", tournamentId).single(),
     ]);
 
-    if (seatsRes.data && seatsRes.data.length > 0) {
-      const activeSeats = seatsRes.data.filter((s: any) => s.is_active);
-      const btnSeat = (handsRes.data && handsRes.data.length > 0) ? (handsRes.data[0].button_seat || 1) : 1;
-      const seatInfos: SeatInfo[] = seatsRes.data.map((s: any) => ({
-        player_id: s.player_id,
-        display_name: s.player_name || s.player_id.slice(0, 6),
-        seat_number: s.seat_number,
-        chip_count: s.chip_count,
-        is_active: s.is_active,
-        position: s.is_active ? getPosition(s.seat_number, btnSeat, activeSeats.length) : "",
-      }));
-      setSeats(seatInfos);
+    if (seq !== requestSeqRef.current) return; // stale request after tournament switch
+
+    // Two-tier error handling: clock RPC errors are non-fatal (clock may be unconfigured).
+    const coreError = seatsRes.error || handsRes.error || tournamentRes.error;
+    if (coreError) {
+      if (!initialLoadedRef.current) {
+        setFatalError(coreError.message);
+        setLoading(false);
+      } else {
+        setSoftErrorAt(new Date());
+      }
+      return;
     }
 
+    const seatRows = seatsRes.data ?? [];
+    let seatInfos: SeatInfo[] = seatRows.map((s: any) => ({
+      player_id: s.player_id,
+      display_name: s.player_name || s.player_id.slice(0, 6),
+      seat_number: s.seat_number,
+      chip_count: s.chip_count,
+      is_active: s.is_active,
+      table_id: s.table_id ?? null,
+      position: "",
+    }));
+
+    let nextHandNumber: number | null = null;
+    let nextHandTableId: string | null = null;
+    let nextButtonSeat = 1;
+    let nextCommunity: string[] = [];
+    let nextPot = 0;
+    let nextActions: ActionLog[] = [];
+
     if (handsRes.data && handsRes.data.length > 0) {
-      const hand = handsRes.data[0];
-      setHandNumber(hand.hand_number);
-      setCommunityCards((hand.community_cards as string[]) || []);
-      setPotSize(hand.pot_size || 0);
+      const hand = handsRes.data[0] as any;
+      nextHandNumber = hand.hand_number;
+      nextHandTableId = hand.table_id ?? null;
+      nextButtonSeat = hand.button_seat || 1;
+      nextCommunity = (hand.community_cards as string[]) || [];
+      nextPot = hand.pot_size || 0;
 
       const { data: actionData } = await supabase
         .from("hand_actions")
@@ -154,21 +182,22 @@ export function TournamentLiveView({
         .eq("hand_id", hand.id)
         .order("action_order");
 
+      if (seq !== requestSeqRef.current) return;
+
       if (actionData && actionData.length > 0) {
         const actionPlayerIds = [...new Set(actionData.map((a: any) => a.player_id))];
-        const { data: actionProfiles } = await supabase
-          .from("profiles")
-          .select("user_id, display_name")
-          .in("user_id", actionPlayerIds);
+        const [{ data: actionProfiles }, { data: handPlayers }] = await Promise.all([
+          supabase.from("profiles").select("user_id, display_name").in("user_id", actionPlayerIds),
+          supabase.from("hand_players").select("player_id, seat_number, hole_cards").eq("hand_id", hand.id),
+        ]);
+
+        if (seq !== requestSeqRef.current) return;
+
         const actionNameMap = new Map<string, string>();
         (actionProfiles || []).forEach((p: any) =>
-          actionNameMap.set(p.user_id, p.display_name || "\u2014")
+          actionNameMap.set(p.user_id, p.display_name || "—")
         );
 
-        const { data: handPlayers } = await supabase
-          .from("hand_players")
-          .select("player_id, seat_number, hole_cards")
-          .eq("hand_id", hand.id);
         const seatMap = new Map<string, number>();
         const holeCardsMap = new Map<string, string[]>();
         (handPlayers || []).forEach((hp: any) => {
@@ -178,7 +207,7 @@ export function TournamentLiveView({
           }
         });
 
-        const actionLogs: ActionLog[] = actionData.map((a: any) => ({
+        nextActions = actionData.map((a: any) => ({
           street: a.street || "preflop",
           display_name: actionNameMap.get(a.player_id) || a.player_id.slice(0, 6),
           seat_number: seatMap.get(a.player_id) || 0,
@@ -186,7 +215,6 @@ export function TournamentLiveView({
           action_amount: a.action_amount,
           action_order: a.action_order,
         }));
-        setActions(actionLogs);
 
         const foldedPlayers = new Set<string>();
         const allInPlayers = new Set<string>();
@@ -207,24 +235,25 @@ export function TournamentLiveView({
           );
         });
 
-        setSeats((prev) =>
-          prev.map((s) => ({
-            ...s,
-            is_folded: foldedPlayers.has(s.player_id),
-            is_all_in: allInPlayers.has(s.player_id),
-            last_action: lastActionMap.get(s.player_id),
-            hole_cards: holeCardsMap.get(s.player_id) || s.hole_cards,
-          }))
-        );
+        seatInfos = seatInfos.map((s) => ({
+          ...s,
+          is_folded: foldedPlayers.has(s.player_id),
+          is_all_in: allInPlayers.has(s.player_id),
+          last_action: lastActionMap.get(s.player_id),
+          hole_cards: holeCardsMap.get(s.player_id),
+        }));
       }
-    } else {
-      setHandNumber(null);
-      setCommunityCards([]);
-      setPotSize(0);
-      setActions([]);
     }
 
-    if (clockRes.data) {
+    setSeats(seatInfos);
+    setHandNumber(nextHandNumber);
+    setHandTableId(nextHandTableId);
+    setButtonSeat(nextButtonSeat);
+    setCommunityCards(nextCommunity);
+    setPotSize(nextPot);
+    setActions(nextActions);
+
+    if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
       setClockData({
         is_running: c.is_running || false,
@@ -236,6 +265,7 @@ export function TournamentLiveView({
       });
       setLocalRemaining(c.remaining_seconds || 0);
       setIsRunning(c.is_running || false);
+      if ((c.remaining_seconds || 0) > 0) zeroRefetchDoneRef.current = false;
     }
 
     if (tournamentRes.data) {
@@ -244,18 +274,58 @@ export function TournamentLiveView({
       setAverageStack(tournament.average_stack || 0);
     }
 
+    initialLoadedRef.current = true;
+    setFatalError(null);
+    setSoftErrorAt(null);
+    setLastUpdatedAt(new Date());
     setLoading(false);
   }, [tournamentId]);
 
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current != null) {
+      window.clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (pollingRef.current != null) return; // single interval, no leak
+    pollingRef.current = window.setInterval(() => {
+      loadAllData();
+    }, POLL_INTERVAL_MS);
+  }, [loadAllData]);
+
+  // Reset all state when switching tournaments, then load.
   useEffect(() => {
     if (!tournamentId) return;
+    requestSeqRef.current += 1;
+    initialLoadedRef.current = false;
+    zeroRefetchDoneRef.current = false;
+    setSeats([]);
+    setHandNumber(null);
+    setHandTableId(null);
+    setButtonSeat(1);
+    setCommunityCards([]);
+    setPotSize(0);
+    setActions([]);
+    setSelectedTableId(null);
+    setTableNames({});
+    setFatalError(null);
+    setSoftErrorAt(null);
+    setLastUpdatedAt(null);
+    setLoading(true);
     loadAllData();
-  }, [tournamentId, refreshTrigger, loadAllData]);
+  }, [tournamentId, loadAllData]);
 
   useEffect(() => {
     if (!tournamentId) return;
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
+    if (channelRef.current) {
+      const prev = channelRef.current;
+      channelRef.current = null;
+      supabase.removeChannel(prev);
+    }
 
+    setRealtimeStatus("connecting");
     const channel = supabase.channel(`live-view:${tournamentId}`);
     channel
       .on(
@@ -283,16 +353,26 @@ export function TournamentLiveView({
         { event: "UPDATE", schema: "public", table: "tournaments", filter: `id=eq.${tournamentId}` },
         () => loadAllData()
       )
-      .subscribe();
+      .subscribe((status) => {
+        // Ignore status callbacks from a channel we already replaced/removed.
+        if (channelRef.current !== channel) return;
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("online");
+          stopPolling();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setRealtimeStatus("offline");
+          startPolling();
+        }
+      });
 
     channelRef.current = channel;
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      const ch = channelRef.current;
+      channelRef.current = null;
+      if (ch) supabase.removeChannel(ch);
+      stopPolling();
     };
-  }, [tournamentId, loadAllData]);
+  }, [tournamentId, loadAllData, startPolling, stopPolling]);
 
   useEffect(() => {
     if (!isRunning || localRemaining <= 0) return;
@@ -301,6 +381,14 @@ export function TournamentLiveView({
     }, 1000);
     return () => clearInterval(interval);
   }, [isRunning, localRemaining > 0]);
+
+  // Debounced refetch when the level clock hits 0 — once per zero crossing.
+  useEffect(() => {
+    if (isRunning && localRemaining <= 0 && initialLoadedRef.current && !zeroRefetchDoneRef.current) {
+      zeroRefetchDoneRef.current = true;
+      loadAllData();
+    }
+  }, [isRunning, localRemaining, loadAllData]);
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60)
@@ -312,7 +400,67 @@ export function TournamentLiveView({
     return [...c, ...Array(Math.max(0, 5 - c.length)).fill("")];
   }, [communityCards]);
 
-  const activeSeats = useMemo(() => seats.filter((s) => s.is_active), [seats]);
+  // ----- Multi-table resolution: never mix table_ids on one felt -----
+  const tableIds = useMemo(
+    () => [...new Set(seats.map((s) => s.table_id).filter((t): t is string => !!t))],
+    [seats]
+  );
+
+  // Operator selection wins, then the live hand's table, then the single table.
+  const effectiveTableId = useMemo(() => {
+    if (selectedTableId && tableIds.includes(selectedTableId)) return selectedTableId;
+    if (handTableId && tableIds.includes(handTableId)) return handTableId;
+    if (tableIds.length === 1) return tableIds[0];
+    return null;
+  }, [selectedTableId, handTableId, tableIds]);
+
+  const multiTableUnresolved = tableIds.length > 1 && !effectiveTableId;
+
+  const visibleSeats = useMemo(() => {
+    if (effectiveTableId) return seats.filter((s) => s.table_id === effectiveTableId);
+    // No table_id info at all (legacy single-table data) → safe to show everything.
+    if (tableIds.length <= 1) return seats;
+    // Multiple tables, none resolved → render nothing rather than mixing tables.
+    return [];
+  }, [seats, effectiveTableId, tableIds]);
+
+  // Positions are only meaningful when we're showing the table the current hand is on.
+  const positionedSeats = useMemo(() => {
+    const active = visibleSeats.filter((s) => s.is_active);
+    const handMatchesView =
+      handNumber != null && (handTableId == null || handTableId === effectiveTableId);
+    if (!handMatchesView || active.length === 0) return visibleSeats;
+    return visibleSeats.map((s) => ({
+      ...s,
+      position: s.is_active ? getPosition(s.seat_number, buttonSeat, active.length) : "",
+    }));
+  }, [visibleSeats, handNumber, handTableId, effectiveTableId, buttonSeat]);
+
+  const activeSeatsToRender = useMemo(
+    () => positionedSeats.filter((s) => s.is_active),
+    [positionedSeats]
+  );
+
+  // Lazy table names for the selector — read-only RPC already used by other tracker panels.
+  const tableIdsKey = tableIds.join(",");
+  useEffect(() => {
+    if (tableIds.length <= 1) return;
+    let cancelled = false;
+    supabase
+      .rpc("get_tournament_tables", { p_tournament_id: tournamentId })
+      .then(({ data }) => {
+        if (cancelled || !data || !Array.isArray(data)) return;
+        const m: Record<string, string> = {};
+        data.forEach((t: any) => {
+          if (t.table_id) m[t.table_id] = t.table_name || "";
+        });
+        setTableNames(m);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableIdsKey, tournamentId]);
 
   if (loading) {
     return (
@@ -328,8 +476,53 @@ export function TournamentLiveView({
     );
   }
 
+  if (fatalError) {
+    return (
+      <Card className="p-8 text-center space-y-3">
+        <AlertTriangle className="w-8 h-8 mx-auto text-destructive" />
+        <div className="font-semibold">Không tải được dữ liệu live tracker</div>
+        <p className="text-xs text-muted-foreground break-all">{fatalError}</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setFatalError(null);
+            setLoading(true);
+            loadAllData();
+          }}
+        >
+          <RefreshCw className="w-3.5 h-3.5 mr-1" /> Thử lại
+        </Button>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {realtimeStatus === "offline" && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/15 border border-amber-500/30 rounded-lg text-xs text-amber-400">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          <span>
+            Realtime offline — dữ liệu có thể cũ. Tự động tải lại mỗi 30 giây.
+            {lastUpdatedAt && <> Cập nhật cuối: {formatClockTime(lastUpdatedAt)}.</>}
+          </span>
+        </div>
+      )}
+      {realtimeStatus === "connecting" && (
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <RefreshCw className="w-3 h-3 animate-spin" /> Đang kết nối realtime...
+        </div>
+      )}
+      {softErrorAt && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            Không tải được dữ liệu mới nhất ({formatClockTime(softErrorAt)}) — đang hiển thị lần cập
+            nhật cuối{lastUpdatedAt && <> lúc {formatClockTime(lastUpdatedAt)}</>}.
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2 p-3 bg-gradient-to-r from-card to-card/80 border border-emerald-500/20 rounded-lg border-l-4 border-l-emerald-500 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="text-lg font-bold text-emerald-400 tracking-wide">
@@ -365,8 +558,35 @@ export function TournamentLiveView({
             <Coins className="w-3.5 h-3.5 text-emerald-400" /> Pot:{" "}
             <strong className="text-emerald-400 text-sm">{formatStack(potSize)}</strong>
           </span>
+          {lastUpdatedAt && (
+            <span className="text-[10px] text-muted-foreground/70" title="Lần cập nhật dữ liệu thành công gần nhất">
+              ↻ {formatClockTime(lastUpdatedAt)}
+            </span>
+          )}
         </div>
       </div>
+
+      {tableIds.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-card border border-emerald-500/20 rounded-lg text-xs">
+          <span className="text-muted-foreground">
+            Giải có nhiều bàn — chọn bàn để xem live:
+          </span>
+          {tableIds.map((tid) => (
+            <button
+              key={tid}
+              onClick={() => setSelectedTableId(tid)}
+              className={`px-2.5 py-1 rounded-md border font-semibold transition-colors ${
+                effectiveTableId === tid
+                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                  : "bg-transparent text-muted-foreground border-border hover:border-emerald-500/40"
+              }`}
+            >
+              {tableNames[tid] || tid.slice(0, 6)}
+              {handTableId === tid && <span className="ml-1 text-[9px] text-amber-400">● hand</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
         <div
@@ -396,8 +616,10 @@ export function TournamentLiveView({
             />
           </svg>
 
-          {activeSeats.map((seat, idx) => {
-            const pos = SEAT_POSITIONS[idx + 1] || SEAT_POSITIONS[1];
+          {activeSeatsToRender.map((seat) => {
+            // Anchor by physical seat number so players never shift when others bust.
+            const posKey = ((seat.seat_number - 1) % 10) + 1;
+            const pos = SEAT_POSITIONS[posKey] || SEAT_POSITIONS[1];
             const posStyle: React.CSSProperties = {};
             if (pos.top) posStyle.top = pos.top;
             if (pos.bottom) posStyle.bottom = pos.bottom;
@@ -497,10 +719,18 @@ export function TournamentLiveView({
             </div>
           )}
 
-          {!handNumber && (
+          {multiTableUnresolved && (
+            <div className="absolute inset-0 flex items-center justify-center z-20">
+              <div className="text-muted-foreground text-sm bg-black/40 px-6 py-3 rounded-lg backdrop-blur-sm text-center">
+                Giải có nhiều bàn — chọn bàn ở trên để xem live.
+              </div>
+            </div>
+          )}
+
+          {!multiTableUnresolved && !handNumber && (
             <div className="absolute inset-0 flex items-center justify-center z-20">
               <div className="text-muted-foreground text-sm bg-black/40 px-6 py-3 rounded-lg backdrop-blur-sm">
-                Ch\u1EDD dealer b\u1EAFt \u0111\u1EA7u hand...
+                Chờ dealer bắt đầu hand...
               </div>
             </div>
           )}
@@ -592,7 +822,7 @@ export function TournamentLiveView({
                   <div className="flex justify-between text-muted-foreground pt-1.5 border-t border-border/20">
                     <span>Level</span>
                     <span className="text-emerald-400 font-semibold">
-                      {clockData.current_level || "\u2014"}
+                      {clockData.current_level || "—"}
                     </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
