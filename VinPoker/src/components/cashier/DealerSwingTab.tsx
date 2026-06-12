@@ -3442,7 +3442,7 @@ function TableGrid({
                               <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
                             )
                           ) : null}
-                          {/* "Đổi" mini-button removed — promoted to the "Sửa dealer"
+                          {/* "Đổi" mini-button removed — promoted to the "Đổi dự kiến"
                               action-row button below (same handler, clearer placement). */}
                         </div>
                       )}
@@ -3467,13 +3467,15 @@ function TableGrid({
                           onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
                           <Clock className="w-3 h-3 mr-1" /> Nghỉ
                         </Button>
-                        {/* Sửa dealer — planning-only edit of the predicted replacement
-                            for THIS table. Never the handoff: that stays on "Chốt đổi dealer". */}
+                        {/* Đổi dự kiến — planning-only edit of the predicted replacement
+                            for THIS table. Never the handoff: that stays on "Chốt đổi dealer".
+                            Distinct from the future "Sửa nhầm bàn" (real wrong-table
+                            correction via reconcile_dealer_room_state — not active yet). */}
                         <span
                           className="flex-1"
                           title={slot0?.status === "executing"
                             ? "Đang thực hiện đổi dealer — không thể sửa kế hoạch lúc này"
-                            : "Sửa dealer thay thế dự kiến cho bàn này (không thực hiện swing)"}
+                            : "Đổi dealer thay thế dự kiến cho bàn này (không thực hiện swing)"}
                         >
                           <Button size="sm" variant="outline"
                             className="w-full text-xs h-7 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10"
@@ -3486,8 +3488,8 @@ function TableGrid({
                               onChangePredicted(t.id);
                             }}>
                             <UserCog className="w-3 h-3 mr-1" />
-                            <span className="hidden sm:inline">Sửa dealer</span>
-                            <span className="sm:hidden">Sửa</span>
+                            <span className="hidden sm:inline">Đổi dự kiến</span>
+                            <span className="sm:hidden">Dự kiến</span>
                           </Button>
                         </span>
                         {(() => {
@@ -3535,6 +3537,22 @@ function TableGrid({
                             </span>
                           );
                         })()}
+                        {/* Sửa nhầm bàn — PLACEHOLDER, intentionally disabled. The real
+                            wrong-table correction needs reconcile_dealer_room_state
+                            (migration 20260817000002) applied live first. There is NO
+                            backend call behind this button. */}
+                        <span
+                          className="flex-1"
+                          title="Sắp ra mắt — cần bật Room Reconcile trước"
+                        >
+                          <Button size="sm" variant="outline"
+                            className="w-full text-xs h-7 text-zinc-500 border-zinc-700"
+                            disabled>
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">Sửa nhầm bàn</span>
+                            <span className="sm:hidden">Nhầm bàn</span>
+                          </Button>
+                        </span>
                       </>
                     )}
                     {!a && (

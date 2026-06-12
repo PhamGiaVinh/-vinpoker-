@@ -1,6 +1,9 @@
 /**
- * ChangePredictedDealerModal — "Sửa dealer" (Dealer Swing, Phase 4).
- * Opened from the per-table "Sửa dealer" action-row button on each table card.
+ * ChangePredictedDealerModal — "Đổi dự kiến" (Dealer Swing, Phase 4).
+ * Opened from the per-table "Đổi dự kiến" action-row button on each table card.
+ * NOT the wrong-table correction flow ("Sửa nhầm bàn" — future, via
+ * reconcile_dealer_room_state): this modal never touches the dealer who is
+ * currently dealing or any active dealer_assignments row.
  *
  * Planning-only action: changes WHICH dealer is planned/locked as the next
  * replacement for one table. It never executes the handoff, never releases
@@ -208,7 +211,7 @@ export default function ChangePredictedDealerModal({
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Sửa dealer — {tableName}</DialogTitle>
+          <DialogTitle>Đổi dự kiến — {tableName}</DialogTitle>
           <DialogDescription>
             Chỉ thay đổi kế hoạch: dealer đang chia vẫn giữ bàn, giờ swing giữ nguyên
             {plannedReliefMs ? ` (${hhmm(plannedReliefMs)})` : ""}. Handoff thật vẫn chờ "Chốt đổi dealer".
@@ -251,6 +254,7 @@ export default function ChangePredictedDealerModal({
             </div>
             <div className="text-sm font-medium text-emerald-400">Chỉ áp dụng cho {tableName}.</div>
             <div className="text-xs text-muted-foreground space-y-1">
+              <div>Chỉ đổi người thay thế DỰ KIẾN — dealer đang chia vẫn giữ bàn.</div>
               <div>Giờ swing giữ nguyên: {hhmm(plannedReliefMs)}.</div>
               <div>Dealer mới sẽ được giữ slot này và không bị planner thay lại.</div>
               {pending.group === "eligible_before_swing" && (
