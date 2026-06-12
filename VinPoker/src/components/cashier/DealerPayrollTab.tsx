@@ -28,7 +28,13 @@ import {
 } from "@/hooks/useDealerPayroll";
 import {
   Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2, Moon, FileText,
+  AlertTriangle, CheckCircle2, TrendingUp, ChevronDown, ChevronUp, ShieldAlert,
 } from "lucide-react";
+import {
+  openShifts, cappedShifts, netAdjustmentMismatches, zeroHoursPaid,
+  largeAdjustments, negativeAdjustments, highCostOutliers, type AnomalyItem,
+} from "@/lib/payrollAnomalies";
+import { buildPayrollFinanceSummary } from "@/lib/payrollFinanceSummary";
 
 type ClubRow = { id: string; name: string };
 type AdjType = "BONUS" | "PENALTY" | "DEDUCTION" | "ADVANCE" | "OTHER" | "TIPS";
@@ -176,6 +182,28 @@ function formatHours(h: number): string {
   return `${hours}h${mins < 10 ? "0" : ""}${mins}ph`;
 }
 
+// ── Audit log diff (money/status fields only — data already returned by RPC) ──
+
+const AUDIT_DIFF_FIELDS = [
+  "gross_pay_vnd", "net_pay_vnd", "net_pay_after_tax_vnd", "ot_pay_vnd",
+  "base_salary_vnd", "total_adjustments_vnd", "amount_vnd",
+  "status", "adjustment_type", "reason",
+] as const;
+
+function auditFieldDiffs(oldValues: any, newValues: any): { field: string; from: string; to: string }[] {
+  const o = oldValues ?? {};
+  const nv = newValues ?? {};
+  const fmt = (v: unknown) =>
+    v === null || v === undefined ? "—" : typeof v === "number" ? v.toLocaleString("vi-VN") : String(v);
+  const diffs: { field: string; from: string; to: string }[] = [];
+  for (const k of AUDIT_DIFF_FIELDS) {
+    if (!(k in o) && !(k in nv)) continue;
+    if (JSON.stringify(o[k]) === JSON.stringify(nv[k])) continue;
+    diffs.push({ field: k, from: fmt(o[k]), to: fmt(nv[k]) });
+  }
+  return diffs;
+}
+
 // ── MetricCard (used in summary strip) ───────────────────────────────────────
 
 type MetricVariant = "default" | "success" | "danger" | "warning";
@@ -247,6 +275,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const [rejectedAt, setRejectedAt] = useState<string | null>(null);
   const [storedRejectionReason, setStoredRejectionReason] = useState<string | null>(null);
 
+  // Approval-flow metadata (real actors from DB, not the current viewer)
+  const [submittedByMeta, setSubmittedByMeta] = useState<string | null>(null);
+  const [submittedAtMeta, setSubmittedAtMeta] = useState<string | null>(null);
+  const [approvedByMeta, setApprovedByMeta] = useState<string | null>(null);
+  const [approvedAtMeta, setApprovedAtMeta] = useState<string | null>(null);
+  const [lockedByMeta, setLockedByMeta] = useState<string | null>(null);
+  const [lockedAtMeta, setLockedAtMeta] = useState<string | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+
+  // Owner-finance UI state
+  const [costRankingOn, setCostRankingOn] = useState(false);
+  const [anomaliesExpanded, setAnomaliesExpanded] = useState(false);
+
   // Audit log state
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [auditLog, setAuditLog] = useState<Array<{
@@ -280,13 +321,25 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const refreshAll = useCallback(async () => {
     if (!activeClubId || !currentRange) return;
     await fetchPayroll(activeClubId, currentRange.start, currentRange.end);
-    const { periodId, status, records, rejectedBy: rBy, rejectedAt: rAt, rejectionReason: rReason } =
-      await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
+    const {
+      periodId, status, records,
+      submittedBy: sBy, submittedAt: sAt,
+      approvedBy: aBy, approvedAt: aAt,
+      lockedBy: lBy, lockedAt: lAt,
+      rejectedBy: rBy, rejectedAt: rAt, rejectionReason: rReason,
+    } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
     setSavedPeriodId(periodId);
     setPayrollStatus(status);
+    setSubmittedByMeta(sBy);
+    setSubmittedAtMeta(sAt);
+    setApprovedByMeta(aBy);
+    setApprovedAtMeta(aAt);
+    setLockedByMeta(lBy);
+    setLockedAtMeta(lAt);
     setRejectedBy(rBy);
     setRejectedAt(rAt);
     setStoredRejectionReason(rReason);
+    setLastRefreshedAt(new Date());
     const recordMap: Record<string, SavedPayrollRecord> = {};
     for (const r of records) { recordMap[r.dealer_id] = r; }
     setSavedRecords(recordMap);
@@ -308,15 +361,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const ftDealers = useMemo(() => payrollRows.filter((d) => d.employment_type === "full_time"), [payrollRows]);
   const ptDealers = useMemo(() => payrollRows.filter((d) => d.employment_type === "part_time"), [payrollRows]);
 
-  const filteredFt = useMemo(() =>
-    ftDealers.filter((r) => passesFilter(r, activeFilter, adjustments))
-             .filter((r) => matchesSearch(r, searchQuery)),
-    [ftDealers, activeFilter, adjustments, searchQuery]);
+  const filteredFt = useMemo(() => {
+    const list = ftDealers
+      .filter((r) => passesFilter(r, activeFilter, adjustments))
+      .filter((r) => matchesSearch(r, searchQuery));
+    return costRankingOn ? [...list].sort((a, b) => (b.net_pay_vnd ?? 0) - (a.net_pay_vnd ?? 0)) : list;
+  }, [ftDealers, activeFilter, adjustments, searchQuery, costRankingOn]);
 
-  const filteredPt = useMemo(() =>
-    ptDealers.filter((r) => passesFilter(r, activeFilter, adjustments))
-             .filter((r) => matchesSearch(r, searchQuery)),
-    [ptDealers, activeFilter, adjustments, searchQuery]);
+  const filteredPt = useMemo(() => {
+    const list = ptDealers
+      .filter((r) => passesFilter(r, activeFilter, adjustments))
+      .filter((r) => matchesSearch(r, searchQuery));
+    return costRankingOn ? [...list].sort((a, b) => (b.net_pay_vnd ?? 0) - (a.net_pay_vnd ?? 0)) : list;
+  }, [ptDealers, activeFilter, adjustments, searchQuery, costRankingOn]);
 
   const highOtCount = useMemo(
     () => payrollRows.filter((r) => r.ot_hours >= 20).length,
@@ -341,6 +398,34 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       totalNetAfterTax: sum("net_pay_after_tax_vnd"),
     };
   }, [payrollRows]);
+
+  // ── Owner finance summary + anomalies (visibility only — no payroll number is changed) ──
+
+  const anomalies = useMemo(() => ({
+    open: openShifts(payrollRows),
+    capped: cappedShifts(payrollRows),
+    mismatches: netAdjustmentMismatches(payrollRows),
+    zeroHours: zeroHoursPaid(payrollRows),
+    largeAdj: largeAdjustments(payrollRows, adjustments),
+    negativeAdj: negativeAdjustments(payrollRows, adjustments),
+    outliers: highCostOutliers(payrollRows),
+  }), [payrollRows, adjustments]);
+
+  const anomalyGroups = useMemo(() => ([
+    { label: "Ca chưa checkout — chi phí có thể đang tăng sai", items: anomalies.open, level: "danger" as const },
+    { label: "Ca chạm trần 24h — có thể quên checkout", items: anomalies.capped, level: "danger" as const },
+    { label: "Chênh lệch điều chỉnh — thực lãnh có thể không đáng tin", items: anomalies.mismatches, level: "danger" as const },
+    { label: "FT 0 giờ vẫn có lương — xác nhận chính sách lương tháng", items: anomalies.zeroHours, level: "warning" as const },
+    { label: "Điều chỉnh lớn (≥500K) — cần lý do phê duyệt", items: anomalies.largeAdj, level: "warning" as const },
+    { label: "Điều chỉnh trừ lương — dễ gây tranh chấp", items: anomalies.negativeAdj, level: "warning" as const },
+    { label: "Dealer chi phí cao bất thường — cần review lịch làm", items: anomalies.outliers, level: "warning" as const },
+  ] as { label: string; items: AnomalyItem[]; level: "danger" | "warning" }[]).filter((g) => g.items.length > 0),
+  [anomalies]);
+
+  const finance = useMemo(
+    () => buildPayrollFinanceSummary(payrollRows, adjustments, { periodId: savedPeriodId, status: payrollStatus }),
+    [payrollRows, adjustments, savedPeriodId, payrollStatus]
+  );
 
   // ── Save payroll ──────────────────────────────────────────────────────────
 
@@ -374,6 +459,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     try {
       await submitPayroll(savedPeriodId, user.id);
       setPayrollStatus("submitted");
+      setSubmittedByMeta(user.id);
+      setSubmittedAtMeta(new Date().toISOString());
       toast.success("Đã gửi duyệt");
     } catch (e: any) {
       toast.error(e?.message ?? "Lỗi gửi duyệt");
@@ -385,6 +472,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     try {
       await approvePayroll(savedPeriodId, user.id);
       setPayrollStatus("approved");
+      setApprovedByMeta(user.id);
+      setApprovedAtMeta(new Date().toISOString());
       toast.success("Đã phê duyệt");
     } catch (e: any) {
       toast.error(e?.message ?? "Lỗi phê duyệt");
@@ -396,6 +485,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     try {
       await lockPayroll(savedPeriodId, user.id);
       setPayrollStatus("locked");
+      setLockedByMeta(user.id);
+      setLockedAtMeta(new Date().toISOString());
       toast.success("Đã khoá sổ");
     } catch (e: any) {
       toast.error(e?.message ?? "Lỗi khoá sổ");
@@ -749,15 +840,155 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
         <div className="flex-1" />
 
-        <div className="text-xs text-zinc-500">
+        <div className="text-xs text-zinc-500 flex items-center gap-2">
           {payrollRows.length > 0 && (
             <span>{payrollRows.length} dealer · {period.start} → {period.end}</span>
+          )}
+          {lastRefreshedAt && (
+            <span className="text-zinc-600" title="Thời điểm dữ liệu được tải lần cuối">
+              · Cập nhật {lastRefreshedAt.toLocaleTimeString("vi-VN")}
+            </span>
           )}
         </div>
       </div>
 
       {payrollRows.length > 0 && (
         <>
+          {/* ── Owner Finance Summary — số liệu đối chiếu, không thay đổi số lương đã lưu ── */}
+          <div className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/60">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-medium">
+                Tổng quan tài chính chủ doanh nghiệp
+              </span>
+              <span className="text-[10px] text-zinc-600">
+                Số liệu đối chiếu — không thay đổi số lương đã lưu
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              <MetricCard
+                label="Cần chuẩn bị chi trả"
+                value={formatVND(finance.totalNetVnd)}
+                sub={`${finance.dealerCount} dealer · ${currentRange?.label ?? ""}`}
+                variant="success"
+              />
+              <MetricCard
+                label="Trạng thái bảng lương"
+                value={finance.statusLabel}
+                sub={savedPeriodId ? "Đã lưu vào hệ thống" : "Chưa lưu — số liệu tính trực tiếp"}
+                variant={payrollStatus === "locked" ? "default" : payrollStatus === "approved" ? "success" : "warning"}
+              />
+              <MetricCard
+                label="FT / PT"
+                value={`${formatVNDShort(finance.costByEmploymentType.ftNetVnd)} / ${formatVNDShort(finance.costByEmploymentType.ptNetVnd)}`}
+                sub={`FT: ${finance.ftDealerCount} · PT: ${finance.ptDealerCount}`}
+              />
+              <MetricCard
+                label="Tổng điều chỉnh"
+                value={formatVND(finance.totalAdjustmentsVnd)}
+                sub={`${finance.largeAdjustmentCount} lớn · ${finance.negativeAdjustmentCount} trừ lương`}
+                variant={finance.negativeAdjustmentCount > 0 ? "warning" : "default"}
+              />
+              {finance.adjustmentMismatchVnd !== 0 ? (
+                <MetricCard
+                  label="Chênh lệch điều chỉnh"
+                  value={formatVND(finance.adjustmentMismatchVnd)}
+                  sub="Cần đối chiếu trước khi chi"
+                  variant="danger"
+                />
+              ) : (
+                <MetricCard
+                  label="Chi phí cao nhất"
+                  value={finance.topCostDealers[0]?.dealerName ?? "—"}
+                  sub={finance.topCostDealers[0] ? formatVNDShort(finance.topCostDealers[0].netPayVnd) : ""}
+                />
+              )}
+            </div>
+            {finance.topCostDealers.length > 0 && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-zinc-500">
+                <TrendingUp className="w-3 h-3 text-zinc-500" />
+                <span className="uppercase tracking-wider text-[10px]">Chi phí cao nhất:</span>
+                {finance.topCostDealers.map((d, i) => (
+                  <span key={d.dealerId} className="text-zinc-300">
+                    {i + 1}. {d.dealerName} <span className="text-zinc-500">({formatVNDShort(d.netPayVnd)})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Owner Decision Strip — Trạng thái sẵn sàng chi trả ── */}
+          <div className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${
+            finance.approvalRiskLevel === "blocked"
+              ? "border-red-600/50 bg-red-950/40"
+              : finance.approvalRiskLevel === "review"
+                ? "border-amber-600/50 bg-amber-950/30"
+                : "border-emerald-600/40 bg-emerald-950/20"
+          }`}>
+            {finance.approvalRiskLevel === "blocked" ? (
+              <ShieldAlert className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+            ) : finance.approvalRiskLevel === "review" ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <div className={`text-xs font-semibold ${
+                finance.approvalRiskLevel === "blocked" ? "text-red-300" :
+                finance.approvalRiskLevel === "review" ? "text-amber-300" : "text-emerald-300"
+              }`}>
+                Trạng thái sẵn sàng chi trả: {
+                  finance.approvalRiskLevel === "blocked" ? "Không nên chi trước khi đối chiếu" :
+                  finance.approvalRiskLevel === "review" ? "Cần kiểm tra trước khi duyệt" : "Sẵn sàng duyệt"
+                }
+              </div>
+              <ul className="text-[11px] text-zinc-400 mt-0.5 space-y-0.5">
+                {finance.riskReasons.map((reason, i) => (
+                  <li key={i}>• {reason}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* ── Anomaly warning strip — rủi ro vận hành ── */}
+          {anomalyGroups.length > 0 && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-left"
+                onClick={() => setAnomaliesExpanded((v) => !v)}
+              >
+                <span className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Rủi ro vận hành: {anomalyGroups.reduce((s, g) => s + g.items.length, 0)} cảnh báo
+                  ({anomalyGroups.length} nhóm)
+                </span>
+                {anomaliesExpanded
+                  ? <ChevronUp className="w-3.5 h-3.5 text-zinc-500" />
+                  : <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />}
+              </button>
+              {anomaliesExpanded && (
+                <div className="px-3 pb-3 space-y-2">
+                  {anomalyGroups.map((group) => (
+                    <div key={group.label}>
+                      <div className={`text-[11px] font-medium ${group.level === "danger" ? "text-red-400" : "text-amber-400"}`}>
+                        {group.label} ({group.items.length})
+                      </div>
+                      <ul className="text-[11px] text-zinc-400 mt-0.5 space-y-0.5 ml-3">
+                        {group.items.slice(0, 10).map((item, i) => (
+                          <li key={`${item.dealerId}-${i}`}>
+                            <span className="text-zinc-300">{item.dealerName}</span> — {item.detail}
+                          </li>
+                        ))}
+                        {group.items.length > 10 && (
+                          <li className="text-zinc-600">… và {group.items.length - 10} mục khác</li>
+                        )}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Summary strip */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             <MetricCard label="Tổng dealer" value={payrollRows.length} sub={`FT: ${ftDealers.length} · PT: ${ptDealers.length}`} />
@@ -801,6 +1032,18 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 );
               })}
             </div>
+            <button
+              onClick={() => setCostRankingOn((v) => !v)}
+              className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs transition-colors ${
+                costRankingOn
+                  ? "bg-emerald-950 border-emerald-500 text-emerald-300"
+                  : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              }`}
+              title="Sắp xếp theo thực lãnh cao nhất"
+            >
+              <TrendingUp className="w-3 h-3" />
+              Chi phí cao nhất
+            </button>
             <div className="flex-1" />
             <div className="relative">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 text-xs">⌕</span>
@@ -1032,14 +1275,35 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </span>
               </div>
               <div className="text-[11px] text-zinc-500 space-y-0.5">
-                {payrollStatus && payrollStatus !== "draft" && (
-                  <div>Gửi bởi: <span className="text-zinc-400">{user?.id?.slice(0, 8) ?? "—"}</span></div>
+                {submittedAtMeta && (
+                  <div>
+                    Gửi duyệt bởi: <span className="text-zinc-400">{submittedByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(submittedAtMeta).toLocaleString("vi-VN")}
+                  </div>
                 )}
-                {payrollStatus === "approved" && <div>Đã duyệt</div>}
-                {payrollStatus === "rejected" && storedRejectionReason && (
-                  <div className="text-red-300">Lý do: {storedRejectionReason}</div>
+                {approvedAtMeta && (
+                  <div>
+                    Phê duyệt bởi: <span className="text-zinc-400">{approvedByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(approvedAtMeta).toLocaleString("vi-VN")}
+                  </div>
                 )}
-                {payrollStatus === "locked" && <div>Đã khoá sổ</div>}
+                {lockedAtMeta && (
+                  <div>
+                    Khoá sổ bởi: <span className="text-zinc-400">{lockedByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(lockedAtMeta).toLocaleString("vi-VN")}
+                  </div>
+                )}
+                {payrollStatus === "rejected" && (
+                  <div className="text-red-300">
+                    Từ chối bởi: {rejectedBy?.slice(0, 8) ?? "—"}
+                    {rejectedAt ? ` · ${new Date(rejectedAt).toLocaleString("vi-VN")}` : ""}
+                    {storedRejectionReason ? ` — Lý do: ${storedRejectionReason}` : ""}
+                  </div>
+                )}
+                <div className="text-zinc-600">
+                  Người xem hiện tại: {user?.id?.slice(0, 8) ?? "—"}
+                  {lastRefreshedAt ? ` · Dữ liệu cập nhật ${lastRefreshedAt.toLocaleTimeString("vi-VN")}` : ""}
+                </div>
               </div>
               <button
                 onClick={openAuditLog}
@@ -1117,17 +1381,32 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             {auditLog.length === 0 ? (
               <p className="text-xs text-zinc-500 text-center py-4">Chưa có lịch sử</p>
             ) : (
-              auditLog.map((entry) => (
-                <div key={entry.id} className="text-xs border border-zinc-800 rounded p-2 bg-zinc-900/50">
-                  <div className="flex justify-between text-zinc-400">
-                    <span className="font-medium">{entry.action}</span>
-                    <span>{new Date(entry.changed_at).toLocaleString("vi-VN")}</span>
+              auditLog.map((entry) => {
+                const diffs = auditFieldDiffs(entry.old_values, entry.new_values);
+                return (
+                  <div key={entry.id} className="text-xs border border-zinc-800 rounded p-2 bg-zinc-900/50">
+                    <div className="flex justify-between text-zinc-400">
+                      <span className="font-medium">{entry.action}</span>
+                      <span>{new Date(entry.changed_at).toLocaleString("vi-VN")}</span>
+                    </div>
+                    <div className="text-zinc-500 mt-1">
+                      {entry.table_name} · {entry.changed_by?.slice(0, 8) ?? "—"}
+                    </div>
+                    {diffs.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5 border-t border-zinc-800 pt-1.5">
+                        {diffs.map((d) => (
+                          <div key={d.field} className="flex items-center gap-1.5 font-mono text-[10px]">
+                            <span className="text-zinc-500">{d.field}:</span>
+                            <span className="text-red-400/80 line-through">{d.from}</span>
+                            <span className="text-zinc-600">→</span>
+                            <span className="text-emerald-400">{d.to}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-zinc-500 mt-1">
-                    {entry.table_name} · {entry.changed_by?.slice(0, 8) ?? "—"}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
           <DialogFooter>
