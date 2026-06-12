@@ -1526,20 +1526,15 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="relative" title={`Điểm: ${s.score}`}>
-                          <span className="text-xs font-mono text-primary cursor-help border border-primary/30 px-1.5 py-0.5"
-                            onMouseEnter={(e) => {
-                              const el = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (el) el.style.display = "block";
-                            }}
-                            onMouseLeave={(e) => {
-                              const el = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (el) el.style.display = "none";
-                            }}>
-                            {s.score}
-                          </span>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button type="button" title={`Điểm: ${s.score}`}
+                              className="text-xs font-mono text-primary cursor-help border border-primary/30 px-1.5 py-0.5">
+                              {s.score}
+                            </button>
+                          </PopoverTrigger>
                           {bd && (
-                            <div className="hidden absolute bottom-full right-0 mb-1 z-50 bg-black border border-border p-2 rounded-none shadow-lg min-w-[160px]">
+                            <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-black border-border shadow-lg">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
                                 <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
                                 <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.fairness}</span></div>
@@ -1552,9 +1547,9 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                                   <span>Tổng</span><span className="text-primary">{s.score}</span>
                                 </div>
                               </div>
-                            </div>
+                            </PopoverContent>
                           )}
-                        </div>
+                        </Popover>
                         <Button size="sm" onClick={() => confirmAssign(s.dealer_id)} disabled={assigning}>
                           {assigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Gán"}
                         </Button>
