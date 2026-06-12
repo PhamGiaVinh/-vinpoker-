@@ -15,6 +15,12 @@ export default defineConfig({
     exclude: ["node_modules", "dist", "e2e/**", ".{idea,git,cache,output,temp}/**"],
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      // Vitest-ONLY: the pure poker engine lives outside src so the client Vite
+      // build (vite.config.ts has no @engine alias) cannot import it — that build
+      // failure is the server-authoritative guardrail. Do NOT add this to vite.config.ts.
+      "@engine": path.resolve(__dirname, "./supabase/functions/_shared/pokerEngine"),
+    },
   },
 });
