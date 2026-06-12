@@ -35,6 +35,21 @@ const STATUS_STYLES: Record<string, string> = {
   final_table: "bg-red-500/15 text-red-400 border-red-500/30",
 };
 
+// Operator-facing labels for tournament live statuses (colors above stay per-status).
+const STATUS_LABELS: Record<string, string> = {
+  upcoming: "Sắp diễn ra",
+  registering: "Đang đăng ký",
+  drawing: "Bốc thăm chỗ",
+  active: "Đang chơi",
+  live: "LIVE",
+  break: "Giải lao",
+  final_table: "Final Table",
+};
+
+function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
+}
+
 // Statuses where the floor still has setup work to do before play runs smoothly.
 const NEEDS_ATTENTION_STATUSES = new Set(["registering", "drawing"]);
 
@@ -45,7 +60,7 @@ function StatusBadge({ status }: { status: string }) {
         STATUS_STYLES[status] || STATUS_STYLES.upcoming
       }`}
     >
-      {status.replace(/_/g, " ")}
+      {statusLabel(status)}
     </span>
   );
 }
@@ -268,7 +283,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
                     <span className="flex items-center gap-2">
                       <span>{tour.name}</span>
                       <span className="text-[10px] text-muted-foreground uppercase">
-                        {tour.status.replace(/_/g, " ")}
+                        {statusLabel(tour.status)}
                         {clubNameMap[tour.club_id] ? ` · ${clubNameMap[tour.club_id]}` : ""}
                       </span>
                     </span>
