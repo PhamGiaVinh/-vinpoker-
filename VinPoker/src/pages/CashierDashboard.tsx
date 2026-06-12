@@ -27,14 +27,16 @@ import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import SwingPanel from "@/components/cashier/DealerSwingTab";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
+import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Table2, Calculator,
+  Table2, Calculator, Ticket,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll" | "tournament_live";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll" | "tournament_live" | "tournament_registrations";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -44,6 +46,7 @@ export default function CashierDashboard() {
 
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
   const [dealerClubIds, setDealerClubIds] = useState<string[]>([]);
+  const [isClubOwner, setIsClubOwner] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -66,6 +69,12 @@ export default function CashierDashboard() {
       // Fetch dealer control club IDs for swing feature
       const { data: dcIds } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
       setDealerClubIds((dcIds ?? []).map((r: any) => (typeof r === "string" ? r : r.dealer_control_club_ids ?? r)));
+
+      // Club-owner check — used as the UAT override for the flag-gated registrations tab
+      // (owner-approved rollout 2026-06-13: admins/owners see the tab while the flag is off).
+      const { data: owned } = await supabase
+        .from("clubs").select("id").eq("owner_id", user.id).limit(1);
+      setIsClubOwner((owned ?? []).length > 0);
     })();
   }, [user]);
 
@@ -95,11 +104,16 @@ export default function CashierDashboard() {
 
   const clubIds = clubs.map((c) => c.id);
 
+  // Flag-gated rollout (plan 2026-06-13): hidden from regular cashiers until the
+  // flag flips; admins and club owners always see it so production UAT can run.
+  const showRegistrations = clubIds.length > 0 && (FEATURES.cashierRegistrations || isAdmin || isClubOwner);
+
   const navItems: { key: SectionKey; label: string; icon: any }[] = [
     { key: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { key: "staking", label: "Staking", icon: Coins },
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
+    ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "payroll" as SectionKey, label: "Bảng lương", icon: Calculator }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "tournament_live" as SectionKey, label: "Tournament Live", icon: Table2 }] : []),
@@ -156,6 +170,17 @@ export default function CashierDashboard() {
           {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "payroll" && <DealerPayrollTab clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "tournament_live" && <TournamentLivePanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
+          {section === "tournament_registrations" && (
+            showRegistrations ? (
+              <TournamentRegistrationsTab clubIds={clubIds} />
+            ) : (
+              // Deep-link guard: tab hidden while the feature flag is off and the
+              // viewer is neither admin nor club owner.
+              <Card className="p-8 text-center text-sm text-muted-foreground">
+                Tính năng này chưa được mở cho tài khoản của bạn.
+              </Card>
+            )
+          )}
         </main>
       </div>
     </div>
