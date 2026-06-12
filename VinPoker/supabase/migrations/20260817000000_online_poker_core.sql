@@ -9,7 +9,9 @@
 --   All chip/stack/pot/balance amounts are PLAY CHIPS, stored as `bigint`.
 --   This is NOT real money. The application boundary (engine GE-1 uses JS bigint)
 --   must serialize chips as DECIMAL STRINGS over JSON/transport — never as a JS
---   number (precision loss past 2^53).
+--   number (precision loss past 2^53). Non-negative / range CHECK constraints are
+--   DB backstops so the schema itself never permits a negative stack/pot/balance,
+--   an out-of-range seat, or two active hands per table — independent of the RPCs.
 --
 -- SECRECY MODEL --------------------------------------------------------------
 --   PUBLIC rail tables (tables/seats/hands/hand_seats/hand_events/hand_snapshots)
@@ -26,21 +28,23 @@ CREATE TABLE IF NOT EXISTS public.online_poker_tables (
   club_id uuid REFERENCES public.clubs(id),               -- NULL = global lobby (MVP)
   name text NOT NULL,
   max_seats int NOT NULL DEFAULT 9 CHECK (max_seats BETWEEN 2 AND 10),
-  sb bigint NOT NULL,
+  sb bigint NOT NULL CHECK (sb > 0),
   bb bigint NOT NULL,
-  min_buyin bigint NOT NULL,
+  min_buyin bigint NOT NULL CHECK (min_buyin >= 0),
   max_buyin bigint NOT NULL,
-  starting_stack_default bigint NOT NULL,
+  starting_stack_default bigint NOT NULL CHECK (starting_stack_default >= 0),
   act_timeout_secs int NOT NULL DEFAULT 30,
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','paused','closed')),
   created_by uuid REFERENCES auth.users(id),
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (bb > sb),                                         -- big blind strictly above small blind
+  CHECK (max_buyin >= min_buyin)
 );
 
 -- 2) online_poker_player_accounts — play-chip wallet ------------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_player_accounts (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id),
-  balance bigint NOT NULL DEFAULT 0,                       -- play chips; server-ledger derived
+  balance bigint NOT NULL DEFAULT 0 CHECK (balance >= 0), -- server-ledger derived; never negative
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -51,11 +55,15 @@ CREATE TABLE IF NOT EXISTS public.online_poker_seats (
   table_id uuid NOT NULL REFERENCES public.online_poker_tables(id) ON DELETE CASCADE,
   seat_no int NOT NULL CHECK (seat_no BETWEEN 1 AND 10),
   user_id uuid REFERENCES auth.users(id),
-  stack bigint NOT NULL DEFAULT 0,
+  stack bigint NOT NULL DEFAULT 0 CHECK (stack >= 0),
   status text NOT NULL DEFAULT 'empty' CHECK (status IN ('empty','sitting','sitting_out')),
   joined_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (table_id, seat_no)
 );
+-- DB backstop: a user may occupy at most ONE seat per table while seated.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_op_one_user_per_table
+  ON public.online_poker_seats (table_id, user_id)
+  WHERE user_id IS NOT NULL AND status IN ('sitting','sitting_out');
 
 -- 4) online_poker_hands — PUBLIC authoritative hand state -------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_hands (
@@ -69,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hands (
   street text NOT NULL DEFAULT 'preflop'
     CHECK (street IN ('preflop','flop','turn','river','showdown','complete')),
   board jsonb NOT NULL DEFAULT '[]'::jsonb,                -- revealed community cards only
-  pot bigint NOT NULL DEFAULT 0,
+  pot bigint NOT NULL DEFAULT 0 CHECK (pot >= 0),
   side_pots jsonb NOT NULL DEFAULT '[]'::jsonb,
   to_act_seat int,
   act_deadline timestamptz,                               -- auto-fold (hybrid timeout)
@@ -88,19 +96,24 @@ CREATE INDEX IF NOT EXISTS idx_op_hands_active
 CREATE INDEX IF NOT EXISTS idx_op_hands_deadline
   ON public.online_poker_hands (act_deadline)
   WHERE status = 'betting';
+-- DB backstop: at most ONE active (dealing/betting) hand per table.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_op_one_active_hand_per_table
+  ON public.online_poker_hands (table_id)
+  WHERE status IN ('dealing','betting');
 
 -- 5) online_poker_hand_seats — per-hand per-seat PUBLIC facts ----------------
 CREATE TABLE IF NOT EXISTS public.online_poker_hand_seats (
   hand_id uuid NOT NULL REFERENCES public.online_poker_hands(id) ON DELETE CASCADE,
-  seat_no int NOT NULL,
+  seat_no int NOT NULL CHECK (seat_no BETWEEN 1 AND 10),
   user_id uuid NOT NULL REFERENCES auth.users(id),
-  starting_stack bigint NOT NULL,
-  stack bigint NOT NULL,
-  committed bigint NOT NULL DEFAULT 0,                     -- this street (metadata)
-  total_committed bigint NOT NULL DEFAULT 0,               -- all streets (side-pot math)
+  starting_stack bigint NOT NULL CHECK (starting_stack >= 0),
+  stack bigint NOT NULL CHECK (stack >= 0),
+  committed bigint NOT NULL DEFAULT 0 CHECK (committed >= 0),  -- this street (metadata)
+  total_committed bigint NOT NULL DEFAULT 0,                   -- all streets (side-pot math)
   status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','folded','allin')),
   revealed_cards jsonb,                                    -- PUBLIC; NULL until a legitimate showdown reveal
-  PRIMARY KEY (hand_id, seat_no)
+  PRIMARY KEY (hand_id, seat_no),
+  CHECK (total_committed >= committed)                     -- all-streets total includes the current street
 );
 
 -- 6) online_poker_hand_events — authoritative append-only PUBLIC log ---------
@@ -135,7 +148,11 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hand_secrets (
   cards jsonb,
   server_seed text,                                       -- provable-fair (revealed after the hand)
   server_seed_commit text,                                -- sha256(server_seed), published before the hand
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (seat_no IS NULL OR seat_no BETWEEN 1 AND 10),
+  -- hole cards are per-seat; deck/board_future are table-wide (no seat)
+  CHECK ((kind = 'hole' AND seat_no IS NOT NULL)
+      OR (kind IN ('deck','board_future') AND seat_no IS NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS online_poker_hand_secrets_unique_key
   ON public.online_poker_hand_secrets (hand_id, kind, COALESCE(seat_no, -1));
@@ -157,8 +174,10 @@ CREATE TABLE IF NOT EXISTS public.online_poker_chip_ledger (
   table_id uuid REFERENCES public.online_poker_tables(id),
   hand_id uuid REFERENCES public.online_poker_hands(id),
   type text NOT NULL CHECK (type IN ('grant','buyin','rebuy','cashout')),
-  amount bigint NOT NULL,
-  balance_after bigint NOT NULL,
+  -- amount is a SIGNED wallet delta: grant/cashout add to the wallet (+),
+  -- buyin/rebuy move chips out to the table (-). Never zero.
+  amount bigint NOT NULL CHECK (amount <> 0),
+  balance_after bigint NOT NULL CHECK (balance_after >= 0), -- resulting wallet balance; never negative
   idempotency_key text NOT NULL UNIQUE,                  -- crash-safe dedupe; UUID/ULID (NOT NULL: a nullable UNIQUE allows many NULLs => no dedupe)
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -233,4 +252,4 @@ COMMENT ON COLUMN public.online_poker_actions.idempotency_key IS
 COMMENT ON COLUMN public.online_poker_player_accounts.balance IS
   'Play chips (bigint; NOT real money). Server-ledger derived — clients never update directly; mutated only via SECURITY DEFINER RPC / service_role. Serialize as a decimal string over transport.';
 COMMENT ON COLUMN public.online_poker_chip_ledger.amount IS
-  'Play chips (bigint; NOT real money). Append-only audit of wallet movements. Serialize as a decimal string over transport.';
+  'Play chips (bigint; NOT real money). SIGNED wallet delta: grant/cashout add (+), buyin/rebuy remove (-); never zero. balance_after = resulting non-negative wallet balance. Append-only audit. Serialize as a decimal string over transport.';
