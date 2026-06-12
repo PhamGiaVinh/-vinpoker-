@@ -2283,7 +2283,7 @@ function DealerTimer({ startTime }: { startTime: string }) {
   const h = Math.floor(elapsed / 60);
   const m = elapsed % 60;
   return (
-    <span className="font-mono text-[10px]">
+    <span className="font-jetbrains tabular-nums text-[10px]">
       {h > 0 ? `${h}h ` : ""}{m}m
     </span>
   );
@@ -3747,7 +3747,7 @@ function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onE
   else if (timeLeft <= warnAt) color = "text-amber-500";
 
   return (
-    <div className={`font-mono text-lg font-bold ${color}`}>
+    <div className={`font-jetbrains tabular-nums text-lg font-bold ${color}`}>
       {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
     </div>
   );
