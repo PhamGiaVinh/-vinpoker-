@@ -12,11 +12,11 @@ export const FEATURES = {
   offlineBuyIn: false,
   /**
    * Move-player dialog + System-A row locking in TableDrawPanel.
-   * HARD BLOCKER (owner-approved plan 2026-06-13): stays false until
-   * move_player_seat guard v2 (20260818000000) is APPLIED LIVE in a controlled
-   * patch session — the live RPC still trusts client-supplied actor ids.
+   * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
+   * actor bound to auth.uid(), PUBLIC/anon execute revoked, spoof/anon/noop
+   * tests passed (see controlled patch session report).
    */
-  movePlayer: false,
+  movePlayer: true,
   /** Realtime queue updates — requires tournament_registrations in the realtime publication. */
   registrationRealtime: false,
 } as const;
