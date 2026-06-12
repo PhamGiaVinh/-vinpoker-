@@ -1,4 +1,26 @@
 {
+  "tv": {
+    "level": "Level",
+    "blinds": "Blinds",
+    "ante": "Ante",
+    "nextLevel": "Next level",
+    "nextBreak": "Next break",
+    "players": "Players",
+    "avgStack": "Avg stack",
+    "totalBuyIns": "Total buy-ins",
+    "reEntries": "Re-entries",
+    "prizePool": "Prize pool",
+    "payouts": "Payouts",
+    "breakTitle": "Break",
+    "paused": "Paused",
+    "live": "Live",
+    "scheduled": "Starting soon",
+    "finished": "Finished",
+    "cancelled": "Cancelled",
+    "demo": "Demo",
+    "fullscreenPrompt": "Tap to go fullscreen",
+    "fullscreenSkip": "Skip"
+  },
   "nav": {
     "schedule": "Schedule",
     "clubs": "Clubs",

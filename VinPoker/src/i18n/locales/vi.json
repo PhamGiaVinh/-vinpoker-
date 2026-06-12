@@ -1,4 +1,26 @@
 {
+  "tv": {
+    "level": "Level",
+    "blinds": "Blinds",
+    "ante": "Ante",
+    "nextLevel": "Level tiếp theo",
+    "nextBreak": "Giải lao sau",
+    "players": "Người chơi",
+    "avgStack": "Stack trung bình",
+    "totalBuyIns": "Tổng buy-in",
+    "reEntries": "Re-entry",
+    "prizePool": "Tổng giải thưởng",
+    "payouts": "Trả thưởng",
+    "breakTitle": "Giải lao",
+    "paused": "Tạm dừng",
+    "live": "Đang diễn ra",
+    "scheduled": "Sắp diễn ra",
+    "finished": "Đã kết thúc",
+    "cancelled": "Đã hủy",
+    "demo": "Demo",
+    "fullscreenPrompt": "Bấm để bật toàn màn hình",
+    "fullscreenSkip": "Bỏ qua"
+  },
   "nav": {
     "schedule": "Lịch giải",
     "clubs": "CLB",
