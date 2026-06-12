@@ -196,7 +196,10 @@ BEGIN
   WHERE  sc.club_id = v_row.club_id
     AND  sc.table_type = 'tournament'
   LIMIT  1;
-  v_rest_minutes := COALESCE(v_rest_minutes, 10);
+  -- R1 floor: 10 minutes is the hard minimum and is NEVER relaxed, even if a
+  -- club misconfigures min_inter_swing_rest_minutes below it (mirrors the
+  -- frontend's Math.max(10, config)).
+  v_rest_minutes := GREATEST(10, COALESCE(v_rest_minutes, 10));
   v_eligible_at  := v_last_release + (v_rest_minutes || ' minutes')::interval;
 
   IF v_eligible_at > NOW()
