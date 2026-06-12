@@ -167,6 +167,28 @@ Source-only, on top of GE-1.5 (no DB, no runtime, no Edge entrypoint):
 
 ---
 
+## GE-2A — Runtime Plan (2026-06-13, branch `agent/game-engine-ge2a-runtime-plan`)
+
+GE-1.6 merged (`defdf14`); the pure engine is settlement-hardened and DONE for now.
+GE-2 planning is complete and canonical in **`docs/engine/GE2_RUNTIME_PLAN.md`**:
+
+- Verified gap: only `20260817000000/01` (online poker schema + realtime) separate
+  source from live; no `op_*` RPCs, no Edge entrypoint, no UI exist anywhere.
+- Sequence: **GE-2A** docs (this) → **GE-2B** controlled schema apply →
+  **GE-2C** RPCs + engine adapter + DARK Edge function (feature flag default OFF) →
+  **GE-2D** closed-alpha `/poker/*` UI → **GE-2E** retention loop.
+- Closed alpha = play-money ONLY: no real wallet, no payout, no staking, zero FKs
+  into business-ops tables. Runtime enablement (flag flip) is its own
+  owner-approved controlled operation — merging code never turns the game on.
+- ⚠️ Migration lineage collision flagged: TWO source files share slot
+  `20260818000001` (payroll B5 / TV pairing) while live schema_migrations already
+  records that version. Dedicated lineage session must resolve it; until then ALL
+  new GE-2 migrations use slots `20260819000000+`.
+
+Gates: GE-2B only after GE-2A review AND the collision is resolved/accepted.
+
+---
+
 ## Checkpoint — 2026-06-13 (end of GE-1 + GE-2 Patch A session)
 
 > SUPERSEDED 2026-06-13 (later the same day): all GE-1 files below are now
