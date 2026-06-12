@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, Save, Plus, UserPlus, X } from "lucide-react";
+import { RefreshCw, Save, Plus, UserPlus, X, Undo2, AlertTriangle, ArrowRightLeft } from "lucide-react";
 
 interface SeatData {
   seat_id: string;
@@ -23,6 +24,57 @@ interface TableInfo {
   table_name: string;
 }
 
+const MAX_SEATS_PER_TABLE = 10;
+
+/**
+ * Visibility-only balance hint. Suggests source/destination table only — never
+ * a specific player (no approved balancing policy exists yet) and never calls
+ * any move RPC. Returns null when tables are balanced within 1 player.
+ */
+export function suggestBalanceMove(
+  tables: TableInfo[],
+  activeCounts: Record<string, number>,
+): { fromTableId: string; toTableId: string; reason: string } | null {
+  if (tables.length < 2) return null;
+  let max = tables[0], min = tables[0];
+  for (const t of tables) {
+    if ((activeCounts[t.table_id] ?? 0) > (activeCounts[max.table_id] ?? 0)) max = t;
+    if ((activeCounts[t.table_id] ?? 0) < (activeCounts[min.table_id] ?? 0)) min = t;
+  }
+  const diff = (activeCounts[max.table_id] ?? 0) - (activeCounts[min.table_id] ?? 0);
+  if (diff <= 1) return null;
+  return {
+    fromTableId: max.table_id,
+    toTableId: min.table_id,
+    reason: `${max.table_name} có ${activeCounts[max.table_id] ?? 0} người, ${min.table_name} có ${activeCounts[min.table_id] ?? 0} người`,
+  };
+}
+
+/** Finds the active-seat conflict for (table, seat), excluding one seat row. */
+function findOccupant(
+  seats: SeatData[],
+  tableId: string,
+  seatNumber: number,
+  excludeSeatId?: string,
+): SeatData | undefined {
+  return seats.find(
+    (s) =>
+      s.is_active &&
+      s.table_id === tableId &&
+      s.seat_number === seatNumber &&
+      s.seat_id !== excludeSeatId,
+  );
+}
+
+/** First free seat number 1..MAX on a table among active seats, or null if full. */
+function firstFreeSeat(seats: SeatData[], tableId: string): number | null {
+  const taken = new Set(
+    seats.filter((s) => s.is_active && s.table_id === tableId).map((s) => s.seat_number),
+  );
+  for (let n = 1; n <= MAX_SEATS_PER_TABLE; n++) if (!taken.has(n)) return n;
+  return null;
+}
+
 export function TableDrawPanel({
   tournamentId,
   refreshTrigger,
@@ -31,6 +83,9 @@ export function TableDrawPanel({
   refreshTrigger?: number;
 }) {
   const [seats, setSeats] = useState<SeatData[] | null>(null);
+  // Last successfully loaded/saved snapshot — the baseline for dirty-state and
+  // chip-conservation checks, and the target of "Hủy thay đổi".
+  const [snapshot, setSnapshot] = useState<SeatData[] | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,6 +99,8 @@ export function TableDrawPanel({
   const [newPlayerSeat, setNewPlayerSeat] = useState(1);
   const [newPlayerChips, setNewPlayerChips] = useState(0);
   const [addingPlayer, setAddingPlayer] = useState(false);
+  // Chip-conservation confirm gate: holds the pending diff while the floor confirms.
+  const [chipWarning, setChipWarning] = useState<{ before: number; after: number } | null>(null);
 
   const loadSeats = useCallback(async () => {
     setLoading(true);
@@ -57,8 +114,11 @@ export function TableDrawPanel({
       if (seatsRes.error || seatsRes.data?.error) {
         toast.error(seatsRes.data?.error || seatsRes.error?.message);
         setSeats([]);
+        setSnapshot([]);
       } else {
-        setSeats(seatsRes.data?.data ?? []);
+        const loaded: SeatData[] = seatsRes.data?.data ?? [];
+        setSeats(loaded);
+        setSnapshot(loaded.map((s) => ({ ...s })));
       }
       if (tablesRes.data) {
         const tInfo = Array.isArray(tablesRes.data)
@@ -68,12 +128,36 @@ export function TableDrawPanel({
       }
     } finally {
       setLoading(false);
+      setChipWarning(null);
     }
   }, [tournamentId]);
 
   useEffect(() => {
     loadSeats();
   }, [loadSeats, refreshTrigger]);
+
+  const isDirty = useMemo(() => {
+    if (!seats || !snapshot) return false;
+    if (seats.length !== snapshot.length) return true;
+    const snapById = new Map(snapshot.map((s) => [s.seat_id, s]));
+    return seats.some((s) => {
+      const o = snapById.get(s.seat_id);
+      return (
+        !o ||
+        o.table_id !== s.table_id ||
+        o.seat_number !== s.seat_number ||
+        o.chip_count !== s.chip_count ||
+        o.is_active !== s.is_active
+      );
+    });
+  }, [seats, snapshot]);
+
+  const revertChanges = () => {
+    if (!snapshot) return;
+    setSeats(snapshot.map((s) => ({ ...s })));
+    setChipWarning(null);
+    toast.info("Đã hủy các thay đổi chưa lưu");
+  };
 
   const handleAddTable = async () => {
     if (!newTableName.trim()) {
@@ -105,9 +189,20 @@ export function TableDrawPanel({
       toast.error("Nhập tên người chơi");
       return;
     }
-    if (!addingPlayerTableId) return;
+    if (!addingPlayerTableId || !seats) return;
     if (newPlayerChips < 0) {
       toast.error("Chips phải >= 0");
+      return;
+    }
+    const seatNum = Math.round(newPlayerSeat);
+    if (!Number.isFinite(seatNum) || seatNum < 1 || seatNum > MAX_SEATS_PER_TABLE) {
+      toast.error(`Seat phải từ 1 đến ${MAX_SEATS_PER_TABLE}`);
+      return;
+    }
+    // Block occupied seats immediately — don't wait for the backend to reject.
+    const occupant = findOccupant(seats, addingPlayerTableId, seatNum);
+    if (occupant) {
+      toast.error(`Seat ${seatNum} đã có ${occupant.player_name || "người chơi khác"} đang ngồi`);
       return;
     }
     setAddingPlayer(true);
@@ -118,7 +213,7 @@ export function TableDrawPanel({
           action: "add_player",
           player_name: playerName.trim(),
           table_id: addingPlayerTableId,
-          seat_number: newPlayerSeat,
+          seat_number: seatNum,
           chip_count: newPlayerChips,
         },
       });
@@ -128,7 +223,6 @@ export function TableDrawPanel({
       }
       toast.success(`Đã thêm ${playerName.trim()}`);
       setPlayerName("");
-      setNewPlayerSeat((prev) => prev + 1);
       setNewPlayerChips(0);
       loadSeats();
     } catch (e: any) {
@@ -138,9 +232,10 @@ export function TableDrawPanel({
     }
   };
 
-  const handleSave = async () => {
+  const doSave = async () => {
     if (!seats) return;
     setSaving(true);
+    setChipWarning(null);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
@@ -170,11 +265,36 @@ export function TableDrawPanel({
     }
   };
 
-  const updateSeat = (index: number, field: keyof SeatData, value: any) => {
+  const handleSave = async () => {
+    if (!seats || !snapshot) return;
+    // Duplicate active (table, seat) — abort naming the exact conflict.
+    const byKey = new Map<string, SeatData>();
+    for (const s of seats) {
+      if (!s.is_active) continue;
+      const key = `${s.table_id}:${s.seat_number}`;
+      const prev = byKey.get(key);
+      if (prev) {
+        const tName = tables.find((t) => t.table_id === s.table_id)?.table_name || s.table_name;
+        toast.error(
+          `Trùng chỗ: ${prev.player_name || prev.player_id.slice(0, 8)} và ${s.player_name || s.player_id.slice(0, 8)} cùng ngồi ${tName} - Seat ${s.seat_number}`,
+        );
+        return;
+      }
+      byKey.set(key, s);
+    }
+    // Chip conservation: compare last loaded/saved snapshot vs current draft.
+    const before = snapshot.filter((s) => s.is_active).reduce((sum, s) => sum + s.chip_count, 0);
+    const after = seats.filter((s) => s.is_active).reduce((sum, s) => sum + s.chip_count, 0);
+    if (before !== after) {
+      setChipWarning({ before, after });
+      return;
+    }
+    await doSave();
+  };
+
+  const updateSeat = (seatId: string, field: keyof SeatData, value: any) => {
     if (!seats) return;
-    const next = [...seats];
-    next[index] = { ...next[index], [field]: value };
-    setSeats(next);
+    setSeats(seats.map((s) => (s.seat_id === seatId ? { ...s, [field]: value } : s)));
   };
 
   const tableNameMap = useMemo(() => {
@@ -193,10 +313,104 @@ export function TableDrawPanel({
     return map;
   }, [seats]);
 
+  const activeCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    (seats ?? []).forEach((s) => {
+      if (s.is_active) m[s.table_id] = (m[s.table_id] ?? 0) + 1;
+    });
+    return m;
+  }, [seats]);
+
+  const totalActive = useMemo(
+    () => (seats ?? []).filter((s) => s.is_active).length,
+    [seats],
+  );
+
+  const balanceHint = useMemo(
+    () => suggestBalanceMove(tables, activeCounts),
+    [tables, activeCounts],
+  );
+
+  const renderSeatCard = (seat: SeatData) => {
+    const editable = seat.is_active;
+    return (
+      <div
+        key={seat.seat_id}
+        className={`border rounded p-2 space-y-1 ${editable ? "" : "opacity-60 bg-muted/30"}`}
+      >
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          Seat
+          {editable ? (
+            <Input
+              type="number"
+              min={1}
+              max={MAX_SEATS_PER_TABLE}
+              value={seat.seat_number}
+              onChange={(e) => {
+                const v = Math.round(Number(e.target.value));
+                updateSeat(seat.seat_id, "seat_number", v);
+              }}
+              className="h-6 w-14 px-1 text-xs"
+            />
+          ) : (
+            <span>{seat.seat_number}</span>
+          )}
+          {seat.entry_number > 1 && (
+            <span className="ml-1 text-amber-500">R#{seat.entry_number}</span>
+          )}
+        </div>
+        <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
+        {editable ? (
+          <>
+            <Input
+              type="number"
+              min={0}
+              value={seat.chip_count}
+              onChange={(e) => updateSeat(seat.seat_id, "chip_count", Math.max(0, Number(e.target.value)))}
+              className="h-7 text-xs font-mono"
+            />
+            {tables.length > 1 && (
+              <select
+                value={seat.table_id}
+                onChange={(e) => updateSeat(seat.seat_id, "table_id", e.target.value)}
+                className="w-full h-7 text-xs rounded border border-input bg-background px-1"
+                title="Chuyển bàn (lưu mới có hiệu lực)"
+              >
+                {tables.map((t) => (
+                  <option key={t.table_id} value={t.table_id}>{t.table_name}</option>
+                ))}
+              </select>
+            )}
+          </>
+        ) : (
+          <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
+        )}
+        <label className="flex items-center gap-1 text-xs">
+          <input
+            type="checkbox"
+            checked={seat.is_active}
+            onChange={(e) => updateSeat(seat.seat_id, "is_active", e.target.checked)}
+          />
+          Active
+        </label>
+      </div>
+    );
+  };
+
   return (
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="font-semibold">Table Draw</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="font-semibold">Table Draw</div>
+          <span className="text-xs text-muted-foreground">
+            {tables.length} bàn · {totalActive} người đang chơi
+          </span>
+          {isDirty && (
+            <Badge variant="outline" className="text-amber-500 border-amber-500/40">
+              Có thay đổi chưa lưu
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => setShowAddTable(!showAddTable)}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Tạo bàn
@@ -205,12 +419,48 @@ export function TableDrawPanel({
             <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
             Làm mới
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || !seats}>
+          {isDirty && (
+            <Button size="sm" variant="outline" onClick={revertChanges} disabled={saving}>
+              <Undo2 className="w-3.5 h-3.5 mr-1" /> Hủy thay đổi
+            </Button>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={saving || !seats || !isDirty}>
             <Save className="w-3.5 h-3.5 mr-1" />
-            Lưu
+            Lưu thay đổi
           </Button>
         </div>
       </div>
+
+      {/* Balance hint — visibility only, never auto-applies */}
+      {balanceHint && (
+        <div className="flex items-center gap-2 text-xs rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-2">
+          <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Gợi ý cân bàn: chuyển 1 người từ {tableNameMap[balanceHint.fromTableId] || "bàn đông"} sang {tableNameMap[balanceHint.toTableId] || "bàn vắng"} ({balanceHint.reason})
+          </span>
+        </div>
+      )}
+
+      {/* Chip conservation confirm gate */}
+      {chipWarning && (
+        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            Tổng chip thay đổi từ {chipWarning.before.toLocaleString()} → {chipWarning.after.toLocaleString()}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Xác nhận đây là rebuy/addon/penalty/manual correction. Nếu không, hãy kiểm tra lại chip trước khi lưu.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={doSave} disabled={saving}>
+              Xác nhận và lưu
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setChipWarning(null)} disabled={saving}>
+              Quay lại sửa
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Add table inline form */}
       {showAddTable && (
@@ -242,19 +492,26 @@ export function TableDrawPanel({
         <div className="space-y-4">
           {tables.map((table) => {
             const tableSeats = groupedByTable[table.table_id] || [];
+            const activeSeats = tableSeats.filter((s) => s.is_active);
+            const inactiveSeats = tableSeats.filter((s) => !s.is_active);
             const isAddingPlayer = addingPlayerTableId === table.table_id;
 
             return (
               <div key={table.table_id} className="border rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{table.table_name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{table.table_name}</div>
+                    <Badge variant="outline" className="text-xs">
+                      {activeSeats.length}/{MAX_SEATS_PER_TABLE}
+                    </Badge>
+                  </div>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => {
                       setAddingPlayerTableId(isAddingPlayer ? null : table.table_id);
                       setPlayerName("");
-                      setNewPlayerSeat(tableSeats.length > 0 ? Math.max(...tableSeats.map((s) => s.seat_number)) + 1 : 1);
+                      setNewPlayerSeat(firstFreeSeat(seats, table.table_id) ?? 1);
                       setNewPlayerChips(0);
                     }}
                   >
@@ -263,32 +520,22 @@ export function TableDrawPanel({
                   </Button>
                 </div>
 
-                {/* Player list */}
-                {tableSeats.length > 0 && (
+                {/* Active players — editable */}
+                {activeSeats.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {tableSeats.map((seat) => {
-                      const globalIndex = seats!.findIndex((s) => s.seat_id === seat.seat_id);
-                      return (
-                        <div key={seat.seat_id} className="border rounded p-2 space-y-1">
-                          <div className="text-xs text-muted-foreground">
-                            Seat {seat.seat_number}
-                            {seat.entry_number > 1 && (
-                              <span className="ml-1 text-amber-500">R#{seat.entry_number}</span>
-                            )}
-                          </div>
-                          <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
-                          <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
-                          <label className="flex items-center gap-1 text-xs">
-                            <input
-                              type="checkbox"
-                              checked={seat.is_active}
-                              onChange={(e) => updateSeat(globalIndex, "is_active", e.target.checked)}
-                            />
-                            Active
-                          </label>
-                        </div>
-                      );
-                    })}
+                    {activeSeats.map(renderSeatCard)}
+                  </div>
+                )}
+
+                {/* Inactive/busted — read-only except the Active toggle */}
+                {inactiveSeats.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Đã bust / không hoạt động
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                      {inactiveSeats.map(renderSeatCard)}
+                    </div>
                   </div>
                 )}
 
@@ -314,7 +561,7 @@ export function TableDrawPanel({
                         <Input
                           type="number"
                           min={1}
-                          max={10}
+                          max={MAX_SEATS_PER_TABLE}
                           value={newPlayerSeat}
                           onChange={(e) => setNewPlayerSeat(Number(e.target.value))}
                         />
@@ -341,21 +588,18 @@ export function TableDrawPanel({
             );
           })}
 
-          {/* Orphan seats (table not in tables list yet) */}
+          {/* Orphan seats (table not in tables list yet) — read-only */}
           {Object.entries(groupedByTable).filter(([tid]) => !tables.find((t) => t.table_id === tid)).map(([tableId, tableSeats]) => (
             <div key={tableId} className="border rounded-lg p-3">
               <div className="text-sm font-medium mb-2">{tableNameMap[tableId] || tableId.slice(0, 8)}</div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                {tableSeats.map((seat) => {
-                  const globalIndex = seats!.findIndex((s) => s.seat_id === seat.seat_id);
-                  return (
-                    <div key={seat.seat_id} className="border rounded p-2 space-y-1">
-                      <div className="text-xs text-muted-foreground">Seat {seat.seat_number}</div>
-                      <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
-                      <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
-                    </div>
-                  );
-                })}
+                {tableSeats.map((seat) => (
+                  <div key={seat.seat_id} className="border rounded p-2 space-y-1">
+                    <div className="text-xs text-muted-foreground">Seat {seat.seat_number}</div>
+                    <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
+                    <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
