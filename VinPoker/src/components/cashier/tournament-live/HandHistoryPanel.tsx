@@ -226,7 +226,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
               } ${hand.is_voided ? "opacity-50" : ""}`}
             >
               <div className="flex items-center justify-between">
-                <span className="font-semibold #{hand.is_voided ? 'line-through' : ''}">
+                <span className={`font-semibold ${hand.is_voided ? "line-through" : ""}`}>
                   #{hand.hand_number}
                 </span>
                 <div className="flex items-center gap-1.5">
