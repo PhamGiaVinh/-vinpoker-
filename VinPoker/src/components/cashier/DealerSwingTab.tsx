@@ -47,6 +47,8 @@ import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
 import { TableCardKebab } from "./TableCardKebab";
 import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
+import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
+import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
@@ -215,6 +217,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
   const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
+  const [correctWrongTableId, setCorrectWrongTableId] = useState<string | null>(null);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -1467,6 +1470,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   swingingAssignmentId={swingingTableId}
                   dealers={dealers ?? []}
                   onChangePredicted={setChangePredictedTableId}
+                  onCorrectWrongTable={setCorrectWrongTableId}
                 />
             )}
           </div>
@@ -1617,6 +1621,32 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             assignedTableNameByAttendanceId={cpNameByAtt}
             restMinutes={cpRestMinutes}
             onChanged={() => { refetchAssignments(); refetchDealers(); }}
+          />
+        );
+      })()}
+
+      {/* Sửa nhầm bàn — REALITY correction via reconcile_dealer_room_state (#33C).
+          Exact-table context resolved per click, same pattern as Đổi dự kiến above. */}
+      {correctWrongTableId && (() => {
+        const cwTable = (tables ?? []).find((x) => x.id === correctWrongTableId);
+        if (!cwTable) return null;
+        const cwRestMinutes = Math.max(
+          10,
+          swingConfigs?.find((c) => c.table_type === "tournament")?.min_inter_swing_rest_minutes ?? 10,
+        );
+        return (
+          <CorrectWrongTableDealerModal
+            open
+            onOpenChange={(o) => { if (!o) setCorrectWrongTableId(null); }}
+            clubId={cwTable.club_id}
+            tableId={cwTable.id}
+            tableName={cwTable.table_name ?? "Bàn"}
+            recordedAssignment={tableAssignmentMap[correctWrongTableId] ?? null}
+            dealers={dealers ?? []}
+            tables={tables ?? []}
+            tableAssignmentMap={tableAssignmentMap}
+            restMinutes={cwRestMinutes}
+            onApplied={() => { refetchAssignments(); refetchDealers(); }}
           />
         );
       })()}
@@ -3052,7 +3082,7 @@ function TableGrid({
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
-  dealers, onChangePredicted,
+  dealers, onChangePredicted, onCorrectWrongTable,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -3081,6 +3111,7 @@ function TableGrid({
   swingingAssignmentId: string | null;
   dealers: DealerAttendance[];
   onChangePredicted: (tableId: string) => void;
+  onCorrectWrongTable: (tableId: string) => void;
 }) {
   const nowMs = useLiveClock();
   // Final-handoff confirmation ("Chốt đổi dealer") — perform_swing itself is unchanged.
@@ -3537,22 +3568,45 @@ function TableGrid({
                             </span>
                           );
                         })()}
-                        {/* Sửa nhầm bàn — PLACEHOLDER, intentionally disabled. The real
-                            wrong-table correction needs reconcile_dealer_room_state
-                            (migration 20260817000002) applied live first. There is NO
-                            backend call behind this button. */}
-                        <span
-                          className="flex-1"
-                          title="Sắp ra mắt — cần bật Room Reconcile trước"
-                        >
-                          <Button size="sm" variant="outline"
-                            className="w-full text-xs h-7 text-zinc-500 border-zinc-700"
-                            disabled>
-                            <AlertTriangle className="w-3 h-3 mr-1" />
-                            <span className="hidden sm:inline">Sửa nhầm bàn</span>
-                            <span className="sm:hidden">Nhầm bàn</span>
-                          </Button>
-                        </span>
+                        {/* Sửa nhầm bàn — REALITY correction (#33C): the dealer recorded
+                            here is not who is actually dealing. Opens
+                            CorrectWrongTableDealerModal → reconcile_dealer_room_state
+                            (LIVE since 2026-06-13 incl. club-scope fix 20260818000002).
+                            FEATURES.wrongTableCorrection=false restores the disabled
+                            placeholder (kill-switch). */}
+                        {FEATURES.wrongTableCorrection ? (
+                          <span
+                            className="flex-1"
+                            title="Sửa dealer nhầm bàn — ghi đúng dealer đang chia thực tế (có audit)"
+                          >
+                            <Button size="sm" variant="outline"
+                              className="w-full text-xs h-7 text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+                              onClick={() => {
+                                if (!a?.id) {
+                                  toast.warning("Không tìm thấy ca dealer của bàn này");
+                                  return;
+                                }
+                                onCorrectWrongTable(t.id);
+                              }}>
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              <span className="hidden sm:inline">Sửa nhầm bàn</span>
+                              <span className="sm:hidden">Nhầm bàn</span>
+                            </Button>
+                          </span>
+                        ) : (
+                          <span
+                            className="flex-1"
+                            title="Sắp ra mắt — cần bật Room Reconcile trước"
+                          >
+                            <Button size="sm" variant="outline"
+                              className="w-full text-xs h-7 text-zinc-500 border-zinc-700"
+                              disabled>
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              <span className="hidden sm:inline">Sửa nhầm bàn</span>
+                              <span className="sm:hidden">Nhầm bàn</span>
+                            </Button>
+                          </span>
+                        )}
                       </>
                     )}
                     {!a && (
