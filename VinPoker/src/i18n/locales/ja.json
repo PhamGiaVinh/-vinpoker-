@@ -1719,6 +1719,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "トーナメントを選択",
+    "tabs": {
+      "input": "ハンド入力",
+      "blinds": "Blinds",
+      "prizes": "賞金"
+    },
     "liveView": {
       "title": "ライブビュー",
       "waiting": "ディーラーがハンドを開始するのを待っています...",

@@ -260,7 +260,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
             )}
             <Select value={selectedTournamentId ?? ""} onValueChange={setSelectedTournamentId}>
               <SelectTrigger className="w-[280px]">
-                <SelectValue placeholder={t("tournamentLive.handInput.tableLabel")} />
+                <SelectValue placeholder={t("tournamentLive.selectTournament")} />
               </SelectTrigger>
               <SelectContent>
                 {(tournaments ?? []).map((tour) => (
@@ -302,11 +302,11 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
               <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> {t("tournamentLive.liveView.title")}</TabsTrigger>
               <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.title")}</TabsTrigger>
               <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> {t("tournamentLive.tableDraw.title")}</TabsTrigger>
-              <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> Input</TabsTrigger>
+              <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.input")}</TabsTrigger>
               <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
               <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
-              <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> Blinds</TabsTrigger>
-              <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> Prizes</TabsTrigger>
+              <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.blinds")}</TabsTrigger>
+              <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.prizes")}</TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="live_view" className="mt-4">
