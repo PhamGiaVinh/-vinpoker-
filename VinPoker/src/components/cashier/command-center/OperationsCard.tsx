@@ -56,6 +56,8 @@ export default function OperationsCard({
 }: Props) {
   const coverageRatio = totalTables > 0 ? tablesCovered / totalTables : 1;
   const [confirmSwingAll, setConfirmSwingAll] = useState(false);
+  const [confirmMassAssign, setConfirmMassAssign] = useState(false);
+  const emptyTables = Math.max(0, totalTables - tablesCovered);
 
   return (
     <div className="space-y-2">
@@ -95,7 +97,7 @@ export default function OperationsCard({
           size="sm"
           variant="outline"
           className="text-[11px] h-7"
-          onClick={onMassAssign}
+          onClick={() => setConfirmMassAssign(true)}
           disabled={massAssignBusy}
         >
           {massAssignBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <LayoutDashboard className="w-3 h-3 mr-1" />}
@@ -114,6 +116,24 @@ export default function OperationsCard({
           </Button>
         ) : null}
       </div>
+
+      {/* Gán loạt confirmation — blast radius restated; confirm calls the same handler */}
+      <AlertDialog open={confirmMassAssign} onOpenChange={setConfirmMassAssign}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gán loạt dealer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Gán loạt sẽ tự động gán dealer cho {emptyTables} bàn đang trống trong phạm vi CLB đang chọn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction disabled={massAssignBusy} onClick={onMassAssign}>
+              Gán loạt
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Swing All confirmation — blast radius restated; confirm calls the same handler */}
       <AlertDialog open={confirmSwingAll} onOpenChange={setConfirmSwingAll}>
