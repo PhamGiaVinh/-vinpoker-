@@ -46,6 +46,7 @@ import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
 import DealerManagementTab from "./DealerManagementTab";
 import { TableCardKebab } from "./TableCardKebab";
+import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
@@ -213,6 +214,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
+  const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -1463,6 +1465,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   focusedTableId={focusedTableId}
                   onSwingTable={performSwingForTable}
                   swingingAssignmentId={swingingTableId}
+                  dealers={dealers ?? []}
+                  onChangePredicted={setChangePredictedTableId}
                 />
             )}
           </div>
@@ -1590,6 +1594,37 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Đổi & CHỐT dealer thay thế — planning only, never executes the handoff */}
+      {changePredictedTableId && (() => {
+        const cpTable = (tables ?? []).find((x: any) => x.id === changePredictedTableId);
+        const cpAssignment = tableAssignmentMap[changePredictedTableId];
+        const cpSlots = scheduleByTableId?.[changePredictedTableId];
+        const cpNameByAtt: Record<string, string> = {};
+        for (const [tid, asg] of Object.entries(tableAssignmentMap)) {
+          if (!asg) continue;
+          const tn = (tables ?? []).find((x: any) => x.id === tid)?.table_name;
+          if (tn) cpNameByAtt[asg.attendance_id] = tn;
+        }
+        const cpRestMinutes = Math.max(
+          10,
+          ((swingConfigs?.find((c) => (c as any).table_type === "tournament") as any)
+            ?.min_inter_swing_rest_minutes as number | undefined) ?? 10,
+        );
+        return (
+          <ChangePredictedDealerModal
+            open
+            onOpenChange={(o) => { if (!o) setChangePredictedTableId(null); }}
+            tableName={cpTable?.table_name ?? "Bàn"}
+            slot0={cpSlots?.slot0 ?? null}
+            currentTableAttendanceId={cpAssignment?.attendance_id ?? null}
+            dealers={dealers ?? []}
+            assignedTableNameByAttendanceId={cpNameByAtt}
+            restMinutes={cpRestMinutes}
+            onChanged={() => { refetchAssignments(); refetchDealers(); }}
+          />
+        );
+      })()}
 
       {/* Check-in Dialog (multi-select) với 2 section: Check-in lại + Check-in mới */}
       <Dialog open={checkinOpen} onOpenChange={(o) => { setCheckinOpen(o); if (o) { loadCheckinDealers(); setCheckinDealerIds([]); } }}>
@@ -3022,6 +3057,7 @@ function TableGrid({
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
+  dealers, onChangePredicted,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -3048,8 +3084,23 @@ function TableGrid({
   focusedTableId?: string | null;
   onSwingTable: (assignmentId: string) => void;
   swingingAssignmentId: string | null;
+  dealers: DealerAttendance[];
+  onChangePredicted: (tableId: string) => void;
 }) {
   const nowMs = useLiveClock();
+  // Final-handoff confirmation ("Chốt đổi dealer") — perform_swing itself is unchanged.
+  const [confirmSwing, setConfirmSwing] = useState<{
+    assignmentId: string;
+    tableName: string;
+    outName: string;
+    inName: string | null;
+    isOt: boolean;
+  } | null>(null);
+  const restMinCfg = Math.max(
+    10,
+    ((swingConfigs.find((c) => (c as any).table_type === "tournament") as any)
+      ?.min_inter_swing_rest_minutes as number | undefined) ?? 10,
+  );
 
   const filteredTables = useMemo(() => {
     // Inactive tables are removed from the map entirely — they sit in the
@@ -3396,6 +3447,17 @@ function TableGrid({
                               <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
                             )
                           ) : null}
+                          {/* Đổi & CHỐT dealer thay thế — planning only, never the handoff */}
+                          {slot0HasDealer && slot0!.status !== "executing" && (
+                            <button
+                              type="button"
+                              className="ml-auto shrink-0 text-[10px] px-1.5 py-0.5 border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+                              title="Đổi & CHỐT dealer thay thế (không thực hiện swing)"
+                              onClick={() => onChangePredicted(t.id)}
+                            >
+                              Đổi
+                            </button>
+                          )}
                         </div>
                       )}
                       {forecastSlots.length > 0 && (
@@ -3419,20 +3481,50 @@ function TableGrid({
                           onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
                           <Clock className="w-3 h-3 mr-1" /> Nghỉ
                         </Button>
-                        <Button size="sm" variant="outline"
-                          className={[
-                            "flex-1 text-xs h-7",
-                            isOt
-                              ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
-                              : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
-                          ].join(" ")}
-                          onClick={() => onSwingTable(a.id)}
-                          disabled={!canSwing || swingingAssignmentId === a.id}>
-                          {swingingAssignmentId === a.id
-                            ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            : <RefreshCw className="w-3 h-3 mr-1" />}
-                          {isOt ? "Swing ngay" : "Swing"}
-                        </Button>
+                        {(() => {
+                          // Final-handoff button. Semantics unchanged (perform_swing),
+                          // but: honest label, confirmation dialog, and a client-side
+                          // rest-readiness guard (advisory — server still validates).
+                          const slot0Att = slot0HasDealer
+                            ? dealers.find((d) => d.id === slot0!.in_attendance_id)
+                            : undefined;
+                          const slot0EligibleMs = slot0Att?.last_released_at
+                            ? new Date(slot0Att.last_released_at).getTime() + restMinCfg * 60_000
+                            : null;
+                          const replacementNotRested =
+                            slot0Locked && slot0EligibleMs != null && slot0EligibleMs > nowMs;
+                          const swingDisabled =
+                            !canSwing || replacementNotRested || swingingAssignmentId === a.id;
+                          const disabledReason = !canSwing
+                            ? `Chưa thể chốt đổi: bàn chưa tới giờ đổi (${formatTimeHHmm(actualDueMs)})`
+                            : replacementNotRested
+                              ? `Chưa thể chốt đổi: dealer thay chưa đủ thời gian nghỉ — đủ điều kiện lúc ${formatTimeHHmm(slot0EligibleMs)}`
+                              : undefined;
+                          return (
+                            <span className="flex-1" title={disabledReason}>
+                              <Button size="sm" variant="outline"
+                                className={[
+                                  "w-full text-xs h-7",
+                                  isOt
+                                    ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
+                                    : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
+                                ].join(" ")}
+                                onClick={() => setConfirmSwing({
+                                  assignmentId: a.id,
+                                  tableName: t.table_name ?? "Bàn",
+                                  outName: dealer?.full_name ?? "Dealer hiện tại",
+                                  inName: slot0Locked ? slot0Name : null,
+                                  isOt,
+                                })}
+                                disabled={swingDisabled}>
+                                {swingingAssignmentId === a.id
+                                  ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                  : <RefreshCw className="w-3 h-3 mr-1" />}
+                                {isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"}
+                              </Button>
+                            </span>
+                          );
+                        })()}
                       </>
                     )}
                     {!a && (
@@ -3448,6 +3540,35 @@ function TableGrid({
           })
         )}
       </div>
+
+      {/* Final-handoff confirmation — Chốt đổi dealer / Chốt đổi khẩn cấp */}
+      <AlertDialog open={!!confirmSwing} onOpenChange={(o) => { if (!o) setConfirmSwing(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmSwing?.isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"} — {confirmSwing?.tableName}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmSwing?.outName} sẽ ra, {confirmSwing?.inName ?? "dealer do hệ thống chọn"} sẽ vào ngay.
+              Đây là handoff cuối cùng — dealer hiện tại được giải phóng và swing log được ghi.
+              {confirmSwing?.isOt
+                ? " Bàn đang quá hạn: thao tác khẩn cấp, hãy chắc chắn dealer thay đã sẵn sàng."
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmSwing?.isOt ? "bg-red-600 hover:bg-red-700" : undefined}
+              onClick={() => {
+                if (confirmSwing) onSwingTable(confirmSwing.assignmentId);
+                setConfirmSwing(null);
+              }}>
+              {confirmSwing?.isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
