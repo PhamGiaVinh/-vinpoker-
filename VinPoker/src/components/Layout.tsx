@@ -15,6 +15,7 @@ import { SupportFloatingButton } from "@/components/SupportFloatingButton";
 import { InstallPWAButton } from "@/components/InstallPWAButton";
 import { OpenInBrowserMenu } from "@/components/OpenInBrowserMenu";
 import { MyQrSheet } from "@/components/MyQrSheet";
+import { LogoFanButton } from "@/components/LogoFanButton";
 import appLogo from "@/assets/app-logo.png";
 
 const tabsData = [
@@ -29,6 +30,18 @@ const tabsData = [
   { to: "/leaderboard", labelKey: "ranking", icon: Trophy, label: "Xếp hạng" },
   { to: "/account", labelKey: "account", icon: User, label: "Tài khoản" },
 ];
+
+// Mobile bottom nav: 4 key public tabs + center LogoFanButton (no text overflow at 360px).
+// Selected by route (stable against tabsData reordering); the rest stay reachable
+// through the center quick-menu links below.
+const MOBILE_TAB_ROUTES = ["/", "/feed", "/clubs", "/account"];
+const mobileTabsData = MOBILE_TAB_ROUTES
+  .map((to) => tabsData.find((t) => t.to === to))
+  .filter((t): t is (typeof tabsData)[number] => Boolean(t));
+
+// Destinations without a bottom-nav slot — exposed in the LogoFanButton quick menu
+// so no previous mobile nav route becomes unreachable.
+const mobileQuickLinks = tabsData.filter((t) => !MOBILE_TAB_ROUTES.includes(t.to));
 
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
@@ -194,7 +207,7 @@ export const Layout = () => {
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
@@ -203,8 +216,40 @@ export const Layout = () => {
       <InstallPWAButton />
 
       <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto max-w-3xl grid grid-cols-7">
-          {tabsData.map((tab) => (
+        <div className="mx-auto grid h-[68px] max-w-3xl grid-cols-5 items-stretch">
+          {mobileTabsData.slice(0, 2).map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              end={tab.end}
+              className={({ isActive }) =>
+                cn(
+                  "flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors",
+                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
+                  <span className="font-medium">{t(`nav.${tab.labelKey}`, tab.label)}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+          <LogoFanButton
+            onQR={() => {
+              if (user) setQrOpen(true);
+              else nav("/auth");
+            }}
+            onPoker={() => nav("/")}
+            quickLinks={mobileQuickLinks.map((tab) => ({
+              to: tab.to,
+              label: t(`nav.${tab.labelKey}`, tab.label),
+            }))}
+            onNavigate={(to) => nav(to)}
+          />
+          {mobileTabsData.slice(2).map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}

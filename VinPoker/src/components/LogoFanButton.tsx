@@ -4,9 +4,17 @@ import { QrCode, Spade } from "lucide-react";
 
 import appLogo from "@/assets/app-logo.png";
 
+interface QuickLink {
+  to: string;
+  label: string;
+}
+
 interface Props {
   onQR: () => void;
   onPoker: () => void;
+  /** Secondary destinations without a bottom-nav slot — rendered as a chip grid when open. */
+  quickLinks?: QuickLink[];
+  onNavigate?: (to: string) => void;
 }
 
 /**
@@ -15,7 +23,7 @@ interface Props {
  * - Tap option / swipe ↖ / swipe ↗ → fire that branch
  * - Tap backdrop or logo again → close
  */
-export function LogoFanButton({ onQR, onPoker }: Props) {
+export function LogoFanButton({ onQR, onPoker, quickLinks, onNavigate }: Props) {
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<"qr" | "poker" | null>(null);
   const movedRef = useRef(false);
@@ -120,6 +128,31 @@ export function LogoFanButton({ onQR, onPoker }: Props) {
               </span>
             </motion.button>
 
+            {/* Quick links — destinations without a bottom-nav slot */}
+            {quickLinks && quickLinks.length > 0 && onNavigate && (
+              <motion.div
+                key="quick-links"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: trigger ? 0 : 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                transition={{ type: "spring", stiffness: 340, damping: 26, delay: 0.05 }}
+                className="fixed left-1/2 -ml-[156px] bottom-[230px] z-50 w-[312px] grid grid-cols-3 gap-2"
+              >
+                {quickLinks.map((link) => (
+                  <button
+                    key={link.to}
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      onNavigate(link.to);
+                    }}
+                    className="px-2 py-2 rounded-xl bg-card border border-border text-foreground text-[11px] font-semibold truncate hover:border-primary/60 hover:text-primary transition-colors"
+                  >
+                    {link.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
           </>
 
         )}
