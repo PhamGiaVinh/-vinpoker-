@@ -297,16 +297,18 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
 
       {selectedTournament ? (
         <Tabs defaultValue="live_view" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-8 h-auto">
-            <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> {t("tournamentLive.liveView.title")}</TabsTrigger>
-            <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.title")}</TabsTrigger>
-            <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> {t("tournamentLive.tableDraw.title")}</TabsTrigger>
-            <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> Input</TabsTrigger>
-            <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
-            <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
-            <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> Blinds</TabsTrigger>
-            <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> Prizes</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-2 px-2 pb-1">
+            <TabsList className="inline-flex w-max min-w-full">
+              <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> {t("tournamentLive.liveView.title")}</TabsTrigger>
+              <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.title")}</TabsTrigger>
+              <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> {t("tournamentLive.tableDraw.title")}</TabsTrigger>
+              <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> Input</TabsTrigger>
+              <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
+              <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
+              <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> Blinds</TabsTrigger>
+              <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> Prizes</TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="live_view" className="mt-4">
             <TournamentLiveView tournamentId={selectedTournament.id} />
           </TabsContent>
