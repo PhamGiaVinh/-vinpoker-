@@ -1725,6 +1725,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "Chọn giải",
+    "tabs": {
+      "input": "Nhập Hand",
+      "blinds": "Blinds",
+      "prizes": "Giải thưởng"
+    },
     "liveView": {
       "title": "Xem trực tiếp",
       "waiting": "Chờ dealer bắt đầu hand...",
@@ -1792,7 +1798,7 @@
       "orphanVoided": "Orphan hand voided"
     },
     "clock": {
-      "title": "Tournament Clock",
+      "title": "Đồng hồ giải",
       "refresh": "Làm mới",
       "start": "Bắt đầu",
       "pause": "Tạm dừng",
@@ -1806,10 +1812,10 @@
       "title": "Table Draw"
     },
     "leaderboard": {
-      "title": "Leaderboard"
+      "title": "Bảng xếp hạng"
     },
     "handHistory": {
-      "title": "Hand History",
+      "title": "Lịch sử Hand",
       "allTables": "All Tables",
       "noHands": "No hands recorded yet",
       "selectHand": "Select a hand to view details",

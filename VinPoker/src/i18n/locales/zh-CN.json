@@ -1719,6 +1719,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "选择比赛",
+    "tabs": {
+      "input": "牌局录入",
+      "blinds": "Blinds",
+      "prizes": "奖金"
+    },
     "liveView": {
       "title": "实时视图",
       "waiting": "等待荷官开始手牌...",

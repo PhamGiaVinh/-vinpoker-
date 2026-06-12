@@ -1725,6 +1725,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "Select tournament",
+    "tabs": {
+      "input": "Hand Input",
+      "blinds": "Blinds",
+      "prizes": "Prizes"
+    },
     "liveView": {
       "title": "Live View",
       "waiting": "Waiting for dealer to start hand...",

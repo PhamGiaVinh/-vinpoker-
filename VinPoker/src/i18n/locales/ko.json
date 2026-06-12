@@ -1715,6 +1715,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "토너먼트 선택",
+    "tabs": {
+      "input": "핸드 입력",
+      "blinds": "Blinds",
+      "prizes": "상금"
+    },
     "liveView": {
       "title": "실시간 보기",
       "waiting": "딜러가 핸드를 시작하기를 기다리는 중...",

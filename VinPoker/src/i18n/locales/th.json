@@ -1719,6 +1719,12 @@
     }
   },
   "tournamentLive": {
+    "selectTournament": "เลือกทัวร์นาเมนต์",
+    "tabs": {
+      "input": "บันทึกแฮนด์",
+      "blinds": "Blinds",
+      "prizes": "รางวัล"
+    },
     "liveView": {
       "title": "มุมมองสด",
       "waiting": "รอดีลเลอร์เริ่มแฮนด์...",
