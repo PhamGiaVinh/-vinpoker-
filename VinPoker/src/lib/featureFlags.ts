@@ -19,4 +19,11 @@ export const FEATURES = {
   movePlayer: true,
   /** Realtime queue updates — requires tournament_registrations in the realtime publication. */
   registrationRealtime: false,
+  /**
+   * Dealer Swing "Sửa nhầm bàn" wrong-table correction modal (#33C).
+   * Backend reconcile_dealer_room_state is LIVE (20260817000002 + club-scope
+   * fix 20260818000002, both applied 2026-06-13 in controlled sessions).
+   * Kill-switch: flipping to false restores the disabled placeholder button.
+   */
+  wrongTableCorrection: true,
 } as const;
