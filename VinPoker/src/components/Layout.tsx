@@ -31,8 +31,17 @@ const tabsData = [
   { to: "/account", labelKey: "account", icon: User, label: "Tài khoản" },
 ];
 
-// Mobile bottom nav: 4 key public tabs + center LogoFanButton (no text overflow at 360px)
-const mobileTabsData = [tabsData[0], tabsData[1], tabsData[2], tabsData[9]];
+// Mobile bottom nav: 4 key public tabs + center LogoFanButton (no text overflow at 360px).
+// Selected by route (stable against tabsData reordering); the rest stay reachable
+// through the center quick-menu links below.
+const MOBILE_TAB_ROUTES = ["/", "/feed", "/clubs", "/account"];
+const mobileTabsData = MOBILE_TAB_ROUTES
+  .map((to) => tabsData.find((t) => t.to === to))
+  .filter((t): t is (typeof tabsData)[number] => Boolean(t));
+
+// Destinations without a bottom-nav slot — exposed in the LogoFanButton quick menu
+// so no previous mobile nav route becomes unreachable.
+const mobileQuickLinks = tabsData.filter((t) => !MOBILE_TAB_ROUTES.includes(t.to));
 
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
@@ -198,7 +207,7 @@ export const Layout = () => {
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
@@ -234,6 +243,11 @@ export const Layout = () => {
               else nav("/auth");
             }}
             onPoker={() => nav("/")}
+            quickLinks={mobileQuickLinks.map((tab) => ({
+              to: tab.to,
+              label: t(`nav.${tab.labelKey}`, tab.label),
+            }))}
+            onNavigate={(to) => nav(to)}
           />
           {mobileTabsData.slice(2).map((tab) => (
             <NavLink
