@@ -552,6 +552,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         )}
       </div>
 
+      {/* Persistent read-only banner — existing isReadOnly state, display only */}
+      {isReadOnly && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+          <span className="w-1.5 h-1.5 bg-red-400 rounded-full shrink-0" />
+          <span>
+            Phiên nhập hand đã bị khoá (mất quyền điều khiển bàn). Chỉ xem — tải lại trang để tiếp tục nhập.
+          </span>
+        </div>
+      )}
+
       {/* SETUP: Table selector */}
       {!tableId && (
         <UiCard className="p-6 text-center space-y-4 border-dashed">
