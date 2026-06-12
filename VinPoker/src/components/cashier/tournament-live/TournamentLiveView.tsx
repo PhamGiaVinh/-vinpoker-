@@ -632,7 +632,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
             return (
               <div key={seat.player_id} className="absolute z-10" style={posStyle}>
                 <div
-                  className={`bg-gradient-to-br from-emerald-900/60 to-slate-900/60 backdrop-blur-sm border rounded-xl p-2.5 w-36 text-center transition-all duration-300 ${
+                  className={`bg-gradient-to-br from-emerald-900/60 to-slate-900/60 backdrop-blur-sm border rounded-xl p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36 text-center transition-all duration-300 ${
                     seat.is_folded
                       ? "border-border/20 opacity-50 grayscale-[0.5]"
                       : seat.is_all_in
@@ -641,7 +641,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
                   }`}
                 >
                   <div className="flex justify-between items-center mb-1.5">
-                    <span className="text-emerald-400 font-semibold text-xs truncate max-w-[80px]">
+                    <span className="text-emerald-400 font-semibold text-xs truncate max-w-[52px] sm:max-w-[80px]">
                       {seat.display_name}
                     </span>
                     {seat.position && (
@@ -656,7 +656,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
                       </span>
                     )}
                   </div>
-                  <div className="text-white font-bold text-sm font-mono">
+                  <div className="text-white font-bold text-xs sm:text-sm font-mono">
                     {formatStack(seat.chip_count)}
                   </div>
                   {seat.is_all_in && (
