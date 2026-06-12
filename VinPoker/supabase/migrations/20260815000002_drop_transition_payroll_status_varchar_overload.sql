@@ -1,0 +1,27 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PAYROLL P0 DRIFT FIX: drop obsolete transition_payroll_status varchar overload
+--
+-- 20260724000000_payroll_reject_flow.sql CREATEd the canonical 5-param overload
+--   transition_payroll_status(uuid, text, text, uuid, text DEFAULT NULL)
+-- but never DROPped the old 4-param one from 20260716000000
+--   transition_payroll_status(uuid, varchar, varchar, uuid)
+-- With both live, every PostgREST call using 4 named args (submit/approve/lock in
+-- src/hooks/useDealerPayroll.ts) fails with "Could not choose the best candidate
+-- function" — the entire payroll approval lifecycle was broken. Found during
+-- saved-path UAT Case 3 (2026-06-12).
+--
+-- This drops ONLY the obsolete varchar overload. The canonical 5-param overload is
+-- untouched; its p_rejection_reason DEFAULT NULL serves all 4-arg calls uniquely.
+-- Already manually applied to the linked test DB and verified: submit → "Đã gửi
+-- duyệt", approve → "Đã phê duyệt", stored submitted_by/at + approved_by/at
+-- populated, no partial writes.
+--
+-- Pre-drop snapshot (verbatim old body, md5 4c056efdf2efee7e73677d743d512377):
+--   docs/emergency_rollbacks/PRE_DROP_transition_payroll_status_varchar_overload_20260612.sql
+-- Context + rollback notes:
+--   docs/emergency_rollbacks/PRE_DROP_transition_payroll_status_varchar_overload_20260612.md
+-- Rollback: re-run the snapshot file (re-introduces the ambiguity bug — only if the
+-- 5-param overload proves defective).
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+DROP FUNCTION IF EXISTS public.transition_payroll_status(uuid, varchar, varchar, uuid);
