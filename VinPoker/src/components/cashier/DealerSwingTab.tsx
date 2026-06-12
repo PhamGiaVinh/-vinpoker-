@@ -3726,9 +3726,25 @@ function CommandCenter({
           scheduleByTableId={scheduleByTableId}
           nowMs={nowMs}
           autoSwingEnabled={autoSwingEnabled}
-          onSwing={(attendanceId) => {
-            const a = assignments.find((x) => x.attendance_id === attendanceId);
-            if (a) onAutoSwing();
+          onSwing={(tableId) => {
+            const a = tableAssignmentMap[tableId];
+            if (!a?.id) {
+              toast.warning("Bàn này không có assignment hiệu lực hoặc dữ liệu đã cũ. Vui lòng tải lại.");
+              return;
+            }
+            const t = tables.find((x) => x.id === tableId);
+            const currentDealer = a.dealer_attendance?.dealers?.full_name ?? "Dealer hiện tại";
+            const nextDealer = a.pre_assigned_attendance_id
+              ? assignments.find((x) => x.attendance_id === a.pre_assigned_attendance_id)?.dealer_attendance?.dealers?.full_name ?? null
+              : null;
+            const isOt = !!a.overtime_started_at;
+            setConfirmSwing({
+              assignmentId: a.id,
+              tableName: t?.table_name ?? "Bàn",
+              outName: currentDealer,
+              inName: nextDealer,
+              isOt,
+            });
           }}
           onAssign={onAssign}
           onSendToBreak={onSendToBreak}

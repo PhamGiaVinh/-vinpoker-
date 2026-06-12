@@ -4,7 +4,7 @@ import type { AttentionItem as AttentionItemData } from "@/hooks/useAttentionQue
 
 interface Props {
   item: AttentionItemData;
-  onSwing?: (attendanceId: string) => void;
+  onSwing?: (tableId: string) => void;
   onAssign?: (tableId: string) => void;
   onSendToBreak?: (attendanceId: string) => void;
   onFocusTable?: (tableId: string) => void;
@@ -48,9 +48,9 @@ export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, 
       </div>
 
       <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-        {item.type === "ot" && item.attendanceId && onSwing && (
+        {item.type === "ot" && item.tableId && onSwing && (
           <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] lg:h-6 lg:px-1.5 lg:text-[10px]"
-            onClick={() => onSwing(item.attendanceId!)}>
+            onClick={() => onSwing(item.tableId!)}>
             Swing <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
           </Button>
         )}

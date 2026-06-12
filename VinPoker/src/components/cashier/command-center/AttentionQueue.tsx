@@ -13,7 +13,7 @@ interface Props {
   scheduleByTableId?: Record<string, RotationTableSlots> | null;
   nowMs: number;
   autoSwingEnabled: boolean;
-  onSwing: (attendanceId: string) => void;
+  onSwing: (tableId: string) => void;
   onAssign: (tableId: string) => void;
   onSendToBreak: (attendanceId: string) => void;
   onFocusTable?: (tableId: string) => void;
