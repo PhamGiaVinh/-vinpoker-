@@ -27,7 +27,14 @@
     "authRequiredHint": "Đăng nhập VinPoker trên thiết bị này rồi mở lại đường dẫn TV",
     "loadError": "Không tải được dữ liệu giải đấu",
     "loadErrorHint": "Hệ thống sẽ tự động thử lại…",
-    "offline": "Mất kết nối realtime — đang dùng chế độ dự phòng"
+    "offline": "Mất kết nối realtime — đang dùng chế độ dự phòng",
+    "pairTitle": "Ghép nối màn hình TV",
+    "pairInstruction": "Nhập mã này trong bảng điều khiển VinPoker (Tournament Live → TV Displays) để gán giải đấu cho TV này",
+    "pairWaiting": "Đang chờ ghép nối…",
+    "pairExpires": "Mã mới sau",
+    "pairError": "Không thể kết nối máy chủ — đang thử lại…",
+    "displayStandby": "Chưa gán giải đấu",
+    "displayStandbyHint": "Chọn giải đấu cho TV này từ bảng điều khiển"
   },
   "nav": {
     "schedule": "Lịch giải",
