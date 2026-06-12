@@ -3670,8 +3670,9 @@ function CommandCenter({
             ) : (
               auditLogs.map((log: any) => (
                 <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                  <span className="font-semibold text-foreground">{log.action}</span>
-                  <span className="block truncate">{new Date(log.created_at).toLocaleTimeString("vi-VN")}</span>
+                  <span className="font-semibold text-foreground">{auditActionLabel(log.action)}</span>
+                  {auditLogNames(log.payload) && <span className="ml-1">{auditLogNames(log.payload)}</span>}
+                  <span className="block truncate">{new Date(log.created_at).toLocaleString("vi-VN")}</span>
                 </div>
               ))
             )}
@@ -4220,7 +4221,40 @@ min_duration_minutes: Math.max(5, Math.min((cfg as any).min_duration_minutes ?? 
 /* ==============================================================
    AUDIT LOG SECTION — auto-scroll with unread badge
    ============================================================== */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  assign: "Gán dealer",
+  mass_assign: "Gán loạt",
+  checkout_dealer: "Check-out dealer",
+  table_closed: "Đóng bàn",
+  telegram_failed: "Lỗi gửi Telegram",
+  tournament_break: "Nghỉ giải đấu",
+};
+
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+/** Display-only: dealer/table names already present in the fetched log row payload. */
+function auditLogNames(payload: any): string {
+  if (!payload || typeof payload !== "object") return "";
+  const parts: string[] = [];
+  if (payload.dealer_name) parts.push(String(payload.dealer_name));
+  if (payload.table_name) parts.push(`bàn ${payload.table_name}`);
+  return parts.join(" · ");
+}
+
+function timeAgoVi(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "vừa xong";
+  if (mins < 60) return `${mins} phút trước`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  return new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+}
+
 function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; totalCount: number; onViewAll: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? logs : logs.slice(0, 3);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -4231,13 +4265,23 @@ function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; t
       ) : (
         <>
           <div className="space-y-1">
-            {logs.map((log: any) => (
-              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5">
-                <span className="font-mono text-[10px]">{new Date(log.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
-                <span className="ml-1.5 font-semibold text-foreground">{log.action}</span>
+            {visible.map((log: any) => (
+              <div key={log.id} className="text-[11px] text-muted-foreground border-l-2 border-border pl-2 py-0.5"
+                title={new Date(log.created_at).toLocaleString("vi-VN")}>
+                <span className="font-semibold text-foreground">{auditActionLabel(log.action)}</span>
+                {auditLogNames(log.payload) && <span className="ml-1">{auditLogNames(log.payload)}</span>}
+                <span className="ml-1.5 text-[10px]">{timeAgoVi(log.created_at)}</span>
               </div>
             ))}
           </div>
+          {!expanded && logs.length > 3 && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-[10px] text-muted-foreground hover:text-foreground w-full text-left"
+            >
+              Xem thêm…
+            </button>
+          )}
           {totalCount > logs.length && (
             <button
               onClick={onViewAll}
