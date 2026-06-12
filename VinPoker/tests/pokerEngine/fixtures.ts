@@ -66,6 +66,40 @@ export function play(state: HandState, actions: Action[]): ApplyResult {
   return { state: st, events };
 }
 
+// ── rigged deck builder for golden hands ─────────────────────────────────────
+
+export interface RiggedDeckOpts {
+  button: number;
+  /** seat number -> EXACTLY the 2 hole cards that seat must receive. Every active seat must be listed. */
+  holeBySeat: Record<number, [Card, Card]>;
+  /** Exactly the 5 community cards, in runout order: flop ×3, turn, river. */
+  board: [Card, Card, Card, Card, Card];
+}
+
+/**
+ * Build the exact deck `createHand` needs so each seat receives the given hole
+ * cards and the board runs out as given. Replicates the engine's deal order:
+ * one card per seat per round, clockwise from the SB (heads-up: SB = button),
+ * then the next 5 deck cards are the board (flop 3 / turn / river, no burns).
+ * Emits EXACTLY 2n+5 cards — `createHand` needs no more in any path
+ * (check-down, all-in runout, fold-to-one), and no filler means no
+ * accidental-duplicate risk.
+ */
+export function riggedDeck(opts: RiggedDeckOpts): Card[] {
+  const seats = Object.keys(opts.holeBySeat).map(Number).sort((a, b) => a - b);
+  const n = seats.length;
+  const after = (from: number): number => seats[(seats.indexOf(from) + 1) % n];
+  const sb = n === 2 ? opts.button : after(opts.button);
+  const order: number[] = [];
+  for (let cur = sb, i = 0; i < n; i++, cur = after(cur)) order.push(cur);
+  const deck: Card[] = [];
+  for (let round = 0; round < 2; round++) {
+    for (const s of order) deck.push(opts.holeBySeat[s][round]);
+  }
+  deck.push(...opts.board);
+  return deck;
+}
+
 // ── low-level state builder for precise showdown / side-pot tests ────────────
 
 export function baseSeat(over: Partial<SeatState> & { seat: number }): SeatState {

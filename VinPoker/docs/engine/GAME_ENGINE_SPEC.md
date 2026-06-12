@@ -52,6 +52,8 @@ identically: `committed` is reset to `0`, `currentBet` to `0`, `aggressor` to
 createHand(config, deck, seatInputs)        deck is INJECTED (RNG at server boundary)
   └─ post blinds (short blinds = all-in for less)
   └─ deal 2 hole cards each, clockwise from SB
+       (deal ring = the PRE-BLIND active list: a seat put all-in by posting
+        its blind is still dealt in — GE-1.6 fix)
   └─ street: preflop, toAct = UTG (heads-up: button/SB)
 
 betting round (street = preflop|flop|turn|river, status = 'betting')
@@ -79,20 +81,39 @@ betting round (street = preflop|flop|turn|river, status = 'betting')
   respond (call/fold) but lose the right to re-raise (`canRaise = false`,
   including all-in re-shoves). Not-yet-acted seats keep full rights.
 - **Uncalled bet refund**: the unmatched top of the last bet returns to its
-  owner before any award (both completion paths).
+  owner before any award (both completion paths). An all-in for less is a call
+  of what it covers — the excess above the second-highest total commitment is
+  what returns. The refund applies even if its owner has folded (unreachable
+  via legal play — there is no open-fold — but pinned for hand-built states).
+  The refund is RECORDED: `HandResult.refund {seat, amount}` plus a public
+  `uncalled_returned` event emitted BEFORE `showdown`/`pot_awarded`, so hand
+  histories show the standard "Uncalled bet returned to X" line.
 - **Forced timeout** (`forcedTimeoutAction`): check if free, else fold.
   Disconnect/grace policy is a Phase-2 runtime concern, not engine logic.
 
 ## 5. Pots, showdown, settlement
 
 - Side pots are layered by `totalCommitted` level; folded seats' chips stay in
-  the pots (dead money) but folded seats are never eligible.
+  the pots (dead money) but folded seats are never eligible. Equal commitments
+  collapse into one layer (no spurious pots); a fold INSIDE a layer leaves odd
+  dead money there, which is how chopped pots acquire odd chips at all — a
+  layer whose contributors are all eligible and all tie always splits evenly.
+- The deepest reachable layer always has at least one non-folded contender:
+  the last aggressor at the top level cannot have folded (no open-fold). If a
+  future rule change allows open-folds, `distribute` throws explicitly on an
+  all-folded layer instead of failing on bigint division — re-evaluate then.
 - Each pot is evaluated independently over its eligible seats (7→best-5
   evaluator: straight flush > quads > full house > flush > straight > trips >
   two pair > pair > high card; wheel A-2-3-4-5 supported; kicker-exact).
-- Ties split; odd chips go to winners nearest clockwise from the button.
+- Ties split; odd chips go PER POT to winners nearest clockwise from the button.
 - `HandResult` records `endedBy`, `potTotal`, per-pot `potAwards`, per-seat
-  `payouts`. `Σ payouts === potTotal`.
+  `payouts`, and `refund` when an uncalled bet was returned.
+  `Σ payouts === potTotal`; payouts list winners only (a seat that won nothing
+  is ABSENT, never `0`); preconditions assume blinds > 0.
+- Golden fixtures: `tests/pokerEngine/goldenHands.test.ts` pins 17 hard hands
+  (multiway layered all-ins, side-pot chops, per-pot odd chips with dead money,
+  refunds on both completion paths, blind-all-in deals) to exact hand-computed
+  results, each replayed twice bit-for-bit.
 
 ## 6. Secrecy model (locked)
 
@@ -103,7 +124,8 @@ betting round (street = preflop|flop|turn|river, status = 'betting')
   leakage is structurally impossible — `WirePublicSeat` has no hole-card field.
 - Events are PUBLIC ONLY: `hole_cards_dealt` announces dealing without cards;
   `board_revealed` carries only just-opened cards; `showdown` carries only
-  contesting seats' reveals. Fold-to-one reveals nothing.
+  contesting seats' reveals; `uncalled_returned` carries seat + amount (no
+  cards). Fold-to-one reveals nothing.
 - Persistence rule (Patch A schema): private data lives ONLY in
   `online_poker_hand_secrets` (FORCE RLS, deny-all, never in realtime).
 
@@ -148,9 +170,19 @@ at runtime by the persistence layer / replay path:
 3. During betting: an `allin` seat has stack 0; `toAct` points at an active
    seat; `Σ totalCommitted === pot`; side pots partition the pot exactly.
 4. Card integrity: no duplicate card across board + hole cards + deck;
-   hole cards are exactly 0 or 2.
+   hole cards are exactly 0 or 2 — and once the hand is live (betting or
+   complete), every in-hand seat (active/allin) holds EXACTLY 2. This is the
+   check that catches mis-deals chip conservation cannot see.
 5. Side pots: positive amounts, non-empty eligibility, folded never eligible.
-6. Complete: `toAct === null`, `pot === 0`, result present, `Σ payouts === potTotal`.
+6. Complete: `toAct === null`, `pot === 0`, result present, `Σ payouts === potTotal`,
+   every seat's `committed === 0`, `sidePots` cleared.
+7. Settlement (complete): every award winner is a non-folded in-hand seat;
+   payouts go only to winners and are positive; no seat is paid more than the
+   layers it was eligible for (recomputed from final `totalCommitted`, which
+   only `refundUncalled` ever lowers); on showdown the awards align 1:1 with
+   the recomputed layers (amounts equal, winners ⊆ layer eligibility) — on
+   fold-to-one only the cap applies (one collapsed award vs N layers);
+   `refund`, when present, names a real seat and a positive amount.
 
 ## 10. Module map
 
@@ -173,8 +205,10 @@ at runtime by the persistence layer / replay path:
 | `index.ts` | Barrel (everything except `provableFair`) |
 
 Tests: `tests/pokerEngine/` — evaluate, pots, showdown, betting, lifecycle,
-invariants (property-based), contracts, replay (incl. 25 seeded random hands
-replayed bit-for-bit), illegalActions (rejection side-effects matrix).
+invariants (property-based, 400 runs with full `assertInvariants` per action),
+contracts, replay (incl. 25 seeded random hands replayed bit-for-bit),
+illegalActions (rejection side-effects matrix), goldenHands (17 exact-settlement
+golden fixtures, deterministic double-replay).
 
 ## 11. Non-goals of the pure engine
 

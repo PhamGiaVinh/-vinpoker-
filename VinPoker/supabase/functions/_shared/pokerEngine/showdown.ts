@@ -6,10 +6,10 @@
 import type { HandEvent, HandState, PotAward } from './types.ts';
 import { compareRankVec, evaluateBest } from './evaluate.ts';
 import { computeSidePots, distribute, refundUncalled } from './pots.ts';
-import { handComplete, potAwarded, showdownEvent } from './events.ts';
+import { handComplete, potAwarded, showdownEvent, uncalledReturned } from './events.ts';
 
 export function evaluateShowdown(state: HandState): HandEvent[] {
-  refundUncalled(state);
+  const refund = refundUncalled(state);
 
   const pots = computeSidePots(state);
   const potTotal = state.pot; // after refund == Σ totalCommitted
@@ -44,6 +44,10 @@ export function evaluateShowdown(state: HandState): HandEvent[] {
   state.street = 'showdown';
   state.status = 'complete';
   state.result = { endedBy: 'showdown', potTotal, potAwards: awards, payouts };
+  if (refund) state.result.refund = { ...refund };
 
-  return [showdownEvent(reveals), potAwarded(awards), handComplete('showdown', potTotal)];
+  // chronology: the uncalled excess goes back BEFORE cards are tabled or pots awarded
+  const events: HandEvent[] = refund ? [uncalledReturned(refund.seat, refund.amount)] : [];
+  events.push(showdownEvent(reveals), potAwarded(awards), handComplete('showdown', potTotal));
+  return events;
 }

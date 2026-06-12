@@ -14,7 +14,8 @@ import {
 import { computeSidePots, refundUncalled } from './pots.ts';
 import { evaluateShowdown } from './showdown.ts';
 import {
-  blindsPosted, boardRevealed, handComplete, handStarted, holeCardsDealt, potAwarded, streetAdvanced,
+  blindsPosted, boardRevealed, handComplete, handStarted, holeCardsDealt, potAwarded,
+  streetAdvanced, uncalledReturned,
 } from './events.ts';
 
 export const SCHEMA_VERSION = 1;
@@ -49,6 +50,8 @@ export function cloneState(state: HandState): HandState {
           ...state.result,
           potAwards: state.result.potAwards.map((a) => ({ ...a, winners: [...a.winners] })),
           payouts: { ...state.result.payouts },
+          // nested object: must be copied, or clones would share (and could mutate) it
+          ...(state.result.refund ? { refund: { ...state.result.refund } } : {}),
         }
       : undefined,
     deck: [...state.deck],
@@ -136,17 +139,16 @@ export function createHand(
   state.lastFullRaiseSize = cfg.bb;
   state.aggressor = bbSeat.seat;
 
-  // deal 2 hole cards each, one at a time, clockwise from SB (cards consumed off deck front)
+  // deal 2 hole cards each, one at a time, clockwise from SB (cards consumed off
+  // deck front). The deal ring is the PRE-BLIND active list: posting a blind can
+  // put a short seat all-in, but an all-in-from-the-blinds seat is still dealt in.
+  // (GE-1.6 fix: walking the post-blind 'active' statuses here crashed when both
+  // blinds went all-in and mis-dealt — skipped the all-in BB, doubled another
+  // seat — whenever one blind did.)
   let di = 0;
   const dealOrder = (() => {
-    const ordered: SeatState[] = [];
-    let cur = sbSeat.seat;
-    for (let i = 0; i < active.length; i++) {
-      const s = seats.find((x) => x.seat === cur)!;
-      ordered.push(s);
-      cur = findActiveAfter(cur).seat;
-    }
-    return ordered;
+    const start = active.findIndex((s) => s.seat === sbSeat.seat);
+    return active.map((_, i) => active[(start + i) % active.length]);
   })();
   for (let round = 0; round < 2; round++) {
     for (const s of dealOrder) s.holeCards.push(state.deck[di++]);
@@ -238,7 +240,7 @@ function closeRoundAndAdvance(state: HandState): HandEvent[] {
 // ── fold-to-one ──────────────────────────────────────────────────────────────
 
 function awardFoldToOne(state: HandState, seatNo: number): HandEvent[] {
-  refundUncalled(state);
+  const refund = refundUncalled(state);
   // Close the street metadata exactly like closeRoundAndAdvance does, so a
   // fold-to-one completed state never carries stale per-street accounting
   // (a refunded raiser would otherwise show committed > totalCommitted).
@@ -263,8 +265,11 @@ function awardFoldToOne(state: HandState, seatNo: number): HandEvent[] {
     potAwards: awards,
     payouts: { [seatNo]: amount },
   };
+  if (refund) state.result.refund = { ...refund };
   // fold-to-one NEVER reveals the winner's cards
-  return [potAwarded(awards), handComplete('fold', amount)];
+  const events: HandEvent[] = refund ? [uncalledReturned(refund.seat, refund.amount)] : [];
+  events.push(potAwarded(awards), handComplete('fold', amount));
+  return events;
 }
 
 // ── applyAction (public reducer) ─────────────────────────────────────────────

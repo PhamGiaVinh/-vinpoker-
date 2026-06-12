@@ -85,6 +85,26 @@ describe('refundUncalled', () => {
     });
     expect(refundUncalled(st)).toBeNull();
   });
+
+  it('refunds the excess even to a FOLDED top committer (unreachable via legal play, pinned for safety)', () => {
+    // No legal action line can leave a folded seat as the unique top committer
+    // (there is no open-fold; a folder always trails the live bet). But if a
+    // corrupted/hand-built state ever presents one, the uncalled rule still
+    // applies: the unmatched excess goes back to its owner, folded or not.
+    const st = makeState({
+      seats: [
+        baseSeat({ seat: 1, stack: 0n, totalCommitted: 500n, status: 'folded' }),
+        baseSeat({ seat: 2, stack: 0n, totalCommitted: 200n, status: 'allin' }),
+      ],
+      pot: 700n,
+    });
+    const before = totalChips(st);
+    expect(refundUncalled(st)).toEqual({ seat: 1, amount: 300n });
+    expect(st.seats[0].stack).toBe(300n);
+    expect(st.seats[0].totalCommitted).toBe(200n);
+    expect(st.pot).toBe(400n);
+    expect(totalChips(st)).toBe(before);
+  });
 });
 
 describe('distribute (odd chip clockwise from button)', () => {
@@ -104,5 +124,15 @@ describe('distribute (odd chip clockwise from button)', () => {
     expect(shares[1]).toBe(50n);
     expect(st.pot).toBe(0n);
     expect(totalChips(st)).toBe(before); // conserved
+  });
+
+  it('rejects an empty or duplicated winner list explicitly (not a bigint division crash)', () => {
+    const st = makeState({
+      seats: [baseSeat({ seat: 1 }), baseSeat({ seat: 2 })],
+      pot: 100n,
+    });
+    expect(() => distribute(st, 100n, [], 1)).toThrow('distribute: no winners');
+    expect(() => distribute(st, 100n, [1, 1], 1)).toThrow('distribute: duplicate winners');
+    expect(st.pot).toBe(100n); // untouched on rejection
   });
 });

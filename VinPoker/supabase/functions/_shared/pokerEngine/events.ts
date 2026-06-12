@@ -36,6 +36,10 @@ export const streetAdvanced = (street: string): HandEvent => ev('street_advanced
 export const boardRevealed = (street: string, cards: Card[]): HandEvent =>
   ev('board_revealed', { street, cards });
 
+/** The unmatched top of the last bet returned to its owner (pot -> stack), before any award. */
+export const uncalledReturned = (seat: number, amount: bigint): HandEvent =>
+  ev('uncalled_returned', { seat, amount: amount.toString() });
+
 export const potAwarded = (awards: PotAward[]): HandEvent =>
   ev('pot_awarded', {
     awards: awards.map((a) => ({

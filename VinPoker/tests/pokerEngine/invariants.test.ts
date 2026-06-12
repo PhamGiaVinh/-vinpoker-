@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { createHand, legalActions, applyAction } from '@engine/index.ts';
+import { createHand, legalActions, applyAction, assertInvariants } from '@engine/index.ts';
 import type { Action, HandState } from '@engine/index.ts';
 import { mulberry32, si, totalChips } from './fixtures.ts';
 import { makeDeck, shuffle } from '@engine/index.ts';
@@ -55,6 +55,9 @@ describe('engine invariants (property-based)', () => {
         (seed, nSeats, picks) => {
           let state = freshFromSeed(seed, nSeats);
           const start = totalChips(state);
+          // full structural check from hand #0 — catches card-integrity bugs
+          // (mis-deals) that the chip assertions below cannot see
+          assertInvariants(state, start);
 
           for (const p of picks) {
             if (state.status !== 'betting') break;
@@ -65,6 +68,7 @@ describe('engine invariants (property-based)', () => {
             state = r.state;
 
             // ── invariants after EVERY applied action ──
+            assertInvariants(state, start); // incl. the settlement checks once complete
             expect(totalChips(state)).toBe(start);                  // Σ(stacks)+pot conserved
             expect(state.seats.every((s) => s.stack >= 0n)).toBe(true);
             expect(state.pot >= 0n).toBe(true);

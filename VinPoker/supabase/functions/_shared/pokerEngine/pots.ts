@@ -90,6 +90,12 @@ export function distribute(
   winners: number[],
   buttonSeat: number,
 ): Record<number, bigint> {
+  // Defensive: both are unreachable from legal play today (the last aggressor at
+  // the top commitment level can never have folded — there is no open-fold), but
+  // a raw `amount / 0n` TypeError would be far harder to diagnose. If open-fold
+  // is ever allowed, an all-folded pot layer becomes a real rules question.
+  if (winners.length === 0) throw new Error('distribute: no winners for pot');
+  if (new Set(winners).size !== winners.length) throw new Error('distribute: duplicate winners');
   const shares: Record<number, bigint> = {};
   const k = BigInt(winners.length);
   const base = amount / k;

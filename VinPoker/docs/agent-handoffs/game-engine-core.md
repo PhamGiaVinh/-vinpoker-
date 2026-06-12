@@ -127,6 +127,46 @@ GE-2 Patch C session).
 
 ---
 
+## GE-1.6 — Showdown + Side Pot + Settlement hardening (2026-06-13, branch `agent/game-engine-ge1-6-settlement-hardening`)
+
+Source-only, on top of GE-1.5 (no DB, no runtime, no Edge entrypoint):
+
+- **REAL ENGINE BUG FOUND + FIXED (deal ring):** `createHand` walked the
+  POST-blind `active` statuses to build the deal order. When posting a blind
+  put a seat all-in, that seat was SKIPPED at the deal (another seat received
+  4 cards); when BOTH blinds went all-in (HU short stacks), `createHand`
+  crashed outright. Invisible to chip conservation — survived the 400-run
+  property suite — caught by the new golden fixtures. Fix: the deal ring is
+  the PRE-BLIND active list, clockwise from the SB. Plus a new invariant:
+  once a hand is live, every in-hand seat holds exactly 2 cards.
+- **Refund visibility (contract extension, additive):** `HandResult.refund
+  {seat, amount}` + public `uncalled_returned` event (emitted only when a
+  refund happened, BEFORE showdown/pot_awarded), mirrored on the wire as
+  `WireHandResult.refund {seat, amount: ChipString}`; `cloneState` deep-copies
+  it. Hand histories can now show "Uncalled bet returned to X".
+- **Settlement invariants:** complete-state checks for committed===0 /
+  sidePots cleared / winners are non-folded in-hand seats / payouts ⊆ winners,
+  positive / per-seat payout ≤ recomputed layer eligibility / showdown awards
+  align 1:1 with recomputed layers (fold-to-one: cap only — it emits ONE
+  collapsed award) / refund sanity.
+- **Defensive guards:** `distribute` throws explicitly on empty or duplicated
+  winner lists (was a raw bigint division crash; unreachable today — documented
+  why in the spec for any future open-fold change).
+- **Golden hand fixtures:** `tests/pokerEngine/goldenHands.test.ts` — 17 hands
+  pinned to exact hand-computed settlements, each replayed twice bit-for-bit:
+  HU/3-way/4-way layered all-ins, main- and SIDE-pot chops, per-pot odd chips
+  (2-way and 3-way ×1/×2, incl. odd chips inside a side pot via a mid-layer
+  fold), explicit refunds on both completion paths, no-reopen vs full-raise
+  reopen, dead-money exclusion, blind-all-in deals, empty action log.
+  `riggedDeck` helper in fixtures.ts builds exact decks (deal-order aware).
+- **Property suite strengthened:** the fast-check loop now runs full
+  `assertInvariants` after every action (this alone would have caught the
+  deal-ring bug). `refundUncalled`'s folded-top-committer branch pinned via a
+  hand-built state (unreachable via legal play — no open-fold — proof in spec).
+- Engine suite 63 → 83 tests.
+
+---
+
 ## Checkpoint — 2026-06-13 (end of GE-1 + GE-2 Patch A session)
 
 > SUPERSEDED 2026-06-13 (later the same day): all GE-1 files below are now
