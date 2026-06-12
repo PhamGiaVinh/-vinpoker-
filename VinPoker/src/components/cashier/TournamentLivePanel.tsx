@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -25,6 +25,7 @@ import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
 import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
 import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
+import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -324,6 +325,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
               <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
               <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.blinds")}</TabsTrigger>
               <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.prizes")}</TabsTrigger>
+              <TabsTrigger value="tv_displays"><Tv className="w-4 h-4 mr-1" /> {t("tournamentLive.tvDisplays.tab")}</TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="live_view" className="mt-4">
@@ -357,6 +359,19 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
           </TabsContent>
           <TabsContent value="prizes" className="mt-4">
             <PrizeStructurePanel tournamentId={selectedTournament.id} />
+          </TabsContent>
+          <TabsContent value="tv_displays" className="mt-4">
+            <TvDisplaysPanel
+              tournamentId={selectedTournament.id}
+              tournamentName={selectedTournament.name}
+              clubId={selectedTournament.club_id}
+              tournaments={(tournaments ?? []).map((tour) => ({
+                id: tour.id,
+                name: tour.name,
+                club_id: tour.club_id,
+                status: tour.status,
+              }))}
+            />
           </TabsContent>
         </Tabs>
       ) : (
