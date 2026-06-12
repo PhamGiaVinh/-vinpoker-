@@ -6,9 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Dices, Ticket, XCircle, Copy } from "lucide-react";
+import { Loader2, RefreshCw, Dices, Ticket, XCircle, Copy, ArrowRightLeft } from "lucide-react";
 import { formatVND, formatDateTime } from "@/lib/format";
+import { FEATURES } from "@/lib/featureFlags";
 import { SeatDrawDialog, type DrawRegistration } from "./SeatDrawDialog";
+import { MovePlayerDialog } from "./MovePlayerDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { CancelRegistrationDialog } from "@/components/cashier/registrations/CancelRegistrationDialog";
@@ -29,6 +31,7 @@ interface QueueRow {
   phone: string | null;
   cashier_name: string | null;
   queueStatus: QueueStatus;
+  entry_id: string | null;
   receipt: {
     receipt_code: string;
     status: string;
@@ -77,6 +80,7 @@ export function RegistrationQueuePanel({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<QueueRow | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [moveRow, setMoveRow] = useState<QueueRow | null>(null);
   const seqRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -140,6 +144,7 @@ export function RegistrationQueuePanel({
           receipt_code: rc.receipt_code, status: rc.status,
           table_number: rc.table_number, seat_number: rc.seat_number, display_name: rc.display_name,
         } : null,
+        entry_id: entry?.id ?? null,
         starting_stack: entry?.current_stack ?? null,
       };
     }));
@@ -274,6 +279,11 @@ export function RegistrationQueuePanel({
                       <Ticket className="w-3.5 h-3.5 mr-1" /> Xem phiếu
                     </Button>
                   )}
+                  {FEATURES.movePlayer && r.entry_id && (r.queueStatus === "seated" || r.queueStatus === "printed") && (
+                    <Button size="sm" variant="outline" className="flex-1 h-9" onClick={() => setMoveRow(r)}>
+                      <ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Chuyển ghế
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -299,6 +309,19 @@ export function RegistrationQueuePanel({
         busy={cancelBusy}
         onCancel={cancel}
       />
+
+      {moveRow?.entry_id && (
+        <MovePlayerDialog
+          open={moveRow !== null}
+          onOpenChange={(v) => { if (!v) setMoveRow(null); }}
+          tournamentId={tournamentId}
+          entryId={moveRow.entry_id}
+          playerName={moveRow.player_name}
+          currentTournamentTableId={null}
+          currentSeatNumber={moveRow.receipt?.seat_number ?? null}
+          onMoved={load}
+        />
+      )}
 
       <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen} receipt={receipt} />
     </Card>

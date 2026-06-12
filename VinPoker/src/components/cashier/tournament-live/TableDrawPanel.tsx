@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { RefreshCw, Save, Plus, UserPlus, X, Undo2, AlertTriangle, ArrowRightLeft } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
+import { MovePlayerDialog } from "./MovePlayerDialog";
 
 interface SeatData {
   seat_id: string;
@@ -101,15 +103,23 @@ export function TableDrawPanel({
   const [addingPlayer, setAddingPlayer] = useState(false);
   // Chip-conservation confirm gate: holds the pending diff while the floor confirms.
   const [chipWarning, setChipWarning] = useState<{ before: number; after: number } | null>(null);
+  // System-A linkage: seats with an entry have receipts/history — their table/seat
+  // must only change through MovePlayerDialog (move_player_seat), never bulk save.
+  const [entryIdBySeatId, setEntryIdBySeatId] = useState<Record<string, string>>({});
+  const [moveTarget, setMoveTarget] = useState<{ entryId: string; seat: SeatData } | null>(null);
 
   const loadSeats = useCallback(async () => {
     setLoading(true);
     try {
-      const [seatsRes, tablesRes] = await Promise.all([
+      const [seatsRes, tablesRes, entriesRes] = await Promise.all([
         supabase.functions.invoke("tournament-live-draw", {
           body: { tournament_id: tournamentId, action: "get_seats" },
         }),
         supabase.rpc("get_tournament_tables", { p_tournament_id: tournamentId }),
+        // get_seats doesn't return entry_id — fetch the linkage directly (SELECT-authenticated RLS)
+        FEATURES.movePlayer
+          ? supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tournamentId)
+          : Promise.resolve({ data: null } as { data: { id: string; entry_id: string | null }[] | null }),
       ]);
       if (seatsRes.error || seatsRes.data?.error) {
         toast.error(seatsRes.data?.error || seatsRes.error?.message);
@@ -126,6 +136,11 @@ export function TableDrawPanel({
           : [];
         setTables(tInfo);
       }
+      const entryMap: Record<string, string> = {};
+      for (const row of (entriesRes.data ?? []) as { id: string; entry_id: string | null }[]) {
+        if (row.entry_id) entryMap[row.id] = row.entry_id;
+      }
+      setEntryIdBySeatId(entryMap);
     } finally {
       setLoading(false);
       setChipWarning(null);
@@ -267,6 +282,22 @@ export function TableDrawPanel({
 
   const handleSave = async () => {
     if (!seats || !snapshot) return;
+    // System-A guard (defense-in-depth behind the locked inputs): bulk save must
+    // never change table/seat of an entry-backed row — that breaks its receipt
+    // and history. Moving those goes through MovePlayerDialog only.
+    if (FEATURES.movePlayer) {
+      const snapById = new Map(snapshot.map((s) => [s.seat_id, s]));
+      for (const s of seats) {
+        const o = snapById.get(s.seat_id);
+        if (!o || !entryIdBySeatId[s.seat_id]) continue;
+        if (o.table_id !== s.table_id || o.seat_number !== s.seat_number) {
+          toast.error(
+            `${s.player_name || "Người chơi"} có phiếu ghế — dùng nút "Chuyển" thay vì sửa trực tiếp để giữ phiếu/lịch sử hợp lệ.`,
+          );
+          return;
+        }
+      }
+    }
     // Duplicate active (table, seat) — abort naming the exact conflict.
     const byKey = new Map<string, SeatData>();
     for (const s of seats) {
@@ -333,6 +364,11 @@ export function TableDrawPanel({
 
   const renderSeatCard = (seat: SeatData) => {
     const editable = seat.is_active;
+    // System-A lock (owner-approved acceptance): entry-backed seats have receipts +
+    // history — bulk editor must never change their table/seat. Chips and the
+    // Active toggle stay bulk-editable; moving goes through MovePlayerDialog only.
+    const entryId = FEATURES.movePlayer ? entryIdBySeatId[seat.seat_id] : undefined;
+    const seatLocked = editable && !!entryId;
     return (
       <div
         key={seat.seat_id}
@@ -340,7 +376,7 @@ export function TableDrawPanel({
       >
         <div className="text-xs text-muted-foreground flex items-center gap-1">
           Seat
-          {editable ? (
+          {editable && !seatLocked ? (
             <Input
               type="number"
               min={1}
@@ -358,6 +394,9 @@ export function TableDrawPanel({
           {seat.entry_number > 1 && (
             <span className="ml-1 text-amber-500">R#{seat.entry_number}</span>
           )}
+          {seatLocked && (
+            <span className="ml-1 text-[10px] text-sky-400" title="Có phiếu ghế — dùng Chuyển để giữ phiếu/lịch sử hợp lệ">🎫</span>
+          )}
         </div>
         <div className="text-sm font-medium truncate">{seat.player_name || seat.player_id.slice(0, 8)}</div>
         {editable ? (
@@ -369,7 +408,16 @@ export function TableDrawPanel({
               onChange={(e) => updateSeat(seat.seat_id, "chip_count", Math.max(0, Number(e.target.value)))}
               className="h-7 text-xs font-mono"
             />
-            {tables.length > 1 && (
+            {seatLocked ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full h-7 text-xs"
+                onClick={() => setMoveTarget({ entryId: entryId!, seat })}
+              >
+                <ArrowRightLeft className="w-3 h-3 mr-1" /> Chuyển
+              </Button>
+            ) : tables.length > 1 ? (
               <select
                 value={seat.table_id}
                 onChange={(e) => updateSeat(seat.seat_id, "table_id", e.target.value)}
@@ -380,7 +428,7 @@ export function TableDrawPanel({
                   <option key={t.table_id} value={t.table_id}>{t.table_name}</option>
                 ))}
               </select>
-            )}
+            ) : null}
           </>
         ) : (
           <div className="text-xs font-mono">{seat.chip_count.toLocaleString()}</div>
@@ -399,6 +447,18 @@ export function TableDrawPanel({
 
   return (
     <Card className="p-4 space-y-4">
+      {moveTarget && (
+        <MovePlayerDialog
+          open={moveTarget !== null}
+          onOpenChange={(v) => { if (!v) setMoveTarget(null); }}
+          tournamentId={tournamentId}
+          entryId={moveTarget.entryId}
+          playerName={moveTarget.seat.player_name || moveTarget.seat.player_id.slice(0, 8)}
+          currentTournamentTableId={moveTarget.seat.table_id}
+          currentSeatNumber={moveTarget.seat.seat_number}
+          onMoved={loadSeats}
+        />
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="font-semibold">Table Draw</div>
