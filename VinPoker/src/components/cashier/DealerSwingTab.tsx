@@ -1394,8 +1394,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <Skeleton className="h-96 rounded-none" />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* LEFT COLUMN — 25% */}
-          <div className="lg:col-span-3 flex flex-col gap-4 min-h-0">
+          {/* LEFT COLUMN — 25% (reference info → last on mobile) */}
+          <div className="order-last lg:order-none lg:col-span-3 flex flex-col gap-4 min-h-0">
             <BreakPoolCard
               entries={breakPool ?? []}
               loading={breakPoolLoading}
@@ -1467,8 +1467,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             )}
           </div>
 
-          {/* RIGHT COLUMN — 25% */}
-          <div className="lg:col-span-3">
+          {/* RIGHT COLUMN — 25% (attention queue + KPIs → first on mobile) */}
+          <div className="order-first lg:order-none lg:col-span-3">
             <CommandCenter
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
