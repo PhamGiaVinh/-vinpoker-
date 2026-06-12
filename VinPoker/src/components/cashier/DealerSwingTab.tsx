@@ -52,7 +52,7 @@ import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
-  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard,
+  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -3442,17 +3442,8 @@ function TableGrid({
                               <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
                             )
                           ) : null}
-                          {/* Đổi & CHỐT dealer thay thế — planning only, never the handoff */}
-                          {slot0HasDealer && slot0!.status !== "executing" && (
-                            <button
-                              type="button"
-                              className="ml-auto shrink-0 text-[10px] px-1.5 py-0.5 border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
-                              title="Đổi & CHỐT dealer thay thế (không thực hiện swing)"
-                              onClick={() => onChangePredicted(t.id)}
-                            >
-                              Đổi
-                            </button>
-                          )}
+                          {/* "Đổi" mini-button removed — promoted to the "Sửa dealer"
+                              action-row button below (same handler, clearer placement). */}
                         </div>
                       )}
                       {forecastSlots.length > 0 && (
@@ -3469,13 +3460,36 @@ function TableGrid({
                   )}
 
                   {/* ── Action buttons ── */}
-                  <div className="flex gap-1.5 pt-1">
+                  <div className="flex flex-wrap gap-1.5 pt-1">
                     {a && a.status === "assigned" && (
                       <>
                         <Button size="sm" variant="outline" className="flex-1 text-xs h-7"
                           onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
                           <Clock className="w-3 h-3 mr-1" /> Nghỉ
                         </Button>
+                        {/* Sửa dealer — planning-only edit of the predicted replacement
+                            for THIS table. Never the handoff: that stays on "Chốt đổi dealer". */}
+                        <span
+                          className="flex-1"
+                          title={slot0?.status === "executing"
+                            ? "Đang thực hiện đổi dealer — không thể sửa kế hoạch lúc này"
+                            : "Sửa dealer thay thế dự kiến cho bàn này (không thực hiện swing)"}
+                        >
+                          <Button size="sm" variant="outline"
+                            className="w-full text-xs h-7 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10"
+                            disabled={slot0?.status === "executing"}
+                            onClick={() => {
+                              if (!a?.id) {
+                                toast.warning("Không tìm thấy ca dealer của bàn này");
+                                return;
+                              }
+                              onChangePredicted(t.id);
+                            }}>
+                            <UserCog className="w-3 h-3 mr-1" />
+                            <span className="hidden sm:inline">Sửa dealer</span>
+                            <span className="sm:hidden">Sửa</span>
+                          </Button>
+                        </span>
                         {(() => {
                           // Final-handoff button. Semantics unchanged (perform_swing),
                           // but: honest label, confirmation dialog, and a client-side
@@ -3515,7 +3529,8 @@ function TableGrid({
                                 {swingingAssignmentId === a.id
                                   ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                                   : <RefreshCw className="w-3 h-3 mr-1" />}
-                                {isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"}
+                                <span className="hidden sm:inline">{isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"}</span>
+                                <span className="sm:hidden">{isOt ? "Chốt khẩn" : "Chốt"}</span>
                               </Button>
                             </span>
                           );
