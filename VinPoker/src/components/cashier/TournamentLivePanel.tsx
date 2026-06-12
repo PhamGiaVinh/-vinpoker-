@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -24,6 +24,7 @@ import { BlindStructurePanel } from "./tournament-live/BlindStructurePanel";
 import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
 import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
+import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -317,6 +318,7 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
               <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> {t("tournamentLive.liveView.title")}</TabsTrigger>
               <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.title")}</TabsTrigger>
               <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> {t("tournamentLive.tableDraw.title")}</TabsTrigger>
+              <TabsTrigger value="queue"><ListOrdered className="w-4 h-4 mr-1" /> Hàng chờ</TabsTrigger>
               <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.input")}</TabsTrigger>
               <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
               <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
@@ -332,6 +334,14 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
           </TabsContent>
           <TabsContent value="table_draw" className="mt-4">
             <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
+          </TabsContent>
+          <TabsContent value="queue" className="mt-4">
+            <RegistrationQueuePanel
+              tournamentId={selectedTournament.id}
+              tournamentName={selectedTournament.name}
+              tournamentDate={(selectedTournament as Tournament & { start_time?: string | null }).start_time ?? null}
+              refreshTrigger={refreshTrigger}
+            />
           </TabsContent>
           <TabsContent value="hand_input" className="mt-4">
             <HandInputPanel tournamentId={selectedTournament.id} />
