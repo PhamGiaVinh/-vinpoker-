@@ -70,6 +70,7 @@ DECLARE
   v_out_name           TEXT;
   v_out_username       TEXT;
   v_telegram           TEXT := 'skipped_no_chat_id';
+  v_old_job            TEXT := 'none';
 BEGIN
   -- [1] Resolve the club WITHOUT locking, gate, THEN lock. Gating before the
   --     FOR UPDATE prevents a cross-club caller from holding even a momentary
@@ -282,21 +283,28 @@ BEGIN
     RAISE EXCEPTION 'SET_SLOT_DEALER_SCHEDULE_UPDATE failed for %', p_schedule_id;
   END IF;
 
-  -- [12] Telegram — best-effort enqueue; never rolls back the change.
-  BEGIN
-    SELECT cs.telegram_chat_id INTO v_chat_id
-    FROM club_settings cs WHERE cs.club_id = v_row.club_id;
-
-    -- Cancel the superseded dealer's not-yet-sent announcement so the worker
-    -- doesn't call the wrong dealer to the table. Already-SENT messages
-    -- cannot be retracted (documented limitation).
-    IF v_was_announced AND v_old_attendance IS NOT NULL THEN
+  -- [12a] Cancel the superseded dealer's not-yet-sent announcement so the
+  --       worker doesn't call the wrong dealer to the table. Own
+  --       subtransaction: a failure in the LATER enqueue ([12b]) can never
+  --       roll this cancellation back, and vice versa. Already-SENT messages
+  --       cannot be retracted (documented limitation).
+  IF v_was_announced AND v_old_attendance IS NOT NULL THEN
+    BEGIN
       UPDATE pre_announce_jobs
       SET status = 'cancelled'
       WHERE table_id = v_row.table_id
         AND attendance_id = v_old_attendance
         AND status = 'pending';
-    END IF;
+      v_old_job := 'cancelled_if_pending';
+    EXCEPTION WHEN OTHERS THEN
+      v_old_job := 'cancel_failed: ' || SQLERRM;
+    END;
+  END IF;
+
+  -- [12b] Telegram — best-effort enqueue; never rolls back the change.
+  BEGIN
+    SELECT cs.telegram_chat_id INTO v_chat_id
+    FROM club_settings cs WHERE cs.club_id = v_row.club_id;
 
     IF v_chat_id IS NOT NULL THEN
       SELECT d.full_name, d.telegram_username INTO v_new_name, v_new_username
@@ -345,7 +353,8 @@ BEGIN
     'new_attendance_id', p_new_attendance_id,
     'planned_relief_at', v_row.planned_relief_at,
     'was_announced',     v_was_announced,
-    'telegram',          v_telegram
+    'telegram',          v_telegram,
+    'old_job',           v_old_job
   );
 
 EXCEPTION
