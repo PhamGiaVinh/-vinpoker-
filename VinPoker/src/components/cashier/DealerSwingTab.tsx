@@ -3116,12 +3116,21 @@ function TableGrid({
             const pred = nextDealerMap?.[t.id];
 
             // ── Timer / OT / Progress computations ──────────────────────────
-            const swingDueMs = tl?.nominalDueAt
-              ? new Date(tl.nominalDueAt).getTime()
-              : a?.assigned_at
-                ? new Date(a.assigned_at).getTime() +
-                  ((tableTournament?.swing_duration_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes ?? 30) * 60_000)
-                : 0;
+            // Single source of truth: the assignment's swing_due_at. Recomputing
+            // a "nominal" due from assigned_at + config duration desyncs the
+            // countdown/QUÁ HẠN badge from the DB whenever the actual session
+            // duration differs from config (e.g. auto-adjusted durations) —
+            // the card then shows phantom OT while the scheduler honestly
+            // waits for the real due. Config math remains only as a fallback
+            // for rows that somehow lack swing_due_at.
+            const swingDueMs = a?.swing_due_at
+              ? new Date(a.swing_due_at).getTime()
+              : tl?.nominalDueAt
+                ? new Date(tl.nominalDueAt).getTime()
+                : a?.assigned_at
+                  ? new Date(a.assigned_at).getTime() +
+                    ((tableTournament?.swing_duration_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes ?? 30) * 60_000)
+                  : 0;
             const actualDueMs = tl?.actualDueAt
               ? new Date(tl.actualDueAt).getTime()
               : a?.swing_due_at
