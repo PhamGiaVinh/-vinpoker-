@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 20260817000000_online_poker_core.sql
--- Online Poker (play-money) base schema — GE-2 Patch A.
+-- Online Poker (play-money) base schema - GE-2 Patch A.
 -- ADDITIVE + IDEMPOTENT (safe to run twice). Touches ONLY public.online_poker_*.
 -- SOURCE-ONLY: this file is authored, NOT applied here. No RPC / Edge / realtime
 -- in this migration (realtime is a separate, guarded migration).
@@ -8,10 +8,10 @@
 -- CHIP / MONEY MODEL ---------------------------------------------------------
 --   All chip/stack/pot/balance amounts are PLAY CHIPS, stored as `bigint`.
 --   This is NOT real money. The application boundary (engine GE-1 uses JS bigint)
---   must serialize chips as DECIMAL STRINGS over JSON/transport — never as a JS
+--   must serialize chips as DECIMAL STRINGS over JSON/transport - never as a JS
 --   number (precision loss past 2^53). Non-negative / range CHECK constraints are
 --   DB backstops so the schema itself never permits a negative stack/pot/balance,
---   an out-of-range seat, or two active hands per table — independent of the RPCs.
+--   an out-of-range seat, or two active hands per table - independent of the RPCs.
 --
 -- SECRECY MODEL --------------------------------------------------------------
 --   PUBLIC rail tables (tables/seats/hands/hand_seats/hand_events/hand_snapshots)
@@ -19,10 +19,10 @@
 --   PRIVATE data (full deck, hole cards, server_seed, undealt board) lives ONLY
 --   in online_poker_hand_secrets, which is deny-all (FORCE RLS, no policy) and is
 --   never published to realtime. Writes happen only via SECURITY DEFINER RPCs /
---   service_role added in a later patch — Patch A defines NO write policies.
+--   service_role added in a later patch - Patch A defines NO write policies.
 -- ============================================================================
 
--- 1) online_poker_tables — a poker room/table -------------------------------
+-- 1) online_poker_tables - a poker room/table -------------------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_tables (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id uuid REFERENCES public.clubs(id),               -- NULL = global lobby (MVP)
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_tables (
   CHECK (max_buyin >= min_buyin)
 );
 
--- 2) online_poker_player_accounts — play-chip wallet ------------------------
+-- 2) online_poker_player_accounts - play-chip wallet ------------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_player_accounts (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id),
   balance bigint NOT NULL DEFAULT 0 CHECK (balance >= 0), -- server-ledger derived; never negative
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_player_accounts (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 3) online_poker_seats — persistent seat occupancy --------------------------
+-- 3) online_poker_seats - persistent seat occupancy --------------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_seats (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   table_id uuid NOT NULL REFERENCES public.online_poker_tables(id) ON DELETE CASCADE,
@@ -65,7 +65,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_op_one_user_per_table
   ON public.online_poker_seats (table_id, user_id)
   WHERE user_id IS NOT NULL AND status IN ('sitting','sitting_out');
 
--- 4) online_poker_hands — PUBLIC authoritative hand state -------------------
+-- 4) online_poker_hands - PUBLIC authoritative hand state -------------------
 CREATE TABLE IF NOT EXISTS public.online_poker_hands (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   table_id uuid NOT NULL REFERENCES public.online_poker_tables(id) ON DELETE CASCADE,
@@ -101,7 +101,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_op_one_active_hand_per_table
   ON public.online_poker_hands (table_id)
   WHERE status IN ('dealing','betting');
 
--- 5) online_poker_hand_seats — per-hand per-seat PUBLIC facts ----------------
+-- 5) online_poker_hand_seats - per-hand per-seat PUBLIC facts ----------------
 CREATE TABLE IF NOT EXISTS public.online_poker_hand_seats (
   hand_id uuid NOT NULL REFERENCES public.online_poker_hands(id) ON DELETE CASCADE,
   seat_no int NOT NULL CHECK (seat_no BETWEEN 1 AND 10),
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hand_seats (
   CHECK (total_committed >= committed)                     -- all-streets total includes the current street
 );
 
--- 6) online_poker_hand_events — authoritative append-only PUBLIC log ---------
+-- 6) online_poker_hand_events - authoritative append-only PUBLIC log ---------
 CREATE TABLE IF NOT EXISTS public.online_poker_hand_events (
   hand_id uuid NOT NULL REFERENCES public.online_poker_hands(id) ON DELETE CASCADE,
   event_seq int NOT NULL,
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hand_events (
   PRIMARY KEY (hand_id, event_seq)
 );
 
--- 7) online_poker_actions — append-only request log + durable idempotency ----
+-- 7) online_poker_actions - append-only request log + durable idempotency ----
 CREATE TABLE IF NOT EXISTS public.online_poker_actions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   hand_id uuid NOT NULL REFERENCES public.online_poker_hands(id) ON DELETE CASCADE,
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_actions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 8) online_poker_hand_secrets — SERVER-ONLY deck + hole cards (deny-all) -----
+-- 8) online_poker_hand_secrets - SERVER-ONLY deck + hole cards (deny-all) -----
 --    PK is a plain uuid because a Postgres PRIMARY KEY cannot use an expression;
 --    uniqueness on (hand_id, kind, COALESCE(seat_no,-1)) is a UNIQUE INDEX below.
 CREATE TABLE IF NOT EXISTS public.online_poker_hand_secrets (
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hand_secrets (
 CREATE UNIQUE INDEX IF NOT EXISTS online_poker_hand_secrets_unique_key
   ON public.online_poker_hand_secrets (hand_id, kind, COALESCE(seat_no, -1));
 
--- 9) online_poker_hand_snapshots — O(1) recovery (PUBLIC projection) ----------
+-- 9) online_poker_hand_snapshots - O(1) recovery (PUBLIC projection) ----------
 CREATE TABLE IF NOT EXISTS public.online_poker_hand_snapshots (
   hand_id uuid NOT NULL REFERENCES public.online_poker_hands(id) ON DELETE CASCADE,
   at_seq int NOT NULL,                                    -- snapshot taken AFTER this event_seq
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS public.online_poker_hand_snapshots (
   PRIMARY KEY (hand_id, at_seq)
 );
 
--- 10) online_poker_chip_ledger — append-only play-chip audit -----------------
+-- 10) online_poker_chip_ledger - append-only play-chip audit -----------------
 CREATE TABLE IF NOT EXISTS public.online_poker_chip_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id),
@@ -187,9 +187,9 @@ CREATE INDEX IF NOT EXISTS idx_op_chip_ledger_user
 -- ============================================================================
 -- Row Level Security
 --   Public rail: SELECT for any authenticated user (public state only).
---   Own-row: actions / chip_ledger / player_accounts — only the owning user.
+--   Own-row: actions / chip_ledger / player_accounts - only the owning user.
 --   Secrets: deny-all (FORCE RLS, no policy).
---   NO INSERT/UPDATE/DELETE policies in Patch A — all writes go through
+--   NO INSERT/UPDATE/DELETE policies in Patch A - all writes go through
 --   SECURITY DEFINER RPCs / service_role added in a later patch.
 -- ============================================================================
 
@@ -240,16 +240,16 @@ ALTER TABLE public.online_poker_hand_secrets FORCE  ROW LEVEL SECURITY;
 COMMENT ON TABLE  public.online_poker_hand_secrets IS
   'SERVER-ONLY private store: full deck, per-seat hole cards, undealt board, provable-fair server_seed. Deny-all RLS (FORCE, no policy); never published to realtime; readable only via SECURITY DEFINER RPC / service_role.';
 COMMENT ON TABLE  public.online_poker_hand_events IS
-  'Authoritative append-only PUBLIC event log. payload is PUBLIC-ONLY: it must NEVER contain hole cards, deck order, server_seed, or unrevealed board cards — those live only in online_poker_hand_secrets.';
+  'Authoritative append-only PUBLIC event log. payload is PUBLIC-ONLY: it must NEVER contain hole cards, deck order, server_seed, or unrevealed board cards - those live only in online_poker_hand_secrets.';
 COMMENT ON COLUMN public.online_poker_hands.state IS
-  'PUBLIC HandState projection only — must never contain hole cards or undealt board.';
+  'PUBLIC HandState projection only - must never contain hole cards or undealt board.';
 COMMENT ON COLUMN public.online_poker_hands.engine_version IS
-  'Engine build that produced this hand — pins deterministic replay across engine upgrades.';
+  'Engine build that produced this hand - pins deterministic replay across engine upgrades.';
 COMMENT ON COLUMN public.online_poker_hand_seats.revealed_cards IS
   'PUBLIC; remains NULL until a legitimate showdown reveal of a contesting seat (mucked/folded stay NULL).';
 COMMENT ON COLUMN public.online_poker_actions.idempotency_key IS
   'Durable crash-safe dedupe key (global UNIQUE). Must be a strong UUID/ULID-style value so distinct actions never collide.';
 COMMENT ON COLUMN public.online_poker_player_accounts.balance IS
-  'Play chips (bigint; NOT real money). Server-ledger derived — clients never update directly; mutated only via SECURITY DEFINER RPC / service_role. Serialize as a decimal string over transport.';
+  'Play chips (bigint; NOT real money). Server-ledger derived - clients never update directly; mutated only via SECURITY DEFINER RPC / service_role. Serialize as a decimal string over transport.';
 COMMENT ON COLUMN public.online_poker_chip_ledger.amount IS
   'Play chips (bigint; NOT real money). SIGNED wallet delta: grant/cashout add (+), buyin/rebuy remove (-); never zero. balance_after = resulting non-negative wallet balance. Append-only audit. Serialize as a decimal string over transport.';

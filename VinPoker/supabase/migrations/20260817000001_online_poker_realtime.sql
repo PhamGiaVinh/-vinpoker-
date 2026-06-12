@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 20260817000001_online_poker_realtime.sql
--- Online Poker realtime publication — GE-2 Patch A (separate from the core
+-- Online Poker realtime publication - GE-2 Patch A (separate from the core
 -- schema on purpose, to stay isolated from the rest of the realtime config).
 -- ADDITIVE + IDEMPOTENT. SOURCE-ONLY: authored, NOT applied here.
 --
