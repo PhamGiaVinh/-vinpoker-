@@ -12,6 +12,7 @@
 
 import type { HandState } from './types.ts';
 import { isCard } from './deck.ts';
+import { computeSidePots } from './pots.ts';
 
 /**
  * Check every structural invariant. Returns a list of human-readable
@@ -37,6 +38,16 @@ export function checkInvariants(state: HandState, initialTotal?: bigint): string
     }
     if (s.holeCards.length !== 0 && s.holeCards.length !== 2) {
       v.push(`seat ${s.seat}: holeCards length ${s.holeCards.length} (must be 0 or 2)`);
+    }
+    // once a hand is live, every seat still in it must hold exactly 2 cards —
+    // this catches mis-deals (e.g. a blind-all-in seat skipped at the deal)
+    // that chip conservation alone cannot see
+    if (
+      (state.status === 'betting' || state.status === 'complete') &&
+      (s.status === 'active' || s.status === 'allin') &&
+      s.holeCards.length !== 2
+    ) {
+      v.push(`seat ${s.seat}: in the hand with ${s.holeCards.length} hole cards (must be 2)`);
     }
   }
 
@@ -93,19 +104,78 @@ export function checkInvariants(state: HandState, initialTotal?: bigint): string
     }
   }
 
-  // ── completion ──
+  // ── completion / settlement ──
   if (state.status === 'complete') {
     if (state.toAct !== null) v.push(`complete hand with toAct=${state.toAct}`);
     if (state.pot !== 0n) v.push(`complete hand with undistributed pot ${state.pot}`);
+    // both completion paths close street accounting; a live side-pot list would be stale too
+    for (const s of seats) {
+      if (s.committed !== 0n) v.push(`complete hand: seat ${s.seat} has stale committed ${s.committed}`);
+    }
+    if (state.sidePots.length !== 0) v.push(`complete hand with live sidePots (${state.sidePots.length})`);
     if (!state.result) {
       v.push('complete hand without a result');
     } else {
-      const paid = Object.values(state.result.payouts).reduce((a, x) => a + x, 0n);
-      if (paid !== state.result.potTotal) {
-        v.push(`payouts ${paid} !== potTotal ${state.result.potTotal}`);
-      }
-      for (const a of state.result.potAwards) {
+      const r = state.result;
+      const paid = Object.values(r.payouts).reduce((a, x) => a + x, 0n);
+      if (paid !== r.potTotal) v.push(`payouts ${paid} !== potTotal ${r.potTotal}`);
+
+      // winners must be real, non-folded seats; payouts must go only to winners
+      const winnerSet = new Set<number>();
+      for (const a of r.potAwards) {
         if (a.winners.length === 0) v.push(`pot award ${a.potIndex}: no winners`);
+        for (const w of a.winners) {
+          winnerSet.add(w);
+          const s = seats.find((x) => x.seat === w);
+          if (!s) v.push(`pot award ${a.potIndex}: winner ${w} does not exist`);
+          else if (s.status !== 'active' && s.status !== 'allin') {
+            v.push(`pot award ${a.potIndex}: winner ${w} is ${s.status}`);
+          }
+        }
+      }
+      for (const [k, amt] of Object.entries(r.payouts)) {
+        if (!winnerSet.has(Number(k))) v.push(`payout to non-winner seat ${k}`);
+        if (amt <= 0n) v.push(`non-positive payout ${amt} to seat ${k}`);
+      }
+
+      // settlement cap: totalCommitted survives completion (only refundUncalled lowers
+      // it), so the pot layers can be recomputed from the final state. No seat may be
+      // paid more than the layers it was eligible for. (Holds for fold-to-one too: the
+      // winner is the post-refund top committer, eligible for every layer.)
+      const layers = computeSidePots(state);
+      const capBySeat = new Map<number, bigint>();
+      for (const p of layers) {
+        for (const sn of p.eligibleSeats) capBySeat.set(sn, (capBySeat.get(sn) ?? 0n) + p.amount);
+      }
+      for (const [k, amt] of Object.entries(r.payouts)) {
+        const cap = capBySeat.get(Number(k)) ?? 0n;
+        if (amt > cap) v.push(`seat ${k} paid ${amt} > eligible cap ${cap}`);
+      }
+
+      // showdown awards must align 1:1 with the recomputed layers. (Fold-to-one
+      // collapses everything into ONE award, so only the cap above applies there.)
+      if (r.endedBy === 'showdown') {
+        if (r.potAwards.length !== layers.length) {
+          v.push(`showdown awards ${r.potAwards.length} !== recomputed layers ${layers.length}`);
+        } else {
+          for (const [i, a] of r.potAwards.entries()) {
+            if (a.amount !== layers[i].amount) {
+              v.push(`award ${i}: amount ${a.amount} !== recomputed layer ${layers[i].amount}`);
+            }
+            for (const w of a.winners) {
+              if (!layers[i].eligibleSeats.includes(w)) {
+                v.push(`award ${i}: winner ${w} not eligible for that layer`);
+              }
+            }
+          }
+        }
+      }
+
+      if (r.refund) {
+        if (r.refund.amount <= 0n) v.push(`refund with non-positive amount ${r.refund.amount}`);
+        if (!seats.some((s) => s.seat === r.refund!.seat)) {
+          v.push(`refund to unknown seat ${r.refund.seat}`);
+        }
       }
     }
   }

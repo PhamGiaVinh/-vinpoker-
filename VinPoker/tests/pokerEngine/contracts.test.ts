@@ -65,6 +65,33 @@ describe('wire state views', () => {
     }
   });
 
+  it('carries the settlement refund onto the wire as a ChipString (mapping is explicit, not just typed)', () => {
+    // overbet shove: seat 1 (1000) over seat 2 (300) => 700 returns uncalled
+    const st0 = freshHand([1000n, 300n], { button: 1, deck: shuffle(makeDeck(), mulberry32(11)) });
+    let st = applyAction(st0, { type: 'allin', seat: 1 }).state;
+    st = applyAction(st, { type: 'allin', seat: 2 }).state;
+    expect(st.status).toBe('complete');
+    expect(st.result?.refund).toEqual({ seat: 1, amount: 700n });
+
+    const wire = toWirePublicState(st);
+    expect(wire.result?.refund).toEqual({ seat: 1, amount: '700' }); // ChipString, not bigint
+    JSON.stringify(wire); // still bigint-free
+
+    // fold path carries it too: SB open-folds, the BB's unmatched 50 returns
+    const hu = freshHand([1000n, 1000n], { button: 1, deck: shuffle(makeDeck(), mulberry32(12)) });
+    const folded = applyAction(hu, { type: 'fold', seat: 1 }).state;
+    expect(folded.result?.refund).toEqual({ seat: 2, amount: 50n });
+    expect(toWirePublicState(folded).result?.refund).toEqual({ seat: 2, amount: '50' });
+
+    // and a hand with NO refund (equal stacks, top tied) must not carry the field
+    const even0 = freshHand([500n, 500n], { button: 1, deck: shuffle(makeDeck(), mulberry32(13)) });
+    let even = applyAction(even0, { type: 'allin', seat: 1 }).state;
+    even = applyAction(even, { type: 'allin', seat: 2 }).state;
+    expect(even.status).toBe('complete');
+    expect(even.result?.refund).toBeUndefined();
+    expect(toWirePublicState(even).result?.refund).toBeUndefined();
+  });
+
   it('wire legal actions mirror the engine menu with chip strings', () => {
     const st = freshHand([1000n, 1000n], { button: 1 }); // heads-up: SB(button)=seat 1 to act
     const la = toWireLegalActions(st, 1);

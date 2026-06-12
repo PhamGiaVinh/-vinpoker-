@@ -181,6 +181,8 @@ export interface WireHandResult {
   potAwards: WirePotAward[];
   /** seat number (as an object key) -> chips won this hand. */
   payouts: Record<number, ChipString>;
+  /** Uncalled top of the last bet returned to its owner before any award (absent if none). */
+  refund?: { seat: number; amount: ChipString };
 }
 
 export interface WirePublicSeat {
@@ -280,6 +282,9 @@ function wirePublicFromView(view: PublicHandState): WirePublicHandState {
           payouts: Object.fromEntries(
             Object.entries(view.result.payouts).map(([seat, amt]) => [seat, chipToString(amt)]),
           ),
+          refund: view.result.refund
+            ? { seat: view.result.refund.seat, amount: chipToString(view.result.refund.amount) }
+            : undefined,
         }
       : undefined,
   };

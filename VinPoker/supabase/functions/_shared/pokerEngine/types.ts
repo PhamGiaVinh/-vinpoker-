@@ -95,6 +95,8 @@ export interface HandResult {
   potTotal: bigint;                  // total distributed (pot value before payout)
   potAwards: PotAward[];
   payouts: Record<number, bigint>;   // seat -> chips won this hand
+  /** Uncalled top of the last bet returned to its owner BEFORE any award (absent if none). */
+  refund?: { seat: number; amount: bigint };
 }
 
 /**
@@ -126,6 +128,7 @@ export type HandEventType =
   | 'action'
   | 'street_advanced'
   | 'board_revealed'     // carries ONLY the just-revealed community cards
+  | 'uncalled_returned'  // unmatched top of the last bet went back to its owner (pot -> stack)
   | 'pot_awarded'
   | 'showdown'           // carries ONLY revealed cards of CONTESTING seats
   | 'hand_complete';
