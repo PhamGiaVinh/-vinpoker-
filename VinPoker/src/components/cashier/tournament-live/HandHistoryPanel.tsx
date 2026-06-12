@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 
 interface HandRecord {
@@ -67,6 +68,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const [hands, setHands] = useState<HandRecord[]>([]);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string>("all");
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
 
@@ -89,6 +91,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const loadHands = useCallback(async () => {
     if (!tournamentId) return;
     setLoading(true);
+    setLoadError(null);
 
     let query = supabase
       .from("tournament_hands")
@@ -103,6 +106,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 
     const { data: handRows, error } = await query;
     if (error || !handRows) {
+      setLoadError(error?.message ?? "Không tải được dữ liệu");
       setHands([]);
       setLoading(false);
       return;
@@ -211,8 +215,18 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
           ))}
         </select>
 
+        {loadError && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="flex-1 break-all">Không tải được lịch sử hand: {loadError}</span>
+            <Button size="sm" variant="outline" onClick={loadHands} disabled={loading} className="h-6 text-[11px] shrink-0">
+              Thử lại
+            </Button>
+          </div>
+        )}
+
         <div className="space-y-1 max-h-[600px] overflow-y-auto pr-1">
-          {hands.length === 0 && !loading && (
+          {hands.length === 0 && !loading && !loadError && (
             <div className="text-xs text-muted-foreground text-center py-8 italic">No hands recorded yet</div>
           )}
           {hands.map((hand) => (
