@@ -1766,6 +1766,55 @@
       "telegramChatIdHint": "Enter your Telegram group Chat ID to receive swing notifications"
     }
   },
+  "tdAi": {
+    "entry": "Ask TD AI",
+    "title": "TD AI Assistant",
+    "subtitle": "Look up tournament-dispute handling. DEMO — no AI yet, not an official ruling.",
+    "newLookup": "New lookup",
+    "form": {
+      "table": "Table",
+      "tablePlaceholder": "e.g. Table 4",
+      "street": "Street",
+      "streetPlaceholder": "Select street",
+      "players": "Players involved",
+      "playersPlaceholder": "e.g. Seat 3 and Seat 5",
+      "actionSequence": "Action sequence",
+      "actionSequencePlaceholder": "e.g. Seat 3 raised, Seat 5 moved chips in multiple motions",
+      "description": "Situation description",
+      "descriptionPlaceholder": "Briefly describe the situation to look up…",
+      "houseRule": "House-rule note (optional)",
+      "houseRulePlaceholder": "e.g. Club rules by the first chip motion",
+      "lookup": "Look up"
+    },
+    "street": {
+      "preflop": "Preflop",
+      "flop": "Flop",
+      "turn": "Turn",
+      "river": "River",
+      "showdown": "Showdown",
+      "other": "Other"
+    },
+    "answer": {
+      "recommendation": "Recommendation",
+      "basis": "Basis",
+      "noBasis": "No matching basis",
+      "reasoning": "Reasoning",
+      "houseOption": "House-rule option",
+      "playerWording": "How to tell the player",
+      "confidence": "Confidence",
+      "needMore": "Need more info"
+    },
+    "confidence": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "actions": {
+      "saveIncident": "Save incident",
+      "reportTd": "Report to TD",
+      "prF": "Coming in PR F"
+    }
+  },
   "tournamentLive": {
     "selectTournament": "Select tournament",
     "tvDisplays": {

@@ -4,10 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle, Volume2, VolumeX } from "lucide-react";
+import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle, Volume2, VolumeX, Bot } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { displayCard } from "@/components/shared/CardSlotPicker";
 import { getPosition } from "@/lib/tournament/button";
+import { useAuth } from "@/hooks/useAuth";
+import { TdAiAssistantPanel } from "@/components/td-ai/TdAiAssistantPanel";
 import { PokerCard, TrackerVisualStyles } from "./PokerVisuals";
 import { playPokerLiveSound, type PokerLiveSound } from "@/lib/pokerLiveSound";
 import {
@@ -101,6 +103,9 @@ function formatActionLabel(a: ActionLog): string {
 
 export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   const { t } = useTranslation();
+  const { isStaffOps, isClubAdmin } = useAuth();
+  const canTdAi = isStaffOps || isClubAdmin;
+  const [tdAiOpen, setTdAiOpen] = useState(false);
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
@@ -606,6 +611,9 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   return (
     <div className="space-y-3">
       <TrackerVisualStyles />
+      {canTdAi && (
+        <TdAiAssistantPanel open={tdAiOpen} onOpenChange={setTdAiOpen} tournamentId={tournamentId} />
+      )}
       {realtimeStatus === "offline" && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/15 border border-amber-500/30 rounded-lg text-xs text-amber-400">
           <WifiOff className="w-4 h-4 shrink-0" />
@@ -666,6 +674,16 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
           )}
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {canTdAi && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 border-emerald-500/40 text-emerald-300 hover:text-emerald-200"
+              onClick={() => setTdAiOpen(true)}
+            >
+              <Bot className="w-3.5 h-3.5 mr-1" /> {t("tdAi.entry")}
+            </Button>
+          )}
           <span className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5" /> {playersRemaining} {t("tournamentLive.liveView.players")}
           </span>
