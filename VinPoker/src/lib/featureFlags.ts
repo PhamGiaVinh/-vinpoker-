@@ -62,4 +62,13 @@ export const FEATURES = {
    * ships in Phase 3). No DB writes.
    */
   clubFinanceDashboard: false,
+  /**
+   * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
+   * because it needs the source-only `update_blind_structure` RPC
+   * (20260825000000) applied live first. While false the editor is usable as a
+   * read-only / draft-local preview and Save shows disabled "Cần bật RPC" — it
+   * NEVER calls the RPC, so it can't silently fail or wipe the live structure.
+   * Flip to true ONLY after the RPC is applied live in a controlled DB session.
+   */
+  blindEditorSave: false,
 } as const;

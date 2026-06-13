@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -20,8 +20,9 @@ import { ClockPanel } from "./tournament-live/ClockPanel";
 import { TableDrawPanel } from "./tournament-live/TableDrawPanel";
 import { HandInputPanel } from "./tournament-live/HandInputPanel";
 import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
-import { PlayersListPanel } from "./tournament-live/PlayersListPanel";
-import { BlindStructurePanel } from "./tournament-live/BlindStructurePanel";
+import { PlayersGroupedPanel } from "./tournament-live/PlayersGroupedPanel";
+import { BlindEditorPanel } from "./tournament-live/BlindEditorPanel";
+import { FloorTableMapPanel } from "./tournament-live/FloorTableMapPanel";
 import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
 import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
@@ -72,13 +73,13 @@ function StatusBadge({ status }: { status: string }) {
 // (default, so existing call sites are unchanged); tracker = live-tracking view,
 // floor = room-management view. live_view is in every set, so defaultValue stays valid.
 const MODE_TABS: Record<string, string[]> = {
-  full: ["live_view", "clock", "table_draw", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
+  full: ["table_map", "live_view", "clock", "table_draw", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
   // Owner IA 2026-06-14: Floor OWNS room operations + physical display management
-  // (table draw, queue/waitlist, player movement, prizes, blind structure, TV/display
+  // (table map/draw, queue/waitlist, player movement, prizes, blind structure, TV/display
   // assignment). Tracker OWNS live tracking (live view, clock, hand input/history,
   // leaderboard). ClockPanel only READS the stored blind structure (no own levels).
   tracker: ["live_view", "clock", "hand_input", "hand_history", "leaderboard"],
-  floor: ["live_view", "table_draw", "queue", "players", "prizes", "blinds", "tv_displays"],
+  floor: ["table_map", "live_view", "table_draw", "players", "queue", "prizes", "blinds", "tv_displays"],
 };
 
 export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
@@ -329,6 +330,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
       {selectedTournament ? (
         (() => {
           const TAB_DEFS = [
+            { value: "table_map", icon: Grid3x3, label: "Sơ đồ bàn", render: () => <FloorTableMapPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
             { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "table_draw", icon: LayoutGrid, label: t("tournamentLive.tableDraw.title"), render: () => <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
@@ -343,8 +345,8 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
             { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => <HandInputPanel tournamentId={selectedTournament.id} /> },
             { value: "hand_history", icon: History, label: t("tournamentLive.handHistory.title"), render: () => <HandHistoryPanel tournamentId={selectedTournament.id} /> },
             { value: "leaderboard", icon: Trophy, label: t("tournamentLive.leaderboard.title"), render: () => <LeaderboardPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
-            { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersListPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
-            { value: "blinds", icon: List, label: t("tournamentLive.tabs.blinds"), render: () => <BlindStructurePanel tournamentId={selectedTournament.id} /> },
+            { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersGroupedPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
+            { value: "blinds", icon: List, label: t("tournamentLive.tabs.blinds"), render: () => <BlindEditorPanel tournamentId={selectedTournament.id} tournamentStatus={selectedTournament.status} /> },
             { value: "prizes", icon: Settings, label: t("tournamentLive.tabs.prizes"), render: () => <PrizeStructurePanel tournamentId={selectedTournament.id} /> },
             { value: "tv_displays", icon: Tv, label: t("tournamentLive.tvDisplays.tab"), render: () => (
               <TvDisplaysPanel
