@@ -177,24 +177,32 @@ export function PrizeStructurePanel({ tournamentId }: { tournamentId: string }) 
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 px-2 text-xs text-muted-foreground">
+          {/* Column header — only meaningful on the sm+ grid layout */}
+          <div className="hidden sm:grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 px-2 text-xs text-muted-foreground">
             <span>Hạng</span>
             <span>%</span>
             <span>Tiền thưởng</span>
             <span />
           </div>
           {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_1.5fr_auto] gap-2 items-center border rounded p-2">
-              <Input type="number" min={1} placeholder="Hạng" value={row.position} onChange={(e) => updateRow(i, "position", Number(e.target.value))} />
-              <Input type="number" min={0} placeholder="%" value={row.percentage} onChange={(e) => updateRow(i, "percentage", Number(e.target.value))} />
+            <div key={i} className="grid grid-cols-2 gap-2 items-end border rounded p-2 sm:grid-cols-[1fr_1fr_1.5fr_auto] sm:items-center">
               <div className="space-y-0.5">
-                <Input type="number" min={0} placeholder="Số tiền" value={row.amount} onChange={(e) => updateRow(i, "amount", Number(e.target.value))} />
+                <label className="text-[11px] text-muted-foreground sm:hidden">Hạng</label>
+                <Input className="h-11" type="number" min={1} placeholder="Hạng" value={row.position} onChange={(e) => updateRow(i, "position", Number(e.target.value))} />
+              </div>
+              <div className="space-y-0.5">
+                <label className="text-[11px] text-muted-foreground sm:hidden">%</label>
+                <Input className="h-11" type="number" min={0} placeholder="%" value={row.percentage} onChange={(e) => updateRow(i, "percentage", Number(e.target.value))} />
+              </div>
+              <div className="col-span-2 space-y-0.5 sm:col-span-1">
+                <label className="text-[11px] text-muted-foreground sm:hidden">Tiền thưởng</label>
+                <Input className="h-11" type="number" min={0} placeholder="Số tiền" value={row.amount} onChange={(e) => updateRow(i, "amount", Number(e.target.value))} />
                 {row.amount > 0 && (
                   <div className="text-[11px] text-muted-foreground font-mono pl-1">{formatVND(row.amount)}</div>
                 )}
               </div>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeRow(i)}>
-                <Trash2 className="w-4 h-4" />
+              <Button size="sm" variant="ghost" className="col-span-2 h-11 justify-self-end text-destructive sm:col-span-1" onClick={() => removeRow(i)}>
+                <Trash2 className="w-4 h-4" /> <span className="ml-1 sm:hidden">Xoá dòng</span>
               </Button>
             </div>
           ))}
