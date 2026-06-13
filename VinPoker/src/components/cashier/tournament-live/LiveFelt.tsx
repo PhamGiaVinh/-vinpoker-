@@ -55,10 +55,9 @@ export function formatActionLabel(a: ActionLog): string {
   return `${t} ${formatStack(a.action_amount)}`;
 }
 
-const SEAT_POSITIONS: Record<
-  number,
-  { top?: string; left?: string; right?: string; bottom?: string; transform?: string }
-> = {
+type SeatPos = { top?: string; left?: string; right?: string; bottom?: string; transform?: string };
+
+const SEAT_POSITIONS: Record<number, SeatPos> = {
   1: { top: "2%", left: "50%", transform: "translateX(-50%)" },
   2: { top: "15%", right: "5%" },
   3: { top: "55%", right: "5%" },
@@ -69,6 +68,35 @@ const SEAT_POSITIONS: Record<
   8: { bottom: "15%", right: "15%" },
   9: { bottom: "15%", left: "15%" },
   10: { top: "35%", left: "3%" },
+};
+
+// Portrait (narrow phone) layout — seats spread around a TALL oval, leaving the
+// vertical centre band clear for the board + pot.
+const SEAT_POSITIONS_PORTRAIT: Record<number, SeatPos> = {
+  1: { top: "1.5%", left: "50%", transform: "translateX(-50%)" },
+  2: { top: "13%", right: "2%" },
+  6: { top: "13%", left: "2%" },
+  3: { top: "27%", right: "0%" },
+  5: { top: "27%", left: "0%" },
+  7: { top: "66%", right: "2%" },
+  10: { top: "66%", left: "2%" },
+  8: { bottom: "14%", right: "4%" },
+  9: { bottom: "14%", left: "4%" },
+  4: { bottom: "1.5%", left: "50%", transform: "translateX(-50%)" },
+};
+
+// Felt oval + board/pot anchor geometry per orientation.
+const LANDSCAPE_FELT = {
+  minHeight: "480px",
+  viewBox: "0 0 800 600",
+  cx: 400, cy: 300, rx: 340, ry: 240, rx2: 338, ry2: 238, rx3: 316, ry3: 216,
+  boardBottom: "25%", potBottom: "10%",
+};
+const PORTRAIT_FELT = {
+  minHeight: "560px",
+  viewBox: "0 0 420 620",
+  cx: 210, cy: 310, rx: 190, ry: 296, rx2: 188, ry2: 294, rx3: 168, ry3: 274,
+  boardBottom: "48%", potBottom: "38%",
 };
 
 export interface LiveFeltProps {
@@ -86,6 +114,8 @@ export interface LiveFeltProps {
   /** Latest action for the bottom ticker (null = no actions yet). */
   latestAction: ActionLog | null;
   formatBB: (n: number) => string | null;
+  /** Narrow-phone vertical layout (tall oval + portrait seat ring). */
+  portrait?: boolean;
 }
 
 export function LiveFelt({
@@ -98,15 +128,18 @@ export function LiveFelt({
   handNumber,
   latestAction,
   formatBB,
+  portrait = false,
 }: LiveFeltProps) {
+  const felt = portrait ? PORTRAIT_FELT : LANDSCAPE_FELT;
+  const seatPositions = portrait ? SEAT_POSITIONS_PORTRAIT : SEAT_POSITIONS;
   return (
     <div
       className="relative bg-gradient-to-b from-[#16090d] to-[#0c0d10] rounded-2xl border border-amber-700/30 shadow-inner overflow-hidden"
-      style={{ minHeight: "480px" }}
+      style={{ minHeight: felt.minHeight }}
     >
       <svg
         className="absolute inset-0 w-full h-full"
-        viewBox="0 0 800 600"
+        viewBox={felt.viewBox}
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>
@@ -116,21 +149,21 @@ export function LiveFelt({
             <stop offset="100%" style={{ stopColor: "#1a070c", stopOpacity: "0.98" }} />
           </radialGradient>
         </defs>
-        <ellipse cx="400" cy="300" rx="340" ry="240" fill="url(#feltGrad)" />
+        <ellipse cx={felt.cx} cy={felt.cy} rx={felt.rx} ry={felt.ry} fill="url(#feltGrad)" />
         <ellipse
-          cx="400"
-          cy="300"
-          rx="338"
-          ry="238"
+          cx={felt.cx}
+          cy={felt.cy}
+          rx={felt.rx2}
+          ry={felt.ry2}
           fill="none"
           stroke="rgba(245,179,64,0.4)"
           strokeWidth="4"
         />
         <ellipse
-          cx="400"
-          cy="300"
-          rx="316"
-          ry="216"
+          cx={felt.cx}
+          cy={felt.cy}
+          rx={felt.rx3}
+          ry={felt.ry3}
           fill="none"
           stroke="rgba(245,179,64,0.14)"
           strokeWidth="1.5"
@@ -140,7 +173,7 @@ export function LiveFelt({
       {seats.map((seat) => {
         // Anchor by physical seat number so players never shift when others bust.
         const posKey = ((seat.seat_number - 1) % 10) + 1;
-        const pos = SEAT_POSITIONS[posKey] || SEAT_POSITIONS[1];
+        const pos = seatPositions[posKey] || seatPositions[1] || SEAT_POSITIONS[1];
         const posStyle: CSSProperties = {};
         if (pos.top) posStyle.top = pos.top;
         if (pos.bottom) posStyle.bottom = pos.bottom;
@@ -154,7 +187,9 @@ export function LiveFelt({
         return (
           <div key={seat.player_id} className="absolute z-10" style={posStyle}>
             <div
-              className={`bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36 text-center transition-all duration-300 ${
+              className={`bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl text-center transition-all duration-300 ${
+                portrait ? "p-1 w-[68px]" : "p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36"
+              } ${
                 seat.is_folded
                   ? "border-border/20 opacity-50 grayscale-[0.5]"
                   : seat.is_all_in
@@ -233,7 +268,7 @@ export function LiveFelt({
 
       <div
         className="absolute left-1/2 -translate-x-1/2 flex gap-1.5 sm:gap-2 z-20"
-        style={{ bottom: "25%" }}
+        style={{ bottom: felt.boardBottom }}
       >
         {displayCards.map((card, i) => (
           <PokerCard
@@ -248,7 +283,7 @@ export function LiveFelt({
       {potSize > 0 && (
         <div
           className="absolute left-1/2 -translate-x-1/2 text-center z-20"
-          style={{ bottom: "10%" }}
+          style={{ bottom: felt.potBottom }}
         >
           <div className="tracker-pot-pulse inline-flex flex-col items-center px-4 py-1.5 rounded-full bg-black/45 border border-amber-400/40">
             <div className="text-[9px] text-amber-200/70 uppercase tracking-widest">Pot</div>
