@@ -5,12 +5,16 @@ import { Card as UiCard } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  Undo2, RotateCcw, CheckCircle2, XCircle,
+  Undo2, XCircle,
   ChevronRight, Users, Coins, Send, Play, Eye, Radio
 } from "lucide-react";
 import { CardSlotPicker, type Card, RANKS, SUIT_SYMBOL, SUIT_COLOR, isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
-import { nextButton, getPosition } from "@/lib/tournament/button";
+import { nextButton, getSeatPositions } from "@/lib/tournament/button";
 import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
+import { nextToAct, actorView } from "@/lib/tracker-poker/handFlow";
+import { SeatRail, type RailSeat } from "./handinput/SeatRail";
+import { ActionDock } from "./handinput/ActionDock";
+import { formatStack } from "./handinput/format";
 import type { User } from "@supabase/supabase-js";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -49,12 +53,6 @@ const STREET_LABELS: Record<Street, string> = {
   showdown: "Showdown",
 };
 
-function formatStack(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
-  return n.toString();
-}
-
 function formatActionLabel(a: ActionRecord): string {
   const type = a.action_type;
   if (type === "fold") return "Fold";
@@ -90,6 +88,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [playerHoleCards, setPlayerHoleCards] = useState<Record<string, (Card | null)[]>>({});
   const [orphanHand, setOrphanHand] = useState<{ id: string; hand_number: number } | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  // Tablet redesign: the seat the operator is entering an action for. Defaults
+  // to the auto-detected to-act player; tapping a seat overrides it.
+  const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -258,14 +259,74 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     return s;
   }, [communityCards, playerHoleCards]);
 
-  const positionMap = useMemo(() => {
-    const map = new Map<string, string>()
-    const total = players.length
-    players.forEach(p => {
-      map.set(p.player_id, getPosition(p.seat_number, buttonSeat, total))
-    })
-    return map
-  }, [players, buttonSeat])
+  const positionsBySeat = useMemo(
+    () => getSeatPositions(players.map((p) => p.seat_number), buttonSeat),
+    [players, buttonSeat]
+  );
+
+  const bigBlind = useMemo(
+    () => actions.find((a) => a.action_type === "post_bb")?.amount ?? 0,
+    [actions]
+  );
+
+  // Operator hand-flow: who is to act + which actions are legal (advisory only).
+  const flowInput = useMemo(() => {
+    const streetActions = actions.filter((a) => a.street === currentStreet);
+    const acted = new Set(
+      streetActions
+        .filter((a) => !["post_sb", "post_bb", "post_ante"].includes(a.action_type))
+        .map((a) => a.player_id)
+    );
+    const lastActorSeat = streetActions.length
+      ? streetActions[streetActions.length - 1].seat_number
+      : buttonSeat;
+    return {
+      players: players.map((p) => ({
+        player_id: p.player_id,
+        seat_number: p.seat_number,
+        current_bet: p.current_bet,
+        current_stack: p.current_stack,
+        is_folded: p.is_folded,
+        is_all_in: p.is_all_in,
+      })),
+      buttonSeat,
+      actedThisStreet: acted,
+      lastActorSeat,
+      bigBlind,
+    };
+  }, [actions, currentStreet, players, buttonSeat, bigBlind]);
+
+  const toActId = useMemo(() => nextToAct(flowInput), [flowInput]);
+
+  // Selected actor wins if still live, else fall back to the auto to-act player.
+  const effectiveActorId = useMemo(() => {
+    if (selectedActorId) {
+      const p = players.find((x) => x.player_id === selectedActorId);
+      if (p && !p.is_folded && !p.is_all_in) return selectedActorId;
+    }
+    return toActId;
+  }, [selectedActorId, players, toActId]);
+
+  const actorPlayer = useMemo(
+    () => players.find((p) => p.player_id === effectiveActorId) ?? null,
+    [players, effectiveActorId]
+  );
+  const actorViewData = useMemo(
+    () => actorView(flowInput, effectiveActorId ?? undefined),
+    [flowInput, effectiveActorId]
+  );
+  const actorPos = actorPlayer ? positionsBySeat.get(actorPlayer.seat_number) || "" : "";
+  const sbPosted = useMemo(() => actions.some((a) => a.action_type === "post_sb"), [actions]);
+  const bbPosted = useMemo(() => actions.some((a) => a.action_type === "post_bb"), [actions]);
+  const needsPostSB =
+    currentStreet === "preflop" && !!actorPlayer && actorPos.includes("SB") && !sbPosted;
+  const needsPostBB =
+    currentStreet === "preflop" && !!actorPlayer && actorPos === "BB" && !bbPosted;
+
+  const nextStreetLabel = useMemo(() => {
+    const idx = STREET_ORDER.indexOf(currentStreet);
+    return idx >= 0 && idx < STREET_ORDER.length - 1 ? STREET_LABELS[STREET_ORDER[idx + 1]] : null;
+  }, [currentStreet]);
 
   const handleStartHand = async () => {
     if (!tableId || !handNumber || !user?.id) return;
@@ -405,6 +466,26 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         toast.warning(`Cảnh báo luật: ${(data as any).validation.message || (data as any).validation.code}`);
       }
     }
+  };
+
+  // Dock buttons act on the selected/to-act player, then let auto to-act resume.
+  const handleDockAction = (type: string) => {
+    if (!effectiveActorId) {
+      toast.error("Chạm một ghế để chọn người hành động");
+      return;
+    }
+    handleAction(effectiveActorId, type);
+    setSelectedActorId(null);
+  };
+
+  // Tap a seat: set the button before the hand starts, else select the actor.
+  const handleSeatTap = (seat: RailSeat) => {
+    if (!handStarted) {
+      setButtonSeat(seat.seat_number);
+      return;
+    }
+    if (isReadOnly) return;
+    setSelectedActorId(seat.player_id);
   };
 
   const handleUpdateCommunityCards = async () => {
@@ -631,22 +712,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             <Input className="w-24" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
           </div>
           {players.length > 0 && (
-            <div className="flex items-center justify-center gap-2">
-              <label className="text-xs font-medium text-muted-foreground">BTN:</label>
-              <select
-                className="h-7 rounded border border-input bg-background px-2 text-xs"
-                value={buttonSeat}
-                onChange={(e) => setButtonSeat(Number(e.target.value))}
-              >
-                {players
-                  .filter((p) => p.seat_number)
-                  .sort((a, b) => a.seat_number - b.seat_number)
-                  .map((p) => (
-                    <option key={p.seat_number} value={p.seat_number}>
-                      Seat {p.seat_number}
-                    </option>
-                  ))}
-              </select>
+            <div className="text-left max-w-xl mx-auto">
+              <SeatRail
+                seats={players}
+                positions={positionsBySeat}
+                buttonSeat={buttonSeat}
+                toActId={null}
+                selectedActorId={null}
+                setupMode
+                onTapSeat={handleSeatTap}
+              />
             </div>
           )}
           <Button onClick={handleStartHand} disabled={submitting || !handNumber} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
@@ -773,48 +848,38 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
 
-          {/* SEATS GRID */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {players.map((player) => {
-              const isOut = player.is_folded || player.is_all_in;
-              return (
-                <div key={player.player_id} className={`rounded-lg border p-2.5 transition-all duration-200 relative overflow-hidden ${player.is_folded ? "border-border/20 bg-card/30 opacity-60 grayscale-[0.5]" : player.is_all_in ? "border-red-500/40 bg-red-950/10 shadow-[0_0_10px_rgba(239,68,68,0.2)]" : "border-border/40 bg-card hover:border-amber-500/40 hover:shadow-md"}`}>
-                  <div className="flex items-start justify-between mb-1.5 relative z-10">
-                    <div className="min-w-0">
-                      <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Seat {player.seat_number}</div>
-                      <div className="text-sm font-medium truncate max-w-[140px] text-foreground">{player.display_name}</div>
-                    </div>
-                    {(positionMap.get(player.player_id)) && (<span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${(positionMap.get(player.player_id)) === "BTN" ? "bg-amber-500 text-black" : "bg-amber-500/20 text-amber-400"}`}>{positionMap.get(player.player_id)}</span>)}
-                  </div>
-                  <div className="text-sm font-bold text-emerald-400 mb-2 relative z-10 font-mono">
-                    {formatStack(player.current_stack)}
-                    {player.current_bet > 0 && (<div className="text-[10px] text-amber-400 mt-0.5">Bet: {formatStack(player.current_bet)}</div>)}
-                  </div>
-                  {player.is_all_in && <div className="absolute top-0 right-0 bg-red-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg z-20">ALL IN</div>}
-                  {player.is_folded && <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-20 pointer-events-none"><span className="bg-black/70 text-white px-2 py-1 rounded text-xs font-bold rotate-[-10deg]">FOLDED</span></div>}
-                  {!isOut && currentStreet !== "showdown" && (
-                    <div className="grid grid-cols-3 gap-1 relative z-10">
-                      <button className="px-1 py-1.5 text-[10px] font-medium border border-border/30 rounded hover:border-red-500/50 hover:text-red-400 hover:bg-red-950/20 transition-colors" onClick={() => handleAction(player.player_id, "fold")}>Fold</button>
-                      <button className="px-1 py-1.5 text-[10px] font-medium border border-border/30 rounded hover:border-border/60 hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed" onClick={() => handleAction(player.player_id, "check")} disabled={highestBet > player.current_bet}>Check</button>
-                      <button className="px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" onClick={() => handleAction(player.player_id, "call")} disabled={highestBet <= player.current_bet}>Call</button>
-                      {currentStreet === "preflop" && player.position === "SB" && (<button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors" onClick={() => handleAction(player.player_id, "post_sb")}>Post SB ({formatStack(parseInt(betAmount) || 0)})</button>)}
-                      {currentStreet === "preflop" && player.position === "BB" && (<button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-amber-500/30 text-amber-400 rounded hover:bg-amber-950/20 transition-colors" onClick={() => handleAction(player.player_id, "post_bb")}>Post BB ({formatStack(parseInt(betAmount) || 0)})</button>)}
-                      {highestBet === 0 ? (<button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors" onClick={() => handleAction(player.player_id, "bet")}>Bet</button>) : (<button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-blue-500/30 text-blue-400 rounded hover:bg-blue-950/20 transition-colors" onClick={() => handleAction(player.player_id, "raise")}>Raise</button>)}
-                      <button className="col-span-3 px-1 py-1.5 text-[10px] font-medium border border-red-500/30 text-red-400 rounded hover:bg-red-950/20 transition-colors" onClick={() => handleAction(player.player_id, "all_in")}>ALL IN</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {/* SEAT RAIL — tap to select the acting player */}
+          <SeatRail
+            seats={players}
+            positions={positionsBySeat}
+            buttonSeat={buttonSeat}
+            toActId={toActId}
+            selectedActorId={selectedActorId}
+            onTapSeat={handleSeatTap}
+          />
 
-          {/* CONTROLS */}
-          <div className="flex gap-2 p-2.5 bg-card border border-border/30 rounded-lg shadow-sm">
-            <Input type="number" placeholder="Nhập số chip cược..." value={betAmount} onChange={(e) => setBetAmount(e.target.value)} className="flex-1 h-9 text-sm font-mono" />
-            <div className="flex gap-1 overflow-x-auto">
-              {["1000", "5000", "10000", "25000", "50000"].map((v) => (<button key={v} className="px-2 py-1 text-[10px] border border-border/30 rounded hover:border-amber-500/50 hover:text-amber-400 hover:bg-amber-950/10 transition-colors shrink-0" onClick={() => setBetAmount(v)}>{formatStack(Number(v))}</button>))}
-            </div>
-          </div>
+          {/* ACTION DOCK — to-act player + keypad + GTO action buttons */}
+          <ActionDock
+            actor={currentStreet === "showdown" ? null : actorPlayer}
+            actorPosition={actorPos}
+            view={actorViewData}
+            betAmount={betAmount}
+            onBetAmountChange={setBetAmount}
+            bigBlind={bigBlind}
+            onAction={handleDockAction}
+            needsPostSB={needsPostSB}
+            needsPostBB={needsPostBB}
+            streetLabel={STREET_LABELS[currentStreet]}
+            nextStreetLabel={nextStreetLabel}
+            onNextStreet={nextStreet}
+            onComplete={completeHand}
+            canComplete={actions.length > 0}
+            onReset={resetHand}
+            onVoid={handleVoid}
+            hasVoidTarget={!!(handId || lastHandId)}
+            showActions={currentStreet !== "showdown"}
+            disabled={submitting || isReadOnly}
+          />
 
           {/* ACTION LOG */}
           <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm max-h-60 flex flex-col">
@@ -840,16 +905,6 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           </div>
 
-          {/* FOOTER */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/20">
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={resetHand} disabled={submitting}><RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset</Button>
-              {(handId || lastHandId) && (<Button size="sm" variant="destructive" onClick={handleVoid} disabled={submitting}><Undo2 className="w-3.5 h-3.5 mr-1" /> Void</Button>)}
-            </div>
-            <Button size="sm" onClick={completeHand} disabled={submitting || actions.length === 0} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
-              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Complete Hand
-            </Button>
-          </div>
         </>
       )}
 
