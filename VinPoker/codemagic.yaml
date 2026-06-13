@@ -1,19 +1,23 @@
 # Codemagic CI/CD — VBacker (Capacitor mobile app)
-# This file lives at the repository root; the Capacitor app is in the VinPoker/ subfolder.
-# Docs: https://docs.codemagic.io/yaml-quick-start/
+# This repo is a monorepo: the Capacitor app lives in the VinPoker/ folder,
+# and this codemagic.yaml sits inside it. In Codemagic set:
+#   Path to project: VinPoker
+#   Branch:          agent/capacitor-shell
+# Scripts use absolute $CM_BUILD_DIR paths so they work regardless of the
+# build's working directory.
 #
-# Quick start for the owner (non-technical):
-#   1. Sign up at codemagic.io with the GitHub account that has this repo.
-#   2. Add this repository, pick the `android-debug` workflow, press Start build.
-#   3. When it finishes, Codemagic emails an installable APK to the address below.
-#      Download it on an Android phone and install (allow "unknown sources").
-#   The `ios-release` workflow only works AFTER an Apple Developer account +
-#   signing are connected in Codemagic — leave it untouched until then.
+# Owner quick start (non-technical):
+#   1. Sign up at codemagic.io with the GitHub account that owns this repo.
+#   2. Add this repository. When asked for the monorepo path, type: VinPoker
+#   3. Pick branch agent/capacitor-shell, then run the `android-debug` workflow.
+#   4. Codemagic emails an installable APK to the address below. Download it on
+#      an Android phone and install (allow "unknown sources").
+#   The `ios-release` workflow only works AFTER Apple Developer signing is
+#   connected in Codemagic — leave it alone until then.
 
 workflows:
   # ---------------------------------------------------------------------------
   # Android debug APK — works immediately, NO signing/accounts required.
-  # Produces an installable APK for internal testing on real Android devices.
   # ---------------------------------------------------------------------------
   android-debug:
     name: VBacker — Android debug APK
@@ -26,19 +30,19 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npm ci --no-audit --no-fund
       - name: Build web (Vite)
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npm run build
       - name: Capacitor sync (Android)
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npx cap sync android
       - name: Build debug APK
         script: |
-          cd VinPoker/android
+          cd "$CM_BUILD_DIR/VinPoker/android"
           chmod +x ./gradlew
           ./gradlew assembleDebug
     artifacts:
@@ -52,11 +56,11 @@ workflows:
           failure: true
 
   # ---------------------------------------------------------------------------
-  # iOS App Store build — TEMPLATE. Requires the owner to first connect in Codemagic:
-  #   - App Store Connect API key integration (name it "VBacker App Store Connect")
+  # iOS App Store build — TEMPLATE. Requires connecting in Codemagic first:
+  #   - App Store Connect API key integration named "VBacker App Store Connect"
   #   - bundle id app.vbacker registered in the Apple Developer portal
-  # Exact build steps may need a small adjustment once signing is connected
-  # (Capacitor 7 iOS uses Swift Package Manager). Do not trigger until ready.
+  # Capacitor 7 iOS uses Swift Package Manager; exact steps may need a small
+  # tweak once signing is connected. Do not trigger until ready.
   # ---------------------------------------------------------------------------
   ios-release:
     name: VBacker — iOS App Store (needs Apple signing)
@@ -74,22 +78,22 @@ workflows:
     scripts:
       - name: Install dependencies
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npm ci --no-audit --no-fund
       - name: Build web (Vite)
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npm run build
       - name: Capacitor sync (iOS)
         script: |
-          cd VinPoker
+          cd "$CM_BUILD_DIR/VinPoker"
           npx cap sync ios
       - name: Set up code signing
         script: |
           xcode-project use-profiles
       - name: Build IPA
         script: |
-          cd VinPoker/ios/App
+          cd "$CM_BUILD_DIR/VinPoker/ios/App"
           xcode-project build-ipa --project App.xcodeproj --scheme App
     artifacts:
       - VinPoker/ios/App/build/ios/ipa/*.ipa
