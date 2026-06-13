@@ -21,6 +21,9 @@ export default defineConfig({
       // build (vite.config.ts has no @engine alias) cannot import it — that build
       // failure is the server-authoritative guardrail. Do NOT add this to vite.config.ts.
       "@engine": path.resolve(__dirname, "./supabase/functions/_shared/pokerEngine"),
+      // Vitest-ONLY: tracker server validation engine. Same guardrail as @engine —
+      // it must NOT be reachable from the client Vite build. Do NOT add to vite.config.ts.
+      "@tracker-engine": path.resolve(__dirname, "./supabase/functions/_shared/trackerEngine"),
     },
   },
 });
