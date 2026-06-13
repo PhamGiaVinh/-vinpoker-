@@ -106,7 +106,7 @@ export default function PokerTable3DPreview() {
         </Scenario>
 
         <Scenario title="5 · Mobile compact" subtitle='size="mobile", variant="dark-red", inside a 390px frame (no horizontal scroll).'>
-          <div className="mx-auto w-[390px] rounded-2xl border border-white/10 p-2">
+          <div className="mx-auto w-full max-w-[390px] rounded-2xl border border-white/10 p-2">
             <PokerTable3D
               seats={NINE_MAX}
               maxSeats={9}
