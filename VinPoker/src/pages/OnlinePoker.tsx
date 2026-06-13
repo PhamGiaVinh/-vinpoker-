@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FEATURES } from '@/lib/featureFlags';
 import { RUNTIME_LIVE } from '@/lib/onlinePoker/types';
-import { MOCK_TABLES, MOCK_WALLET } from '@/lib/onlinePoker/mockData';
+import { useLobby } from '@/lib/onlinePoker/useOnlinePoker';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { Spade, Coins, Users } from 'lucide-react';
 
@@ -21,6 +21,9 @@ const fmtChips = (s: string): string => {
 };
 
 export default function OnlinePoker() {
+  // Hook first (rules-of-hooks): mock while dark, live rails when RUNTIME_LIVE.
+  const { tables, wallet, claimDaily } = useLobby();
+
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
   return (
@@ -39,9 +42,14 @@ export default function OnlinePoker() {
         </div>
         <div>
           <div className="text-xs text-muted-foreground">Quỹ chip (play money)</div>
-          <div className="text-lg font-bold tabular-nums text-primary">{fmtChips(MOCK_WALLET.balance)}</div>
+          <div className="text-lg font-bold tabular-nums text-primary">{fmtChips(wallet.balance)}</div>
         </div>
-        <Button className="ml-auto" disabled={!RUNTIME_LIVE} title={!RUNTIME_LIVE ? 'Runtime chưa mở' : undefined}>
+        <Button
+          className="ml-auto"
+          disabled={!RUNTIME_LIVE}
+          title={!RUNTIME_LIVE ? 'Runtime chưa mở' : undefined}
+          onClick={() => { void claimDaily().catch(() => {}); }}
+        >
           Nhận chip mỗi ngày
         </Button>
       </Card>
@@ -49,7 +57,7 @@ export default function OnlinePoker() {
       {/* table list */}
       <div className="space-y-2">
         <h2 className="text-sm font-semibold text-muted-foreground">Bàn chơi</h2>
-        {MOCK_TABLES.map((t) => (
+        {tables.map((t) => (
           <Card key={t.id} className="flex items-center gap-3 p-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
