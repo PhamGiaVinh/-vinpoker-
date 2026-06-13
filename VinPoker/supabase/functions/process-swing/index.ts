@@ -84,6 +84,13 @@ const MAX_SWING_RETRIES = 3;
 // automatic behavior.
 const FORCE_RELEASE_ENABLED = false;
 const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
+// Pass 3 escalation tiers 1–3 RELAX/BYPASS the normal rest & fatigue guards
+// (Tier 3: min_rest=0, skip fatigue cap) to auto-swap a relief dealer into an
+// overdue table. Owner policy: never bypass rest to force someone in — if no
+// NORMALLY-eligible replacement exists (Tier 0, normal rest), the dealer stays
+// on OT and the floor intervenes. Tier 0 (normal rest) always runs; tiers 1–3
+// run only when this is true. Flip to true to restore emergency auto-swap.
+const RELAXED_REST_AUTO_SWAP_ENABLED = false;
 
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
@@ -3166,7 +3173,7 @@ if (tier2Count > 0) {
             });
 
             // ── Tier 1: 5+ min overdue, relax min_rest to 5 ──────────────────
-            if (!nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
+            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 1 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_1_min_rest_min}`
@@ -3178,7 +3185,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 2: 15+ min overdue, relax min_rest to 3, skip priority break ──
-            if (!nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
+            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 2 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_2_min_rest_min}, skipPriorityBreak=${esc.tier_2_skip_priority_break}`
@@ -3191,7 +3198,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 3: 30+ min overdue, min_rest=0, skip fatigue cap (last resort) ──
-            if (!nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
+            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
               console.warn(
                 `[Pass 3] Tier 3 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_3_min_rest_min}, skipFatigue=${esc.tier_3_skip_fatigue_cap} — LAST RESORT`
@@ -3205,15 +3212,16 @@ if (tier2Count > 0) {
               });
             }
 
-            // ── All tiers exhausted: flag for force-release in Pass 0c ────────
-            // Pass 0c runs FIRST in the cron tick and will force-release any
-            // stuck rows ≥ force_release_at_overdue_min. If Pass 0c is disabled,
-            // the next cron tick will catch it.
+            // ── No normally-eligible replacement: dealer stays on OT ──────────
+            // Owner policy: no normal (Tier 0) replacement → the current dealer
+            // remains on OT for manual intervention. Relaxed-rest tiers 1–3 and
+            // Pass 0c/Pass 3 force-release are disabled, so nothing auto-releases
+            // or bypasses rest here — only telemetry + the existing OT alerts.
             if (!nextDealer && minutesOverdue >= esc.force_release_at_overdue_min) {
               console.error(
-                `[Pass 3] 🚨 ALL TIERS EXHAUSTED for ${tableName} ` +
+                `[Pass 3] 🚨 NO NORMAL REPLACEMENT for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min ≥ threshold ${esc.force_release_at_overdue_min}) — ` +
-                `flagging for force-release`
+                `dealer stays on OT, cần can thiệp thủ công`
               );
               // Track for diagnostic logging
               admin.from("diagnostic_logs").insert({
