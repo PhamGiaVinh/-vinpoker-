@@ -20,6 +20,41 @@ export function getPosition(seat: number, btnSeat: number, total: number): strin
   return `+${offset}`
 }
 
+/**
+ * Map every OCCUPIED seat to its full poker position, robust to non-contiguous
+ * seat numbers (e.g. seats 1,3,5,7). Unlike getPosition (which does raw
+ * seat−btn mod total and mislabels when seats have gaps), this orders the
+ * occupied seats clockwise from the button and assigns POSITION_NAMES in order.
+ * `activeSeats` = the seats dealt into the hand. Returns Map<seatNumber, name>.
+ */
+export function getSeatPositions(activeSeats: number[], btnSeat: number): Map<number, string> {
+  const seats = [...new Set(activeSeats)]
+    .filter((s) => Number.isInteger(s) && s > 0)
+    .sort((a, b) => a - b)
+  const result = new Map<number, string>()
+  const count = seats.length
+  if (count === 0) return result
+  if (count === 1) {
+    result.set(seats[0], "BTN")
+    return result
+  }
+
+  // Rotate so the button seat is first. If the button is on an empty seat,
+  // start at the next occupied seat clockwise.
+  let start = seats.indexOf(btnSeat)
+  if (start < 0) {
+    const nextHigher = seats.findIndex((s) => s > btnSeat)
+    start = nextHigher < 0 ? 0 : nextHigher
+  }
+
+  const names = POSITION_NAMES[count]
+  for (let i = 0; i < count; i++) {
+    const seat = seats[(start + i) % count]
+    result.set(seat, names && i < names.length ? names[i] : `+${i}`)
+  }
+  return result
+}
+
 export function nextButton(activeSeats: number[], currentBtn: number): number {
   const sorted = [...new Set(activeSeats)]
     .filter((seat) => Number.isInteger(seat) && seat > 0)
