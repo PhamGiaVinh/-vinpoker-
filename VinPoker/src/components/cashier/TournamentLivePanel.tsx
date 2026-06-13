@@ -11,14 +11,22 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  LayoutGrid, Hand, RefreshCw, History,
-  Users, Layers, AlertTriangle, ArrowLeft,
+  Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
-import { FloorTDPanel } from "./tournament-live/FloorTDPanel";
+import { ClockPanel } from "./tournament-live/ClockPanel";
+import { TableDrawPanel } from "./tournament-live/TableDrawPanel";
 import { HandInputPanel } from "./tournament-live/HandInputPanel";
+import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
+import { PlayersListPanel } from "./tournament-live/PlayersListPanel";
+import { BlindStructurePanel } from "./tournament-live/BlindStructurePanel";
+import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
+import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
+import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
+import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -60,7 +68,19 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: string[]; clubs: { id: string; name: string }[] }) {
+// Which tabs each operator role sees. "full" preserves the original panel
+// (default, so existing call sites are unchanged); tracker = live-tracking view,
+// floor = room-management view. live_view is in every set, so defaultValue stays valid.
+const MODE_TABS: Record<string, string[]> = {
+  full: ["live_view", "clock", "table_draw", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
+  // Owner IA correction 2026-06-14: Floor OWNS the blind structure; ClockPanel only
+  // reads it. So `blinds` lives in floor (not tracker). Tracker = live-running clock +
+  // hand engine + leaderboard. `players` = Kholdem players list + move-stepper (floor).
+  tracker: ["live_view", "clock", "hand_input", "hand_history", "leaderboard"],
+  floor: ["live_view", "table_draw", "players", "prizes", "blinds"],
+};
+
+export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
@@ -306,42 +326,60 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
       </Card>
 
       {selectedTournament ? (
-        <Tabs defaultValue="floor" className="w-full">
-          <div className="overflow-x-auto -mx-2 px-2 pb-1">
-            <TabsList className="inline-flex w-max min-w-full">
-              <TabsTrigger value="floor"><LayoutGrid className="w-4 h-4 mr-1" /> Floor / TD</TabsTrigger>
-              <TabsTrigger value="tracker"><Hand className="w-4 h-4 mr-1" /> Live Tracker</TabsTrigger>
-            </TabsList>
-          </div>
-          {/* Floor / TD — Kholdem-style console: all floor controls in one place */}
-          <TabsContent value="floor" className="mt-4">
-            <FloorTDPanel
-              tournament={selectedTournament}
-              refreshTrigger={refreshTrigger}
-              tournaments={(tournaments ?? []).map((tour) => ({
-                id: tour.id,
-                name: tour.name,
-                club_id: tour.club_id,
-                status: tour.status,
-              }))}
-            />
-          </TabsContent>
-          {/* Live Tracker — hand engine only (hand input + hand history) */}
-          <TabsContent value="tracker" className="mt-4">
-            <Tabs defaultValue="hand_input" className="w-full">
-              <TabsList>
-                <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.input")}</TabsTrigger>
-                <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
-              </TabsList>
-              <TabsContent value="hand_input" className="mt-4">
-                <HandInputPanel tournamentId={selectedTournament.id} />
-              </TabsContent>
-              <TabsContent value="hand_history" className="mt-4">
-                <HandHistoryPanel tournamentId={selectedTournament.id} />
-              </TabsContent>
+        (() => {
+          const TAB_DEFS = [
+            { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
+            { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
+            { value: "table_draw", icon: LayoutGrid, label: t("tournamentLive.tableDraw.title"), render: () => <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
+            { value: "queue", icon: ListOrdered, label: "Hàng chờ", render: () => (
+              <RegistrationQueuePanel
+                tournamentId={selectedTournament.id}
+                tournamentName={selectedTournament.name}
+                tournamentDate={(selectedTournament as Tournament & { start_time?: string | null }).start_time ?? null}
+                refreshTrigger={refreshTrigger}
+              />
+            ) },
+            { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => <HandInputPanel tournamentId={selectedTournament.id} /> },
+            { value: "hand_history", icon: History, label: t("tournamentLive.handHistory.title"), render: () => <HandHistoryPanel tournamentId={selectedTournament.id} /> },
+            { value: "leaderboard", icon: Trophy, label: t("tournamentLive.leaderboard.title"), render: () => <LeaderboardPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
+            { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersListPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
+            { value: "blinds", icon: List, label: t("tournamentLive.tabs.blinds"), render: () => <BlindStructurePanel tournamentId={selectedTournament.id} /> },
+            { value: "prizes", icon: Settings, label: t("tournamentLive.tabs.prizes"), render: () => <PrizeStructurePanel tournamentId={selectedTournament.id} /> },
+            { value: "tv_displays", icon: Tv, label: t("tournamentLive.tvDisplays.tab"), render: () => (
+              <TvDisplaysPanel
+                tournamentId={selectedTournament.id}
+                tournamentName={selectedTournament.name}
+                clubId={selectedTournament.club_id}
+                tournaments={(tournaments ?? []).map((tour) => ({
+                  id: tour.id,
+                  name: tour.name,
+                  club_id: tour.club_id,
+                  status: tour.status,
+                }))}
+              />
+            ) },
+          ];
+          const allowed = MODE_TABS[mode] ?? MODE_TABS.full;
+          const visibleTabs = TAB_DEFS.filter((td) => allowed.includes(td.value));
+          const defaultTab = visibleTabs.some((td) => td.value === "live_view") ? "live_view" : visibleTabs[0]?.value;
+          return (
+            <Tabs defaultValue={defaultTab} className="w-full">
+              <div className="overflow-x-auto -mx-2 px-2 pb-1">
+                <TabsList className="inline-flex w-max min-w-full">
+                  {visibleTabs.map((td) => {
+                    const Icon = td.icon;
+                    return (
+                      <TabsTrigger key={td.value} value={td.value}><Icon className="w-4 h-4 mr-1" /> {td.label}</TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+              </div>
+              {visibleTabs.map((td) => (
+                <TabsContent key={td.value} value={td.value} className="mt-4">{td.render()}</TabsContent>
+              ))}
             </Tabs>
-          </TabsContent>
-        </Tabs>
+          );
+        })()
       ) : (
         renderOverview()
       )}
