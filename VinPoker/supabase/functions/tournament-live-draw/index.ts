@@ -37,8 +37,21 @@ Deno.serve(async (req) => {
       }
       case "update_seats": {
         const { seats } = body;
-        const { data: upsertData, error: upsertError } = await supabase.from("tournament_seats").upsert(
-          seats.map((seat: any) => ({
+        // NOTE: we deliberately do NOT upsert. The seat-assignment-core migration
+        // (20260807000000) dropped the legacy full UNIQUE(tournament_id,player_id)
+        // and replaced it with PARTIAL unique indexes (… WHERE is_active=true).
+        // PostgREST on_conflict cannot target a partial index, so upserting any
+        // row (e.g. a busted/inactive seat) fails with "no unique or exclusion
+        // constraint matching the ON CONFLICT specification". Instead: UPDATE the
+        // existing row by id, INSERT only when no seat_id is supplied.
+        // Process deactivations (is_active=false) BEFORE activations so a save that
+        // frees one seat and fills it in the same batch can't transiently collide
+        // on uq_tournament_seats_active_seat (table_id,seat_number) WHERE is_active.
+        const rows = (seats as any[]).slice().sort(
+          (a, b) => (a.is_active === false ? 0 : 1) - (b.is_active === false ? 0 : 1)
+        );
+        for (const seat of rows) {
+          const payload = {
             tournament_id,
             player_id: seat.player_id,
             entry_number: seat.entry_number || 1,
@@ -47,10 +60,20 @@ Deno.serve(async (req) => {
             chip_count: seat.chip_count || 0,
             is_active: seat.is_active !== false,
             player_name: seat.player_name || "",
-          })),
-          { onConflict: "tournament_id,player_id,entry_number" }
-        );
-        if (upsertError) throw upsertError;
+          };
+          if (seat.seat_id) {
+            const { error: updErr } = await supabase
+              .from("tournament_seats")
+              .update(payload)
+              .eq("id", seat.seat_id);
+            if (updErr) throw updErr;
+          } else {
+            const { error: insErr } = await supabase
+              .from("tournament_seats")
+              .insert(payload);
+            if (insErr) throw insErr;
+          }
+        }
         result = { data: { updated: seats.length } };
         break;
       }

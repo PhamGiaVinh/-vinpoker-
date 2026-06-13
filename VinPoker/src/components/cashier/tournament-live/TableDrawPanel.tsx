@@ -257,6 +257,7 @@ export function TableDrawPanel({
           tournament_id: tournamentId,
           action: "update_seats",
           seats: seats.map((s) => ({
+            seat_id: s.seat_id, // UPDATE-by-id target (avoids the dropped-constraint upsert)
             player_id: s.player_id,
             entry_number: s.entry_number,
             table_id: s.table_id,
