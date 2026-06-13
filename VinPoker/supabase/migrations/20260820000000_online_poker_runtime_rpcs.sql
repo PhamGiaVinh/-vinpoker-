@@ -182,10 +182,11 @@ BEGIN
   SELECT v_hand_id, 'hole', (h->>'seat')::int, h->'cards'
   FROM jsonb_array_elements(p_holes) AS h;
 
-  -- Initial events.
+  -- Initial events. The RPC is the single owner of per-hand seq: assign it from
+  -- array order (the Edge passes {type, payload} only).
   INSERT INTO public.online_poker_hand_events (hand_id, event_seq, type, payload)
-  SELECT v_hand_id, (e->>'event_seq')::int, e->>'type', COALESCE(e->'payload', '{}'::jsonb)
-  FROM jsonb_array_elements(p_events) AS e;
+  SELECT v_hand_id, (t.ord - 1)::int, t.e->>'type', COALESCE(t.e->'payload', '{}'::jsonb)
+  FROM jsonb_array_elements(p_events) WITH ORDINALITY AS t(e, ord);
 
   RETURN jsonb_build_object('outcome', 'ok', 'hand_id', v_hand_id, 'state_version', 0);
 END;
@@ -215,6 +216,7 @@ DECLARE
   v_seat_owner uuid;
   v_pre_total  bigint;
   v_post_total bigint;
+  v_seq_start  int;
   v_existing   jsonb;
   v_response   jsonb;
 BEGIN
@@ -306,10 +308,13 @@ BEGIN
   WHERE hs.hand_id = p_hand_id AND hs.seat_no = (s->>'seat')::int
     AND (s->>'status') IN ('active', 'folded', 'allin');
 
-  -- Append events (seq assigned by the Edge, continuing the per-hand sequence).
+  -- Append events. The RPC owns per-hand seq: continue from the current max
+  -- (the Edge passes {type, payload} only, never a seq).
+  SELECT COALESCE(MAX(event_seq) + 1, 0) INTO v_seq_start
+  FROM public.online_poker_hand_events WHERE hand_id = p_hand_id;
   INSERT INTO public.online_poker_hand_events (hand_id, event_seq, type, payload)
-  SELECT p_hand_id, (e->>'event_seq')::int, e->>'type', COALESCE(e->'payload', '{}'::jsonb)
-  FROM jsonb_array_elements(p_events) AS e;
+  SELECT p_hand_id, v_seq_start + (t.ord - 1)::int, t.e->>'type', COALESCE(t.e->'payload', '{}'::jsonb)
+  FROM jsonb_array_elements(p_events) WITH ORDINALITY AS t(e, ord);
 
   -- Advance the live remaining deck (G4(g): secret stays in the secrets table).
   UPDATE public.online_poker_hand_secrets
