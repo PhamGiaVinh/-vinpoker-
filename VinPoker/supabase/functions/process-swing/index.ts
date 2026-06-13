@@ -74,6 +74,17 @@ const DEFAULT_BREAK_DURATION_MINUTES = 15;
 const SWING_WINDOW_BUFFER_MINUTES = 2;
 const MAX_SWING_RETRIES = 3;
 
+// ── Owner policy (2026-06-13) ────────────────────────────────────────────────
+// The scheduler must NEVER auto force-release an overdue dealer: with no
+// replacement the dealer stays on OVERTIME (Pass R already stamps
+// overtime_started_at) and the floor intervenes manually. And it must NEVER
+// auto-open/auto-staff an empty table — opening is manual-only (the "Gán" /
+// "Gán loạt" buttons via the assign-dealer / mass-assign edge functions, which
+// are unaffected by these flags). Flip either to true to restore the previous
+// automatic behavior.
+const FORCE_RELEASE_ENABLED = false;
+const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
+
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
 // Batch cleanup (Pass 1b, 1c) dùng direct UPDATE — trigger ghi audit tự động.
@@ -1043,37 +1054,52 @@ Deno.serve(async (req: Request) => {
           if (overdueErr) {
             console.error("[Pass 0c] ❌ Overdue query error:", overdueErr.message);
           } else if (overdueAssignments && overdueAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — force-releasing`);
-            for (const a of overdueAssignments) {
-              const overdueMin = Math.floor(
-                (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
-              );
-              const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
-              const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+            if (FORCE_RELEASE_ENABLED) {
+              console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — force-releasing`);
+              for (const a of overdueAssignments) {
+                const overdueMin = Math.floor(
+                  (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
+                );
+                const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+                const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
 
-              // Call force_release_stuck_assignment RPC
-              const forceResult = await admin.rpc("force_release_stuck_assignment", {
-                p_assignment_id: a.id,
-                p_club_id: cid,
-                p_reason: `pass0c_force_release_overdue_${Math.min(overdueMin, 240)}min`,
-              });
+                // Call force_release_stuck_assignment RPC
+                const forceResult = await admin.rpc("force_release_stuck_assignment", {
+                  p_assignment_id: a.id,
+                  p_club_id: cid,
+                  p_reason: `pass0c_force_release_overdue_${Math.min(overdueMin, 240)}min`,
+                });
 
-              if (forceResult.error) {
-                console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
-                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
-                continue;
+                if (forceResult.error) {
+                  console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
+                  criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
+                  continue;
+                }
+
+                const fr = forceResult.data as { success: boolean; reason?: string };
+                if (!fr?.success) {
+                  console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
+                  criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
+                  continue;
+                }
+
+                forceReleasedCount++;
+                console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
+                criticalAlerts.push(`✅ *${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
               }
-
-              const fr = forceResult.data as { success: boolean; reason?: string };
-              if (!fr?.success) {
-                console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
-                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
-                continue;
+            } else {
+              // Owner policy: NEVER force-release. The dealer stays on OT (Pass R
+              // stamped overtime_started_at) — alert only so the floor swings or
+              // assigns a relief manually.
+              console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — OT alert only (force-release disabled)`);
+              for (const a of overdueAssignments) {
+                const overdueMin = Math.floor(
+                  (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
+                );
+                const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+                const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph — đang OT, cần can thiệp thủ công.`);
               }
-
-              forceReleasedCount++;
-              console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
-              criticalAlerts.push(`✅ *${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
             }
           }
 
@@ -1195,7 +1221,11 @@ Deno.serve(async (req: Request) => {
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
         let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
-        if (!dryRun) {
+        // Owner policy: NEVER auto-open/auto-staff an empty table. Opening is
+        // manual-only (the "Gán" / "Gán loạt" buttons → assign-dealer / mass-assign
+        // edge functions, which call fillEmptyTables independently and are NOT
+        // affected by this gate). The cron must not auto-fill or send "Mở Bàn".
+        if (!dryRun && AUTO_OPEN_EMPTY_TABLES_ENABLED) {
           fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt, clubCfg.min_inter_swing_rest_minutes);
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           // Pass 1 swing_in intentionally NOT enqueued here:
@@ -2312,7 +2342,12 @@ if (tier2Count > 0) {
           const forceReleaseThresholdMin = await admin.rpc("get_escalation_config", { p_club_id: cid })
             .then((r: any) => r.data?.force_release_at_overdue_min ?? 30)
             .catch(() => 30);
-          if (minsLeft < -forceReleaseThresholdMin) {
+          // Owner policy: NEVER force-release. When disabled, an overdue table
+          // falls through to the normal pre-assigned-swing path below (relieve
+          // only if a replacement is pre-assigned; otherwise the dealer stays on
+          // OT — overtime_started_at already stamped by Pass R). No release, no
+          // relaxed-guard escalation, no auto re-staff.
+          if (FORCE_RELEASE_ENABLED && minsLeft < -forceReleaseThresholdMin) {
             console.error(
               `[Pass 3] 🚨 FORCE-RELEASE: ${tableName} overdue by ${-minsLeft}min (threshold ${forceReleaseThresholdMin}min)`
             );
