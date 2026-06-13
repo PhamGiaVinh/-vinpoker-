@@ -118,6 +118,16 @@ Deno.serve(async (req) => {
         result = await supabase.rpc("void_last_hand", { p_hand_id: hand_id });
         break;
       }
+      case "delete_last_action": {
+        // Undo the single most-recent action of an in-progress hand (tablet
+        // mis-tap). The RPC checks the hand lock and returns the deleted action.
+        const { hand_id } = body;
+        result = await supabase.rpc("delete_last_action", {
+          p_hand_id: hand_id,
+          p_user_id: user.id,
+        });
+        break;
+      }
       case "update_stack": {
         const { player_id, entry_number, chip_count } = body;
         result = await supabase.rpc("update_stack", {

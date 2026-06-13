@@ -91,6 +91,11 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   // Tablet redesign: the seat the operator is entering an action for. Defaults
   // to the auto-detected to-act player; tapping a seat overrides it.
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null);
+  // Per-action undo: snapshot of the local state before each recorded action,
+  // so "Hoàn tác" restores it (and the server row is removed via delete_last_action).
+  const [undoStack, setUndoStack] = useState<
+    { players: PlayerState[]; actions: ActionRecord[]; currentStreet: Street; nextActionOrder: number }[]
+  >([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -438,6 +443,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       }
     }
 
+    // Snapshot the pre-action state so the operator can undo this exact step.
+    setUndoStack((prev) => [...prev, { players, actions, currentStreet, nextActionOrder }]);
+
     const currentOrder = nextActionOrder;
     setNextActionOrder((prev) => prev + 1);
     setPlayers(newPlayers);
@@ -486,6 +494,37 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     }
     if (isReadOnly) return;
     setSelectedActorId(seat.player_id);
+  };
+
+  // Undo the last recorded action: remove the server row (delete_last_action),
+  // then restore the snapshot of local state from before that action.
+  const restoreLastSnapshot = () => {
+    const snap = undoStack[undoStack.length - 1];
+    if (!snap) return;
+    setPlayers(snap.players);
+    setActions(snap.actions);
+    setCurrentStreet(snap.currentStreet);
+    setNextActionOrder(snap.nextActionOrder);
+    setUndoStack((prev) => prev.slice(0, -1));
+    setBetAmount("");
+    setSelectedActorId(null);
+  };
+
+  const handleUndo = async () => {
+    if (isReadOnly) { toast.error("Phiên làm việc đã hết hạn"); return; }
+    if (undoStack.length === 0) { toast.error("Không có hành động nào để hoàn tác"); return; }
+    // No server hand yet (rare) → just restore local.
+    if (!handId) { restoreLastSnapshot(); return; }
+    const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+      body: { tournament_id: tournamentId, action: "delete_last_action", hand_id: handId },
+    });
+    const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
+    if (rejection) {
+      toast.error(typeof rejection === "string" ? rejection : "Không hoàn tác được hành động");
+      return;
+    }
+    restoreLastSnapshot();
+    toast.success("Đã hoàn tác hành động cuối");
   };
 
   const handleUpdateCommunityCards = async () => {
@@ -622,6 +661,8 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setEndingStacks({});
     setPlayerHoleCards({});
     setNextActionOrder(1);
+    setUndoStack([]);
+    setSelectedActorId(null);
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
         if (data) setHandNumber(data);
@@ -874,6 +915,8 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             onNextStreet={nextStreet}
             onComplete={completeHand}
             canComplete={actions.length > 0}
+            onUndo={handleUndo}
+            canUndo={undoStack.length > 0}
             onReset={resetHand}
             onVoid={handleVoid}
             hasVoidTarget={!!(handId || lastHandId)}
