@@ -31,6 +31,7 @@ import {
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -59,6 +60,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   const { isStaffOps, isClubAdmin } = useAuth();
   const canTdAi = isStaffOps || isClubAdmin;
   const [tdAiOpen, setTdAiOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
@@ -781,7 +783,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
         <div>
-          <LiveFelt {...feltProps} />
+          <LiveFelt {...feltProps} portrait={!!isMobile} />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
           )}
