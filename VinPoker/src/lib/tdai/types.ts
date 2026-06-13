@@ -7,7 +7,9 @@
 // call, so the UI never changes. Everything here is advisory and clearly
 // labelled DEMO — it is never an official ruling.
 
-export type TdRuleSource = "demo" | "house_demo";
+// "demo"/"house_demo" = PR D mock set. "summary" = paraphrased TDA topic,
+// "house" = club rule — both used by the PR E corpus. None are verbatim TDA.
+export type TdRuleSource = "demo" | "house_demo" | "summary" | "house";
 
 export type TdStreet = "preflop" | "flop" | "turn" | "river" | "showdown" | "other";
 
@@ -16,8 +18,9 @@ export type TdConfidence = "low" | "medium" | "high";
 /** 'local' = PR D keyword lookup. 'ai' = PR E model synthesis. */
 export type TdAnswerSource = "local" | "ai";
 
-/** Non-authoritative citation kinds. No real TDA rule numbers until PR E. */
-export type TdCitationKind = "tda_placeholder" | "house_demo";
+// Non-authoritative citation kinds. "tda_summary" = paraphrased TDA topic
+// summary (NOT verbatim official text); "house" = club rule.
+export type TdCitationKind = "tda_placeholder" | "house_demo" | "tda_summary" | "house";
 
 export interface TdRule {
   id: string;

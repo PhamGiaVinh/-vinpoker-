@@ -1769,8 +1769,11 @@
   "tdAi": {
     "entry": "Ask TD AI",
     "title": "TD AI Assistant",
-    "subtitle": "Look up tournament-dispute handling. DEMO — no AI yet, not an official ruling.",
+    "subtitle": "Look up tournament-dispute handling. Advisory only — the TD makes the final call.",
     "newLookup": "New lookup",
+    "loading": "Asking TD AI…",
+    "advisoryBanner": "Advisory only — not an official ruling. The TD confirms before applying.",
+    "error": "Could not reach TD AI — using keyword lookup instead.",
     "form": {
       "table": "Table",
       "tablePlaceholder": "e.g. Table 4",

@@ -6,7 +6,7 @@ import type { TdCitation } from "@/lib/tdai/types";
  */
 export function TdAiCitation({ citation }: { citation: TdCitation }) {
   const color =
-    citation.kind === "house_demo"
+    citation.kind === "house_demo" || citation.kind === "house"
       ? "border-sky-500/40 bg-sky-500/10 text-sky-300"
       : "border-amber-500/40 bg-amber-500/10 text-amber-300";
   return (
