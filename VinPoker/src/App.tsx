@@ -79,6 +79,9 @@ const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const TournamentTv = lazy(() => import("./pages/TournamentTv"));
 const TvPair = lazy(() => import("./pages/TvPair"));
 const TournamentDisplay = lazy(() => import("./pages/TournamentDisplay"));
+// GE-2D online-poker shell (dark; gated by FEATURES.onlinePoker)
+const OnlinePoker = lazy(() => import("./pages/OnlinePoker"));
+const OnlinePokerTable = lazy(() => import("./pages/OnlinePokerTable"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -163,6 +166,9 @@ const App = () => (
                 <Route path="/packages/:packageId" element={<PackageDetail />} />
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
+                {/* GE-2D online-poker shell — pages self-gate on FEATURES.onlinePoker */}
+                <Route path="/poker" element={<OnlinePoker />} />
+                <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />
                 <Route path="/cashier" element={<CashierDashboard />} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
