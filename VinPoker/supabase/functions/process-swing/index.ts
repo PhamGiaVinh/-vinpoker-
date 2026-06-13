@@ -84,13 +84,20 @@ const MAX_SWING_RETRIES = 3;
 // automatic behavior.
 const FORCE_RELEASE_ENABLED = false;
 const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
-// Pass 3 escalation tiers 1–3 RELAX/BYPASS the normal rest & fatigue guards
-// (Tier 3: min_rest=0, skip fatigue cap) to auto-swap a relief dealer into an
-// overdue table. Owner policy: never bypass rest to force someone in — if no
-// NORMALLY-eligible replacement exists (Tier 0, normal rest), the dealer stays
-// on OT and the floor intervenes. Tier 0 (normal rest) always runs; tiers 1–3
-// run only when this is true. Flip to true to restore emergency auto-swap.
-const RELAXED_REST_AUTO_SWAP_ENABLED = false;
+// Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
+// The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
+// that auto-picks an UNPLANNED pool dealer for an overdue table is disabled:
+// no pre-assigned replacement → the current dealer stays on OT (alert / manual
+// intervention). Predicted / pre-assign PLANNING (Pass R, lock_rotation_slot,
+// set_rotation_slot_dealer) is NOT affected — a resting dealer may still be
+// pre-assigned for a future swing. Flip true to restore emergency auto-pick.
+const UNPLANNED_AUTO_PICK_ENABLED = false;
+// Hard rest revalidation at EXECUTE time (owner policy 2026-06-13): the incoming
+// pre-assigned dealer must have >= 13 min rest at swing time. If still short, do
+// NOT swing — keep the current dealer on OT and alert. Planning may pre-assign a
+// resting dealer who is expected to be valid by swing time; execution enforces
+// the hard rest floor.
+const EXECUTE_MIN_REST_MINUTES = 13;
 
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
@@ -2523,7 +2530,7 @@ if (tier2Count > 0) {
             // ── Pre-assigned swing path ───────────────────────────────────
             const { data: preflightAtt } = await admin
               .from("dealer_attendance")
-              .select("current_state, status, full_name")
+              .select("current_state, status, full_name, last_released_at")
               .eq("id", assignment.pre_assigned_attendance_id)
               .maybeSingle();
             const preflightInvalid = !preflightAtt
@@ -2577,6 +2584,41 @@ if (tier2Count > 0) {
                 if (replan.relocked) metrics.success++;
                 else metrics.skipped++;
                 continue;
+              }
+              metrics.skipped++;
+              continue;
+            }
+
+            // ── Execute-time HARD rest revalidation (owner policy 2026-06-13) ──
+            // Planning may pre-assign a resting dealer expected to be valid by
+            // swing time. At execute, the incoming dealer MUST have
+            // >= EXECUTE_MIN_REST_MINUTES rest. If still short, DO NOT swing —
+            // keep the current dealer on OT (Pass R already stamped it) and alert.
+            // The pre-assign lock is left intact so a later tick swings once the
+            // incoming dealer is rested. No force-release, no auto-pick, no bypass.
+            const incomingRestMin = preflightAtt?.last_released_at
+              ? (Date.now() - new Date(preflightAtt.last_released_at).getTime()) / 60_000
+              : Infinity; // never released this shift → fully rested
+            if (incomingRestMin < EXECUTE_MIN_REST_MINUTES) {
+              console.warn("[process-swing][pass3][rest-revalidation-block]", {
+                club_id: cid,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                incoming_dealer_name: preflightAtt?.full_name,
+                incoming_rest_min: Math.floor(incomingRestMin),
+                required_min: EXECUTE_MIN_REST_MINUTES,
+                reason: "incoming_not_rested_keep_ot",
+              });
+              if (botToken) {
+                const chatId = await getClubTelegramChatId(admin, cid).catch(() => null);
+                if (chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `⏸ *${tableName}* — Hoãn đổi: ${preflightAtt?.full_name ?? "dealer thay"} mới nghỉ ${Math.floor(incomingRestMin)}ph (<${EXECUTE_MIN_REST_MINUTES}ph). Dealer hiện tại tiếp tục OT — cần can thiệp thủ công.`,
+                    { parse_mode: "Markdown" },
+                  ).catch((err: unknown) => console.error("[process-swing] Telegram error:", err));
+                }
               }
               metrics.skipped++;
               continue;
@@ -3166,14 +3208,19 @@ if (tier2Count > 0) {
               force_release_at_overdue_min: 30,
             };
 
-            // ── Tier 0: Normal pick ──────────────────────────────────────────
-            let nextDealer = await pickNextDealer(admin, cid, {
-              ...basePickOptions,
-              minRestMinutes: clubCfg.break_duration_minutes ?? 10,
-            });
+            // ── Tier 0: Normal pick (UNPLANNED auto-pick — gated) ─────────────
+            // Owner policy: automatic swing requires a PLANNED pre-assignment.
+            // When unplanned auto-pick is disabled, no pool dealer is picked here
+            // (Tier 0 or relaxed tiers below) — the table stays on OT.
+            let nextDealer = UNPLANNED_AUTO_PICK_ENABLED
+              ? await pickNextDealer(admin, cid, {
+                  ...basePickOptions,
+                  minRestMinutes: clubCfg.break_duration_minutes ?? 10,
+                })
+              : null;
 
             // ── Tier 1: 5+ min overdue, relax min_rest to 5 ──────────────────
-            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 1 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_1_min_rest_min}`
@@ -3185,7 +3232,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 2: 15+ min overdue, relax min_rest to 3, skip priority break ──
-            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 2 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_2_min_rest_min}, skipPriorityBreak=${esc.tier_2_skip_priority_break}`
@@ -3198,7 +3245,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 3: 30+ min overdue, min_rest=0, skip fatigue cap (last resort) ──
-            if (RELAXED_REST_AUTO_SWAP_ENABLED && !nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
               console.warn(
                 `[Pass 3] Tier 3 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_3_min_rest_min}, skipFatigue=${esc.tier_3_skip_fatigue_cap} — LAST RESORT`
