@@ -26,4 +26,11 @@ export const FEATURES = {
    * Kill-switch: flipping to false restores the disabled placeholder button.
    */
   wrongTableCorrection: true,
+  /**
+   * Dealer Swing "Sửa domino nhiều bàn" multi-table room-reconcile wizard (#33F).
+   * Same LIVE backend reconcile_dealer_room_state (incl. park-and-place swap
+   * fix 20260819000004). Default OFF for owner UAT — flip to true is one line.
+   * Independent of wrongTableCorrection.
+   */
+  roomReconcileWizard: false,
 } as const;
