@@ -33,6 +33,8 @@ const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
 const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
+const FloorDashboard = lazy(() => import("./pages/FloorDashboard"));
+const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -164,6 +166,8 @@ const App = () => (
                 <Route path="/cashier" element={<CashierDashboard />} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
+                <Route path="/floor" element={<FloorDashboard />} />
+                <Route path="/dealer-swing" element={<DealerSwingDashboard />} />
                 <Route path="/admin" element={<SuperAdmin />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/media" element={<MediaCenter />} />
