@@ -1,0 +1,99 @@
+# Codemagic CI/CD — VBacker (Capacitor mobile app)
+# This file lives at the repository root; the Capacitor app is in the VinPoker/ subfolder.
+# Docs: https://docs.codemagic.io/yaml-quick-start/
+#
+# Quick start for the owner (non-technical):
+#   1. Sign up at codemagic.io with the GitHub account that has this repo.
+#   2. Add this repository, pick the `android-debug` workflow, press Start build.
+#   3. When it finishes, Codemagic emails an installable APK to the address below.
+#      Download it on an Android phone and install (allow "unknown sources").
+#   The `ios-release` workflow only works AFTER an Apple Developer account +
+#   signing are connected in Codemagic — leave it untouched until then.
+
+workflows:
+  # ---------------------------------------------------------------------------
+  # Android debug APK — works immediately, NO signing/accounts required.
+  # Produces an installable APK for internal testing on real Android devices.
+  # ---------------------------------------------------------------------------
+  android-debug:
+    name: VBacker — Android debug APK
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      node: 20
+      vars:
+        VERCEL: "1" # skip the Playwright Chromium download in postinstall
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd VinPoker
+          npm ci --no-audit --no-fund
+      - name: Build web (Vite)
+        script: |
+          cd VinPoker
+          npm run build
+      - name: Capacitor sync (Android)
+        script: |
+          cd VinPoker
+          npx cap sync android
+      - name: Build debug APK
+        script: |
+          cd VinPoker/android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - VinPoker/android/app/build/outputs/**/*.apk
+    publishing:
+      email:
+        recipients:
+          - zadvietnam2010@gmail.com
+        notify:
+          success: true
+          failure: true
+
+  # ---------------------------------------------------------------------------
+  # iOS App Store build — TEMPLATE. Requires the owner to first connect in Codemagic:
+  #   - App Store Connect API key integration (name it "VBacker App Store Connect")
+  #   - bundle id app.vbacker registered in the Apple Developer portal
+  # Exact build steps may need a small adjustment once signing is connected
+  # (Capacitor 7 iOS uses Swift Package Manager). Do not trigger until ready.
+  # ---------------------------------------------------------------------------
+  ios-release:
+    name: VBacker — iOS App Store (needs Apple signing)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: VBacker App Store Connect
+    environment:
+      node: 20
+      vars:
+        VERCEL: "1"
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: app.vbacker
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd VinPoker
+          npm ci --no-audit --no-fund
+      - name: Build web (Vite)
+        script: |
+          cd VinPoker
+          npm run build
+      - name: Capacitor sync (iOS)
+        script: |
+          cd VinPoker
+          npx cap sync ios
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          cd VinPoker/ios/App
+          xcode-project build-ipa --project App.xcodeproj --scheme App
+    artifacts:
+      - VinPoker/ios/App/build/ios/ipa/*.ipa
+    publishing:
+      email:
+        recipients:
+          - zadvietnam2010@gmail.com

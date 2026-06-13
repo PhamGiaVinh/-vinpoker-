@@ -1,0 +1,4 @@
+# Keep the Gradle wrapper and shell scripts LF so CI (Linux/macOS, e.g. Codemagic)
+# can execute them regardless of the committer's autocrlf settings on Windows.
+gradlew text eol=lf
+*.sh text eol=lf
