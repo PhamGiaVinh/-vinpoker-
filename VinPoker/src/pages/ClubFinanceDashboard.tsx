@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { FEATURES } from "@/lib/featureFlags";
 import { formatVND } from "@/lib/format";
 import { exportToExcel } from "@/lib/exportExcel";
 import { useClubFinanceSummary } from "@/hooks/useClubFinanceSummary";
@@ -73,9 +72,8 @@ const ClubFinanceDashboard = () => {
     [summary],
   );
 
-  // Dark by default: hidden from everyone except super_admin (owner UAT) until the flag flips.
-  // Placed AFTER all hooks (rules-of-hooks) so it is safe to embed in the Super Admin "Tài chính" tab.
-  if (!((FEATURES.clubFinanceDashboard || isAdmin) && isClubAdmin)) {
+  // Visible to club_admin + super_admin only (role-gated). Placed AFTER all hooks (rules-of-hooks).
+  if (!isClubAdmin) {
     return <Navigate to="/" replace />;
   }
 

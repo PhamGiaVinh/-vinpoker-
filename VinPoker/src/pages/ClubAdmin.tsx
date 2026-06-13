@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { FEATURES } from "@/lib/featureFlags";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +27,7 @@ const GAME_TYPES = [{v:"nlh",l:"No Limit Hold'em"},{v:"plo",l:"Pot Limit Omaha"}
 const ClubAdmin = () => {
   const { t } = useTranslation();
 
-  const { user, loading: authLoading, isAdmin } = useAuth();
+  const { user, loading: authLoading, isClubAdmin } = useAuth();
   const nav = useNavigate();
   const [clubs, setClubs] = useState<any[]>([]);
   const [activeClub, setActiveClub] = useState<any>(null);
@@ -171,7 +170,7 @@ const ClubAdmin = () => {
             </Card>
           )}
 
-          {activeClub && (FEATURES.clubFinanceDashboard || isAdmin) && (
+          {activeClub && isClubAdmin && (
             <Card className="p-4 gradient-card border-primary/50 flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-display text-base flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /> Tài chính CLB</h3>

@@ -194,7 +194,7 @@ export const Layout = () => {
 
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier).
                 Each destination guards itself; this is a UI entry only. */}
-            {(isCashier || isTracker || isAdmin) && (
+            {(isCashier || isTracker || isAdmin || isClubAdmin) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -231,6 +231,12 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/dealer-swing")} className="gap-2.5 cursor-pointer">
                       <Table2 className="w-4 h-4" />
                       Dealer Swing
+                    </DropdownMenuItem>
+                  )}
+                  {isClubAdmin && (
+                    <DropdownMenuItem onClick={() => nav("/club/admin/finance")} className="gap-2.5 cursor-pointer">
+                      <TrendingUp className="w-4 h-4" />
+                      Tài chính
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
