@@ -39,7 +39,7 @@ import OperationsCard from "./command-center/OperationsCard";
 import QuickLinksCard from "./command-center/QuickLinksCard";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
-import { BREAK_SOON_WARNING_MINUTES, getBreakTiming, getBreakVisualState, buildRestMinutesByClub, isAssignableDealer, OPEN_TABLE_GRACE_MINUTES } from "@/lib/breakPoolState";
+import { BREAK_SOON_WARNING_MINUTES, getBreakTiming, getBreakVisualState, buildRestMinutesByClub, isAssignableDealer } from "@/lib/breakPoolState";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
@@ -50,9 +50,9 @@ import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
 import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
-import { getSwingTableStatus } from "./dealer-swing/swingTableStatus";
-import type { SwingTableStatus } from "./dealer-swing/swingTableStatus";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
+import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
+import { deriveTableSwingView, type TableTimeline } from "./dealer-swing/swingTableView";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -68,17 +68,6 @@ import { Calendar } from "@/components/ui/calendar";
 
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
-type TableTimeline = {
-  minutesLeft: number;
-  showNextDealerSoon: boolean;
-  isOverdue: boolean;
-  nominalDueAt: string | null;
-  actualDueAt: string | null;
-  actualMinutesLeft: number;
-  /** Slot-0 read-cache from dealer_assignments — prefer the schedule row when one exists. */
-  plannedReliefAt: string | null;
-};
-
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,15 +83,6 @@ function useTours(clubIds: string[]) {
   }, [clubIdsKey]);
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
-}
-
-function formatTimeHHmm(ms: number | null | undefined): string {
-  if (ms == null || !Number.isFinite(ms)) return "--:--";
-  return new Date(ms).toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
 }
 
 function resolveTableSwingTiming(
@@ -152,52 +132,6 @@ function resolveTableSwingTiming(
     actualMinutesLeft,
     plannedReliefAt: assignment.planned_relief_at ?? null,
   };
-}
-
-/**
- * deriveTableSwingStatus — pure per-table status classifier used by the
- * battle-map status filter (UI Phase 4). Mirrors the EXACT inputs the table
- * card derives inline (warnAt, swingDueMs, isOt, isPastDue, remainingMinutes)
- * and feeds the same getSwingTableStatus classifier, so the filter chip counts
- * and the per-card status badge can never diverge. Presentation only — no
- * swing/timer logic is changed.
- *
- * NOTE: the table card still derives these values inline (it needs swingDueMs
- * for the countdown/progress anyway); Phase 2 (SwingTableCard extraction) folds
- * both call sites onto this single helper.
- */
-function deriveTableSwingStatus(
-  t: any,
-  a: DealerAssignment | null | undefined,
-  tl: TableTimeline | undefined,
-  tournaments: TournamentWithTables[] | undefined,
-  swingConfigs: SwingConfig[] | null | undefined,
-  nowMs: number,
-): SwingTableStatus {
-  const tableTournament = tournaments?.find((tr) =>
-    tr.tournament_tables.some((tt) => tt.table_id === t.id)
-  );
-  const warnAt =
-    tableTournament?.warn_at_minutes
-    ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.warn_at_minutes
-    ?? 5;
-  const swingDuration =
-    tableTournament?.swing_duration_minutes
-    ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes
-    ?? 30;
-  const swingDueMs = a?.swing_due_at
-    ? new Date(a.swing_due_at).getTime()
-    : tl?.nominalDueAt
-      ? new Date(tl.nominalDueAt).getTime()
-      : a?.assigned_at
-        ? new Date(a.assigned_at).getTime() + swingDuration * 60_000
-        : 0;
-  const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
-  const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
-  const remainingMinutes = a ? (swingDueMs - nowMs) / 60_000 : null;
-  return getSwingTableStatus({
-    hasAssignment: !!a, isOt, isPastDue, remainingMinutes, warnAtMinutes: warnAt,
-  });
 }
 
 /* ==============================================================
@@ -3260,13 +3194,7 @@ function TableGrid({
 }) {
   const nowMs = useLiveClock();
   // Final-handoff confirmation ("Chốt đổi dealer") — perform_swing itself is unchanged.
-  const [confirmSwing, setConfirmSwing] = useState<{
-    assignmentId: string;
-    tableName: string;
-    outName: string;
-    inName: string | null;
-    isOt: boolean;
-  } | null>(null);
+  const [confirmSwing, setConfirmSwing] = useState<ConfirmSwingRequest | null>(null);
   const restMinCfg = Math.max(
     10,
     ((swingConfigs.find((c) => (c as any).table_type === "tournament") as any)
@@ -3295,9 +3223,9 @@ function TableGrid({
   const tablesWithStatus = useMemo(
     () => filteredTables.map((t) => ({
       table: t,
-      status: deriveTableSwingStatus(
+      status: deriveTableSwingView(
         t, tableAssignmentMap[t.id], timelineByTableId[t.id], tournaments, swingConfigs, nowMs,
-      ),
+      ).status,
     })),
     [filteredTables, tableAssignmentMap, timelineByTableId, tournaments, swingConfigs, nowMs],
   );
@@ -3373,403 +3301,39 @@ function TableGrid({
             Không có bàn ở trạng thái này.
           </div>
         ) : (
-          visibleTables.map(({ table: t }) => {
-            const a = tableAssignmentMap[t.id];
-            // Resolve config: tournament → club default
-            const tableTournament = tournaments?.find((tr) =>
-              tr.tournament_tables.some((tt) => tt.table_id === t.id)
-            );
-            const warnAt = tableTournament?.warn_at_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.warn_at_minutes ?? 5;
-            const critAt = tableTournament?.crit_at_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.crit_at_minutes ?? 1;
-
-            const dealer = a ? (a as any).dealer_attendance?.dealers : null;
-            const tl = timelineByTableId[t.id];
-            const pred = nextDealerMap?.[t.id];
-
-            // ── Timer / OT / Progress computations ──────────────────────────
-            // Single source of truth: the assignment's swing_due_at. Recomputing
-            // a "nominal" due from assigned_at + config duration desyncs the
-            // countdown/QUÁ HẠN badge from the DB whenever the actual session
-            // duration differs from config (e.g. auto-adjusted durations) —
-            // the card then shows phantom OT while the scheduler honestly
-            // waits for the real due. Config math remains only as a fallback
-            // for rows that somehow lack swing_due_at.
-            const swingDueMs = a?.swing_due_at
-              ? new Date(a.swing_due_at).getTime()
-              : tl?.nominalDueAt
-                ? new Date(tl.nominalDueAt).getTime()
-                : a?.assigned_at
-                  ? new Date(a.assigned_at).getTime() +
-                    ((tableTournament?.swing_duration_minutes ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes ?? 30) * 60_000)
-                  : 0;
-            const actualDueMs = tl?.actualDueAt
-              ? new Date(tl.actualDueAt).getTime()
-              : a?.swing_due_at
-                ? new Date(a.swing_due_at).getTime()
-                : swingDueMs;
-            const preAssignStatus = a?.pre_assign_status ?? "none";
-            const preAssignLabel = getPreAssignStatusLabel(preAssignStatus);
-            const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
-            const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
-            const canSwing = !!a && !a.swing_processed_at && (isOt || actualDueMs <= nowMs);
-
-            // Open-table warmup: show "Vào swing sau M:SS" ONLY if swing_due_at actually
-            // encodes the open-table grace (open-path: swing_due_at = assigned_at + grace + duration).
-            // perform_swing rotation handoffs set swing_due_at = assigned_at + duration (no grace) —
-            // inWarmup must NOT trigger for them, so we detect grace by checking whether the
-            // scheduled window is longer than the nominal swing duration.
-            const assignedMs = a?.assigned_at ? new Date(a.assigned_at).getTime() : 0;
-            const swingDurationMs = (tableTournament?.swing_duration_minutes
-              ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes
-              ?? 30) * 60_000;
-            const hasGrace = a?.swing_due_at != null && assignedMs > 0
-              && (swingDueMs - assignedMs) > swingDurationMs;
-            const warmupUntilMs = hasGrace ? assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000 : 0;
-            const inWarmup = !!a && !isOt && !a.swing_processed_at && hasGrace && nowMs < warmupUntilMs;
-
-            // ── Rotation schedule (source of truth for relief plans) ──
-            const slots = scheduleByTableId?.[t.id];
-            const slot0 = slots?.slot0;
-            const slot0HasDealer = !!slot0?.in_attendance_id;
-            const slot0Locked = !!slot0 && (slot0.status === "announced" || slot0.status === "executing");
-            const slot0Name = slot0?.in_dealer_name ?? "dealer";
-            const slot0ReliefLabel = slot0?.planned_relief_at
-              ? formatTimeHHmm(new Date(slot0.planned_relief_at).getTime())
-              : null;
-            const forecastSlots = [slots?.slot1, slots?.slot2].filter(
-              (s): s is RotationScheduleRow => !!s?.in_attendance_id,
-            );
-            const isTableOverdue = !!tl?.isOverdue;
-
-            // Honest overdue states — driven by the rotation schedule.
-            let overdueState: { label: string; className: string } | null = null;
-            if (isTableOverdue && a) {
-              if (slot0 && slot0Locked && slot0HasDealer) {
-                overdueState = {
-                  label: `✓ CHỐT ${slot0Name}${slot0ReliefLabel ? ` vào ${slot0ReliefLabel}` : ""}`,
-                  className: "text-emerald-400",
-                };
-              } else if (slot0 && slot0.status === "predicted" && !slot0.is_shortage && slot0HasDealer) {
-                overdueState = {
-                  label: `~ DỰ ĐOÁN ${slot0Name}${slot0ReliefLabel ? ` ${slot0ReliefLabel}` : ""}`,
-                  className: "text-amber-400",
-                };
-              } else {
-                const shortageTime = slot0?.is_shortage && slot0.planned_relief_at
-                  ? formatTimeHHmm(new Date(slot0.planned_relief_at).getTime())
-                  : null;
-                overdueState = {
-                  label: shortageTime ? `⚠ THIẾU DEALER · dự kiến ${shortageTime}` : "⚠ THIẾU DEALER",
-                  className: "text-red-400",
-                };
-              }
-            }
-
-            let otLabel = "";
-            if (isOt && a?.overtime_started_at) {
-              const otStartMs = new Date(a.overtime_started_at).getTime();
-              const otSec = Math.max(0, Math.floor((nowMs - otStartMs) / 1000));
-              otLabel = `+${String(Math.floor(otSec / 60)).padStart(2, "0")}:${String(otSec % 60).padStart(2, "0")}`;
-            }
-
-            let timerLabel = "--:--";
-            let timerColor = preAssignStatus === "in_progress" ? "text-purple-400" : preAssignLabel ? "text-amber-400" : "text-emerald-400";
-            if (a && !isOt) {
-              const remainingMs = swingDueMs - nowMs;
-              if (remainingMs > 0) {
-                const secs = Math.floor(remainingMs / 1000);
-                timerLabel = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
-                if (secs <= 60) timerColor = "text-red-400";
-                else if (secs <= 180) timerColor = "text-orange-400";
-                else if (secs <= 300) timerColor = "text-amber-400";
-              } else if (isPastDue) {
-                const overdueSec = Math.floor(Math.abs(remainingMs) / 1000);
-                timerLabel = `+${String(Math.floor(overdueSec / 60)).padStart(2, "0")}:${String(overdueSec % 60).padStart(2, "0")}`;
-                timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
-              }
-            }
-            // Warmup overrides the swing countdown for the first grace window.
-            if (inWarmup) {
-              const warmSec = Math.max(0, Math.floor((warmupUntilMs - nowMs) / 1000));
-              timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
-              timerColor = "text-sky-400";
-            }
-            const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
-
-            let progress = 0;
-            if (a && a.assigned_at) {
-              const totalMs = swingDueMs - new Date(a.assigned_at).getTime();
-              const elapsedMs = nowMs - new Date(a.assigned_at).getTime();
-              progress = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0;
-            }
-
-            const progressColor = isOt
-              ? "bg-red-500"
-              : preAssignStatus === "in_progress" ? "bg-purple-500"
-              : preAssignLabel ? "bg-amber-500"
-              : progress > 85 ? "bg-orange-500"
-              : progress > 70 ? "bg-amber-500"
-              : "bg-emerald-500";
-
-            const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
-
-            // ── Status-first badge (UI Phase 4 operator-panel recompose) ──
-            const remainingMinutes = a ? (swingDueMs - nowMs) / 60_000 : null;
-            const tableStatus = getSwingTableStatus({
-              hasAssignment: !!a, isOt, isPastDue, remainingMinutes, warnAtMinutes: warnAt,
-            });
-            const statusToneClass =
-              tableStatus.tone === "destructive" ? "text-red-400 bg-red-500/15 border-red-500/30"
-              : tableStatus.tone === "warning" ? "text-amber-400 bg-amber-500/15 border-amber-500/30"
-              : tableStatus.tone === "primary" ? "text-primary bg-primary/10 border-primary/30"
-              : "text-zinc-400 bg-zinc-800 border-zinc-700";
-
-            // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
-            const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
-            const slot0EligibleMs = slot0Att?.last_released_at
-              ? new Date(slot0Att.last_released_at).getTime() + restMinCfg * 60_000
-              : null;
-            const replacementNotRested = slot0Locked && slot0EligibleMs != null && slot0EligibleMs > nowMs;
-            const swingDisabled = !a || !canSwing || replacementNotRested || swingingAssignmentId === a.id;
-            const swingDisabledReason = !canSwing
-              ? `Chưa thể chốt đổi: bàn chưa tới giờ đổi (${formatTimeHHmm(actualDueMs)})`
-              : replacementNotRested
-                ? `Chưa thể chốt đổi: dealer thay chưa đủ thời gian nghỉ — đủ điều kiện lúc ${formatTimeHHmm(slot0EligibleMs)}`
-                : undefined;
-            const changePredictedTitle = slot0?.status === "executing"
-              ? "Đang thực hiện đổi dealer — không thể sửa kế hoạch lúc này"
-              : "Đổi dealer thay thế dự kiến cho bàn này (không thực hiện swing)";
-
-            return (
-              <div key={t.id} id={`table-card-${t.id}`} className={[
-                "relative overflow-hidden border rounded-lg transition-all duration-300",
-                isOt ? "border-red-500/70 bg-red-950/30 shadow-[0_0_24px_-8px_rgba(239,68,68,0.4)]" : "border-zinc-700/50 bg-zinc-900/70",
-                isAnimating?.(t.id) ? "table-card--swinging" : "",
-                focusedTableId === t.id ? "table-card--focused" : "",
-              ].join(" ")}>
-                {/* ── OT bar — full width ── */}
-                {isOt && (
-                  <div className="bg-red-600/90 text-red-100 text-[10px] font-bold text-center py-1.5 tracking-wider uppercase select-none">
-                    ⏰ Overtime — {otLabel}
-                  </div>
-                )}
-
-                {/* ── Progress bar ── */}
-                {a && a.assigned_at && (
-                  <div className="h-[3px] bg-zinc-800/60 overflow-hidden">
-                    <div
-                      className={["h-full transition-all duration-1000 ease-linear", progressColor].join(" ")}
-                      style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-                    />
-                  </div>
-                )}
-
-                {/* ── Card body ── */}
-                <div className="p-3 space-y-2">
-                  {/* Header: status pill + table name + type tag + kebab + close */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={["shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border leading-none whitespace-nowrap", statusToneClass].join(" ")}>
-                        {tableStatus.label}
-                      </span>
-                      <span className="text-sm font-bold text-zinc-200 truncate">{t.table_name}</span>
-                      <span className={[
-                        "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
-                        t.table_type === "high"
-                          ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
-                          : "bg-zinc-800 text-zinc-400 border border-zinc-700",
-                      ].join(" ")}>
-                        {tableTypeLabel}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {onManualSwing && onForceClose && (
-                        <TableCardKebab
-                          tableId={t.id}
-                          tableName={t.table_name}
-                          hasActiveAssign={!!a}
-                          onManualSwing={() => onManualSwing(t.id)}
-                          onForceClose={() => onForceClose(t.id)}
-                        />
-                      )}
-                      {closeTableConfirmId === t.id ? (
-                        <div className="flex items-center gap-1">
-                          <button className="text-destructive text-[10px] hover:underline" onClick={onCloseTableConfirm} disabled={closingTable}>
-                            Xác nhận
-                          </button>
-                          <button className="text-muted-foreground text-[10px] hover:underline" onClick={onCloseTableCancel}>
-                            Huỷ
-                          </button>
-                        </div>
-                      ) : (
-                        <button className="text-zinc-600 hover:text-red-400 text-xs" title="Đóng bàn"
-                          onClick={() => onCloseTableClick(t.id)}>
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ── Timer (only when dealer present — no timer for empty tables) ── */}
-                  {dealer && a && a.assigned_at && (
-                    <div className="flex items-baseline gap-1.5">
-                      <span className={[
-                        "text-[22px] font-mono font-bold tracking-tight tabular-nums leading-none",
-                        isOt ? "text-red-400" : timerColor,
-                      ].join(" ")}>
-                        {isOt ? otLabel : timerLabel}
-                      </span>
-                      {overdueState ? (
-                        <span className={["text-[9px] uppercase tracking-wider font-mono font-semibold", overdueState.className].join(" ")}>
-                          {overdueState.label}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                          {statusLabel}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── Swing time tooltip (same guard) ── */}
-                  {dealer && a && a.swing_due_at && (
-                    <div className="text-[9px] text-zinc-600 font-mono">
-                      Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  )}
-
-                  {/* ── Current dealer / Empty state ── */}
-                  {dealer ? (
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <div className={["w-2 h-2 rounded-full flex-shrink-0", isOt ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
-                      <span className="text-xs font-semibold text-zinc-200">{dealer.full_name}</span>
-                      <span className={[
-                        "text-[9px] font-bold px-1 py-0.5 rounded leading-none",
-                        dealer.tier === "A" ? "bg-amber-500/20 text-amber-400" : dealer.tier === "B" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400",
-                      ].join(" ")}>
-                        {dealer.tier}
-                      </span>
-                    </div>
-                  ) : preAssignedMap[t.id] ? (
-                    <div className="flex items-center gap-2 pt-0.5 text-primary">
-                      <span className="text-xs">⬆</span>
-                      <span className="text-xs font-semibold">{preAssignedMap[t.id]!.full_name}</span>
-                      {preAssignLabel ? (
-                        <span className={[
-                          "text-[9px] font-medium",
-                          preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
-                        ].join(" ")}>· {preAssignLabel}</span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center py-4 text-zinc-500">
-                      <svg className="w-8 h-8 mb-1.5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      <span className="text-xs text-amber-500/80 mb-2">Đợi dealer</span>
-                      <Button size="sm" variant="outline" className="text-sm h-11 px-5 text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/10"
-                        onClick={() => onAssign(t.id)}>
-                        <Users className="w-4 h-4 mr-1.5" /> Gán dealer
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* ── Next dealer inline (inside card body) ── */}
-                  {/* Schedule slot0 (source of truth) → preAssignedMap (confirmed) → pred (prediction RPC). */}
-                  {dealer && (slot0HasDealer || forecastSlots.length > 0 || preAssignedMap[t.id] || pred?.nextDealerName) && (
-                    <>
-                      <div className="border-t border-zinc-800" />
-                      {(slot0HasDealer || preAssignedMap[t.id] || pred?.nextDealerName) && (
-                        <div className="flex items-center gap-2 pt-0.5">
-                          <span className="text-[10px] text-zinc-500">Tiếp:</span>
-                          {slot0HasDealer ? (
-                            slot0Locked ? (
-                              <span className="text-[11px] text-emerald-400 font-medium">
-                                <span className="text-emerald-500">✓</span> CHỐT {slot0Name}
-                                {slot0ReliefLabel ? (
-                                  <span className="ml-1 text-emerald-500/80">· {slot0ReliefLabel}</span>
-                                ) : null}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-amber-400">
-                                ~ DỰ ĐOÁN {slot0Name}
-                                {slot0ReliefLabel ? (
-                                  <span className="ml-1 text-amber-400/80">· {slot0ReliefLabel}</span>
-                                ) : null}
-                              </span>
-                            )
-                          ) : preAssignedMap[t.id] ? (
-                            <span className="text-[11px] text-emerald-400 font-medium">
-                              <span className="text-emerald-500">✓</span> {preAssignedMap[t.id]!.full_name}
-                              {preAssignLabel ? (
-                                <span className={[
-                                  "ml-1",
-                                  preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
-                                ].join(" ")}>· {preAssignLabel}</span>
-                              ) : null}
-                            </span>
-                          ) : pred?.nextDealerName ? (
-                            pred.confidence === "confirmed" ? (
-                              <span className="text-[11px] text-emerald-400 font-medium">
-                                <span className="text-emerald-500">✓</span> {pred.nextDealerName}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
-                            )
-                          ) : null}
-                          {/* "Đổi" mini-button removed — promoted to the "Đổi dự kiến"
-                              action-row button below (same handler, clearer placement). */}
-                        </div>
-                      )}
-                      {forecastSlots.length > 0 && (
-                        <div className="flex items-center gap-1.5 pt-0.5">
-                          <span className="text-[9px] text-zinc-600 uppercase tracking-wider">~ Dự đoán:</span>
-                          <span className="text-[10px] text-zinc-500 truncate">
-                            {forecastSlots
-                              .map((s) => `${s.in_dealer_name ?? "dealer"}${s.planned_relief_at ? ` ${formatTimeHHmm(new Date(s.planned_relief_at).getTime())}` : ""}`)
-                              .join(" · ")}
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* ── Action buttons (grouped primary vs correction, ≥44px) ── */}
-                  <SwingTableActions
-                    mode={a && a.status === "assigned" ? "assigned" : "empty"}
-                    isOt={isOt}
-                    breakDisabled={!!a && processing === a.attendance_id}
-                    swinging={!!a && swingingAssignmentId === a.id}
-                    swingDisabled={swingDisabled}
-                    disabledReason={swingDisabledReason}
-                    changePredictedDisabled={slot0?.status === "executing"}
-                    changePredictedTitle={changePredictedTitle}
-                    wrongTableEnabled={FEATURES.wrongTableCorrection}
-                    onBreak={() => { if (a) onSendToBreak(a.attendance_id); }}
-                    onChangePredicted={() => {
-                      if (!a?.id) { toast.warning("Không tìm thấy ca dealer của bàn này"); return; }
-                      onChangePredicted(t.id);
-                    }}
-                    onConfirmSwing={() => {
-                      if (!a) return;
-                      setConfirmSwing({
-                        assignmentId: a.id,
-                        tableName: t.table_name ?? "Bàn",
-                        outName: dealer?.full_name ?? "Dealer hiện tại",
-                        inName: slot0Locked ? slot0Name : null,
-                        isOt,
-                      });
-                    }}
-                    onCorrectWrongTable={() => {
-                      if (!a?.id) { toast.warning("Không tìm thấy ca dealer của bàn này"); return; }
-                      onCorrectWrongTable(t.id);
-                    }}
-                    onAssign={() => onAssign(t.id)}
-                  />
-                </div>
-              </div>
-            );
-          })
+          visibleTables.map(({ table: t }) => (
+            <SwingTableCard
+              key={t.id}
+              table={t}
+              assignment={tableAssignmentMap[t.id]}
+              timeline={timelineByTableId[t.id]}
+              slots={scheduleByTableId?.[t.id]}
+              pred={nextDealerMap?.[t.id]}
+              preAssigned={preAssignedMap[t.id]}
+              tournaments={tournaments}
+              swingConfigs={swingConfigs}
+              dealers={dealers}
+              nowMs={nowMs}
+              restMinCfg={restMinCfg}
+              processing={processing}
+              swingingAssignmentId={swingingAssignmentId}
+              isAnimating={isAnimating}
+              focused={focusedTableId === t.id}
+              closeConfirm={closeTableConfirmId === t.id}
+              closingTable={closingTable}
+              wrongTableEnabled={FEATURES.wrongTableCorrection}
+              onAssign={onAssign}
+              onSendToBreak={onSendToBreak}
+              onManualSwing={onManualSwing}
+              onForceClose={onForceClose}
+              onCloseTableClick={onCloseTableClick}
+              onCloseTableConfirm={onCloseTableConfirm}
+              onCloseTableCancel={onCloseTableCancel}
+              onChangePredicted={onChangePredicted}
+              onCorrectWrongTable={onCorrectWrongTable}
+              onRequestConfirmSwing={setConfirmSwing}
+            />
+          ))
         )}
       </div>
 
