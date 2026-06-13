@@ -11,21 +11,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv,
+  LayoutGrid, Hand, RefreshCw, History,
+  Users, Layers, AlertTriangle, ArrowLeft,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
-import { ClockPanel } from "./tournament-live/ClockPanel";
-import { TableDrawPanel } from "./tournament-live/TableDrawPanel";
+import { FloorTDPanel } from "./tournament-live/FloorTDPanel";
 import { HandInputPanel } from "./tournament-live/HandInputPanel";
-import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
-import { BlindStructurePanel } from "./tournament-live/BlindStructurePanel";
-import { PrizeStructurePanel } from "./tournament-live/PrizeStructurePanel";
-import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
-import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
-import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -313,58 +306,18 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
       </Card>
 
       {selectedTournament ? (
-        <Tabs defaultValue="live_view" className="w-full">
+        <Tabs defaultValue="floor" className="w-full">
           <div className="overflow-x-auto -mx-2 px-2 pb-1">
             <TabsList className="inline-flex w-max min-w-full">
-              <TabsTrigger value="live_view"><Eye className="w-4 h-4 mr-1" /> {t("tournamentLive.liveView.title")}</TabsTrigger>
-              <TabsTrigger value="clock"><Clock className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.title")}</TabsTrigger>
-              <TabsTrigger value="table_draw"><LayoutGrid className="w-4 h-4 mr-1" /> {t("tournamentLive.tableDraw.title")}</TabsTrigger>
-              <TabsTrigger value="queue"><ListOrdered className="w-4 h-4 mr-1" /> Hàng chờ</TabsTrigger>
-              <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.input")}</TabsTrigger>
-              <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
-              <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-1" /> {t("tournamentLive.leaderboard.title")}</TabsTrigger>
-              <TabsTrigger value="blinds"><List className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.blinds")}</TabsTrigger>
-              <TabsTrigger value="prizes"><Settings className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.prizes")}</TabsTrigger>
-              <TabsTrigger value="tv_displays"><Tv className="w-4 h-4 mr-1" /> {t("tournamentLive.tvDisplays.tab")}</TabsTrigger>
+              <TabsTrigger value="floor"><LayoutGrid className="w-4 h-4 mr-1" /> Floor / TD</TabsTrigger>
+              <TabsTrigger value="tracker"><Hand className="w-4 h-4 mr-1" /> Live Tracker</TabsTrigger>
             </TabsList>
           </div>
-          <TabsContent value="live_view" className="mt-4">
-            <TournamentLiveView tournamentId={selectedTournament.id} />
-          </TabsContent>
-          <TabsContent value="clock" className="mt-4">
-            <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
-          </TabsContent>
-          <TabsContent value="table_draw" className="mt-4">
-            <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
-          </TabsContent>
-          <TabsContent value="queue" className="mt-4">
-            <RegistrationQueuePanel
-              tournamentId={selectedTournament.id}
-              tournamentName={selectedTournament.name}
-              tournamentDate={(selectedTournament as Tournament & { start_time?: string | null }).start_time ?? null}
+          {/* Floor / TD — Kholdem-style console: all floor controls in one place */}
+          <TabsContent value="floor" className="mt-4">
+            <FloorTDPanel
+              tournament={selectedTournament}
               refreshTrigger={refreshTrigger}
-            />
-          </TabsContent>
-          <TabsContent value="hand_input" className="mt-4">
-            <HandInputPanel tournamentId={selectedTournament.id} />
-          </TabsContent>
-          <TabsContent value="hand_history" className="mt-4">
-            <HandHistoryPanel tournamentId={selectedTournament.id} />
-          </TabsContent>
-          <TabsContent value="leaderboard" className="mt-4">
-            <LeaderboardPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} />
-          </TabsContent>
-          <TabsContent value="blinds" className="mt-4">
-            <BlindStructurePanel tournamentId={selectedTournament.id} />
-          </TabsContent>
-          <TabsContent value="prizes" className="mt-4">
-            <PrizeStructurePanel tournamentId={selectedTournament.id} />
-          </TabsContent>
-          <TabsContent value="tv_displays" className="mt-4">
-            <TvDisplaysPanel
-              tournamentId={selectedTournament.id}
-              tournamentName={selectedTournament.name}
-              clubId={selectedTournament.club_id}
               tournaments={(tournaments ?? []).map((tour) => ({
                 id: tour.id,
                 name: tour.name,
@@ -372,6 +325,21 @@ export default function TournamentLivePanel({ clubIds, clubs }: { clubIds: strin
                 status: tour.status,
               }))}
             />
+          </TabsContent>
+          {/* Live Tracker — hand engine only (hand input + hand history) */}
+          <TabsContent value="tracker" className="mt-4">
+            <Tabs defaultValue="hand_input" className="w-full">
+              <TabsList>
+                <TabsTrigger value="hand_input"><Hand className="w-4 h-4 mr-1" /> {t("tournamentLive.tabs.input")}</TabsTrigger>
+                <TabsTrigger value="hand_history"><History className="w-4 h-4 mr-1" /> {t("tournamentLive.handHistory.title")}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="hand_input" className="mt-4">
+                <HandInputPanel tournamentId={selectedTournament.id} />
+              </TabsContent>
+              <TabsContent value="hand_history" className="mt-4">
+                <HandHistoryPanel tournamentId={selectedTournament.id} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       ) : (
