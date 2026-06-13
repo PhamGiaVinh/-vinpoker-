@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer, type DealerCandidate } from "./pickNextDealer.ts";
+import { OPEN_TABLE_GRACE_MINUTES } from "./openTableGrace.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -177,10 +178,15 @@ export async function fillEmptyTables(
     // Recycles cleanly for 20-30 table clubs.
     const stagger = (index % 10) * 30_000;
 
+    // Open-table grace: opening/staffing an empty table gives the incoming dealer
+    // an OPEN_TABLE_GRACE_MINUTES warmup before the swing clock starts (added to
+    // both the per-table-override and the batch-default swing_due_at). Not applied
+    // to perform_swing rotations — this path only fills empty/open tables.
+    const graceMs = OPEN_TABLE_GRACE_MINUTES * 60_000;
     const tableSwingDueAt = effectiveDuration != null
-      ? new Date(now.getTime() + effectiveDuration * 60_000 + stagger).toISOString()
+      ? new Date(now.getTime() + graceMs + effectiveDuration * 60_000 + stagger).toISOString()
       : swingDueAt
-        ? new Date(new Date(swingDueAt).getTime() + stagger).toISOString()
+        ? new Date(new Date(swingDueAt).getTime() + graceMs + stagger).toISOString()
         : undefined;
 
     for (let attempt = 0; attempt < 3; attempt++) {
