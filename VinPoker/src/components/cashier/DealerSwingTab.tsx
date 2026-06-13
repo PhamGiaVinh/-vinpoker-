@@ -48,6 +48,7 @@ import DealerManagementTab from "./DealerManagementTab";
 import { TableCardKebab } from "./TableCardKebab";
 import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
 import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
+import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -218,6 +219,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [modalTable, setModalTable] = useState<string | null>(null);
   const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
   const [correctWrongTableId, setCorrectWrongTableId] = useState<string | null>(null);
+  const [roomReconcileOpen, setRoomReconcileOpen] = useState(false);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -1471,6 +1473,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   dealers={dealers ?? []}
                   onChangePredicted={setChangePredictedTableId}
                   onCorrectWrongTable={setCorrectWrongTableId}
+                  onOpenRoomReconcile={() => setRoomReconcileOpen(true)}
                 />
             )}
           </div>
@@ -1646,6 +1649,28 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             tables={tables ?? []}
             tableAssignmentMap={tableAssignmentMap}
             restMinutes={cwRestMinutes}
+            onApplied={() => { refetchAssignments(); refetchDealers(); }}
+          />
+        );
+      })()}
+
+      {/* Sửa domino nhiều bàn — multi-table room reconcile wizard (#33F). */}
+      {roomReconcileOpen && (() => {
+        const cid = clubFilter ?? filteredClubIds[0];
+        if (!cid) return null;
+        const rrRest = Math.max(
+          10,
+          swingConfigs?.find((c) => c.table_type === "tournament")?.min_inter_swing_rest_minutes ?? 10,
+        );
+        return (
+          <ReconcileRoomWizard
+            open
+            onOpenChange={setRoomReconcileOpen}
+            clubId={cid}
+            dealers={dealers ?? []}
+            tables={tables ?? []}
+            tableAssignmentMap={tableAssignmentMap}
+            restMinutes={rrRest}
             onApplied={() => { refetchAssignments(); refetchDealers(); }}
           />
         );
@@ -3082,7 +3107,7 @@ function TableGrid({
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
-  dealers, onChangePredicted, onCorrectWrongTable,
+  dealers, onChangePredicted, onCorrectWrongTable, onOpenRoomReconcile,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -3112,6 +3137,7 @@ function TableGrid({
   dealers: DealerAttendance[];
   onChangePredicted: (tableId: string) => void;
   onCorrectWrongTable: (tableId: string) => void;
+  onOpenRoomReconcile: () => void;
 }) {
   const nowMs = useLiveClock();
   // Final-handoff confirmation ("Chốt đổi dealer") — perform_swing itself is unchanged.
@@ -3168,6 +3194,14 @@ function TableGrid({
         <Table2 className="w-4 h-4 text-primary" />
         <span className="font-display text-sm tracking-wider">BẢN ĐỒ CHIẾN TRƯỜNG</span>
         <Badge variant="outline" className="ml-auto text-xs">{filteredTables.length} bàn</Badge>
+        {FEATURES.roomReconcileWizard && (
+          <Button size="sm" variant="outline"
+            className="text-xs h-7 text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+            title="Sửa domino nhiều bàn — đối soát thực tế nhiều bàn cùng lúc (có audit)"
+            onClick={onOpenRoomReconcile}>
+            Sửa domino
+          </Button>
+        )}
         <Button size="sm" variant="outline" className="text-xs h-7" onClick={onCreateTable}>
           + Thêm bàn
         </Button>
