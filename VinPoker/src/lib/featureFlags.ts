@@ -42,4 +42,15 @@ export const FEATURES = {
    * safe even though the PR E code is present on main but undeployed.
    */
   tdAiRemote: false,
+  /**
+   * Online Poker (play-money, closed alpha) UI under /poker/*. Default **OFF** —
+   * the dark switch for the GE-2D shell. While false, /poker and /poker/table/:id
+   * render <PokerComingSoon/> (a "đang phát triển" notice); real users never see
+   * the mock shell. Flip to true ONLY after: (a) the GE-2C runtime migration
+   * 20260820000000 is applied live, (b) online_poker_config.enabled is true, and
+   * (c) the client is wired to the online-poker-action Edge function. The shell's
+   * own RUNTIME_LIVE constant (src/lib/onlinePoker/types.ts) is a second gate that
+   * keeps action buttons disabled until the runtime is actually reachable.
+   */
+  onlinePoker: false,
 } as const;
