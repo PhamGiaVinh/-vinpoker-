@@ -72,7 +72,7 @@ export function TableCardKebab({
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
-          className="text-muted-foreground hover:text-foreground text-lg font-bold leading-none px-1 py-0 rounded hover:bg-muted/20 transition-colors"
+          className="text-muted-foreground hover:text-foreground text-lg font-bold leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-muted/20 transition-colors"
           aria-label={`Menu cho bàn ${tableName}`}
           onClick={(e) => e.stopPropagation()}
         >

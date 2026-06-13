@@ -12,6 +12,8 @@
   },
   "include": [
     "supabase/functions/_shared/pokerEngine",
-    "tests/pokerEngine"
+    "supabase/functions/_shared/pokerAdapter",
+    "tests/pokerEngine",
+    "tests/pokerAdapter"
   ]
 }

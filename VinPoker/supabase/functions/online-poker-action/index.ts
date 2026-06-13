@@ -1,0 +1,252 @@
+// supabase/functions/online-poker-action/index.ts
+//
+// GE-2C — thin, DARK Edge entrypoint for online poker (play-money, closed alpha).
+// This is the ONLY runtime where the TS poker engine executes. The client sends
+// INTENT only; this function runs the engine and routes persistence through the
+// op_* RPCs. It ships disabled: until the GE-2C migration is applied AND the
+// owner flips online_poker_config.enabled, every request returns "disabled".
+//
+// SECURITY (locked):
+//   G2  every non-OPTIONS request must carry a valid Bearer JWT; uid comes ONLY
+//       from auth.getUser(token) — NEVER from the request body.
+//   dark flag-check runs first (any error / missing object => disabled).
+//   engine/write RPCs are called with the SERVICE-ROLE client (service-role-only
+//       grants); self RPCs (sit/stand/claim/hole) are called with the USER client
+//       so the RPC's auth.uid() binding holds.
+//   G1  NEVER log deck / board_future / holes / hole cards / private views /
+//       secret-bearing RPC responses. Logs carry op + hand_id only.
+
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.105.4";
+import { retryFetch } from "../_shared/retry.ts";
+import { parseBody, z } from "../_shared/validate.ts";
+import { corsHeaders, handleOptions, jsonResp } from "../_shared/cors.ts";
+import {
+  applyAction, createHand, shuffledDeck, cryptoRng32,
+  actionFromRequest, classifyActionError,
+} from "../_shared/pokerEngine/index.ts";
+import {
+  serializeAuthoritative, deserializeAuthoritative,
+  buildSeatInputs, buildHandConfig, actionToRow, privateView, ENGINE_VERSION,
+  type SeatRow,
+} from "../_shared/pokerAdapter/index.ts";
+
+const ACT_TIMEOUT_SECS = 30;
+const MAX_CAS_RETRIES = 3;
+
+// ── request schema (discriminated by op) ────────────────────────────────────
+const IdemKey = z.string().min(8).max(200);
+const Body = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("claim_daily_chips") }),
+  z.object({ op: z.literal("get_my_hole_cards"), handId: z.string().uuid() }),
+  z.object({ op: z.literal("sit_down"), tableId: z.string().uuid(), seat: z.number().int().min(1).max(10), buyin: z.string().regex(/^[1-9][0-9]*$/), idempotencyKey: IdemKey }),
+  z.object({ op: z.literal("stand_up"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
+  z.object({ op: z.literal("start_hand"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
+  z.object({
+    op: z.literal("submit_action"), handId: z.string().uuid(),
+    seat: z.number().int().min(1).max(10),
+    type: z.enum(["fold", "check", "call", "bet", "raise", "allin"]),
+    amount: z.string().regex(/^(0|[1-9][0-9]*)$/).optional(),
+    idempotencyKey: IdemKey, expectedSeq: z.number().int().optional(),
+  }),
+]);
+type BodyT = z.infer<typeof Body>;
+
+Deno.serve(async (req) => {
+  const opt = handleOptions(req);
+  if (opt) return opt;
+  const cors = corsHeaders(req);
+  const json = (data: unknown, status = 200) => jsonResp(req, data, status);
+
+  try {
+    // G2: require a valid Bearer JWT BEFORE any work. uid only from getUser().
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
+    const token = authHeader.slice("Bearer ".length);
+
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const userClient = createClient(url, anonKey, {
+      global: { headers: { Authorization: authHeader }, fetch: retryFetch },
+    });
+    const { data: userData, error: authErr } = await userClient.auth.getUser(token);
+    if (authErr || !userData?.user?.id) return json({ error: "unauthorized" }, 401);
+    const uid = userData.user.id;
+
+    const parsed = await parseBody(req, Body, cors);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+
+    const admin = createClient(url, serviceKey, { global: { fetch: retryFetch } });
+
+    // Dark switch: any error / missing object => disabled => refuse.
+    if (!(await isEnabled(admin))) return json({ error: "online poker is disabled" }, 403);
+
+    switch (body.op) {
+      case "claim_daily_chips": return await rpcPassthrough(userClient, "op_claim_daily_chips", {}, json);
+      case "get_my_hole_cards": return await rpcPassthrough(userClient, "op_get_my_hole_cards", { p_hand_id: body.handId }, json);
+      case "sit_down":          return await rpcPassthrough(userClient, "op_sit_down", { p_table_id: body.tableId, p_seat_no: body.seat, p_buyin: body.buyin, p_idempotency_key: body.idempotencyKey }, json);
+      case "stand_up":          return await rpcPassthrough(userClient, "op_stand_up", { p_table_id: body.tableId, p_idempotency_key: body.idempotencyKey }, json);
+      case "start_hand":        return await handleStart(admin, uid, body, json);
+      case "submit_action":     return await handleSubmit(admin, uid, body, json);
+    }
+  } catch (_e) {
+    // G1: never surface internal error text (it may carry engine internals).
+    console.error("[online-poker-action] unexpected error");
+    return json({ error: "internal error" }, 500);
+  }
+});
+
+async function isEnabled(admin: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await admin.rpc("op_is_enabled");
+    if (error) return false; // missing RPC (migration unapplied) => dark
+    return data === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Call a self/client RPC with the USER client (so auth.uid() binds) and return its outcome. */
+async function rpcPassthrough(
+  client: SupabaseClient, fn: string, args: Record<string, unknown>,
+  json: (d: unknown, s?: number) => Response,
+): Promise<Response> {
+  const { data, error } = await client.rpc(fn, args);
+  if (error) return json({ error: `${fn} failed` }, 400); // G1: no error.message
+  return json(data, 200);
+}
+
+async function handleStart(
+  admin: SupabaseClient, uid: string,
+  body: Extract<BodyT, { op: "start_hand" }>,
+  json: (d: unknown, s?: number) => Response,
+): Promise<Response> {
+  const { data: table, error: tErr } = await admin
+    .from("online_poker_tables")
+    .select("id, sb, bb, max_seats, act_timeout_secs, status")
+    .eq("id", body.tableId).maybeSingle();
+  if (tErr || !table) return json({ error: "table_not_found" }, 404);
+  if (table.status !== "open") return json({ error: "table_not_open" }, 409);
+
+  const { data: seatRows, error: sErr } = await admin
+    .from("online_poker_seats")
+    .select("seat_no, user_id, stack, status")
+    .eq("table_id", body.tableId);
+  if (sErr) return json({ error: "seats_load_failed" }, 400);
+
+  const seated = (seatRows ?? []).filter(
+    (r) => r.user_id && r.status === "sitting" && Number(r.stack) > 0,
+  ) as SeatRow[];
+  if (seated.length < 2) return json({ error: "not_enough_players" }, 409);
+
+  const { data: last } = await admin
+    .from("online_poker_hands")
+    .select("hand_no, button_seat")
+    .eq("table_id", body.tableId)
+    .order("hand_no", { ascending: false }).limit(1).maybeSingle();
+  const handNo = Number(last?.hand_no ?? 0) + 1;
+  const seatNos = seated.map((s) => s.seat_no).sort((a, b) => a - b);
+  const button = nextButton(last?.button_seat ?? null, seatNos);
+
+  const handId = crypto.randomUUID();
+  const seatInputs = buildSeatInputs(seated);
+  const config = buildHandConfig({ id: table.id, sb: table.sb, bb: table.bb }, handId, handNo, button);
+  const originalDeck = shuffledDeck(cryptoRng32);
+
+  let built;
+  try {
+    built = createHand(config, [...originalDeck], seatInputs);
+  } catch (_e) {
+    return json({ error: "could_not_start_hand" }, 400); // G1: no engine message
+  }
+  if (built.error) return json({ error: "could_not_start_hand" }, 400);
+
+  const split = serializeAuthoritative(built.state);
+  const deadline = built.state.toAct != null
+    ? new Date(Date.now() + (table.act_timeout_secs ?? ACT_TIMEOUT_SECS) * 1000).toISOString()
+    : null;
+
+  const { data, error } = await admin.rpc("op_start_hand", {
+    p_state: split.stateJson,
+    p_deck: originalDeck,
+    p_board_future: split.liveDeck,
+    p_holes: split.holes,
+    p_events: built.events.map((e) => ({ type: e.type, payload: e.payload })),
+    p_engine_version: ENGINE_VERSION,
+    p_act_deadline: deadline,
+    p_actor_user_id: uid,
+  });
+  if (error) return json({ error: "start_hand_failed" }, 400);
+  return json(data, 200);
+}
+
+async function handleSubmit(
+  admin: SupabaseClient, uid: string,
+  body: Extract<BodyT, { op: "submit_action" }>,
+  json: (d: unknown, s?: number) => Response,
+): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
+    const { data: ctx, error: lErr } = await admin.rpc("op_load_action_context", { p_hand_id: body.handId });
+    if (lErr) return json({ error: "load_failed" }, 400);
+    if (!ctx || ctx.outcome !== "ok") {
+      return json({ error: ctx?.outcome ?? "load_failed" }, ctx?.outcome === "not_found" ? 404 : 400);
+    }
+
+    // Rebuild authoritative state in the trusted runtime (deck + holes attached).
+    let state;
+    try {
+      state = deserializeAuthoritative(ctx.state, ctx.live_deck ?? [], ctx.holes ?? []);
+    } catch (_e) {
+      return json({ error: "state_error" }, 500); // G1: no invariant message (may name a card)
+    }
+
+    let action;
+    try {
+      action = actionFromRequest({
+        handId: body.handId, seat: body.seat, type: body.type,
+        amount: body.amount, idempotencyKey: body.idempotencyKey,
+      });
+    } catch (_e) {
+      return json({ ok: false, code: "bad_request" }, 400);
+    }
+
+    // Server-authoritative validation: the engine decides legality.
+    const result = applyAction(state, action);
+    if (result.error) {
+      return json({ ok: false, code: classifyActionError(result.error), message: result.error }, 409);
+    }
+
+    const next = result.state;
+    const split = serializeAuthoritative(next);
+    const deadline = next.toAct != null
+      ? new Date(Date.now() + ACT_TIMEOUT_SECS * 1000).toISOString() : null;
+
+    const { data: sub, error: subErr } = await admin.rpc("op_submit_action", {
+      p_hand_id: body.handId,
+      p_actor_user_id: uid,
+      p_action: actionToRow(action),
+      p_new_state: split.stateJson,
+      p_board_future: split.liveDeck,
+      p_events: result.events.map((e) => ({ type: e.type, payload: e.payload })),
+      p_expected_state_version: ctx.state_version,
+      p_act_deadline: deadline,
+      p_idempotency_key: body.idempotencyKey,
+    });
+    if (subErr) return json({ error: "submit_failed" }, 400);
+    if (sub?.outcome === "race_lost") continue; // re-load and retry
+    if (sub?.outcome !== "ok") return json({ ok: false, code: sub?.outcome ?? "rejected" }, 409);
+
+    // Success: return the caller's OWN private view (own hole cards only).
+    return json({ ok: true, handId: body.handId, stateVersion: sub.state_version, view: privateView(next, body.seat) }, 200);
+  }
+  return json({ ok: false, code: "race_lost" }, 409);
+}
+
+/** Next button seat clockwise after the previous button among seated seats. */
+function nextButton(prev: number | null, seatNos: number[]): number {
+  if (prev == null) return seatNos[0];
+  const after = seatNos.filter((s) => s > prev);
+  return after.length ? after[0] : seatNos[0];
+}

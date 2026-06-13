@@ -86,7 +86,7 @@ export default function OperationsCard({
         <Button
           size="sm"
           variant={swingAllBusy ? "default" : "outline"}
-          className="text-[11px] h-7"
+          className="text-xs h-11"
           onClick={() => setConfirmSwingAll(true)}
           disabled={swingAllBusy}
         >
@@ -96,7 +96,7 @@ export default function OperationsCard({
         <Button
           size="sm"
           variant="outline"
-          className="text-[11px] h-7"
+          className="text-xs h-11"
           onClick={() => setConfirmMassAssign(true)}
           disabled={massAssignBusy}
         >
@@ -107,7 +107,7 @@ export default function OperationsCard({
           <Button
             size="sm"
             variant="outline"
-            className="text-[11px] h-7"
+            className="text-xs h-11"
             onClick={onPreAssign}
             disabled={preAssignBusy}
           >

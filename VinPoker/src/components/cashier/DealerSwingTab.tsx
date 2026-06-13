@@ -36,7 +36,6 @@ import { useActiveTournaments } from "@/hooks/useTournaments";
 import type { TournamentWithTables } from "@/types/tournament";
 import AttentionQueue from "./command-center/AttentionQueue";
 import OperationsCard from "./command-center/OperationsCard";
-import SystemHealthCard from "./command-center/SystemHealthCard";
 import QuickLinksCard from "./command-center/QuickLinksCard";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
@@ -48,6 +47,10 @@ import DealerManagementTab from "./DealerManagementTab";
 import { TableCardKebab } from "./TableCardKebab";
 import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
 import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
+import ReconcileRoomWizard from "./ReconcileRoomWizard";
+import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
+import SwingTableActions from "./dealer-swing/SwingTableActions";
+import { getSwingTableStatus } from "./dealer-swing/swingTableStatus";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -218,6 +221,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [modalTable, setModalTable] = useState<string | null>(null);
   const [changePredictedTableId, setChangePredictedTableId] = useState<string | null>(null);
   const [correctWrongTableId, setCorrectWrongTableId] = useState<string | null>(null);
+  const [roomReconcileOpen, setRoomReconcileOpen] = useState(false);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -441,6 +445,32 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
     return map;
   }, [tables, assignments]);
+
+  // ── Room summary KPIs for the operator-panel top strip (UI Phase 4) ──
+  // Derived from existing data only — no new query.
+  const summaryCounts = useMemo(() => {
+    const activeList = (tables ?? []).filter((t) => t.status === "active");
+    const assignedTables = (assignments ?? []).filter((a) => a.status === "assigned").length;
+    const onBreak = (dealers ?? []).filter((d) => d.current_state === "on_break").length;
+    let predictedPending = 0, overdue = 0, predictedMissing = 0, emptyActive = 0;
+    for (const t of activeList) {
+      const tl = timelineByTableId[t.id];
+      if (tl?.showNextDealerSoon) {
+        predictedPending++;
+        if (!nextDealerMap?.[t.id]?.nextDealerName && !preAssignedMap?.[t.id]) predictedMissing++;
+      }
+      if (tl?.isOverdue) overdue++;
+      if (tableAssignmentMap[t.id] == null) emptyActive++;
+    }
+    return {
+      activeTables: activeList.length,
+      assignedTables,
+      onBreak,
+      predictedPending,
+      overdue,
+      warnings: emptyActive + predictedMissing,
+    };
+  }, [tables, assignments, dealers, timelineByTableId, nextDealerMap, preAssignedMap, tableAssignmentMap]);
 
   // Get swing config for a table
   const getConfig = (tableType: string): SwingConfig | undefined =>
@@ -1398,6 +1428,16 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       {loading ? (
         <Skeleton className="h-96 rounded-none" />
       ) : (
+        <>
+        <DealerSwingSummaryStrip
+          activeTables={summaryCounts.activeTables}
+          assignedTables={summaryCounts.assignedTables}
+          onBreak={summaryCounts.onBreak}
+          predictedPending={summaryCounts.predictedPending}
+          overdue={summaryCounts.overdue}
+          warnings={summaryCounts.warnings}
+          nowMs={nowMs}
+        />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* LEFT COLUMN — 25% (reference info → last on mobile) */}
           <div className="order-last lg:order-none lg:col-span-3 flex flex-col gap-4 min-h-0">
@@ -1471,6 +1511,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   dealers={dealers ?? []}
                   onChangePredicted={setChangePredictedTableId}
                   onCorrectWrongTable={setCorrectWrongTableId}
+                  onOpenRoomReconcile={() => setRoomReconcileOpen(true)}
                 />
             )}
           </div>
@@ -1505,6 +1546,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             />
           </div>
         </div>
+        </>
       )}
 
       {/* Assignment Modal */}
@@ -1646,6 +1688,28 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             tables={tables ?? []}
             tableAssignmentMap={tableAssignmentMap}
             restMinutes={cwRestMinutes}
+            onApplied={() => { refetchAssignments(); refetchDealers(); }}
+          />
+        );
+      })()}
+
+      {/* Sửa domino nhiều bàn — multi-table room reconcile wizard (#33F). */}
+      {roomReconcileOpen && (() => {
+        const cid = clubFilter ?? filteredClubIds[0];
+        if (!cid) return null;
+        const rrRest = Math.max(
+          10,
+          swingConfigs?.find((c) => c.table_type === "tournament")?.min_inter_swing_rest_minutes ?? 10,
+        );
+        return (
+          <ReconcileRoomWizard
+            open
+            onOpenChange={setRoomReconcileOpen}
+            clubId={cid}
+            dealers={dealers ?? []}
+            tables={tables ?? []}
+            tableAssignmentMap={tableAssignmentMap}
+            restMinutes={rrRest}
             onApplied={() => { refetchAssignments(); refetchDealers(); }}
           />
         );
@@ -1817,6 +1881,17 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
       <Dialog open={createTableOpen} onOpenChange={(o) => { setCreateTableOpen(o); if (!o) { setPoolSearch(""); setSelectedPoolTableIds([]); setNewTableType("tournament"); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Thêm bàn từ pool</DialogTitle></DialogHeader>
+          {/* Scope clarity: All → global table; a tour selected → scoped to that tour. */}
+          <div className={[
+            "text-xs px-2.5 py-1.5 rounded border",
+            selectedTour
+              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
+              : "text-amber-400 border-amber-500/30 bg-amber-500/5",
+          ].join(" ")}>
+            {selectedTour
+              ? `Thêm bàn vào: ${(tours ?? []).find((t) => t.id === selectedTour)?.tour_name ?? "tour đang chọn"}`
+              : "Thêm bàn tổng thể (không thuộc tour nào)"}
+          </div>
           <div className="space-y-3">
             <Input
               placeholder="Tìm bàn..."
@@ -3082,7 +3157,7 @@ function TableGrid({
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
-  dealers, onChangePredicted, onCorrectWrongTable,
+  dealers, onChangePredicted, onCorrectWrongTable, onOpenRoomReconcile,
 }: {
   tables: any[];
   tableAssignmentMap: Record<string, DealerAssignment | null>;
@@ -3112,6 +3187,7 @@ function TableGrid({
   dealers: DealerAttendance[];
   onChangePredicted: (tableId: string) => void;
   onCorrectWrongTable: (tableId: string) => void;
+  onOpenRoomReconcile: () => void;
 }) {
   const nowMs = useLiveClock();
   // Final-handoff confirmation ("Chốt đổi dealer") — perform_swing itself is unchanged.
@@ -3129,15 +3205,17 @@ function TableGrid({
   );
 
   const filteredTables = useMemo(() => {
-    // Inactive tables are removed from the map entirely — they sit in the
-    // general pool (shift_id=null) and are not actionable here. Process-swing
-    // can close a table between renders; the next refetch will drop it.
+    // Inactive tables sit in the general pool and are not actionable here.
+    // Process-swing can close a table between renders; the next refetch drops it.
     const base = tables.filter((t) => t.status === "active");
-    if (!selectedTour) return base.filter((t) => tableAssignmentMap[t.id] != null);
-    const tourTables = base.filter((t) => t.shift_id === selectedTour);
-    if (tourTables.length > 0) return tourTables;
-    return base.filter((t) => t.shift_id == null);
-  }, [tables, selectedTour, tableAssignmentMap]);
+    // "Tổng thể" (All): show EVERY active table — including newly-opened tables
+    // that have no dealer yet (they render with the "Đợi dealer" status). The
+    // old `tableAssignmentMap[t.id] != null` filter hid dealerless tables.
+    if (!selectedTour) return base;
+    // Specific tour: show ONLY that tour's tables (shift_id match). No fallback
+    // to the global pool — that previously leaked unscoped tables into a tour.
+    return base.filter((t) => t.shift_id === selectedTour);
+  }, [tables, selectedTour]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
   // and re-checks swing_processed_at before calling auto-break
@@ -3168,7 +3246,15 @@ function TableGrid({
         <Table2 className="w-4 h-4 text-primary" />
         <span className="font-display text-sm tracking-wider">BẢN ĐỒ CHIẾN TRƯỜNG</span>
         <Badge variant="outline" className="ml-auto text-xs">{filteredTables.length} bàn</Badge>
-        <Button size="sm" variant="outline" className="text-xs h-7" onClick={onCreateTable}>
+        {FEATURES.roomReconcileWizard && (
+          <Button size="sm" variant="outline"
+            className="text-xs h-9 text-orange-400 border-orange-500/40 hover:bg-orange-500/10"
+            title="Sửa domino nhiều bàn — đối soát thực tế nhiều bàn cùng lúc (có audit)"
+            onClick={onOpenRoomReconcile}>
+            Sửa domino
+          </Button>
+        )}
+        <Button size="sm" variant="outline" className="text-xs h-9" onClick={onCreateTable}>
           + Thêm bàn
         </Button>
       </div>
@@ -3299,6 +3385,33 @@ function TableGrid({
 
             const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
 
+            // ── Status-first badge (UI Phase 4 operator-panel recompose) ──
+            const remainingMinutes = a ? (swingDueMs - nowMs) / 60_000 : null;
+            const tableStatus = getSwingTableStatus({
+              hasAssignment: !!a, isOt, isPastDue, remainingMinutes, warnAtMinutes: warnAt,
+            });
+            const statusToneClass =
+              tableStatus.tone === "destructive" ? "text-red-400 bg-red-500/15 border-red-500/30"
+              : tableStatus.tone === "warning" ? "text-amber-400 bg-amber-500/15 border-amber-500/30"
+              : tableStatus.tone === "primary" ? "text-primary bg-primary/10 border-primary/30"
+              : "text-zinc-400 bg-zinc-800 border-zinc-700";
+
+            // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
+            const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
+            const slot0EligibleMs = slot0Att?.last_released_at
+              ? new Date(slot0Att.last_released_at).getTime() + restMinCfg * 60_000
+              : null;
+            const replacementNotRested = slot0Locked && slot0EligibleMs != null && slot0EligibleMs > nowMs;
+            const swingDisabled = !a || !canSwing || replacementNotRested || swingingAssignmentId === a.id;
+            const swingDisabledReason = !canSwing
+              ? `Chưa thể chốt đổi: bàn chưa tới giờ đổi (${formatTimeHHmm(actualDueMs)})`
+              : replacementNotRested
+                ? `Chưa thể chốt đổi: dealer thay chưa đủ thời gian nghỉ — đủ điều kiện lúc ${formatTimeHHmm(slot0EligibleMs)}`
+                : undefined;
+            const changePredictedTitle = slot0?.status === "executing"
+              ? "Đang thực hiện đổi dealer — không thể sửa kế hoạch lúc này"
+              : "Đổi dealer thay thế dự kiến cho bàn này (không thực hiện swing)";
+
             return (
               <div key={t.id} id={`table-card-${t.id}`} className={[
                 "relative overflow-hidden border rounded-lg transition-all duration-300",
@@ -3325,9 +3438,12 @@ function TableGrid({
 
                 {/* ── Card body ── */}
                 <div className="p-3 space-y-2">
-                  {/* Header: table name + type tag + kebab + close */}
+                  {/* Header: status pill + table name + type tag + kebab + close */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
+                      <span className={["shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border leading-none whitespace-nowrap", statusToneClass].join(" ")}>
+                        {tableStatus.label}
+                      </span>
                       <span className="text-sm font-bold text-zinc-200 truncate">{t.table_name}</span>
                       <span className={[
                         "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
@@ -3422,10 +3538,10 @@ function TableGrid({
                       <svg className="w-8 h-8 mb-1.5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
-                      <span className="text-xs text-zinc-600 mb-2">Trống</span>
-                      <Button size="sm" variant="outline" className="text-xs h-7 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10"
+                      <span className="text-xs text-amber-500/80 mb-2">Đợi dealer</span>
+                      <Button size="sm" variant="outline" className="text-sm h-11 px-5 text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/10"
                         onClick={() => onAssign(t.id)}>
-                        <Users className="w-3 h-3 mr-1" /> Gán dealer
+                        <Users className="w-4 h-4 mr-1.5" /> Gán dealer
                       </Button>
                     </div>
                   )}
@@ -3490,132 +3606,38 @@ function TableGrid({
                     </>
                   )}
 
-                  {/* ── Action buttons ── */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {a && a.status === "assigned" && (
-                      <>
-                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7"
-                          onClick={() => onSendToBreak(a.attendance_id)} disabled={processing === a.attendance_id}>
-                          <Clock className="w-3 h-3 mr-1" /> Nghỉ
-                        </Button>
-                        {/* Đổi dự kiến — planning-only edit of the predicted replacement
-                            for THIS table. Never the handoff: that stays on "Chốt đổi dealer".
-                            Distinct from the future "Sửa nhầm bàn" (real wrong-table
-                            correction via reconcile_dealer_room_state — not active yet). */}
-                        <span
-                          className="flex-1"
-                          title={slot0?.status === "executing"
-                            ? "Đang thực hiện đổi dealer — không thể sửa kế hoạch lúc này"
-                            : "Đổi dealer thay thế dự kiến cho bàn này (không thực hiện swing)"}
-                        >
-                          <Button size="sm" variant="outline"
-                            className="w-full text-xs h-7 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/10"
-                            disabled={slot0?.status === "executing"}
-                            onClick={() => {
-                              if (!a?.id) {
-                                toast.warning("Không tìm thấy ca dealer của bàn này");
-                                return;
-                              }
-                              onChangePredicted(t.id);
-                            }}>
-                            <UserCog className="w-3 h-3 mr-1" />
-                            <span className="hidden sm:inline">Đổi dự kiến</span>
-                            <span className="sm:hidden">Dự kiến</span>
-                          </Button>
-                        </span>
-                        {(() => {
-                          // Final-handoff button. Semantics unchanged (perform_swing),
-                          // but: honest label, confirmation dialog, and a client-side
-                          // rest-readiness guard (advisory — server still validates).
-                          const slot0Att = slot0HasDealer
-                            ? dealers.find((d) => d.id === slot0!.in_attendance_id)
-                            : undefined;
-                          const slot0EligibleMs = slot0Att?.last_released_at
-                            ? new Date(slot0Att.last_released_at).getTime() + restMinCfg * 60_000
-                            : null;
-                          const replacementNotRested =
-                            slot0Locked && slot0EligibleMs != null && slot0EligibleMs > nowMs;
-                          const swingDisabled =
-                            !canSwing || replacementNotRested || swingingAssignmentId === a.id;
-                          const disabledReason = !canSwing
-                            ? `Chưa thể chốt đổi: bàn chưa tới giờ đổi (${formatTimeHHmm(actualDueMs)})`
-                            : replacementNotRested
-                              ? `Chưa thể chốt đổi: dealer thay chưa đủ thời gian nghỉ — đủ điều kiện lúc ${formatTimeHHmm(slot0EligibleMs)}`
-                              : undefined;
-                          return (
-                            <span className="flex-1" title={disabledReason}>
-                              <Button size="sm" variant="outline"
-                                className={[
-                                  "w-full text-xs h-7",
-                                  isOt
-                                    ? "text-red-400 border-red-500/30 hover:bg-red-500/10"
-                                    : "text-amber-500 border-amber-500/30 hover:bg-amber-500/10",
-                                ].join(" ")}
-                                onClick={() => setConfirmSwing({
-                                  assignmentId: a.id,
-                                  tableName: t.table_name ?? "Bàn",
-                                  outName: dealer?.full_name ?? "Dealer hiện tại",
-                                  inName: slot0Locked ? slot0Name : null,
-                                  isOt,
-                                })}
-                                disabled={swingDisabled}>
-                                {swingingAssignmentId === a.id
-                                  ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                  : <RefreshCw className="w-3 h-3 mr-1" />}
-                                <span className="hidden sm:inline">{isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"}</span>
-                                <span className="sm:hidden">{isOt ? "Chốt khẩn" : "Chốt"}</span>
-                              </Button>
-                            </span>
-                          );
-                        })()}
-                        {/* Sửa nhầm bàn — REALITY correction (#33C): the dealer recorded
-                            here is not who is actually dealing. Opens
-                            CorrectWrongTableDealerModal → reconcile_dealer_room_state
-                            (LIVE since 2026-06-13 incl. club-scope fix 20260818000002).
-                            FEATURES.wrongTableCorrection=false restores the disabled
-                            placeholder (kill-switch). */}
-                        {FEATURES.wrongTableCorrection ? (
-                          <span
-                            className="flex-1"
-                            title="Sửa dealer nhầm bàn — ghi đúng dealer đang chia thực tế (có audit)"
-                          >
-                            <Button size="sm" variant="outline"
-                              className="w-full text-xs h-7 text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
-                              onClick={() => {
-                                if (!a?.id) {
-                                  toast.warning("Không tìm thấy ca dealer của bàn này");
-                                  return;
-                                }
-                                onCorrectWrongTable(t.id);
-                              }}>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              <span className="hidden sm:inline">Sửa nhầm bàn</span>
-                              <span className="sm:hidden">Nhầm bàn</span>
-                            </Button>
-                          </span>
-                        ) : (
-                          <span
-                            className="flex-1"
-                            title="Sắp ra mắt — cần bật Room Reconcile trước"
-                          >
-                            <Button size="sm" variant="outline"
-                              className="w-full text-xs h-7 text-zinc-500 border-zinc-700"
-                              disabled>
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              <span className="hidden sm:inline">Sửa nhầm bàn</span>
-                              <span className="sm:hidden">Nhầm bàn</span>
-                            </Button>
-                          </span>
-                        )}
-                      </>
-                    )}
-                    {!a && (
-                      <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-primary"
-                        onClick={() => onAssign(t.id)}>
-                        <Users className="w-3 h-3 mr-1" /> Gán
-                      </Button>
-                    )}
-                  </div>
+                  {/* ── Action buttons (grouped primary vs correction, ≥44px) ── */}
+                  <SwingTableActions
+                    mode={a && a.status === "assigned" ? "assigned" : "empty"}
+                    isOt={isOt}
+                    breakDisabled={!!a && processing === a.attendance_id}
+                    swinging={!!a && swingingAssignmentId === a.id}
+                    swingDisabled={swingDisabled}
+                    disabledReason={swingDisabledReason}
+                    changePredictedDisabled={slot0?.status === "executing"}
+                    changePredictedTitle={changePredictedTitle}
+                    wrongTableEnabled={FEATURES.wrongTableCorrection}
+                    onBreak={() => { if (a) onSendToBreak(a.attendance_id); }}
+                    onChangePredicted={() => {
+                      if (!a?.id) { toast.warning("Không tìm thấy ca dealer của bàn này"); return; }
+                      onChangePredicted(t.id);
+                    }}
+                    onConfirmSwing={() => {
+                      if (!a) return;
+                      setConfirmSwing({
+                        assignmentId: a.id,
+                        tableName: t.table_name ?? "Bàn",
+                        outName: dealer?.full_name ?? "Dealer hiện tại",
+                        inName: slot0Locked ? slot0Name : null,
+                        isOt,
+                      });
+                    }}
+                    onCorrectWrongTable={() => {
+                      if (!a?.id) { toast.warning("Không tìm thấy ca dealer của bàn này"); return; }
+                      onCorrectWrongTable(t.id);
+                    }}
+                    onAssign={() => onAssign(t.id)}
+                  />
                 </div>
               </div>
             );
@@ -3735,26 +3757,8 @@ function CommandCenter({
     () => assignments.filter((a) => a.status === "assigned").length,
     [assignments],
   );
-  // OT = live clock past swing_due_at — exactly the same condition the table
-  // cards use, recomputed every tick so the KPI stays in sync with the grid.
-  const otTablesCount = useMemo(
-    () => assignments.filter((a) =>
-      a.status === "assigned"
-      && !a.swing_processed_at
-      && a.swing_due_at
-      && new Date(a.swing_due_at).getTime() < nowMs
-    ).length,
-    [assignments, nowMs],
-  );
-  const availableDealersCount = useMemo(
-    () => dealers?.filter((d) => {
-      const state = (d as any).current_state;
-      return state === "available" || state === "waiting";
-    })?.length ?? 0,
-    [dealers],
-  );
 
-  // Exceptions count for health badge and SystemHealthCard
+  // Exceptions count for health badge
   const exceptionsCount = useMemo(() => {
     let count = 0;
     // OT
@@ -3855,16 +3859,8 @@ function CommandCenter({
 
         <hr className="border-border/40" />
 
-        {/* ── SYSTEM HEALTH ── */}
-        <SystemHealthCard
-          totalTables={activeTablesCount}
-          assignedTables={assignedTablesCount}
-          otTables={otTablesCount}
-          availableDealers={availableDealersCount}
-          needAttention={exceptionsCount}
-        />
-
-        <hr className="border-border/40" />
+        {/* SYSTEM HEALTH KPIs moved to the full-width DealerSwingSummaryStrip
+            (operator-panel top strip) to avoid duplication — UI Phase 4. */}
 
         {/* ── RECENT ACTIVITY ── */}
         <RecentActivitySection logs={recentLogs} totalCount={auditLogs.length} onViewAll={() => setFullLogOpen(true)} />

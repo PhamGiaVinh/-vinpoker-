@@ -74,6 +74,40 @@ const DEFAULT_BREAK_DURATION_MINUTES = 15;
 const SWING_WINDOW_BUFFER_MINUTES = 2;
 const MAX_SWING_RETRIES = 3;
 
+// ── Owner policy (2026-06-13) ────────────────────────────────────────────────
+// The scheduler must NEVER auto force-release an overdue dealer: with no
+// replacement the dealer stays on OVERTIME (Pass R already stamps
+// overtime_started_at) and the floor intervenes manually. And it must NEVER
+// auto-open/auto-staff an empty table — opening is manual-only (the "Gán" /
+// "Gán loạt" buttons via the assign-dealer / mass-assign edge functions, which
+// are unaffected by these flags). Flip either to true to restore the previous
+// automatic behavior.
+const FORCE_RELEASE_ENABLED = false;
+const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
+// Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
+// The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
+// that auto-picks an UNPLANNED pool dealer for an overdue table is disabled:
+// no pre-assigned replacement → the current dealer stays on OT (alert / manual
+// intervention). Predicted / pre-assign PLANNING (Pass R, lock_rotation_slot,
+// set_rotation_slot_dealer) is NOT affected — a resting dealer may still be
+// pre-assigned for a future swing. Flip true to restore emergency auto-pick.
+const UNPLANNED_AUTO_PICK_ENABLED = false;
+// Hard rest revalidation at EXECUTE time (owner policy 2026-06-13): the incoming
+// pre-assigned dealer must have >= 13 min rest at swing time. If still short, do
+// NOT swing — keep the current dealer on OT and alert. Planning may pre-assign a
+// resting dealer who is expected to be valid by swing time; execution enforces
+// the hard rest floor.
+const EXECUTE_MIN_REST_MINUTES = 13;
+// Owner policy (2026-06-14): do NOT spam Telegram with Pass 0c OT alerts — both
+// the per-tick "đang OT, cần can thiệp thủ công" overdue alert AND the >45-min
+// extended-OT alert. With force-release disabled a dealer on overtime is the
+// EXPECTED state (no relief yet) and the floor already sees it on the Dealer
+// Swing map / ĐÀI CHỈ HUY, so a Telegram ping every cron tick for every overdue
+// table is noise. Both OT alerts are now console-only. Flip true to restore the
+// Telegram pings. (Force-release failure alerts, if force-release is re-enabled,
+// are NOT gated by this flag.)
+const OT_ALERT_TELEGRAM_ENABLED = false;
+
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
 // Batch cleanup (Pass 1b, 1c) dùng direct UPDATE — trigger ghi audit tự động.
@@ -1043,51 +1077,73 @@ Deno.serve(async (req: Request) => {
           if (overdueErr) {
             console.error("[Pass 0c] ❌ Overdue query error:", overdueErr.message);
           } else if (overdueAssignments && overdueAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — force-releasing`);
-            for (const a of overdueAssignments) {
-              const overdueMin = Math.floor(
-                (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
-              );
-              const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
-              const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+            if (FORCE_RELEASE_ENABLED) {
+              console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — force-releasing`);
+              for (const a of overdueAssignments) {
+                const overdueMin = Math.floor(
+                  (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
+                );
+                const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+                const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
 
-              // Call force_release_stuck_assignment RPC
-              const forceResult = await admin.rpc("force_release_stuck_assignment", {
-                p_assignment_id: a.id,
-                p_club_id: cid,
-                p_reason: `pass0c_force_release_overdue_${Math.min(overdueMin, 240)}min`,
-              });
+                // Call force_release_stuck_assignment RPC
+                const forceResult = await admin.rpc("force_release_stuck_assignment", {
+                  p_assignment_id: a.id,
+                  p_club_id: cid,
+                  p_reason: `pass0c_force_release_overdue_${Math.min(overdueMin, 240)}min`,
+                });
 
-              if (forceResult.error) {
-                console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
-                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
-                continue;
+                if (forceResult.error) {
+                  console.error(`[Pass 0c] ❌ force_release RPC error for ${tableName}:`, forceResult.error.message);
+                  criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release FAILED!`);
+                  continue;
+                }
+
+                const fr = forceResult.data as { success: boolean; reason?: string };
+                if (!fr?.success) {
+                  console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
+                  criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
+                  continue;
+                }
+
+                forceReleasedCount++;
+                console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
+                criticalAlerts.push(`✅ *${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
               }
-
-              const fr = forceResult.data as { success: boolean; reason?: string };
-              if (!fr?.success) {
-                console.warn(`[Pass 0c] ⚠️ force_release returned for ${tableName}:`, fr);
-                criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph. Force-release rejected: ${fr?.reason}`);
-                continue;
+            } else {
+              // Owner policy: NEVER force-release. The dealer stays on OT (Pass R
+              // stamped overtime_started_at). A dealer on OT is the EXPECTED state
+              // and the floor sees it in the UI, so the per-tick overdue alert is
+              // console-only by default (OT_ALERT_TELEGRAM_ENABLED) — no Telegram.
+              console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — on OT, manual intervention (force-release disabled)`);
+              for (const a of overdueAssignments) {
+                const overdueMin = Math.floor(
+                  (Date.now() - new Date(a.swing_due_at).getTime()) / 60_000
+                );
+                const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
+                const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
+                console.warn(`[Pass 0c] 🔴 ${tableName} — ${dealerName}: overdue ${overdueMin}min, on OT (manual intervention)`);
+                if (OT_ALERT_TELEGRAM_ENABLED) {
+                  criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph — đang OT, cần can thiệp thủ công.`);
+                }
               }
-
-              forceReleasedCount++;
-              console.log(`[Pass 0c] ✅ Force-released ${tableName} (overdue ${overdueMin}min, reason: ${fr.reason})`);
-              criticalAlerts.push(`✅ *${tableName}* — Đã force-release (${overdueMin}ph quá hạn).`);
             }
           }
 
           if (otErr) {
             console.error("[Pass 0c] ❌ Extended OT query error:", otErr.message);
           } else if (extendedOtAssignments && extendedOtAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min) — alert only`);
+            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min) — on OT (console-only)`);
             for (const a of extendedOtAssignments) {
               const otMin = Math.floor(
                 (Date.now() - new Date(a.overtime_started_at).getTime()) / 60_000
               );
               const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
               const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
-              criticalAlerts.push(`⏱ *${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+              console.warn(`[Pass 0c] ⏱ ${tableName} — ${dealerName}: extended OT ${otMin}min`);
+              if (OT_ALERT_TELEGRAM_ENABLED) {
+                criticalAlerts.push(`⏱ *${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+              }
             }
           }
 
@@ -1195,7 +1251,11 @@ Deno.serve(async (req: Request) => {
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
         let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
-        if (!dryRun) {
+        // Owner policy: NEVER auto-open/auto-staff an empty table. Opening is
+        // manual-only (the "Gán" / "Gán loạt" buttons → assign-dealer / mass-assign
+        // edge functions, which call fillEmptyTables independently and are NOT
+        // affected by this gate). The cron must not auto-fill or send "Mở Bàn".
+        if (!dryRun && AUTO_OPEN_EMPTY_TABLES_ENABLED) {
           fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt, clubCfg.min_inter_swing_rest_minutes);
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           // Pass 1 swing_in intentionally NOT enqueued here:
@@ -2312,7 +2372,12 @@ if (tier2Count > 0) {
           const forceReleaseThresholdMin = await admin.rpc("get_escalation_config", { p_club_id: cid })
             .then((r: any) => r.data?.force_release_at_overdue_min ?? 30)
             .catch(() => 30);
-          if (minsLeft < -forceReleaseThresholdMin) {
+          // Owner policy: NEVER force-release. When disabled, an overdue table
+          // falls through to the normal pre-assigned-swing path below (relieve
+          // only if a replacement is pre-assigned; otherwise the dealer stays on
+          // OT — overtime_started_at already stamped by Pass R). No release, no
+          // relaxed-guard escalation, no auto re-staff.
+          if (FORCE_RELEASE_ENABLED && minsLeft < -forceReleaseThresholdMin) {
             console.error(
               `[Pass 3] 🚨 FORCE-RELEASE: ${tableName} overdue by ${-minsLeft}min (threshold ${forceReleaseThresholdMin}min)`
             );
@@ -2481,7 +2546,7 @@ if (tier2Count > 0) {
             // ── Pre-assigned swing path ───────────────────────────────────
             const { data: preflightAtt } = await admin
               .from("dealer_attendance")
-              .select("current_state, status, full_name")
+              .select("current_state, status, full_name, last_released_at")
               .eq("id", assignment.pre_assigned_attendance_id)
               .maybeSingle();
             const preflightInvalid = !preflightAtt
@@ -2535,6 +2600,41 @@ if (tier2Count > 0) {
                 if (replan.relocked) metrics.success++;
                 else metrics.skipped++;
                 continue;
+              }
+              metrics.skipped++;
+              continue;
+            }
+
+            // ── Execute-time HARD rest revalidation (owner policy 2026-06-13) ──
+            // Planning may pre-assign a resting dealer expected to be valid by
+            // swing time. At execute, the incoming dealer MUST have
+            // >= EXECUTE_MIN_REST_MINUTES rest. If still short, DO NOT swing —
+            // keep the current dealer on OT (Pass R already stamped it) and alert.
+            // The pre-assign lock is left intact so a later tick swings once the
+            // incoming dealer is rested. No force-release, no auto-pick, no bypass.
+            const incomingRestMin = preflightAtt?.last_released_at
+              ? (Date.now() - new Date(preflightAtt.last_released_at).getTime()) / 60_000
+              : Infinity; // never released this shift → fully rested
+            if (incomingRestMin < EXECUTE_MIN_REST_MINUTES) {
+              console.warn("[process-swing][pass3][rest-revalidation-block]", {
+                club_id: cid,
+                table_name: tableName,
+                assignment_id: assignment.id,
+                incoming_dealer_id: assignment.pre_assigned_attendance_id,
+                incoming_dealer_name: preflightAtt?.full_name,
+                incoming_rest_min: Math.floor(incomingRestMin),
+                required_min: EXECUTE_MIN_REST_MINUTES,
+                reason: "incoming_not_rested_keep_ot",
+              });
+              if (botToken) {
+                const chatId = await getClubTelegramChatId(admin, cid).catch(() => null);
+                if (chatId) {
+                  await sendTelegramNotification(
+                    botToken, chatId,
+                    `⏸ *${tableName}* — Hoãn đổi: ${preflightAtt?.full_name ?? "dealer thay"} mới nghỉ ${Math.floor(incomingRestMin)}ph (<${EXECUTE_MIN_REST_MINUTES}ph). Dealer hiện tại tiếp tục OT — cần can thiệp thủ công.`,
+                    { parse_mode: "Markdown" },
+                  ).catch((err: unknown) => console.error("[process-swing] Telegram error:", err));
+                }
               }
               metrics.skipped++;
               continue;
@@ -3124,14 +3224,19 @@ if (tier2Count > 0) {
               force_release_at_overdue_min: 30,
             };
 
-            // ── Tier 0: Normal pick ──────────────────────────────────────────
-            let nextDealer = await pickNextDealer(admin, cid, {
-              ...basePickOptions,
-              minRestMinutes: clubCfg.break_duration_minutes ?? 10,
-            });
+            // ── Tier 0: Normal pick (UNPLANNED auto-pick — gated) ─────────────
+            // Owner policy: automatic swing requires a PLANNED pre-assignment.
+            // When unplanned auto-pick is disabled, no pool dealer is picked here
+            // (Tier 0 or relaxed tiers below) — the table stays on OT.
+            let nextDealer = UNPLANNED_AUTO_PICK_ENABLED
+              ? await pickNextDealer(admin, cid, {
+                  ...basePickOptions,
+                  minRestMinutes: clubCfg.break_duration_minutes ?? 10,
+                })
+              : null;
 
             // ── Tier 1: 5+ min overdue, relax min_rest to 5 ──────────────────
-            if (!nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_1_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 1 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_1_min_rest_min}`
@@ -3143,7 +3248,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 2: 15+ min overdue, relax min_rest to 3, skip priority break ──
-            if (!nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_2_min_overdue_min) {
               console.log(
                 `[Pass 3] Tier 2 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_2_min_rest_min}, skipPriorityBreak=${esc.tier_2_skip_priority_break}`
@@ -3156,7 +3261,7 @@ if (tier2Count > 0) {
             }
 
             // ── Tier 3: 30+ min overdue, min_rest=0, skip fatigue cap (last resort) ──
-            if (!nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
+            if (UNPLANNED_AUTO_PICK_ENABLED && !nextDealer && minutesOverdue >= esc.tier_3_min_overdue_min) {
               console.warn(
                 `[Pass 3] Tier 3 fallback for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min): min_rest=${esc.tier_3_min_rest_min}, skipFatigue=${esc.tier_3_skip_fatigue_cap} — LAST RESORT`
@@ -3170,15 +3275,16 @@ if (tier2Count > 0) {
               });
             }
 
-            // ── All tiers exhausted: flag for force-release in Pass 0c ────────
-            // Pass 0c runs FIRST in the cron tick and will force-release any
-            // stuck rows ≥ force_release_at_overdue_min. If Pass 0c is disabled,
-            // the next cron tick will catch it.
+            // ── No normally-eligible replacement: dealer stays on OT ──────────
+            // Owner policy: no normal (Tier 0) replacement → the current dealer
+            // remains on OT for manual intervention. Relaxed-rest tiers 1–3 and
+            // Pass 0c/Pass 3 force-release are disabled, so nothing auto-releases
+            // or bypasses rest here — only telemetry + the existing OT alerts.
             if (!nextDealer && minutesOverdue >= esc.force_release_at_overdue_min) {
               console.error(
-                `[Pass 3] 🚨 ALL TIERS EXHAUSTED for ${tableName} ` +
+                `[Pass 3] 🚨 NO NORMAL REPLACEMENT for ${tableName} ` +
                 `(overdue ${minutesOverdue.toFixed(1)}min ≥ threshold ${esc.force_release_at_overdue_min}) — ` +
-                `flagging for force-release`
+                `dealer stays on OT, cần can thiệp thủ công`
               );
               // Track for diagnostic logging
               admin.from("diagnostic_logs").insert({

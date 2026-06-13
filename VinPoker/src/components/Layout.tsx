@@ -2,11 +2,19 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useAdminPendingCounts } from "@/hooks/useAdminPendingCounts";
@@ -32,16 +40,26 @@ const tabsData = [
 ];
 
 // Mobile bottom nav: 4 key public tabs + center LogoFanButton (no text overflow at 360px).
+// Order: Lịch giải · Stake · [Logo] · Marketplace · Bảng tin (slice 0-2 before logo, 2- after).
 // Selected by route (stable against tabsData reordering); the rest stay reachable
-// through the center quick-menu links below.
-const MOBILE_TAB_ROUTES = ["/", "/feed", "/clubs", "/account"];
+// through the header "☰" menu below so no previous mobile route becomes unreachable.
+const MOBILE_TAB_ROUTES = ["/", "/marketplace", "/find-backer", "/feed"];
 const mobileTabsData = MOBILE_TAB_ROUTES
   .map((to) => tabsData.find((t) => t.to === to))
   .filter((t): t is (typeof tabsData)[number] => Boolean(t));
 
-// Destinations without a bottom-nav slot — exposed in the LogoFanButton quick menu
-// so no previous mobile nav route becomes unreachable.
-const mobileQuickLinks = tabsData.filter((t) => !MOBILE_TAB_ROUTES.includes(t.to));
+// Shorter, cleaner labels for the bottom-nav pills (local override — no i18n edit).
+const MOBILE_NAV_LABEL: Record<string, string> = {
+  "/marketplace": "Stake",
+  "/find-backer": "Marketplace",
+};
+
+// Secondary routes without a bottom-nav slot — surfaced in the header "☰" menu
+// (Tài khoản first; everything stays reachable, zero horizontal scroll).
+const MOBILE_MENU_ROUTES = ["/account", "/clubs", "/news", "/international", "/documents", "/leaderboard"];
+const mobileMenuData = MOBILE_MENU_ROUTES
+  .map((to) => tabsData.find((t) => t.to === to))
+  .filter((t): t is (typeof tabsData)[number] => Boolean(t));
 
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
@@ -57,15 +75,78 @@ export const Layout = () => {
   if (!showShell) return <Outlet />;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-4 px-6 h-16">
-          <NavLink to="/" className="flex items-center gap-2 shrink-0">
-            <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg object-cover" />
-            <div className="font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
-              VBacker
-            </div>
-          </NavLink>
+        <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-2 md:gap-4 px-3 md:px-6 h-16">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Mobile "☰" secondary-nav menu — holds routes without a bottom-nav slot.
+                On the left so the right action cluster never overflows at 360px. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/60 transition-colors"
+                  aria-label="Menu"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>Khám phá</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {mobileMenuData.map((m) => {
+                  const active = location.pathname === m.to;
+                  return (
+                    <DropdownMenuItem
+                      key={m.to}
+                      onClick={() => nav(m.to)}
+                      className={cn("gap-2.5 cursor-pointer", active && "text-primary")}
+                    >
+                      <m.icon className="w-4 h-4" />
+                      {t(`nav.${m.labelKey}`, m.label)}
+                    </DropdownMenuItem>
+                  );
+                })}
+                {(isMedia || isAdmin) && (
+                  <DropdownMenuItem
+                    onClick={() => nav("/media")}
+                    className={cn("gap-2.5 cursor-pointer", location.pathname === "/media" && "text-primary")}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Media Center
+                  </DropdownMenuItem>
+                )}
+                {user && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => nav("/inbox")} className="gap-2.5 cursor-pointer">
+                      <MessageCircle className="w-4 h-4" />
+                      {t("layout.inbox", "Tin nhắn")}
+                      {unreadCount > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => signOut()}
+                      className="gap-2.5 cursor-pointer text-destructive focus:text-destructive"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      {t("layout.signOut", "Đăng xuất")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <NavLink to="/" className="flex items-center gap-2 shrink-0">
+              <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg object-cover" />
+              <div className="hidden sm:block font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
+                VBacker
+              </div>
+            </NavLink>
+          </div>
 
           <nav className="hidden md:flex items-center gap-8">
             {tabsData.map((m) => (
@@ -93,7 +174,7 @@ export const Layout = () => {
             {user && (
               <NavLink
                 to="/inbox"
-                className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary inline-flex items-center gap-1.5 transition-colors"
+                className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary hidden md:inline-flex items-center gap-1.5 transition-colors"
                 title={t("layout.inbox")}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -104,29 +185,43 @@ export const Layout = () => {
                 )}
               </NavLink>
             )}
-            {user && <SupportFloatingButton />}
-
-            {(isMedia || isAdmin) && (
-              <NavLink
-                to="/media"
-                className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-purple-500/40 text-purple-400 text-[11px] font-bold tracking-wider hover:bg-purple-500/15"
-                title="Media Center"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                MEDIA
-              </NavLink>
+            {user && (
+              <div className="hidden md:block">
+                <SupportFloatingButton />
+              </div>
             )}
 
-            {/* Mobile-only operator entry — /cashier guards itself; this is UI entry only */}
-            {(isCashier || isAdmin) && (
-              <NavLink
-                to="/cashier"
-                className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25"
-                title="Vận hành CLB — Cashier · Floor · Tracker · Swing"
-              >
-                <Wallet className="w-3.5 h-3.5" />
-                VẬN HÀNH
-              </NavLink>
+            {/* Mobile-only operator entry — role-aware menu (TD + cashier). Each
+                destination guards itself; this is a UI entry only. Bigger tap target. */}
+            {(isCashier || isTracker || isAdmin) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="md:hidden inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
+                    aria-label="Vận hành CLB"
+                  >
+                    <Wallet className="w-[18px] h-[18px] shrink-0" />
+                    <span className="hidden min-[400px]:inline">VẬN HÀNH</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel>Vận hành CLB</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {(isCashier || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
+                      <Wallet className="w-4 h-4" />
+                      Cashier · Floor · Swing
+                    </DropdownMenuItem>
+                  )}
+                  {(isTracker || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
+                      <Radio className="w-4 h-4" />
+                      Tracker
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             <div className="hidden md:flex items-center gap-1.5">
@@ -188,7 +283,7 @@ export const Layout = () => {
                 onClick={() => signOut()}
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:text-destructive h-9"
+                className="hidden md:flex text-muted-foreground hover:text-destructive h-9"
                 title={t("layout.signOut")}
               >
                 <LogOut className="w-4 h-4" />
@@ -232,7 +327,7 @@ export const Layout = () => {
               {({ isActive }) => (
                 <>
                   <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
-                  <span className="font-medium">{t(`nav.${tab.labelKey}`, tab.label)}</span>
+                  <span className="font-medium">{MOBILE_NAV_LABEL[tab.to] ?? t(`nav.${tab.labelKey}`, tab.label)}</span>
                 </>
               )}
             </NavLink>
@@ -243,11 +338,6 @@ export const Layout = () => {
               else nav("/auth");
             }}
             onPoker={() => nav("/")}
-            quickLinks={mobileQuickLinks.map((tab) => ({
-              to: tab.to,
-              label: t(`nav.${tab.labelKey}`, tab.label),
-            }))}
-            onNavigate={(to) => nav(to)}
           />
           {mobileTabsData.slice(2).map((tab) => (
             <NavLink
@@ -264,7 +354,7 @@ export const Layout = () => {
               {({ isActive }) => (
                 <>
                   <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
-                  <span className="font-medium">{t(`nav.${tab.labelKey}`, tab.label)}</span>
+                  <span className="font-medium">{MOBILE_NAV_LABEL[tab.to] ?? t(`nav.${tab.labelKey}`, tab.label)}</span>
                 </>
               )}
             </NavLink>

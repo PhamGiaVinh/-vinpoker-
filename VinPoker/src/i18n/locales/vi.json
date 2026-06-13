@@ -1766,6 +1766,58 @@
       "telegramChatIdHint": "Nhập Chat ID của group Telegram để nhận thông báo swing"
     }
   },
+  "tdAi": {
+    "entry": "Hỏi TD AI",
+    "title": "Trợ lý TD AI",
+    "subtitle": "Tra cứu tình huống xử lý của TD. Chỉ tư vấn — quyết định cuối cùng thuộc về TD.",
+    "newLookup": "Tra cứu mới",
+    "loading": "Đang hỏi TD AI…",
+    "advisoryBanner": "Tư vấn hỗ trợ — không phải ruling chính thức. TD xác nhận trước khi áp dụng.",
+    "error": "Không gọi được TD AI — đang dùng kết quả tra cứu từ khóa.",
+    "form": {
+      "table": "Bàn",
+      "tablePlaceholder": "VD: Bàn 4",
+      "street": "Vòng cược",
+      "streetPlaceholder": "Chọn vòng",
+      "players": "Người liên quan",
+      "playersPlaceholder": "VD: Ghế 3 và Ghế 5",
+      "actionSequence": "Trình tự hành động",
+      "actionSequencePlaceholder": "VD: Ghế 3 raise, ghế 5 đưa chip nhiều lần",
+      "description": "Mô tả tình huống",
+      "descriptionPlaceholder": "Mô tả ngắn gọn sự việc cần tra cứu…",
+      "houseRule": "Ghi chú luật CLB (tuỳ chọn)",
+      "houseRulePlaceholder": "VD: CLB tính theo lần đưa chip đầu",
+      "lookup": "Tra cứu"
+    },
+    "street": {
+      "preflop": "Preflop",
+      "flop": "Flop",
+      "turn": "Turn",
+      "river": "River",
+      "showdown": "Showdown",
+      "other": "Khác"
+    },
+    "answer": {
+      "recommendation": "Khuyến nghị",
+      "basis": "Căn cứ",
+      "noBasis": "Không có căn cứ phù hợp",
+      "reasoning": "Lập luận",
+      "houseOption": "Phương án theo luật CLB",
+      "playerWording": "Cách nói với khách",
+      "confidence": "Độ tin cậy",
+      "needMore": "Cần hỏi thêm"
+    },
+    "confidence": {
+      "low": "Thấp",
+      "medium": "Trung bình",
+      "high": "Cao"
+    },
+    "actions": {
+      "saveIncident": "Lưu sự việc",
+      "reportTd": "Báo TD",
+      "prF": "Sẽ có ở PR F"
+    }
+  },
   "tournamentLive": {
     "selectTournament": "Chọn giải",
     "tvDisplays": {
