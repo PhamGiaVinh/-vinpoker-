@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowRightLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Loader2, ChevronUp, ChevronDown } from "lucide-react";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
@@ -113,7 +113,7 @@ export function MovePlayerDialog({
       (occ[s.table_id] ??= []).push({ seat_number: s.seat_number, player_name: s.player_name });
     }
     setOccupied(occ);
-    setTables(((tt ?? []) as any[])
+    const built = ((tt ?? []) as any[])
       // mirror the RPC's destination filter: active + linked to a game table
       .filter((t) => t.status === "active" && t.table_id !== null)
       .map((t) => ({
@@ -123,7 +123,13 @@ export function MovePlayerDialog({
         maxSeats: t.max_seats ?? 9,
         activeCount: (occ[t.id] ?? []).length,
       }))
-      .sort((a, b) => (a.tableNumber ?? 1e9) - (b.tableNumber ?? 1e9)));
+      .sort((a, b) => (a.tableNumber ?? 1e9) - (b.tableNumber ?? 1e9));
+    setTables(built);
+    // Default the stepper to the player's current table if eligible, else the first.
+    if (built.length) {
+      const start = built.find((t) => t.id === currentTournamentTableId) ?? built[0];
+      setTargetTableId(start.id);
+    }
   };
 
   useEffect(() => {
@@ -147,6 +153,34 @@ export function MovePlayerDialog({
     for (const o of occupied[targetTableId] ?? []) m.set(o.seat_number, o);
     return m;
   }, [occupied, targetTableId]);
+
+  // When the target table changes, default the seat to the first free one there.
+  useEffect(() => {
+    if (!targetTable) return;
+    const taken = new Set((occupied[targetTable.id] ?? []).map((o) => o.seat_number));
+    let firstFree: number | null = null;
+    for (let n = 1; n <= targetTable.maxSeats; n++) if (!taken.has(n)) { firstFree = n; break; }
+    setTargetSeat(firstFree ?? 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetTableId, tables]);
+
+  const cycleTable = (dir: number) => {
+    if (!tables || tables.length === 0) return;
+    const i = Math.max(0, tables.findIndex((t) => t.id === targetTableId));
+    const next = (i + dir + tables.length) % tables.length;
+    setTargetTableId(tables[next].id);
+  };
+  const cycleSeat = (dir: number) => {
+    if (!targetTable) return;
+    const max = targetTable.maxSeats;
+    const cur = targetSeat ?? 1;
+    setTargetSeat(((cur - 1 + dir + max) % max) + 1);
+  };
+  // Occupant on the chosen seat that is NOT the player being moved (their own
+  // current seat is fine = no-op move). Blocks "Tiếp tục" + warns.
+  const seatOccupant = targetSeat != null ? occupantBySeat.get(targetSeat) : undefined;
+  const isOwnSeat = targetTable?.id === currentTournamentTableId && targetSeat === currentSeatNumber;
+  const seatBlocked = !!seatOccupant && !isOwnSeat;
 
   const reason = reasonPreset === "Khác" ? reasonText.trim() : reasonPreset;
 
@@ -210,49 +244,43 @@ export function MovePlayerDialog({
 
           {phase === "pick" && (
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Bàn đích</Label>
-                {tables === null ? (
-                  <Skeleton className="h-9" />
-                ) : (
-                  <Select value={targetTableId} onValueChange={(v) => { setTargetTableId(v); setTargetSeat(null); }}>
-                    <SelectTrigger className="h-9"><SelectValue placeholder="Chọn bàn" /></SelectTrigger>
-                    <SelectContent>
-                      {tables.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.tableName} — {t.activeCount}/{t.maxSeats} ghế
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              {targetTable && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Ghế (trống mới chọn được)</Label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {Array.from({ length: targetTable.maxSeats }, (_, i) => i + 1).map((n) => {
-                      const occ = occupantBySeat.get(n);
-                      const isCurrent = targetTable.id === currentTournamentTableId && n === currentSeatNumber;
-                      return (
-                        <Button
-                          key={n}
-                          type="button"
-                          size="sm"
-                          variant={targetSeat === n ? "default" : "outline"}
-                          className="h-9"
-                          disabled={!!occ}
-                          title={occ ? `${occ.player_name ?? "Có người"}${isCurrent ? " (ghế hiện tại)" : ""}` : `Ghế ${n} trống`}
-                          onClick={() => setTargetSeat(n)}
-                        >
-                          {n}{isCurrent ? "•" : ""}
-                        </Button>
-                      );
-                    })}
+              {tables === null ? (
+                <Skeleton className="h-40" />
+              ) : tables.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">Không có bàn active để chuyển tới.</div>
+              ) : (
+                <>
+                  {/* Kholdem-style number steppers: Bàn / Ghế */}
+                  <div className="flex justify-center gap-8 py-2">
+                    <div className="text-center">
+                      <Label className="text-xs text-muted-foreground">Bàn</Label>
+                      <Button type="button" variant="outline" aria-label="Bàn kế" className="mt-1 block h-10 w-16" onClick={() => cycleTable(1)} disabled={tables.length < 2}>
+                        <ChevronUp className="mx-auto h-5 w-5" />
+                      </Button>
+                      <div className="py-1 text-3xl font-bold tabular-nums text-primary leading-tight">{targetTable?.tableNumber ?? "—"}</div>
+                      <div className="text-[11px] text-muted-foreground truncate max-w-[80px]">{targetTable?.tableName} · {targetTable?.activeCount}/{targetTable?.maxSeats}</div>
+                      <Button type="button" variant="outline" aria-label="Bàn trước" className="mt-1 block h-10 w-16" onClick={() => cycleTable(-1)} disabled={tables.length < 2}>
+                        <ChevronDown className="mx-auto h-5 w-5" />
+                      </Button>
+                    </div>
+                    <div className="text-center">
+                      <Label className="text-xs text-muted-foreground">Ghế</Label>
+                      <Button type="button" variant="outline" aria-label="Ghế kế" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(1)}>
+                        <ChevronUp className="mx-auto h-5 w-5" />
+                      </Button>
+                      <div className={`py-1 text-3xl font-bold tabular-nums leading-tight ${seatBlocked ? "text-destructive" : "text-primary"}`}>{targetSeat ?? "—"}</div>
+                      <div className="text-[11px] text-muted-foreground">{isOwnSeat ? "ghế hiện tại" : seatBlocked ? "đã có người" : "trống"}</div>
+                      <Button type="button" variant="outline" aria-label="Ghế trước" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(-1)}>
+                        <ChevronDown className="mx-auto h-5 w-5" />
+                      </Button>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">• = ghế hiện tại của người chơi. Ghế mờ = đã có người.</p>
-                </div>
+                  {seatBlocked && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                      Ghế {targetSeat} đã có {seatOccupant?.player_name || "người chơi khác"} — chọn ghế khác.
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="space-y-1.5">
@@ -301,7 +329,7 @@ export function MovePlayerDialog({
               <>
                 <Button variant="outline" onClick={() => close(false)}>Quay lại</Button>
                 <Button
-                  disabled={!targetTable || targetSeat == null || !reason}
+                  disabled={!targetTable || targetSeat == null || !reason || seatBlocked}
                   onClick={() => setPhase("confirm")}
                 >
                   Tiếp tục

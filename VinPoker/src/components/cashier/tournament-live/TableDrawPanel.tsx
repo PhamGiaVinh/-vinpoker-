@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   RefreshCw, Save, Plus, UserPlus, X, Undo2, AlertTriangle, ArrowRightLeft,
-  ChevronLeft, Search, UserMinus, RotateCcw,
+  ChevronLeft, Search, UserMinus, RotateCcw, Shuffle, Lock,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FEATURES } from "@/lib/featureFlags";
 import { MovePlayerDialog } from "./MovePlayerDialog";
 
@@ -580,6 +581,34 @@ export function TableDrawPanel({
             <UserPlus className="w-4 h-4 mr-1" /> Thêm player
           </Button>
         </div>
+
+        {/* Table-level actions — backend pending, shown disabled with "Sắp có" */}
+        <TooltipProvider>
+          <div className="flex flex-wrap gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" variant="outline" className="h-10" disabled>
+                    <Shuffle className="w-4 h-4 mr-1.5" /> Bốc lại
+                    <span className="ml-2 rounded-full border border-warning/40 px-1.5 py-0.5 text-[10px] text-warning">Sắp có</span>
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Bốc lại bàn (redraw) — cần backend, sắp có</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button size="sm" variant="outline" className="h-10" disabled>
+                    <Lock className="w-4 h-4 mr-1.5" /> Đóng bàn
+                    <span className="ml-2 rounded-full border border-warning/40 px-1.5 py-0.5 text-[10px] text-warning">Sắp có</span>
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Đóng bàn giải (close table) — cần backend, sắp có</TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
 
         {/* Seat list 1..max — occupied rows + tappable empty slots */}
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
