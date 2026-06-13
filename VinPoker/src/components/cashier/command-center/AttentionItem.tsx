@@ -49,25 +49,25 @@ export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, 
 
       <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
         {item.type === "ot" && item.tableId && onSwing && (
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] lg:h-6 lg:px-1.5 lg:text-[10px]"
+          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
             onClick={() => onSwing(item.tableId!)}>
             Swing <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
           </Button>
         )}
         {(item.type === "empty_table" || item.type === "missing_next_dealer") && item.tableId && onAssign && (
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] lg:h-6 lg:px-1.5 lg:text-[10px]"
+          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
             onClick={() => onAssign(item.tableId!)}>
             Gán <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
           </Button>
         )}
         {item.type === "break_due" && item.attendanceId && onSendToBreak && (
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] lg:h-6 lg:px-1.5 lg:text-[10px]"
+          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
             onClick={() => onSendToBreak(item.attendanceId!)}>
             Break <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
           </Button>
         )}
         {item.tableId && onFocusTable && (
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] lg:h-6 lg:px-1.5 lg:text-[10px] text-muted-foreground hover:text-foreground"
+          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onFocusTable(item.tableId!)}>
             Xem
           </Button>
