@@ -20,6 +20,7 @@ import { BackingReviewQueue } from "@/components/BackingReviewQueue";
 import { SpreadPnL } from "@/components/admin/SpreadPnL";
 import { AdminSupportTab } from "@/components/admin/AdminSupportTab";
 import { AdminStreamManager } from "@/components/admin/AdminStreamManager";
+import ClubFinanceDashboard from "./ClubFinanceDashboard";
 
 const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
 const GAME_TYPES = [{v:"nlh",l:"No Limit Hold'em"},{v:"plo",l:"Pot Limit Omaha"},{v:"mixed",l:"Mixed Games"}];
@@ -139,6 +140,7 @@ const SuperAdmin = () => {
           <TabsTrigger value="backing">Backing</TabsTrigger>
           <TabsTrigger value="banners">Banners</TabsTrigger>
           <TabsTrigger value="pnl">P&L Spread</TabsTrigger>
+          <TabsTrigger value="finance">Tài chính</TabsTrigger>
           <TabsTrigger value="streams">Livestream</TabsTrigger>
           <TabsTrigger value="rates">Tỷ giá</TabsTrigger>
           <TabsTrigger value="packages">Packages</TabsTrigger>
@@ -148,6 +150,7 @@ const SuperAdmin = () => {
 
 
         <TabsContent value="pnl" className="mt-4"><SpreadPnL /></TabsContent>
+        <TabsContent value="finance" className="mt-4"><ClubFinanceDashboard /></TabsContent>
 
         {/* TOURNAMENTS */}
         <TabsContent value="tournaments" className="space-y-3 mt-4">

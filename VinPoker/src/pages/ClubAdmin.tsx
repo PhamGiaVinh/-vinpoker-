@@ -171,6 +171,20 @@ const ClubAdmin = () => {
             </Card>
           )}
 
+          {activeClub && (FEATURES.clubFinanceDashboard || isAdmin) && (
+            <Card className="p-4 gradient-card border-primary/50 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /> Tài chính CLB</h3>
+                <p className="text-xs text-muted-foreground">Doanh thu (phí + rake), chi phí lương, lãi ròng, công nợ lương — chỉ xem.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/finance">
+                  <Wallet className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
           {activeClub && (
             <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
               <div>
@@ -180,20 +194,6 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to={`/cashier?tab=members&sub=sync`}>
                   <FileSpreadsheet className="w-4 h-4" /> Mở
-                </Link>
-              </Button>
-            </Card>
-          )}
-
-          {activeClub && (FEATURES.clubFinanceDashboard || isAdmin) && (
-            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="font-display text-base flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /> Tài chính CLB</h3>
-                <p className="text-xs text-muted-foreground">Doanh thu (phí + rake), chi phí lương, lãi ròng, công nợ lương — chỉ xem.</p>
-              </div>
-              <Button asChild size="sm">
-                <Link to="/club/admin/finance">
-                  <Wallet className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>

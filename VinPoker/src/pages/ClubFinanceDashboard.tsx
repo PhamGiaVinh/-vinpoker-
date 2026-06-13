@@ -57,11 +57,6 @@ const ClubFinanceDashboard = () => {
 
   const { loading, error, clubs, summary, reload } = useClubFinanceSummary({ from, to, clubFilter });
 
-  // Dark by default: hidden from everyone except super_admin (owner UAT) until the flag flips.
-  if (!((FEATURES.clubFinanceDashboard || isAdmin) && isClubAdmin)) {
-    return <Navigate to="/" replace />;
-  }
-
   const donut = useMemo(() => {
     if (!summary) return [];
     return (Object.keys(summary.statusTotals) as PayrollStatusKey[])
@@ -77,6 +72,12 @@ const ClubFinanceDashboard = () => {
     () => (summary ? summary.perClub.filter((c) => c.cost > 0 || c.revenue > 0).slice(0, 8) : []),
     [summary],
   );
+
+  // Dark by default: hidden from everyone except super_admin (owner UAT) until the flag flips.
+  // Placed AFTER all hooks (rules-of-hooks) so it is safe to embed in the Super Admin "Tài chính" tab.
+  if (!((FEATURES.clubFinanceDashboard || isAdmin) && isClubAdmin)) {
+    return <Navigate to="/" replace />;
+  }
 
   const exportXlsx = () => {
     if (!summary) return;
