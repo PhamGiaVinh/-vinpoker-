@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, Shuffle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -71,6 +71,16 @@ export const Layout = () => {
   const nav = useNavigate();
   const hideShellOn = ["/auth"];
   const showShell = !hideShellOn.includes(location.pathname);
+
+  // "Vận hành" operator menu — one entry that opens the operator destinations.
+  // Quầy (thu ngân) + Dealer Control (Dealer Swing + Bảng lương, /dealer-control)
+  // are cashier-scoped; TD / Floor (Live Tracker) is tracker-scoped. Each page
+  // self-guards; this is a UI entry only. Shared by the desktop + mobile menus.
+  const opsLinks = [
+    ...(isCashier || isAdmin ? [{ to: "/cashier", icon: Wallet, label: "Quầy (thu ngân)" }] : []),
+    ...(isCashier || isAdmin ? [{ to: "/dealer-control", icon: Shuffle, label: "Dealer Control" }] : []),
+    ...(isTracker || isAdmin ? [{ to: "/tracker", icon: Radio, label: "TD / Floor" }] : []),
+  ];
 
   if (!showShell) return <Outlet />;
 
@@ -205,26 +215,52 @@ export const Layout = () => {
                     <span className="hidden min-[400px]:inline">VẬN HÀNH</span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>Vận hành CLB</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {(isCashier || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
-                      <Wallet className="w-4 h-4" />
-                      Cashier · Floor · Swing
+                  {opsLinks.map((o) => (
+                    <DropdownMenuItem
+                      key={o.to}
+                      onClick={() => nav(o.to)}
+                      className={cn("gap-2.5 cursor-pointer", location.pathname === o.to && "text-primary")}
+                    >
+                      <o.icon className="w-4 h-4" />
+                      {o.label}
                     </DropdownMenuItem>
-                  )}
-                  {(isTracker || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
-                      <Radio className="w-4 h-4" />
-                      Tracker
-                    </DropdownMenuItem>
-                  )}
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
 
             <div className="hidden md:flex items-center gap-1.5">
+              {opsLinks.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25 transition-colors"
+                      aria-label="Vận hành CLB"
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      VẬN HÀNH
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Vận hành CLB</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {opsLinks.map((o) => (
+                      <DropdownMenuItem
+                        key={o.to}
+                        onClick={() => nav(o.to)}
+                        className={cn("gap-2.5 cursor-pointer", location.pathname === o.to && "text-primary")}
+                      >
+                        <o.icon className="w-4 h-4" />
+                        {o.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {isClubAdmin && !isAdmin && (
                 <NavLink to="/club/admin" className="px-2.5 py-1.5 rounded-lg border border-primary/30 text-primary text-[11px] font-semibold tracking-wider hover:bg-primary/10">
                   {t("layout.clubAdmin")}
@@ -238,16 +274,6 @@ export const Layout = () => {
                       {adminPending.total > 99 ? "99+" : adminPending.total}
                     </span>
                   )}
-                </NavLink>
-              )}
-              {isCashier && !isAdmin && (
-                <NavLink to="/cashier" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
-                  {t("layout.cashier")}
-                </NavLink>
-              )}
-              {isTracker && !isAdmin && (
-                <NavLink to="/tracker" className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[11px] font-bold tracking-wider hover:bg-emerald-500/25">
-                  <Radio className="w-3 h-3 mr-1 inline" />TRACKER
                 </NavLink>
               )}
               {isAdmin && (

@@ -24,19 +24,17 @@ import UnifiedLookupTab from "@/components/cashier/UnifiedLookupTab";
 import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
-import SwingPanel from "@/components/cashier/DealerSwingTab";
-import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Table2, Calculator, Ticket,
+  Table2, Ticket,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll" | "tournament_live" | "tournament_registrations";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_live" | "tournament_registrations";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -78,6 +76,16 @@ export default function CashierDashboard() {
     })();
   }, [user]);
 
+  // Dealer Swing + Bảng lương moved to their own full-width route (/dealer-control).
+  // Redirect old deep links (?tab=swing / ?tab=payroll) so bookmarks & Telegram
+  // links land on the new console instead of a now-removed cashier tab.
+  useEffect(() => {
+    const tab = params.get("tab");
+    if (tab === "swing" || tab === "payroll") {
+      nav(`/dealer-control?tab=${tab}`, { replace: true });
+    }
+  }, [params, nav]);
+
   const setSection = (s: SectionKey) => {
     const p = new URLSearchParams(params); p.set("tab", s); setParams(p, { replace: true });
   };
@@ -114,8 +122,6 @@ export default function CashierDashboard() {
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "payroll" as SectionKey, label: "Bảng lương", icon: Calculator }] : []),
     ...(dealerClubIds.length > 0 ? [{ key: "tournament_live" as SectionKey, label: "Tournament Live", icon: Table2 }] : []),
   ];
 
@@ -124,7 +130,7 @@ export default function CashierDashboard() {
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-primary" /> Cashier CLB
+            <Wallet className="w-5 h-5 text-primary" /> Quầy thu ngân
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {clubs.length === 0 ? "Toàn quyền (Admin)" : `Phụ trách: ${clubs.map((c) => c.name).join(", ")}`}
@@ -167,8 +173,6 @@ export default function CashierDashboard() {
           {section === "staking" && <StakingPanel clubIds={clubIds} />}
           {section === "members" && <MembersPanel clubIds={clubIds} clubs={clubs} />}
           {section === "reports" && <ReportsPanel clubIds={clubIds} clubs={clubs} />}
-          {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
-          {section === "payroll" && <DealerPayrollTab clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "tournament_live" && <TournamentLivePanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "tournament_registrations" && (
             showRegistrations ? (
