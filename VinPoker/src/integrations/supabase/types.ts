@@ -1013,6 +1013,69 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_assignment_corrections: {
+        Row: {
+          admin_override: boolean
+          affected_attendance_ids: string[]
+          affected_dealer_ids: string[]
+          affected_table_ids: string[]
+          after_snapshot: Json
+          before_snapshot: Json
+          club_id: string
+          created_at: string
+          created_by: string | null
+          diff: Json
+          effective_at: string
+          id: string
+          reason: string
+        }
+        Insert: {
+          admin_override?: boolean
+          affected_attendance_ids: string[]
+          affected_dealer_ids: string[]
+          affected_table_ids: string[]
+          after_snapshot: Json
+          before_snapshot: Json
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          diff: Json
+          effective_at: string
+          id?: string
+          reason: string
+        }
+        Update: {
+          admin_override?: boolean
+          affected_attendance_ids?: string[]
+          affected_dealer_ids?: string[]
+          affected_table_ids?: string[]
+          after_snapshot?: Json
+          before_snapshot?: Json
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          diff?: Json
+          effective_at?: string
+          id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_assignment_corrections_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_assignment_corrections_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_assignment_version_audit: {
         Row: {
           app_state_reason: string
@@ -1079,6 +1142,7 @@ export type Database = {
           last_swing_attempted_at: string | null
           needs_replacement: boolean
           overtime_started_at: string | null
+          planned_relief_at: string | null
           pre_announce_due_at: string | null
           pre_announced: boolean
           pre_assigned_at: string | null
@@ -1111,6 +1175,7 @@ export type Database = {
           last_swing_attempted_at?: string | null
           needs_replacement?: boolean
           overtime_started_at?: string | null
+          planned_relief_at?: string | null
           pre_announce_due_at?: string | null
           pre_announced?: boolean
           pre_assigned_at?: string | null
@@ -1143,6 +1208,7 @@ export type Database = {
           last_swing_attempted_at?: string | null
           needs_replacement?: boolean
           overtime_started_at?: string | null
+          planned_relief_at?: string | null
           pre_announce_due_at?: string | null
           pre_announced?: boolean
           pre_assigned_at?: string | null
@@ -1333,6 +1399,7 @@ export type Database = {
           last_meal_break_at: string | null
           last_released_at: string | null
           overtime_minutes: number
+          pool_entered_at: string | null
           pre_assigned_at: string | null
           pre_assigned_table_id: string | null
           priority_break_flag: boolean | null
@@ -1354,6 +1421,7 @@ export type Database = {
           last_meal_break_at?: string | null
           last_released_at?: string | null
           overtime_minutes?: number
+          pool_entered_at?: string | null
           pre_assigned_at?: string | null
           pre_assigned_table_id?: string | null
           priority_break_flag?: boolean | null
@@ -1375,6 +1443,7 @@ export type Database = {
           last_meal_break_at?: string | null
           last_released_at?: string | null
           overtime_minutes?: number
+          pool_entered_at?: string | null
           pre_assigned_at?: string | null
           pre_assigned_table_id?: string | null
           priority_break_flag?: boolean | null
@@ -1546,8 +1615,8 @@ export type Database = {
       }
       dealer_breaks: {
         Row: {
-          attendance_id: string | null
           assignment_id: string | null
+          attendance_id: string | null
           break_end: string | null
           break_start: string
           club_id: string | null
@@ -1557,8 +1626,8 @@ export type Database = {
           reason: string | null
         }
         Insert: {
-          attendance_id?: string | null
           assignment_id?: string | null
+          attendance_id?: string | null
           break_end?: string | null
           break_start?: string
           club_id?: string | null
@@ -1568,8 +1637,8 @@ export type Database = {
           reason?: string | null
         }
         Update: {
-          attendance_id?: string | null
           assignment_id?: string | null
+          attendance_id?: string | null
           break_end?: string | null
           break_start?: string
           club_id?: string | null
@@ -1579,13 +1648,6 @@ export type Database = {
           reason?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "dealer_breaks_attendance_id_fkey"
-            columns: ["attendance_id"]
-            isOneToOne: false
-            referencedRelation: "dealer_attendance"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "dealer_breaks_assignment_id_fkey"
             columns: ["assignment_id"]
@@ -1601,10 +1663,38 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dealer_breaks_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_breaks_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_latest_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_breaks_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_metrics"
+            referencedColumns: ["attendance_id"]
+          },
+          {
             foreignKeyName: "dealer_breaks_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_breaks_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
             referencedColumns: ["id"]
           },
         ]
@@ -2061,6 +2151,150 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      dealer_rotation_schedule: {
+        Row: {
+          announce_at: string | null
+          assignment_id: string | null
+          club_id: string
+          created_at: string
+          id: string
+          in_attendance_id: string | null
+          is_emergency: boolean
+          is_shortage: boolean
+          out_attendance_id: string | null
+          plan_run_id: string
+          planned_relief_at: string
+          reason: Json
+          score: number | null
+          slot_index: number
+          solver_version: string
+          status: string
+          table_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          announce_at?: string | null
+          assignment_id?: string | null
+          club_id: string
+          created_at?: string
+          id?: string
+          in_attendance_id?: string | null
+          is_emergency?: boolean
+          is_shortage?: boolean
+          out_attendance_id?: string | null
+          plan_run_id: string
+          planned_relief_at: string
+          reason?: Json
+          score?: number | null
+          slot_index?: number
+          solver_version: string
+          status?: string
+          table_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          announce_at?: string | null
+          assignment_id?: string | null
+          club_id?: string
+          created_at?: string
+          id?: string
+          in_attendance_id?: string | null
+          is_emergency?: boolean
+          is_shortage?: boolean
+          out_attendance_id?: string | null
+          plan_run_id?: string
+          planned_relief_at?: string
+          reason?: Json
+          score?: number | null
+          slot_index?: number
+          solver_version?: string
+          status?: string
+          table_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_rotation_schedule_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "v_stuck_assignment_version_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_in_attendance_id_fkey"
+            columns: ["in_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_in_attendance_id_fkey"
+            columns: ["in_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_latest_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_in_attendance_id_fkey"
+            columns: ["in_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_metrics"
+            referencedColumns: ["attendance_id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_out_attendance_id_fkey"
+            columns: ["out_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_out_attendance_id_fkey"
+            columns: ["out_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_latest_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_out_attendance_id_fkey"
+            columns: ["out_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_metrics"
+            referencedColumns: ["attendance_id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_score_overrides: {
         Row: {
@@ -3156,6 +3390,458 @@ export type Database = {
         }
         Relationships: []
       }
+      online_poker_actions: {
+        Row: {
+          action: Json
+          created_at: string
+          hand_id: string
+          id: string
+          idempotency_key: string
+          response: Json | null
+          user_id: string
+        }
+        Insert: {
+          action: Json
+          created_at?: string
+          hand_id: string
+          id?: string
+          idempotency_key: string
+          response?: Json | null
+          user_id: string
+        }
+        Update: {
+          action?: Json
+          created_at?: string
+          hand_id?: string
+          id?: string
+          idempotency_key?: string
+          response?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_actions_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_chip_ledger: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          hand_id: string | null
+          id: string
+          idempotency_key: string
+          table_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          created_at?: string
+          hand_id?: string | null
+          id?: string
+          idempotency_key: string
+          table_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          hand_id?: string | null
+          id?: string
+          idempotency_key?: string
+          table_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_chip_ledger_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "online_poker_chip_ledger_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_config: {
+        Row: {
+          enabled: boolean
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      online_poker_hand_events: {
+        Row: {
+          created_at: string
+          event_seq: number
+          hand_id: string
+          payload: Json
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          event_seq: number
+          hand_id: string
+          payload?: Json
+          type: string
+        }
+        Update: {
+          created_at?: string
+          event_seq?: number
+          hand_id?: string
+          payload?: Json
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_hand_events_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_hand_seats: {
+        Row: {
+          committed: number
+          hand_id: string
+          revealed_cards: Json | null
+          seat_no: number
+          stack: number
+          starting_stack: number
+          status: string
+          total_committed: number
+          user_id: string
+        }
+        Insert: {
+          committed?: number
+          hand_id: string
+          revealed_cards?: Json | null
+          seat_no: number
+          stack: number
+          starting_stack: number
+          status?: string
+          total_committed?: number
+          user_id: string
+        }
+        Update: {
+          committed?: number
+          hand_id?: string
+          revealed_cards?: Json | null
+          seat_no?: number
+          stack?: number
+          starting_stack?: number
+          status?: string
+          total_committed?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_hand_seats_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_hand_secrets: {
+        Row: {
+          cards: Json | null
+          created_at: string
+          hand_id: string
+          id: string
+          kind: string
+          seat_no: number | null
+          server_seed: string | null
+          server_seed_commit: string | null
+        }
+        Insert: {
+          cards?: Json | null
+          created_at?: string
+          hand_id: string
+          id?: string
+          kind: string
+          seat_no?: number | null
+          server_seed?: string | null
+          server_seed_commit?: string | null
+        }
+        Update: {
+          cards?: Json | null
+          created_at?: string
+          hand_id?: string
+          id?: string
+          kind?: string
+          seat_no?: number | null
+          server_seed?: string | null
+          server_seed_commit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_hand_secrets_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_hand_snapshots: {
+        Row: {
+          at_seq: number
+          created_at: string
+          hand_id: string
+          schema_version: number
+          state: Json
+        }
+        Insert: {
+          at_seq: number
+          created_at?: string
+          hand_id: string
+          schema_version?: number
+          state: Json
+        }
+        Update: {
+          at_seq?: number
+          created_at?: string
+          hand_id?: string
+          schema_version?: number
+          state?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_hand_snapshots_hand_id_fkey"
+            columns: ["hand_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_hands: {
+        Row: {
+          act_deadline: string | null
+          board: Json
+          button_seat: number | null
+          created_at: string
+          engine_version: string | null
+          hand_no: number
+          id: string
+          pot: number
+          shuffle_commit: string | null
+          shuffle_reveal: string | null
+          side_pots: Json
+          state: Json
+          state_schema_version: number
+          state_version: number
+          status: string
+          street: string
+          table_id: string
+          to_act_seat: number | null
+          updated_at: string
+        }
+        Insert: {
+          act_deadline?: string | null
+          board?: Json
+          button_seat?: number | null
+          created_at?: string
+          engine_version?: string | null
+          hand_no: number
+          id?: string
+          pot?: number
+          shuffle_commit?: string | null
+          shuffle_reveal?: string | null
+          side_pots?: Json
+          state?: Json
+          state_schema_version?: number
+          state_version?: number
+          status?: string
+          street?: string
+          table_id: string
+          to_act_seat?: number | null
+          updated_at?: string
+        }
+        Update: {
+          act_deadline?: string | null
+          board?: Json
+          button_seat?: number | null
+          created_at?: string
+          engine_version?: string | null
+          hand_no?: number
+          id?: string
+          pot?: number
+          shuffle_commit?: string | null
+          shuffle_reveal?: string | null
+          side_pots?: Json
+          state?: Json
+          state_schema_version?: number
+          state_version?: number
+          status?: string
+          street?: string
+          table_id?: string
+          to_act_seat?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_hands_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_player_accounts: {
+        Row: {
+          balance: number
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      online_poker_seats: {
+        Row: {
+          id: string
+          joined_at: string
+          seat_no: number
+          stack: number
+          status: string
+          table_id: string
+          user_id: string | null
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          seat_no: number
+          stack?: number
+          status?: string
+          table_id: string
+          user_id?: string | null
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          seat_no?: number
+          stack?: number
+          status?: string
+          table_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_seats_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "online_poker_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      online_poker_tables: {
+        Row: {
+          act_timeout_secs: number
+          bb: number
+          club_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          max_buyin: number
+          max_seats: number
+          min_buyin: number
+          name: string
+          sb: number
+          starting_stack_default: number
+          status: string
+        }
+        Insert: {
+          act_timeout_secs?: number
+          bb: number
+          club_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          max_buyin: number
+          max_seats?: number
+          min_buyin: number
+          name: string
+          sb: number
+          starting_stack_default: number
+          status?: string
+        }
+        Update: {
+          act_timeout_secs?: number
+          bb?: number
+          club_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          max_buyin?: number
+          max_seats?: number
+          min_buyin?: number
+          name?: string
+          sb?: number
+          starting_stack_default?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "online_poker_tables_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "online_poker_tables_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       package_tournaments: {
         Row: {
           created_at: string
@@ -3181,6 +3867,94 @@ export type Database = {
             columns: ["package_id"]
             isOneToOne: false
             referencedRelation: "tournament_packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_records: {
+        Row: {
+          club_id: string
+          created_at: string
+          dealer_count: number
+          id: string
+          note: string | null
+          paid_at: string | null
+          paid_by: string | null
+          payment_method: string | null
+          payment_ref: string | null
+          period_id: string
+          prepared_at: string
+          prepared_by: string
+          reconciled_at: string | null
+          reconciled_by: string | null
+          reconciliation_note: string | null
+          reconciliation_ref: string | null
+          status: string
+          total_net_vnd: number
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          dealer_count?: number
+          id?: string
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_method?: string | null
+          payment_ref?: string | null
+          period_id: string
+          prepared_at?: string
+          prepared_by: string
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_note?: string | null
+          reconciliation_ref?: string | null
+          status?: string
+          total_net_vnd?: number
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          dealer_count?: number
+          id?: string
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_method?: string | null
+          payment_ref?: string | null
+          period_id?: string
+          prepared_at?: string
+          prepared_by?: string
+          reconciled_at?: string | null
+          reconciled_by?: string | null
+          reconciliation_note?: string | null
+          reconciliation_ref?: string | null
+          status?: string
+          total_net_vnd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_records_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_records_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_records_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
             referencedColumns: ["id"]
           },
         ]
@@ -3357,15 +4131,22 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          calculated_by: string | null
           club_id: string
           created_at: string | null
           id: string
           locked_at: string | null
           locked_by: string | null
+          paid_at: string | null
+          paid_by: string | null
+          payment_prepared_at: string | null
+          payment_prepared_by: string | null
           period_end: string
           period_month: number
           period_start: string
           period_year: number
+          reconciled_at: string | null
+          reconciled_by: string | null
           rejected_at: string | null
           rejected_by: string | null
           rejection_reason: string | null
@@ -3377,15 +4158,22 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          calculated_by?: string | null
           club_id: string
           created_at?: string | null
           id?: string
           locked_at?: string | null
           locked_by?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_prepared_at?: string | null
+          payment_prepared_by?: string | null
           period_end: string
           period_month: number
           period_start: string
           period_year: number
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           rejected_at?: string | null
           rejected_by?: string | null
           rejection_reason?: string | null
@@ -3397,15 +4185,22 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          calculated_by?: string | null
           club_id?: string
           created_at?: string | null
           id?: string
           locked_at?: string | null
           locked_by?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_prepared_at?: string | null
+          payment_prepared_by?: string | null
           period_end?: string
           period_month?: number
           period_start?: string
           period_year?: number
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           rejected_at?: string | null
           rejected_by?: string | null
           rejection_reason?: string | null
@@ -3863,6 +4658,188 @@ export type Database = {
           },
         ]
       }
+      seat_assignment_history: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          draw_type: string
+          entry_id: string
+          from_seat_number: number | null
+          from_table_id: string | null
+          from_table_number: number | null
+          id: string
+          metadata: Json
+          player_id: string
+          reason: string
+          to_seat_number: number
+          to_table_id: string | null
+          to_table_number: number | null
+          tournament_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          draw_type: string
+          entry_id: string
+          from_seat_number?: number | null
+          from_table_id?: string | null
+          from_table_number?: number | null
+          id?: string
+          metadata?: Json
+          player_id: string
+          reason?: string
+          to_seat_number: number
+          to_table_id?: string | null
+          to_table_number?: number | null
+          tournament_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          draw_type?: string
+          entry_id?: string
+          from_seat_number?: number | null
+          from_table_id?: string | null
+          from_table_number?: number | null
+          id?: string
+          metadata?: Json
+          player_id?: string
+          reason?: string
+          to_seat_number?: number
+          to_table_id?: string | null
+          to_table_number?: number | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seat_assignment_history_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seat_assignment_history_to_table_id_fkey"
+            columns: ["to_table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seat_assignment_history_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "seat_assignment_history_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seat_draw_receipts: {
+        Row: {
+          cancelled_at: string | null
+          display_name: string
+          draw_type: string
+          entry_id: string | null
+          id: string
+          issued_at: string
+          issued_by: string | null
+          player_id: string
+          printed_at: string | null
+          qr_payload: Json
+          receipt_code: string
+          registration_id: string | null
+          seat_id: string | null
+          seat_number: number
+          status: string
+          table_id: string | null
+          table_number: number | null
+          tournament_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          display_name: string
+          draw_type: string
+          entry_id?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          player_id: string
+          printed_at?: string | null
+          qr_payload?: Json
+          receipt_code: string
+          registration_id?: string | null
+          seat_id?: string | null
+          seat_number: number
+          status?: string
+          table_id?: string | null
+          table_number?: number | null
+          tournament_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          display_name?: string
+          draw_type?: string
+          entry_id?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          player_id?: string
+          printed_at?: string | null
+          qr_payload?: Json
+          receipt_code?: string
+          registration_id?: string | null
+          seat_id?: string | null
+          seat_number?: number
+          status?: string
+          table_id?: string | null
+          table_number?: number | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seat_draw_receipts_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seat_draw_receipts_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seat_draw_receipts_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seat_draw_receipts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "seat_draw_receipts_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       series_posts: {
         Row: {
           body: string | null
@@ -3906,8 +4883,10 @@ export type Database = {
       }
       shift_break_policies: {
         Row: {
+          break_pay_mode: string
           club_id: string
           created_at: string
+          grace_minutes: number
           id: string
           max_break_time_variance_minutes: number
           max_work_before_mandatory_break_minutes: number
@@ -3917,8 +4896,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          break_pay_mode?: string
           club_id: string
           created_at?: string
+          grace_minutes?: number
           id?: string
           max_break_time_variance_minutes?: number
           max_work_before_mandatory_break_minutes?: number
@@ -3928,8 +4909,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          break_pay_mode?: string
           club_id?: string
           created_at?: string
+          grace_minutes?: number
           id?: string
           max_break_time_variance_minutes?: number
           max_work_before_mandatory_break_minutes?: number
@@ -4665,6 +5648,8 @@ export type Database = {
           swing_duration_minutes: number
           table_type: string
           target_ratio: number
+          tier_a_min_buyin: number
+          tier_b_min_buyin: number
           tournament_mode: string
           warn_at_minutes: number
         }
@@ -4688,6 +5673,8 @@ export type Database = {
           swing_duration_minutes?: number
           table_type: string
           target_ratio?: number
+          tier_a_min_buyin?: number
+          tier_b_min_buyin?: number
           tournament_mode?: string
           warn_at_minutes?: number
         }
@@ -4711,6 +5698,8 @@ export type Database = {
           swing_duration_minutes?: number
           table_type?: string
           target_ratio?: number
+          tier_a_min_buyin?: number
+          tier_b_min_buyin?: number
           tournament_mode?: string
           warn_at_minutes?: number
         }
@@ -5131,6 +6120,95 @@ export type Database = {
           },
         ]
       }
+      tournament_entries: {
+        Row: {
+          busted_at: string | null
+          checked_in_at: string | null
+          created_at: string
+          current_stack: number
+          entry_no: number
+          finished_place: number | null
+          id: string
+          player_id: string
+          registration_id: string | null
+          seat_id: string | null
+          seat_number: number | null
+          seated_at: string | null
+          source: string
+          status: string
+          table_id: string | null
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          busted_at?: string | null
+          checked_in_at?: string | null
+          created_at?: string
+          current_stack?: number
+          entry_no: number
+          finished_place?: number | null
+          id?: string
+          player_id: string
+          registration_id?: string | null
+          seat_id?: string | null
+          seat_number?: number | null
+          seated_at?: string | null
+          source?: string
+          status?: string
+          table_id?: string | null
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          busted_at?: string | null
+          checked_in_at?: string | null
+          created_at?: string
+          current_stack?: number
+          entry_no?: number
+          finished_place?: number | null
+          id?: string
+          player_id?: string
+          registration_id?: string | null
+          seat_id?: string | null
+          seat_number?: number | null
+          seated_at?: string | null
+          source?: string
+          status?: string
+          table_id?: string | null
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_entries_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_entries_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_entries_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_entries_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_hand_audit_log: {
         Row: {
           action: string
@@ -5469,38 +6547,53 @@ export type Database = {
       }
       tournament_seats: {
         Row: {
+          assigned_at: string | null
+          assigned_by: string | null
           chip_count: number
           created_at: string
+          entry_id: string | null
           entry_number: number
           id: string
           is_active: boolean
           player_id: string
           player_name: string
+          reserved_until: string | null
           seat_number: number
+          status: string
           table_id: string
           tournament_id: string
         }
         Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
           chip_count?: number
           created_at?: string
+          entry_id?: string | null
           entry_number?: number
           id?: string
           is_active?: boolean
           player_id?: string
           player_name?: string
+          reserved_until?: string | null
           seat_number: number
+          status?: string
           table_id: string
           tournament_id: string
         }
         Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
           chip_count?: number
           created_at?: string
+          entry_id?: string | null
           entry_number?: number
           id?: string
           is_active?: boolean
           player_id?: string
           player_name?: string
+          reserved_until?: string | null
           seat_number?: number
+          status?: string
           table_id?: string
           tournament_id?: string
         }
@@ -5685,22 +6778,31 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          max_seats: number
+          status: string
           table_id: string | null
           table_name: string
+          table_number: number | null
           tournament_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          max_seats?: number
+          status?: string
           table_id?: string | null
           table_name?: string
+          table_number?: number | null
           tournament_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          max_seats?: number
+          status?: string
           table_id?: string | null
           table_name?: string
+          table_number?: number | null
           tournament_id?: string
         }
         Relationships: [
@@ -5846,6 +6948,101 @@ export type Database = {
           },
           {
             foreignKeyName: "tournaments_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tv_displays: {
+        Row: {
+          announcement: string | null
+          assigned_tournament_id: string | null
+          claimed_by: string | null
+          club_id: string | null
+          created_at: string
+          display_number: number | null
+          display_token: string
+          id: string
+          last_seen_at: string | null
+          layout: string
+          name: string | null
+          pair_code: string | null
+          pair_code_expires_at: string | null
+          paired_at: string | null
+          revoked_at: string | null
+          status: string
+          theme: string
+          updated_at: string
+          zone: string | null
+        }
+        Insert: {
+          announcement?: string | null
+          assigned_tournament_id?: string | null
+          claimed_by?: string | null
+          club_id?: string | null
+          created_at?: string
+          display_number?: number | null
+          display_token: string
+          id?: string
+          last_seen_at?: string | null
+          layout?: string
+          name?: string | null
+          pair_code?: string | null
+          pair_code_expires_at?: string | null
+          paired_at?: string | null
+          revoked_at?: string | null
+          status?: string
+          theme?: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Update: {
+          announcement?: string | null
+          assigned_tournament_id?: string | null
+          claimed_by?: string | null
+          club_id?: string | null
+          created_at?: string
+          display_number?: number | null
+          display_token?: string
+          id?: string
+          last_seen_at?: string | null
+          layout?: string
+          name?: string | null
+          pair_code?: string | null
+          pair_code_expires_at?: string | null
+          paired_at?: string | null
+          revoked_at?: string | null
+          status?: string
+          theme?: string
+          updated_at?: string
+          zone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tv_displays_assigned_tournament_id_fkey"
+            columns: ["assigned_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tv_displays_assigned_tournament_id_fkey"
+            columns: ["assigned_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tv_displays_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tv_displays_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
@@ -6051,6 +7248,44 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_my_rotation: {
+        Row: {
+          announce_at: string | null
+          club_id: string | null
+          i_am_incoming: boolean | null
+          id: string | null
+          is_emergency: boolean | null
+          is_shortage: boolean | null
+          planned_relief_at: string | null
+          slot_index: number | null
+          status: string | null
+          table_id: string | null
+          table_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_rotation_schedule_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_rotation_schedule_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
             referencedColumns: ["id"]
           },
         ]
@@ -6425,6 +7660,10 @@ export type Database = {
       }
       calculate_pit_vn: { Args: { p_taxable_income: number }; Returns: number }
       canary_health_check: { Args: { p_club_id: string }; Returns: Json }
+      cancel_rotation_slot: {
+        Args: { p_reason: string; p_schedule_id: string }
+        Returns: Json
+      }
       cashier_club_ids: { Args: { _user_id: string }; Returns: string[] }
       cleanup_expired_club_locks: { Args: never; Returns: undefined }
       cleanup_old_diagnostic_logs: { Args: never; Returns: undefined }
@@ -6436,6 +7675,10 @@ export type Database = {
       club_local_date: { Args: { p_club_id: string }; Returns: string }
       complete_dealer_break: {
         Args: { p_attendance_id: string }
+        Returns: Json
+      }
+      complete_rotation_slot: {
+        Args: { p_new_assignment_id: string; p_schedule_id: string }
         Returns: Json
       }
       compute_compensated_swing_due_at: {
@@ -6450,8 +7693,20 @@ export type Database = {
         }
         Returns: number
       }
+      confirm_registration_and_assign_seat: {
+        Args: {
+          p_actor_user_id: string
+          p_draw_mode?: string
+          p_registration_id: string
+        }
+        Returns: Json
+      }
       count_available_dealers: { Args: { p_club_id: string }; Returns: number }
       dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      delete_last_action: {
+        Args: { p_hand_id: string; p_user_id?: string }
+        Returns: Json
+      }
       detect_stuck_breaks: {
         Args: { p_club_id: string }
         Returns: {
@@ -6484,29 +7739,17 @@ export type Database = {
           expected_duration_minutes: number
         }[]
       }
-      execute_pre_assigned_swing:
-        | {
-            Args: {
-              p_break_duration_minutes?: number
-              p_duration_minutes?: number
-              p_next_attendance_id: string
-              p_old_assignment_id: string
-              p_send_to_break?: boolean
-              p_swing_due_at: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_break_duration_minutes: number
-              p_duration_minutes: number
-              p_next_attendance_id: string
-              p_old_assignment_id: string
-              p_send_to_break: boolean
-              p_swing_due_at: string
-            }
-            Returns: Json
-          }
+      execute_pre_assigned_swing: {
+        Args: {
+          p_break_duration_minutes: number
+          p_duration_minutes: number
+          p_next_attendance_id: string
+          p_old_assignment_id: string
+          p_send_to_break: boolean
+          p_swing_due_at: string
+        }
+        Returns: Json
+      }
       execute_pre_assigned_swing_rpc: {
         Args: {
           p_break_duration_minutes?: number
@@ -6630,6 +7873,7 @@ export type Database = {
         Args: { p_table_id: string; p_tournament_id: string }
         Returns: number
       }
+      get_rotation_board: { Args: { p_club_id: string }; Returns: Json }
       get_seats_for_draw: { Args: { p_tournament_id: string }; Returns: Json }
       get_shift_payroll_summary: {
         Args: { p_club_id: string; p_shift_date: string }
@@ -6679,6 +7923,7 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_tv_display_state: { Args: { p_display_token: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -6727,7 +7972,76 @@ export type Database = {
         Returns: boolean
       }
       is_media_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      lock_rotation_slot: {
+        Args: { p_schedule_id: string; p_schedule_version: number }
+        Returns: Json
+      }
+      mark_payroll_paid: {
+        Args: {
+          p_note?: string
+          p_paid_at?: string
+          p_payment_ref: string
+          p_period_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      move_player_seat: {
+        Args: {
+          p_actor_user_id: string
+          p_entry_id: string
+          p_reason?: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
+        }
+        Returns: Json
+      }
       notify_expiring_commits: { Args: never; Returns: number }
+      op_claim_daily_chips: { Args: never; Returns: Json }
+      op_get_my_hole_cards: { Args: { p_hand_id: string }; Returns: Json }
+      op_is_enabled: { Args: never; Returns: boolean }
+      op_load_action_context: { Args: { p_hand_id: string }; Returns: Json }
+      op_sit_down: {
+        Args: {
+          p_buyin: number
+          p_idempotency_key: string
+          p_seat_no: number
+          p_table_id: string
+        }
+        Returns: Json
+      }
+      op_stand_up: {
+        Args: { p_idempotency_key: string; p_table_id: string }
+        Returns: Json
+      }
+      op_start_hand: {
+        Args: {
+          p_act_deadline: string
+          p_actor_user_id: string
+          p_board_future: Json
+          p_deck: Json
+          p_engine_version: string
+          p_events: Json
+          p_holes: Json
+          p_state: Json
+        }
+        Returns: Json
+      }
+      op_submit_action: {
+        Args: {
+          p_act_deadline: string
+          p_action: Json
+          p_actor_user_id: string
+          p_board_future: Json
+          p_events: Json
+          p_expected_state_version: number
+          p_hand_id: string
+          p_idempotency_key: string
+          p_new_state: Json
+        }
+        Returns: Json
+      }
+      op_timeout_sweep: { Args: never; Returns: Json }
       perform_swing:
         | {
             Args: {
@@ -6738,6 +8052,16 @@ export type Database = {
               p_max_break_minutes?: number
               p_next_attendance_id?: string
               p_rest_deficit_minutes?: number
+              p_send_to_break?: boolean
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_assignment_id: string
+              p_break_duration_minutes?: number
+              p_next_attendance_id: string
+              p_reason?: string
               p_send_to_break?: boolean
             }
             Returns: Json
@@ -6784,6 +8108,15 @@ export type Database = {
           table_name: string
         }[]
       }
+      prepare_payroll_payment: {
+        Args: {
+          p_note?: string
+          p_payment_method: string
+          p_period_id: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       re_enter_tournament: {
         Args: {
           p_new_chip_count?: number
@@ -6800,10 +8133,31 @@ export type Database = {
         Args: { _player_id: string }
         Returns: undefined
       }
+      reconcile_dealer_room_state: {
+        Args: {
+          p_admin_override?: boolean
+          p_club_id: string
+          p_corrections: Json
+          p_displaced?: Json
+          p_dry_run?: boolean
+          p_effective_at: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       reconcile_dealer_states: { Args: { p_club_id: string }; Returns: Json }
       reconcile_ghost_assignments: {
         Args: { p_club_id?: string }
         Returns: Json
+      }
+      reconcile_payroll_payment: {
+        Args: {
+          p_note?: string
+          p_period_id: string
+          p_reconciliation_ref?: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       record_action: {
         Args: {
@@ -6869,6 +8223,15 @@ export type Database = {
         Args: { p_attendance_id: string }
         Returns: boolean
       }
+      set_rotation_slot_dealer: {
+        Args: {
+          p_new_attendance_id: string
+          p_reason?: string
+          p_schedule_id: string
+          p_schedule_version: number
+        }
+        Returns: Json
+      }
       show_hole_cards: {
         Args: {
           p_hand_id: string
@@ -6917,6 +8280,7 @@ export type Database = {
           p_expected_status: string
           p_new_status: string
           p_period_id: string
+          p_rejection_reason?: string
           p_user_id: string
         }
         Returns: boolean
@@ -6928,6 +8292,17 @@ export type Database = {
             Returns: Json
           }
       try_acquire_cron_lock: { Args: { p_lock_name: string }; Returns: boolean }
+      tv_claim_display: {
+        Args: {
+          p_club_id: string
+          p_name: string
+          p_pair_code: string
+          p_zone?: string
+        }
+        Returns: Json
+      }
+      tv_pair_begin: { Args: never; Returns: Json }
+      tv_revoke_display: { Args: { p_display_id: string }; Returns: Json }
       undo_last_action: { Args: { p_hand_id: string }; Returns: Json }
       update_community_cards: {
         Args: { p_community_cards: Json; p_hand_id: string; p_user_id?: string }
@@ -6952,6 +8327,15 @@ export type Database = {
       }
       update_tournament_state: {
         Args: { p_reason?: string; p_status: string; p_tournament_id: string }
+        Returns: Json
+      }
+      upsert_rotation_plan: {
+        Args: {
+          p_club_id: string
+          p_plan_run_id: string
+          p_rows: Json
+          p_table_ids?: string[]
+        }
         Returns: Json
       }
       validate_cards: { Args: { p_cards: Json }; Returns: string }
