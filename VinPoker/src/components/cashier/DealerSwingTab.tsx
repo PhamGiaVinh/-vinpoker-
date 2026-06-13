@@ -52,7 +52,7 @@ import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
-import { deriveTableSwingView, type TableTimeline } from "./dealer-swing/swingTableView";
+import { deriveTableSwingView, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -468,6 +468,29 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       warnings: emptyActive + predictedMissing,
     };
   }, [tables, assignments, dealers, timelineByTableId, nextDealerMap, preAssignedMap, tableAssignmentMap]);
+
+  // Performance KPIs (UI Phase 4 — "Hiệu suất" card). Derived from existing data:
+  // stability = successful/total swings today; earliest-shortage = soonest
+  // planned_relief_at among rotation slots flagged is_shortage.
+  const performanceKpis = useMemo(() => {
+    let total = 0, ok = 0;
+    for (const m of swingMetrics ?? []) {
+      total += (m as any).total_swings ?? 0;
+      ok += (m as any).successful_swings ?? 0;
+    }
+    const stabilityPct = total > 0 ? Math.round((ok / total) * 100) : null;
+
+    let earliestMs: number | null = null;
+    for (const slots of Object.values(scheduleByTableId ?? {})) {
+      for (const s of [slots?.slot0, slots?.slot1, slots?.slot2]) {
+        if (s?.is_shortage && s.planned_relief_at) {
+          const ms = new Date(s.planned_relief_at).getTime();
+          if (Number.isFinite(ms) && (earliestMs == null || ms < earliestMs)) earliestMs = ms;
+        }
+      }
+    }
+    return { stabilityPct, earliestShortageLabel: earliestMs != null ? formatTimeHHmm(earliestMs) : null };
+  }, [swingMetrics, scheduleByTableId]);
 
   // Get swing config for a table
   const getConfig = (tableType: string): SwingConfig | undefined =>
@@ -1433,6 +1456,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           predictedPending={summaryCounts.predictedPending}
           overdue={summaryCounts.overdue}
           warnings={summaryCounts.warnings}
+          stabilityPct={performanceKpis.stabilityPct}
+          earliestShortageLabel={performanceKpis.earliestShortageLabel}
           nowMs={nowMs}
         />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">

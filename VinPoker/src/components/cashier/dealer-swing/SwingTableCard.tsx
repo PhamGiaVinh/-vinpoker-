@@ -183,20 +183,15 @@ export default function SwingTableCard({
   }
   const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
 
-  let progress = 0;
-  if (a && a.assigned_at) {
-    const totalMs = swingDueMs - new Date(a.assigned_at).getTime();
-    const elapsedMs = nowMs - new Date(a.assigned_at).getTime();
-    progress = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0;
-  }
-
-  const progressColor = isOt
-    ? "bg-red-500"
+  // Status-tone top strip color (UI Phase 4 mockup) — strongest signal wins so
+  // the card edge reads at a glance and matches the status-filter chips.
+  const topStripColor = isOt ? "bg-red-500"
+    : inWarmup ? "bg-sky-500"
     : preAssignStatus === "in_progress" ? "bg-purple-500"
-    : preAssignLabel ? "bg-amber-500"
-    : progress > 85 ? "bg-orange-500"
-    : progress > 70 ? "bg-amber-500"
-    : "bg-emerald-500";
+    : tableStatus.tone === "destructive" ? "bg-red-500"
+    : tableStatus.tone === "warning" ? "bg-amber-500"
+    : tableStatus.tone === "primary" ? "bg-primary"
+    : "bg-zinc-600";
 
   const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
 
@@ -224,47 +219,31 @@ export default function SwingTableCard({
 
   return (
     <div id={`table-card-${t.id}`} className={[
-      "relative overflow-hidden border rounded-lg transition-all duration-300",
-      isOt ? "border-red-500/70 bg-red-950/30 shadow-[0_0_24px_-8px_rgba(239,68,68,0.4)]" : "border-zinc-700/50 bg-zinc-900/70",
+      "relative overflow-hidden border rounded-xl transition-all duration-300",
+      isOt ? "border-red-500/60 bg-red-950/20 shadow-[0_0_24px_-8px_rgba(239,68,68,0.35)]" : "border-zinc-700/60 bg-zinc-900/70",
       isAnimating?.(t.id) ? "table-card--swinging" : "",
       focused ? "table-card--focused" : "",
     ].join(" ")}>
-      {/* ── OT bar — full width ── */}
-      {isOt && (
-        <div className="bg-red-600/90 text-red-100 text-[10px] font-bold text-center py-1.5 tracking-wider uppercase select-none">
-          ⏰ Overtime — {otLabel}
-        </div>
-      )}
-
-      {/* ── Progress bar ── */}
-      {a && a.assigned_at && (
-        <div className="h-[3px] bg-zinc-800/60 overflow-hidden">
-          <div
-            className={["h-full transition-all duration-1000 ease-linear", progressColor].join(" ")}
-            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-          />
-        </div>
-      )}
+      {/* ── Status-tone top strip (replaces progress bar; reads at a glance) ── */}
+      <div className={["h-1 w-full", topStripColor].join(" ")} aria-hidden="true" />
 
       {/* ── Card body ── */}
-      <div className="p-3 space-y-2">
-        {/* Header: status pill + table name + type tag + kebab + close */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className={["shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border leading-none whitespace-nowrap", statusToneClass].join(" ")}>
-              {tableStatus.label}
-            </span>
-            <span className="text-sm font-bold text-zinc-200 truncate">{t.table_name}</span>
-            <span className={[
-              "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
-              t.table_type === "high"
-                ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
-                : "bg-zinc-800 text-zinc-400 border border-zinc-700",
-            ].join(" ")}>
-              {tableTypeLabel}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
+      <div className="p-3.5 space-y-2.5">
+        {/* Header: status chip + table name + type tag + kebab + close */}
+        <div className="flex items-center gap-2">
+          <span className={["shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border leading-none whitespace-nowrap", statusToneClass].join(" ")}>
+            {tableStatus.label}
+          </span>
+          <span className="text-base font-medium text-zinc-100 truncate">{t.table_name}</span>
+          <span className={[
+            "shrink-0 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
+            t.table_type === "high"
+              ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
+              : "bg-zinc-800 text-zinc-400 border border-zinc-700",
+          ].join(" ")}>
+            {tableTypeLabel}
+          </span>
+          <div className="ml-auto flex items-center gap-1 shrink-0">
             {onManualSwing && onForceClose && (
               <TableCardKebab
                 tableId={t.id}
@@ -284,61 +263,62 @@ export default function SwingTableCard({
                 </button>
               </div>
             ) : (
-              <button className="text-zinc-600 hover:text-red-400 text-xs" title="Đóng bàn"
+              <button className="text-zinc-600 hover:text-red-400 p-1" title="Đóng bàn"
                 onClick={() => onCloseTableClick(t.id)}>
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
         </div>
 
-        {/* ── Timer (only when dealer present — no timer for empty tables) ── */}
-        {dealer && a && a.assigned_at && (
-          <div className="flex items-baseline gap-1.5">
-            <span className={[
-              "text-[22px] font-mono font-bold tracking-tight tabular-nums leading-none",
-              isOt ? "text-red-400" : timerColor,
-            ].join(" ")}>
-              {isOt ? otLabel : timerLabel}
-            </span>
-            {overdueState ? (
-              <span className={["text-[9px] uppercase tracking-wider font-mono font-semibold", overdueState.className].join(" ")}>
-                {overdueState.label}
-              </span>
-            ) : (
-              <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                {statusLabel}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ── Swing time tooltip (same guard) ── */}
-        {dealer && a && a.swing_due_at && (
-          <div className="text-[9px] text-zinc-600 font-mono">
-            Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-          </div>
-        )}
-
-        {/* ── Current dealer / Empty state ── */}
+        {/* ── Dealer → big countdown (dealer present) / pre-assign / empty ── */}
         {dealer ? (
-          <div className="flex items-center gap-2 pt-0.5">
-            <div className={["w-2 h-2 rounded-full flex-shrink-0", isOt ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
-            <span className="text-xs font-semibold text-zinc-200">{dealer.full_name}</span>
-            <span className={[
-              "text-[9px] font-bold px-1 py-0.5 rounded leading-none",
-              dealer.tier === "A" ? "bg-amber-500/20 text-amber-400" : dealer.tier === "B" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400",
-            ].join(" ")}>
-              {dealer.tier}
-            </span>
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <div className={["w-2 h-2 rounded-full flex-shrink-0", isOt ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
+              <span className="text-sm font-medium text-zinc-100 truncate">{dealer.full_name}</span>
+              <span className={[
+                "shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded leading-none",
+                dealer.tier === "A" ? "bg-amber-500/20 text-amber-400" : dealer.tier === "B" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400",
+              ].join(" ")}>
+                {dealer.tier}
+              </span>
+            </div>
+
+            {a && a.assigned_at && (
+              <div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className={[
+                    "font-serif text-[30px] font-semibold tabular-nums leading-none",
+                    isOt ? "text-red-400" : timerColor,
+                  ].join(" ")}>
+                    {isOt ? otLabel : timerLabel}
+                  </span>
+                  {overdueState ? (
+                    <span className={["text-[10px] uppercase tracking-wider font-medium", overdueState.className].join(" ")}>
+                      {overdueState.label}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                      {statusLabel}
+                    </span>
+                  )}
+                </div>
+                {a.swing_due_at && (
+                  <div className="text-[9px] text-zinc-600 font-mono mt-1">
+                    Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ) : preAssigned ? (
-          <div className="flex items-center gap-2 pt-0.5 text-primary">
-            <span className="text-xs">⬆</span>
-            <span className="text-xs font-semibold">{preAssigned.full_name}</span>
+          <div className="flex items-center gap-2 text-primary">
+            <span className="text-sm">⬆</span>
+            <span className="text-sm font-medium truncate">{preAssigned.full_name}</span>
             {preAssignLabel ? (
               <span className={[
-                "text-[9px] font-medium",
+                "shrink-0 text-[10px] font-medium",
                 preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
               ].join(" ")}>· {preAssignLabel}</span>
             ) : null}
@@ -362,7 +342,7 @@ export default function SwingTableCard({
           <>
             <div className="border-t border-zinc-800" />
             {(slot0HasDealer || preAssigned || pred?.nextDealerName) && (
-              <div className="flex items-center gap-2 pt-0.5">
+              <div className="flex items-center gap-2 pt-0.5 flex-wrap">
                 <span className="text-[10px] text-zinc-500">Tiếp:</span>
                 {slot0HasDealer ? (
                   slot0Locked ? (
