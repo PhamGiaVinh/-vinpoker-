@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -208,16 +208,28 @@ export const Layout = () => {
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>Vận hành CLB</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {(isCashier || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
-                      <Wallet className="w-4 h-4" />
-                      Cashier · Floor · Swing
-                    </DropdownMenuItem>
-                  )}
                   {(isTracker || isAdmin) && (
                     <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
                       <Radio className="w-4 h-4" />
                       Tracker
+                    </DropdownMenuItem>
+                  )}
+                  {(isCashier || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/cashier")} className="gap-2.5 cursor-pointer">
+                      <Wallet className="w-4 h-4" />
+                      Cashier
+                    </DropdownMenuItem>
+                  )}
+                  {(isCashier || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/floor")} className="gap-2.5 cursor-pointer">
+                      <LayoutGrid className="w-4 h-4" />
+                      Floor
+                    </DropdownMenuItem>
+                  )}
+                  {(isCashier || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/dealer-swing")} className="gap-2.5 cursor-pointer">
+                      <Table2 className="w-4 h-4" />
+                      Dealer Swing
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>

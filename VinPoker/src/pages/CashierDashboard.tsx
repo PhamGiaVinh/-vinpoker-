@@ -24,19 +24,16 @@ import UnifiedLookupTab from "@/components/cashier/UnifiedLookupTab";
 import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
-import SwingPanel from "@/components/cashier/DealerSwingTab";
-import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
-import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Table2, Calculator, Ticket,
+  Ticket,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "swing" | "payroll" | "tournament_live" | "tournament_registrations";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -45,7 +42,6 @@ export default function CashierDashboard() {
   const section = (params.get("tab") as SectionKey) || "overview";
 
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
-  const [dealerClubIds, setDealerClubIds] = useState<string[]>([]);
   const [isClubOwner, setIsClubOwner] = useState(false);
 
   useEffect(() => {
@@ -65,10 +61,6 @@ export default function CashierDashboard() {
       const { data: cs } = await supabase
         .from("clubs").select("id,name").in("id", idArr);
       setClubs((cs ?? []) as ClubRow[]);
-
-      // Fetch dealer control club IDs for swing feature
-      const { data: dcIds } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
-      setDealerClubIds((dcIds ?? []).map((r: any) => (typeof r === "string" ? r : r.dealer_control_club_ids ?? r)));
 
       // Club-owner check — used as the UAT override for the flag-gated registrations tab
       // (owner-approved rollout 2026-06-13: admins/owners see the tab while the flag is off).
@@ -114,9 +106,6 @@ export default function CashierDashboard() {
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "swing" as SectionKey, label: "Dealer Swing", icon: Table2 }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "payroll" as SectionKey, label: "Bảng lương", icon: Calculator }] : []),
-    ...(dealerClubIds.length > 0 ? [{ key: "tournament_live" as SectionKey, label: "Tournament Live", icon: Table2 }] : []),
   ];
 
   return (
@@ -137,7 +126,7 @@ export default function CashierDashboard() {
         {/* Sidebar */}
         <aside className="col-span-12 md:col-span-3 lg:col-span-2">
           <Card className="p-2 md:sticky md:top-4">
-            <nav className="flex md:flex-col gap-1">
+            <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible">
               {navItems.map((it) => {
                 const active = section === it.key;
                 const Icon = it.icon;
@@ -146,14 +135,14 @@ export default function CashierDashboard() {
                     key={it.key}
                     onClick={() => setSection(it.key)}
                     className={
-                      "flex-1 md:flex-none flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors " +
+                      "shrink-0 md:w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors " +
                       (active
                         ? "bg-primary/15 text-primary border border-primary/40 font-semibold"
                         : "text-muted-foreground hover:bg-muted/50")
                     }
                   >
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{it.label}</span>
+                    <span>{it.label}</span>
                   </button>
                 );
               })}
@@ -167,9 +156,6 @@ export default function CashierDashboard() {
           {section === "staking" && <StakingPanel clubIds={clubIds} />}
           {section === "members" && <MembersPanel clubIds={clubIds} clubs={clubs} />}
           {section === "reports" && <ReportsPanel clubIds={clubIds} clubs={clubs} />}
-          {section === "swing" && <SwingPanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
-          {section === "payroll" && <DealerPayrollTab clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
-          {section === "tournament_live" && <TournamentLivePanel clubIds={dealerClubIds.length > 0 ? dealerClubIds : clubIds} clubs={clubs} />}
           {section === "tournament_registrations" && (
             showRegistrations ? (
               <TournamentRegistrationsTab clubIds={clubIds} />

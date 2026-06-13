@@ -93,7 +93,7 @@ export default function TrackerDashboard() {
           {clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
         </div>
       </div>
-      <TournamentLivePanel clubIds={clubIds} clubs={clubs} />
+      <TournamentLivePanel mode="tracker" clubIds={clubIds} clubs={clubs} />
     </div>
   );
 }
