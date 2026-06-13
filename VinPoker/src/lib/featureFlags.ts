@@ -53,4 +53,13 @@ export const FEATURES = {
    * keeps action buttons disabled until the runtime is actually reachable.
    */
   onlinePoker: false,
+  /**
+   * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
+   * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never
+   * recomputes payroll). Default **OFF** (dark). While false the route + the ClubAdmin
+   * entry link are hidden from everyone except super_admin (so the owner can UAT). Flip
+   * to true after owner UAT (and optionally once the get_club_finance_summary read RPC
+   * ships in Phase 3). No DB writes.
+   */
+  clubFinanceDashboard: false,
 } as const;

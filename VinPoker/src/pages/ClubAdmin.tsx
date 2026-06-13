@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { FEATURES } from "@/lib/featureFlags";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight, Wallet } from "lucide-react";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
 import { formatDateTime, formatVND } from "@/lib/format";
@@ -27,7 +28,7 @@ const GAME_TYPES = [{v:"nlh",l:"No Limit Hold'em"},{v:"plo",l:"Pot Limit Omaha"}
 const ClubAdmin = () => {
   const { t } = useTranslation();
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const nav = useNavigate();
   const [clubs, setClubs] = useState<any[]>([]);
   const [activeClub, setActiveClub] = useState<any>(null);
@@ -179,6 +180,20 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to={`/cashier?tab=members&sub=sync`}>
                   <FileSpreadsheet className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
+          {activeClub && (FEATURES.clubFinanceDashboard || isAdmin) && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /> Tài chính CLB</h3>
+                <p className="text-xs text-muted-foreground">Doanh thu (phí + rake), chi phí lương, lãi ròng, công nợ lương — chỉ xem.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/finance">
+                  <Wallet className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>
