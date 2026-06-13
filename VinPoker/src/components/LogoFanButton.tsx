@@ -4,26 +4,18 @@ import { QrCode, Spade } from "lucide-react";
 
 import appLogo from "@/assets/app-logo.png";
 
-interface QuickLink {
-  to: string;
-  label: string;
-}
-
 interface Props {
   onQR: () => void;
   onPoker: () => void;
-  /** Secondary destinations without a bottom-nav slot — rendered as a chip grid when open. */
-  quickLinks?: QuickLink[];
-  onNavigate?: (to: string) => void;
 }
 
 /**
  * Center logo (fixed) on mobile bottom nav.
- * - Tap → backdrop blurs, 2 big diagonal option cards appear
+ * - Tap → backdrop blurs, 2 big diagonal option cards appear (QR + Vào bàn chơi)
  * - Tap option / swipe ↖ / swipe ↗ → fire that branch
  * - Tap backdrop or logo again → close
  */
-export function LogoFanButton({ onQR, onPoker, quickLinks, onNavigate }: Props) {
+export function LogoFanButton({ onQR, onPoker }: Props) {
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<"qr" | "poker" | null>(null);
   const movedRef = useRef(false);
@@ -127,36 +119,16 @@ export function LogoFanButton({ onQR, onPoker, quickLinks, onNavigate }: Props) 
                 Vào bàn chơi
               </span>
             </motion.button>
-
-            {/* Quick links — destinations without a bottom-nav slot */}
-            {quickLinks && quickLinks.length > 0 && onNavigate && (
-              <motion.div
-                key="quick-links"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: trigger ? 0 : 1, y: 0 }}
-                exit={{ opacity: 0, y: 16 }}
-                transition={{ type: "spring", stiffness: 340, damping: 26, delay: 0.05 }}
-                className="fixed left-1/2 -ml-[156px] bottom-[230px] z-50 w-[312px] grid grid-cols-3 gap-2"
-              >
-                {quickLinks.map((link) => (
-                  <button
-                    key={link.to}
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      onNavigate(link.to);
-                    }}
-                    className="px-2 py-2 rounded-xl bg-card border border-border text-foreground text-[11px] font-semibold truncate hover:border-primary/60 hover:text-primary transition-colors"
-                  >
-                    {link.label}
-                  </button>
-                ))}
-              </motion.div>
-            )}
           </>
-
         )}
       </AnimatePresence>
+
+      {/* Pulsing neon halo behind the logo (visual catch). Sibling, not a child —
+          the button itself is overflow-hidden so an inner ping would be clipped. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -ml-[32px] -top-[24px] z-40 w-[64px] h-[64px] rounded-full ring-2 ring-primary/40 animate-ping"
+      />
 
       {/* Center logo (FIXED — no drag, no rotate) */}
       <motion.button
@@ -179,12 +151,12 @@ export function LogoFanButton({ onQR, onPoker, quickLinks, onNavigate }: Props) 
         transition={{ type: "spring", stiffness: 320, damping: 22 }}
         aria-label="Menu nhanh"
         aria-expanded={open}
-        className="absolute left-1/2 -translate-x-1/2 -ml-[26px] -top-[18px] z-50 w-[52px] h-[52px] rounded-full bg-gradient-to-b from-background to-card ring-[2px] ring-primary shadow-[0_0_24px_hsl(var(--primary)/0.85),0_6px_16px_rgba(0,0,0,0.6)] flex items-center justify-center overflow-hidden touch-none select-none"
+        className="absolute left-1/2 -translate-x-1/2 -ml-[32px] -top-[24px] z-50 w-[64px] h-[64px] rounded-full bg-gradient-to-b from-background to-card ring-[2.5px] ring-primary shadow-[0_0_28px_hsl(var(--primary)/0.9),0_6px_18px_rgba(0,0,0,0.6)] flex items-center justify-center overflow-hidden touch-none select-none"
       >
         <img
           src={appLogo}
           alt="VBacker"
-          className="w-9 h-9 object-contain pointer-events-none drop-shadow-[0_0_6px_hsl(var(--primary)/0.6)]"
+          className="w-11 h-11 object-contain pointer-events-none drop-shadow-[0_0_6px_hsl(var(--primary)/0.6)]"
           draggable={false}
         />
 
