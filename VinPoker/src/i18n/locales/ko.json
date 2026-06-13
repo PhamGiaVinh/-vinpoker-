@@ -203,7 +203,9 @@
     "ranking": "랭킹",
     "documents": "문서",
     "account": "계정",
-    "login": "로그인"
+    "login": "로그인",
+    "mobileStake": "파트너",
+    "mobileBacker": "코치"
   },
   "documentsPage": {
     "title": "문서",
@@ -295,7 +297,7 @@
   "tournamentsPage": {
     "title": "토너먼트 일정",
     "subtitle": "다가오는 포커 토너먼트를 확인하고, 스택을 예약하여 펠트로 바로 향하세요 — 한 번의 핸드도 놓치지 마세요.",
-    "daily": "매일",
+    "daily": "등록",
     "weekly": "매주",
     "series": "국제 시리즈",
     "livestream": "라이브스트림",
@@ -324,7 +326,8 @@
     "searchPlaceholder": "이름 또는 바이인으로 검색...",
     "filtersActive": "필터 {{count}}개 활성",
     "news": "뉴스",
-    "packages": "토너먼트 패키지"
+    "packages": "토너먼트 패키지",
+    "livetracker": "Live Tracker"
   },
   "backingProfile": {
     "title": "백킹 프로필",
@@ -1818,6 +1821,37 @@
       "voided": "무효화됨",
       "completed": "완료",
       "inProgress": "진행 중"
+    }
+  },
+  "feed": {
+    "title": "피드",
+    "yourStory": "스토리",
+    "anonymousPlayer": "익명 플레이어",
+    "addStory": "스토리 추가",
+    "sharePrompt": "게시물 작성",
+    "empty": "아직 게시물이 없습니다.",
+    "ago": "전",
+    "loginRequired": "로그인해 주세요",
+    "create": {
+      "title": "게시물 작성",
+      "placeholder": "무슨 생각을 하고 있나요?",
+      "addHand": "핸드 리뷰 추가",
+      "heroCards": "내 카드",
+      "board": "보드",
+      "gamePlaceholder": "예: NLH 25/50",
+      "potPlaceholder": "팟 크기",
+      "win": "승",
+      "loss": "패",
+      "mediaBtn": "사진/동영상",
+      "submit": "게시",
+      "errEmpty": "텍스트나 미디어를 추가해 주세요",
+      "errSize": "파일이 너무 큽니다",
+      "ok": "게시되었습니다!",
+      "fail": "게시할 수 없습니다"
+    },
+    "comment": {
+      "placeholder": "댓글 작성…",
+      "send": "전송"
     }
   }
 }

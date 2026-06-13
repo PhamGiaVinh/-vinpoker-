@@ -207,28 +207,28 @@ const Tournaments = () => {
             {tr("tournamentsPage.subtitle")}
           </p>
 
-          {/* Chronograph divider */}
+          {/* Soft divider (rounded, no sharp diamond) */}
           <div className="flex items-center gap-2 pt-2 max-w-md mb-6">
-            <div className="flex-1 h-[1px] bg-primary/60" />
-            <div className="w-2 h-2 bg-primary rotate-45 shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
-            <div className="flex-1 h-[1px] bg-primary/30" />
+            <div className="flex-1 h-px rounded-full bg-gradient-to-r from-transparent to-primary/50" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
+            <div className="flex-1 h-px rounded-full bg-gradient-to-l from-transparent to-primary/30" />
           </div>
 
-          {/* View selector tabs */}
-          <div className="flex flex-wrap gap-1 w-full sm:w-auto rounded-xl bg-card/50 border border-border/40 p-1.5 backdrop-blur-sm">
+          {/* View selector — segmented pill control */}
+          <div className="flex flex-wrap gap-1.5 w-full sm:w-auto rounded-2xl bg-card/40 border border-border/30 p-1.5 backdrop-blur-sm">
           {(["weekly", "daily", "livetracker", "news", "series", "livestream", "packages"] as const).map((v) => (
             <button
               key={v}
               onClick={() => { setView(v); setPage(1); }}
               className={cn(
-                "px-2.5 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider rounded-lg transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
+                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
                 view === v
                   ? v === "livestream"
-                    ? "text-foreground"
+                    ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
                     : v === "livetracker"
-                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    ? "bg-emerald-500/20 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
                     : "gradient-neon text-primary-foreground shadow-neon"
-                  : "text-muted-foreground hover:text-foreground transition-colors"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card/70"
               )}
             >
               {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
@@ -240,7 +240,7 @@ const Tournaments = () => {
                   : v === "weekly" ? tr("tournamentsPage.weekly")
                   : v === "series" ? tr("tournamentsPage.series")
                   : v === "livestream" ? tr("tournamentsPage.livestream")
-                  : v === "livetracker" ? "Live Tracker"
+                  : v === "livetracker" ? tr("tournamentsPage.livetracker")
                   : v === "packages" ? tr("tournamentsPage.packages")
                   : tr("tournamentsPage.news")}
               </span>

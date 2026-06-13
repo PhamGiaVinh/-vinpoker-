@@ -48,10 +48,11 @@ const mobileTabsData = MOBILE_TAB_ROUTES
   .map((to) => tabsData.find((t) => t.to === to))
   .filter((t): t is (typeof tabsData)[number] => Boolean(t));
 
-// Shorter, cleaner labels for the bottom-nav pills (local override — no i18n edit).
-const MOBILE_NAV_LABEL: Record<string, string> = {
-  "/marketplace": "Stake",
-  "/find-backer": "Marketplace",
+// Mobile bottom-nav labels (owner-specified, i18n-driven). Desktop top nav keeps
+// nav.marketplace / nav.backer; these override ONLY the bottom-nav pills.
+const MOBILE_NAV_LABEL_KEY: Record<string, string> = {
+  "/marketplace": "nav.mobileStake",
+  "/find-backer": "nav.mobileBacker",
 };
 
 // Secondary routes without a bottom-nav slot — surfaced in the header "☰" menu
@@ -148,7 +149,7 @@ export const Layout = () => {
             </NavLink>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-0.5">
             {tabsData.map((m) => (
               <NavLink
                 key={m.to}
@@ -156,10 +157,10 @@ export const Layout = () => {
                 end={m.end}
                 className={({ isActive }) =>
                   cn(
-                    "text-xs font-bold tracking-[0.18em] transition-colors relative py-1 uppercase",
+                    "text-xs font-bold tracking-[0.1em] uppercase rounded-full px-2.5 py-1.5 whitespace-nowrap transition-colors",
                     isActive
-                      ? "text-primary after:content-[''] after:absolute after:left-0 after:right-0 after:-bottom-1 after:h-0.5 after:bg-primary after:rounded-full after:shadow-neon"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "text-primary bg-primary/10 shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/60"
                   )
                 }
               >
@@ -322,15 +323,17 @@ export const Layout = () => {
               end={tab.end}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors",
+                  "flex flex-col items-center justify-center gap-0.5 text-[10px] transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
-                  <span className="font-medium">{MOBILE_NAV_LABEL[tab.to] ?? t(`nav.${tab.labelKey}`, tab.label)}</span>
+                  <span className={cn("flex items-center justify-center w-12 h-7 rounded-full transition-colors", isActive && "bg-primary/15")}>
+                    <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
+                  </span>
+                  <span className="font-medium leading-tight text-center px-0.5 line-clamp-2">{MOBILE_NAV_LABEL_KEY[tab.to] ? t(MOBILE_NAV_LABEL_KEY[tab.to]) : t(`nav.${tab.labelKey}`, tab.label)}</span>
                 </>
               )}
             </NavLink>
@@ -349,15 +352,17 @@ export const Layout = () => {
               end={tab.end}
               className={({ isActive }) =>
                 cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors",
+                  "flex flex-col items-center justify-center gap-0.5 text-[10px] transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
-                  <span className="font-medium">{MOBILE_NAV_LABEL[tab.to] ?? t(`nav.${tab.labelKey}`, tab.label)}</span>
+                  <span className={cn("flex items-center justify-center w-12 h-7 rounded-full transition-colors", isActive && "bg-primary/15")}>
+                    <tab.icon className={cn("w-5 h-5", isActive && "drop-shadow-[0_0_6px_hsl(var(--primary)/0.7)]")} />
+                  </span>
+                  <span className="font-medium leading-tight text-center px-0.5 line-clamp-2">{MOBILE_NAV_LABEL_KEY[tab.to] ? t(MOBILE_NAV_LABEL_KEY[tab.to]) : t(`nav.${tab.labelKey}`, tab.label)}</span>
                 </>
               )}
             </NavLink>

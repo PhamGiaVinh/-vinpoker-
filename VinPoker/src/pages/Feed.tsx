@@ -164,12 +164,6 @@ export default function Feed() {
           <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary/10 rounded-full blur-[120px] opacity-20" />
         </div>
         <div className="relative">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary">
-              <Spade className="w-3.5 h-3.5" />
-              FEED
-            </span>
-          </div>
           <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">
             {t("feed.title")}
           </h1>

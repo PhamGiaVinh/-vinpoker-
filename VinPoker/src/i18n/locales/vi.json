@@ -49,7 +49,9 @@
     "ranking": "Xếp hạng",
     "documents": "Tài liệu",
     "account": "Tài khoản",
-    "login": "Đăng nhập"
+    "login": "Đăng nhập",
+    "mobileStake": "Hợp tác",
+    "mobileBacker": "Người tập huấn"
   },
   "documentsPage": {
     "title": "Tài liệu",
@@ -362,7 +364,7 @@
   "tournamentsPage": {
     "title": "Lịch giải tập huấn",
     "subtitle": "Theo dõi các giải poker sắp tới, đặt stack và đến bàn ngay — không bỏ lỡ ván nào.",
-    "daily": "HÀNG NGÀY",
+    "daily": "Đăng kí",
     "weekly": "HÀNG TUẦN",
     "series": "GIẢI QUỐC TẾ",
     "livestream": "LIVESTREAM",
@@ -391,7 +393,8 @@
     "searchPlaceholder": "Tìm theo tên giải hoặc lệ phí...",
     "filtersActive": "{{count}} đang dùng",
     "news": "TIN TỨC",
-    "packages": "GÓI GIẢI ĐẤU"
+    "packages": "GÓI GIẢI ĐẤU",
+    "livetracker": "Live Tracker"
   },
   "clubsPage": {
     "title": "Câu lạc bộ",
@@ -1970,6 +1973,37 @@
       "voided": "VOIDED",
       "completed": "completed",
       "inProgress": "in_progress"
+    }
+  },
+  "feed": {
+    "title": "Bảng tin",
+    "yourStory": "Story",
+    "anonymousPlayer": "Người chơi ẩn danh",
+    "addStory": "Thêm story",
+    "sharePrompt": "Bài đăng",
+    "empty": "Chưa có bài đăng nào.",
+    "ago": "trước",
+    "loginRequired": "Vui lòng đăng nhập",
+    "create": {
+      "title": "Bài đăng",
+      "placeholder": "Bạn đang nghĩ gì?",
+      "addHand": "Thêm phân tích ván bài",
+      "heroCards": "Bài của bạn",
+      "board": "Bài chung",
+      "gamePlaceholder": "Vd: NLH 25/50",
+      "potPlaceholder": "Kích thước pot",
+      "win": "Thắng",
+      "loss": "Thua",
+      "mediaBtn": "Ảnh/Video",
+      "submit": "Đăng",
+      "errEmpty": "Vui lòng thêm nội dung hoặc ảnh/video",
+      "errSize": "Tệp quá lớn",
+      "ok": "Đã đăng!",
+      "fail": "Không thể đăng bài"
+    },
+    "comment": {
+      "placeholder": "Viết bình luận…",
+      "send": "Gửi"
     }
   }
 }

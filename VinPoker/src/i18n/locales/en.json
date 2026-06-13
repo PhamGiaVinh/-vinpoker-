@@ -49,7 +49,9 @@
     "ranking": "Ranking",
     "documents": "Docs",
     "account": "Account",
-    "login": "Login"
+    "login": "Login",
+    "mobileStake": "Partner",
+    "mobileBacker": "Coach"
   },
   "documentsPage": {
     "title": "Documents",
@@ -362,7 +364,7 @@
   "tournamentsPage": {
     "title": "Tournament Schedule",
     "subtitle": "Track upcoming poker tournaments, book your stack and head straight to the felt — never miss a hand.",
-    "daily": "DAILY",
+    "daily": "Register",
     "weekly": "WEEKLY",
     "series": "INTERNATIONAL SERIES",
     "livestream": "LIVESTREAM",
@@ -391,7 +393,8 @@
     "searchPlaceholder": "Search by name or buy-in...",
     "filtersActive": "{{count}} active",
     "news": "NEWS",
-    "packages": "PACKAGES"
+    "packages": "PACKAGES",
+    "livetracker": "Live Tracker"
   },
   "clubsPage": {
     "title": "Clubs",
@@ -1970,6 +1973,37 @@
       "voided": "VOIDED",
       "completed": "completed",
       "inProgress": "in_progress"
+    }
+  },
+  "feed": {
+    "title": "Feed",
+    "yourStory": "Story",
+    "anonymousPlayer": "Anonymous",
+    "addStory": "Add story",
+    "sharePrompt": "Create post",
+    "empty": "No posts yet.",
+    "ago": "ago",
+    "loginRequired": "Please sign in",
+    "create": {
+      "title": "Create post",
+      "placeholder": "What's on your mind?",
+      "addHand": "Add hand review",
+      "heroCards": "Your cards",
+      "board": "Board",
+      "gamePlaceholder": "e.g. NLH 25/50",
+      "potPlaceholder": "Pot size",
+      "win": "Win",
+      "loss": "Loss",
+      "mediaBtn": "Photo/Video",
+      "submit": "Post",
+      "errEmpty": "Please add text or media",
+      "errSize": "File too large",
+      "ok": "Posted!",
+      "fail": "Could not create post"
+    },
+    "comment": {
+      "placeholder": "Write a comment…",
+      "send": "Send"
     }
   }
 }
