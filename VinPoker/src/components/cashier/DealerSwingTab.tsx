@@ -3326,12 +3326,19 @@ function TableGrid({
             const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
             const canSwing = !!a && !a.swing_processed_at && (isOt || actualDueMs <= nowMs);
 
-            // Open-table warmup: for OPEN_TABLE_GRACE_MINUTES after assign the dealer
-            // is "warming up" — show a "Vào swing sau M:SS" countdown; the swing clock
-            // (swing_due_at, which already includes the grace) only takes over after.
+            // Open-table warmup: show "Vào swing sau M:SS" ONLY if swing_due_at actually
+            // encodes the open-table grace (open-path: swing_due_at = assigned_at + grace + duration).
+            // perform_swing rotation handoffs set swing_due_at = assigned_at + duration (no grace) —
+            // inWarmup must NOT trigger for them, so we detect grace by checking whether the
+            // scheduled window is longer than the nominal swing duration.
             const assignedMs = a?.assigned_at ? new Date(a.assigned_at).getTime() : 0;
-            const warmupUntilMs = assignedMs > 0 ? assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000 : 0;
-            const inWarmup = !!a && !isOt && !a.swing_processed_at && assignedMs > 0 && nowMs < warmupUntilMs;
+            const swingDurationMs = (tableTournament?.swing_duration_minutes
+              ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes
+              ?? 30) * 60_000;
+            const hasGrace = a?.swing_due_at != null && assignedMs > 0
+              && (swingDueMs - assignedMs) > swingDurationMs;
+            const warmupUntilMs = hasGrace ? assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000 : 0;
+            const inWarmup = !!a && !isOt && !a.swing_processed_at && hasGrace && nowMs < warmupUntilMs;
 
             // ── Rotation schedule (source of truth for relief plans) ──
             const slots = scheduleByTableId?.[t.id];
