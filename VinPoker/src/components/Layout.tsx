@@ -191,17 +191,17 @@ export const Layout = () => {
               </div>
             )}
 
-            {/* Mobile-only operator entry — role-aware menu (TD + cashier). Each
-                destination guards itself; this is a UI entry only. Bigger tap target. */}
+            {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier).
+                Each destination guards itself; this is a UI entry only. */}
             {(isCashier || isTracker || isAdmin) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="md:hidden inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-2 md:py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
                     aria-label="Vận hành CLB"
                   >
-                    <Wallet className="w-[18px] h-[18px] shrink-0" />
+                    <Wallet className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />
                     <span className="hidden min-[400px]:inline">VẬN HÀNH</span>
                   </button>
                 </DropdownMenuTrigger>
@@ -252,16 +252,7 @@ export const Layout = () => {
                   )}
                 </NavLink>
               )}
-              {isCashier && !isAdmin && (
-                <NavLink to="/cashier" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
-                  {t("layout.cashier")}
-                </NavLink>
-              )}
-              {isTracker && !isAdmin && (
-                <NavLink to="/tracker" className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[11px] font-bold tracking-wider hover:bg-emerald-500/25">
-                  <Radio className="w-3 h-3 mr-1 inline" />TRACKER
-                </NavLink>
-              )}
+              {/* Cashier/Tracker desktop entries moved into the unified VẬN HÀNH dropdown above. */}
               {isAdmin && (
                 <>
                   <NavLink to="/admin/leaderboard" className="px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground text-[11px] font-semibold tracking-wider hover:text-primary hover:border-primary/60">
