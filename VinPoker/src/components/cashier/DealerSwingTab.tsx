@@ -3047,14 +3047,14 @@ function BreakPoolCard({
             const timing = getBreakTiming(entry, nowMs);
             const isBusy = !isRest && processing === entry.attendanceId;
             const rowClass = cn(
-              "flex items-center gap-2 px-2 py-1.5 border rounded-none transition-colors",
+              "flex items-center gap-2 pl-2.5 pr-2 py-1.5 border-l-2 rounded-none transition-colors",
               isRest
-                ? "border-violet-500/40 bg-violet-500/5 text-violet-100"
+                ? "border-violet-500 bg-violet-500/5 text-violet-100"
                 : visualState === "soon"
-                  ? "border-amber-500/40 bg-amber-500/5 text-amber-100"
+                  ? "border-amber-500 bg-amber-500/5 text-amber-100"
                   : visualState === "overdue"
-                    ? "border-red-500/40 bg-red-500/5 text-red-100"
-                    : "border-border/60 bg-muted/20 text-foreground",
+                    ? "border-red-500 bg-red-500/5 text-red-100"
+                    : "border-border bg-muted/20 text-foreground",
             );
             // For rest entries, compute seconds remaining
             const remainingSeconds = isRest

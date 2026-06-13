@@ -23,10 +23,10 @@ export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, 
 
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 py-2 lg:py-1.5 rounded-sm cursor-pointer transition-colors ${
+      className={`flex items-center gap-2 pl-2.5 pr-2 py-2 border-l-2 rounded-none cursor-pointer transition-colors ${
         isCritical
-          ? "bg-red-500/5 hover:bg-red-500/10"
-          : "bg-amber-500/5 hover:bg-amber-500/10"
+          ? "border-red-500 bg-red-500/5 hover:bg-red-500/10"
+          : "border-amber-500 bg-amber-500/5 hover:bg-amber-500/10"
       }`}
       onClick={() => onFocusTable?.(item.tableId ?? "")}
     >
