@@ -51,6 +51,8 @@ import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import { getSwingTableStatus } from "./dealer-swing/swingTableStatus";
+import type { SwingTableStatus } from "./dealer-swing/swingTableStatus";
+import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -150,6 +152,52 @@ function resolveTableSwingTiming(
     actualMinutesLeft,
     plannedReliefAt: assignment.planned_relief_at ?? null,
   };
+}
+
+/**
+ * deriveTableSwingStatus — pure per-table status classifier used by the
+ * battle-map status filter (UI Phase 4). Mirrors the EXACT inputs the table
+ * card derives inline (warnAt, swingDueMs, isOt, isPastDue, remainingMinutes)
+ * and feeds the same getSwingTableStatus classifier, so the filter chip counts
+ * and the per-card status badge can never diverge. Presentation only — no
+ * swing/timer logic is changed.
+ *
+ * NOTE: the table card still derives these values inline (it needs swingDueMs
+ * for the countdown/progress anyway); Phase 2 (SwingTableCard extraction) folds
+ * both call sites onto this single helper.
+ */
+function deriveTableSwingStatus(
+  t: any,
+  a: DealerAssignment | null | undefined,
+  tl: TableTimeline | undefined,
+  tournaments: TournamentWithTables[] | undefined,
+  swingConfigs: SwingConfig[] | null | undefined,
+  nowMs: number,
+): SwingTableStatus {
+  const tableTournament = tournaments?.find((tr) =>
+    tr.tournament_tables.some((tt) => tt.table_id === t.id)
+  );
+  const warnAt =
+    tableTournament?.warn_at_minutes
+    ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.warn_at_minutes
+    ?? 5;
+  const swingDuration =
+    tableTournament?.swing_duration_minutes
+    ?? swingConfigs?.find((c) => c.table_type === t.table_type)?.swing_duration_minutes
+    ?? 30;
+  const swingDueMs = a?.swing_due_at
+    ? new Date(a.swing_due_at).getTime()
+    : tl?.nominalDueAt
+      ? new Date(tl.nominalDueAt).getTime()
+      : a?.assigned_at
+        ? new Date(a.assigned_at).getTime() + swingDuration * 60_000
+        : 0;
+  const isOt = !!a?.overtime_started_at && !a?.swing_processed_at;
+  const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
+  const remainingMinutes = a ? (swingDueMs - nowMs) / 60_000 : null;
+  return getSwingTableStatus({
+    hasAssignment: !!a, isOt, isPastDue, remainingMinutes, warnAtMinutes: warnAt,
+  });
 }
 
 /* ==============================================================
@@ -3225,6 +3273,9 @@ function TableGrid({
       ?.min_inter_swing_rest_minutes as number | undefined) ?? 10,
   );
 
+  // Battle-map status filter (UI Phase 4) — orthogonal to the tour filter.
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all");
+
   const filteredTables = useMemo(() => {
     // Inactive tables sit in the general pool and are not actionable here.
     // Process-swing can close a table between renders; the next refetch drops it.
@@ -3237,6 +3288,34 @@ function TableGrid({
     // to the global pool — that previously leaked unscoped tables into a tour.
     return base.filter((t) => t.shift_id === selectedTour);
   }, [tables, selectedTour]);
+
+  // Per-table status (same classifier as the card badge) → drives chip counts
+  // and the status filter. Recomputed on the live clock so "Sắp đến giờ" /
+  // "Quá hạn" counts stay in sync with the countdowns.
+  const tablesWithStatus = useMemo(
+    () => filteredTables.map((t) => ({
+      table: t,
+      status: deriveTableSwingStatus(
+        t, tableAssignmentMap[t.id], timelineByTableId[t.id], tournaments, swingConfigs, nowMs,
+      ),
+    })),
+    [filteredTables, tableAssignmentMap, timelineByTableId, tournaments, swingConfigs, nowMs],
+  );
+
+  const statusCounts = useMemo(() => {
+    const c: Record<StatusFilterValue, number> = {
+      all: tablesWithStatus.length, ok: 0, due_soon: 0, overdue: 0, empty: 0,
+    };
+    for (const { status } of tablesWithStatus) c[status.kind] += 1;
+    return c;
+  }, [tablesWithStatus]);
+
+  const visibleTables = useMemo(
+    () => (statusFilter === "all"
+      ? tablesWithStatus
+      : tablesWithStatus.filter((x) => x.status.kind === statusFilter)),
+    [tablesWithStatus, statusFilter],
+  );
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
   // and re-checks swing_processed_at before calling auto-break
@@ -3280,13 +3359,21 @@ function TableGrid({
         </Button>
       </div>
 
+      <div className="mb-3">
+        <StatusFilterChips counts={statusCounts} value={statusFilter} onChange={setStatusFilter} />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
         {filteredTables.length === 0 ? (
           <div className="col-span-full text-xs text-muted-foreground text-center py-6">
             {selectedTour ? "Chưa có bàn nào trong tour này. Hãy tạo bàn mới hoặc assign dealer." : "Chưa có bàn nào."}
           </div>
+        ) : visibleTables.length === 0 ? (
+          <div className="col-span-full text-xs text-muted-foreground text-center py-6">
+            Không có bàn ở trạng thái này.
+          </div>
         ) : (
-          filteredTables.map((t) => {
+          visibleTables.map(({ table: t }) => {
             const a = tableAssignmentMap[t.id];
             // Resolve config: tournament → club default
             const tableTournament = tournaments?.find((tr) =>
