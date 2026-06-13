@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, ArrowRightLeft, Armchair, UserMinus, Loader2 } from "lucide-react";
+import { Info, ArrowRightLeft, Coins, Receipt, Armchair, UserMinus, Loader2 } from "lucide-react";
 import { formatVND } from "@/lib/format";
 
 export interface ActionSeat {
@@ -17,15 +16,23 @@ export interface ActionSeat {
 }
 
 /**
- * Kholdem-style player action sheet (bottom sheet). Wires the EXISTING functions:
- * - Chuyển → opens the move number-stepper (move_player_seat); hidden/disabled for
- *   non-entry seats or viewers who aren't owner/cashier.
- * - Loại (bust) → flips is_active=false via the floor save path.
- * - Đổi ghế trống (Free sit) → DISABLED "Sắp có" (needs tournament_waitlist backend).
- * - Thông tin → inline player detail.
+ * Kholdem-style player action sheet (bottom sheet). Surfaces the 4 primary floor
+ * actions as a grid (Chuyển / Sửa chip / Phiếu / Loại), with Thông tin and the
+ * not-yet-backed "Đổi ghế trống" as secondary rows. All actions wire to EXISTING
+ * backend:
+ * - Chuyển → move number-stepper (move_player_seat); disabled for non-entry seats
+ *   or viewers who aren't owner/cashier.
+ * - Sửa chip → update_seats (with chip-conservation warning in the dialog).
+ * - Phiếu → seat receipt (view / re-print).
+ * - Loại (bust) → update_seats is_active=false (seat inactive only — no fabricated
+ *   elimination / hand).
+ * - Đổi ghế trống → DISABLED "Sắp có" (needs tournament_waitlist backend).
+ *
+ * onEditChips / onReceipt are optional so older callers keep compiling; a row is
+ * only shown when its handler is provided.
  */
 export function PlayerActionSheet({
-  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust,
+  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust, onEditChips, onReceipt,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -35,6 +42,8 @@ export function PlayerActionSheet({
   busting: boolean;
   onMove: () => void;
   onBust: () => void;
+  onEditChips?: () => void;
+  onReceipt?: () => void;
 }) {
   const [showInfo, setShowInfo] = useState(false);
   if (!seat) return null;
@@ -44,9 +53,13 @@ export function PlayerActionSheet({
     : !canMove
       ? "Cần quyền chủ CLB / thu ngân để chuyển ghế"
       : "";
+  const editAllowed = !!onEditChips && canMove;
+
+  const close = (v: boolean) => { if (!v) setShowInfo(false); onOpenChange(v); };
+  const act = (fn?: () => void) => { if (fn) { fn(); onOpenChange(false); } };
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) setShowInfo(false); onOpenChange(v); }}>
+    <Sheet open={open} onOpenChange={close}>
       <SheetContent side="bottom" className="rounded-t-2xl">
         <SheetHeader className="text-center">
           <SheetTitle>
@@ -54,8 +67,67 @@ export function PlayerActionSheet({
           </SheetTitle>
         </SheetHeader>
 
-        <div className="mt-2 divide-y divide-border">
-          {/* Thông tin */}
+        {/* 4 primary actions */}
+        <TooltipProvider>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {/* Chuyển */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="block">
+                  <button
+                    className="flex w-full items-center gap-3 rounded-xl border border-primary/45 bg-primary/10 p-3.5 text-left text-primary disabled:opacity-50"
+                    disabled={!moveAllowed}
+                    onClick={() => act(onMove)}
+                  >
+                    <ArrowRightLeft className="h-6 w-6 shrink-0" />
+                    <span><span className="block text-[15px] font-medium leading-tight">Chuyển</span><span className="block text-[11px] opacity-80">bàn / ghế</span></span>
+                  </button>
+                </span>
+              </TooltipTrigger>
+              {!moveAllowed && <TooltipContent>{moveReason}</TooltipContent>}
+            </Tooltip>
+
+            {/* Sửa chip */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="block">
+                  <button
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left disabled:opacity-50"
+                    disabled={!editAllowed}
+                    onClick={() => act(onEditChips)}
+                  >
+                    <Coins className="h-6 w-6 shrink-0 text-amber-400" />
+                    <span><span className="block text-[15px] font-medium leading-tight">Sửa chip</span><span className="block text-[11px] text-muted-foreground">điều chỉnh stack</span></span>
+                  </button>
+                </span>
+              </TooltipTrigger>
+              {!editAllowed && <TooltipContent>{!onEditChips ? "Không khả dụng ở màn này" : "Cần quyền chủ CLB / thu ngân"}</TooltipContent>}
+            </Tooltip>
+
+            {/* Phiếu */}
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left disabled:opacity-50"
+              disabled={!onReceipt}
+              onClick={() => act(onReceipt)}
+            >
+              <Receipt className="h-6 w-6 shrink-0 text-sky-400" />
+              <span><span className="block text-[15px] font-medium leading-tight">Phiếu</span><span className="block text-[11px] text-muted-foreground">xem / in lại</span></span>
+            </button>
+
+            {/* Loại / Bust */}
+            <button
+              className="flex w-full items-center gap-3 rounded-xl border border-destructive/45 bg-destructive/10 p-3.5 text-left text-destructive disabled:opacity-50"
+              disabled={busting}
+              onClick={onBust}
+            >
+              {busting ? <Loader2 className="h-6 w-6 shrink-0 animate-spin" /> : <UserMinus className="h-6 w-6 shrink-0" />}
+              <span><span className="block text-[15px] font-medium leading-tight">Loại</span><span className="block text-[11px] opacity-80">bust out</span></span>
+            </button>
+          </div>
+        </TooltipProvider>
+
+        {/* Secondary rows */}
+        <div className="mt-3 divide-y divide-border border-t border-border">
           <button
             className="flex w-full items-center gap-3 py-3.5 text-left"
             onClick={() => setShowInfo((v) => !v)}
@@ -71,26 +143,6 @@ export function PlayerActionSheet({
             </div>
           )}
 
-          {/* Chuyển */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="block">
-                  <button
-                    className="flex w-full items-center gap-3 py-3.5 text-left disabled:opacity-50"
-                    disabled={!moveAllowed}
-                    onClick={() => { onMove(); onOpenChange(false); }}
-                  >
-                    <ArrowRightLeft className={`h-5 w-5 ${moveAllowed ? "text-primary" : "text-muted-foreground"}`} />
-                    <span className={`text-[15px] ${moveAllowed ? "font-medium text-primary" : ""}`}>Chuyển ghế</span>
-                  </button>
-                </span>
-              </TooltipTrigger>
-              {!moveAllowed && <TooltipContent>{moveReason}</TooltipContent>}
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Đổi ghế trống (Free sit) — Sắp có */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -105,16 +157,6 @@ export function PlayerActionSheet({
               <TooltipContent>Cần backend hàng chờ (waitlist) — sắp có</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
-          {/* Loại / Bust */}
-          <button
-            className="flex w-full items-center gap-3 py-3.5 text-left text-destructive disabled:opacity-50"
-            disabled={busting}
-            onClick={onBust}
-          >
-            {busting ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserMinus className="h-5 w-5" />}
-            <span className="text-[15px]">Loại (bust)</span>
-          </button>
         </div>
       </SheetContent>
     </Sheet>
