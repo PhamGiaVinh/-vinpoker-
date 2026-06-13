@@ -7,7 +7,9 @@
     "ranking": "ランキング",
     "documents": "ドキュメント",
     "account": "アカウント",
-    "login": "ログイン"
+    "login": "ログイン",
+    "mobileStake": "提携",
+    "mobileBacker": "コーチ"
   },
   "documentsPage": {
     "title": "ドキュメント",
@@ -320,7 +322,7 @@
   "tournamentsPage": {
     "title": "トレーニングトーナメントスケジュール",
     "subtitle": "今後のポーカートーナメントを追跡し、スタックを予約してテーブルに参加 — 一回も見逃さない。",
-    "daily": "毎日",
+    "daily": "エントリー",
     "weekly": "毎週",
     "series": "国際トーナメント",
     "livestream": "ライブストリーム",
@@ -349,7 +351,8 @@
     "searchPlaceholder": "トーナメント名または料金で検索...",
     "filtersActive": "{{count}} が使用中",
     "news": "ニュース",
-    "packages": "パッケージ"
+    "packages": "パッケージ",
+    "livetracker": "Live Tracker"
   },
   "clubsPage": {
     "title": "クラブ",
@@ -1822,6 +1825,37 @@
       "voided": "無効化済み",
       "completed": "完了",
       "inProgress": "進行中"
+    }
+  },
+  "feed": {
+    "title": "フィード",
+    "yourStory": "ストーリー",
+    "anonymousPlayer": "匿名プレイヤー",
+    "addStory": "ストーリーを追加",
+    "sharePrompt": "投稿する",
+    "empty": "まだ投稿がありません。",
+    "ago": "前",
+    "loginRequired": "ログインしてください",
+    "create": {
+      "title": "投稿を作成",
+      "placeholder": "いまどうしてる？",
+      "addHand": "ハンドレビューを追加",
+      "heroCards": "あなたのカード",
+      "board": "ボード",
+      "gamePlaceholder": "例: NLH 25/50",
+      "potPlaceholder": "ポットサイズ",
+      "win": "勝ち",
+      "loss": "負け",
+      "mediaBtn": "写真/動画",
+      "submit": "投稿",
+      "errEmpty": "テキストかメディアを追加してください",
+      "errSize": "ファイルが大きすぎます",
+      "ok": "投稿しました！",
+      "fail": "投稿できませんでした"
+    },
+    "comment": {
+      "placeholder": "コメントを書く…",
+      "send": "送信"
     }
   }
 }

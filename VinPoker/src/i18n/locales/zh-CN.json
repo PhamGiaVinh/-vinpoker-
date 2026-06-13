@@ -7,7 +7,9 @@
     "ranking": "排行榜",
     "documents": "资料",
     "account": "账户",
-    "login": "登录"
+    "login": "登录",
+    "mobileStake": "合作",
+    "mobileBacker": "教练"
   },
   "documentsPage": {
     "title": "资料",
@@ -320,7 +322,7 @@
   "tournamentsPage": {
     "title": "赛事赛程",
     "subtitle": "追踪即将到来的扑克赛事,预订 stack,直奔牌桌 — 不错过任何一手好牌。",
-    "daily": "每日",
+    "daily": "报名",
     "weekly": "每周",
     "series": "国际系列赛",
     "livestream": "直播",
@@ -349,7 +351,8 @@
     "searchPlaceholder": "按赛事名称或买入搜索...",
     "filtersActive": "已选 {{count}} 项",
     "news": "新闻",
-    "packages": "赛事套餐"
+    "packages": "赛事套餐",
+    "livetracker": "Live Tracker"
   },
   "clubsPage": {
     "title": "俱乐部",
@@ -1822,6 +1825,37 @@
       "voided": "已作废",
       "completed": "已完成",
       "inProgress": "进行中"
+    }
+  },
+  "feed": {
+    "title": "动态",
+    "yourStory": "快拍",
+    "anonymousPlayer": "匿名玩家",
+    "addStory": "添加快拍",
+    "sharePrompt": "发布动态",
+    "empty": "还没有动态。",
+    "ago": "前",
+    "loginRequired": "请先登录",
+    "create": {
+      "title": "发布动态",
+      "placeholder": "分享你的想法…",
+      "addHand": "添加牌局回顾",
+      "heroCards": "你的手牌",
+      "board": "公共牌",
+      "gamePlaceholder": "例如：NLH 25/50",
+      "potPlaceholder": "底池大小",
+      "win": "赢",
+      "loss": "输",
+      "mediaBtn": "图片/视频",
+      "submit": "发布",
+      "errEmpty": "请添加文字或媒体",
+      "errSize": "文件过大",
+      "ok": "已发布！",
+      "fail": "无法发布"
+    },
+    "comment": {
+      "placeholder": "写评论…",
+      "send": "发送"
     }
   }
 }

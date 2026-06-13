@@ -7,7 +7,9 @@
     "ranking": "อันดับ",
     "documents": "เอกสาร",
     "account": "บัญชี",
-    "login": "เข้าสู่ระบบ"
+    "login": "เข้าสู่ระบบ",
+    "mobileStake": "ร่วมทุน",
+    "mobileBacker": "โค้ช"
   },
   "documentsPage": {
     "title": "เอกสาร",
@@ -320,7 +322,7 @@
   "tournamentsPage": {
     "title": "ตารางทัวร์นาเมนต์",
     "subtitle": "ติดตามทัวร์นาเมนต์โป๊กเกอร์ที่กำลังจะมาถึง จอง Stack และไปที่โต๊ะทันที — ไม่พลาดเกมใดๆ.",
-    "daily": "ทุกวัน",
+    "daily": "ลงทะเบียน",
     "weekly": "ทุกสัปดาห์",
     "series": "ทัวร์นาเมนต์นานาชาติ",
     "livestream": "ถ่ายทอดสด",
@@ -349,7 +351,8 @@
     "searchPlaceholder": "ค้นหาตามชื่อทัวร์นาเมนต์หรือลงทะเบียน...",
     "filtersActive": "{{count}} กำลังใช้งาน",
     "news": "ข่าวสาร",
-    "packages": "แพ็คเกจ"
+    "packages": "แพ็คเกจ",
+    "livetracker": "Live Tracker"
   },
   "clubsPage": {
     "title": "คลับ",
@@ -1822,6 +1825,37 @@
       "voided": "ยกเลิกแล้ว",
       "completed": "เสร็จสิ้น",
       "inProgress": "กำลังดำเนิน"
+    }
+  },
+  "feed": {
+    "title": "ฟีด",
+    "yourStory": "สตอรี่",
+    "anonymousPlayer": "ผู้เล่นนิรนาม",
+    "addStory": "เพิ่มสตอรี่",
+    "sharePrompt": "สร้างโพสต์",
+    "empty": "ยังไม่มีโพสต์",
+    "ago": "ที่แล้ว",
+    "loginRequired": "กรุณาเข้าสู่ระบบ",
+    "create": {
+      "title": "สร้างโพสต์",
+      "placeholder": "คุณกำลังคิดอะไรอยู่?",
+      "addHand": "เพิ่มรีวิวมือ",
+      "heroCards": "ไพ่ของคุณ",
+      "board": "ไพ่กลาง",
+      "gamePlaceholder": "เช่น NLH 25/50",
+      "potPlaceholder": "ขนาดพอท",
+      "win": "ชนะ",
+      "loss": "แพ้",
+      "mediaBtn": "รูป/วิดีโอ",
+      "submit": "โพสต์",
+      "errEmpty": "กรุณาเพิ่มข้อความหรือสื่อ",
+      "errSize": "ไฟล์ใหญ่เกินไป",
+      "ok": "โพสต์แล้ว!",
+      "fail": "ไม่สามารถโพสต์ได้"
+    },
+    "comment": {
+      "placeholder": "เขียนความคิดเห็น…",
+      "send": "ส่ง"
     }
   }
 }
