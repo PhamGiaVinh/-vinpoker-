@@ -1,6 +1,6 @@
 # PL-PR1 — Payment Lifecycle Foundation (design + UAT plan)
 
-**Status:** SOURCE-ONLY — migration `20260819000004` is NOT applied to any DB.
+**Status:** SOURCE-ONLY — migration `20260819000005` is NOT applied to any DB.
 Per the agreed order: review → merge source-only → **separate controlled live apply** → UAT.
 **App KHÔNG giữ tiền** — these states record payment status; no money moves in the app.
 
