@@ -135,26 +135,27 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
       {clock && (
         <div className="space-y-3">
           <div className="flex items-center gap-4 flex-wrap">
-            <div className={`text-4xl font-mono font-bold tabular-nums ${isLowTime ? "text-amber-400 animate-pulse" : ""} ${localRemaining === 0 && isRunning ? "text-red-500" : ""}`}>
+            <div className={`text-5xl sm:text-6xl font-mono font-bold tabular-nums leading-none ${isLowTime ? "text-amber-400 animate-pulse" : ""} ${localRemaining === 0 && isRunning ? "text-red-500" : ""}`}>
               {formatTime(Math.max(0, localRemaining))}
             </div>
-            <div className="flex items-center gap-2">
+            {/* Floor toolbar — large touch controls */}
+            <div className="flex items-center gap-2 flex-wrap">
               {!clock.is_running ? (
-                <Button size="sm" onClick={() => handleClockAction("start")} disabled={loading}>
-                  <Play className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.start")}
+                <Button size="lg" className="h-12 px-5 text-base" onClick={() => handleClockAction("start")} disabled={loading}>
+                  <Play className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.start")}
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => handleClockAction("pause")} disabled={loading}>
-                  <Pause className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.pause")}
+                <Button size="lg" variant="outline" className="h-12 px-5 text-base" onClick={() => handleClockAction("pause")} disabled={loading}>
+                  <Pause className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.pause")}
                 </Button>
               )}
               {clock.clock_paused_at && (
-                <Button size="sm" variant="outline" onClick={() => handleClockAction("resume")} disabled={loading}>
-                  <Play className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.resume")}
+                <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("resume")} disabled={loading}>
+                  <Play className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.resume")}
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => handleClockAction("next_level", { current_level: (clock.current_level?.level_number ?? 0) + 1 })} disabled={loading}>
-                <SkipForward className="w-4 h-4 mr-1" /> {t("tournamentLive.clock.nextLevel")}
+              <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("next_level", { current_level: (clock.current_level?.level_number ?? 0) + 1 })} disabled={loading}>
+                <SkipForward className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.nextLevel")}
               </Button>
             </div>
           </div>
