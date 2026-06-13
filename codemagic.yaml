@@ -1,17 +1,14 @@
 # Codemagic CI/CD — VBacker (Capacitor mobile app)
-# This repo is a monorepo: the Capacitor app lives in the VinPoker/ folder,
-# and this codemagic.yaml sits inside it. In Codemagic set:
-#   Path to project: VinPoker
-#   Branch:          agent/capacitor-shell
-# Scripts use absolute $CM_BUILD_DIR paths so they work regardless of the
-# build's working directory.
+# Codemagic requires this file at the REPOSITORY ROOT. This is a monorepo:
+# the Capacitor app lives in VinPoker/, so each script cd's into it using an
+# absolute $CM_BUILD_DIR path (CM_BUILD_DIR = the repo clone root on Codemagic).
 #
 # Owner quick start (non-technical):
-#   1. Sign up at codemagic.io with the GitHub account that owns this repo.
-#   2. Add this repository. When asked for the monorepo path, type: VinPoker
-#   3. Pick branch agent/capacitor-shell, then run the `android-debug` workflow.
-#   4. Codemagic emails an installable APK to the address below. Download it on
-#      an Android phone and install (allow "unknown sources").
+#   1. On the app's codemagic.yaml tab, pick branch agent/capacitor-shell and
+#      press "Check for configuration files" — this file will be detected.
+#   2. Run the `android-debug` workflow (Start new build, branch agent/capacitor-shell).
+#   3. Codemagic emails an installable APK to the address below. Install it on an
+#      Android phone (allow "unknown sources").
 #   The `ios-release` workflow only works AFTER Apple Developer signing is
 #   connected in Codemagic — leave it alone until then.
 
