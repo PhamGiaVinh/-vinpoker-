@@ -25,10 +25,11 @@ export function TdAiAnswerCard({ answer }: { answer: TdAnswer }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-4">
-      {/* DEMO banner — must always be visible */}
+      {/* Advisory banner — always visible. AI answers and the offline keyword
+          fallback get different wording, but BOTH say it is not a ruling. */}
       <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>{TD_DEMO_NOTICE_VI}</span>
+        <span>{answer.source === "ai" ? t("tdAi.advisoryBanner") : TD_DEMO_NOTICE_VI}</span>
       </div>
 
       <Section title={t("tdAi.answer.recommendation")}>{answer.recommendationVi}</Section>
