@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Tournament } from "@/types/tournament";
 import { ClockPanel } from "./ClockPanel";
 import { TableDrawPanel } from "./TableDrawPanel";
-import { LeaderboardPanel } from "./LeaderboardPanel";
+import { PlayersListPanel } from "./PlayersListPanel";
 import { BlindStructurePanel } from "./BlindStructurePanel";
 import { PrizeStructurePanel } from "./PrizeStructurePanel";
 import { TournamentLiveView } from "./TournamentLiveView";
@@ -79,7 +79,7 @@ export function FloorTDPanel({
         {sub === "status" && <TournamentLiveView tournamentId={tid} />}
         {sub === "clock" && <ClockPanel tournamentId={tid} refreshTrigger={refreshTrigger} />}
         {sub === "tables" && <TableDrawPanel tournamentId={tid} refreshTrigger={refreshTrigger} />}
-        {sub === "players" && <LeaderboardPanel tournamentId={tid} refreshTrigger={refreshTrigger} />}
+        {sub === "players" && <PlayersListPanel tournament={tournament} refreshTrigger={refreshTrigger} />}
         {sub === "levels" && <BlindStructurePanel tournamentId={tid} />}
         {sub === "payouts" && (
           <div className="space-y-4">
