@@ -387,13 +387,23 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setBetAmount("");
 
     if (handId) {
-      await supabase.functions.invoke("tournament-live-update", {
+      const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: {
           tournament_id: tournamentId, action: "record_action", hand_id: handId,
           player_id: playerId, entry_number: player.entry_number,
           street: currentStreet, action_type: actionType, action_amount: amount, action_order: currentOrder,
         },
       });
+      // Server-side validation (T4): in "enforce" mode the Edge function returns a
+      // 422 with a clear message; surface it so the operator can correct entry. In
+      // the default "warn" mode this branch never fires (the action is recorded and
+      // only an advisory `validation` field rides along).
+      const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
+      if (rejection) {
+        toast.error(typeof rejection === "string" ? rejection : "Hành động không hợp lệ theo luật.");
+      } else if ((data as any)?.validation?.code) {
+        toast.warning(`Cảnh báo luật: ${(data as any).validation.message || (data as any).validation.code}`);
+      }
     }
   };
 
