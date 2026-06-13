@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle, Volume2, VolumeX, Bot } from "lucide-react";
+import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle, Volume2, VolumeX, Bot, Radio, History } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { displayCard } from "@/components/shared/CardSlotPicker";
 import { getPosition } from "@/lib/tournament/button";
@@ -24,6 +24,13 @@ import {
   type SeatInfo,
   type ActionLog,
 } from "./LiveFelt";
+import { ReplayScrubber } from "./ReplayScrubber";
+import { HandSelector } from "./HandSelector";
+import {
+  detectBigBlind,
+  type ReplayHand,
+  type ReplayFrame,
+} from "@/lib/tracker-poker/replayEngine";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -86,6 +93,11 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
       return true;
     }
   });
+  // ----- Replay mode (T2b) — frozen snapshot over the live machinery -----
+  const [mode, setMode] = useState<"live" | "replay">("live");
+  const [replayHandId, setReplayHandId] = useState<string | null>(null);
+  const [replayHand, setReplayHand] = useState<ReplayHand | null>(null);
+  const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const requestSeqRef = useRef(0);
   const initialLoadedRef = useRef(false);
@@ -311,6 +323,10 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setFatalError(null);
     setSoftErrorAt(null);
     setLastUpdatedAt(null);
+    setMode("live");
+    setReplayHandId(null);
+    setReplayHand(null);
+    setReplayFrame(null);
     setLoading(true);
     loadAllData();
   }, [tournamentId, loadAllData]);
@@ -453,6 +469,14 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     [bigBlind]
   );
 
+  // Replay uses the historical hand's own big blind (the live clock may have moved on).
+  const replayBigBlind = replayHand ? detectBigBlind(replayHand) : 0;
+  const replayFormatBB = useCallback(
+    (n: number) =>
+      replayBigBlind > 0 ? `${(n / replayBigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null,
+    [replayBigBlind]
+  );
+
   // The most recent actor gets the spotlight ring on the felt.
   const latestAction = actions.length > 0 ? actions[actions.length - 1] : null;
   const lastActorId = latestAction?.player_id ?? null;
@@ -553,6 +577,44 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
       </Card>
     );
   }
+
+  const isReplay = mode === "replay";
+  // The felt renders either live state or the current replay frame — same props.
+  const feltProps = isReplay
+    ? replayFrame
+      ? {
+          seats: replayFrame.seats,
+          lastActorId: replayFrame.lastActorId,
+          displayCards: replayFrame.displayCards,
+          potSize: replayFrame.potSize,
+          potBreakdown: replayFrame.potBreakdown,
+          multiTableUnresolved: false,
+          handNumber: replayHand?.hand_number ?? null,
+          latestAction: replayFrame.latestAction,
+          formatBB: replayFormatBB,
+        }
+      : {
+          seats: [] as SeatInfo[],
+          lastActorId: null,
+          displayCards: ["", "", "", "", ""],
+          potSize: 0,
+          potBreakdown: null,
+          multiTableUnresolved: false,
+          handNumber: null,
+          latestAction: null as ActionLog | null,
+          formatBB: replayFormatBB,
+        }
+    : {
+        seats: activeSeatsToRender,
+        lastActorId,
+        displayCards,
+        potSize,
+        potBreakdown,
+        multiTableUnresolved,
+        handNumber,
+        latestAction,
+        formatBB,
+      };
 
   return (
     <div className="space-y-3">
@@ -684,20 +746,49 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
         </div>
       )}
 
+      {/* Live / Replay mode toggle */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
+          <button
+            onClick={() => setMode("live")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
+              !isReplay ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground hover:text-emerald-300"
+            }`}
+          >
+            <Radio className="w-3.5 h-3.5" /> LIVE
+          </button>
+          <button
+            onClick={() => setMode("replay")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border ${
+              isReplay ? "bg-amber-500/20 text-amber-300" : "text-muted-foreground hover:text-amber-300"
+            }`}
+          >
+            <History className="w-3.5 h-3.5" /> Phát lại
+          </button>
+        </div>
+        {isReplay && (
+          <HandSelector
+            tournamentId={tournamentId}
+            tableId={effectiveTableId}
+            selectedHandId={replayHandId}
+            onSelectHand={(id, h) => {
+              setReplayHandId(id);
+              setReplayHand(h);
+            }}
+          />
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
-        <LiveFelt
-          seats={activeSeatsToRender}
-          lastActorId={lastActorId}
-          displayCards={displayCards}
-          potSize={potSize}
-          potBreakdown={potBreakdown}
-          multiTableUnresolved={multiTableUnresolved}
-          handNumber={handNumber}
-          latestAction={latestAction}
-          formatBB={formatBB}
-        />
+        <div>
+          <LiveFelt {...feltProps} />
+          {isReplay && replayHand && (
+            <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
+          )}
+        </div>
 
         <div className="space-y-3">
+          {!isReplay && (
           <div className="bg-card border border-emerald-500/20 rounded-xl p-3">
             <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2 pb-2 border-b border-emerald-500/10">
               {t("tournamentLive.liveView.actionTimeline")}
@@ -758,6 +849,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
               ))}
             </div>
           </div>
+          )}
 
           <div className="bg-card border border-emerald-500/20 rounded-xl p-3">
             <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2 pb-2 border-b border-emerald-500/10">
