@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Play, Pause, SkipForward, RefreshCw, Timer } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, Minus, Plus, RefreshCw, Timer } from "lucide-react";
 
 interface ClockData {
   tournament_id: string;
@@ -154,10 +154,43 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
                   <Play className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.resume")}
                 </Button>
               )}
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-12 px-4 text-base"
+                onClick={() => handleClockAction("previous_level")}
+                disabled={loading || (clock.current_level?.level_number ?? 1) <= 1}
+              >
+                <SkipBack className="w-5 h-5 mr-1.5" /> Về level trước
+              </Button>
               <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("next_level", { current_level: (clock.current_level?.level_number ?? 0) + 1 })} disabled={loading}>
                 <SkipForward className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.nextLevel")}
               </Button>
             </div>
+          </div>
+
+          {/* Chỉnh phút — adjusts ONLY the remaining time (shifts clock), never the blind
+              structure. Disabled until the clock has a current level. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Chỉnh giờ:</span>
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-11 px-3 text-sm"
+              onClick={() => handleClockAction("adjust_time", { delta_seconds: -60 })}
+              disabled={loading || !clock.current_level}
+            >
+              <Minus className="w-4 h-4 mr-1" /> 1 phút
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-11 px-3 text-sm"
+              onClick={() => handleClockAction("adjust_time", { delta_seconds: 60 })}
+              disabled={loading || !clock.current_level}
+            >
+              <Plus className="w-4 h-4 mr-1" /> 1 phút
+            </Button>
           </div>
 
           {clock.current_level && (
