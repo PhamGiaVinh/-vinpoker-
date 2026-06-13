@@ -77,7 +77,7 @@ export const Layout = () => {
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-4 px-6 h-16">
+        <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-2 md:gap-4 px-3 md:px-6 h-16">
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Mobile "☰" secondary-nav menu — holds routes without a bottom-nav slot.
                 On the left so the right action cluster never overflows at 360px. */}
@@ -107,12 +107,42 @@ export const Layout = () => {
                     </DropdownMenuItem>
                   );
                 })}
+                {(isMedia || isAdmin) && (
+                  <DropdownMenuItem
+                    onClick={() => nav("/media")}
+                    className={cn("gap-2.5 cursor-pointer", location.pathname === "/media" && "text-primary")}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Media Center
+                  </DropdownMenuItem>
+                )}
+                {user && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => nav("/inbox")} className="gap-2.5 cursor-pointer">
+                      <MessageCircle className="w-4 h-4" />
+                      {t("layout.inbox", "Tin nhắn")}
+                      {unreadCount > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => signOut()}
+                      className="gap-2.5 cursor-pointer text-destructive focus:text-destructive"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      {t("layout.signOut", "Đăng xuất")}
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
             <NavLink to="/" className="flex items-center gap-2 shrink-0">
               <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg object-cover" />
-              <div className="font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
+              <div className="hidden sm:block font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
                 VBacker
               </div>
             </NavLink>
@@ -144,7 +174,7 @@ export const Layout = () => {
             {user && (
               <NavLink
                 to="/inbox"
-                className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary inline-flex items-center gap-1.5 transition-colors"
+                className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary hidden md:inline-flex items-center gap-1.5 transition-colors"
                 title={t("layout.inbox")}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -155,17 +185,10 @@ export const Layout = () => {
                 )}
               </NavLink>
             )}
-            {user && <SupportFloatingButton />}
-
-            {(isMedia || isAdmin) && (
-              <NavLink
-                to="/media"
-                className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-purple-500/40 text-purple-400 text-[11px] font-bold tracking-wider hover:bg-purple-500/15"
-                title="Media Center"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                MEDIA
-              </NavLink>
+            {user && (
+              <div className="hidden md:block">
+                <SupportFloatingButton />
+              </div>
             )}
 
             {/* Mobile-only operator entry — role-aware menu (TD + cashier). Each
@@ -175,11 +198,11 @@ export const Layout = () => {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/15 border border-primary/40 text-primary text-xs font-bold tracking-wider hover:bg-primary/25 transition-colors"
+                    className="md:hidden inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
                     aria-label="Vận hành CLB"
                   >
-                    <Wallet className="w-4 h-4" />
-                    VẬN HÀNH
+                    <Wallet className="w-[18px] h-[18px] shrink-0" />
+                    <span className="hidden min-[400px]:inline">VẬN HÀNH</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
@@ -260,7 +283,7 @@ export const Layout = () => {
                 onClick={() => signOut()}
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:text-destructive h-9"
+                className="hidden md:flex text-muted-foreground hover:text-destructive h-9"
                 title={t("layout.signOut")}
               >
                 <LogOut className="w-4 h-4" />
