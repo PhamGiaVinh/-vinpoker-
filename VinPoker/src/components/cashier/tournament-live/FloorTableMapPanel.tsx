@@ -241,11 +241,11 @@ export function FloorTableMapPanel({
               <button
                 key={e.table.tt_id}
                 onClick={() => setDetailTable(e.table)}
-                className="rounded-lg border border-border bg-card p-2 text-center transition-colors hover:border-primary/50"
+                className="rounded-lg border border-border bg-card p-1.5 transition-colors hover:border-primary/50"
+                title={`${e.table.table_name} · ${meta.label} · ${e.occ}/${e.table.max_seats}`}
               >
-                <div className="text-sm font-semibold leading-tight">{e.table.table_number ?? "?"}</div>
-                <div className="font-mono text-[10px] text-muted-foreground">{e.occ}/{e.table.max_seats}</div>
-                <span className={`mx-auto mt-0.5 block h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                <TableIcon number={e.table.table_number} colorClass={meta.text} />
+                <div className="mt-0.5 text-center font-mono text-[9px] text-muted-foreground">{e.occ}/{e.table.max_seats}</div>
               </button>
             );
           })}
@@ -296,5 +296,30 @@ export function FloorTableMapPanel({
 
       <SeatReceiptDialog open={receipt !== null} onOpenChange={(v) => { if (!v) setReceipt(null); }} receipt={receipt} />
     </Card>
+  );
+}
+
+/**
+ * Poker-table top-view icon (felt + seat marks + center number). Felt + seats use
+ * currentColor from `colorClass` (status tone, theme-token based); the number sits
+ * on top in the normal foreground color so it stays readable in any status/theme.
+ * Scales to the grid cell (w-full) so the density toggle resizes it for free.
+ */
+function TableIcon({ number, colorClass }: { number: number | null; colorClass: string }) {
+  return (
+    <div className="relative">
+      <span className={colorClass}>
+        <svg viewBox="0 0 46 30" className="block w-full" aria-hidden="true">
+          <rect x="3" y="7" width="40" height="16" rx="8" fill="currentColor" fillOpacity={0.16} stroke="currentColor" strokeWidth={1.4} />
+          <g fill="currentColor">
+            <circle cx="13" cy="5.5" r="1.4" /><circle cx="23" cy="5.5" r="1.4" /><circle cx="33" cy="5.5" r="1.4" />
+            <circle cx="13" cy="24.5" r="1.4" /><circle cx="23" cy="24.5" r="1.4" /><circle cx="33" cy="24.5" r="1.4" />
+          </g>
+        </svg>
+      </span>
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold leading-none">
+        {number ?? "?"}
+      </span>
+    </div>
   );
 }
