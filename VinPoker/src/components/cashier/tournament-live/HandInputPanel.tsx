@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { CardSlotPicker, type Card, RANKS, SUIT_SYMBOL, SUIT_COLOR, isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { nextButton, getPosition } from "@/lib/tournament/button";
+import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import type { User } from "@supabase/supabase-js";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -230,6 +231,23 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const highestBet = useMemo(() => {
     return Math.max(0, ...players.filter((p) => !p.is_folded).map((p) => p.current_bet));
   }, [players]);
+
+  const potBreakdown = useMemo(
+    () =>
+      computePotBreakdown(
+        players.map((p) => ({
+          player_id: p.player_id,
+          total_bet: p.total_bet,
+          is_folded: p.is_folded,
+        }))
+      ),
+    [players]
+  );
+
+  const playerName = useCallback(
+    (id: string) => players.find((p) => p.player_id === id)?.display_name || id.slice(0, 6),
+    [players]
+  );
 
   const activePlayers = useMemo(() => players.filter((p) => !p.is_folded && !p.is_all_in), [players]);
 
@@ -452,6 +470,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           hand_number: Number(handNumber), hand_time: new Date().toISOString(),
           community_cards: communityCards.filter((c): c is Card => c !== null),
           pot_size: potSize, players: finalPlayers,
+          side_pots: toSidePotsJson(potBreakdown),
           actions: actions.map((a) => ({
             player_id: a.player_id, entry_number: players.find((p) => p.player_id === a.player_id)?.entry_number || 1,
             action_type: a.action_type, action_amount: a.amount, action_order: a.action_order, street: a.street,
@@ -671,6 +690,46 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               Next <ChevronRight className="w-3 h-3 inline" />
             </button>
           </div>
+
+          {/* POT BREAKDOWN — only when an all-in splits the pot or a bet is uncalled */}
+          {(potBreakdown.sidePots.length > 0 || potBreakdown.uncalled) && (
+            <div className="p-3 bg-card border border-amber-500/30 rounded-lg space-y-2 shadow-sm">
+              <div className="text-[10px] font-bold text-amber-400/80 uppercase tracking-widest">
+                Pot Breakdown
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {potBreakdown.pots.map((pot, i) => (
+                  <div
+                    key={i}
+                    className={`px-2.5 py-1.5 rounded-md border text-xs ${
+                      i === 0
+                        ? "border-emerald-500/40 bg-emerald-950/20"
+                        : "border-amber-500/40 bg-amber-950/20"
+                    }`}
+                  >
+                    <span className={`font-bold ${i === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                      {i === 0 ? "Main Pot" : `Side Pot ${i}`}: {formatStack(pot.amount)}
+                    </span>
+                    <span className="ml-1.5 text-muted-foreground">
+                      {pot.eligible_player_ids.length === 0
+                        ? "— không ai đủ điều kiện"
+                        : `· ${pot.eligible_player_ids.map(playerName).join(", ")}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {potBreakdown.uncalled && (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-orange-500/40 bg-orange-950/20 text-xs text-orange-300">
+                  <span className="font-bold">⚠ Cược chưa được theo:</span>
+                  <span>
+                    {formatStack(potBreakdown.uncalled.amount)} của{" "}
+                    <strong>{playerName(potBreakdown.uncalled.player_id)}</strong> — sẽ hoàn lại nếu
+                    không ai theo thêm
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* SHOWDOWN: Hole cards input */}
           {currentStreet === "showdown" && (

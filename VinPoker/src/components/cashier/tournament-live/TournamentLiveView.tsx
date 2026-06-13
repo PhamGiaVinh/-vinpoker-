@@ -10,6 +10,11 @@ import { displayCard } from "@/components/shared/CardSlotPicker";
 import { getPosition } from "@/lib/tournament/button";
 import { PokerCard, TrackerVisualStyles } from "./PokerVisuals";
 import { playPokerLiveSound, type PokerLiveSound } from "@/lib/pokerLiveSound";
+import {
+  computePotBreakdown,
+  contributionsFromActions,
+  type PotBreakdown,
+} from "@/lib/tracker-poker/potEngine";
 
 interface SeatInfo {
   player_id: string;
@@ -99,6 +104,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [communityCards, setCommunityCards] = useState<string[]>([]);
   const [potSize, setPotSize] = useState(0);
+  const [potBreakdown, setPotBreakdown] = useState<PotBreakdown | null>(null);
   const [handNumber, setHandNumber] = useState<number | null>(null);
   const [handTableId, setHandTableId] = useState<string | null>(null);
   const [buttonSeat, setButtonSeat] = useState(1);
@@ -203,6 +209,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     let nextCommunity: string[] = [];
     let nextPot = 0;
     let nextActions: ActionLog[] = [];
+    let nextBreakdown: PotBreakdown | null = null;
 
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
@@ -279,6 +286,8 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
           last_action: lastActionMap.get(s.player_id),
           hole_cards: holeCardsMap.get(s.player_id),
         }));
+
+        nextBreakdown = computePotBreakdown(contributionsFromActions(actionData as any));
       }
     }
 
@@ -289,6 +298,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setCommunityCards(nextCommunity);
     setPotSize(nextPot);
     setActions(nextActions);
+    setPotBreakdown(nextBreakdown);
 
     if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
@@ -872,6 +882,25 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
                   )}
                 </div>
               </div>
+              {potBreakdown && potBreakdown.sidePots.length > 0 && (
+                <div className="mt-1 flex flex-wrap justify-center gap-1">
+                  {potBreakdown.pots.map((pot, i) => (
+                    <span
+                      key={i}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-black/45 border ${
+                        i === 0
+                          ? "border-emerald-400/40 text-emerald-300"
+                          : "border-amber-400/40 text-amber-300"
+                      }`}
+                    >
+                      {i === 0 ? "Main" : `Side ${i}`} {formatStack(pot.amount)}
+                      <span className="ml-1 font-normal opacity-60">
+                        ({pot.eligible_player_ids.length})
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
