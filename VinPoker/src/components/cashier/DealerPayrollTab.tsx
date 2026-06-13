@@ -23,8 +23,9 @@ import {
   useDealerPayroll, type DealerPayrollRow,
   savePayroll, addPayrollAdjustment, loadPayrollAdjustments, getSavedPayroll, deletePayrollAdjustment,
   submitPayroll, approvePayroll, lockPayroll, rejectPayroll, resubmitPayroll,
+  preparePayment, markPaid, reconcilePayment, getPaymentRecord,
   getPayrollAuditLog,
-  type PayrollAdjustmentRow, type SavedPayrollRecord,
+  type PayrollAdjustmentRow, type SavedPayrollRecord, type PaymentRecord,
 } from "@/hooks/useDealerPayroll";
 import {
   Users, RefreshCw, Download, Calculator, Save, Plus, Trash2, Loader2, Moon, FileText,
@@ -284,6 +285,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const [lockedAtMeta, setLockedAtMeta] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
+  // Payment lifecycle (PL1): metadata + payment record + action inputs
+  const [paymentPreparedByMeta, setPaymentPreparedByMeta] = useState<string | null>(null);
+  const [paymentPreparedAtMeta, setPaymentPreparedAtMeta] = useState<string | null>(null);
+  const [paidByMeta, setPaidByMeta] = useState<string | null>(null);
+  const [paidAtMeta, setPaidAtMeta] = useState<string | null>(null);
+  const [reconciledByMeta, setReconciledByMeta] = useState<string | null>(null);
+  const [reconciledAtMeta, setReconciledAtMeta] = useState<string | null>(null);
+  const [paymentRecord, setPaymentRecord] = useState<PaymentRecord | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
+  const [paymentRef, setPaymentRef] = useState("");
+  const [reconRef, setReconRef] = useState("");
+  const [paymentBusy, setPaymentBusy] = useState(false);
+
   // Owner-finance UI state
   const [costRankingOn, setCostRankingOn] = useState(false);
   const [anomaliesExpanded, setAnomaliesExpanded] = useState(false);
@@ -327,6 +341,9 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       approvedBy: aBy, approvedAt: aAt,
       lockedBy: lBy, lockedAt: lAt,
       rejectedBy: rBy, rejectedAt: rAt, rejectionReason: rReason,
+      paymentPreparedBy: ppBy, paymentPreparedAt: ppAt,
+      paidBy: pdBy, paidAt: pdAt,
+      reconciledBy: rcBy, reconciledAt: rcAt,
     } = await getSavedPayroll(activeClubId, currentRange.year, currentRange.month);
     setSavedPeriodId(periodId);
     setPayrollStatus(status);
@@ -339,15 +356,32 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     setRejectedBy(rBy);
     setRejectedAt(rAt);
     setStoredRejectionReason(rReason);
+    setPaymentPreparedByMeta(ppBy);
+    setPaymentPreparedAtMeta(ppAt);
+    setPaidByMeta(pdBy);
+    setPaidAtMeta(pdAt);
+    setReconciledByMeta(rcBy);
+    setReconciledAtMeta(rcAt);
     setLastRefreshedAt(new Date());
     const recordMap: Record<string, SavedPayrollRecord> = {};
     for (const r of records) { recordMap[r.dealer_id] = r; }
     setSavedRecords(recordMap);
     if (periodId) {
-      const adjMap = await loadPayrollAdjustments(periodId);
-      setAdjustments(adjMap);
+      // Adjustments load is isolated: the known ambiguous-embed error must not
+      // block payment-record loading below.
+      try {
+        setAdjustments(await loadPayrollAdjustments(periodId));
+      } catch {
+        setAdjustments({});
+      }
+      try {
+        setPaymentRecord(await getPaymentRecord(periodId));
+      } catch {
+        setPaymentRecord(null);
+      }
     } else {
       setAdjustments({});
+      setPaymentRecord(null);
     }
   }, [activeClubId, currentRange, fetchPayroll]);
 
@@ -525,6 +559,54 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       toast.error(e?.message ?? "Lỗi chuyển về nháp");
     }
   }, [user, savedPeriodId]);
+
+  const handlePreparePayment = useCallback(async () => {
+    if (!user || !savedPeriodId || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      await preparePayment(savedPeriodId, user.id, paymentMethod);
+      toast.success("Đã chuẩn bị chi trả");
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi chuẩn bị chi trả");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }, [user, savedPeriodId, paymentMethod, paymentBusy, refreshAll]);
+
+  const handleMarkPaid = useCallback(async () => {
+    if (!user || !savedPeriodId || paymentBusy) return;
+    if (!paymentRef.trim()) {
+      toast.error("Vui lòng nhập mã/tham chiếu thanh toán");
+      return;
+    }
+    setPaymentBusy(true);
+    try {
+      await markPaid(savedPeriodId, user.id, paymentRef.trim());
+      toast.success("Đã ghi nhận chi trả");
+      setPaymentRef("");
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi ghi nhận chi trả");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }, [user, savedPeriodId, paymentRef, paymentBusy, refreshAll]);
+
+  const handleReconcile = useCallback(async () => {
+    if (!user || !savedPeriodId || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      await reconcilePayment(savedPeriodId, user.id, reconRef.trim() || undefined);
+      toast.success("Đã đối soát");
+      setReconRef("");
+      await refreshAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi đối soát");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }, [user, savedPeriodId, reconRef, paymentBusy, refreshAll]);
 
   const openAuditLog = useCallback(async () => {
     if (!savedPeriodId) return;
@@ -1264,14 +1346,20 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                   payrollStatus === "approved" ? "bg-emerald-500" :
                   payrollStatus === "locked" ? "bg-zinc-500" :
                   payrollStatus === "rejected" ? "bg-red-500" :
-                  payrollStatus === "submitted" ? "bg-amber-500" : "bg-zinc-400"
+                  payrollStatus === "submitted" ? "bg-amber-500" :
+                  payrollStatus === "payment_prepared" ? "bg-amber-400" :
+                  payrollStatus === "paid" ? "bg-emerald-500" :
+                  payrollStatus === "reconciled" ? "bg-emerald-400" : "bg-zinc-400"
                 }`} />
                 <span className="text-sm font-medium text-zinc-200">
                   {payrollStatus === "draft" ? "Bản nháp" :
                    payrollStatus === "submitted" ? "Chờ duyệt" :
                    payrollStatus === "approved" ? "Đã duyệt" :
                    payrollStatus === "rejected" ? "Bị từ chối" :
-                   payrollStatus === "locked" ? "Đã khoá sổ" : "—"}
+                   payrollStatus === "locked" ? "Đã khoá sổ" :
+                   payrollStatus === "payment_prepared" ? "Chờ chi trả" :
+                   payrollStatus === "paid" ? "Đã chi trả" :
+                   payrollStatus === "reconciled" ? "Đã đối soát" : "—"}
                 </span>
               </div>
               <div className="text-[11px] text-zinc-500 space-y-0.5">
@@ -1293,6 +1381,24 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     {" · "}{new Date(lockedAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
+                {paymentPreparedAtMeta && (
+                  <div>
+                    Chuẩn bị chi bởi: <span className="text-zinc-400">{paymentPreparedByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(paymentPreparedAtMeta).toLocaleString("vi-VN")}
+                  </div>
+                )}
+                {paidAtMeta && (
+                  <div className="text-emerald-300/80">
+                    Chi trả bởi: <span className="text-emerald-300">{paidByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(paidAtMeta).toLocaleString("vi-VN")}
+                  </div>
+                )}
+                {reconciledAtMeta && (
+                  <div className="text-emerald-300/80">
+                    Đối soát bởi: <span className="text-emerald-300">{reconciledByMeta?.slice(0, 8) ?? "—"}</span>
+                    {" · "}{new Date(reconciledAtMeta).toLocaleString("vi-VN")}
+                  </div>
+                )}
                 {payrollStatus === "rejected" && (
                   <div className="text-red-300">
                     Từ chối bởi: {rejectedBy?.slice(0, 8) ?? "—"}
@@ -1311,6 +1417,23 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               >
                 Xem audit log →
               </button>
+
+              {paymentRecord && (
+                <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-[11px] space-y-0.5">
+                  <div className="text-zinc-300 font-medium">Hồ sơ chi trả</div>
+                  <div className="text-zinc-500">
+                    Số tiền chi: <span className="text-emerald-300">{formatVND(paymentRecord.total_net_vnd)}</span>
+                    {" · "}{paymentRecord.dealer_count} dealer
+                  </div>
+                  <div className="text-zinc-500">
+                    Hình thức: <span className="text-zinc-400">{paymentRecord.payment_method ?? "—"}</span>
+                    {paymentRecord.payment_ref ? <> · Mã GD: <span className="text-zinc-400">{paymentRecord.payment_ref}</span></> : null}
+                  </div>
+                  {paymentRecord.reconciliation_ref && (
+                    <div className="text-zinc-500">Mã đối soát: <span className="text-zinc-400">{paymentRecord.reconciliation_ref}</span></div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right: actions */}
@@ -1362,6 +1485,69 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 >
                   Sửa lại và gửi duyệt
                 </button>
+              )}
+              {payrollStatus === "locked" && (
+                <>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="bank_transfer">Chuyển khoản</option>
+                    <option value="cash">Tiền mặt</option>
+                    <option value="e_wallet">Ví điện tử</option>
+                    <option value="other">Khác</option>
+                  </select>
+                  <button
+                    onClick={handlePreparePayment}
+                    disabled={paymentBusy}
+                    className="h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-medium"
+                  >
+                    Chuẩn bị chi trả
+                  </button>
+                </>
+              )}
+              {payrollStatus === "payment_prepared" && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Mã/tham chiếu thanh toán..."
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={handleMarkPaid}
+                    disabled={paymentBusy}
+                    className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-medium"
+                  >
+                    Xác nhận đã chi trả
+                  </button>
+                </>
+              )}
+              {payrollStatus === "paid" && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Mã đối soát (tuỳ chọn)..."
+                    value={reconRef}
+                    onChange={(e) => setReconRef(e.target.value)}
+                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    onClick={handleReconcile}
+                    disabled={paymentBusy}
+                    className="h-8 px-3 rounded-md border border-emerald-500 text-emerald-400 hover:bg-emerald-950 disabled:opacity-50 text-xs font-medium"
+                  >
+                    Đối soát
+                  </button>
+                  <p className="text-[10px] text-zinc-600">Người đối soát phải khác người chi trả.</p>
+                </>
+              )}
+              {payrollStatus === "reconciled" && (
+                <div className="text-[11px] text-emerald-400 border border-emerald-500/40 rounded-md px-3 py-2 text-center">
+                  ✓ Đã hoàn tất chi trả &amp; đối soát
+                </div>
               )}
             </div>
           </div>

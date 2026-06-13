@@ -257,6 +257,90 @@ export async function resubmitPayroll(
   return data as boolean;
 }
 
+// ── Payment lifecycle (PL1) ────────────────────────────────────────────────────
+
+export interface PaymentRecord {
+  id: string;
+  period_id: string;
+  club_id: string;
+  status: string;
+  total_net_vnd: number;
+  dealer_count: number;
+  payment_method: string | null;
+  payment_ref: string | null;
+  note: string | null;
+  prepared_by: string | null;
+  prepared_at: string | null;
+  paid_by: string | null;
+  paid_at: string | null;
+  reconciled_by: string | null;
+  reconciled_at: string | null;
+  reconciliation_ref: string | null;
+  reconciliation_note: string | null;
+}
+
+/** Prepare payment (locked → payment_prepared). Returns new payment_records id. */
+export async function preparePayment(
+  periodId: string,
+  userId: string,
+  paymentMethod: string,
+  note?: string
+): Promise<string> {
+  const { data, error } = await (supabase as any).rpc("prepare_payroll_payment", {
+    p_period_id: periodId,
+    p_user_id: userId,
+    p_payment_method: paymentMethod,
+    p_note: note ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Mark payroll paid (payment_prepared → paid). payment_ref required. */
+export async function markPaid(
+  periodId: string,
+  userId: string,
+  paymentRef: string,
+  note?: string
+): Promise<boolean> {
+  const { data, error } = await (supabase as any).rpc("mark_payroll_paid", {
+    p_period_id: periodId,
+    p_user_id: userId,
+    p_payment_ref: paymentRef,
+    p_note: note ?? null,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/** Reconcile payment (paid → reconciled). Reconciler must differ from payer. */
+export async function reconcilePayment(
+  periodId: string,
+  userId: string,
+  reconciliationRef?: string,
+  note?: string
+): Promise<boolean> {
+  const { data, error } = await (supabase as any).rpc("reconcile_payroll_payment", {
+    p_period_id: periodId,
+    p_user_id: userId,
+    p_reconciliation_ref: reconciliationRef ?? null,
+    p_note: note ?? null,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/** Load the payment record for a period (or null). Read-only. */
+export async function getPaymentRecord(periodId: string): Promise<PaymentRecord | null> {
+  const { data, error } = await (supabase as any)
+    .from("payment_records")
+    .select("*")
+    .eq("period_id", periodId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PaymentRecord) ?? null;
+}
+
 /**
  * Add a payroll adjustment to a saved dealer_payroll record.
  */
@@ -321,11 +405,17 @@ export async function getSavedPayroll(
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
+  paymentPreparedBy: string | null;
+  paymentPreparedAt: string | null;
+  paidBy: string | null;
+  paidAt: string | null;
+  reconciledBy: string | null;
+  reconciledAt: string | null;
   records: SavedPayrollRecord[];
 }> {
-  const { data: period } = await supabase
+  const { data: period } = await (supabase as any)
     .from("payroll_periods")
-    .select("id, status, submitted_by, submitted_at, approved_by, approved_at, locked_by, locked_at, rejected_by, rejected_at, rejection_reason")
+    .select("id, status, submitted_by, submitted_at, approved_by, approved_at, locked_by, locked_at, rejected_by, rejected_at, rejection_reason, payment_prepared_by, payment_prepared_at, paid_by, paid_at, reconciled_by, reconciled_at")
     .eq("club_id", clubId)
     .eq("period_year", year)
     .eq("period_month", month)
@@ -344,6 +434,12 @@ export async function getSavedPayroll(
       rejectedBy: null,
       rejectedAt: null,
       rejectionReason: null,
+      paymentPreparedBy: null,
+      paymentPreparedAt: null,
+      paidBy: null,
+      paidAt: null,
+      reconciledBy: null,
+      reconciledAt: null,
       records: [],
     };
   }
@@ -366,6 +462,12 @@ export async function getSavedPayroll(
     rejectedBy: period.rejected_by,
     rejectedAt: period.rejected_at,
     rejectionReason: period.rejection_reason,
+    paymentPreparedBy: period.payment_prepared_by,
+    paymentPreparedAt: period.payment_prepared_at,
+    paidBy: period.paid_by,
+    paidAt: period.paid_at,
+    reconciledBy: period.reconciled_by,
+    reconciledAt: period.reconciled_at,
     records: (records ?? []) as SavedPayrollRecord[],
   };
 }
