@@ -98,13 +98,15 @@ const UNPLANNED_AUTO_PICK_ENABLED = false;
 // resting dealer who is expected to be valid by swing time; execution enforces
 // the hard rest floor.
 const EXECUTE_MIN_REST_MINUTES = 13;
-// Owner policy (2026-06-14): do NOT spam Telegram with the routine "đang OT, cần
-// can thiệp thủ công" overdue alert (Pass 0c). With force-release disabled a
-// dealer on overtime is the EXPECTED state (no relief yet) and the floor already
-// sees it on the Dealer Swing map / ĐÀI CHỈ HUY — a Telegram ping every cron tick
-// for every overdue table is noise. The overdue-OT alert is now console-only.
-// (The rarer >45-min extended-OT alert is unaffected.) Flip true to restore it.
-const OT_OVERDUE_TELEGRAM_ENABLED = false;
+// Owner policy (2026-06-14): do NOT spam Telegram with Pass 0c OT alerts — both
+// the per-tick "đang OT, cần can thiệp thủ công" overdue alert AND the >45-min
+// extended-OT alert. With force-release disabled a dealer on overtime is the
+// EXPECTED state (no relief yet) and the floor already sees it on the Dealer
+// Swing map / ĐÀI CHỈ HUY, so a Telegram ping every cron tick for every overdue
+// table is noise. Both OT alerts are now console-only. Flip true to restore the
+// Telegram pings. (Force-release failure alerts, if force-release is re-enabled,
+// are NOT gated by this flag.)
+const OT_ALERT_TELEGRAM_ENABLED = false;
 
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
@@ -1112,7 +1114,7 @@ Deno.serve(async (req: Request) => {
               // Owner policy: NEVER force-release. The dealer stays on OT (Pass R
               // stamped overtime_started_at). A dealer on OT is the EXPECTED state
               // and the floor sees it in the UI, so the per-tick overdue alert is
-              // console-only by default (OT_OVERDUE_TELEGRAM_ENABLED) — no Telegram.
+              // console-only by default (OT_ALERT_TELEGRAM_ENABLED) — no Telegram.
               console.warn(`[Pass 0c] ⚠️ Found ${overdueAssignments.length} overdue assignments (>${forceReleaseThreshold}min) — on OT, manual intervention (force-release disabled)`);
               for (const a of overdueAssignments) {
                 const overdueMin = Math.floor(
@@ -1121,7 +1123,7 @@ Deno.serve(async (req: Request) => {
                 const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
                 const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
                 console.warn(`[Pass 0c] 🔴 ${tableName} — ${dealerName}: overdue ${overdueMin}min, on OT (manual intervention)`);
-                if (OT_OVERDUE_TELEGRAM_ENABLED) {
+                if (OT_ALERT_TELEGRAM_ENABLED) {
                   criticalAlerts.push(`🔴 *${tableName}* — Dealer ${dealerName}: QUÁ HẠN ${overdueMin}ph — đang OT, cần can thiệp thủ công.`);
                 }
               }
@@ -1131,14 +1133,17 @@ Deno.serve(async (req: Request) => {
           if (otErr) {
             console.error("[Pass 0c] ❌ Extended OT query error:", otErr.message);
           } else if (extendedOtAssignments && extendedOtAssignments.length > 0) {
-            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min) — alert only`);
+            console.warn(`[Pass 0c] ⚠️ Found ${extendedOtAssignments.length} extended OT assignments (>45 min) — on OT (console-only)`);
             for (const a of extendedOtAssignments) {
               const otMin = Math.floor(
                 (Date.now() - new Date(a.overtime_started_at).getTime()) / 60_000
               );
               const tableName = (a.game_tables as any)?.table_name ?? a.table_id;
               const dealerName = (a.dealer_attendance as any)?.dealers?.full_name ?? "Unknown";
-              criticalAlerts.push(`⏱ *${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+              console.warn(`[Pass 0c] ⏱ ${tableName} — ${dealerName}: extended OT ${otMin}min`);
+              if (OT_ALERT_TELEGRAM_ENABLED) {
+                criticalAlerts.push(`⏱ *${tableName}* — Dealer ${dealerName}: OT ${otMin}ph (extended). Cần can thiệp!`);
+              }
             }
           }
 
