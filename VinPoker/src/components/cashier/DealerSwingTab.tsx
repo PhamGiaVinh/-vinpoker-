@@ -1881,6 +1881,17 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
       <Dialog open={createTableOpen} onOpenChange={(o) => { setCreateTableOpen(o); if (!o) { setPoolSearch(""); setSelectedPoolTableIds([]); setNewTableType("tournament"); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Thêm bàn từ pool</DialogTitle></DialogHeader>
+          {/* Scope clarity: All → global table; a tour selected → scoped to that tour. */}
+          <div className={[
+            "text-xs px-2.5 py-1.5 rounded border",
+            selectedTour
+              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
+              : "text-amber-400 border-amber-500/30 bg-amber-500/5",
+          ].join(" ")}>
+            {selectedTour
+              ? `Thêm bàn vào: ${(tours ?? []).find((t) => t.id === selectedTour)?.tour_name ?? "tour đang chọn"}`
+              : "Thêm bàn tổng thể (không thuộc tour nào)"}
+          </div>
           <div className="space-y-3">
             <Input
               placeholder="Tìm bàn..."
@@ -3194,15 +3205,17 @@ function TableGrid({
   );
 
   const filteredTables = useMemo(() => {
-    // Inactive tables are removed from the map entirely — they sit in the
-    // general pool (shift_id=null) and are not actionable here. Process-swing
-    // can close a table between renders; the next refetch will drop it.
+    // Inactive tables sit in the general pool and are not actionable here.
+    // Process-swing can close a table between renders; the next refetch drops it.
     const base = tables.filter((t) => t.status === "active");
-    if (!selectedTour) return base.filter((t) => tableAssignmentMap[t.id] != null);
-    const tourTables = base.filter((t) => t.shift_id === selectedTour);
-    if (tourTables.length > 0) return tourTables;
-    return base.filter((t) => t.shift_id == null);
-  }, [tables, selectedTour, tableAssignmentMap]);
+    // "Tổng thể" (All): show EVERY active table — including newly-opened tables
+    // that have no dealer yet (they render with the "Đợi dealer" status). The
+    // old `tableAssignmentMap[t.id] != null` filter hid dealerless tables.
+    if (!selectedTour) return base;
+    // Specific tour: show ONLY that tour's tables (shift_id match). No fallback
+    // to the global pool — that previously leaked unscoped tables into a tour.
+    return base.filter((t) => t.shift_id === selectedTour);
+  }, [tables, selectedTour]);
 
   // Safe handler when a swing timer expires: guards against cross-tab duplicate
   // and re-checks swing_processed_at before calling auto-break
@@ -3525,7 +3538,7 @@ function TableGrid({
                       <svg className="w-8 h-8 mb-1.5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
-                      <span className="text-xs text-zinc-600 mb-2">Trống</span>
+                      <span className="text-xs text-amber-500/80 mb-2">Đợi dealer</span>
                       <Button size="sm" variant="outline" className="text-sm h-11 px-5 text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/10"
                         onClick={() => onAssign(t.id)}>
                         <Users className="w-4 h-4 mr-1.5" /> Gán dealer
