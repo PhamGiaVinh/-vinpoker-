@@ -39,7 +39,30 @@ export function LeaderboardPanel({ tournamentId, refreshTrigger }: { tournamentI
           <div className="text-xs text-muted-foreground">
             Còn lại: {leaderboard.players_remaining} · ITM: {leaderboard.itm_places} · AVG: {leaderboard.average_stack?.toLocaleString() ?? "—"} · Prize Pool: {leaderboard.prize_pool?.toLocaleString() ?? "—"}
           </div>
-          <div className="overflow-auto">
+          {/* Mobile: stacked cards (no horizontal scroll on phone/tablet) */}
+          <div className="space-y-1.5 md:hidden">
+            {leaderboard.players.map((p, idx) => (
+              <div
+                key={`${p.player_id}-${p.entry_number}`}
+                className={`flex items-center gap-2 rounded-lg border p-2 ${p.is_itm ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums">
+                  {idx + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{p.player_name?.trim() || p.player_id.slice(0, 8)}</div>
+                  <div className="font-mono text-xs text-muted-foreground">{p.chip_count.toLocaleString()} chip</div>
+                </div>
+                <div className="shrink-0 text-right text-xs">
+                  {p.position ? <div className="text-muted-foreground">#{p.position}</div> : null}
+                  {p.is_itm && <div className="font-medium text-emerald-400">ITM{p.prize ? ` · ${p.prize.toLocaleString()}` : ""}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: full table */}
+          <div className="hidden overflow-auto md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
