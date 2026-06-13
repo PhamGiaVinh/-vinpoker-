@@ -39,7 +39,7 @@ import OperationsCard from "./command-center/OperationsCard";
 import QuickLinksCard from "./command-center/QuickLinksCard";
 import { useLiveClock } from "@/hooks/useLiveClock";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
-import { BREAK_SOON_WARNING_MINUTES, getBreakTiming, getBreakVisualState } from "@/lib/breakPoolState";
+import { BREAK_SOON_WARNING_MINUTES, getBreakTiming, getBreakVisualState, buildRestMinutesByClub, isAssignableDealer, OPEN_TABLE_GRACE_MINUTES } from "@/lib/breakPoolState";
 import { useAllDealers, useDealerScores } from "@/hooks/useDealerManagement";
 import { useSwingAnimation } from "@/hooks/useSwingAnimation";
 import { useFocusNavigation } from "@/hooks/useFocusNavigation";
@@ -207,6 +207,21 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       (dealer) => dealer.current_state !== "on_break" && !restingAttendanceIds.has(dealer.id),
     ),
     [dealers, restingAttendanceIds],
+  );
+
+  // Manual "Gán dealer" dropdown: only dealers eligible to be assigned right now —
+  // hide dealers currently dealing at another table, and dealers (available or
+  // on-break) who haven't rested the club's min_inter_swing_rest_minutes yet.
+  const restMinutesByClub = useMemo(() => buildRestMinutesByClub(swingConfigs ?? []), [swingConfigs]);
+  const assignableDealers = useMemo(
+    () => (dealers ?? []).filter((d) =>
+      isAssignableDealer(
+        { current_state: d.current_state, last_released_at: d.last_released_at, clubId: d.dealers?.club_id ?? null },
+        restMinutesByClub,
+        nowMs,
+      ),
+    ),
+    [dealers, restMinutesByClub, nowMs],
   );
   const { optimistic: checkedInCount, onCheckout: onOptCheckout } = useOptimisticDealerCount(rosterDealers.length);
   const { data: nextDealerMap } = useNextDealerPredictions(filteredClubIds, assignments);
@@ -1616,11 +1631,17 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   <SelectValue placeholder="Chọn dealer..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {(dealers ?? []).map((d) => (
-                    <SelectItem key={d.id} value={d.dealer_id}>
-                      {(d as any).dealers?.full_name ?? d.dealer_id}
-                    </SelectItem>
-                  ))}
+                  {assignableDealers.length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                      Không có dealer đủ điều kiện — chờ dealer rảnh / nghỉ đủ
+                    </div>
+                  ) : (
+                    assignableDealers.map((d) => (
+                      <SelectItem key={d.id} value={d.dealer_id}>
+                        {(d as any).dealers?.full_name ?? d.dealer_id}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <Button
@@ -3305,6 +3326,13 @@ function TableGrid({
             const isPastDue = !!a && !a.swing_processed_at && swingDueMs <= nowMs;
             const canSwing = !!a && !a.swing_processed_at && (isOt || actualDueMs <= nowMs);
 
+            // Open-table warmup: for OPEN_TABLE_GRACE_MINUTES after assign the dealer
+            // is "warming up" — show a "Vào swing sau M:SS" countdown; the swing clock
+            // (swing_due_at, which already includes the grace) only takes over after.
+            const assignedMs = a?.assigned_at ? new Date(a.assigned_at).getTime() : 0;
+            const warmupUntilMs = assignedMs > 0 ? assignedMs + OPEN_TABLE_GRACE_MINUTES * 60_000 : 0;
+            const inWarmup = !!a && !isOt && !a.swing_processed_at && assignedMs > 0 && nowMs < warmupUntilMs;
+
             // ── Rotation schedule (source of truth for relief plans) ──
             const slots = scheduleByTableId?.[t.id];
             const slot0 = slots?.slot0;
@@ -3366,7 +3394,13 @@ function TableGrid({
                 timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
               }
             }
-            const statusLabel = isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
+            // Warmup overrides the swing countdown for the first grace window.
+            if (inWarmup) {
+              const warmSec = Math.max(0, Math.floor((warmupUntilMs - nowMs) / 1000));
+              timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
+              timerColor = "text-sky-400";
+            }
+            const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
 
             let progress = 0;
             if (a && a.assigned_at) {

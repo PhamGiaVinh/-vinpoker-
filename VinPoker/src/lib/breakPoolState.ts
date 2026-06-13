@@ -1,6 +1,48 @@
 export const BREAK_SOON_WARNING_MINUTES = 2;
 export const DEFAULT_BREAK_DURATION_MINUTES = 10;
 
+// Open-table warmup: when a dealer is assigned to open/staff a table, a
+// OPEN_TABLE_GRACE_MINUTES "warmup" runs before the swing clock starts counting.
+// MUST match the edge-function constant in supabase/functions/_shared/openTableGrace.ts.
+export const OPEN_TABLE_GRACE_MINUTES = 6;
+
+/** Per-club inter-swing rest minutes (max across table-types) — mirrors useBreakPool. */
+export function buildRestMinutesByClub(
+  swingConfigs: { club_id: string; min_inter_swing_rest_minutes?: number | null }[],
+): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const c of swingConfigs) {
+    const m = c.min_inter_swing_rest_minutes;
+    if (m != null && m > 0) map[c.club_id] = Math.max(map[c.club_id] ?? 0, m);
+  }
+  return map;
+}
+
+/**
+ * Manual-assign eligibility for the "Gán dealer" dropdown. A dealer may be
+ * assigned to open/staff a table only when they are NOT currently dealing or
+ * spoken-for AND have rested enough:
+ *  - state must be 'available' or 'on_break' (excludes 'assigned' / 'in_transition'
+ *    = currently dealing, and 'pre_assigned' / 'checked_out');
+ *  - rested enough = no last_released_at, or (now − last_released_at) ≥ the club's
+ *    min_inter_swing_rest_minutes. This covers both an available dealer still in the
+ *    inter-swing cooldown and an on-break dealer who hasn't completed minimum rest.
+ * Mirrors the backend pickNextDealer rest gate so manual + auto stay consistent.
+ */
+export function isAssignableDealer(
+  dealer: { current_state: string | null; last_released_at: string | null; clubId: string | null },
+  restMinutesByClub: Record<string, number>,
+  nowMs: number,
+): boolean {
+  if (dealer.current_state !== "available" && dealer.current_state !== "on_break") return false;
+  if (!dealer.last_released_at) return true;
+  const restMin = dealer.clubId ? (restMinutesByClub[dealer.clubId] ?? 0) : 0;
+  if (restMin <= 0) return true;
+  const releasedMs = new Date(dealer.last_released_at).getTime();
+  if (!Number.isFinite(releasedMs)) return true;
+  return nowMs - releasedMs >= restMin * 60_000;
+}
+
 export type BreakType = "regular" | "meal" | "rest";
 export type BreakVisualState = "active" | "soon" | "overdue";
 

@@ -13,6 +13,7 @@ import {
   sendTelegramNotification,
   mention,
 } from "../_shared/telegram.ts";
+import { OPEN_TABLE_GRACE_MINUTES } from "../_shared/openTableGrace.ts";
 
 function decodeJWT(token: string): { sub: string } | null {
   try {
@@ -134,13 +135,18 @@ Deno.serve(async (req) => {
       // Edge fn = auth/validation wrapper only.
       // ═══════════════════════════════════════════════════════════════════
 
-      const swingDueAt = new Date(Date.now() + swingDuration * 60 * 1000).toISOString();
+      // Open-table grace: the incoming dealer gets OPEN_TABLE_GRACE_MINUTES of
+      // warmup before the swing clock starts — swing_due_at = now + grace + duration
+      // so the table is not counted overdue during setup. assigned_at = now (the
+      // frontend shows "Vào swing sau M:SS" for the grace window keyed off it).
+      const assignedNow = Date.now();
+      const swingDueAt = new Date(assignedNow + (OPEN_TABLE_GRACE_MINUTES + swingDuration) * 60 * 1000).toISOString();
       const { data: rpcResult, error: rpcErr } = await admin.rpc(
         "assign_dealer_to_table",
         {
           p_attendance_id: attendance.id,
           p_table_id: table_id,
-          p_assigned_at: new Date().toISOString(),
+          p_assigned_at: new Date(assignedNow).toISOString(),
           p_swing_due_at: swingDueAt,
           p_club_id: table.club_id,
           p_idempotency_key: idempotency_key ?? null,
