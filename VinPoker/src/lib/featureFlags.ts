@@ -33,4 +33,13 @@ export const FEATURES = {
    * Independent of wrongTableCorrection.
    */
   roomReconcileWizard: false,
+  /**
+   * Remote TD AI: lets the assistant call the `td-ai-assistant` Edge Function
+   * (Gemini via Lovable). Default **OFF** — the kill switch. While false,
+   * `useTdAi` NEVER calls the Edge Function / network: it answers purely from
+   * the local keyword corpus (labelled DEMO, advisory-only). Flip to true ONLY
+   * after the function is deployed AND the owner enables PR E. Off keeps prod
+   * safe even though the PR E code is present on main but undeployed.
+   */
+  tdAiRemote: false,
 } as const;
