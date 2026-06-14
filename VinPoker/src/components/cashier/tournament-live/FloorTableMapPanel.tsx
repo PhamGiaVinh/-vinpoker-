@@ -11,6 +11,7 @@ import { FloorTableDetailSheet, type MapSeat, type MapTable } from "./FloorTable
 import { PlayerActionSheet, type ActionSeat } from "./PlayerActionSheet";
 import { MovePlayerDialog } from "./MovePlayerDialog";
 import { EditChipsDialog } from "./EditChipsDialog";
+import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
@@ -76,6 +77,7 @@ export function FloorTableMapPanel({
   const [selected, setSelected] = useState<MapSeat | null>(null);
   const [moveTarget, setMoveTarget] = useState<MapSeat | null>(null);
   const [editTarget, setEditTarget] = useState<MapSeat | null>(null);
+  const [infoTarget, setInfoTarget] = useState<MapSeat | null>(null);
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [busting, setBusting] = useState(false);
 
@@ -170,8 +172,8 @@ export function FloorTableMapPanel({
     });
   }, [visible]);
 
-  const bustSeat = async () => {
-    if (!selected) return;
+  const bustSeat = async (target: MapSeat | null) => {
+    if (!target) return;
     setBusting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
@@ -179,15 +181,16 @@ export function FloorTableMapPanel({
           tournament_id: tid,
           action: "update_seats",
           seats: [{
-            seat_id: selected.seat_id, player_id: selected.player_id, entry_number: selected.entry_number,
-            table_id: selected.table_id, seat_number: selected.seat_number, chip_count: selected.chip_count,
-            is_active: false, player_name: selected.player_name,
+            seat_id: target.seat_id, player_id: target.player_id, entry_number: target.entry_number,
+            table_id: target.table_id, seat_number: target.seat_number, chip_count: target.chip_count,
+            is_active: false, player_name: target.player_name,
           }],
         },
       });
       if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
-      toast.success(`Đã loại ${selected.player_name || "người chơi"}`);
+      toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
+      setInfoTarget(null);
       load();
     } catch (e: any) {
       toast.error(e.message || "Lỗi");
@@ -196,17 +199,17 @@ export function FloorTableMapPanel({
     }
   };
 
-  const openReceipt = () => {
-    if (!selected) return;
+  const openReceipt = (target: MapSeat | null) => {
+    if (!target) return;
     setReceipt({
       tournamentName: tournament.name,
       tournamentDate: (tournament as Tournament & { start_time?: string | null }).start_time ?? null,
-      playerName: selected.player_name || selected.player_id.slice(0, 8),
+      playerName: target.player_name || target.player_id.slice(0, 8),
       tableNumber: detailTable?.table_number ?? null,
-      seatNumber: selected.seat_number,
-      receiptCode: entryBySeat[selected.seat_id] ?? selected.seat_id,
-      startingStack: selected.chip_count,
-      qrValue: entryBySeat[selected.seat_id] ?? selected.seat_id,
+      seatNumber: target.seat_number,
+      receiptCode: entryBySeat[target.seat_id] ?? target.seat_id,
+      startingStack: target.chip_count,
+      qrValue: entryBySeat[target.seat_id] ?? target.seat_id,
     });
   };
 
@@ -323,8 +326,21 @@ export function FloorTableMapPanel({
         busting={busting}
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
-        onReceipt={openReceipt}
-        onBust={bustSeat}
+        onReceipt={() => openReceipt(selected)}
+        onBust={() => bustSeat(selected)}
+        onInfo={() => { if (selected) setInfoTarget(selected); }}
+      />
+
+      <PlayerInfoSheet
+        open={infoTarget !== null}
+        onOpenChange={(v) => { if (!v) setInfoTarget(null); }}
+        seat={infoTarget as ActionSeat | null}
+        ticketNumber={infoTarget ? entryBySeat[infoTarget.seat_id] : undefined}
+        canMove={canMove}
+        busting={busting}
+        onMove={() => { if (infoTarget) setMoveTarget(infoTarget); }}
+        onReceipt={() => openReceipt(infoTarget)}
+        onBust={() => bustSeat(infoTarget)}
       />
 
       {moveTarget && entryBySeat[moveTarget.seat_id] && (

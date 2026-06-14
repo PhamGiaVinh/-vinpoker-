@@ -32,7 +32,7 @@ export interface ActionSeat {
  * only shown when its handler is provided.
  */
 export function PlayerActionSheet({
-  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust, onEditChips, onReceipt,
+  open, onOpenChange, seat, entryId, canMove, busting, onMove, onBust, onEditChips, onReceipt, onInfo,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -44,6 +44,7 @@ export function PlayerActionSheet({
   onBust: () => void;
   onEditChips?: () => void;
   onReceipt?: () => void;
+  onInfo?: () => void;
 }) {
   const [showInfo, setShowInfo] = useState(false);
   if (!seat) return null;
@@ -130,12 +131,12 @@ export function PlayerActionSheet({
         <div className="mt-3 divide-y divide-border border-t border-border">
           <button
             className="flex w-full items-center gap-3 py-3.5 text-left"
-            onClick={() => setShowInfo((v) => !v)}
+            onClick={() => { if (onInfo) act(onInfo); else setShowInfo((v) => !v); }}
           >
             <Info className="h-5 w-5 text-muted-foreground" />
             <span className="text-[15px]">Thông tin người chơi</span>
           </button>
-          {showInfo && (
+          {!onInfo && showInfo && (
             <div className="space-y-1 bg-muted/20 px-3 py-3 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Bàn / Ghế</span><span>{seat.table_name} · {seat.seat_number}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Chip</span><span className="font-mono">{formatVND(seat.chip_count)}</span></div>
