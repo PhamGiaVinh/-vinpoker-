@@ -13,6 +13,7 @@ import { LiveHubHeader } from "./LiveHubHeader";
 import { FeaturedTableCard } from "./FeaturedTableCard";
 import { LiveTablesStrip } from "./LiveTablesStrip";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
+import { OrientationToggle } from "./OrientationToggle";
 import { useLiveTrackerData } from "./useLiveTrackerData";
 
 export interface LiveHubProps {
@@ -31,7 +32,7 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, onSha
   // TournamentLiveView — the featured felt below still renders the real viewer.
   const { liveTableCount, tables, feed } = useLiveTrackerData(tournamentId);
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
       <LiveHubHeader
         title={title}
         clubName={clubName}
@@ -40,7 +41,12 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, onSha
         liveTableCount={liveTableCount}
         onShare={onShare}
       />
-      <FeaturedTableCard badge="TRỰC TIẾP • BÀN ĐANG DIỄN RA">{children}</FeaturedTableCard>
+      <FeaturedTableCard
+        badge="TRỰC TIẾP • BÀN ĐANG DIỄN RA"
+        headerAction={<OrientationToggle />}
+      >
+        {children}
+      </FeaturedTableCard>
       <LiveTablesStrip tables={tables} />
       <LiveUpdatesFeed feed={feed} />
     </div>

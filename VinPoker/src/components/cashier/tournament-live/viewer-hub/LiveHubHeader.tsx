@@ -21,8 +21,8 @@ export interface LiveHubHeaderProps {
 export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCount, onShare }: LiveHubHeaderProps) {
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-[11px] sm:text-xs font-bold border border-emerald-500/30 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           TRỰC TIẾP
           {liveTableCount != null && liveTableCount > 0 && (
@@ -30,7 +30,7 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
           )}
         </div>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-lg leading-tight truncate">{title}</h1>
+          <h1 className="font-display font-bold text-base sm:text-lg leading-tight truncate">{title}</h1>
           {subtitle ? (
             <div className="text-xs text-muted-foreground truncate">{subtitle}</div>
           ) : clubName && clubId ? (
