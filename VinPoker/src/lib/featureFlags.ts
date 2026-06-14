@@ -99,5 +99,5 @@ export const FEATURES = {
    * DB/publication change; a later phase can swap the fast-poll for a
    * `hand_actions` realtime subscription (controlled publication op).
    */
-  liveActionEngine: false,
+  liveActionEngine: true, // UAT-ONLY flip (branch uat/tracker-live-action-flag-on) — DO NOT MERGE; main stays false.
 } as const;
