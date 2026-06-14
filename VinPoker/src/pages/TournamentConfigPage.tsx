@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, Navigate } from "react-router-dom";
 import {
   useTournaments,
@@ -30,6 +31,7 @@ import { toast } from "sonner";
 import type { TournamentWithTables } from "@/types/tournament";
 
 export default function TournamentConfigPage() {
+  const { t } = useTranslation();
   const { user, loading: authLoading, isAdmin, roles } = useAuth();
   const hasDealerControl = (roles as any[]).some((r) => r === "dealer_control");
   const role = isAdmin
@@ -51,7 +53,7 @@ export default function TournamentConfigPage() {
   if (authLoading) {
     return (
       <div className="p-6 flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải...
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("tournamentConfig.loading")}
       </div>
     );
   }
@@ -68,7 +70,7 @@ export default function TournamentConfigPage() {
   if (!canManageSwing) {
     return (
       <div className="p-6 text-muted-foreground">
-        Bạn không có quyền quản lý swing configuration.
+        {t("tournamentConfig.noPermission")}
       </div>
     );
   }
@@ -76,7 +78,7 @@ export default function TournamentConfigPage() {
   if (!clubId) {
     return (
       <div className="p-6 text-muted-foreground">
-        Chọn CLB từ URL để quản lý tournament.
+        {t("tournamentConfig.selectClubFromUrl")}
       </div>
     );
   }
@@ -84,7 +86,7 @@ export default function TournamentConfigPage() {
   if (toursLoading) {
     return (
       <div className="p-6 flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải...
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("tournamentConfig.loading")}
       </div>
     );
   }
@@ -99,12 +101,12 @@ export default function TournamentConfigPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Cấu hình Tournament</h1>
+          <h1 className="text-2xl font-bold">{t("tournamentConfig.pageTitle")}</h1>
           <p className="text-muted-foreground">
-            Quản lý swing duration theo từng giải đấu
+            {t("tournamentConfig.pageSubtitle")}
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>+ Tạo Tournament</Button>
+        <Button onClick={() => setIsCreateOpen(true)}>{t("tournamentConfig.createBtn")}</Button>
       </div>
 
       {/* Unassigned Tables Warning */}
@@ -112,7 +114,7 @@ export default function TournamentConfigPage() {
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-yellow-500">
-              ⚠️ Bàn chưa được gán
+              {t("tournamentConfig.unassignedTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -124,7 +126,7 @@ export default function TournamentConfigPage() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Các bàn này sẽ dùng swing duration mặc định của CLB
+              {t("tournamentConfig.unassignedDesc")}
             </p>
           </CardContent>
         </Card>
@@ -142,7 +144,7 @@ export default function TournamentConfigPage() {
         {(!tournaments || tournaments.length === 0) && (
           <Card className="col-span-full">
             <CardContent className="py-12 text-center text-muted-foreground">
-              Chưa có tournament nào. Bấm &ldquo;Tạo Tournament&rdquo; để bắt đầu.
+              {t("tournamentConfig.emptyState")}
             </CardContent>
           </Card>
         )}
@@ -181,18 +183,19 @@ function TournamentCard({
   tournament: TournamentWithTables;
   onEdit: () => void;
 }) {
+  const { t } = useTranslation();
   const deleteMutation = useDeleteTournament();
 
   const handleDelete = async () => {
-    if (!confirm(`Xóa tournament "${tournament.name}"?`)) return;
+    if (!confirm(t("tournamentConfig.confirmDelete", { name: tournament.name }))) return;
     try {
       await deleteMutation.mutateAsync({
         id: tournament.id,
         club_id: tournament.club_id,
       });
-      toast.success("Đã xóa tournament");
+      toast.success(t("tournamentConfig.deleted"));
     } catch {
-      toast.error("Lỗi khi xóa tournament");
+      toast.error(t("tournamentConfig.deleteError"));
     }
   };
 
@@ -223,7 +226,7 @@ function TournamentCard({
             <div className="text-2xl font-bold text-primary">
               {tournament.swing_duration_minutes}
             </div>
-            <div className="text-xs text-muted-foreground">phút/swing</div>
+            <div className="text-xs text-muted-foreground">{t("tournamentConfig.minPerSwing")}</div>
           </div>
           <div className="p-2 bg-muted rounded">
             <div className="text-lg font-semibold text-yellow-500">
@@ -241,7 +244,7 @@ function TournamentCard({
 
         <div>
           <div className="text-xs text-muted-foreground mb-1">
-            Bàn ({tournament.tournament_tables.length})
+            {t("tournamentConfig.tablesCount", { count: tournament.tournament_tables.length })}
           </div>
           <div className="flex flex-wrap gap-1">
               {tournament.tournament_tables.map((tt) => (
@@ -250,7 +253,7 @@ function TournamentCard({
               </Badge>
             ))}
             {tournament.tournament_tables.length === 0 && (
-              <span className="text-xs text-muted-foreground">Chưa có bàn nào</span>
+              <span className="text-xs text-muted-foreground">{t("tournamentConfig.noTables")}</span>
             )}
           </div>
         </div>
@@ -262,7 +265,7 @@ function TournamentCard({
             className="flex-1"
             onClick={onEdit}
           >
-            Sửa
+            {t("tournamentConfig.edit")}
           </Button>
           <Button
             variant="outline"
@@ -271,7 +274,7 @@ function TournamentCard({
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
           >
-            Xóa
+            {t("tournamentConfig.delete")}
           </Button>
         </div>
       </CardContent>
@@ -296,6 +299,7 @@ function TournamentDialog({
   allTables: { id: string; table_name?: string; name?: string }[];
   assignedTableIds: Set<string>;
 }) {
+  const { t } = useTranslation();
   const isEditing = !!tournament;
   const createMutation = useCreateTournament();
   const updateMutation = useUpdateTournament();
@@ -317,11 +321,11 @@ function TournamentDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("Vui lòng nhập tên tournament");
+      toast.error(t("tournamentConfig.errNameRequired"));
       return;
     }
     if (swingDuration < 5) {
-      toast.error("Swing duration tối thiểu là 5 phút");
+      toast.error(t("tournamentConfig.errSwingMin"));
       return;
     }
     try {
@@ -336,7 +340,7 @@ function TournamentDialog({
           crit_at_minutes: critAt,
           table_ids: selectedTableIds,
         });
-        toast.success("Đã cập nhật tournament");
+        toast.success(t("tournamentConfig.updated"));
       } else {
         await createMutation.mutateAsync({
           club_id: clubId,
@@ -347,11 +351,11 @@ function TournamentDialog({
           crit_at_minutes: critAt,
           table_ids: selectedTableIds,
         });
-        toast.success("Đã tạo tournament");
+        toast.success(t("tournamentConfig.created"));
       }
       onOpenChange(false);
     } catch {
-      toast.error(isEditing ? "Lỗi khi cập nhật" : "Lỗi khi tạo");
+      toast.error(isEditing ? t("tournamentConfig.updateError") : t("tournamentConfig.createError"));
     }
   };
 
@@ -369,31 +373,31 @@ function TournamentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Sửa Tournament" : "Tạo Tournament"}</DialogTitle>
+          <DialogTitle>{isEditing ? t("tournamentConfig.editTitle") : t("tournamentConfig.createTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Tên tournament</label>
+            <label className="text-sm font-medium">{t("tournamentConfig.nameLabel")}</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="VD: Main Event, Turbo, Satellite..."
+              placeholder={t("tournamentConfig.namePh")}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Mô tả (tùy chọn)</label>
+            <label className="text-sm font-medium">{t("tournamentConfig.descLabel")}</label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ghi chú..."
+              placeholder={t("tournamentConfig.descPh")}
             />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-sm font-medium">Swing (phút)</label>
+              <label className="text-sm font-medium">{t("tournamentConfig.swingField")}</label>
               <Input
                 type="number"
                 min={5}
@@ -403,7 +407,7 @@ function TournamentDialog({
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Warn (phút)</label>
+              <label className="text-sm font-medium">{t("tournamentConfig.warnField")}</label>
               <Input
                 type="number"
                 min={1}
@@ -413,7 +417,7 @@ function TournamentDialog({
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Crit (phút)</label>
+              <label className="text-sm font-medium">{t("tournamentConfig.critField")}</label>
               <Input
                 type="number"
                 min={1}
@@ -426,7 +430,7 @@ function TournamentDialog({
 
           <div>
             <label className="text-sm font-medium">
-              Chọn bàn ({selectedTableIds.length} bàn)
+              {t("tournamentConfig.selectTables", { count: selectedTableIds.length })}
             </label>
             <div className="mt-2 max-h-48 overflow-y-auto border rounded p-2 space-y-1">
               {availableTables.map((table) => (
@@ -445,7 +449,7 @@ function TournamentDialog({
               ))}
               {availableTables.length === 0 && (
                 <div className="text-sm text-muted-foreground text-center py-4">
-                  Tất cả bàn đã được gán vào tournament khác
+                  {t("tournamentConfig.allTablesAssigned")}
                 </div>
               )}
             </div>
@@ -458,14 +462,14 @@ function TournamentDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Hủy
+              {t("tournamentConfig.cancel")}
             </Button>
             <Button
               className="flex-1"
               onClick={handleSubmit}
               disabled={isPending}
             >
-              {isPending ? "Đang lưu..." : isEditing ? "Cập nhật" : "Tạo"}
+              {isPending ? t("tournamentConfig.saving") : isEditing ? t("tournamentConfig.update") : t("tournamentConfig.create")}
             </Button>
           </div>
         </div>

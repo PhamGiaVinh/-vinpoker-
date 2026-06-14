@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ type Req = {
 };
 
 export function ClubVerificationCard({ userId }: Props) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -66,10 +68,10 @@ export function ClubVerificationCard({ userId }: Props) {
   }, [load]);
 
   const submit = async () => {
-    if (!selectedClubId) return toast.error("Vui lòng chọn câu lạc bộ");
+    if (!selectedClubId) return toast.error(t("clubVerification.selectClub"));
     const trimmed = cardId.trim();
-    if (!trimmed) return toast.error("Vui lòng nhập mã thẻ thành viên");
-    if (trimmed.length > 50) return toast.error("Mã thẻ quá dài");
+    if (!trimmed) return toast.error(t("clubVerification.enterCardId"));
+    if (trimmed.length > 50) return toast.error(t("clubVerification.cardTooLong"));
     setSubmitting(true);
     const { data: existing } = await supabase
       .from("membership_verification_requests")
@@ -80,7 +82,7 @@ export function ClubVerificationCard({ userId }: Props) {
       .limit(1);
     if (existing && existing.length > 0) {
       setSubmitting(false);
-      toast("Bạn đã có yêu cầu đang chờ duyệt.");
+      toast(t("clubVerification.alreadyPending"));
       await load();
       setForceRetry(false);
       return;
@@ -93,7 +95,7 @@ export function ClubVerificationCard({ userId }: Props) {
     });
     setSubmitting(false);
     if (error) return toast.error(error.message);
-    toast.success("✅ Đã gửi yêu cầu. Vui lòng chờ CLB phê duyệt.");
+    toast.success(t("clubVerification.submitted"));
     setCardId("");
     setSelectedClubId("");
     setForceRetry(false);
@@ -103,7 +105,7 @@ export function ClubVerificationCard({ userId }: Props) {
   if (loading) {
     return (
       <Card className="p-4 flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin" /> Đang tải xác minh...
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("clubVerification.loading")}
       </Card>
     );
   }
@@ -113,10 +115,10 @@ export function ClubVerificationCard({ userId }: Props) {
     return (
       <Card className="p-4 space-y-2 border-blue-500/40">
         <h3 className="font-semibold text-gold flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4" /> Xác minh qua CLB
+          <ShieldCheck className="w-4 h-4" /> {t("clubVerification.title")}
         </h3>
         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">
-          ✅ Đã xác minh bởi {verifiedClub.name}
+          {t("clubVerification.verifiedBy", { name: verifiedClub.name })}
         </Badge>
       </Card>
     );
@@ -129,47 +131,47 @@ export function ClubVerificationCard({ userId }: Props) {
   return (
     <Card className="p-4 space-y-3">
       <h3 className="font-semibold text-gold flex items-center gap-2">
-        <ShieldCheck className="w-4 h-4" /> Xác minh qua CLB
+        <ShieldCheck className="w-4 h-4" /> {t("clubVerification.title")}
       </h3>
 
       {pending && latestReq && (
         <div className="space-y-2">
           <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/40">
-            ⏳ Đang chờ CLB phê duyệt
+            {t("clubVerification.pendingBadge")}
           </Badge>
           <div className="text-sm text-muted-foreground">
-            CLB: <span className="text-foreground font-medium">{clubName(latestReq.club_id)}</span>
+            {t("clubVerification.clubLabel")} <span className="text-foreground font-medium">{clubName(latestReq.club_id)}</span>
           </div>
           <div className="text-sm text-muted-foreground">
-            Mã thẻ: <span className="text-foreground font-mono">{latestReq.member_card_id}</span>
+            {t("clubVerification.cardLabel")} <span className="text-foreground font-mono">{latestReq.member_card_id}</span>
           </div>
         </div>
       )}
 
       {rejected && latestReq && (
         <div className="space-y-2">
-          <Badge variant="destructive">❌ Bị từ chối</Badge>
+          <Badge variant="destructive">{t("clubVerification.rejectedBadge")}</Badge>
           <div className="text-sm text-muted-foreground">
-            CLB: <span className="text-foreground font-medium">{clubName(latestReq.club_id)}</span>
+            {t("clubVerification.clubLabel")} <span className="text-foreground font-medium">{clubName(latestReq.club_id)}</span>
           </div>
           {latestReq.rejection_reason && (
             <div className="text-sm text-muted-foreground">
-              Lý do: <span className="text-foreground">{latestReq.rejection_reason}</span>
+              {t("clubVerification.reasonLabel")} <span className="text-foreground">{latestReq.rejection_reason}</span>
             </div>
           )}
-          <Button size="sm" variant="outline" onClick={() => setForceRetry(true)}>Thử lại</Button>
+          <Button size="sm" variant="outline" onClick={() => setForceRetry(true)}>{t("clubVerification.retry")}</Button>
         </div>
       )}
 
       {!pending && !rejected && (
         <>
           <p className="text-sm text-muted-foreground">
-            Xác minh danh tính qua câu lạc bộ để mở khóa tính năng tạo deal gọi vốn.
+            {t("clubVerification.intro")}
           </p>
           <div className="space-y-2">
-            <Label>Câu lạc bộ</Label>
+            <Label>{t("clubVerification.clubField")}</Label>
             <Select value={selectedClubId} onValueChange={setSelectedClubId} disabled={submitting}>
-              <SelectTrigger><SelectValue placeholder="Chọn CLB" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("clubVerification.selectClubPh")} /></SelectTrigger>
               <SelectContent>
                 {clubs.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -178,17 +180,17 @@ export function ClubVerificationCard({ userId }: Props) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Mã thẻ thành viên</Label>
+            <Label>{t("clubVerification.cardField")}</Label>
             <Input
               value={cardId}
               onChange={(e) => setCardId(e.target.value)}
-              placeholder="Nhập mã trên thẻ vật lý"
+              placeholder={t("clubVerification.cardPh")}
               maxLength={50}
               disabled={submitting}
             />
           </div>
           <Button onClick={submit} disabled={submitting} className="w-full">
-            {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Đang gửi...</> : "Gửi yêu cầu"}
+            {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {t("clubVerification.submitting")}</> : t("clubVerification.submit")}
           </Button>
         </>
       )}

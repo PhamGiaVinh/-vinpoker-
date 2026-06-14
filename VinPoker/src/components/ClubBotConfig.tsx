@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ const DEFAULT_MSG =
   "Đây là mã QR thanh toán phí tập huấn bên CLB, anh/chị thanh toán xong vui lòng gửi lại hình ảnh thanh toán thành công!";
 
 export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => void }) => {
+  const { t } = useTranslation();
   const [enabled, setEnabled] = useState<boolean>(!!club?.bot_enabled);
   const [qrUrl, setQrUrl] = useState<string>(club?.bot_qr_url ?? "");
   const [msg, setMsg] = useState<string>(club?.bot_welcome_message ?? DEFAULT_MSG);
@@ -39,8 +41,8 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
   }, [club?.id]);
 
   const upload = async (file: File) => {
-    if (!file.type.startsWith("image/")) return toast.error("Chỉ nhận ảnh");
-    if (file.size > 5 * 1024 * 1024) return toast.error("Ảnh tối đa 5MB");
+    if (!file.type.startsWith("image/")) return toast.error(t("clubBot.onlyImages"));
+    if (file.size > 5 * 1024 * 1024) return toast.error(t("clubBot.maxImage5"));
     setUploading(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `club-bot/${club.id}/qr-${Date.now()}.${ext}`;
@@ -53,7 +55,7 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
     setQrUrl(pub.publicUrl);
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
-    toast.success("Đã tải ảnh QR");
+    toast.success(t("clubBot.qrUploaded"));
   };
 
   const save = async () => {
@@ -75,7 +77,7 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
     if (e2) { setSaving(false); return toast.error(e2.message); }
 
     setSaving(false);
-    toast.success("Đã lưu cấu hình");
+    toast.success(t("clubBot.savedConfig"));
     onSaved?.();
   };
 
@@ -84,37 +86,37 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-primary" />
-          <h3 className="font-display text-primary">Chatbot tự động</h3>
+          <h3 className="font-display text-primary">{t("clubBot.title")}</h3>
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="bot-toggle" className="text-xs text-muted-foreground">
-            {enabled ? "Đang bật" : "Đang tắt"}
+            {enabled ? t("clubBot.on") : t("clubBot.off")}
           </Label>
           <Switch id="bot-toggle" checked={enabled} onCheckedChange={setEnabled} />
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Khi player tạo chat đặt stack, bot sẽ tự gửi mã QR + lời chào. Lễ tân chỉ cần check ảnh chuyển khoản và bấm xác nhận.
+        {t("clubBot.desc")}
       </p>
 
       <div className="space-y-2">
-        <Label className="text-xs">Ảnh QR thanh toán</Label>
+        <Label className="text-xs">{t("clubBot.qrLabel")}</Label>
         {qrUrl ? (
           <div className="relative inline-block">
-            <img src={qrUrl} alt="QR thanh toán CLB" className="rounded-lg max-h-48 border border-border" />
+            <img src={qrUrl} alt={t("clubBot.qrAlt")} className="rounded-lg max-h-48 border border-border" />
             <Button
               size="icon"
               variant="destructive"
               className="absolute -top-2 -right-2 h-7 w-7"
               onClick={() => setQrUrl("")}
-              title="Xoá ảnh QR"
+              title={t("clubBot.removeQrTitle")}
             >
               <Trash2 className="w-3 h-3" />
             </Button>
           </div>
         ) : (
-          <div className="text-xs text-muted-foreground italic">Chưa có ảnh QR.</div>
+          <div className="text-xs text-muted-foreground italic">{t("clubBot.noQr")}</div>
         )}
         <input
           ref={fileRef}
@@ -125,12 +127,12 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
         />
         <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
           {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <ImagePlus className="w-4 h-4 mr-1" />}
-          {qrUrl ? "Đổi ảnh QR" : "Tải ảnh QR"}
+          {qrUrl ? t("clubBot.changeQr") : t("clubBot.uploadQr")}
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">Lời chào của bot</Label>
+        <Label className="text-xs">{t("clubBot.welcomeLabel")}</Label>
         <Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} />
       </div>
 
@@ -144,8 +146,7 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
                 <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-64 text-xs">
-                Nhập Chat ID của group Telegram để nhận thông báo swing. 
-                Thêm bot @VBACKERBOT vào group, gửi /id để lấy Chat ID.
+                {t("clubBot.telegramHelp")}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -157,13 +158,13 @@ export const ClubBotConfig = ({ club, onSaved }: { club: any; onSaved?: () => vo
           className="font-mono text-xs"
         />
         <p className="text-[10px] text-muted-foreground">
-          Bot sẽ gửi thông báo đổi ca, hết giờ nghỉ, và cảnh báo thiếu dealer vào group này.
+          {t("clubBot.telegramDesc")}
         </p>
       </div>
 
       <Button onClick={save} disabled={saving} className="w-full gradient-neon text-primary-foreground border-0">
         <Save className="w-4 h-4 mr-1" />
-        {saving ? "Đang lưu..." : "Lưu cấu hình"}
+        {saving ? t("clubBot.saving") : t("clubBot.saveConfig")}
       </Button>
     </Card>
   );
