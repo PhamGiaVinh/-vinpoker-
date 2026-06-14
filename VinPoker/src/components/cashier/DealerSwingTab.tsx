@@ -946,6 +946,16 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       if (r.outcome === "already_closed") toast.info("Tour đã được đóng trước đó.");
       else toast.success("Đã lưu trữ Swing và đóng tour thành công.");
 
+      // Telegram summary to the club group (only on a real close, fire-and-forget) —
+      // mirrors the per-table "Đóng bàn" notification for the whole-tour close.
+      if (r.outcome === "ok") {
+        const tourName = closeTourPreview?.tourName ?? getTourName();
+        sendTelegram(
+          `📦 Đóng tour ${tourName}: đã lưu trữ Swing, giải phóng ${r.tables_released ?? 0} bàn` +
+          ` và đưa ${r.dealers_released ?? 0} dealer về Break Pool.`
+        );
+      }
+
       // Best-effort: download the archive snapshot as a JSON file.
       if (r.archive_id) {
         try {
