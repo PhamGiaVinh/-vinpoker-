@@ -4,6 +4,7 @@
     "appEntry": "Dealer App",
     "back": "Về trang chủ",
     "nav": { "home": "Trang chủ", "day": "Lịch ngày", "week": "Lịch tuần", "careers": "Tuyển dụng", "account": "Tài khoản" },
+    "club": { "label": "Câu lạc bộ", "switch": "Đổi CLB", "linkedTitle": "Câu lạc bộ đã liên kết", "active": "Đang xem", "switchTo": "Chọn" },
     "home": {
       "todayShift": "CA HÔM NAY",
       "greeting": "Chào {{name}}",

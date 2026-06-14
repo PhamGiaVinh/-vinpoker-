@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LogOut, BadgeCheck, Building2, Award, Link2, UserPlus } from "lucide-react";
+import { LogOut, BadgeCheck, Building2, Award, Link2, UserPlus, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,13 +17,12 @@ function initials(name: string): string {
 export function DealerAccountScreen() {
   const { t } = useTranslation();
   const { signOut, isAdmin, isClubOwner } = useAuth();
-  const { dealer } = useDealerLink();
+  const { dealer, memberships, setSelectedDealerId } = useDealerLink();
   const [claimOpen, setClaimOpen] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
 
   const rows = [
     { Icon: Award, label: t("dealer.account.tier", "Hạng dealer"), value: dealer?.tier ? `Tier ${dealer.tier}` : "—" },
-    { Icon: Building2, label: t("dealer.account.club", "Câu lạc bộ"), value: dealer?.clubName || "—" },
   ];
 
   return (
@@ -59,6 +58,40 @@ export function DealerAccountScreen() {
           </div>
         ))}
       </div>
+
+      {memberships.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[12px] text-muted-foreground mb-1.5 px-1">
+            {t("dealer.club.linkedTitle", "Câu lạc bộ đã liên kết")}
+          </div>
+          <div className="rounded-2xl border border-border bg-card divide-y divide-border">
+            {memberships.map((m) => {
+              const active = m.dealerId === dealer?.dealerId;
+              return (
+                <button
+                  key={m.dealerId}
+                  onClick={() => setSelectedDealerId(m.dealerId)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                >
+                  <Building2 className={active ? "w-4 h-4 text-primary" : "w-4 h-4 text-muted-foreground"} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-foreground truncate">{m.clubName}</div>
+                    <div className="text-[11px] text-muted-foreground">Tier {m.tier}</div>
+                  </div>
+                  {active ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+                      <Check className="w-3.5 h-3.5" />
+                      {t("dealer.club.active", "Đang xem")}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">{t("dealer.club.switchTo", "Chọn")}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <button
         onClick={() => setClaimOpen(true)}
