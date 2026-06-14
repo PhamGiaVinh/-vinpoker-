@@ -68,7 +68,7 @@ export function DealerHomeScreen() {
           <div key={i} className="bg-card border border-border rounded-xl p-3">
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <s.Icon
-                className={s.night ? "w-3.5 h-3.5 text-blue-400" : "w-3.5 h-3.5 text-primary"}
+                className={s.night ? "w-3.5 h-3.5 text-[hsl(var(--ds-active))]" : "w-3.5 h-3.5 text-primary"}
                 style={s.gold ? { color: DEALER_GOLD } : undefined}
               />
               {s.label}

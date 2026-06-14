@@ -153,7 +153,7 @@ export default function ShiftPlannerTab({
           <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
             <span>Lên lịch dealer theo ngày/tuần với giờ vào ca linh hoạt (08–16, 11–19, 16–00, 18–02…).</span>
             {source === "mock" && (
-              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">
+              <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/30">
                 Dữ liệu demo
               </Badge>
             )}
@@ -199,7 +199,7 @@ export default function ShiftPlannerTab({
               >
                 {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <MessageCircle className="w-4 h-4 mr-1.5" />} Gửi Telegram
               </Button>
-              {savedRunId && <span className="text-[11px] text-emerald-400 self-center">✓ đã lưu nháp</span>}
+              {savedRunId && <span className="text-[11px] text-success self-center">✓ đã lưu nháp</span>}
             </>
           ) : (
             <Button size="sm" className="h-9" disabled title="Publish khả dụng ở chế độ live (Phase 2)">
@@ -250,7 +250,7 @@ export default function ShiftPlannerTab({
                 <div className="space-y-4">
                   <Card className="p-4">
                     <div className="text-sm font-semibold mb-3 flex items-center gap-1.5">
-                      <Info className="w-4 h-4 text-amber-400" /> Gợi ý & cảnh báo
+                      <Info className="w-4 h-4 text-warning" /> Gợi ý & cảnh báo
                     </div>
                     <SuggestionPanel draft={data.draft} />
                   </Card>

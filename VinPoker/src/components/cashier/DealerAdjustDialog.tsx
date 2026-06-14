@@ -210,8 +210,8 @@ export default function DealerAdjustDialog({
         {dealer && (
           <div className="space-y-3">
             {/* ── Salary Summary Card ── */}
-            <div className="p-3 bg-emerald-600/10 border border-emerald-600/30 rounded-sm text-sm">
-              <div className="font-semibold text-emerald-400 mb-1">
+            <div className="p-3 bg-success/10 border border-success/30 rounded-sm text-sm">
+              <div className="font-semibold text-success mb-1">
                 {isPT ? "Lương part-time" : "Lương full-time"}
               </div>
               {isPT ? (

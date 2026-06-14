@@ -14,11 +14,11 @@ export function WeekShiftList({ cells }: { cells: WeekDayCell[] }) {
     if (c.kind === "off")
       return { text: t("dealer.week.off", "Off"), cls: "text-muted-foreground border-border bg-card" };
     if (c.kind === "leave")
-      return { text: t("dealer.week.leave", "Nghỉ phép"), cls: "text-purple-400 border-purple-500/30 bg-purple-500/5" };
+      return { text: t("dealer.week.leave", "Nghỉ phép"), cls: "text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)] bg-[hsl(var(--ds-preassign)_/_0.05)]" };
     if (c.kind === "on_call")
-      return { text: t("dealer.week.onCall", "On-call"), cls: "text-blue-400 border-blue-500/30 bg-blue-500/5" };
+      return { text: t("dealer.week.onCall", "On-call"), cls: "text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)] bg-[hsl(var(--ds-active)_/_0.05)]" };
     if (c.isNight || c.isOvernight)
-      return { text: c.label, cls: "text-blue-400 border-blue-500/30 bg-blue-500/5" };
+      return { text: c.label, cls: "text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)] bg-[hsl(var(--ds-active)_/_0.05)]" };
     return { text: c.label, cls: "text-primary border-primary/30 bg-primary/5" };
   };
 

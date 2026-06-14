@@ -4,9 +4,9 @@ import { DEALER_GOLD } from "@/lib/dealerApp/constants";
 import type { CareerApplicationStatus } from "@/types/dealerApp";
 
 const STYLE: Record<CareerApplicationStatus, string> = {
-  applied: "bg-blue-500/12 text-blue-400 border-blue-500/30",
-  screening: "bg-amber-500/12 text-amber-400 border-amber-500/30",
-  interview: "bg-purple-500/12 text-purple-400 border-purple-500/30",
+  applied: "bg-[hsl(var(--ds-active)_/_0.12)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]",
+  screening: "bg-warning/12 text-warning border-warning/30",
+  interview: "bg-[hsl(var(--ds-preassign)_/_0.12)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]",
   offered: "", // gold via inline style
   hired: "bg-primary/15 text-primary border-primary/40",
   rejected: "bg-destructive/12 text-destructive border-destructive/30",

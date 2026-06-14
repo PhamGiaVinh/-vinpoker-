@@ -55,7 +55,7 @@ function Info({ label, value, accent }: { label: string; value: string; accent: 
     <div className="bg-background/40 border-t border-border rounded-lg p-2">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div
-        className={cn("text-sm font-bold", accent === "warning" ? "text-amber-400" : accent === "primary" ? "text-primary" : "")}
+        className={cn("text-sm font-bold", accent === "warning" ? "text-warning" : accent === "primary" ? "text-primary" : "")}
         style={accent === "gold" ? { color: DEALER_GOLD } : undefined}
       >
         {value}

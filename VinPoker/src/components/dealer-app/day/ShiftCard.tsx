@@ -26,7 +26,7 @@ export function ShiftCard({ shift, active }: { shift: DealerShiftView; active?: 
         ))}
       </div>
       {overnight && (
-        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-blue-400">
+        <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-[hsl(var(--ds-active))]">
           <Moon className="w-3 h-3" />
           {t("dealer.shift.overnight", "Qua đêm")} · {shiftHours(shift)}h
         </div>

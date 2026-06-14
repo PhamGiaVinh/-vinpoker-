@@ -30,8 +30,8 @@ export function NextDealerPreview({
     : "border-l-amber-500";
 
   const bgColor = confirmed
-    ? "bg-emerald-500/5"
-    : "bg-amber-500/5";
+    ? "bg-success/5"
+    : "bg-warning/5";
 
   return (
     <div

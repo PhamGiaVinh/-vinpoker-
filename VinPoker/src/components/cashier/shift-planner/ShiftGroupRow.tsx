@@ -29,16 +29,16 @@ export default function ShiftGroupRow({ group, dealersById }: Props) {
           <span className="text-[11px] text-muted-foreground">{shiftWindowLabel(template)}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={cn("text-[11px] font-semibold tabular-nums", short ? "text-amber-400" : "text-muted-foreground")}>
+          <span className={cn("text-[11px] font-semibold tabular-nums", short ? "text-warning" : "text-muted-foreground")}>
             {assignments.length}/{template.needCount}
           </span>
           {short && (
-            <Badge variant="outline" className="bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px]">
+            <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30 text-[10px]">
               Thiếu {template.needCount - assignments.length}
             </Badge>
           )}
           {template.needsLead && (
-            <Badge variant="outline" className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-[10px]">
+            <Badge variant="outline" className="bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)] text-[10px]">
               Lead
             </Badge>
           )}
@@ -98,7 +98,7 @@ export default function ShiftGroupRow({ group, dealersById }: Props) {
 
       {/* Shortage hint (read-only in Phase 1) */}
       {short && (
-        <div className="flex items-center gap-2 px-3 py-2 border-t border-dashed border-amber-500/30 text-[12px] text-amber-400/90">
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-dashed border-warning/30 text-[12px] text-warning/90">
           <UserPlus className="w-3.5 h-3.5" />
           Cần thêm {template.needCount - assignments.length} dealer cho khung {template.label}
         </div>

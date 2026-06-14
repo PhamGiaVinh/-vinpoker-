@@ -20,7 +20,7 @@ export function WeekSummaryCard({ summary }: { summary: WeekSummaryView }) {
       <div className="flex items-center justify-between mt-2 text-[11px] text-muted-foreground">
         <span>{t("dealer.week.remaining", "Còn {{h}}h để đạt mục tiêu", { h: remaining })}</span>
         <span className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-blue-400">
+          <span className="flex items-center gap-1 text-[hsl(var(--ds-active))]">
             <Moon className="w-3 h-3" />
             {summary.nightShifts}
           </span>

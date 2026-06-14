@@ -17,7 +17,7 @@ export default function PackageCard({ pkg, index }: Props) {
   return (
     <Link
       to={`/packages/${pkg.id}`}
-      className={`card-premium block animate-fade-in-up p-5 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30`}
+      className={`card-premium block animate-fade-in-up p-5 transition-all duration-300 hover:-translate-y-1 hover:border-success/30`}
       style={{ animationDelay: `${index * 100}ms` }}
     >
       {/* Header */}
