@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { onSWUpdateAvailable, applyUpdate } from "@/lib/registerSW";
 
 /**
@@ -9,6 +10,7 @@ import { onSWUpdateAvailable, applyUpdate } from "@/lib/registerSW";
  *   SW once all tabs are closed and reopened).
  */
 export const UpdateBanner = () => {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -30,10 +32,10 @@ export const UpdateBanner = () => {
       <div className="pointer-events-auto w-full max-w-md flex items-center gap-3 rounded-2xl border border-primary/30 bg-background/95 backdrop-blur-xl shadow-2xl shadow-primary/10 px-4 py-3 animate-fade-in">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-foreground leading-tight">
-            Có bản cập nhật mới
+            {t("updateBanner.newVersionTitle")}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Tải lại để dùng phiên bản mới nhất.
+            {t("updateBanner.newVersionDesc")}
           </div>
         </div>
         <button
@@ -41,12 +43,12 @@ export const UpdateBanner = () => {
           onClick={applyUpdate}
           className="shrink-0 rounded-full gradient-neon text-primary-foreground border border-primary-foreground/20 shadow-neon px-4 h-9 text-xs font-bold tracking-wider uppercase hover:opacity-90 active:scale-95 transition-all"
         >
-          Cập nhật
+          {t("updateBanner.updateBtn")}
         </button>
         <button
           type="button"
           onClick={() => setShow(false)}
-          aria-label="Đóng"
+          aria-label={t("updateBanner.closeAria")}
           className="shrink-0 w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center justify-center"
         >
           ×

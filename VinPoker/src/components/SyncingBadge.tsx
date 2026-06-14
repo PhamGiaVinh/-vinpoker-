@@ -1,4 +1,5 @@
 import { RefreshCw, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface SyncingBadgeProps {
@@ -13,6 +14,7 @@ interface SyncingBadgeProps {
  * - isError (và đã có data cũ): hiển thị "Mất kết nối · dùng dữ liệu cũ"
  */
 export function SyncingBadge({ isFetching, isError, className }: SyncingBadgeProps) {
+  const { t } = useTranslation();
   if (!isFetching && !isError) return null;
   if (isError) {
     return (
@@ -21,9 +23,9 @@ export function SyncingBadge({ isFetching, isError, className }: SyncingBadgePro
           "inline-flex items-center gap-1 rounded-full bg-warning/15 text-warning border border-warning/30 px-2 py-0.5 text-[10px] font-medium",
           className
         )}
-        title="Không cập nhật được dữ liệu mới — đang hiển thị bản gần nhất"
+        title={t("syncingBadge.staleTitle")}
       >
-        <AlertTriangle className="w-3 h-3" /> Đang dùng dữ liệu cũ
+        <AlertTriangle className="w-3 h-3" /> {t("syncingBadge.usingCachedData")}
       </span>
     );
   }
@@ -34,7 +36,7 @@ export function SyncingBadge({ isFetching, isError, className }: SyncingBadgePro
         className
       )}
     >
-      <RefreshCw className="w-3 h-3 animate-spin" /> Đang đồng bộ...
+      <RefreshCw className="w-3 h-3 animate-spin" /> {t("syncingBadge.syncing")}
     </span>
   );
 }

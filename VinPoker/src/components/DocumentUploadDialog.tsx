@@ -142,12 +142,12 @@ export function DocumentUploadDialog({ open, onOpenChange, editing, onSaved }: P
       let subtitleUrl: string | null = editing?.subtitle_url ?? null;
       if (kind === "video" && srtFile) {
         if (!/\.(srt|txt)$/i.test(srtFile.name)) {
-          toast.error("Phụ đề phải là file .srt hoặc .txt");
+          toast.error(t("documentUpload.subtitleType"));
           setBusy(false);
           return;
         }
         if (srtFile.size > 2 * 1024 * 1024) {
-          toast.error("File phụ đề quá lớn (tối đa 2MB)");
+          toast.error(t("documentUpload.subtitleTooLarge"));
           setBusy(false);
           return;
         }
@@ -235,7 +235,7 @@ export function DocumentUploadDialog({ open, onOpenChange, editing, onSaved }: P
           )}
           {kind === "video" && (
             <div className="space-y-1">
-              <Label className="text-xs">Phụ đề (.srt hoặc .txt)</Label>
+              <Label className="text-xs">{t("documentUpload.subtitleLabel")}</Label>
               <Input
                 type="file"
                 accept=".srt,.txt,application/x-subrip,text/plain"
@@ -244,7 +244,7 @@ export function DocumentUploadDialog({ open, onOpenChange, editing, onSaved }: P
               />
               {editing?.subtitle_url && !srtFile && (
                 <p className="text-[11px] text-muted-foreground truncate">
-                  Đã có: <a href={editing.subtitle_url} target="_blank" rel="noreferrer" className="underline">{editing.subtitle_url.split("/").pop()}</a>
+                  {t("documentUpload.alreadyHas")} <a href={editing.subtitle_url} target="_blank" rel="noreferrer" className="underline">{editing.subtitle_url.split("/").pop()}</a>
                 </p>
               )}
               {srtFile && srtPreview && (
@@ -252,14 +252,14 @@ export function DocumentUploadDialog({ open, onOpenChange, editing, onSaved }: P
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold truncate">{srtFile.name}</span>
                     <span className={srtPreview.count > 0 ? "text-primary" : "text-destructive"}>
-                      {srtPreview.count} dòng
+                      {t("documentUpload.lineCount", { count: srtPreview.count })}
                     </span>
                   </div>
                   {srtPreview.count === 0 ? (
-                    <p className="text-destructive">Không đọc được file SRT này.</p>
+                    <p className="text-destructive">{t("documentUpload.srtReadError")}</p>
                   ) : (
                     <>
-                      <p className="text-muted-foreground">Xem trước (kiểm tra để chắc đúng bản mới):</p>
+                      <p className="text-muted-foreground">{t("documentUpload.previewNote")}</p>
                       <ul className="space-y-1">
                         {srtPreview.sample.map((c) => (
                           <li key={c.id} className="leading-snug">

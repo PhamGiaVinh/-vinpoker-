@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   dealId: string | null;
@@ -16,6 +17,7 @@ interface Props {
  * Payload: vinpoker://result/{deal_id}
  */
 export function ResultQRDialog({ dealId, onClose }: Props) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   if (!dealId) return null;
   const payload = `vinpoker://result/${dealId}`;
@@ -24,7 +26,7 @@ export function ResultQRDialog({ dealId, onClose }: Props) {
   const copy = async () => {
     await navigator.clipboard.writeText(dealId);
     setCopied(true);
-    toast.success("Đã copy Deal ID");
+    toast.success(t("resultQR.copiedDealId"));
     setTimeout(() => setCopied(false), 1500);
   };
 
@@ -32,9 +34,9 @@ export function ResultQRDialog({ dealId, onClose }: Props) {
     <Dialog open={!!dealId} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Mã xác nhận kết quả cho Cashier</DialogTitle>
+          <DialogTitle>{t("resultQR.title")}</DialogTitle>
           <DialogDescription className="text-xs">
-            Đưa màn hình này cho Cashier tại quầy để đối chiếu danh tính trước khi duyệt kết quả.
+            {t("resultQR.desc")}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center gap-3 py-2">
@@ -52,11 +54,11 @@ export function ResultQRDialog({ dealId, onClose }: Props) {
             </button>
           </div>
           <div className="text-[10px] text-muted-foreground italic text-center">
-            Cashier có thể quét QR hoặc nhập tay Deal ID #{shortId}
+            {t("resultQR.scanHint", { shortId })}
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={onClose} className="w-full">Đóng</Button>
+          <Button onClick={onClose} className="w-full">{t("resultQR.close")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

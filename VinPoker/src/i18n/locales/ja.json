@@ -46,7 +46,8 @@
       "uploaded": "アップロードに成功しました",
       "missingFile": "ファイルを選択するか、リンクを入力してください",
       "tooLarge": "ファイルが大きすぎます"
-    }
+    },
+    "viewerOpenExternal": "ブラウザで開く"
   },
   "icmCalc": {
     "title": "計算 (ICM)",
@@ -2196,7 +2197,9 @@
     "send": "送信",
     "loginToComment": "ログインしてコメント",
     "sendFailed": "コメントの送信に失敗しました",
-    "invalidContent": "無効な内容です"
+    "invalidContent": "無効な内容です",
+    "emptyContent": "内容を入力してください",
+    "max500": "最大 500 文字"
   },
   "support": {
     "supportNotConfigured": "サポートアカウントが設定されていません",
@@ -2386,5 +2389,64 @@
     "sending": "送信中...",
     "needProof": "振込画像が必要です",
     "transferred": "振込完了"
+  },
+  "documentUpload": {
+    "subtitleType": "字幕は .srt または .txt ファイルである必要があります",
+    "subtitleTooLarge": "字幕ファイルが大きすぎます（最大 2MB）",
+    "subtitleLabel": "字幕（.srt または .txt）",
+    "alreadyHas": "既存:",
+    "lineCount": "{{count}} 行",
+    "srtReadError": "この SRT ファイルを読み込めませんでした。",
+    "previewNote": "プレビュー（正しい新バージョンか確認してください）:"
+  },
+  "resultQR": {
+    "copiedDealId": "Deal ID をコピーしました",
+    "title": "キャッシャー用の結果確認コード",
+    "desc": "結果を承認する前に、カウンターのキャッシャーにこの画面を見せて本人確認をしてください。",
+    "scanHint": "キャッシャーは QR をスキャンするか、Deal ID #{{shortId}} を手動で入力できます",
+    "close": "閉じる"
+  },
+  "seatReceipt": {
+    "title": "座席チケット",
+    "tableLabel": "テーブル",
+    "seatLabel": "座席",
+    "player": "プレイヤー",
+    "startingStack": "開始スタック：",
+    "footerNote": "テーブル入場時にこのチケットを提示してください。コードはスキャンして照合できます。",
+    "printError": "印刷ウィンドウを開けませんでした。ポップアップを許可してください。",
+    "dialogDesc": "プレイヤーが確認され、着席しました。プレイヤー用にチケットを印刷またはダウンロードしてください。",
+    "downloadPdf": "PDF をダウンロード",
+    "close": "閉じる",
+    "print": "印刷"
+  },
+  "syncingBadge": {
+    "staleTitle": "新しいデータを取得できませんでした — 最新のキャッシュを表示中",
+    "usingCachedData": "キャッシュデータを使用中",
+    "syncing": "同期中..."
+  },
+  "timeAgo": {
+    "justNow": "たった今",
+    "secondsAgo": "{{count}}秒前",
+    "minutesAgo": "{{count}}分前",
+    "hoursAgo": "{{count}}時間前",
+    "daysAgo": "{{count}}日前",
+    "minutesShort": "{{count}}分",
+    "hoursShort": "{{count}}時間",
+    "daysShort": "{{count}}日"
+  },
+  "unsubscribe": {
+    "missingEmail": "リンクにメールアドレスがありません。",
+    "genericError": "エラーが発生しました。",
+    "success": "{{email}} のメール配信を停止しました。通知設定からいつでも再開できます。",
+    "title": "VinPoker メールの配信停止",
+    "processing": "処理中...",
+    "retry": "再試行",
+    "footnote": "アカウント認証およびセキュリティメールは必要に応じて引き続き送信されます。"
+  },
+  "updateBanner": {
+    "newVersionTitle": "新しいアップデートがあります",
+    "newVersionDesc": "最新バージョンを使うには再読み込みしてください。",
+    "updateBtn": "更新",
+    "closeAria": "閉じる"
   }
 }

@@ -88,7 +88,8 @@
       "uploaded": "Uploaded successfully",
       "missingFile": "Please choose a file or paste a link",
       "tooLarge": "File too large"
-    }
+    },
+    "viewerOpenExternal": "Open in browser"
   },
   "icmCalc": {
     "title": "Calculator (ICM)",
@@ -2344,7 +2345,9 @@
     "send": "Send",
     "loginToComment": "Log in to comment",
     "sendFailed": "Failed to send comment",
-    "invalidContent": "Invalid content"
+    "invalidContent": "Invalid content",
+    "emptyContent": "Please enter content",
+    "max500": "Max 500 characters"
   },
   "support": {
     "supportNotConfigured": "Support account is not configured",
@@ -2534,5 +2537,64 @@
     "sending": "Sending...",
     "needProof": "Need transfer image",
     "transferred": "Transferred"
+  },
+  "documentUpload": {
+    "subtitleType": "Subtitle must be a .srt or .txt file",
+    "subtitleTooLarge": "Subtitle file too large (max 2MB)",
+    "subtitleLabel": "Subtitle (.srt or .txt)",
+    "alreadyHas": "Already has:",
+    "lineCount": "{{count}} lines",
+    "srtReadError": "Couldn't read this SRT file.",
+    "previewNote": "Preview (check to make sure it's the right version):"
+  },
+  "resultQR": {
+    "copiedDealId": "Deal ID copied",
+    "title": "Result confirmation code for Cashier",
+    "desc": "Show this screen to the Cashier at the counter to verify identity before approving the result.",
+    "scanHint": "The Cashier can scan the QR or manually enter Deal ID #{{shortId}}",
+    "close": "Close"
+  },
+  "seatReceipt": {
+    "title": "Seat ticket",
+    "tableLabel": "TABLE",
+    "seatLabel": "SEAT",
+    "player": "PLAYER",
+    "startingStack": "Starting stack:",
+    "footerNote": "Show this ticket when entering the table. The code can be scanned for verification.",
+    "printError": "Couldn't open the print window. Please allow pop-ups.",
+    "dialogDesc": "Player confirmed and seated. Print or download the ticket for the player.",
+    "downloadPdf": "Download PDF",
+    "close": "Close",
+    "print": "Print"
+  },
+  "syncingBadge": {
+    "staleTitle": "Couldn't fetch new data — showing the latest cached version",
+    "usingCachedData": "Using cached data",
+    "syncing": "Syncing..."
+  },
+  "timeAgo": {
+    "justNow": "just now",
+    "secondsAgo": "{{count}}s ago",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "minutesShort": "{{count}}m",
+    "hoursShort": "{{count}}h",
+    "daysShort": "{{count}}d"
+  },
+  "unsubscribe": {
+    "missingEmail": "Missing email address in the link.",
+    "genericError": "Something went wrong.",
+    "success": "Unsubscribed {{email}} from emails. You can re-enable anytime in Notification settings.",
+    "title": "Unsubscribe from VinPoker emails",
+    "processing": "Processing...",
+    "retry": "Try again",
+    "footnote": "Account verification and security emails are still sent when necessary."
+  },
+  "updateBanner": {
+    "newVersionTitle": "A new update is available",
+    "newVersionDesc": "Reload to use the latest version.",
+    "updateBtn": "Update",
+    "closeAria": "Close"
   }
 }

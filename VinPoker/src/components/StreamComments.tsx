@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,13 +20,11 @@ interface CommentRow {
   profile?: { display_name: string | null; avatar_url: string | null };
 }
 
-const schema = z.object({ content: z.string().trim().min(1, "Hãy nhập nội dung").max(500, "Tối đa 500 ký tự") });
-
-const relativeTime = (iso: string) => {
+const relativeTime = (iso: string, t: TFunction) => {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return "vừa xong";
-  if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+  if (diff < 60) return t("timeAgo.justNow");
+  if (diff < 3600) return t("timeAgo.minutesAgo", { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t("timeAgo.hoursAgo", { count: Math.floor(diff / 3600) });
   return new Date(iso).toLocaleDateString("vi-VN");
 };
 
@@ -37,6 +36,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
+  const schema = z.object({ content: z.string().trim().min(1, t("streamComments.emptyContent")).max(500, t("streamComments.max500")) });
 
   const fetchProfiles = async (userIds: string[]) => {
     if (userIds.length === 0) return {};
@@ -126,7 +126,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
                   <span className="text-sm font-semibold truncate">{c.profile?.display_name ?? t("streamComments.anonymousUser")}</span>
-                  <span className="text-[10px] text-muted-foreground">{relativeTime(c.created_at)}</span>
+                  <span className="text-[10px] text-muted-foreground">{relativeTime(c.created_at, t)}</span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap break-words">{c.content}</p>
               </div>
