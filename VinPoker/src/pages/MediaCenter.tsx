@@ -28,9 +28,9 @@ const MediaCenter = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-6 h-6 text-purple-400" />
+        <Sparkles className="w-6 h-6 text-[hsl(var(--ds-preassign))]" />
         <div>
-          <h1 className="font-display text-2xl text-purple-400">{t("mediaCenterPage.heading")}</h1>
+          <h1 className="font-display text-2xl text-[hsl(var(--ds-preassign))]">{t("mediaCenterPage.heading")}</h1>
           <p className="text-xs text-muted-foreground">{t("mediaCenterPage.subtitle")}</p>
         </div>
       </div>

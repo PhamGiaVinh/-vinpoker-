@@ -41,7 +41,7 @@ export default function Unsubscribe() {
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center space-y-4">
         <h1 className="text-2xl font-bold text-foreground">{t("unsubscribe.title")}</h1>
         {status === "loading" && <p className="text-muted-foreground">{t("unsubscribe.processing")}</p>}
-        {status === "done" && <p className="text-emerald-400">{msg}</p>}
+        {status === "done" && <p className="text-success">{msg}</p>}
         {status === "error" && <p className="text-destructive">{msg}</p>}
         {status === "error" && email && (
           <Button onClick={handle} variant="default">{t("unsubscribe.retry")}</Button>

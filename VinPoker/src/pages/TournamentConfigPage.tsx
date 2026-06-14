@@ -111,9 +111,9 @@ export default function TournamentConfigPage() {
 
       {/* Unassigned Tables Warning */}
       {unassignedTables.length > 0 && (
-        <Card className="border-yellow-500/30 bg-yellow-500/5">
+        <Card className="border-warning/30 bg-warning/5">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-yellow-500">
+            <CardTitle className="text-sm text-warning">
               {t("tournamentConfig.unassignedTitle")}
             </CardTitle>
           </CardHeader>
@@ -200,9 +200,9 @@ function TournamentCard({
   };
 
   const statusColors: Record<string, string> = {
-    active: "bg-green-500/20 text-green-400",
-    completed: "bg-zinc-500/20 text-zinc-400",
-    cancelled: "bg-red-500/20 text-red-400",
+    active: "bg-success/20 text-success",
+    completed: "bg-muted-foreground/20 text-muted-foreground",
+    cancelled: "bg-destructive/20 text-destructive",
   };
 
   return (
@@ -229,13 +229,13 @@ function TournamentCard({
             <div className="text-xs text-muted-foreground">{t("tournamentConfig.minPerSwing")}</div>
           </div>
           <div className="p-2 bg-muted rounded">
-            <div className="text-lg font-semibold text-yellow-500">
+            <div className="text-lg font-semibold text-warning">
               {tournament.warn_at_minutes}
             </div>
             <div className="text-xs text-muted-foreground">warn</div>
           </div>
           <div className="p-2 bg-muted rounded">
-            <div className="text-lg font-semibold text-red-500">
+            <div className="text-lg font-semibold text-destructive">
               {tournament.crit_at_minutes}
             </div>
             <div className="text-xs text-muted-foreground">crit</div>
@@ -270,7 +270,7 @@ function TournamentCard({
           <Button
             variant="outline"
             size="sm"
-            className="text-red-500 hover:text-red-400"
+            className="text-destructive hover:text-destructive"
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
           >

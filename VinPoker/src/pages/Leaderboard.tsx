@@ -355,9 +355,9 @@ const Leaderboard = () => {
                     {trustedPageItems.map((p) => {
                       const rank = p.rank;
                       const rankStyle =
-                        rank === 1 ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background"
+                        rank === 1 ? "bg-gradient-to-br from-warning to-warning text-background"
                         : rank === 2 ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background"
-                        : rank === 3 ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background"
+                        : rank === 3 ? "bg-gradient-to-br from-warning to-warning text-background"
                         : "bg-muted text-muted-foreground";
                       return (
                         <TableRow key={p.key} className="even:bg-muted/30">
@@ -389,9 +389,9 @@ const Leaderboard = () => {
                 {trustedPageItems.map((p) => {
                   const rank = p.rank;
                   const rankStyle =
-                    rank === 1 ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background"
+                    rank === 1 ? "bg-gradient-to-br from-warning to-warning text-background"
                     : rank === 2 ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background"
-                    : rank === 3 ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background"
+                    : rank === 3 ? "bg-gradient-to-br from-warning to-warning text-background"
                     : "bg-muted text-muted-foreground";
                   return (
                     <Card key={p.key} className="p-3">
@@ -441,18 +441,18 @@ const Leaderboard = () => {
               const rank = p.rank;
               const rankStyle =
                 rank === 1
-                  ? "bg-gradient-to-br from-yellow-300 to-yellow-600 text-background shadow-[0_0_18px_hsl(45_90%_55%/0.7)] ring-2 ring-yellow-300 animate-scale-in"
+                  ? "bg-gradient-to-br from-warning to-warning text-background shadow-[0_0_18px_hsl(45_90%_55%/0.7)] ring-2 ring-warning animate-scale-in"
                   : rank === 2
-                  ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background shadow-[0_0_14px_hsl(0_0%_75%/0.6)] ring-2 ring-slate-200 animate-scale-in"
+                  ? "bg-gradient-to-br from-slate-200 to-slate-400 text-background shadow-[0_0_14px_hsl(0_0%_75%/0.6)] ring-2 ring-border animate-scale-in"
                   : rank === 3
-                  ? "bg-gradient-to-br from-amber-500 to-amber-800 text-background shadow-[0_0_14px_hsl(30_70%_45%/0.6)] ring-2 ring-amber-600 animate-scale-in"
+                  ? "bg-gradient-to-br from-warning to-warning text-background shadow-[0_0_14px_hsl(30_70%_45%/0.6)] ring-2 ring-warning animate-scale-in"
                   : rank <= 10
                   ? "bg-gradient-to-br from-primary/70 to-primary text-primary-foreground shadow-[0_0_10px_hsl(var(--primary)/0.5)] ring-1 ring-primary/60"
                   : "bg-muted/50 text-muted-foreground";
               const nameStyle =
-                rank === 1 ? "text-yellow-300 font-bold drop-shadow-[0_0_6px_hsl(45_90%_55%/0.6)]"
-                : rank === 2 ? "text-slate-200 font-semibold"
-                : rank === 3 ? "text-amber-500 font-semibold"
+                rank === 1 ? "text-warning font-bold drop-shadow-[0_0_6px_hsl(45_90%_55%/0.6)]"
+                : rank === 2 ? "text-foreground font-semibold"
+                : rank === 3 ? "text-warning font-semibold"
                 : rank <= 10 ? "text-primary font-medium" : "";
               return (
                 <div key={p.key} className="flex items-center gap-3 p-3 hover-scale animate-fade-in">

@@ -145,8 +145,8 @@ const PlayerProfile = () => {
               <p className="text-sm whitespace-pre-wrap">{stats.backing_description}</p>
             )}
             {contacted && profile.phone ? (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-                <Phone className="w-4 h-4 text-green-500" />
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-success/10 border border-success/30">
+                <Phone className="w-4 h-4 text-success" />
                 <span className="text-sm">{t("playerProfile.contactZalo")} <strong>{profile.phone}</strong></span>
               </div>
             ) : null}
@@ -202,7 +202,7 @@ const PlayerProfile = () => {
 
       {results.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="w-5 h-5 text-yellow-500" /> {t("playerProfile.achievements", { n: results.length })}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Trophy className="w-5 h-5 text-warning" /> {t("playerProfile.achievements", { n: results.length })}</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-2">
               {results.map((r) => {
@@ -212,12 +212,12 @@ const PlayerProfile = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm truncate">{r.tournament_name}</span>
-                        {r.verified_by_admin && <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40 text-[10px] shrink-0">✓</Badge>}
+                        {r.verified_by_admin && <Badge className="bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)] text-[10px] shrink-0">✓</Badge>}
                         {isAdmin && (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-5 px-2 text-[10px] border-blue-500/40 text-blue-400 shrink-0"
+                            className="h-5 px-2 text-[10px] border-[hsl(var(--ds-active)_/_0.4)] text-[hsl(var(--ds-active))] shrink-0"
                             onClick={() => toggleResultVerified(r.id, !!r.verified_by_admin)}
                           >
                             {r.verified_by_admin ? t("playerProfile.unverifyBtn") : t("playerProfile.verifyBtn")}
@@ -230,7 +230,7 @@ const PlayerProfile = () => {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className={`text-sm font-bold ${profit >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      <div className={`text-sm font-bold ${profit >= 0 ? "text-success" : "text-destructive"}`}>
                         {profit >= 0 ? "+" : ""}{fmt(profit)}
                       </div>
                       <div className="text-[10px] text-muted-foreground">{fmt(r.prize)}đ</div>
@@ -255,13 +255,13 @@ const PlayerProfile = () => {
               <span>{t("playerProfile.stakingActivity")}</span>
               <div className="flex items-center gap-2">
                 {pubProfile.profile?.is_verified && (
-                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">{t("playerProfile.verifiedBadge")}</Badge>
+                  <Badge className="bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)]">{t("playerProfile.verifiedBadge")}</Badge>
                 )}
                 {isAdmin && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 px-2 text-xs border-blue-500/40 text-blue-400"
+                    className="h-7 px-2 text-xs border-[hsl(var(--ds-active)_/_0.4)] text-[hsl(var(--ds-active))]"
                     onClick={() => toggleProfileVerified(!!pubProfile.profile?.is_verified)}
                   >
                     {pubProfile.profile?.is_verified ? t("playerProfile.unverifyPlayer") : t("playerProfile.verifyPlayer")}
@@ -303,7 +303,7 @@ const PlayerProfile = () => {
                   <div className="text-xs uppercase tracking-wider text-muted-foreground">
                     {t("playerProfile.dealRatings", { n: pubProfile.ratings.length })}
                   </div>
-                  <span className="flex items-center gap-1 text-yellow-500 text-sm">
+                  <span className="flex items-center gap-1 text-warning text-sm">
                     <Star className="w-4 h-4 fill-current" />
                     {Number(pubProfile.profile?.rating_avg ?? 0).toFixed(1)}/5
                   </span>
@@ -316,7 +316,7 @@ const PlayerProfile = () => {
                           {r.rater?.display_name ?? t("playerProfile.anonymous")}
                           <span className="ml-1.5 text-[10px] text-muted-foreground">({r.role === "player" ? t("playerProfile.rolePlayer") : t("playerProfile.roleBacker")})</span>
                         </span>
-                        <div className="flex items-center gap-0.5 text-yellow-500">
+                        <div className="flex items-center gap-0.5 text-warning">
                           {Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
                         </div>
                       </div>
@@ -334,7 +334,7 @@ const PlayerProfile = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>{t("playerProfile.trust")}</span>
-            <span className="flex items-center gap-1 text-yellow-500">
+            <span className="flex items-center gap-1 text-warning">
               <Star className="w-4 h-4 fill-current" /> {avgRating}/5 ({t("playerProfile.reviewCount", { n: reviews.length })})
             </span>
           </CardTitle>
@@ -348,7 +348,7 @@ const PlayerProfile = () => {
                 <div key={r.id} className="border-l-2 border-primary/40 pl-3 py-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold">{reviewerNames.get(r.backer_id) ?? t("playerProfile.backer")}</span>
-                    <div className="flex items-center gap-0.5 text-yellow-500">
+                    <div className="flex items-center gap-0.5 text-warning">
                       {Array.from({ length: r.rating }).map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
                     </div>
                   </div>
@@ -375,7 +375,7 @@ const PlayerProfile = () => {
 };
 
 const MiniStat = ({ label, value, tone }: { label: string; value: string; tone?: "success" | "destructive" }) => {
-  const colorClass = tone === "success" ? "text-green-500" : tone === "destructive" ? "text-red-500" : "text-foreground";
+  const colorClass = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-foreground";
   return (
     <div className="rounded-lg border border-border/40 bg-card/30 p-3">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>

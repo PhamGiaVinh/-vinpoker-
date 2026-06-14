@@ -257,12 +257,12 @@ function PortfolioSection({ userId }: { userId: string }) {
                 {item.deal?.status === "completed" || item.deal?.status === "released" ? (
                   <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
                     <span className="text-xs text-muted-foreground">P&L:</span>
-                    <span className={`text-sm font-bold font-mono ${(item.deal?.backer_payout_vnd ?? 0) >= item.amount ? "text-green-500" : "text-red-500"}`}>
+                    <span className={`text-sm font-bold font-mono ${(item.deal?.backer_payout_vnd ?? 0) >= item.amount ? "text-success" : "text-destructive"}`}>
                       {item.deal?.backer_payout_vnd ? formatVND(item.deal.backer_payout_vnd - item.amount) : "—"}
                     </span>
                   </div>
                 ) : item.deal?.player_busted_out ? (
-                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-red-400">
+                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-destructive">
                     {t("notifications.player_busted_out")}
                   </div>
                 ) : (
@@ -383,13 +383,13 @@ function CurrentlyBackedSection({ userId }: { userId: string }) {
               </div>
 
               {deal.player_busted_out ? (
-                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-red-400">
+                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-destructive">
                   {t("notifications.player_busted_out")}
                 </div>
               ) : pnl !== null ? (
                 <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
                   <span className="text-xs text-muted-foreground">P&L:</span>
-                  <span className={`text-sm font-bold font-mono ${pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  <span className={`text-sm font-bold font-mono ${pnl >= 0 ? "text-success" : "text-destructive"}`}>
                     {pnl >= 0 ? "+" : ""}{formatVND(pnl)}
                   </span>
                 </div>
@@ -617,11 +617,11 @@ const PlayerCard = ({
           </div>
           <div className="flex flex-col gap-1 items-end shrink-0">
             {row.verified ? (
-              <Badge className="bg-green-500/20 text-green-500 border-green-500/40">
+              <Badge className="bg-success/20 text-success border-success/40">
                 <ShieldCheck className="w-3 h-3 mr-1" /> Verified
               </Badge>
             ) : (
-              <Badge variant="outline" className="border-yellow-500/40 text-yellow-500">
+              <Badge variant="outline" className="border-warning/40 text-warning">
                 <ShieldAlert className="w-3 h-3 mr-1" /> {t("findBacker.unverifiedBadge")}
               </Badge>
             )}
@@ -639,11 +639,11 @@ const PlayerCard = ({
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
                 <div className="text-[10px] text-muted-foreground tracking-wider">{t("findBacker.itm")}</div>
-                <div className="font-bold text-cyan-400">{row.itm_rate}%</div>
+                <div className="font-bold text-[hsl(var(--ds-active))]">{row.itm_rate}%</div>
               </div>
               <div>
                 <div className="text-[10px] text-muted-foreground tracking-wider">ROI</div>
-                <div className={`font-bold flex items-center justify-center gap-0.5 ${roiPositive ? "text-green-500" : "text-red-500"}`}>
+                <div className={`font-bold flex items-center justify-center gap-0.5 ${roiPositive ? "text-success" : "text-destructive"}`}>
                   {roiPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                   {roiPositive ? "+" : ""}{row.roi_percentage}%
                 </div>
@@ -666,7 +666,7 @@ const PlayerCard = ({
             )}
           </>
         ) : (
-          <div className="text-xs text-muted-foreground italic rounded-md border border-yellow-500/20 bg-yellow-500/5 p-2">
+          <div className="text-xs text-muted-foreground italic rounded-md border border-warning/20 bg-warning/5 p-2">
             {t("findBacker.unverifiedHint")}
           </div>
         )}
