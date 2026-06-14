@@ -33,7 +33,8 @@ export const FEATURES = {
    */
   registrationExtensions: false,
   /**
-   * Move-player dialog + System-A row locking in TableDrawPanel.
+   * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
+   * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
    * actor bound to auth.uid(), PUBLIC/anon execute revoked, spoof/anon/noop
    * tests passed (see controlled patch session report).
