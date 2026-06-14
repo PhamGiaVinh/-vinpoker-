@@ -93,6 +93,13 @@ export function ActionDock({
   const betNum = parseInt(betAmount || "0", 10) || 0;
   const legal = view?.legal;
   const isPosting = needsPostSB || needsPostBB;
+  // Min-raise guard: betAmount is the chips ADDED. A real raise must reach
+  // view.minRaiseTo (street total); shoving the whole stack for less is still
+  // legal (use ALL-IN), so we only block a non-all-in below-min raise.
+  const raiseToTotal = actor ? actor.current_bet + betNum : betNum;
+  const minRaiseAdd = actor && view ? Math.max(0, view.minRaiseTo - actor.current_bet) : 0;
+  const isAllInRaise = !!actor && betNum >= actor.current_stack;
+  const belowMinRaise = !!view && view.minRaiseTo > 0 && raiseToTotal < view.minRaiseTo;
 
   return (
     <div className="bg-card border border-amber-500/40 rounded-2xl overflow-hidden">
@@ -130,7 +137,8 @@ export function ActionDock({
       </div>
 
       {showActions && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5">
+      <div className="p-3.5 space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <BetKeypad value={betAmount} onChange={onBetAmountChange} bigBlind={bigBlind} disabled={disabled || !actor} />
 
         <div className="flex flex-col gap-2">
@@ -159,7 +167,7 @@ export function ActionDock({
                 {legal?.bet ? (
                   <ActBtn label="BET" sub={betNum > 0 ? formatStack(betNum) : undefined} tone="raise" disabled={disabled || betNum <= 0} onClick={() => onAction("bet")} />
                 ) : (
-                  <ActBtn label="RAISE" sub={betNum > 0 ? formatStack(betNum) : undefined} tone="raise" disabled={disabled || !legal?.raise || betNum <= 0} onClick={() => onAction("raise")} />
+                  <ActBtn label="RAISE" sub={betNum > 0 ? formatStack(betNum) : undefined} tone="raise" disabled={disabled || !legal?.raise || betNum <= 0 || (belowMinRaise && !isAllInRaise)} onClick={() => onAction("raise")} />
                 )}
               </div>
               <ActBtn
@@ -172,6 +180,13 @@ export function ActionDock({
             </>
           )}
         </div>
+        </div>
+        {!isPosting && legal?.raise && view && view.minRaiseTo > 0 && (
+          <div className={`text-[11px] ${belowMinRaise && !isAllInRaise && betNum > 0 ? "text-red-300" : "text-muted-foreground"}`}>
+            Raise tối thiểu thêm <span className="font-mono">{formatStack(minRaiseAdd)}</span> (tới {formatStack(view.minRaiseTo)})
+            {belowMinRaise && !isAllInRaise && betNum > 0 && " — số đang nhập thấp hơn mức tối thiểu"}
+          </div>
+        )}
       </div>
       )}
 

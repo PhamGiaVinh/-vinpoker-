@@ -15,6 +15,7 @@ import { nextToAct, actorView } from "@/lib/tracker-poker/handFlow";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
 import { ActionDock } from "./handinput/ActionDock";
 import { formatStack } from "./handinput/format";
+import { friendlyValidationError, isValidationCode } from "./handinput/validationMessages";
 import type { User } from "@supabase/supabase-js";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
@@ -96,6 +97,8 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [undoStack, setUndoStack] = useState<
     { players: PlayerState[]; actions: ActionRecord[]; currentStreet: Street; nextActionOrder: number }[]
   >([]);
+  // Streets whose community cards were already sent — used to confirm overwrites.
+  const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -463,15 +466,36 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           street: currentStreet, action_type: actionType, action_amount: amount, action_order: currentOrder,
         },
       });
-      // Server-side validation (T4): in "enforce" mode the Edge function returns a
-      // 422 with a clear message; surface it so the operator can correct entry. In
-      // the default "warn" mode this branch never fires (the action is recorded and
-      // only an advisory `validation` field rides along).
-      const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
-      if (rejection) {
-        toast.error(typeof rejection === "string" ? rejection : "Hành động không hợp lệ theo luật.");
+      // Server-side validation (T4). In "enforce" mode the Edge returns 422 →
+      // supabase-js sets `error` (FunctionsHttpError) and the JSON body lives on
+      // error.context (a Response we must read). In "warn" mode the action is
+      // recorded (200) with only an advisory `validation` field.
+      let rejCode: string | undefined;
+      let rejMsg: string | undefined;
+      if (error) {
+        try {
+          const errBody = await (error as any)?.context?.json?.();
+          rejCode = errBody?.code ?? errBody?.validation?.code;
+          rejMsg = errBody?.error;
+        } catch { /* body was not JSON */ }
+        if (!rejMsg) rejMsg = (error as any)?.message;
+      } else if ((data as any)?.error) {
+        rejCode = (data as any)?.code;
+        rejMsg = (data as any)?.error;
+      }
+
+      if (isValidationCode(rejCode)) {
+        // The server rejected an illegal action (enforce) — it was NOT recorded.
+        // Roll the optimistic local step back so the operator's view matches the
+        // server, and explain why in plain Vietnamese (raw code kept as detail).
+        restoreLastSnapshot();
+        toast.error(friendlyValidationError(rejCode, rejMsg), { description: `Mã lỗi: ${rejCode}` });
+      } else if (rejMsg) {
+        toast.error(rejMsg);
       } else if ((data as any)?.validation?.code) {
-        toast.warning(`Cảnh báo luật: ${(data as any).validation.message || (data as any).validation.code}`);
+        toast.warning(
+          `Cảnh báo luật: ${friendlyValidationError((data as any).validation.code, (data as any).validation.message)}`
+        );
       }
     }
   };
@@ -481,6 +505,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     if (!effectiveActorId) {
       toast.error("Chạm một ghế để chọn người hành động");
       return;
+    }
+    // High-risk action: confirm an all-in (whole stack into the pot) before recording.
+    if (type === "all_in") {
+      const who = players.find((p) => p.player_id === effectiveActorId);
+      const msg = `Xác nhận ALL-IN ${who ? formatStack(who.current_stack) : ""}${who ? ` của ${who.display_name}` : ""}? Toàn bộ stack sẽ vào pot.`;
+      if (!confirm(msg)) return;
     }
     handleAction(effectiveActorId, type);
     setSelectedActorId(null);
@@ -531,12 +561,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     if (!handId || isReadOnly) return;
     const cards = communityCards.filter((c): c is Card => c !== null);
     if (cards.length === 0) return;
+    // High-risk: confirm before overwriting community cards already sent for this street.
+    if (sentCommunityStreets.has(currentStreet) &&
+      !confirm(`Bài ${STREET_LABELS[currentStreet]} đã được gửi. Ghi đè lại?`)) return;
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: { tournament_id: tournamentId, action: "update_community_cards", hand_id: handId, community_cards: cards },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
+      setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
       toast.success(`Community cards updated (${cards.length} cards)`);
     } catch (e: any) {
       toast.error(e.message);
@@ -586,6 +620,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const handleSubmitHand = async () => {
     if (!tableId || !handNumber) return;
+    // High-risk: confirm when ending stacks were manually corrected away from the
+    // tracked values before committing them to the record.
+    const stacksEdited = players.some(
+      (p) => endingStacks[p.player_id] !== undefined && endingStacks[p.player_id] !== p.current_stack
+    );
+    if (stacksEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
     setSubmitting(true);
     try {
       const finalPlayers = players.map((p) => ({
@@ -663,6 +703,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setNextActionOrder(1);
     setUndoStack([]);
     setSelectedActorId(null);
+    setSentCommunityStreets(new Set());
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
         if (data) setHandNumber(data);
@@ -816,6 +857,33 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               Next <ChevronRight className="w-3 h-3 inline" />
             </button>
           </div>
+
+          {/* INFO STRIP — Vietnamese operator context (street · actor/next · cần theo · pot · last action) */}
+          {currentStreet !== "showdown" && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-card border border-border/30 rounded-lg text-[11px] shadow-sm">
+              <span className="text-muted-foreground">Vòng <strong className="text-amber-300">{STREET_LABELS[currentStreet]}</strong></span>
+              <span className="text-border">·</span>
+              {actorPlayer ? (
+                <span className="text-muted-foreground">Đang chờ <strong className="text-foreground">Ghế {actorPlayer.seat_number} · {actorPlayer.display_name}</strong>{actorPos && <span className="text-emerald-300"> ({actorPos})</span>}</span>
+              ) : (
+                <span className="text-emerald-300 font-medium">Vòng cược xong — sang vòng kế</span>
+              )}
+              {actorViewData && actorViewData.toCall > 0 && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-muted-foreground">Cần theo <strong className="font-mono text-amber-300">{formatStack(actorViewData.toCall)}</strong></span>
+                </>
+              )}
+              <span className="text-border">·</span>
+              <span className="text-muted-foreground">Pot <strong className="font-mono text-emerald-400">{formatStack(potSize)}</strong>{potBreakdown.sidePots.length > 0 && <span className="text-amber-300"> +{potBreakdown.sidePots.length} side</span>}</span>
+              {actions.length > 0 && (
+                <>
+                  <span className="text-border">·</span>
+                  <span className="text-muted-foreground">Cuối: <strong className="text-foreground">S{actions[actions.length - 1].seat_number} {formatActionLabel(actions[actions.length - 1])}</strong></span>
+                </>
+              )}
+            </div>
+          )}
 
           {/* POT BREAKDOWN — only when an all-in splits the pot or a bet is uncalled */}
           {(potBreakdown.sidePots.length > 0 || potBreakdown.uncalled) && (
