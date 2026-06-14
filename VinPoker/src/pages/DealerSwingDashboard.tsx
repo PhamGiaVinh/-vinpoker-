@@ -17,7 +17,7 @@ import { FEATURES } from "@/lib/featureFlags";
  * former swing/payroll sections in CashierDashboard so behaviour is unchanged.
  */
 export default function DealerSwingDashboard() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, isClubAdmin, isClubOwner } = useAuth();
   const nav = useNavigate();
   const { clubs, clubIds, dealerClubIds } = useOperatorClubs();
 
@@ -48,6 +48,12 @@ export default function DealerSwingDashboard() {
 
   const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
 
+  // Phase 2B preview gate: while the global flag is OFF, owner / club-admin /
+  // super-admin still see the planner tab on this (already control-staff-only) page
+  // for live UAT. Flip FEATURES.dealerShiftPlanner ON after UAT to expose it to all
+  // dealer-control staff. Live mode reads the dealer_shift_* tables (Phase 2A applied).
+  const showShiftPlanner = FEATURES.dealerShiftPlanner || isAdmin || isClubAdmin || isClubOwner;
+
   return (
     <div className="container mx-auto p-3 md:p-6">
       <div className="mb-4 flex items-center gap-3">
@@ -60,10 +66,10 @@ export default function DealerSwingDashboard() {
       </div>
 
       <Tabs defaultValue="swing" className="w-full">
-        <TabsList className={`grid w-full ${FEATURES.dealerShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto`}>
+        <TabsList className={`grid w-full ${showShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto`}>
           <TabsTrigger value="swing"><Table2 className="w-4 h-4 mr-1" /> Dealer Swing</TabsTrigger>
           <TabsTrigger value="payroll"><Calculator className="w-4 h-4 mr-1" /> Bảng lương</TabsTrigger>
-          {FEATURES.dealerShiftPlanner && (
+          {showShiftPlanner && (
             <TabsTrigger value="shift_planner"><CalendarRange className="w-4 h-4 mr-1" /> Xếp lịch dealer</TabsTrigger>
           )}
         </TabsList>
@@ -73,9 +79,9 @@ export default function DealerSwingDashboard() {
         <TabsContent value="payroll" className="mt-4">
           <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />
         </TabsContent>
-        {FEATURES.dealerShiftPlanner && (
+        {showShiftPlanner && (
           <TabsContent value="shift_planner" className="mt-4">
-            <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} />
+            <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} mode="live" />
           </TabsContent>
         )}
       </Tabs>

@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  buildLiveScenario,
   buildMockScenario,
   generateDailyDraft,
+  localWeekBounds,
   type MockScenario,
 } from "@/lib/shiftPlanner";
 import type {
   AvailabilityRequest,
-  DealerTier,
   GenerateDailyDraftResult,
   SchedulerConfig,
   SchedulerDealer,
   ShiftPlannerDataSource,
   ShiftTemplate,
 } from "@/types/shiftPlanner";
+
+// Club-local timezone (VN = UTC+7). Could become per-club config later.
+const CLUB_TZ_OFFSET_MINUTES = 420;
+const DAY_MS = 86_400_000;
 
 // ── Hook contract ─────────────────────────────────────────────────────────────
 
@@ -30,7 +35,7 @@ export interface ShiftPlannerData {
 export interface UseShiftPlannerArgs {
   clubIds: string[];
   workDate: string; // YYYY-MM-DD
-  /** Phase 1 default: 'mock' (in-memory, no DB). 'live' reads dealers/dealer_skills. */
+  /** Phase 1 default: 'mock' (in-memory, no DB). 'live' reads the dealer_shift_* tables. */
   mode?: ShiftPlannerDataSource;
 }
 
@@ -66,10 +71,11 @@ function scenarioToData(scenario: MockScenario, workDate: string): ShiftPlannerD
   };
 }
 
-function normaliseTier(raw: string | null | undefined): DealerTier {
-  const t = (raw ?? "").toUpperCase();
-  return t === "A" || t === "B" || t === "C" ? (t as DealerTier) : "C";
-}
+// dealer_shift_* tables are not yet in the generated types (migration owner-gated),
+// so reads go through an untyped client — same pattern as useDealerScores.
+const db = supabase as unknown as {
+  from: (table: string) => any;
+};
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
@@ -77,13 +83,13 @@ function normaliseTier(raw: string | null | undefined): DealerTier {
  * Dealer Shift Planner data hook.
  *
  * Phase 1 (default `mock`): runs the pure scheduler over an in-memory scenario so
- * the planner UI is fully demoable with no database and no migration applied.
+ * the planner UI is demoable with no database.
  *
- * Phase 2 (`live`, owner-gated): reads `dealers` + `dealer_skills` (READ ONLY —
- * never the Dealer Swing / attendance / rotation tables), projects them into
- * `SchedulerDealer`, and runs the same pure core. Shift templates / availability
- * / weekly aggregates come from the additive `dealer_shift_*` tables once they
- * exist; until then live mode falls back to the mock templates/requirements.
+ * Phase 2 (`live`): reads dealers + dealer_skills + dealer_shift_templates +
+ * dealer_availability_requests (for the work date) + dealer_shift_assignments
+ * (week window, for overlap aggregates), maps them via the pure `buildLiveScenario`
+ * adapter, and runs the same pure core. READ ONLY — never the Dealer Swing /
+ * attendance / rotation / payroll tables.
  */
 export function useShiftPlanner({
   clubIds,
@@ -105,60 +111,63 @@ export function useShiftPlanner({
       return;
     }
 
-    // ── live mode (Phase 2) ──
+    // ── live mode ──
     setLoading(true);
     try {
-      const { data: dealerRows, error: dealerErr } = await supabase
-        .from("dealers")
-        .select("id, club_id, full_name, tier, status, skills")
-        .in("club_id", clubIds)
-        .is("deleted_at", null)
-        .order("full_name");
-      if (dealerErr) throw dealerErr;
-
-      const { data: skillRows, error: skillErr } = await supabase
-        .from("dealer_skills")
-        .select("dealer_id, game_type");
-      if (skillErr) throw skillErr;
-
-      const skillsByDealer = new Map<string, string[]>();
-      for (const s of skillRows ?? []) {
-        const list = skillsByDealer.get(s.dealer_id) ?? [];
-        list.push(s.game_type);
-        skillsByDealer.set(s.dealer_id, list);
+      if (clubIds.length === 0) {
+        setData(null);
+        setError(null);
+        setLoading(false);
+        return;
       }
 
-      // Shift templates / availability / weekly aggregates live in the additive
-      // dealer_shift_* tables (Phase 2). Until applied, reuse the mock day shape.
-      const fallback = buildMockScenario(workDate);
+      const { startMs, endMs } = localWeekBounds(workDate, CLUB_TZ_OFFSET_MINUTES);
+      const weekLowIso = new Date(startMs - DAY_MS).toISOString(); // -1 day catches straddling shifts
+      const weekHighIso = new Date(endMs).toISOString();
 
-      const dealers: SchedulerDealer[] = (dealerRows ?? []).map((d) => {
-        const tier = normaliseTier(d.tier);
-        const merged = new Set<string>([...(d.skills ?? []), ...(skillsByDealer.get(d.id) ?? [])]);
-        return {
-          id: d.id,
-          clubId: d.club_id,
-          fullName: d.full_name,
-          tier,
-          isLead: tier === "A",
-          status: d.status ?? "active",
-          skills: [...merged],
-          assignedHoursThisWeek: 0,
-          maxHoursPerWeek: fallback.config.weeklyMaxHours,
-          weeklyTargetHours: fallback.config.weeklyTargetHours,
-          nightShiftsThisWeek: 0,
-          preferredStartHours: {},
-          lastShiftEndAt: null,
-        };
+      const [dealersRes, skillsRes, templatesRes, availabilityRes, assignmentsRes] = await Promise.all([
+        db.from("dealers")
+          .select("id, club_id, full_name, tier, status, skills")
+          .in("club_id", clubIds)
+          .is("deleted_at", null)
+          .order("full_name"),
+        db.from("dealer_skills").select("dealer_id, game_type"),
+        db.from("dealer_shift_templates")
+          .select("id, club_id, label, scheduled_start_at, scheduled_end_at, default_hours, required_skills, needs_lead, need_count")
+          .in("club_id", clubIds)
+          .eq("active", true),
+        db.from("dealer_availability_requests")
+          .select("dealer_id, work_date, kind, template_id, note")
+          .in("club_id", clubIds)
+          .eq("work_date", workDate),
+        db.from("dealer_shift_assignments")
+          .select("dealer_id, scheduled_start_at, scheduled_end_at, status")
+          .in("club_id", clubIds)
+          .gte("scheduled_start_at", weekLowIso)
+          .lt("scheduled_start_at", weekHighIso),
+      ]);
+
+      for (const res of [dealersRes, skillsRes, templatesRes, availabilityRes, assignmentsRes]) {
+        if (res.error) throw res.error;
+      }
+
+      const scenario = buildLiveScenario({
+        clubId: clubIds[0],
+        workDate,
+        tzOffsetMinutes: CLUB_TZ_OFFSET_MINUTES,
+        dealerRows: dealersRes.data ?? [],
+        skillRows: skillsRes.data ?? [],
+        templateRows: templatesRes.data ?? [],
+        availabilityRows: availabilityRes.data ?? [],
+        weekAssignmentRows: (assignmentsRes.data ?? [])
+          .filter((a: any) => a.status !== "cancelled" && a.status !== "no_show")
+          .map((a: any) => ({
+            dealerId: a.dealer_id,
+            scheduledStartAt: a.scheduled_start_at,
+            scheduledEndAt: a.scheduled_end_at,
+          })),
       });
 
-      const scenario: MockScenario = {
-        clubId: clubIds[0] ?? fallback.clubId,
-        dealers: dealers.length > 0 ? dealers : fallback.dealers,
-        templates: fallback.templates,
-        availability: [],
-        config: fallback.config,
-      };
       setData(scenarioToData(scenario, workDate));
       setError(null);
     } catch (e) {

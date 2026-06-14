@@ -23,3 +23,21 @@ export {
 } from "./time";
 export { buildMockScenario } from "./mockData";
 export type { MockScenario } from "./mockData";
+export {
+  computeWeeklyAggregates,
+  localWeekBounds,
+  localDayStartMs,
+} from "./weeklyAggregates";
+export type { WeekAssignmentRow, WeeklyAggregate } from "./weeklyAggregates";
+export { buildLiveScenario, requirementFromTemplates } from "./liveAdapter";
+export type {
+  LiveScenarioInput,
+  DealerRow,
+  SkillRow,
+  TemplateRow,
+  AvailabilityRow,
+} from "./liveAdapter";
+export {
+  DEFAULT_SHIFT_TEMPLATE_SEEDS,
+  buildTemplateSeedRows,
+} from "./templateSeeds";
