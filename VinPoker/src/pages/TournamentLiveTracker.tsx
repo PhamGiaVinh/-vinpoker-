@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/BackButton";
 import { TournamentLiveView } from "@/components/cashier/tournament-live/TournamentLiveView";
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
 
@@ -85,12 +86,7 @@ const TournamentLiveTracker = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => nav(-1)}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Quay lại
-        </button>
+        <BackButton />
       </div>
 
       <LiveHub

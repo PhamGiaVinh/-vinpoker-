@@ -84,7 +84,8 @@
     },
     "notLinked": { "title": "Tài khoản chưa liên kết dealer", "body": "Tài khoản của bạn chưa được liên kết với hồ sơ dealer. Bạn vẫn có thể xem cơ hội tuyển dụng và ứng tuyển.", "cta": "Xem tuyển dụng" },
     "comingSoon": { "title": "Dealer App đang hoàn thiện", "body": "Cổng dealer sẽ sớm ra mắt. Vui lòng quay lại sau." },
-    "toast": { "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai" }
+    "toast": { "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai" },
+    "exitToMain": "Về app chính"
   },
   "tv": {
     "level": "Level",
@@ -250,7 +251,8 @@
     "no": "Không",
     "language": "Ngôn ngữ",
     "vietnamese": "Tiếng Việt",
-    "english": "Tiếng Anh"
+    "english": "Tiếng Anh",
+    "home": "Trang chủ"
   },
   "findBacker": {
     "title": "Tìm Người tập huấn",

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PerformanceCard } from "@/components/PerformanceCard";
 import { InterestDialog } from "@/components/InterestDialog";
+import { BackButton } from "@/components/BackButton";
 import { Star, Flag, Phone, Calendar, MapPin, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -114,6 +115,7 @@ const PlayerProfile = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      <BackButton />
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">{profile.display_name}</h1>
