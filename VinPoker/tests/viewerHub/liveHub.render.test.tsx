@@ -1,9 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { LiveHubHeader } from "@/components/cashier/tournament-live/viewer-hub/LiveHubHeader";
 import { FeaturedTableCard } from "@/components/cashier/tournament-live/viewer-hub/FeaturedTableCard";
+
+// Isolate LiveHub from its supabase-backed data hook (Increment B) — the hub
+// composition is what we assert here, with stubbed hub data.
+vi.mock("@/components/cashier/tournament-live/viewer-hub/useLiveTrackerData", () => ({
+  useLiveTrackerData: () => ({
+    liveTableCount: 2,
+    tables: [
+      { tableId: "tA", name: "Bàn 1", playerCount: 8 },
+      { tableId: "tB", name: "Bàn 2", playerCount: 6 },
+    ],
+    feed: [{ id: "1", seatNumber: 2, playerName: "Bình", label: "ALL-IN 5k", kind: "allin" }],
+    loading: false,
+  }),
+}));
+
+// eslint-disable-next-line import/first
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
 
 const noop = () => {};
@@ -40,14 +56,18 @@ describe("Viewer Event Hub — Increment A (presentational)", () => {
     expect(html).toContain("Xem tất cả bàn");
   });
 
-  it("LiveHub composes header + featured card around children", () => {
+  it("LiveHub composes header (count) + featured card + tables strip + feed", () => {
     const html = wrap(
-      <LiveHub title="Daily Turbo" clubName="CLB Hà Nội" clubId="c2" onShare={noop}>
+      <LiveHub tournamentId="t1" title="Daily Turbo" clubName="CLB Hà Nội" clubId="c2" onShare={noop}>
         <div>LIVE_TABLE_VIEW</div>
       </LiveHub>
     );
     expect(html).toContain("Daily Turbo");
     expect(html).toContain("BÀN ĐANG DIỄN RA");
-    expect(html).toContain("LIVE_TABLE_VIEW");
+    expect(html).toContain("LIVE_TABLE_VIEW"); // featured felt (children)
+    expect(html).toContain("2 bàn"); // header live-table count
+    expect(html).toContain("Bàn 2"); // all-tables strip
+    expect(html).toContain("Cập nhật"); // live updates feed
+    expect(html).toContain("ALL-IN 5k"); // feed row
   });
 });

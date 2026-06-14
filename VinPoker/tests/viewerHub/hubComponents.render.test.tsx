@@ -1,0 +1,42 @@
+import { describe, it, expect } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LiveTablesStrip } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesStrip";
+import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
+import type { HubFeedItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
+
+const tables: HubTableSummary[] = [
+  { tableId: "tA", name: "Bàn 1", playerCount: 8 },
+  { tableId: "tB", name: "Bàn 2", playerCount: 6 },
+];
+
+describe("LiveTablesStrip", () => {
+  it("renders a mini card per table when >1 table", () => {
+    const html = renderToStaticMarkup(<LiveTablesStrip tables={tables} activeTableId="tA" />);
+    expect(html).toContain("Bàn 1");
+    expect(html).toContain("Bàn 2");
+    expect(html).toContain("8 người chơi");
+  });
+  it("renders nothing for a single table", () => {
+    const html = renderToStaticMarkup(<LiveTablesStrip tables={[tables[0]]} />);
+    expect(html).toBe("");
+  });
+});
+
+describe("LiveUpdatesFeed", () => {
+  const feed: HubFeedItem[] = [
+    { id: "1", seatNumber: 2, playerName: "Bình", label: "ALL-IN 5k", kind: "allin" },
+    { id: "2", seatNumber: 1, playerName: "An", label: "Theo 2.4k", kind: "call" },
+  ];
+  it("renders feed rows with badges", () => {
+    const html = renderToStaticMarkup(<LiveUpdatesFeed feed={feed} />);
+    expect(html).toContain("Cập nhật");
+    expect(html).toContain("Bình");
+    expect(html).toContain("ALL-IN 5k");
+    expect(html).toContain("ALL-IN"); // badge
+    expect(html).toContain("Ghế 2");
+  });
+  it("shows an empty state when no actions", () => {
+    const html = renderToStaticMarkup(<LiveUpdatesFeed feed={[]} />);
+    expect(html).toContain("Chưa có hành động");
+  });
+});

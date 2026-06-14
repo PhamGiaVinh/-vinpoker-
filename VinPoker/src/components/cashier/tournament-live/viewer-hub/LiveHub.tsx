@@ -11,8 +11,12 @@
 import type { ReactNode } from "react";
 import { LiveHubHeader } from "./LiveHubHeader";
 import { FeaturedTableCard } from "./FeaturedTableCard";
+import { LiveTablesStrip } from "./LiveTablesStrip";
+import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
+import { useLiveTrackerData } from "./useLiveTrackerData";
 
 export interface LiveHubProps {
+  tournamentId: string;
   title: string;
   clubName?: string | null;
   clubId?: string | null;
@@ -22,7 +26,10 @@ export interface LiveHubProps {
   children: ReactNode;
 }
 
-export function LiveHub({ title, clubName, clubId, subtitle, onShare, children }: LiveHubProps) {
+export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, onShare, children }: LiveHubProps) {
+  // Isolated hub data (count / all-tables strip / feed). Does NOT touch
+  // TournamentLiveView — the featured felt below still renders the real viewer.
+  const { liveTableCount, tables, feed } = useLiveTrackerData(tournamentId);
   return (
     <div className="space-y-4">
       <LiveHubHeader
@@ -30,9 +37,12 @@ export function LiveHub({ title, clubName, clubId, subtitle, onShare, children }
         clubName={clubName}
         clubId={clubId}
         subtitle={subtitle}
+        liveTableCount={liveTableCount}
         onShare={onShare}
       />
       <FeaturedTableCard badge="TRỰC TIẾP • BÀN ĐANG DIỄN RA">{children}</FeaturedTableCard>
+      <LiveTablesStrip tables={tables} />
+      <LiveUpdatesFeed feed={feed} />
     </div>
   );
 }

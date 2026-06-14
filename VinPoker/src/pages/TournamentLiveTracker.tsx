@@ -94,6 +94,7 @@ const TournamentLiveTracker = () => {
       </div>
 
       <LiveHub
+        tournamentId={tournamentId!}
         title={tournament.name}
         clubName={tournament.club?.name}
         clubId={tournament.club?.id}

@@ -13,16 +13,21 @@ export interface LiveHubHeaderProps {
   clubId?: string | null;
   /** Optional small subtitle (e.g. Main Event / level) when data exists. */
   subtitle?: string | null;
+  /** Optional live-table count badge ("X bàn trực tiếp"); omitted when <= 0. */
+  liveTableCount?: number;
   onShare: () => void;
 }
 
-export function LiveHubHeader({ title, clubName, clubId, subtitle, onShare }: LiveHubHeaderProps) {
+export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCount, onShare }: LiveHubHeaderProps) {
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           TRỰC TIẾP
+          {liveTableCount != null && liveTableCount > 0 && (
+            <span className="ml-1 text-emerald-300/90">· {liveTableCount} bàn</span>
+          )}
         </div>
         <div className="min-w-0">
           <h1 className="font-display font-bold text-lg leading-tight truncate">{title}</h1>
