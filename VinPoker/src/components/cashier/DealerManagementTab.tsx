@@ -156,25 +156,25 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
     if (!dealer) return null;
 
     return (
-      <div className="mt-4 p-4 rounded-lg bg-zinc-900 border border-zinc-800">
+      <div className="mt-4 p-4 rounded-lg bg-card border border-border">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-base font-semibold text-white">{dealer.full_name}</h3>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSelectedDealer(null)}
-            className="text-zinc-400 hover:text-white"
+            className="text-muted-foreground hover:text-white"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
-            <span className="text-zinc-500">Hạng:</span>{" "}
+            <span className="text-muted-foreground">Hạng:</span>{" "}
             <span className="text-white">{dealer.tier}</span>
           </div>
           <div>
-            <span className="text-zinc-500">Loại:</span>{" "}
+            <span className="text-muted-foreground">Loại:</span>{" "}
             <span className="text-white">
               {dealer.employment_type === "part_time" ? "Part-time" : "Full-time"}
             </span>
@@ -182,7 +182,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           {dealer.employment_type === "part_time" ? (
             dealer.hourly_rate_vnd != null && (
               <div>
-                <span className="text-zinc-500">Lương giờ:</span>{" "}
+                <span className="text-muted-foreground">Lương giờ:</span>{" "}
                 <span className="text-white">{dealer.hourly_rate_vnd.toLocaleString("vi-VN")} VND/h</span>
               </div>
             )
@@ -190,22 +190,22 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
             <>
               {dealer.monthly_salary_vnd != null && dealer.monthly_salary_vnd > 0 && (
                 <div>
-                  <span className="text-zinc-500">Lương tháng:</span>{" "}
-                  <span className="text-emerald-400 font-semibold">{dealer.monthly_salary_vnd.toLocaleString("vi-VN")} VND</span>
+                  <span className="text-muted-foreground">Lương tháng:</span>{" "}
+                  <span className="text-success font-semibold">{dealer.monthly_salary_vnd.toLocaleString("vi-VN")} VND</span>
                 </div>
               )}
               {dealer.hourly_rate_vnd != null && (
                 <div>
-                  <span className="text-zinc-500">Lương giờ:</span>{" "}
+                  <span className="text-muted-foreground">Lương giờ:</span>{" "}
                   <span className="text-white">{dealer.hourly_rate_vnd.toLocaleString("vi-VN")} VND/h</span>
                 </div>
               )}
               <div>
-                <span className="text-zinc-500">Giờ chuẩn/ca:</span>{" "}
+                <span className="text-muted-foreground">Giờ chuẩn/ca:</span>{" "}
                 <span className="text-white">{dealer.standard_hours_per_shift ?? 8}h</span>
               </div>
               <div>
-                <span className="text-zinc-500">OT:</span>{" "}
+                <span className="text-muted-foreground">OT:</span>{" "}
                 <span className="text-white">×{dealer.ot_multiplier ?? 1.5}</span>
               </div>
             </>
@@ -213,28 +213,28 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           {score && (
             <>
               <div>
-                <span className="text-zinc-500">Điểm:</span>{" "}
-                <span className="text-emerald-400 font-semibold">{score.score.toFixed(1)}</span>
+                <span className="text-muted-foreground">Điểm:</span>{" "}
+                <span className="text-success font-semibold">{score.score.toFixed(1)}</span>
               </div>
               <div>
-                <span className="text-zinc-500">Giờ làm (30 ngày):</span>{" "}
+                <span className="text-muted-foreground">Giờ làm (30 ngày):</span>{" "}
                 <span className="text-white">{score.total_hours.toFixed(1)}h</span>
               </div>
               <div>
-                <span className="text-zinc-500">Số swing:</span>{" "}
+                <span className="text-muted-foreground">Số swing:</span>{" "}
                 <span className="text-white">{score.total_swings}</span>
               </div>
             </>
           )}
           {dealer.phone && (
             <div>
-              <span className="text-zinc-500">SĐT:</span>{" "}
+              <span className="text-muted-foreground">SĐT:</span>{" "}
               <span className="text-white">{dealer.phone}</span>
             </div>
           )}
           {dealer.notes && (
             <div className="col-span-2">
-              <span className="text-zinc-500">Ghi chú:</span>{" "}
+              <span className="text-muted-foreground">Ghi chú:</span>{" "}
               <span className="text-white text-sm">{dealer.notes}</span>
             </div>
           )}
@@ -261,8 +261,8 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           onClick={() => setMainTab("dealers")}
           className={`px-4 py-1.5 text-sm rounded-md transition-colors font-medium ${
             mainTab === "dealers"
-              ? "bg-emerald-600 text-white"
-              : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+              ? "bg-success text-success-foreground"
+              : "bg-muted text-muted-foreground hover:text-white hover:bg-secondary"
           }`}
         >
           Danh sách
@@ -271,8 +271,8 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           onClick={() => setMainTab("telegram")}
           className={`px-4 py-1.5 text-sm rounded-md transition-colors font-medium flex items-center gap-1.5 ${
             mainTab === "telegram"
-              ? "bg-emerald-600 text-white"
-              : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+              ? "bg-success text-success-foreground"
+              : "bg-muted text-muted-foreground hover:text-white hover:bg-secondary"
           }`}
         >
           <Send className="w-3.5 h-3.5" />
@@ -290,8 +290,8 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                 onClick={() => setFilterMode(f.key)}
                 className={`px-3 py-1 text-xs rounded-full transition-colors ${
                   filterMode === f.key
-                    ? "bg-emerald-600 text-white"
-                    : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+                    ? "bg-success text-success-foreground"
+                    : "bg-muted text-muted-foreground hover:text-white hover:bg-secondary"
                 }`}
               >
                 {f.label}
@@ -299,18 +299,18 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
             ))}
             <div className="flex-1" />
             <div className="relative w-48">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm dealer..."
-                className="pl-7 h-8 text-xs bg-zinc-900 border-zinc-800 text-white"
+                className="pl-7 h-8 text-xs bg-card border-border text-white"
               />
             </div>
             <Button
               size="sm"
               onClick={() => setAddDialogOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white h-8 text-xs"
+              className="bg-success hover:bg-success/90 text-success-foreground h-8 text-xs"
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
               Thêm dealer
@@ -320,17 +320,17 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           {/* Table */}
           <ScrollArea className="flex-1">
             {loading && filtered.length === 0 ? (
-              <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">
+              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
                 Đang tải...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">
+              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
                 Không có dealer
               </div>
             ) : (
               <div className="space-y-1">
                 {/* Header */}
-                <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-zinc-500 font-medium">
+                <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground font-medium">
                   <div className="col-span-1 text-center">#</div>
                   <div className="col-span-3">Tên</div>
                   <div className="col-span-1">Hạng</div>
@@ -354,19 +354,19 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                       onClick={() => setSelectedDealer(isSelected ? null : dealer.id)}
                       className={`w-full grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded transition-colors text-left ${
                         isSelected
-                          ? "bg-emerald-600/10 border border-emerald-600/30"
-                          : "hover:bg-zinc-800/50 border border-transparent"
+                          ? "bg-success/10 border border-success/30"
+                          : "hover:bg-muted/50 border border-transparent"
                       }`}
                     >
-                      <div className="col-span-1 text-center text-zinc-500">
+                      <div className="col-span-1 text-center text-muted-foreground">
                         {rank <= 3 ? (
                           <span
                             className={
                               rank === 1
-                                ? "text-yellow-400 font-bold"
+                                ? "text-warning font-bold"
                                 : rank === 2
-                                ? "text-zinc-300 font-bold"
-                                : "text-amber-600 font-bold"
+                                ? "text-foreground font-bold"
+                                : "text-warning font-bold"
                             }
                           >
                             {rank}
@@ -383,48 +383,48 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                           variant="outline"
                           className={`text-xs ${
                             dealer.tier === "A"
-                              ? "border-red-500 text-red-400"
+                              ? "border-destructive text-destructive"
                               : dealer.tier === "B"
-                              ? "border-blue-500 text-blue-400"
-                              : "border-zinc-500 text-zinc-400"
+                              ? "border-[hsl(var(--ds-active))] text-[hsl(var(--ds-active))]"
+                              : "border-border text-muted-foreground"
                           }`}
                         >
                           {dealer.tier}
                         </Badge>
                       </div>
-                      <div className="col-span-1 text-zinc-300">
+                      <div className="col-span-1 text-foreground">
                         {dealer.employment_type === "part_time" ? (
-                          <span className="text-amber-400">PT</span>
+                          <span className="text-warning">PT</span>
                         ) : (
-                          <span className="text-emerald-400">FT</span>
+                          <span className="text-success">FT</span>
                         )}
                       </div>
-                      <div className="col-span-2 text-right text-zinc-300">
+                      <div className="col-span-2 text-right text-foreground">
                         {score ? `${score.total_hours.toFixed(1)}h` : "—"}
                       </div>
-                      <div className="col-span-2 text-right text-emerald-400 text-xs">
+                      <div className="col-span-2 text-right text-success text-xs">
                         {monthlyPay ? `${(monthlyPay / 1000000).toFixed(1)}M` : "—"}
                       </div>
                       <div className="col-span-1 text-right">
                         {score ? (
-                          <span className={rank <= 3 ? "text-emerald-400 font-semibold" : "text-zinc-300"}>
+                          <span className={rank <= 3 ? "text-success font-semibold" : "text-foreground"}>
                             {score.score.toFixed(1)}
                           </span>
                         ) : (
-                          <span className="text-zinc-500">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </div>
                       <div className="col-span-1 text-center flex items-center justify-center gap-0.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setAdjustDealer(dealer); }}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-secondary text-muted-foreground hover:text-white transition-colors"
                           title="Điều chỉnh"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setDeleteDealerId(dealer.id); }}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400 transition-colors"
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-secondary text-muted-foreground hover:text-destructive transition-colors"
                           title="Xoá"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -444,17 +444,17 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
         /* ── Telegram Tab ─────────────────────────────── */
         <ScrollArea className="flex-1">
           {dealersLoading ? (
-            <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
               Đang tải...
             </div>
           ) : dealers.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-zinc-500 text-sm">
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
               Không có dealer
             </div>
           ) : (
             <div className="space-y-1">
               {/* Header */}
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-zinc-500 font-medium">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground font-medium">
                 <div className="col-span-3">Tên</div>
                 <div className="col-span-2">Hạng</div>
                 <div className="col-span-4">Telegram</div>
@@ -468,7 +468,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                 return (
                   <div
                     key={dealer.id}
-                    className="grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded hover:bg-zinc-800/50 border border-transparent items-center"
+                    className="grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded hover:bg-muted/50 border border-transparent items-center"
                   >
                     <div className="col-span-3 text-white truncate">
                       {dealer.full_name}
@@ -478,10 +478,10 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                         variant="outline"
                         className={`text-xs ${
                           dealer.tier === "A"
-                            ? "border-red-500 text-red-400"
+                            ? "border-destructive text-destructive"
                             : dealer.tier === "B"
-                            ? "border-blue-500 text-blue-400"
-                            : "border-zinc-500 text-zinc-400"
+                            ? "border-[hsl(var(--ds-active))] text-[hsl(var(--ds-active))]"
+                            : "border-border text-muted-foreground"
                         }`}
                       >
                         {dealer.tier}
@@ -489,18 +489,18 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                     </div>
                     <div className="col-span-4">
                       {isLinked ? (
-                        <span className="text-emerald-400 text-xs">
+                        <span className="text-success text-xs">
                           {dealer.telegram_username
                             ? `@${dealer.telegram_username}`
                             : `ID: ${dealer.telegram_user_id}`}
                         </span>
                       ) : isPending ? (
-                        <span className="text-amber-400 text-xs">
+                        <span className="text-warning text-xs">
                           ⏳ @{dealer.telegram_username} · chờ dealer nhắn bot
                         </span>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <span className="text-zinc-500 text-xs">@</span>
+                          <span className="text-muted-foreground text-xs">@</span>
                           <Input
                             value={draft}
                             onChange={(e) =>
@@ -510,7 +510,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                               if (e.key === "Enter") handleSetUsername(dealer.id);
                             }}
                             placeholder="username Telegram"
-                            className="h-7 text-xs bg-zinc-900 border-zinc-700"
+                            className="h-7 text-xs bg-card border-border"
                           />
                         </div>
                       )}
@@ -522,7 +522,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                           size="sm"
                           onClick={() => handleUnlink(dealer.id)}
                           disabled={unlinkingId === dealer.id}
-                          className="h-7 text-xs text-red-400 hover:text-red-300 hover:bg-red-600/10"
+                          className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                         >
                           {unlinkingId === dealer.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -540,7 +540,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                             size="sm"
                             onClick={() => handleSetUsername(dealer.id)}
                             disabled={linkingId === dealer.id || !draft.trim()}
-                            className="h-7 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                            className="h-7 text-xs text-success hover:text-success hover:bg-success/10"
                           >
                             {linkingId === dealer.id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -554,7 +554,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                             size="sm"
                             onClick={() => handleCopyInviteLink(dealer.full_name)}
                             title="Copy link mời (cách cũ)"
-                            className="h-7 w-7 p-0 text-zinc-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-success hover:bg-success/10"
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
@@ -599,7 +599,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Huỷ</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSoftDelete} disabled={deleting} className="bg-red-600 hover:bg-red-500 text-white">
+            <AlertDialogAction onClick={handleSoftDelete} disabled={deleting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
               {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Xoá
             </AlertDialogAction>

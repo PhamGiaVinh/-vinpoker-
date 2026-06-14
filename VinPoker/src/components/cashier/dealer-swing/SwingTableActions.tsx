@@ -51,8 +51,8 @@ export default function SwingTableActions(p: SwingTableActionsProps) {
             className={[
               `w-full ${PRIMARY_H} text-sm`,
               p.isOt
-                ? "text-red-400 border-red-500/40 hover:bg-red-500/10"
-                : "text-amber-500 border-amber-500/40 hover:bg-amber-500/10",
+                ? "text-destructive border-destructive/40 hover:bg-destructive/10"
+                : "text-warning border-warning/40 hover:bg-warning/10",
             ].join(" ")}
             onClick={p.onConfirmSwing}
             disabled={p.swingDisabled}>
@@ -70,11 +70,11 @@ export default function SwingTableActions(p: SwingTableActionsProps) {
       </div>
 
       {/* CORRECTION group — visually separated so it is never confused with the swing */}
-      <div className="text-[11px] text-zinc-500 tracking-wider pt-0.5">SỬA / ĐỐI SOÁT</div>
+      <div className="text-[11px] text-muted-foreground tracking-wider pt-0.5">SỬA / ĐỐI SOÁT</div>
       <div className="flex gap-2">
         <span className="flex-1" title={p.changePredictedTitle}>
           <Button size="sm" variant="outline"
-            className={`w-full ${CORR_H} text-xs text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/10`}
+            className={`w-full ${CORR_H} text-xs text-success border-success/40 hover:bg-success/10`}
             disabled={p.changePredictedDisabled}
             onClick={p.onChangePredicted}>
             <UserCog className="w-4 h-4 mr-1.5" />
@@ -85,7 +85,7 @@ export default function SwingTableActions(p: SwingTableActionsProps) {
         {p.wrongTableEnabled ? (
           <span className="flex-1" title="Sửa dealer nhầm bàn — ghi đúng dealer đang chia thực tế (có audit)">
             <Button size="sm" variant="outline"
-              className={`w-full ${CORR_H} text-xs text-orange-400 border-orange-500/40 hover:bg-orange-500/10`}
+              className={`w-full ${CORR_H} text-xs text-warning border-warning/40 hover:bg-warning/10`}
               onClick={p.onCorrectWrongTable}>
               <AlertTriangle className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Sửa nhầm bàn</span>
@@ -94,7 +94,7 @@ export default function SwingTableActions(p: SwingTableActionsProps) {
           </span>
         ) : (
           <span className="flex-1" title="Sắp ra mắt — cần bật Room Reconcile trước">
-            <Button size="sm" variant="outline" className={`w-full ${CORR_H} text-xs text-zinc-500 border-zinc-700`} disabled>
+            <Button size="sm" variant="outline" className={`w-full ${CORR_H} text-xs text-muted-foreground border-border`} disabled>
               <AlertTriangle className="w-4 h-4 mr-1.5" />
               <span className="hidden sm:inline">Sửa nhầm bàn</span>
               <span className="sm:hidden">Nhầm bàn</span>

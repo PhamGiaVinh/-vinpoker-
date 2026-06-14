@@ -94,10 +94,10 @@ function formatMmSs(totalSeconds: number): string {
 
 function tierBadgeClass(tier: string | null): string {
   return tier === "A"
-    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+    ? "bg-warning/20 text-warning border-warning/40"
     : tier === "B"
-      ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
-      : "bg-zinc-800 text-zinc-300 border-zinc-700";
+      ? "bg-[hsl(var(--ds-active))]/20 text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active))]/40"
+      : "bg-muted text-foreground border-border";
 }
 
 const STATE_LABELS: Record<string, string> = {
@@ -204,25 +204,25 @@ function BoardTableCard({ table, nowMs }: { table: BoardTable; nowMs: number }) 
       : formatMmSs(remainingSec);
 
   const countdownColor = remainingSec == null
-    ? "text-zinc-600"
+    ? "text-muted-foreground"
     : isOverdue
-      ? "text-red-400"
+      ? "text-destructive"
       : remainingSec <= 180
-        ? "text-orange-300"
+        ? "text-warning"
         : remainingSec <= 300
-          ? "text-amber-300"
-          : "text-emerald-300";
+          ? "text-warning"
+          : "text-success";
 
   return (
     <div className={[
-      "relative flex flex-col rounded-xl border bg-zinc-900/80 overflow-hidden",
+      "relative flex flex-col rounded-xl border bg-card/80 overflow-hidden",
       isOverdue
-        ? "border-red-500/60 shadow-[0_0_32px_-10px_rgba(239,68,68,0.5)]"
-        : "border-zinc-700/60",
+        ? "border-destructive/60 shadow-[0_0_32px_-10px_rgba(239,68,68,0.5)]"
+        : "border-border/60",
     ].join(" ")}>
       {/* Shortage banner */}
       {isShortage && (
-        <div className="bg-red-600/90 text-red-50 text-sm font-bold text-center py-1.5 tracking-widest uppercase flex items-center justify-center gap-2">
+        <div className="bg-destructive/90 text-destructive text-sm font-bold text-center py-1.5 tracking-widest uppercase flex items-center justify-center gap-2">
           <AlertTriangle className="w-4 h-4" />
           THIẾU DEALER
           {slot0?.is_shortage && slot0.planned_relief_at ? (
@@ -234,9 +234,9 @@ function BoardTableCard({ table, nowMs }: { table: BoardTable; nowMs: number }) 
       <div className="p-4 flex flex-col gap-2 flex-1">
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xl font-bold text-zinc-100 truncate">{table.table_name}</span>
+          <span className="text-xl font-bold text-foreground truncate">{table.table_name}</span>
           {table.tour_tier ? (
-            <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+            <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border">
               {table.tour_tier}
             </span>
           ) : null}
@@ -247,51 +247,51 @@ function BoardTableCard({ table, nowMs }: { table: BoardTable; nowMs: number }) 
           <span className={["font-mono font-bold tabular-nums leading-none text-6xl", countdownColor].join(" ")}>
             {countdownLabel}
           </span>
-          <span className="text-xs text-zinc-500 uppercase tracking-widest font-mono">
+          <span className="text-xs text-muted-foreground uppercase tracking-widest font-mono">
             {isOverdue ? "quá hạn" : "đến swing"}
           </span>
         </div>
         {table.swing_due_at && (
-          <div className="text-xs text-zinc-600 font-mono">Swing lúc {formatHHmm(table.swing_due_at)}</div>
+          <div className="text-xs text-muted-foreground font-mono">Swing lúc {formatHHmm(table.swing_due_at)}</div>
         )}
 
         {/* Current dealer */}
         {table.current_dealer ? (
           <div className="flex items-center gap-2 mt-1">
-            <div className={["w-2.5 h-2.5 rounded-full", isOverdue ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
-            <span className="text-lg font-semibold text-zinc-100 truncate">{table.current_dealer.full_name}</span>
+            <div className={["w-2.5 h-2.5 rounded-full", isOverdue ? "bg-destructive" : "bg-success"].join(" ")} />
+            <span className="text-lg font-semibold text-foreground truncate">{table.current_dealer.full_name}</span>
             <Badge variant="outline" className={["text-xs font-bold", tierBadgeClass(table.current_dealer.tier)].join(" ")}>
               {table.current_dealer.tier ?? "?"}
             </Badge>
           </div>
         ) : (
-          <div className="text-base text-zinc-500 mt-1">Bàn trống</div>
+          <div className="text-base text-muted-foreground mt-1">Bàn trống</div>
         )}
 
         {/* TIẾP THEO */}
-        <div className="mt-auto pt-2 border-t border-zinc-800 space-y-1">
+        <div className="mt-auto pt-2 border-t border-border space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-zinc-500 uppercase tracking-widest">Tiếp theo</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-widest">Tiếp theo</span>
             {slot0Locked && slot0?.in_attendance_id ? (
-              <span className="text-base font-semibold text-emerald-400">
+              <span className="text-base font-semibold text-success">
                 ✓ CHỐT {slot0.in_dealer_name ?? "dealer"}
                 {slot0.planned_relief_at ? (
-                  <span className="ml-1.5 font-mono text-emerald-500/80">{formatHHmm(slot0.planned_relief_at)}</span>
+                  <span className="ml-1.5 font-mono text-success/80">{formatHHmm(slot0.planned_relief_at)}</span>
                 ) : null}
               </span>
             ) : slot0Predicted ? (
-              <span className="text-base font-medium text-amber-400">
+              <span className="text-base font-medium text-warning">
                 ~ DỰ ĐOÁN {slot0!.in_dealer_name ?? "dealer"}
                 {slot0!.planned_relief_at ? (
-                  <span className="ml-1.5 font-mono text-amber-400/80">{formatHHmm(slot0!.planned_relief_at)}</span>
+                  <span className="ml-1.5 font-mono text-warning/80">{formatHHmm(slot0!.planned_relief_at)}</span>
                 ) : null}
               </span>
             ) : (
-              <span className="text-base font-semibold text-red-400">⚠ THIẾU DEALER</span>
+              <span className="text-base font-semibold text-destructive">⚠ THIẾU DEALER</span>
             )}
           </div>
           {forecastSlots.length > 0 && (
-            <div className="text-sm text-zinc-500 truncate">
+            <div className="text-sm text-muted-foreground truncate">
               ~ Dự đoán:{" "}
               {forecastSlots
                 .map((s) => `${s.in_dealer_name ?? "dealer"}${s.planned_relief_at ? ` ${formatHHmm(s.planned_relief_at)}` : ""}`)
@@ -313,13 +313,13 @@ function PoolRow({ entry, nowMs }: { entry: BoardPoolEntry; nowMs: number }) {
   const resting = restRemainingSec != null && restRemainingSec > 0;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60">
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-card/60">
       <Badge variant="outline" className={["text-xs font-bold shrink-0", tierBadgeClass(entry.tier)].join(" ")}>
         {entry.tier ?? "?"}
       </Badge>
       <div className="flex-1 min-w-0">
-        <div className="text-base font-semibold text-zinc-100 truncate">{entry.full_name}</div>
-        <div className="text-xs text-zinc-500">
+        <div className="text-base font-semibold text-foreground truncate">{entry.full_name}</div>
+        <div className="text-xs text-muted-foreground">
           {STATE_LABELS[entry.current_state] ?? entry.current_state}
           {entry.prev_session_minutes != null ? ` · phiên trước ${Math.round(entry.prev_session_minutes)}p` : ""}
         </div>
@@ -327,13 +327,13 @@ function PoolRow({ entry, nowMs }: { entry: BoardPoolEntry; nowMs: number }) {
       <div className="shrink-0 text-right">
         {resting ? (
           <>
-            <div className="font-mono font-bold text-amber-300 text-lg tabular-nums leading-none">
+            <div className="font-mono font-bold text-warning text-lg tabular-nums leading-none">
               {formatMmSs(restRemainingSec!)}
             </div>
-            <div className="text-[10px] text-zinc-500 uppercase tracking-wider mt-0.5">nghỉ giữa ca</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">nghỉ giữa ca</div>
           </>
         ) : (
-          <span className="text-sm font-semibold text-emerald-400">Sẵn sàng</span>
+          <span className="text-sm font-semibold text-success">Sẵn sàng</span>
         )}
       </div>
     </div>
@@ -399,7 +399,7 @@ export default function DealerControlBoard() {
 
   if (authLoading || !user || clubs === null) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-6">
+      <div className="min-h-screen bg-card p-6">
         <Skeleton className="h-screen rounded-xl" />
       </div>
     );
@@ -407,36 +407,36 @@ export default function DealerControlBoard() {
 
   if (clubs.length === 0) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-card flex items-center justify-center p-6">
         <div className="text-center space-y-2">
-          <AlertTriangle className="w-10 h-10 mx-auto text-amber-400" />
-          <div className="text-xl font-bold text-zinc-100">Bạn chưa được phân công CLB nào</div>
-          <p className="text-sm text-zinc-500">Liên hệ Super Admin để được gán quyền điều phối dealer.</p>
+          <AlertTriangle className="w-10 h-10 mx-auto text-warning" />
+          <div className="text-xl font-bold text-foreground">Bạn chưa được phân công CLB nào</div>
+          <p className="text-sm text-muted-foreground">Liên hệ Super Admin để được gán quyền điều phối dealer.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 lg:p-6">
+    <div className="min-h-screen bg-card text-foreground p-4 lg:p-6">
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
           <MonitorPlay className="w-6 h-6 text-primary" />
           <h1 className="text-xl lg:text-2xl font-bold tracking-wide uppercase">Bảng điều phối Dealer</h1>
         </div>
-        <div className="font-mono text-2xl lg:text-3xl font-bold tabular-nums text-zinc-300 ml-2">
+        <div className="font-mono text-2xl lg:text-3xl font-bold tabular-nums text-foreground ml-2">
           {new Date(nowMs).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
         </div>
         <div className="ml-auto flex items-center gap-2">
           {error && (
-            <Badge variant="outline" className="border-red-500/50 text-red-400 text-xs">
+            <Badge variant="outline" className="border-destructive/50 text-destructive text-xs">
               Lỗi tải dữ liệu — đang thử lại
             </Badge>
           )}
           {/* Radix Select forbids value="" — sentinel "all" */}
           <Select value={clubFilter ?? "all"} onValueChange={(v) => setClubFilter(v === "all" ? null : v)}>
-            <SelectTrigger className="w-[220px] bg-zinc-900 border-zinc-700 text-zinc-100">
+            <SelectTrigger className="w-[220px] bg-card border-border text-foreground">
               <SelectValue placeholder="Chọn CLB" />
             </SelectTrigger>
             <SelectContent>
@@ -455,11 +455,11 @@ export default function DealerControlBoard() {
           {loading && !board ? (
             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-56 rounded-xl bg-zinc-900" />
+                <Skeleton key={i} className="h-56 rounded-xl bg-card" />
               ))}
             </div>
           ) : sortedTables.length === 0 ? (
-            <div className="border border-zinc-800 rounded-xl py-24 text-center text-zinc-500 text-lg">
+            <div className="border border-border rounded-xl py-24 text-center text-muted-foreground text-lg">
               Không có bàn đang hoạt động
             </div>
           ) : (
@@ -473,22 +473,22 @@ export default function DealerControlBoard() {
 
         {/* Pool rail */}
         <div className="col-span-12 xl:col-span-3">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 xl:sticky xl:top-4">
+          <div className="rounded-xl border border-border bg-card/40 p-3 xl:sticky xl:top-4">
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-4 h-4 text-primary" />
-              <span className="text-sm font-bold uppercase tracking-widest text-zinc-300">Pool dealer</span>
-              <Badge variant="outline" className="ml-auto text-xs border-zinc-700 text-zinc-400">
+              <span className="text-sm font-bold uppercase tracking-widest text-foreground">Pool dealer</span>
+              <Badge variant="outline" className="ml-auto text-xs border-border text-muted-foreground">
                 {sortedPool.length}
               </Badge>
             </div>
             {loading && !board ? (
               <div className="space-y-2">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 rounded-lg bg-zinc-900" />
+                  <Skeleton key={i} className="h-14 rounded-lg bg-card" />
                 ))}
               </div>
             ) : sortedPool.length === 0 ? (
-              <div className="text-sm text-zinc-500 text-center py-10">Không có dealer trong pool</div>
+              <div className="text-sm text-muted-foreground text-center py-10">Không có dealer trong pool</div>
             ) : (
               <div className="space-y-2 max-h-[calc(100vh-160px)] overflow-y-auto pr-1">
                 {sortedPool.map((p) => (

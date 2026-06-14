@@ -234,9 +234,9 @@ export default function ChangePredictedDealerModal({
               <span className="text-muted-foreground">Thay thế dự kiến:</span>{" "}
               <span className="font-medium">{predictedName}</span>
               {slot0?.status === "announced" ? (
-                <span className="text-emerald-400"> · đã CHỐT</span>
+                <span className="text-success"> · đã CHỐT</span>
               ) : slot0?.status === "predicted" ? (
-                <span className="text-amber-400"> · dự kiến</span>
+                <span className="text-warning"> · dự kiến</span>
               ) : null}
             </div>
           </div>
@@ -252,13 +252,13 @@ export default function ChangePredictedDealerModal({
               <span className="font-semibold">{pending.attendance.dealers?.full_name}</span> cho{" "}
               <span className="font-semibold">{tableName}</span>?
             </div>
-            <div className="text-sm font-medium text-emerald-400">Chỉ áp dụng cho {tableName}.</div>
+            <div className="text-sm font-medium text-success">Chỉ áp dụng cho {tableName}.</div>
             <div className="text-xs text-muted-foreground space-y-1">
               <div>Chỉ đổi người thay thế DỰ KIẾN — dealer đang chia vẫn giữ bàn.</div>
               <div>Giờ swing giữ nguyên: {hhmm(plannedReliefMs)}.</div>
               <div>Dealer mới sẽ được giữ slot này và không bị planner thay lại.</div>
               {pending.group === "eligible_before_swing" && (
-                <div className="text-amber-400">
+                <div className="text-warning">
                   Dealer đang nghỉ — đủ điều kiện lúc {hhmm(pending.eligibleAtMs)}.
                 </div>
               )}
@@ -305,7 +305,7 @@ export default function ChangePredictedDealerModal({
                           </div>
                           <div className={[
                             "text-[11px] truncate",
-                            c.group === "eligible_before_swing" ? "text-amber-400" : "text-muted-foreground",
+                            c.group === "eligible_before_swing" ? "text-warning" : "text-muted-foreground",
                           ].join(" ")}>
                             {c.group === "eligible_before_swing" && <Clock className="inline w-3 h-3 mr-0.5 -mt-0.5" />}
                             {c.reason}

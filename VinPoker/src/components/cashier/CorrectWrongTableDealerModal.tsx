@@ -340,8 +340,8 @@ export default function CorrectWrongTableDealerModal({
                     className={[
                       "w-full flex items-center justify-between gap-2 p-2 border rounded-none text-left",
                       actualId === d.id
-                        ? "border-orange-500/60 bg-orange-500/10"
-                        : "border-border bg-muted/20 hover:border-orange-500/40",
+                        ? "border-warning/60 bg-warning/10"
+                        : "border-border bg-muted/20 hover:border-warning/40",
                     ].join(" ")}
                   >
                     <span className="text-sm font-medium truncate">
@@ -363,7 +363,7 @@ export default function CorrectWrongTableDealerModal({
                   <Button key={m} size="sm" variant="outline"
                     className={[
                       "text-xs h-7",
-                      !customTime && minutesAgo === m ? "border-orange-500/60 text-orange-400" : "",
+                      !customTime && minutesAgo === m ? "border-warning/60 text-warning" : "",
                     ].join(" ")}
                     onClick={() => { setMinutesAgo(m); setCustomTime(""); }}>
                     {m} phút trước
@@ -379,15 +379,15 @@ export default function CorrectWrongTableDealerModal({
               </div>
               <div className="text-[11px] text-muted-foreground mt-1">
                 Ghi nhận từ: <span className="font-medium">{hhmm(effectiveAtMs)}</span>
-                {effectiveTooFuture && <span className="text-red-400"> — không được ở tương lai</span>}
-                {effectiveTooOld && <span className="text-amber-400"> — quá 120 phút, cần quyền admin</span>}
+                {effectiveTooFuture && <span className="text-destructive"> — không được ở tương lai</span>}
+                {effectiveTooOld && <span className="text-warning"> — quá 120 phút, cần quyền admin</span>}
               </div>
             </div>
 
             {actualId && aActiveAtTableId && (
-              <div className="text-xs border border-amber-500/30 bg-amber-500/10 p-2 space-y-1.5">
+              <div className="text-xs border border-warning/30 bg-warning/10 p-2 space-y-1.5">
                 <div>
-                  <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5 text-amber-400" />
+                  <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5 text-warning" />
                   {nameOf(actualId)} đang được ghi ở <span className="font-semibold">{tableNameOf(aActiveAtTableId)}</span>.
                 </div>
                 {recordedBId && recordedBId !== actualId ? (
@@ -433,17 +433,17 @@ export default function CorrectWrongTableDealerModal({
             </div>
 
             {restWarning && (
-              <div className="text-[11px] text-amber-400">
+              <div className="text-[11px] text-warning">
                 <Clock className="inline w-3 h-3 mr-0.5 -mt-0.5" />{restWarning}
               </div>
             )}
             {effectiveTooOld && (
-              <label className="flex items-center gap-2 text-[11px] text-amber-400 cursor-pointer">
+              <label className="flex items-center gap-2 text-[11px] text-warning cursor-pointer">
                 <input type="checkbox" checked={adminOverride} onChange={(e) => setAdminOverride(e.target.checked)} />
                 Tôi là admin — cho phép sửa quá 120 phút (server sẽ kiểm tra quyền)
               </label>
             )}
-            {inlineError && <div className="text-xs text-red-400">{inlineError}</div>}
+            {inlineError && <div className="text-xs text-destructive">{inlineError}</div>}
 
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={() => close(false)} disabled={busy}>Hủy</Button>
@@ -488,7 +488,7 @@ export default function CorrectWrongTableDealerModal({
             {preview.conflicts.length > 0 && (
               <div className="space-y-1">
                 {preview.conflicts.map((c, i) => (
-                  <div key={i} className="text-xs text-red-400">
+                  <div key={i} className="text-xs text-destructive">
                     <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" />
                     {CONFLICT_LABELS[c?.type] ?? c?.type ?? "Xung đột không xác định"}
                   </div>
@@ -496,7 +496,7 @@ export default function CorrectWrongTableDealerModal({
               </div>
             )}
 
-            <div className="text-[11px] text-amber-400">
+            <div className="text-[11px] text-warning">
               Hành động này sửa lịch thực tế và sẽ được ghi audit.
             </div>
 
@@ -505,7 +505,7 @@ export default function CorrectWrongTableDealerModal({
                 Quay lại
               </Button>
               <Button size="sm" onClick={runApply} disabled={busy || !preview.can_apply}
-                className="bg-orange-600 hover:bg-orange-700 text-white">
+                className="bg-warning hover:bg-warning/90 text-warning-foreground">
                 {busy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                 Xác nhận sửa nhầm bàn
               </Button>

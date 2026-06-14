@@ -135,12 +135,12 @@ export default function SwingTableCard({
     if (slot0 && slot0Locked && slot0HasDealer) {
       overdueState = {
         label: `✓ CHỐT ${slot0Name}${slot0ReliefLabel ? ` vào ${slot0ReliefLabel}` : ""}`,
-        className: "text-emerald-400",
+        className: "text-success",
       };
     } else if (slot0 && slot0.status === "predicted" && !slot0.is_shortage && slot0HasDealer) {
       overdueState = {
         label: `~ DỰ ĐOÁN ${slot0Name}${slot0ReliefLabel ? ` ${slot0ReliefLabel}` : ""}`,
-        className: "text-amber-400",
+        className: "text-warning",
       };
     } else {
       const shortageTime = slot0?.is_shortage && slot0.planned_relief_at
@@ -148,7 +148,7 @@ export default function SwingTableCard({
         : null;
       overdueState = {
         label: shortageTime ? `⚠ THIẾU DEALER · dự kiến ${shortageTime}` : "⚠ THIẾU DEALER",
-        className: "text-red-400",
+        className: "text-destructive",
       };
     }
   }
@@ -161,25 +161,25 @@ export default function SwingTableCard({
   }
 
   let timerLabel = "--:--";
-  let timerColor = preAssignStatus === "in_progress" ? "text-purple-400" : preAssignLabel ? "text-amber-400" : "text-emerald-400";
+  let timerColor = preAssignStatus === "in_progress" ? "text-[hsl(var(--ds-preassign))]" : preAssignLabel ? "text-warning" : "text-success";
   if (a && !isOt) {
     const remainingMs = swingDueMs - nowMs;
     if (remainingMs > 0) {
       const secs = Math.floor(remainingMs / 1000);
       timerLabel = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
-      if (secs <= 60) timerColor = "text-red-400";
-      else if (secs <= 180) timerColor = "text-orange-400";
-      else if (secs <= 300) timerColor = "text-amber-400";
+      if (secs <= 60) timerColor = "text-destructive";
+      else if (secs <= 180) timerColor = "text-warning";
+      else if (secs <= 300) timerColor = "text-warning";
     } else if (isPastDue) {
       const overdueSec = Math.floor(Math.abs(remainingMs) / 1000);
       timerLabel = `+${String(Math.floor(overdueSec / 60)).padStart(2, "0")}:${String(overdueSec % 60).padStart(2, "0")}`;
-      timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
+      timerColor = preAssignLabel ? "text-warning" : "text-destructive";
     }
   }
   if (inWarmup) {
     const warmSec = Math.max(0, Math.floor((warmupUntilMs - nowMs) / 1000));
     timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
-    timerColor = "text-sky-400";
+    timerColor = "text-[hsl(var(--ds-active))]";
   }
   const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
   const remainingDisplay = isOt ? otLabel : timerLabel;
@@ -223,7 +223,7 @@ export default function SwingTableCard({
           id={`table-card-${t.id}`}
           className={cn(
             "group relative w-full overflow-hidden rounded-xl border p-3 text-left transition",
-            "bg-zinc-900/70 hover:bg-zinc-800/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            "bg-card/70 hover:bg-muted/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
             s.border,
             isAnimating?.(t.id) && "table-card--swinging",
             focused && "ring-2 ring-primary/80",
@@ -232,14 +232,14 @@ export default function SwingTableCard({
           {/* Header: Bàn N + status pill */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-zinc-100">{t.table_name}</div>
+              <div className="truncate text-sm font-semibold text-foreground">{t.table_name}</div>
               <div className="mt-1 flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
                 <span className={cn("text-[11px] font-medium", s.text)}>{s.label}</span>
               </div>
             </div>
             {(dealerStatus === "missing" || dealerStatus === "overdue") && (
-              <AlertTriangle className="h-4 w-4 shrink-0 text-orange-300" aria-hidden="true" />
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
             )}
           </div>
 
@@ -248,25 +248,25 @@ export default function SwingTableCard({
             <div className="flex items-center gap-2 text-xs">
               <UserRound className="h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden="true" />
               {dealerLabel ? (
-                <span className="truncate text-zinc-200">
+                <span className="truncate text-foreground">
                   {preAssigned && !dealer ? "⬆ " : ""}{dealerLabel}
                 </span>
               ) : (
-                <span className="text-amber-400/90">Chưa gán</span>
+                <span className="text-warning/90">Chưa gán</span>
               )}
             </div>
 
             {a && a.assigned_at && (
               <div className="flex items-center gap-2 text-xs">
-                <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
-                <span className={cn("font-mono tabular-nums", isOt ? "text-red-400" : timerColor)}>{remainingDisplay}</span>
-                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{statusLabel}</span>
+                <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className={cn("font-mono tabular-nums", isOt ? "text-destructive" : timerColor)}>{remainingDisplay}</span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{statusLabel}</span>
               </div>
             )}
 
             {dealer && nextLabel && (
-              <div className="truncate text-[11px] text-zinc-500">
-                Dự kiến: <span className="text-zinc-300">{nextLabel}</span>
+              <div className="truncate text-[11px] text-muted-foreground">
+                Dự kiến: <span className="text-foreground">{nextLabel}</span>
               </div>
             )}
           </div>
@@ -280,11 +280,11 @@ export default function SwingTableCard({
         </button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="w-72 border-zinc-700 bg-zinc-900 p-3">
+      <PopoverContent align="start" className="w-72 border-border bg-card p-3">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-zinc-100">{t.table_name}</div>
-            <div className="truncate text-[11px] text-zinc-400">
+            <div className="truncate text-sm font-semibold text-foreground">{t.table_name}</div>
+            <div className="truncate text-[11px] text-muted-foreground">
               {dealer ? dealer.full_name : preAssigned ? `⬆ ${preAssigned.full_name}` : "Chưa gán"}
             </div>
           </div>
@@ -330,7 +330,7 @@ export default function SwingTableCard({
         />
 
         {/* Secondary: manual swing / force close (kebab) + close table */}
-        <div className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-800 pt-2">
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
           {onManualSwing && onForceClose && (
             <TableCardKebab
               tableId={t.id}
@@ -348,7 +348,7 @@ export default function SwingTableCard({
               <Button size="sm" variant="ghost" className="h-9 text-xs" onClick={onCloseTableCancel}>Huỷ</Button>
             </div>
           ) : (
-            <Button size="sm" variant="ghost" className="h-9 text-xs text-zinc-400 hover:text-red-400" onClick={() => onCloseTableClick(t.id)}>
+            <Button size="sm" variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-destructive" onClick={() => onCloseTableClick(t.id)}>
               <Trash2 className="mr-1 h-3.5 w-3.5" /> Đóng bàn
             </Button>
           )}

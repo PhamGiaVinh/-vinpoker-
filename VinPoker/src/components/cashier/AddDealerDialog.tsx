@@ -116,10 +116,10 @@ export default function AddDealerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border border-zinc-800 text-white max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border border-border text-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm Dealer Mới</DialogTitle>
-          <DialogDescription className="text-zinc-400">
+          <DialogDescription className="text-muted-foreground">
             Nhập thông tin dealer để thêm vào danh sách
           </DialogDescription>
         </DialogHeader>
@@ -131,17 +131,17 @@ export default function AddDealerDialog({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Nguyễn Văn A"
-              className="bg-zinc-900 border-zinc-700 text-white"
+              className="bg-card border-border text-white"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Hạng</Label>
               <Select value={tier} onValueChange={setTier}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                <SelectTrigger className="bg-card border-border text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-700 text-white">
+                <SelectContent className="bg-card border-border text-white">
                   <SelectItem value="A">A — Cao cấp</SelectItem>
                   <SelectItem value="B">B — Trung cấp</SelectItem>
                   <SelectItem value="C">C — Cơ bản</SelectItem>
@@ -151,10 +151,10 @@ export default function AddDealerDialog({
             <div>
               <Label>Loại</Label>
               <Select value={employmentType} onValueChange={setEmploymentType}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-700 text-white">
+                <SelectTrigger className="bg-card border-border text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-700 text-white">
+                <SelectContent className="bg-card border-border text-white">
                   <SelectItem value="full_time">Full-time</SelectItem>
                   <SelectItem value="part_time">Part-time</SelectItem>
                 </SelectContent>
@@ -172,7 +172,7 @@ export default function AddDealerDialog({
                 value={hourlyRate}
                 onChange={(e) => setHourlyRate(e.target.value)}
                 placeholder="VD: 100000"
-                className="bg-zinc-900 border-zinc-700 text-white"
+                className="bg-card border-border text-white"
               />
             </div>
           ) : (
@@ -185,7 +185,7 @@ export default function AddDealerDialog({
                   value={monthlySalary}
                   onChange={(e) => setMonthlySalary(e.target.value)}
                   placeholder="VD: 9000000"
-                  className="bg-zinc-900 border-zinc-700 text-white"
+                  className="bg-card border-border text-white"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -197,7 +197,7 @@ export default function AddDealerDialog({
                     value={standardHours}
                     onChange={(e) => setStandardHours(e.target.value)}
                     placeholder="8"
-                    className="bg-zinc-900 border-zinc-700 text-white"
+                    className="bg-card border-border text-white"
                   />
                 </div>
                 <div>
@@ -208,12 +208,12 @@ export default function AddDealerDialog({
                     value={otMultiplier}
                     onChange={(e) => setOtMultiplier(e.target.value)}
                     placeholder="1.5"
-                    className="bg-zinc-900 border-zinc-700 text-white"
+                    className="bg-card border-border text-white"
                   />
                 </div>
               </div>
               {derivedHourlyRate > 0 && (
-                <div className="text-xs text-zinc-400">
+                <div className="text-xs text-muted-foreground">
                   Lương giờ tự tính: {derivedHourlyRate.toLocaleString("vi-VN")} VND/h
                 </div>
               )}
@@ -226,7 +226,7 @@ export default function AddDealerDialog({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="090xxxxxxx"
-              className="bg-zinc-900 border-zinc-700 text-white"
+              className="bg-card border-border text-white"
             />
           </div>
           <div>
@@ -235,21 +235,21 @@ export default function AddDealerDialog({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ghi chú (không bắt buộc)"
-              className="bg-zinc-900 border-zinc-700 text-white"
+              className="bg-card border-border text-white"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button
               variant="outline"
               onClick={() => { reset(); onOpenChange(false); }}
-              className="border-zinc-700 text-zinc-300"
+              className="border-border text-foreground"
             >
               Hủy
             </Button>
             <Button
               onClick={handleSave}
               disabled={saving || !fullName.trim()}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              className="bg-success hover:bg-success/90 text-success-foreground"
             >
               {saving ? "Đang lưu..." : "Thêm dealer"}
             </Button>

@@ -49,24 +49,24 @@ export default function DealerSwingSummaryStrip({
     {
       title: "Tổng quan hoạt động",
       metrics: [
-        { label: "Bàn đang mở", value: activeTables, color: "text-zinc-100" },
-        { label: "Bàn có dealer / mở", value: `${assignedTables}/${activeTables}`, color: allAssigned ? "text-primary" : "text-amber-400" },
-        { label: "Đang nghỉ", value: onBreak, color: "text-zinc-100" },
+        { label: "Bàn đang mở", value: activeTables, color: "text-foreground" },
+        { label: "Bàn có dealer / mở", value: `${assignedTables}/${activeTables}`, color: allAssigned ? "text-primary" : "text-warning" },
+        { label: "Đang nghỉ", value: onBreak, color: "text-foreground" },
       ],
     },
     {
       title: "Quản lý rủi ro",
       metrics: [
-        { label: "Dự kiến chờ", value: predictedPending, color: predictedPending > 0 ? "text-sky-400" : "text-zinc-500" },
-        { label: "Cảnh báo", value: warnings, color: warnings > 0 ? "text-amber-400" : "text-zinc-500" },
-        { label: "Quá hạn", value: overdue, color: overdue > 0 ? "text-red-400" : "text-zinc-500" },
+        { label: "Dự kiến chờ", value: predictedPending, color: predictedPending > 0 ? "text-[hsl(var(--ds-active))]" : "text-muted-foreground" },
+        { label: "Cảnh báo", value: warnings, color: warnings > 0 ? "text-warning" : "text-muted-foreground" },
+        { label: "Quá hạn", value: overdue, color: overdue > 0 ? "text-destructive" : "text-muted-foreground" },
       ],
     },
     {
       title: "Hiệu suất",
       metrics: [
-        { label: "Tỷ lệ ổn định", value: stabilityPct != null ? `${stabilityPct}%` : "—", color: stabilityPct != null && stabilityPct >= 90 ? "text-primary" : stabilityPct != null ? "text-amber-400" : "text-zinc-500" },
-        { label: "Thiếu sớm nhất", value: earliestShortageLabel ?? "—", color: earliestShortageLabel ? "text-amber-400" : "text-zinc-500" },
+        { label: "Tỷ lệ ổn định", value: stabilityPct != null ? `${stabilityPct}%` : "—", color: stabilityPct != null && stabilityPct >= 90 ? "text-primary" : stabilityPct != null ? "text-warning" : "text-muted-foreground" },
+        { label: "Thiếu sớm nhất", value: earliestShortageLabel ?? "—", color: earliestShortageLabel ? "text-warning" : "text-muted-foreground" },
       ],
     },
   ];
@@ -84,13 +84,13 @@ export default function DealerSwingSummaryStrip({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {cards.map((card) => (
-          <div key={card.title} className="bg-zinc-900/70 border border-primary/20 rounded-xl px-4 py-3.5">
+          <div key={card.title} className="bg-card/70 border border-primary/20 rounded-xl px-4 py-3.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2.5">{card.title}</div>
             <div className="flex items-stretch">
               {card.metrics.map((m, i) => (
-                <div key={m.label} className={["min-w-0", i > 0 ? "ml-3 border-l border-zinc-700/40 pl-3" : ""].join(" ")}>
+                <div key={m.label} className={["min-w-0", i > 0 ? "ml-3 border-l border-border/40 pl-3" : ""].join(" ")}>
                   <div className={["text-2xl font-semibold tabular-nums leading-none", m.color].join(" ")}>{m.value}</div>
-                  <div className="text-[11px] text-zinc-400 mt-1.5 leading-tight">{m.label}</div>
+                  <div className="text-[11px] text-muted-foreground mt-1.5 leading-tight">{m.label}</div>
                 </div>
               ))}
             </div>
@@ -98,7 +98,7 @@ export default function DealerSwingSummaryStrip({
         ))}
       </div>
       {ghostAssignments > 0 && (
-        <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400">
+        <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
           <span aria-hidden="true">⚠️</span>
           Phát hiện {ghostAssignments} assignment trên bàn đã đóng (cần dọn).
         </div>
