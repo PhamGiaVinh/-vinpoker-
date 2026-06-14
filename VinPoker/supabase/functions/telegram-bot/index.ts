@@ -137,10 +137,15 @@ Deno.serve(async (req: Request) => {
 
     if (!dealer) {
       if (username) {
+        // Case-insensitive match on the operator-entered @username (Dealer
+        // Management → Telegram tab) so a pre-registered dealer's FIRST message
+        // auto-links their numeric id. Escape LIKE wildcards — `_` is valid in
+        // Telegram usernames and would otherwise match the wrong dealer.
+        const usernamePattern = username.replace(/([%_\\])/g, "\\$1");
         const { data: dealer2 } = await admin
           .from("dealers")
           .select("id, club_id, full_name, telegram_user_id")
-          .eq("telegram_username", username)
+          .ilike("telegram_username", usernamePattern)
           .maybeSingle();
 
         if (dealer2 && !dealer2.telegram_user_id) {
