@@ -3,13 +3,11 @@
 // owner's production UAT passes (plan: Seat Floor Cashier UX, 2026-06-13).
 export const FEATURES = {
   /**
-   * Cashier "Đăng ký giải" tab (confirm online registration → seat → receipt).
-   * While false the tab is hidden from regular cashiers; admins and club owners
-   * still see it so the owner can UAT production before exposing it.
-   *
-   * ⚠️ UAT BRANCH ONLY (uat/cashier-registrations-flag-on) — flipped true here for
-   * a Vercel PREVIEW UAT. DO NOT MERGE this flip to main until UAT passes; main
-   * must keep this false until the owner approves the production rollout.
+   * Cashier "Đăng ký giải" tab — confirm a PENDING online registration → auto-draw
+   * seat → receipt (via the live confirm_registration_and_assign_seat RPC).
+   * ENABLED in production 2026-06-14 after preview UAT passed (#148). Visible to all
+   * cashiers. Kill-switch: set false to hide from regular cashiers (admins/club
+   * owners still see it).
    */
   cashierRegistrations: true,
   /**
