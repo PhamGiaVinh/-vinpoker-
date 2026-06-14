@@ -10,4 +10,5 @@ export const dealerKeys = {
   notifications: (dealerId?: string) => [...dealerKeys.all, "notes", dealerId ?? ""] as const,
   careers: (uid?: string) => [...dealerKeys.all, "careers", uid ?? "anon"] as const,
   applications: (uid?: string) => [...dealerKeys.all, "applications", uid ?? "anon"] as const,
+  trainingSessions: (uid?: string) => [...dealerKeys.all, "training", uid ?? "anon"] as const,
 };
