@@ -230,7 +230,7 @@ async function handleSetup(
     .update({ telegram_user_id: userId, telegram_username: username })
     .eq("id", target.id);
 
-  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /checkout — Kết thúc ca\n• /status — Xem trạng thái\n• /an_com — Nghỉ ăn cơm\n• /unlink — Hủy liên kết`);
+  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /checkout — Kết thúc ca\n• /status — Xem trạng thái\n• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p)\n• /unlink — Hủy liên kết`);
 }
 
 // ── /unlink handler ───────────────────────────────────────────────────────
@@ -588,7 +588,7 @@ async function handleCommand(
         `• /checkin — Vào ca (vào pool sẵn sàng)\n` +
         `• /checkout — Kết thúc ca\n` +
         `• /status — Xem trạng thái hiện tại\n` +
-        `• /an_com — Đăng ký nghỉ ăn cơm (+15p bonus)\n` +
+        `• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p bonus)\n` +
         `• /unlink — Hủy liên kết Telegram\n\n` +
         `💡 /checkin xong là bạn vào pool, DC sẽ phân bàn. Nghỉ ăn cơm: 1 lần/7 tiếng.`,
     );
@@ -614,7 +614,10 @@ async function handleCommand(
     return;
   }
 
-  if (normalizedText === "/an_com" || normalizedText === "ăn cơm" || normalizedText === "an com") {
+  if (
+    normalizedText === "/break" || normalizedText === "/an_com" ||
+    normalizedText === "ăn cơm" || normalizedText === "an com"
+  ) {
     const { data: att } = await admin
       .from("dealer_attendance")
       .select("id, current_state, status")
