@@ -220,23 +220,11 @@ async function handleSetup(
     return;
   }
 
-  // 3. Verify checked-in today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const { data: att } = await admin
-    .from("dealer_attendance")
-    .select("id")
-    .eq("dealer_id", target.id)
-    .eq("status", "checked_in")
-    .gte("created_at", today.toISOString())
-    .maybeSingle();
-
-  if (!att) {
-    await sendDM(botToken, chatId, `⚠️ "${target.full_name}" chưa check-in hôm nay. Vui lòng check-in trước khi setup.`);
-    return;
-  }
-
-  // 4. Link
+  // 3. Link.
+  // /setup is account-linking ONLY (so @mention works) — it is deliberately
+  // independent of work-shift check-in. A dealer links once, from anywhere
+  // (e.g. at home), and only runs /checkin later when their shift actually
+  // starts. Do NOT gate linking on dealer_attendance here.
   await admin
     .from("dealers")
     .update({ telegram_user_id: userId, telegram_username: username })
