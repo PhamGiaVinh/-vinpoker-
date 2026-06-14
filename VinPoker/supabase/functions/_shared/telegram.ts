@@ -69,11 +69,11 @@ function formatBreakEndMessage(params: {
 
 export function formatCloseTableMessage(params: {
   tableName: string;
-  dealerName: string;
+  dealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null };
   tourName?: string;
 }): string {
-  const { tableName, dealerName } = params;
-  return `Đóng bàn : ${tableName} - Dealer ${dealerName} được nghỉ.`;
+  const { tableName, dealer } = params;
+  return `Đóng bàn : ${tableName} - Dealer ${mention(dealer)} được nghỉ.`;
 }
 
 export function formatMassAssignMessage(assignments: Array<{
@@ -99,8 +99,8 @@ function formatTierWarningMessage(params: {
 
 export function formatEmergencyPreAssignMessage(params: {
   tableName: string;
-  outName: string;
-  inName: string;
+  outDealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null };
+  inDealer: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null };
   swingAt: Date;
   minutesLeft: number;
 }): string {
@@ -114,7 +114,7 @@ export function formatEmergencyPreAssignMessage(params: {
   // Match the batch pre_assign format so operators see a consistent "Tiếp theo" message
   return [
     `Có 1 cập nhật:`,
-    ` 📋 Tiếp theo ${params.tableName}: ${params.outName} ra, ${params.inName} vào (${hhmm(params.swingAt)}, còn ${params.minutesLeft} phút)`,
+    ` 📋 Tiếp theo ${params.tableName}: ${mention(params.outDealer)} ra, ${mention(params.inDealer)} vào (${hhmm(params.swingAt)}, còn ${params.minutesLeft} phút)`,
   ].join("\n");
 }
 
