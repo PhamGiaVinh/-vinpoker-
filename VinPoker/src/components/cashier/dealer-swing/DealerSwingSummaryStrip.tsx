@@ -81,9 +81,9 @@ export default function DealerSwingSummaryStrip({
         {cards.map((card) => (
           <div key={card.title} className="bg-zinc-900/70 border border-primary/20 rounded-xl px-4 py-3.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2.5">{card.title}</div>
-            <div className="flex items-start gap-4">
-              {card.metrics.map((m) => (
-                <div key={m.label} className="min-w-0">
+            <div className="flex items-stretch">
+              {card.metrics.map((m, i) => (
+                <div key={m.label} className={["min-w-0", i > 0 ? "ml-3 border-l border-zinc-700/40 pl-3" : ""].join(" ")}>
                   <div className={["text-2xl font-semibold tabular-nums leading-none", m.color].join(" ")}>{m.value}</div>
                   <div className="text-[11px] text-zinc-400 mt-1.5 leading-tight">{m.label}</div>
                 </div>

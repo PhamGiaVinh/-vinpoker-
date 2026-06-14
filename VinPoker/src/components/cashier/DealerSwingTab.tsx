@@ -4,6 +4,7 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,13 +55,14 @@ import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/Status
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
 import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
 import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
+import DealerSearchPanel from "./dealer-swing/DealerSearchPanel";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
-  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog,
+  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog, ChevronDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -84,6 +86,12 @@ function useTours(clubIds: string[]) {
   }, [clubIdsKey]);
   useEffect(() => { load(); }, [load]);
   return { data, loading, refetch: load };
+}
+
+/** Numeric part of a table name ("Bàn 15" → 15) for 1→100 ordering. */
+function tableNumberOf(name: unknown): number {
+  const m = String(name ?? "").match(/\d+/);
+  return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER;
 }
 
 function resolveTableSwingTiming(
@@ -145,6 +153,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return [...ids].sort();
   }, [clubFilter, clubIds]);
   const [selectedTour, setSelectedTour] = useState<string | null>(null);
+  const [tableSearch, setTableSearch] = useState("");
+  const [mobileTab, setMobileTab] = useState<"map" | "left" | "right">("map");
   const nowMs = useLiveClock();
 
   const { data: dealers, loading: dealersLoading, error: dealersError, refetch: refetchDealers } = useCheckedInDealers(filteredClubIds);
@@ -449,7 +459,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const summaryCounts = useMemo(() => {
     const activeList = (tables ?? []).filter((t) => t.status === "active");
     const assignedTables = (assignments ?? []).filter((a) => a.status === "assigned").length;
-    const onBreak = (dealers ?? []).filter((d) => d.current_state === "on_break").length;
+    // "Đang nghỉ" = mọi dealer đang trong Break Pool (nghỉ/cơm/break) — khớp số
+    // hiển thị ở BREAK POOL. (current_state==="on_break" bỏ sót dealer đang "rest".)
+    const onBreak = (breakPool ?? []).length;
     let predictedPending = 0, overdue = 0, predictedMissing = 0, emptyActive = 0;
     for (const t of activeList) {
       const tl = timelineByTableId[t.id];
@@ -468,7 +480,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       overdue,
       warnings: emptyActive + predictedMissing,
     };
-  }, [tables, assignments, dealers, timelineByTableId, nextDealerMap, preAssignedMap, tableAssignmentMap]);
+  }, [tables, assignments, breakPool, timelineByTableId, nextDealerMap, preAssignedMap, tableAssignmentMap]);
 
   // Performance KPIs (UI Phase 4 — "Hiệu suất" card). Derived from existing data:
   // stability = successful/total swings today; earliest-shortage = soonest
@@ -1461,9 +1473,30 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           earliestShortageLabel={performanceKpis.earliestShortageLabel}
           nowMs={nowMs}
         />
+        {/* Mobile tab bar (<md only). Tablet (md–lg) stacks all 3; desktop = 3-col. */}
+        <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-zinc-700/60 bg-zinc-900/70 p-1">
+          {([
+            { k: "map", label: "Bản đồ bàn" },
+            { k: "left", label: "Break Pool" },
+            { k: "right", label: "Cảnh báo" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.k}
+              type="button"
+              onClick={() => setMobileTab(tab.k)}
+              className={cn(
+                "h-10 flex-1 rounded-lg text-xs font-medium transition-colors",
+                mobileTab === tab.k ? "bg-primary/15 text-primary" : "text-zinc-400 hover:text-zinc-200",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* LEFT COLUMN — 25% (reference info → last on mobile) */}
-          <div className="order-last lg:order-none lg:col-span-3 flex flex-col gap-4 min-h-0">
+          {/* LEFT COLUMN — Tìm kiếm + Break Pool + (gập) Đội hình */}
+          <div className={cn("order-3 lg:order-none lg:col-span-3 flex-col gap-4 min-h-0", mobileTab === "left" ? "flex" : "hidden md:flex")}>
+            <DealerSearchPanel value={tableSearch} onChange={setTableSearch} />
             <BreakPoolCard
               entries={breakPool ?? []}
               loading={breakPoolLoading}
@@ -1473,27 +1506,35 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
               onRetry={refetchBreakPool}
             />
-            <RosterPanel
-              dealers={rosterDealers}
-              assignments={assignments ?? []}
-              swingConfigs={swingConfigs ?? []}
-              processing={processing}
-              totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
-              checkedInCount={checkedInCount}
-              checkedOutDealers={checkedOutDealers ?? []}
-              onSendToBreak={(attId) => setBreakDurationOpen(attId)}
-              onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
-              onCheckoutOpen={() => setCheckoutOpen(true)}
-              onBatchCheckout={handleBatchCheckoutClick}
-              onReCheckin={doReCheckin}
-              breakPolicies={breakPolicies ?? []}
-              onMealBreak={handleMealBreak}
-              mealBreakAvailability={mealBreakAvailability}
-            />
+            <Collapsible>
+              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-zinc-700/60 bg-zinc-900/70 px-3 py-2.5 text-left text-sm font-medium text-zinc-200 hover:bg-zinc-800/60 [&[data-state=open]>svg]:rotate-180">
+                <span className="font-display tracking-wider">ĐỘI HÌNH / CHECK-IN</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3">
+                <RosterPanel
+                  dealers={rosterDealers}
+                  assignments={assignments ?? []}
+                  swingConfigs={swingConfigs ?? []}
+                  processing={processing}
+                  totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
+                  checkedInCount={checkedInCount}
+                  checkedOutDealers={checkedOutDealers ?? []}
+                  onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+                  onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
+                  onCheckoutOpen={() => setCheckoutOpen(true)}
+                  onBatchCheckout={handleBatchCheckoutClick}
+                  onReCheckin={doReCheckin}
+                  breakPolicies={breakPolicies ?? []}
+                  onMealBreak={handleMealBreak}
+                  mealBreakAvailability={mealBreakAvailability}
+                />
+              </CollapsibleContent>
+            </Collapsible>
           </div>
 
-          {/* CENTER COLUMN — 50% */}
-          <div className="lg:col-span-6">
+          {/* CENTER COLUMN — battle map (first on mobile) */}
+          <div className={cn("order-1 lg:order-none lg:col-span-6", mobileTab === "map" ? "" : "hidden md:block")}>
             {activeView === "dealers" ? (
               <>
                 {selectedTour && (
@@ -1519,6 +1560,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                    onAutoBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
                    selectedTour={selectedTour}
+                  searchTerm={tableSearch}
                   onCreateTable={() => setCreateTableOpen(true)}
                   closeTableConfirmId={closeTableConfirmId}
                   onCloseTableClick={setCloseTableConfirmId}
@@ -1539,8 +1581,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             )}
           </div>
 
-          {/* RIGHT COLUMN — 25% (attention queue + KPIs → first on mobile) */}
-          <div className="order-first lg:order-none lg:col-span-3">
+          {/* RIGHT COLUMN — alerts + actions (after the map on mobile) */}
+          <div className={cn("order-2 lg:order-none lg:col-span-3", mobileTab === "right" ? "" : "hidden md:block")}>
             <CommandCenter
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
@@ -1939,7 +1981,9 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                 (() => {
                   const excluded = ["11", "12", "13", "21", "A25"];
                   const filtered = poolTables
-                    .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())));
+                    .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())))
+                    .sort((a, b) => tableNumberOf(a.table_name) - tableNumberOf(b.table_name)
+                      || String(a.table_name).localeCompare(String(b.table_name), "vi"));
                   return filtered.map((t) => {
                     const isAssigned = t.status === "active" && tableAssignmentMap[t.id];
                     const isSelectable = !isAssigned;
@@ -3075,7 +3119,7 @@ function BreakPoolCard({
             const rowClass = cn(
               "flex items-center gap-2 pl-2.5 pr-2 py-1.5 border-l-2 rounded-none transition-colors",
               isRest
-                ? "border-violet-500 bg-violet-500/5 text-violet-100"
+                ? "border-violet-500/50 bg-violet-500/5 text-zinc-200"
                 : visualState === "soon"
                   ? "border-amber-500 bg-amber-500/5 text-amber-100"
                   : visualState === "overdue"
@@ -3144,7 +3188,7 @@ function BreakPoolCard({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-[10px] shrink-0 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                    className="h-9 text-[10px] shrink-0 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
                     disabled={processing === entry.attendanceId}
                     onClick={() => onSendToBreak(entry.attendanceId)}
                   >
@@ -3155,7 +3199,7 @@ function BreakPoolCard({
                     size="sm"
                     variant="outline"
                     className={cn(
-                      "h-7 text-[10px] shrink-0",
+                      "h-9 text-[10px] shrink-0",
                       visualState === "soon"
                         ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
                         : visualState === "overdue"
@@ -3182,7 +3226,7 @@ function BreakPoolCard({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, scheduleByTableId, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, scheduleByTableId, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, searchTerm, onCreateTable,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
@@ -3201,6 +3245,7 @@ function TableGrid({
   onSendToBreak: (attendanceId: string) => void;
   onAutoBreak: (attendanceId: string) => void;
   selectedTour: string | null;
+  searchTerm?: string;
   onCreateTable: () => void;
   closeTableConfirmId: string | null;
   onCloseTableClick: (tableId: string) => void;
@@ -3232,16 +3277,22 @@ function TableGrid({
 
   const filteredTables = useMemo(() => {
     // Inactive tables sit in the general pool and are not actionable here.
-    // Process-swing can close a table between renders; the next refetch drops it.
-    const base = tables.filter((t) => t.status === "active");
-    // "Tổng thể" (All): show EVERY active table — including newly-opened tables
-    // that have no dealer yet (they render with the "Đợi dealer" status). The
-    // old `tableAssignmentMap[t.id] != null` filter hid dealerless tables.
-    if (!selectedTour) return base;
-    // Specific tour: show ONLY that tour's tables (shift_id match). No fallback
-    // to the global pool — that previously leaked unscoped tables into a tour.
-    return base.filter((t) => t.shift_id === selectedTour);
-  }, [tables, selectedTour]);
+    const active = tables.filter((t) => t.status === "active");
+    // "Tổng thể" (All): show EVERY active table; specific tour → shift_id match.
+    const scoped = !selectedTour ? active : active.filter((t) => t.shift_id === selectedTour);
+    // Quick search (UI polish) — by table name or current dealer name.
+    const q = (searchTerm ?? "").trim().toLowerCase();
+    const result = !q ? scoped : scoped.filter((t) => {
+      const name = String(t.table_name ?? "").toLowerCase();
+      const a = tableAssignmentMap[t.id];
+      const dealerName = String((a as any)?.dealer_attendance?.dealers?.full_name ?? "").toLowerCase();
+      return name.includes(q) || dealerName.includes(q);
+    });
+    // Sort by table number 1 → 100 (numeric part of "Bàn N").
+    return [...result].sort((a, b) =>
+      tableNumberOf(a.table_name) - tableNumberOf(b.table_name)
+      || String(a.table_name ?? "").localeCompare(String(b.table_name ?? ""), "vi"));
+  }, [tables, selectedTour, searchTerm, tableAssignmentMap]);
 
   // Per-table 7-status (single source — same classifier the card uses) → drives
   // chip counts + the status filter. Recomputed on the live clock so the
@@ -3451,6 +3502,8 @@ function CommandCenter({
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [stopSaving, setStopSaving] = useState(false);
   const [fullLogOpen, setFullLogOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [massConfirm, setMassConfirm] = useState(false);
 
   const testTelegram = async () => {
     if (!clubFilter) { toast.error("Vui lòng chọn CLB trước"); return; }
@@ -3519,7 +3572,7 @@ function CommandCenter({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Bell className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold tracking-wider">ĐÀI CHỈ HUY</span>
+            <span className="text-xs font-semibold tracking-wider">LIỆU &amp; CẢNH BÁO</span>
           </div>
           {/* Stop Swing button — small, tucked in header */}
           <button
@@ -3567,40 +3620,57 @@ function CommandCenter({
           onFocusTable={onFocusTable}
         />
 
-        <hr className="border-border/40" />
+        {/* ── Công cụ điều hành (collapsed by default — declutters the alerts feed) ── */}
+        <Collapsible open={toolsOpen} onOpenChange={setToolsOpen}>
+          <CollapsibleContent className="space-y-3">
+            <hr className="border-border/40" />
 
-        {/* ── OPERATIONS ── */}
-        <OperationsCard
-          autoSwingEnabled={autoSwingEnabled}
-          exceptionsCount={exceptionsCount}
-          totalTables={activeTablesCount}
-          tablesCovered={assignedTablesCount}
-          onToggleAutoSwing={onToggleAutoSwing}
-          onAutoSwingAll={onAutoSwing}
-          onMassAssign={onMassAssign}
-          swingAllBusy={swingAllBusy}
-          massAssignBusy={massAssignBusy}
-        />
+            {/* ── OPERATIONS ── */}
+            <OperationsCard
+              autoSwingEnabled={autoSwingEnabled}
+              exceptionsCount={exceptionsCount}
+              totalTables={activeTablesCount}
+              tablesCovered={assignedTablesCount}
+              onToggleAutoSwing={onToggleAutoSwing}
+              onAutoSwingAll={onAutoSwing}
+              onMassAssign={onMassAssign}
+              swingAllBusy={swingAllBusy}
+              massAssignBusy={massAssignBusy}
+            />
 
-        <hr className="border-border/40" />
+            <hr className="border-border/40" />
 
-        {/* SYSTEM HEALTH KPIs moved to the full-width DealerSwingSummaryStrip
-            (operator-panel top strip) to avoid duplication — UI Phase 4. */}
+            {/* ── RECENT ACTIVITY ── */}
+            <RecentActivitySection logs={recentLogs} totalCount={auditLogs.length} onViewAll={() => setFullLogOpen(true)} />
 
-        {/* ── RECENT ACTIVITY ── */}
-        <RecentActivitySection logs={recentLogs} totalCount={auditLogs.length} onViewAll={() => setFullLogOpen(true)} />
+            <hr className="border-border/40" />
 
-        <hr className="border-border/40" />
+            {/* ── QUICK LINKS ── */}
+            <QuickLinksCard
+              onOpenSwingConfig={onOpenSwingConfig}
+              onOpenSpecialDates={onOpenSpecialDates}
+              onExportShift={onExportShift}
+              onExportPayroll={onExportPayroll}
+              onTestTelegram={testTelegram}
+              onViewFullAuditLog={() => setFullLogOpen(true)}
+            />
+          </CollapsibleContent>
+        </Collapsible>
 
-        {/* ── QUICK LINKS ── */}
-        <QuickLinksCard
-          onOpenSwingConfig={onOpenSwingConfig}
-          onOpenSpecialDates={onOpenSpecialDates}
-          onExportShift={onExportShift}
-          onExportPayroll={onExportPayroll}
-          onTestTelegram={testTelegram}
-          onViewFullAuditLog={() => setFullLogOpen(true)}
-        />
+        {/* ── Sticky bottom action bar (Gán nhanh + Công cụ) ── */}
+        <div className="flex items-center gap-2 border-t border-border/40 pt-3">
+          <Button
+            onClick={() => setMassConfirm(true)}
+            disabled={massAssignBusy}
+            className="h-11 flex-1 bg-primary font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            {massAssignBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+            Gán nhanh
+          </Button>
+          <Button variant="outline" onClick={() => setToolsOpen((v) => !v)} className="h-11 px-3 text-xs">
+            <Settings className="mr-1.5 h-4 w-4" /> Công cụ
+          </Button>
+        </div>
       </Card>
 
       {/* ── Full Audit Log Dialog ── */}
@@ -3627,6 +3697,22 @@ function CommandCenter({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Gán nhanh confirmation ── */}
+      <AlertDialog open={massConfirm} onOpenChange={setMassConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gán nhanh dealer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tự động gán dealer cho các bàn đang trống trong phạm vi CLB đang chọn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction disabled={massAssignBusy} onClick={onMassAssign}>Gán nhanh</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Stop Swing Confirmation ── */}
       <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
