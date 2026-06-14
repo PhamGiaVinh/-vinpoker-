@@ -88,24 +88,33 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const breakDuration = breakDurationRow?.break_duration_minutes ?? 10;
 
-    // Find active assignment on this table (assigned or on_break)
-    const { data: assignment } = await admin
+    // Find ALL active assignments on this table (assigned or on_break).
+    // This previously used .maybeSingle(), which returns null AND swallows the
+    // error when MORE THAN ONE active row exists. So a table that briefly had a
+    // duplicate active assignment (open/assign race) would close WITHOUT
+    // releasing the dealer(s) — stranding them as "ghosts" (current_state
+    // stuck at 'assigned' on a now-inactive table, inflating the assigned
+    // count and showing "đang bàn" forever). Fetch the full list (released_at
+    // IS NULL only) and release every dealer so none is orphaned.
+    const { data: activeAssignments, error: assignErr } = await admin
       .from("dealer_assignments")
       .select("id, attendance_id, status, assigned_at")
       .eq("table_id", table_id)
       .in("status", ["assigned", "on_break"])
-      .maybeSingle();
+      .is("released_at", null)
+      .order("assigned_at", { ascending: false });
+    if (assignErr) return json({ error: `Failed to read assignments: ${assignErr.message}` }, 500);
 
-    if (assignment) {
+    for (const assignment of activeAssignments ?? []) {
       hadDealer = true;
 
-      // Get dealer info for notification
+      // Dealer info — the first (most recent) drives the Telegram message.
       const { data: att } = await admin
         .from("dealer_attendance")
         .select("dealer_id, dealers!inner(full_name, telegram_username, telegram_user_id)")
         .eq("id", assignment.attendance_id)
         .maybeSingle();
-      if (att) {
+      if (att && !lastDealerInfo) {
         const d = (att as any).dealers;
         lastDealerInfo = {
           full_name: d.full_name,
@@ -148,6 +157,14 @@ Deno.serve(async (req) => {
       });
       if (releaseResult?.ok === false) {
         console.error(`[close-table] Failed to transition dealer to on_break: ${releaseResult.error}`);
+        // Fallback: at minimum get them out of 'assigned' so they aren't left a
+        // ghost on the closed table. available→pool is always safe.
+        await admin
+          .from("dealer_attendance")
+          .update({ current_state: "available" })
+          .eq("id", assignment.attendance_id)
+          .eq("status", "checked_in")
+          .eq("current_state", "assigned");
       }
 
       // Set last_released_at on the dealer so inter-swing cooldown tracks correctly
@@ -168,7 +185,7 @@ Deno.serve(async (req) => {
         .select("id")
         .single();
       if (breakRow) {
-        dealerBreakId = breakRow.id;
+        dealerBreakId = dealerBreakId ?? breakRow.id;
       } else if (breakErr) {
         console.error(`[close-table] Failed to create break record: ${breakErr.message}`);
       }
