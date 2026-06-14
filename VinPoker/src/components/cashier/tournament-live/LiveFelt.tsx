@@ -204,111 +204,131 @@ export function LiveFelt({
         const isLastActor = !seat.is_folded && lastActorId === seat.player_id;
         // To-act spotlight (Live Action Engine): who the table is waiting on.
         const isToAct = !seat.is_folded && !seat.is_all_in && toActId === seat.player_id;
-        const seatBB = !seat.is_folded ? formatBB(seat.chip_count) : null;
+        // Avatar ring / plaque accent: gold when active or last-actor, red all-in.
+        const ringColor =
+          isToAct || isLastActor
+            ? "hsl(var(--poker-gold))"
+            : seat.is_all_in
+              ? "rgba(239,68,68,0.7)"
+              : "hsl(var(--poker-gold) / 0.4)";
+        // One status line under the plaque (bet handled separately for the pulse).
+        const status = seat.is_all_in
+          ? { text: "ALL IN", cls: "text-red-400" }
+          : seat.is_folded
+            ? { text: "FOLDED", cls: "text-white/40" }
+            : seat.last_action
+              ? { text: seat.last_action, cls: "text-amber-300/90" }
+              : null;
 
         return (
-          <div key={seat.player_id} className="absolute z-10" style={posStyle}>
-            <div
-              className={`relative bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl text-center transition-all duration-300 ${
-                portrait ? "p-1 w-[68px]" : "p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36"
-              } ${
-                seat.is_folded
-                  ? "border-border/20 opacity-50 grayscale-[0.5]"
-                  : seat.is_all_in
-                    ? "border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
-                    : isToAct
-                      ? "border-amber-300 ring-2 ring-amber-300/70 shadow-[0_0_18px_rgba(245,179,64,0.55)]"
-                      : isLastActor
-                        ? "border-amber-400/80 shadow-[0_0_14px_rgba(245,179,64,0.35)]"
-                        : "border-emerald-500/40 hover:border-emerald-400/60"
-              }`}
-            >
-              {isToAct && (
-                <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[8.5px] font-bold uppercase tracking-wide whitespace-nowrap shadow">
-                  ● chờ
+          <div
+            key={seat.player_id}
+            className={`absolute z-10 w-[72px] sm:w-[88px] text-center transition-all duration-300 ${seat.is_folded ? "opacity-55" : ""}`}
+            style={posStyle}
+          >
+            {isToAct && (
+              <div
+                className="absolute -top-2 left-1/2 z-20 -translate-x-1/2 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-black shadow"
+                style={{ backgroundColor: "hsl(var(--poker-gold))" }}
+              >
+                ◀ chờ
+              </div>
+            )}
+
+            {/* Avatar — circle overlapping the plaque below (mockup style). */}
+            <div className="relative z-[2] mx-auto h-9 w-9 sm:h-11 sm:w-11">
+              {seat.avatar_url ? (
+                <img
+                  src={seat.avatar_url}
+                  alt=""
+                  loading="lazy"
+                  className={`h-full w-full rounded-full border-2 object-cover ${seat.is_folded ? "grayscale" : ""}`}
+                  style={{ borderColor: ringColor }}
+                />
+              ) : (
+                <div
+                  className="flex h-full w-full items-center justify-center rounded-full border-2 text-[10px] sm:text-xs font-bold"
+                  style={{
+                    borderColor: ringColor,
+                    background: "linear-gradient(180deg,#241015,#0c0a0e)",
+                    color: "hsl(var(--poker-gold))",
+                  }}
+                >
+                  {seat.display_name.slice(0, 2).toUpperCase()}
                 </div>
               )}
-              <div className="flex justify-center mb-1">
-                {seat.avatar_url ? (
-                  <img
-                    src={seat.avatar_url}
-                    alt=""
-                    loading="lazy"
-                    className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full object-cover border ${
-                      isLastActor ? "border-amber-400/80" : "border-emerald-500/40"
-                    }`}
-                  />
-                ) : (
-                  <div
-                    className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold bg-emerald-900/60 border ${
-                      isLastActor ? "border-amber-400/80 text-amber-300" : "border-emerald-500/40 text-emerald-300"
-                    }`}
-                  >
-                    {seat.display_name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-zinc-100 font-semibold text-xs truncate max-w-[52px] sm:max-w-[80px]">
+            </div>
+
+            {/* Plaque — slim dark bar (name + cyan stack), overlaps avatar bottom. */}
+            <div
+              className="relative z-[1] mx-auto -mt-2 w-full rounded-lg border px-1 pb-1 pt-2 shadow-lg"
+              style={{
+                background: "linear-gradient(180deg, rgba(20,12,8,0.94), rgba(8,6,5,0.94))",
+                borderColor: isToAct
+                  ? "hsl(var(--poker-gold))"
+                  : seat.is_all_in
+                    ? "rgba(239,68,68,0.55)"
+                    : "hsl(var(--poker-gold) / 0.32)",
+                boxShadow: isToAct
+                  ? "0 0 16px hsl(var(--poker-gold) / 0.5)"
+                  : isLastActor
+                    ? "0 0 12px hsl(var(--poker-gold) / 0.3)"
+                    : undefined,
+              }}
+            >
+              <div className="flex items-center justify-center gap-1 leading-none">
+                <span className="truncate text-[10px] font-bold text-zinc-100 max-w-[44px] sm:max-w-[58px]">
                   {seat.display_name}
                 </span>
                 {seat.position && (
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                    className="shrink-0 rounded-full px-1 py-px text-[8px] font-black leading-none"
+                    style={
                       seat.position === "BTN"
-                        ? "bg-amber-500 text-black"
-                        : "bg-emerald-500/20 text-emerald-400"
-                    }`}
+                        ? { backgroundColor: "hsl(var(--poker-gold))", color: "#000" }
+                        : { backgroundColor: "hsl(var(--poker-gold) / 0.2)", color: "hsl(var(--poker-gold))" }
+                    }
                   >
                     {seat.position}
                   </span>
                 )}
               </div>
               <div
-                className="font-bold text-xs sm:text-sm font-mono"
+                className="font-mono text-[12px] font-black leading-tight"
                 style={{ color: "hsl(var(--poker-stack))" }}
               >
                 {formatStack(seat.chip_count)}
-                {seatBB && (
-                  <span className="block text-[9px] font-normal text-white/45">
-                    {seatBB}
-                  </span>
-                )}
               </div>
-              {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
-                // key = current_bet so the one-shot chip pulse replays whenever the
-                // seat commits more chips this street (Increment 3, cosmetic only;
-                // CSS-only, reduced-motion respected, no JS timers).
-                <div
-                  key={`bet-${seat.current_bet}`}
-                  className="tracker-bet-pulse mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300"
-                >
-                  Cược {formatStack(seat.current_bet)}
-                </div>
-              )}
-              {seat.is_all_in && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">ALL IN</div>
-              )}
-              {seat.is_folded && (
-                <div className="text-[10px] text-muted-foreground mt-1">FOLDED</div>
-              )}
-              {!seat.is_folded && !seat.is_all_in && seat.last_action && (
-                <div className="text-[10px] text-amber-300 mt-1 truncate">
-                  {seat.last_action}
-                </div>
-              )}
-              {/* Always exactly 2 hole-card elements: face-up ONLY when the dealer
-                  has revealed exactly 2 (Triton-style); otherwise 2 backs. Never
-                  invent values. Folded seats keep 2 dimmed backs (stable layout). */}
-              <div data-testid="seat-holecards" className="flex gap-0.5 justify-center mt-1">
-                {seat.hole_cards && seat.hole_cards.length === 2 ? (
-                  seat.hole_cards.map((card, ci) => (
-                    <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />
-                  ))
-                ) : (
-                  [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} />)
-                )}
+            </div>
+
+            {/* Status: current-bet (with one-shot pulse) OR all-in/fold/last-action. */}
+            {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 ? (
+              <div
+                key={`bet-${seat.current_bet}`}
+                className="tracker-bet-pulse mx-auto mt-0.5 inline-flex items-center rounded-full border px-1.5 py-px text-[8.5px] font-mono font-bold"
+                style={{
+                  borderColor: "hsl(var(--poker-gold) / 0.4)",
+                  color: "hsl(var(--poker-gold))",
+                  background: "hsl(var(--poker-gold) / 0.12)",
+                }}
+              >
+                Cược {formatStack(seat.current_bet)}
               </div>
+            ) : status ? (
+              <div className={`mt-0.5 truncate text-[8.5px] font-bold ${status.cls}`}>{status.text}</div>
+            ) : null}
+
+            {/* Always exactly 2 hole-card elements: face-up ONLY when the dealer has
+                revealed exactly 2 (Triton-style); otherwise 2 backs. Never invent
+                values. Folded seats keep 2 dimmed backs (stable layout). */}
+            <div data-testid="seat-holecards" className="mt-1 flex justify-center gap-0.5">
+              {seat.hole_cards && seat.hole_cards.length === 2 ? (
+                seat.hole_cards.map((card, ci) => (
+                  <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />
+                ))
+              ) : (
+                [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} />)
+              )}
             </div>
           </div>
         );
