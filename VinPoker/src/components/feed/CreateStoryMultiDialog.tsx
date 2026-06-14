@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +25,7 @@ const IMAGE_MAX = 10 * 1024 * 1024;
 const VIDEO_MAX = 50 * 1024 * 1024;
 
 export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
+  const { t } = useTranslation();
   const [files, setFiles] = useState<StoryFile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
@@ -37,12 +39,12 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
     const arr = Array.from(incoming);
     const next: StoryFile[] = [...files];
     for (const f of arr) {
-      if (next.length >= MAX_FILES) { toast.error(`Tối đa ${MAX_FILES} file`); break; }
+      if (next.length >= MAX_FILES) { toast.error(t("createStory.maxFilesReached", { max: MAX_FILES })); break; }
       const isVideo = f.type.startsWith("video/");
       const isImage = f.type.startsWith("image/");
-      if (!isVideo && !isImage) { toast.error(`${f.name} không hợp lệ`); continue; }
+      if (!isVideo && !isImage) { toast.error(t("createStory.fileInvalid", { name: f.name })); continue; }
       const max = isVideo ? VIDEO_MAX : IMAGE_MAX;
-      if (f.size > max) { toast.error(`${f.name} quá ${isVideo ? "50MB" : "10MB"}`); continue; }
+      if (f.size > max) { toast.error(t("createStory.fileTooLarge", { name: f.name, limit: isVideo ? "50MB" : "10MB" })); continue; }
       next.push({ file: f, preview: URL.createObjectURL(f), music: null });
     }
     setFiles(next);
@@ -64,9 +66,9 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
   };
 
   const applyMusicToAll = () => {
-    if (!cur?.music) { toast.error("Chưa chọn nhạc"); return; }
+    if (!cur?.music) { toast.error(t("createStory.noMusicSelected")); return; }
     setFiles(prev => prev.map(f => ({ ...f, music: cur.music })));
-    toast.success("Đã áp dụng cho tất cả");
+    toast.success(t("createStory.appliedToAll"));
   };
 
   const cleanup = () => files.forEach(f => URL.revokeObjectURL(f.preview));
@@ -116,11 +118,11 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
         } catch (e) { console.error(e); }
       }
       if (ok > 0) {
-        toast.success(`Đã đăng ${ok}/${files.length} story`);
+        toast.success(t("createStory.postedCount", { ok, total: files.length }));
         cleanup();
         onCreated();
       } else {
-        toast.error("Đăng story thất bại");
+        toast.error(t("createStory.postFailed"));
       }
     } finally { setUploading(false); }
   };
@@ -131,7 +133,7 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Camera className="w-5 h-5 text-primary" /> Tạo Story
+              <Camera className="w-5 h-5 text-primary" /> {t("createStory.title")}
               {files.length > 0 && <span className="text-xs font-normal text-muted-foreground ml-1">{currentIndex + 1}/{files.length}</span>}
             </DialogTitle>
           </DialogHeader>
@@ -143,8 +145,8 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
                 className="w-full h-80 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 hover:border-primary hover:bg-muted/30 transition"
               >
                 <ImageIcon className="w-12 h-12 text-muted-foreground" />
-                <div className="text-sm font-semibold">Chọn ảnh hoặc video</div>
-                <div className="text-xs text-muted-foreground">Có thể chọn nhiều file (tối đa {MAX_FILES})</div>
+                <div className="text-sm font-semibold">{t("createStory.choosePhotoOrVideo")}</div>
+                <div className="text-xs text-muted-foreground">{t("createStory.multiFileHint", { max: MAX_FILES })}</div>
               </button>
             ) : (
               <>
@@ -216,19 +218,19 @@ export function CreateStoryMultiDialog({ onClose, onCreated, userId }: Props) {
 
                 <div className="flex gap-2">
                   <Button onClick={() => setMusicPickerOpen(true)} variant="outline" size="sm" className="flex-1">
-                    <Music2 className="w-4 h-4 mr-1" /> {cur?.music ? "Đổi nhạc" : "Thêm nhạc"}
+                    <Music2 className="w-4 h-4 mr-1" /> {cur?.music ? t("createStory.changeMusic") : t("createStory.addMusic")}
                   </Button>
                   {cur?.music && files.length > 1 && (
-                    <Button onClick={applyMusicToAll} variant="outline" size="sm">Áp dụng cho tất cả</Button>
+                    <Button onClick={applyMusicToAll} variant="outline" size="sm">{t("createStory.applyToAll")}</Button>
                   )}
                 </div>
 
                 <div className="flex gap-2">
                   <Button onClick={() => fileRef.current?.click()} variant="outline" size="sm" className="flex-1" disabled={files.length >= MAX_FILES}>
-                    + Thêm file
+                    {t("createStory.addFile")}
                   </Button>
                   <Button onClick={uploadAll} disabled={uploading} className="flex-1">
-                    {uploading ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Đang đăng…</> : `Đăng ${files.length} story`}
+                    {uploading ? <><Loader2 className="w-4 h-4 animate-spin mr-1" /> {t("createStory.posting")}</> : t("createStory.postCount", { count: files.length })}
                   </Button>
                 </div>
               </>

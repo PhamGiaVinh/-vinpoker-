@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +30,7 @@ const relativeTime = (iso: string) => {
 };
 
 export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [items, setItems] = useState<CommentRow[]>([]);
   const [text, setText] = useState("");
@@ -85,7 +87,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
     if (!user) return;
     const parsed = schema.safeParse({ content: text });
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Nội dung không hợp lệ");
+      toast.error(parsed.error.issues[0]?.message ?? t("streamComments.invalidContent"));
       return;
     }
     setSending(true);
@@ -96,7 +98,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
     });
     setSending(false);
     if (error) {
-      toast.error("Gửi bình luận thất bại");
+      toast.error(t("streamComments.sendFailed"));
       return;
     }
     setText("");
@@ -105,7 +107,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
   return (
     <Card className="gradient-card border-gold p-4 shadow-gold">
       <h3 className="font-display font-bold text-base mb-3 flex items-center gap-2">
-        <MessageSquare className="w-4 h-4 text-gold" /> Bình luận
+        <MessageSquare className="w-4 h-4 text-gold" /> {t("streamComments.heading")}
         <span className="text-xs text-muted-foreground font-normal">({items.length})</span>
       </h3>
 
@@ -113,7 +115,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-gold" /></div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Chưa có bình luận. Hãy là người đầu tiên!</p>
+          <p className="text-sm text-muted-foreground text-center py-6">{t("streamComments.empty")}</p>
         ) : (
           items.map((c) => (
             <div key={c.id} className="flex gap-2.5">
@@ -123,7 +125,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold truncate">{c.profile?.display_name ?? "Người dùng"}</span>
+                  <span className="text-sm font-semibold truncate">{c.profile?.display_name ?? t("streamComments.anonymousUser")}</span>
                   <span className="text-[10px] text-muted-foreground">{relativeTime(c.created_at)}</span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap break-words">{c.content}</p>
@@ -139,7 +141,7 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Viết bình luận của bạn..."
+              placeholder={t("streamComments.placeholder")}
               maxLength={500}
               rows={2}
               className="resize-none"
@@ -147,13 +149,13 @@ export const StreamComments = ({ tournamentId }: { tournamentId: string }) => {
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground">{text.length}/500</span>
               <Button size="sm" onClick={submit} disabled={sending || text.trim().length === 0} className="gradient-gold text-primary-foreground border-0">
-                {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Gửi"}
+                {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("streamComments.send")}
               </Button>
             </div>
           </div>
         ) : (
           <Link to="/auth" className="block">
-            <Button variant="outline" className="w-full" size="sm">Đăng nhập để bình luận</Button>
+            <Button variant="outline" className="w-full" size="sm">{t("streamComments.loginToComment")}</Button>
           </Link>
         )}
       </div>

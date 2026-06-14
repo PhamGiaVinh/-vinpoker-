@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Globe, Plus, Pencil, Trash2, Loader2, ExternalLink, MapPin, Calendar, Trophy } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface Evt {
   id: string;
@@ -51,6 +52,7 @@ const flag = (cc: string | null) => {
 };
 
 const InternationalEvents = () => {
+  const { t } = useTranslation();
   const { isAdmin, isMediaOrAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Evt | null>(null);
@@ -92,7 +94,7 @@ const InternationalEvents = () => {
   };
 
   const save = async () => {
-    if (!form.name.trim()) { toast.error("Cần tên giải"); return; }
+    if (!form.name.trim()) { toast.error(t("internationalPage.toastNameRequired")); return; }
     setSaving(true);
     const payload: any = {
       name: form.name.trim(),
@@ -116,14 +118,14 @@ const InternationalEvents = () => {
       : await supabase.from("international_events").insert(payload);
     setSaving(false);
     if (res.error) { toast.error(res.error.message); return; }
-    toast.success(editing ? "Đã cập nhật" : "Đã thêm giải");
+    toast.success(editing ? t("internationalPage.toastUpdated") : t("internationalPage.toastAdded"));
     setOpen(false); load();
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Xoá giải này?")) return;
+    if (!confirm(t("internationalPage.confirmDelete"))) return;
     const { error } = await supabase.from("international_events").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success("Đã xoá"); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("internationalPage.toastDeleted")); load(); }
   };
 
   return (
@@ -137,19 +139,19 @@ const InternationalEvents = () => {
           <div className="inline-flex items-center gap-2 mb-4">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary">
               <Globe className="w-3.5 h-3.5" />
-              QUỐC TẾ
+              {t("internationalPage.badgeInternational")}
             </span>
           </div>
           <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground mb-2">
-            Giải quốc tế
+            {t("internationalPage.heading")}
           </h1>
           <p className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap mb-4">
-            WSOP, WPT, Triton, EPT và các giải poker lớn trên thế giới.
+            {t("internationalPage.subtitle")}
             <SyncingBadge isFetching={isFetching && !isLoading} isError={isError && items.length > 0} />
           </p>
           {isMediaOrAdmin && (
             <Button onClick={openNew} className="gradient-gold text-primary-foreground border-0">
-              <Plus className="w-4 h-4 mr-1" /> Thêm giải
+              <Plus className="w-4 h-4 mr-1" /> {t("internationalPage.addButton")}
             </Button>
           )}
         </div>
@@ -159,11 +161,11 @@ const InternationalEvents = () => {
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : isError && items.length === 0 ? (
         <Card className="p-10 text-center space-y-3">
-          <p className="text-destructive font-semibold">Không tải được danh sách giải</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>Thử lại</Button>
+          <p className="text-destructive font-semibold">{t("internationalPage.loadError")}</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>{t("internationalPage.retry")}</Button>
         </Card>
       ) : items.length === 0 ? (
-        <Card className="p-10 text-center text-muted-foreground">Chưa có giải quốc tế nào.</Card>
+        <Card className="p-10 text-center text-muted-foreground">{t("internationalPage.empty")}</Card>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
           {items.map((e) => (
@@ -180,22 +182,22 @@ const InternationalEvents = () => {
               <div className="p-5 space-y-3">
                 <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest uppercase">
                   {e.series && <span className="px-1.5 py-0.5 rounded bg-primary/15 text-primary">{e.series}</span>}
-                  {!e.is_active && <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Ẩn</span>}
+                  {!e.is_active && <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t("internationalPage.hiddenBadge")}</span>}
                 </div>
                 <h3 className="font-display font-bold text-lg leading-snug">{e.name}</h3>
                 <div className="space-y-1.5 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1.5"><span className="text-base leading-none">{flag(e.country_code)}</span> <MapPin className="w-3.5 h-3.5" /> {[e.city, e.country].filter(Boolean).join(", ") || "—"}{e.venue ? ` · ${e.venue}` : ""}</div>
                   <div className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {fmtRange(e.start_date, e.end_date)}</div>
                   <div className="flex items-center gap-3">
-                    <span><span className="text-muted-foreground/70">Buy-in:</span> <span className="font-bold text-foreground">{fmtUSD(e.buy_in_usd)}</span></span>
-                    {e.guarantee_usd != null && <span><span className="text-muted-foreground/70">GTD:</span> <span className="font-bold text-primary">{fmtUSD(e.guarantee_usd)}</span></span>}
+                    <span><span className="text-muted-foreground/70">{t("internationalPage.buyInLabel")}</span> <span className="font-bold text-foreground">{fmtUSD(e.buy_in_usd)}</span></span>
+                    {e.guarantee_usd != null && <span><span className="text-muted-foreground/70">{t("internationalPage.gtdLabel")}</span> <span className="font-bold text-primary">{fmtUSD(e.guarantee_usd)}</span></span>}
                   </div>
                 </div>
                 {e.description && <p className="text-sm text-muted-foreground line-clamp-3">{e.description}</p>}
                 <div className="flex items-center justify-between pt-2 border-t border-border/60">
                   {e.website_url ? (
                     <a href={e.website_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1">
-                      Website <ExternalLink className="w-3 h-3" />
+                      {t("internationalPage.websiteLink")} <ExternalLink className="w-3 h-3" />
                     </a>
                   ) : <span />}
                   {isMediaOrAdmin && (
@@ -213,33 +215,33 @@ const InternationalEvents = () => {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Sửa giải" : "Thêm giải quốc tế"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("internationalPage.editTitle") : t("internationalPage.addTitle")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Tên giải *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>{t("internationalPage.fieldName")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Series</Label><Input placeholder="WSOP, WPT, Triton..." value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></div>
-              <div><Label>Country code (ISO-2)</Label><Input placeholder="US, GB, MC, MY..." maxLength={2} value={form.country_code} onChange={(e) => setForm({ ...form, country_code: e.target.value })} /></div>
-              <div><Label>Quốc gia</Label><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></div>
-              <div><Label>Thành phố</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldSeries")}</Label><Input placeholder={t("internationalPage.placeholderSeries")} value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldCountryCode")}</Label><Input placeholder={t("internationalPage.placeholderCountryCode")} maxLength={2} value={form.country_code} onChange={(e) => setForm({ ...form, country_code: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldCountry")}</Label><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldCity")}</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
             </div>
-            <div><Label>Địa điểm (Venue)</Label><Input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></div>
+            <div><Label>{t("internationalPage.fieldVenue")}</Label><Input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Ngày bắt đầu</Label><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
-              <div><Label>Ngày kết thúc</Label><Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
-              <div><Label>Buy-in (USD)</Label><Input type="number" value={form.buy_in_usd} onChange={(e) => setForm({ ...form, buy_in_usd: e.target.value })} /></div>
-              <div><Label>Guarantee (USD)</Label><Input type="number" value={form.guarantee_usd} onChange={(e) => setForm({ ...form, guarantee_usd: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldStartDate")}</Label><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldEndDate")}</Label><Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldBuyIn")}</Label><Input type="number" value={form.buy_in_usd} onChange={(e) => setForm({ ...form, buy_in_usd: e.target.value })} /></div>
+              <div><Label>{t("internationalPage.fieldGuarantee")}</Label><Input type="number" value={form.guarantee_usd} onChange={(e) => setForm({ ...form, guarantee_usd: e.target.value })} /></div>
             </div>
-            <div><Label>Poster URL</Label><Input value={form.poster_url} onChange={(e) => setForm({ ...form, poster_url: e.target.value })} placeholder="https://..." /></div>
-            <div><Label>Website</Label><Input value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} placeholder="https://..." /></div>
-            <div><Label>Mô tả</Label><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+            <div><Label>{t("internationalPage.fieldPosterUrl")}</Label><Input value={form.poster_url} onChange={(e) => setForm({ ...form, poster_url: e.target.value })} placeholder="https://..." /></div>
+            <div><Label>{t("internationalPage.fieldWebsite")}</Label><Input value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} placeholder="https://..." /></div>
+            <div><Label>{t("internationalPage.fieldDescription")}</Label><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
             <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 text-sm"><Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} /> Hiển thị</label>
-              <div className="flex items-center gap-2"><Label className="m-0">Thứ tự</Label><Input type="number" className="w-20" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) || 0 })} /></div>
+              <label className="flex items-center gap-2 text-sm"><Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} /> {t("internationalPage.fieldVisible")}</label>
+              <div className="flex items-center gap-2"><Label className="m-0">{t("internationalPage.fieldOrder")}</Label><Input type="number" className="w-20" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) || 0 })} /></div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
+              <Button variant="ghost" onClick={() => setOpen(false)}>{t("internationalPage.cancel")}</Button>
               <Button onClick={save} disabled={saving} className="gradient-neon text-primary-foreground">
-                {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Lưu
+                {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} {t("internationalPage.save")}
               </Button>
             </div>
           </div>

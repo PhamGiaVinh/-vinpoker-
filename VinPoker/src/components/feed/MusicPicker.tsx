@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Music2, Play, Pause, Check, Search, X, Loader2, Cloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export type StoryMusic =
   | {
@@ -38,6 +39,7 @@ interface Props {
 const SC_URL_RE = /^(?:https?:\/\/)?(?:www\.|m\.|on\.)?soundcloud\.com\//i;
 
 export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
+  const { t } = useTranslation();
   const [tracks, setTracks] = useState<Extract<StoryMusic, { source: "library" }>[]>([]);
   const [search, setSearch] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
   const fetchSoundCloud = async () => {
     const url = scUrl.trim();
     if (!SC_URL_RE.test(url)) {
-      toast.error("Link SoundCloud không hợp lệ");
+      toast.error(t("musicPicker.invalidScLink"));
       return;
     }
     setScLoading(true);
@@ -119,7 +121,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
         soundcloud_url: url,
       });
     } catch (e: any) {
-      toast.error(e?.message ?? "Không lấy được nhạc SoundCloud");
+      toast.error(e?.message ?? t("musicPicker.scFetchFailed"));
     } finally {
       setScLoading(false);
     }
@@ -131,7 +133,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Music2 className="w-5 h-5 text-primary" /> Chọn nhạc nền</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Music2 className="w-5 h-5 text-primary" /> {t("musicPicker.dialogTitle")}</DialogTitle>
         </DialogHeader>
 
         {selected && (
@@ -144,7 +146,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold truncate">{selected.name}</div>
               <div className="text-[11px] text-muted-foreground truncate">
-                {selected.source === "soundcloud" ? "SoundCloud" : "Thư viện"}
+                {selected.source === "soundcloud" ? "SoundCloud" : t("musicPicker.sourceLibrary")}
                 {selected.artist ? ` · ${selected.artist}` : ""}
               </div>
             </div>
@@ -154,20 +156,20 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
 
         <Tabs defaultValue="library">
           <TabsList className="w-full grid grid-cols-2">
-            <TabsTrigger value="library"><Music2 className="w-3.5 h-3.5 mr-1" /> Thư viện</TabsTrigger>
+            <TabsTrigger value="library"><Music2 className="w-3.5 h-3.5 mr-1" /> {t("musicPicker.tabLibrary")}</TabsTrigger>
             <TabsTrigger value="soundcloud"><Cloud className="w-3.5 h-3.5 mr-1" /> SoundCloud</TabsTrigger>
           </TabsList>
 
           <TabsContent value="library" className="mt-3 space-y-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm tên hoặc nghệ sĩ…" className="pl-8" />
+              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("musicPicker.searchPlaceholder")} className="pl-8" />
             </div>
             <div className="max-h-[45vh] overflow-y-auto -mx-2 px-2 space-y-1">
               {loading ? (
                 <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
               ) : filtered.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Chưa có bản nhạc nào.</div>
+                <div className="py-8 text-center text-sm text-muted-foreground">{t("musicPicker.emptyTracks")}</div>
               ) : filtered.map(track => (
                 <button
                   key={track.id}
@@ -196,7 +198,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
           </TabsContent>
 
           <TabsContent value="soundcloud" className="mt-3 space-y-3">
-            <div className="text-xs text-muted-foreground">Dán link bài hát SoundCloud (vd: soundcloud.com/artist/track).</div>
+            <div className="text-xs text-muted-foreground">{t("musicPicker.scHelper")}</div>
             <div className="flex gap-2">
               <Input
                 value={scUrl}
@@ -205,7 +207,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
                 onKeyDown={e => { if (e.key === "Enter") fetchSoundCloud(); }}
               />
               <Button onClick={fetchSoundCloud} disabled={scLoading || !scUrl.trim()}>
-                {scLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lấy"}
+                {scLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t("musicPicker.fetchButton")}
               </Button>
             </div>
 
@@ -225,7 +227,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
                   width="100%"
                   height="120"
                   allow="autoplay"
-                  title="SoundCloud preview"
+                  title={t("musicPicker.scIframeTitle")}
                   className="rounded-lg"
                   style={{ border: 0 }}
                 />
@@ -233,7 +235,7 @@ export function MusicPicker({ open, onOpenChange, onSelect, selected }: Props) {
                   className="w-full"
                   onClick={() => { onSelect(scPreview); onOpenChange(false); }}
                 >
-                  <Check className="w-4 h-4 mr-1" /> Dùng bài này
+                  <Check className="w-4 h-4 mr-1" /> {t("musicPicker.useThisTrack")}
                 </Button>
               </div>
             )}

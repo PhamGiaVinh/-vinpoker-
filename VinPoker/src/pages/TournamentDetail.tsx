@@ -108,10 +108,10 @@ const TournamentDetail = () => {
               </div>
               <div>
                 <div className="text-sm font-bold text-emerald-400">
-                  {t.status === "registering" ? "Đang đăng ký" : t.status === "break" ? "Nghỉ giải lao" : t.status === "final_table" ? "Bàn cuối" : "Đang chơi"}
+                  {t.status === "registering" ? tr("tournamentDetailPage.statusRegistering") : t.status === "break" ? tr("tournamentDetailPage.statusBreak") : t.status === "final_table" ? tr("tournamentDetailPage.statusFinalTable") : tr("tournamentDetailPage.statusPlaying")}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {t.players_remaining != null && `${t.players_remaining} người chơi`}
+                  {t.players_remaining != null && tr("tournamentDetailPage.playersRemaining", { n: t.players_remaining })}
                   {t.current_level != null && ` · Lv ${t.current_level}`}
                   {t.current_blinds && ` · ${t.current_blinds}`}
                 </div>
@@ -119,7 +119,7 @@ const TournamentDetail = () => {
             </div>
             <Link to={`/live/${t.id}`}>
               <Button size="sm" className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
-                <Radio className="w-4 h-4 mr-1.5" /> Theo dõi Live
+                <Radio className="w-4 h-4 mr-1.5" /> {tr("tournamentDetailPage.watchLive")}
               </Button>
             </Link>
           </div>
@@ -129,7 +129,7 @@ const TournamentDetail = () => {
       {getTournamentPrice(t).hasDiscount && (
         <Card className="p-4 border-success/30 bg-success/5">
           <p className="text-sm text-success font-semibold flex items-center gap-2">
-            🎉 Giải này đang miễn phí DV CLB cho {getTournamentPrice(t).remainingSlots} suất đầu tiên. Đăng ký ngay để nhận ưu đãi!
+            {tr("tournamentDetailPage.freeServicePromo", { n: getTournamentPrice(t).remainingSlots })}
           </p>
         </Card>
       )}
@@ -154,19 +154,19 @@ const TournamentDetail = () => {
           <div className="mx-auto max-w-3xl space-y-2">
             {myReg2?.status === "confirmed" ? (
               <Button disabled size="lg" className="w-full" variant="secondary">
-                ✅ Đã đăng ký · Vui lòng đến check-in
+                ✅ {tr("tournamentDetailPage.registeredCheckin")}
               </Button>
             ) : myReg2?.status === "pending" ? (
               <Button onClick={() => setRegisterOpen(true)} size="lg" className="w-full gradient-gold text-primary-foreground border-0">
-                ⏳ Tiếp tục thanh toán đăng ký
+                ⏳ {tr("tournamentDetailPage.continuePayment")}
               </Button>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <Button onClick={openChat} variant="outline" size="lg">
-                  💬 Chat với CLB
+                  💬 {tr("tournamentDetailPage.chatWithClub")}
                 </Button>
                 <Button onClick={() => { user ? setRegisterOpen(true) : nav("/auth"); }} disabled={submitting} size="lg" className="gradient-gold text-primary-foreground border-0 shadow-gold">
-                  Đăng ký giải
+                  {tr("tournamentDetailPage.registerTournament")}
                 </Button>
               </div>
             )}

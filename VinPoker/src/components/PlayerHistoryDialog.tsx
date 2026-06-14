@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,6 +26,7 @@ const fmtShort = (n: number) => {
 };
 
 export default function PlayerHistoryDialog({ playerId, playerName, avatarUrl, open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -55,24 +57,24 @@ export default function PlayerHistoryDialog({ playerId, playerName, avatarUrl, o
             {avatarUrl && (
               <img src={avatarUrl} alt={playerName} className="w-10 h-10 rounded-full object-cover border border-border" />
             )}
-            <span className="truncate">{playerName || "Người chơi"}</span>
+            <span className="truncate">{playerName || t("playerHistory.playerFallback")}</span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-2 my-3">
           <div className="rounded-md border border-border p-2 text-center min-w-0">
-            <div className="text-[10px] sm:text-xs text-muted-foreground">Số giải</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">{t("playerHistory.prizeCount")}</div>
             <div className="font-display text-primary text-base sm:text-lg tabular-nums">{rows.length}</div>
           </div>
           <div className="rounded-md border border-border p-2 text-center min-w-0">
-            <div className="text-[10px] sm:text-xs text-muted-foreground">Tổng cashout</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">{t("playerHistory.totalCashout")}</div>
             <div className="font-display text-gold text-sm sm:text-lg tabular-nums truncate">
               <span className="sm:hidden">{fmtShort(totalPrize)}</span>
               <span className="hidden sm:inline">{fmt(totalPrize)}</span>
             </div>
           </div>
           <div className="rounded-md border border-border p-2 text-center min-w-0">
-            <div className="text-[10px] sm:text-xs text-muted-foreground">Lãi/Lỗ</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">{t("playerHistory.profitLoss")}</div>
             <div className={`font-display text-sm sm:text-lg tabular-nums truncate ${profit >= 0 ? "text-primary" : "text-destructive"}`}>
               <span className="sm:hidden">{fmtShort(profit)}</span>
               <span className="hidden sm:inline">{fmt(profit)}</span>
@@ -83,7 +85,7 @@ export default function PlayerHistoryDialog({ playerId, playerName, avatarUrl, o
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
         ) : rows.length === 0 ? (
-          <div className="text-center text-sm text-muted-foreground py-8">Chưa có kết quả đã xác minh</div>
+          <div className="text-center text-sm text-muted-foreground py-8">{t("playerHistory.noVerifiedResults")}</div>
         ) : (
           <>
             {/* Mobile: card list */}
@@ -94,15 +96,15 @@ export default function PlayerHistoryDialog({ playerId, playerName, avatarUrl, o
                     {r.tournament_name || "—"}
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-1">
-                    {r.event_date} {r.position != null && <>· Hạng <span className="text-foreground font-medium">{r.position}</span></>}
+                    {r.event_date} {r.position != null && <>· {t("playerHistory.rank")} <span className="text-foreground font-medium">{r.position}</span></>}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <div className="text-muted-foreground text-[10px] uppercase tracking-wider">Buy-in</div>
+                      <div className="text-muted-foreground text-[10px] uppercase tracking-wider">{t("playerHistory.buyIn")}</div>
                       <div className="tabular-nums">{fmt(Number(r.buy_in || 0))}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-muted-foreground text-[10px] uppercase tracking-wider">Tiền thắng</div>
+                      <div className="text-muted-foreground text-[10px] uppercase tracking-wider">{t("playerHistory.winnings")}</div>
                       <div className="tabular-nums text-gold font-semibold">{fmt(Number(r.prize || 0))}</div>
                     </div>
                   </div>
@@ -115,11 +117,11 @@ export default function PlayerHistoryDialog({ playerId, playerName, avatarUrl, o
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ngày</TableHead>
-                    <TableHead>Giải</TableHead>
-                    <TableHead className="text-right">Hạng</TableHead>
-                    <TableHead className="text-right">Buy-in</TableHead>
-                    <TableHead className="text-right">Tiền thắng</TableHead>
+                    <TableHead>{t("playerHistory.date")}</TableHead>
+                    <TableHead>{t("playerHistory.tournament")}</TableHead>
+                    <TableHead className="text-right">{t("playerHistory.rank")}</TableHead>
+                    <TableHead className="text-right">{t("playerHistory.buyIn")}</TableHead>
+                    <TableHead className="text-right">{t("playerHistory.winnings")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { Bell, CheckCircle2, XCircle, AlertCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ type Diag = {
 };
 
 export const PushDiagnostics = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [diag, setDiag] = useState<Diag | null>(null);
   const [lastTest, setLastTest] = useState<string | null>(
@@ -53,12 +55,12 @@ export const PushDiagnostics = () => {
 
   const test = useMutation({
     mutationFn: async () => {
-      if (!user) throw new Error("Bạn cần đăng nhập");
+      if (!user) throw new Error(t("pushDiag.errLoginRequired"));
       const { data, error } = await supabase.functions.invoke("send-push-notification", {
         body: {
           user_id: user.id,
           heading: "Vin Poker",
-          message: "✅ Test notification — pipeline đang hoạt động!",
+          message: t("pushDiag.testMessage"),
           url: window.location.origin + "/account",
         },
       });
@@ -70,48 +72,48 @@ export const PushDiagnostics = () => {
       const now = new Date().toISOString();
       localStorage.setItem(LAST_TEST_KEY, now);
       setLastTest(now);
-      toast.success("✅ Test notification đã gửi!");
+      toast.success(t("pushDiag.toastTestSent"));
     },
     onError: (e: any) => {
-      toast.error(`❌ Thất bại: ${e?.message ?? "unknown"}`);
+      toast.error(t("pushDiag.toastFailed", { message: e?.message ?? "unknown" }));
     },
   });
 
   return (
     <Card className="p-4 space-y-3 bg-card/60">
       <div className="flex items-center gap-2 text-gold font-semibold">
-        <Bell className="w-4 h-4" /> Chẩn đoán Push Notification
+        <Bell className="w-4 h-4" /> {t("pushDiag.heading")}
       </div>
 
       <div className="space-y-1.5 text-sm">
-        <Row label="SDK" value={diag?.sdk ?? "..."} ok={diag?.sdk === "initialized"} />
+        <Row label={t("pushDiag.labelSdk")} value={diag?.sdk ?? "..."} ok={diag?.sdk === "initialized"} />
         <Row
-          label="Quyền (permission)"
+          label={t("pushDiag.labelPermission")}
           value={diag?.permission ?? "..."}
           ok={diag?.permission === "granted"}
           warn={diag?.permission === "default"}
         />
         <Row
-          label="Đã subscribe"
-          value={diag ? (diag.optedIn ? "subscribed" : "not subscribed") : "..."}
+          label={t("pushDiag.labelSubscribed")}
+          value={diag ? (diag.optedIn ? t("pushDiag.valSubscribed") : t("pushDiag.valNotSubscribed")) : "..."}
           ok={!!diag?.optedIn}
         />
         <Row
-          label="External ID (OneSignal)"
+          label={t("pushDiag.labelExternalId")}
           value={diag?.externalId ? diag.externalId.slice(0, 8) + "…" : "—"}
           ok={!!diag?.externalId}
           warn={!diag?.externalId}
         />
         <Row
-          label="Test cuối"
-          value={lastTest ? new Date(lastTest).toLocaleString("vi-VN") : "chưa gửi"}
+          label={t("pushDiag.labelLastTest")}
+          value={lastTest ? new Date(lastTest).toLocaleString("vi-VN") : t("pushDiag.valNeverSent")}
           ok={!!lastTest}
         />
       </div>
 
       <div className="flex gap-2 pt-1">
         <Button variant="outline" size="sm" onClick={refresh} className="flex-1">
-          Làm mới
+          {t("pushDiag.btnRefresh")}
         </Button>
         <Button
           size="sm"
@@ -120,13 +122,13 @@ export const PushDiagnostics = () => {
           className="flex-1 gradient-neon text-primary-foreground border-0"
         >
           <Send className="w-4 h-4 mr-1.5" />
-          {test.isPending ? "Đang gửi..." : "Gửi test"}
+          {test.isPending ? t("pushDiag.btnSending") : t("pushDiag.btnSendTest")}
         </Button>
       </div>
 
       {!diag?.optedIn && diag?.sdk === "initialized" && (
         <p className="text-xs text-muted-foreground">
-          Bật notification ở mục phía trên trước khi test.
+          {t("pushDiag.hintEnableFirst")}
         </p>
       )}
     </Card>

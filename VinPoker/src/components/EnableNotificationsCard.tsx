@@ -38,7 +38,7 @@ type State = {
 };
 
 export const EnableNotificationsCard = () => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [s, setS] = useState<State>({
     loading: true,
     permission: "default",
@@ -95,12 +95,12 @@ export const EnableNotificationsCard = () => {
       );
       if (!granted) {
         await refresh();
-        toast.error("Bạn chưa cấp quyền thông báo.");
+        toast.error(t("enableNotif.permissionNotGranted"));
         return;
       }
       const ok = await refreshUntilSubscribed();
-      if (ok) toast.success("✅ Đã bật thông báo!");
-      else toast.error("Đã cấp quyền nhưng chưa subscribe được. Vui lòng tải lại trang.");
+      if (ok) toast.success(t("enableNotif.enabled"));
+      else toast.error(t("enableNotif.grantedNotSubscribed"));
     } finally {
       setBusy(false);
     }
@@ -111,8 +111,8 @@ export const EnableNotificationsCard = () => {
     try {
       await optInPush();
       const ok = await refreshUntilSubscribed();
-      if (ok) toast.success("✅ Đã bật lại thông báo!");
-      else toast.error("Chưa subscribe được. Vui lòng tải lại trang.");
+      if (ok) toast.success(t("enableNotif.reEnabled"));
+      else toast.error(t("enableNotif.notSubscribed"));
     } finally {
       setBusy(false);
     }
@@ -127,12 +127,12 @@ export const EnableNotificationsCard = () => {
       );
       if (!granted) {
         await refresh();
-        toast.error("Trình duyệt vẫn đang chặn thông báo. Vui lòng kiểm tra lại quyền trang web.");
+        toast.error(t("enableNotif.stillBlocked"));
         return;
       }
       const ok = await refreshUntilSubscribed();
-      if (ok) toast.success("✅ Đã bật thông báo!");
-      else toast.error("Đã cấp quyền nhưng chưa subscribe được. Vui lòng tải lại trang.");
+      if (ok) toast.success(t("enableNotif.enabled"));
+      else toast.error(t("enableNotif.grantedNotSubscribed"));
     } finally {
       setBusy(false);
     }
@@ -147,53 +147,52 @@ export const EnableNotificationsCard = () => {
             <AlertTriangle className="w-6 h-6 text-destructive" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-lg font-semibold">Thông báo đang bị chặn</h3>
+            <h3 className="text-lg font-semibold">{t("enableNotif.blockedTitle")}</h3>
             <p className="text-sm text-muted-foreground">
-              Bạn đã từ chối quyền thông báo. Trình duyệt sẽ không hỏi lại — vui lòng bật
-              lại thủ công theo hướng dẫn dưới đây.
+              {t("enableNotif.blockedDesc")}
             </p>
           </div>
         </div>
 
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="chrome">
-            <AccordionTrigger className="text-sm">Chrome / Edge (máy tính)</AccordionTrigger>
+            <AccordionTrigger className="text-sm">{t("enableNotif.accChromeTitle")}</AccordionTrigger>
             <AccordionContent className="text-sm text-muted-foreground space-y-1">
-              <p>1. Click biểu tượng 🔒 bên trái thanh địa chỉ.</p>
-              <p>2. Chọn <b>Site settings</b> → <b>Notifications</b> → đổi sang <b>Allow</b>.</p>
-              <p>3. Tải lại trang này.</p>
+              <p>{t("enableNotif.chromeStep1")}</p>
+              <p>{t("enableNotif.chromeStep2")}</p>
+              <p>{t("enableNotif.chromeStep3")}</p>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="safari">
             <AccordionTrigger className="text-sm">Safari (macOS)</AccordionTrigger>
             <AccordionContent className="text-sm text-muted-foreground space-y-1">
-              <p>1. Mở menu <b>Safari → Settings → Websites → Notifications</b>.</p>
-              <p>2. Tìm <b>vinpoker.live</b> trong danh sách và đổi sang <b>Allow</b>.</p>
-              <p>3. Tải lại trang.</p>
+              <p>{t("enableNotif.safariStep1")}</p>
+              <p>{t("enableNotif.safariStep2")}</p>
+              <p>{t("enableNotif.reloadStep")}</p>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="ios">
             <AccordionTrigger className="text-sm">iPhone / iPad (PWA)</AccordionTrigger>
             <AccordionContent className="text-sm text-muted-foreground space-y-1">
-              <p>1. Mở app <b>Settings</b> của iPhone.</p>
-              <p>2. Vào <b>Notifications → Vin Poker</b>.</p>
-              <p>3. Bật <b>Allow Notifications</b>.</p>
-              <p className="text-xs italic">Lưu ý: cần Add to Home Screen rồi mở từ icon trước.</p>
+              <p>{t("enableNotif.iosStep1")}</p>
+              <p>{t("enableNotif.iosStep2")}</p>
+              <p>{t("enableNotif.iosStep3")}</p>
+              <p className="text-xs italic">{t("enableNotif.iosNote")}</p>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="android">
             <AccordionTrigger className="text-sm">Android Chrome</AccordionTrigger>
             <AccordionContent className="text-sm text-muted-foreground space-y-1">
-              <p>1. Click biểu tượng ⓘ bên trái URL.</p>
-              <p>2. Chọn <b>Permissions → Notifications → Allow</b>.</p>
-              <p>3. Tải lại trang.</p>
+              <p>{t("enableNotif.androidStep1")}</p>
+              <p>{t("enableNotif.androidStep2")}</p>
+              <p>{t("enableNotif.reloadStep")}</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
 
         <Button variant="outline" size="sm" onClick={handleManualPermissionReset} disabled={busy} className="w-full">
           <RefreshCw className="w-4 h-4 mr-2" />
-          {busy ? "Đang kiểm tra..." : "Đã bật xong, kiểm tra và bật lại"}
+          {busy ? t("enableNotif.checkingBtn") : t("enableNotif.recheckBtn")}
         </Button>
       </Card>
     );
@@ -210,19 +209,17 @@ export const EnableNotificationsCard = () => {
         </div>
         <div className="space-y-1.5 flex-1">
           <h3 className="text-lg font-semibold">
-            Bật Thông báo để nhận kết quả giải đấu và deal mới
+            {t("enableNotif.promptTitle")}
           </h3>
           <p className="text-sm text-muted-foreground">
-            Nhận thông báo tức thì khi có giải đấu mới, kết quả staking, và cập nhật quan
-            trọng — kể cả khi bạn không mở app.
+            {t("enableNotif.promptDesc")}
           </p>
         </div>
       </div>
 
       {iosNeedsInstall ? (
         <div className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
-          Trên iPhone/iPad bạn cần <b>Add to Home Screen</b> rồi mở Vin Poker từ icon mới
-          bật được thông báo.
+          {t("enableNotif.iosInstallNote")}
         </div>
       ) : (
         <Button
@@ -233,10 +230,10 @@ export const EnableNotificationsCard = () => {
         >
           <Bell className="w-5 h-5 mr-2" />
           {busy
-            ? "Đang xử lý..."
+            ? t("enableNotif.processingBtn")
             : isReEnable
-            ? "Bật lại thông báo"
-            : "Bật thông báo"}
+            ? t("enableNotif.reEnableBtn")
+            : t("enableNotif.enableBtn")}
         </Button>
       )}
     </Card>

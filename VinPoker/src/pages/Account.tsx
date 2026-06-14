@@ -237,7 +237,6 @@ const Account = () => {
 
   const exportExcel = () => {
     if (regs.length === 0) { toast.error(t("account.noData")); return; }
-    const isEn = i18n.language?.startsWith("en");
 
     const fmtTime = (iso: string) =>
       new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
@@ -254,11 +253,10 @@ const Account = () => {
       return d.slice(0, 3) + "***" + d.slice(-3);
     };
     const statusLabel = (s: string) => {
-      if (isEn) return s;
       switch (s) {
-        case "confirmed": return "Đã xác nhận";
-        case "pending": return "Chờ xác nhận";
-        case "cancelled": return "Đã huỷ";
+        case "confirmed": return t("accountPage.statusConfirmed");
+        case "pending": return t("accountPage.statusPending");
+        case "cancelled": return t("accountPage.statusCancelled");
         default: return s;
       }
     };
@@ -281,19 +279,23 @@ const Account = () => {
     });
 
     const aoa: any[][] = [];
-    const headers = isEn
-      ? ["#", "Buy-in time", "Player name", "Phone", "Status"]
-      : ["STT", "Giờ Buy-in", "Tên người chơi", "Số điện thoại", "Trạng thái"];
+    const headers = [
+      t("accountPage.colIndex"),
+      t("accountPage.colBuyinTime"),
+      t("accountPage.colPlayerName"),
+      t("accountPage.colPhone"),
+      t("accountPage.colStatus"),
+    ];
 
     for (const g of groupArr) {
-      const t = g.tournament;
+      const tour = g.tournament;
       const titleParts = [
-        t?.name ?? "—",
-        t?.buy_in ? `Buy-in: ${fmtMoney(t.buy_in)}` : null,
-        t?.club?.name ? `CLB: ${t.club.name}` : null,
-        t?.start_time ? `${isEn ? "Start" : "Bắt đầu"}: ${fmtDateTime(t.start_time)}` : null,
+        tour?.name ?? "—",
+        tour?.buy_in ? `${t("accountPage.buyinPrefix")}: ${fmtMoney(tour.buy_in)}` : null,
+        tour?.club?.name ? `${t("accountPage.clubPrefix")}: ${tour.club.name}` : null,
+        tour?.start_time ? `${t("accountPage.startPrefix")}: ${fmtDateTime(tour.start_time)}` : null,
       ].filter(Boolean);
-      aoa.push([(isEn ? "[Tournament] " : "[Giải đấu] ") + titleParts.join(" — ")]);
+      aoa.push([`${t("accountPage.tournamentTag")} ` + titleParts.join(" — ")]);
       aoa.push(headers);
       g.items.forEach((r: any, idx: number) => {
         aoa.push([
@@ -304,31 +306,27 @@ const Account = () => {
           statusLabel(r.status),
         ]);
       });
-      aoa.push([`${isEn ? "Total" : "Tổng"}: ${g.items.length}`]);
+      aoa.push([`${t("accountPage.totalPrefix")}: ${g.items.length}`]);
       aoa.push([]);
     }
 
     const detailWs = XLSX.utils.aoa_to_sheet(aoa);
     detailWs["!cols"] = [{ wch: 6 }, { wch: 12 }, { wch: 28 }, { wch: 16 }, { wch: 16 }];
 
-    const summary = isEn ? [
-      { Item: "Total bookings", Value: stats.total },
-      { Item: "Today", Value: stats.today },
-      { Item: "This week", Value: stats.week },
-      { Item: "This month", Value: stats.month },
-      { Item: "Unread chats", Value: stats.pending },
-    ] : [
-      { Mục: "Tổng booking", "Giá trị": stats.total },
-      { Mục: "Hôm nay", "Giá trị": stats.today },
-      { Mục: "Tuần này", "Giá trị": stats.week },
-      { Mục: "Tháng này", "Giá trị": stats.month },
-      { Mục: "Chat chưa đọc", "Giá trị": stats.pending },
+    const itemCol = t("accountPage.summaryItemCol");
+    const valueCol = t("accountPage.summaryValueCol");
+    const summary = [
+      { [itemCol]: t("accountPage.summaryTotalBookings"), [valueCol]: stats.total },
+      { [itemCol]: t("accountPage.summaryToday"), [valueCol]: stats.today },
+      { [itemCol]: t("accountPage.summaryThisWeek"), [valueCol]: stats.week },
+      { [itemCol]: t("accountPage.summaryThisMonth"), [valueCol]: stats.month },
+      { [itemCol]: t("accountPage.summaryUnreadChats"), [valueCol]: stats.pending },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, detailWs, isEn ? "Reconciliation" : "Chi tiết đối soát");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), isEn ? "Overview" : "Tổng quan");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyChart), isEn ? "7 days" : "7 ngày");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weeklyChart), isEn ? "4 weeks" : "4 tuần");
+    XLSX.utils.book_append_sheet(wb, detailWs, t("accountPage.sheetReconciliation"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), t("accountPage.sheetOverview"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyChart), t("accountPage.sheet7days"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weeklyChart), t("accountPage.sheet4weeks"));
     XLSX.writeFile(wb, `stack-bookings-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -347,7 +345,7 @@ const Account = () => {
               onUploaded={(url) => setProfile((p: any) => ({ ...p, avatar_url: url }))}
             />
             <div className="flex-1 min-w-0">
-              <h1 className="font-display text-2xl md:text-3xl font-bold truncate">{profile?.display_name || "Player"}</h1>
+              <h1 className="font-display text-2xl md:text-3xl font-bold truncate">{profile?.display_name || t("accountPage.playerFallback")}</h1>
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               <div className="flex flex-wrap gap-1 mt-1">
                 {roles.map(r => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-gold border border-gold/30">{r}</span>)}

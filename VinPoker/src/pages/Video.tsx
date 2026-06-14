@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, Captions, CaptionsOff, Loader2, AlertTriangle, MessageCircle, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,11 +64,12 @@ type SrtState =
   | { status: "error"; message: string };
 
 export default function Video() {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   const videoId = params.get("videoId") || DEFAULT_VIDEO_ID;
   const subtitleUrlParam = params.get("subtitleUrl") || "";
   const subtitleUrl = subtitleUrlParam ? safeDecodeUrl(subtitleUrlParam) : "";
-  const title = params.get("title") || "Video";
+  const title = params.get("title") || t("videoPage.defaultTitle");
 
   // Persistent host node — created once, reparented across portrait/landscape
   // wrappers so the YouTube iframe is never destroyed (which would cause the
@@ -156,17 +158,17 @@ export default function Video() {
         if (cancelled) return;
         const cues = parseSrt(text);
         if (cues.length === 0) {
-          setSrt({ status: "error", message: "File phụ đề không hợp lệ hoặc rỗng." });
+          setSrt({ status: "error", message: t("videoPage.subtitleInvalidOrEmpty") });
         } else {
           setSrt({ status: "ready", cues });
         }
       })
       .catch((e) => {
         if (cancelled) return;
-        setSrt({ status: "error", message: `Không tải được phụ đề (${e?.message || "lỗi mạng"})` });
+        setSrt({ status: "error", message: t("videoPage.subtitleLoadFailed", { reason: e?.message || t("videoPage.networkError") }) });
       });
     return () => { cancelled = true; };
-  }, [subtitleUrl]);
+  }, [subtitleUrl, t]);
 
   // Slot ref callbacks: when a slot mounts, attach the persistent host into it.
   const attachPortraitSlot = useCallback((el: HTMLDivElement | null) => {
@@ -244,7 +246,7 @@ export default function Video() {
     if (srt.status === "loading") {
       return (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" /> Đang tải phụ đề...
+          <Loader2 className="w-4 h-4 animate-spin" /> {t("videoPage.loadingSubtitle")}
         </div>
       );
     }
@@ -257,14 +259,14 @@ export default function Video() {
       );
     }
     if (srt.status === "idle") {
-      return <div className="text-sm text-muted-foreground">Chưa có phụ đề. Hãy mở dialog tải tài liệu để gắn file .SRT cho video này.</div>;
+      return <div className="text-sm text-muted-foreground">{t("videoPage.noSubtitleHint")}</div>;
     }
     return (
       <div className="text-base leading-relaxed whitespace-pre-line min-h-[2.5rem]">
         {activeCue?.text || <span className="text-muted-foreground italic">…</span>}
       </div>
     );
-  }, [showSubs, srt, activeCue]);
+  }, [showSubs, srt, activeCue, t]);
 
   return (
     <>
@@ -273,7 +275,7 @@ export default function Video() {
         <header className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
-              <Link to="/documents" aria-label="Quay lại">
+              <Link to="/documents" aria-label={t("videoPage.backAriaLabel")}>
                 <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
@@ -281,7 +283,7 @@ export default function Video() {
           </div>
           <label className="inline-flex items-center gap-2 text-sm">
             {showSubs ? <Captions className="w-4 h-4 text-primary" /> : <CaptionsOff className="w-4 h-4 text-muted-foreground" />}
-            <span className="text-muted-foreground">Phụ đề</span>
+            <span className="text-muted-foreground">{t("videoPage.subtitlesLabel")}</span>
             <Switch checked={showSubs} onCheckedChange={setShowSubs} />
           </label>
         </header>
@@ -301,7 +303,7 @@ export default function Video() {
                   <Button variant="outline" className="w-full justify-between">
                     <span className="inline-flex items-center gap-2">
                       <MessageCircle className="w-4 h-4" />
-                      Chat
+                      {t("videoPage.chat")}
                     </span>
                     <ChevronDown className="w-4 h-4 transition-transform data-[state=open]:rotate-180" />
                   </Button>
@@ -350,7 +352,7 @@ export default function Video() {
             className={`absolute top-2 left-2 right-2 flex items-center justify-between transition-opacity duration-300 ${controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           >
             <Button asChild variant="secondary" size="icon" className="h-9 w-9 bg-black/50 hover:bg-black/70 border-0 text-white pointer-events-auto">
-              <Link to="/documents" aria-label="Quay lại">
+              <Link to="/documents" aria-label={t("videoPage.backAriaLabel")}>
                 <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
@@ -358,7 +360,7 @@ export default function Video() {
               variant="secondary"
               size="icon"
               onClick={() => setShowSubs((v) => !v)}
-              aria-label="Bật/tắt phụ đề"
+              aria-label={t("videoPage.toggleSubtitlesAriaLabel")}
               className="h-9 w-9 bg-black/50 hover:bg-black/70 border-0 text-white pointer-events-auto"
             >
               {showSubs ? <Captions className="w-5 h-5" /> : <CaptionsOff className="w-5 h-5" />}

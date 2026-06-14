@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 type Cat = "technical" | "financial" | "account" | "other";
 
 export const SupportFloatingButton = () => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
@@ -37,14 +39,14 @@ export const SupportFloatingButton = () => {
   if (!user) return null;
 
   const openChat = () => {
-    if (!supportId) return toast.error("Tài khoản hỗ trợ chưa được cấu hình");
-    if (supportId === user.id) return toast.error("Bạn là tài khoản hỗ trợ");
+    if (!supportId) return toast.error(t("support.supportNotConfigured"));
+    if (supportId === user.id) return toast.error(t("support.youAreSupport"));
     setOpen(false);
     nav(`/dm/${supportId}`);
   };
 
   const submitTicket = async () => {
-    if (content.trim().length < 5) return toast.error("Nội dung quá ngắn");
+    if (content.trim().length < 5) return toast.error(t("support.contentTooShort"));
     setBusy(true);
     const { error } = await supabase.from("support_tickets").insert({
       user_id: user.id,
@@ -65,13 +67,13 @@ export const SupportFloatingButton = () => {
         await supabase.from("direct_messages").insert({
           chat_id: ex.id,
           sender_id: user.id,
-          content: `🎫 [${category.toUpperCase()}] ${subject || "Khiếu nại mới"}${ticketRef ? ` (Mã: ${ticketRef})` : ""}\n\n${content}\n\n— Chúng tôi sẽ phản hồi trong vòng 24 giờ.`,
+          content: `🎫 [${category.toUpperCase()}] ${subject || t("support.defaultSubject")}${ticketRef ? ` (Mã: ${ticketRef})` : ""}\n\n${content}\n\n${t("support.responseWithin24h")}`,
         });
       }
     }
     setBusy(false);
     if (error) return toast.error(error.message);
-    toast.success("Đã gửi khiếu nại. Hỗ trợ sẽ phản hồi sớm.");
+    toast.success(t("support.ticketSent"));
     setSubject(""); setContent(""); setTicketRef("");
     setOpen(false);
   };
@@ -81,59 +83,59 @@ export const SupportFloatingButton = () => {
       <SheetTrigger asChild>
         <button
           className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary inline-flex items-center gap-1.5 transition-colors"
-          title="Hỗ trợ"
-          aria-label="Trung tâm hỗ trợ"
+          title={t("support.triggerTitle")}
+          aria-label={t("support.centerAriaLabel")}
         >
           <LifeBuoy className="w-4 h-4" />
         </button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-md flex flex-col">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2"><LifeBuoy className="w-5 h-5 text-primary" /> Trung tâm hỗ trợ</SheetTitle>
-          <SheetDescription>Chat trực tiếp hoặc gửi khiếu nại nhanh. Phản hồi trong vòng 24 giờ.</SheetDescription>
+          <SheetTitle className="flex items-center gap-2"><LifeBuoy className="w-5 h-5 text-primary" /> {t("support.centerTitle")}</SheetTitle>
+          <SheetDescription>{t("support.centerDescription")}</SheetDescription>
         </SheetHeader>
 
         <Tabs defaultValue="ticket" className="mt-4 flex-1 flex flex-col">
           <TabsList className="grid grid-cols-2">
-            <TabsTrigger value="ticket">Gửi khiếu nại</TabsTrigger>
-            <TabsTrigger value="chat">Chat hỗ trợ</TabsTrigger>
+            <TabsTrigger value="ticket">{t("support.tabSubmitTicket")}</TabsTrigger>
+            <TabsTrigger value="chat">{t("support.tabChatSupport")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="ticket" className="space-y-3 mt-4">
             <div className="space-y-1">
-              <Label className="text-xs">Loại</Label>
+              <Label className="text-xs">{t("support.labelCategory")}</Label>
               <Select value={category} onValueChange={(v) => setCategory(v as Cat)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="technical">Kỹ thuật</SelectItem>
-                  <SelectItem value="financial">Tài chính</SelectItem>
-                  <SelectItem value="account">Tài khoản</SelectItem>
-                  <SelectItem value="other">Khác</SelectItem>
+                  <SelectItem value="technical">{t("support.catTechnical")}</SelectItem>
+                  <SelectItem value="financial">{t("support.catFinancial")}</SelectItem>
+                  <SelectItem value="account">{t("support.catAccount")}</SelectItem>
+                  <SelectItem value="other">{t("support.catOther")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Tiêu đề (tùy chọn)</Label>
+              <Label className="text-xs">{t("support.labelSubject")}</Label>
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Mã phiếu / Mã deal (nếu có)</Label>
+              <Label className="text-xs">{t("support.labelTicketRef")}</Label>
               <Input value={ticketRef} onChange={(e) => setTicketRef(e.target.value)} maxLength={60} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Nội dung</Label>
-              <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} maxLength={2000} placeholder="Mô tả vấn đề bạn gặp phải…" />
+              <Label className="text-xs">{t("support.labelContent")}</Label>
+              <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} maxLength={2000} placeholder={t("support.contentPlaceholder")} />
             </div>
             <Button onClick={submitTicket} disabled={busy} className="w-full gradient-gold text-primary-foreground border-0">
               {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Gửi khiếu nại
+              {t("support.submitButton")}
             </Button>
           </TabsContent>
 
           <TabsContent value="chat" className="space-y-3 mt-4">
-            <p className="text-sm text-muted-foreground">Mở chat 1-1 với <b className="text-foreground">VBacker Support</b>. Nếu offline, chúng tôi sẽ phản hồi trong vòng 24 giờ.</p>
+            <p className="text-sm text-muted-foreground">{t("support.chatIntroBefore")} <b className="text-foreground">VBacker Support</b>. {t("support.chatIntroAfter")}</p>
             <Button onClick={openChat} className="w-full gradient-gold text-primary-foreground border-0">
-              <MessageCircle className="w-4 h-4 mr-2" /> Mở chat hỗ trợ
+              <MessageCircle className="w-4 h-4 mr-2" /> {t("support.openChatButton")}
             </Button>
           </TabsContent>
         </Tabs>
