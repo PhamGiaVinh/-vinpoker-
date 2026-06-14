@@ -22,6 +22,11 @@ interface GroupCard {
 export interface DealerSwingSummaryStripProps {
   activeTables: number;
   assignedTables: number;
+  /**
+   * Assignments still flagged 'assigned' but on a closed/inactive table
+   * (ghosts). Operator/admin diagnostic only — pass 0 for non-admins to hide.
+   */
+  ghostAssignments?: number;
   onBreak: number;
   predictedPending: number;
   overdue: number;
@@ -35,7 +40,7 @@ export interface DealerSwingSummaryStripProps {
 }
 
 export default function DealerSwingSummaryStrip({
-  activeTables, assignedTables, onBreak, predictedPending, overdue, warnings,
+  activeTables, assignedTables, ghostAssignments = 0, onBreak, predictedPending, overdue, warnings,
   stabilityPct, earliestShortageLabel, nowMs,
 }: DealerSwingSummaryStripProps) {
   const allAssigned = assignedTables === activeTables && activeTables > 0;
@@ -44,8 +49,8 @@ export default function DealerSwingSummaryStrip({
     {
       title: "Tổng quan hoạt động",
       metrics: [
-        { label: "Bàn hoạt động", value: activeTables, color: "text-zinc-100" },
-        { label: "Đã gán", value: `${assignedTables}/${activeTables}`, color: allAssigned ? "text-primary" : "text-amber-400" },
+        { label: "Bàn đang mở", value: activeTables, color: "text-zinc-100" },
+        { label: "Bàn có dealer / mở", value: `${assignedTables}/${activeTables}`, color: allAssigned ? "text-primary" : "text-amber-400" },
         { label: "Đang nghỉ", value: onBreak, color: "text-zinc-100" },
       ],
     },
@@ -92,6 +97,12 @@ export default function DealerSwingSummaryStrip({
           </div>
         ))}
       </div>
+      {ghostAssignments > 0 && (
+        <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400">
+          <span aria-hidden="true">⚠️</span>
+          Phát hiện {ghostAssignments} assignment trên bàn đã đóng (cần dọn).
+        </div>
+      )}
     </div>
   );
 }

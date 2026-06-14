@@ -437,7 +437,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     }
   };
 
-  const { user } = useAuth();
+  const { user, isClubAdmin } = useAuth();
 
   const isSubmitting = useRef(false);
 
@@ -460,7 +460,19 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   // Derived from existing data only — no new query.
   const summaryCounts = useMemo(() => {
     const activeList = (tables ?? []).filter((t) => t.status === "active");
-    const assignedTables = (assignments ?? []).filter((a) => a.status === "assigned").length;
+    const activeTableIds = new Set(activeList.map((t) => t.id));
+    // Count ONLY genuinely-active assignments on a still-open table. Ghost rows
+    // (status='assigned' on a closed/inactive table — left by a close-table
+    // race) must not inflate this, so "bàn có dealer" can never exceed "bàn
+    // đang mở" (no more nonsensical 15/13).
+    const assignedTables = (assignments ?? []).filter(
+      (a) => a.status === "assigned" && !a.released_at && activeTableIds.has(a.table_id),
+    ).length;
+    // Diagnostic: assignments still 'assigned' but pointing at a non-active
+    // table — these are ghosts (operator/admin signal only).
+    const ghostAssignments = (assignments ?? []).filter(
+      (a) => a.status === "assigned" && !a.released_at && !activeTableIds.has(a.table_id),
+    ).length;
     // "Đang nghỉ" = mọi dealer đang trong Break Pool (nghỉ/cơm/break) — khớp số
     // hiển thị ở BREAK POOL. (current_state==="on_break" bỏ sót dealer đang "rest".)
     const onBreak = (breakPool ?? []).length;
@@ -477,6 +489,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return {
       activeTables: activeList.length,
       assignedTables,
+      ghostAssignments,
       onBreak,
       predictedPending,
       overdue,
@@ -1479,6 +1492,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <DealerSwingSummaryStrip
           activeTables={summaryCounts.activeTables}
           assignedTables={summaryCounts.assignedTables}
+          ghostAssignments={isClubAdmin ? summaryCounts.ghostAssignments : 0}
           onBreak={summaryCounts.onBreak}
           predictedPending={summaryCounts.predictedPending}
           overdue={summaryCounts.overdue}
