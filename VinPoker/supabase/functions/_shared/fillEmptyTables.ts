@@ -115,11 +115,13 @@ export async function fillEmptyTables(
     );
   }
 
-  // Step 2: Find tables with existing active assignments
+  // Step 2: Find tables with existing active assignments.
+  // 'reserved' = a Step-2 empty-table reservation holds this table for a
+  // soon-free dealer → treat it as NOT empty so Step-1 fill doesn't double-staff.
   const { data: activeAssignments } = (await admin
     .from("dealer_assignments")
     .select("table_id")
-    .in("status", ["assigned", "pre_assigned"])
+    .in("status", ["assigned", "pre_assigned", "reserved"])
     .in(
       "table_id",
       scopedTables.map((t: { id: string }) => t.id)
