@@ -10,6 +10,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { DealerBottomNav } from "./DealerBottomNav";
 import { DealerNotificationBell } from "./DealerNotificationBell";
 import { DealerComingSoon } from "./DealerComingSoon";
+import { DealerClubSwitcher } from "./DealerClubSwitcher";
 
 /**
  * Dealer Mobile App shell — its own 5-tab mobile chrome, separate from the main
@@ -53,6 +54,7 @@ export default function DealerAppShell() {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            <DealerClubSwitcher />
             <LanguageSwitcher />
             <DealerNotificationBell />
           </div>
