@@ -258,7 +258,13 @@ export function LiveFelt({
                 )}
               </div>
               {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
-                <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300">
+                // key = current_bet so the one-shot chip pulse replays whenever the
+                // seat commits more chips this street (Increment 3, cosmetic only;
+                // CSS-only, reduced-motion respected, no JS timers).
+                <div
+                  key={`bet-${seat.current_bet}`}
+                  className="tracker-bet-pulse mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300"
+                >
                   Cược {formatStack(seat.current_bet)}
                 </div>
               )}

@@ -128,6 +128,12 @@ export function TrackerVisualStyles() {
           0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(251, 191, 36, .22); }
           50% { transform: scale(1.045); box-shadow: 0 0 34px rgba(251, 191, 36, .36); }
         }
+        /* One-shot chip pulse when a seat commits chips this street (Live Action Engine, cosmetic). */
+        @keyframes tracker-bet-pulse {
+          0% { transform: scale(.6); opacity: 0; }
+          45% { transform: scale(1.18); opacity: 1; box-shadow: 0 0 14px rgba(251, 191, 36, .5); }
+          100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+        }
         @keyframes tracker-glow-sweep {
           from { transform: translateX(-110%) skewX(-18deg); opacity: .12; }
           to { transform: translateX(210%) skewX(-18deg); opacity: .28; }
@@ -135,6 +141,7 @@ export function TrackerVisualStyles() {
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
+        .tracker-bet-pulse { animation: tracker-bet-pulse .42s ease-out both; }
         .tracker-felt {
           background:
             radial-gradient(circle at 50% 38%, rgba(88, 23, 35, .96), rgba(43, 11, 19, .98) 58%, rgba(12, 13, 16, .98) 100%),
@@ -160,6 +167,7 @@ export function TrackerVisualStyles() {
           .tracker-card-reveal,
           .tracker-seat-pop,
           .tracker-pot-pulse,
+          .tracker-bet-pulse,
           .tracker-shine::before {
             animation: none !important;
           }
