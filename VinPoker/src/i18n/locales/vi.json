@@ -1,4 +1,47 @@
 {
+  "dealer": {
+    "appTagline": "Dealer · Cổng nhân viên",
+    "appEntry": "Dealer App",
+    "back": "Về trang chủ",
+    "nav": { "home": "Trang chủ", "day": "Lịch ngày", "week": "Lịch tuần", "careers": "Tuyển dụng", "account": "Tài khoản" },
+    "home": {
+      "todayShift": "CA HÔM NAY",
+      "greeting": "Chào {{name}}",
+      "greetingSub": "Chúc bạn một ngày làm việc hiệu quả.",
+      "statToday": "Ca hôm nay",
+      "statWeekHours": "Giờ tuần này",
+      "statNight": "Ca đêm",
+      "statNotif": "Thông báo",
+      "noShiftToday": "Hôm nay bạn không có ca",
+      "noShiftHint": "Kiểm tra lịch tuần để xem các ca sắp tới.",
+      "actionDay": "Lịch ngày",
+      "actionWeek": "Lịch tuần",
+      "upcoming": "Ca sắp tới"
+    },
+    "shift": {
+      "overnight": "Qua đêm",
+      "status": { "draft": "Nháp", "published": "Chưa xác nhận", "confirmed": "Đã xác nhận", "checked_in": "Đang làm", "closed": "Đã kết thúc", "cancelled": "Đã hủy", "no_show": "Vắng" }
+    },
+    "checkin": {
+      "opensAt": "Check-in mở lúc {{time}}",
+      "late": "Check-in muộn",
+      "step0": "Chưa check-in",
+      "step1": "Đã check-in",
+      "step2": "Đang làm",
+      "step3": "Kết thúc ca",
+      "earliest": "Check-in mở",
+      "latest": "Muộn nhất",
+      "table": "Bàn"
+    },
+    "action": { "confirm": "Xác nhận ca", "checkIn": "Check-in ngay", "checkOut": "Check-out", "requestLeave": "Xin nghỉ" },
+    "day": { "title": "Lịch ngày", "today": "Hôm nay", "tomorrow": "Ngày mai", "checkinStatus": "Trạng thái check-in", "noShifts": "Không có ca trong ngày này" },
+    "week": { "title": "Lịch tuần", "totalHours": "Tổng giờ tuần này", "remaining": "Còn {{h}}h để đạt mục tiêu", "daysShort": "ngày", "off": "Off", "leave": "Nghỉ phép", "onCall": "On-call", "today": "Hôm nay", "hint": "Bạn có thể đề xuất đổi ca hoặc xin nghỉ trong mục Lịch ngày." },
+    "careers": { "title": "Tuyển dụng & Đào tạo", "heroSmall": "Phát triển sự nghiệp cùng", "heroSub": "Sàn dealer mở · Cơ hội trong nước & quốc tế", "intl": "Quốc tế", "contactHr": "Liên hệ Phòng Nhân sự" },
+    "account": { "title": "Tài khoản", "tier": "Hạng dealer", "club": "Câu lạc bộ", "region": "Khu vực", "role": "Dealer", "verified": "Đã xác minh", "language": "Ngôn ngữ", "signOut": "Đăng xuất" },
+    "notLinked": { "title": "Tài khoản chưa liên kết dealer", "body": "Tài khoản của bạn chưa được liên kết với hồ sơ dealer. Bạn vẫn có thể xem cơ hội tuyển dụng và ứng tuyển.", "cta": "Xem tuyển dụng" },
+    "comingSoon": { "title": "Dealer App đang hoàn thiện", "body": "Cổng dealer sẽ sớm ra mắt. Vui lòng quay lại sau." },
+    "toast": { "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai" }
+  },
   "tv": {
     "level": "Level",
     "blinds": "Blinds",

@@ -1,0 +1,71 @@
+import { useTranslation } from "react-i18next";
+import { LogOut, BadgeCheck, MapPin, Building2, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useAuth } from "@/hooks/useAuth";
+import { useDealerLink } from "@/hooks/dealer/useDealerLink";
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase() || "VB";
+}
+
+export function DealerAccountScreen() {
+  const { t } = useTranslation();
+  const { signOut } = useAuth();
+  const { dealer } = useDealerLink();
+
+  const rows = [
+    { Icon: Award, label: t("dealer.account.tier", "Hạng dealer"), value: dealer?.tier ? `Tier ${dealer.tier}` : "—" },
+    { Icon: Building2, label: t("dealer.account.club", "Câu lạc bộ"), value: dealer?.clubName || "—" },
+    { Icon: MapPin, label: t("dealer.account.region", "Khu vực"), value: dealer?.region || "—" },
+  ];
+
+  return (
+    <div>
+      <h1 className="text-xl font-display font-bold text-foreground mb-3">{t("dealer.account.title", "Tài khoản")}</h1>
+
+      <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3 mb-3">
+        <div className="w-14 h-14 rounded-full bg-primary/10 border border-primary/30 grid place-items-center text-primary font-display font-bold">
+          {initials(dealer?.fullName ?? "VB")}
+        </div>
+        <div className="min-w-0">
+          <div className="text-base font-bold text-foreground truncate">{dealer?.fullName ?? "—"}</div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[12px] text-muted-foreground">{t("dealer.account.role", "Dealer")}</span>
+            {dealer?.isVerified && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                {t("dealer.account.verified", "Đã xác minh")}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card divide-y divide-border mb-3">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3">
+            <r.Icon className="w-4 h-4 text-muted-foreground" />
+            <span className="text-[13px] text-muted-foreground flex-1">{r.label}</span>
+            <span className="text-[13px] font-bold text-foreground">{r.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 mb-3">
+        <span className="text-[13px] text-muted-foreground">{t("dealer.account.language", "Ngôn ngữ")}</span>
+        <LanguageSwitcher />
+      </div>
+
+      <Button
+        variant="outline"
+        onClick={() => signOut()}
+        className="w-full text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+      >
+        <LogOut className="w-4 h-4 mr-1.5" />
+        {t("dealer.account.signOut", "Đăng xuất")}
+      </Button>
+    </div>
+  );
+}

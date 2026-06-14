@@ -1,4 +1,47 @@
 {
+  "dealer": {
+    "appTagline": "Dealer · Staff portal",
+    "appEntry": "Dealer App",
+    "back": "Back to home",
+    "nav": { "home": "Home", "day": "Day", "week": "Week", "careers": "Careers", "account": "Account" },
+    "home": {
+      "todayShift": "TODAY'S SHIFT",
+      "greeting": "Hi {{name}}",
+      "greetingSub": "Have a productive shift today.",
+      "statToday": "Today",
+      "statWeekHours": "Week hours",
+      "statNight": "Night shifts",
+      "statNotif": "Alerts",
+      "noShiftToday": "No shift today",
+      "noShiftHint": "Check your weekly schedule for upcoming shifts.",
+      "actionDay": "Day",
+      "actionWeek": "Week",
+      "upcoming": "Upcoming shifts"
+    },
+    "shift": {
+      "overnight": "Overnight",
+      "status": { "draft": "Draft", "published": "Unconfirmed", "confirmed": "Confirmed", "checked_in": "Working", "closed": "Ended", "cancelled": "Cancelled", "no_show": "No-show" }
+    },
+    "checkin": {
+      "opensAt": "Check-in opens at {{time}}",
+      "late": "Late check-in",
+      "step0": "Not checked in",
+      "step1": "Checked in",
+      "step2": "Working",
+      "step3": "Shift ended",
+      "earliest": "Check-in opens",
+      "latest": "Latest",
+      "table": "Table"
+    },
+    "action": { "confirm": "Confirm shift", "checkIn": "Check in now", "checkOut": "Check out", "requestLeave": "Request leave" },
+    "day": { "title": "Daily schedule", "today": "Today", "tomorrow": "Tomorrow", "checkinStatus": "Check-in status", "noShifts": "No shift on this day" },
+    "week": { "title": "Weekly schedule", "totalHours": "Total hours this week", "remaining": "{{h}}h left to reach target", "daysShort": "days", "off": "Off", "leave": "Leave", "onCall": "On-call", "today": "Today", "hint": "You can request a swap or leave from the Day tab." },
+    "careers": { "title": "Careers & Training", "heroSmall": "Grow your career with", "heroSub": "Open dealer market · Local & international", "intl": "Intl", "contactHr": "Contact HR" },
+    "account": { "title": "Account", "tier": "Dealer tier", "club": "Club", "region": "Region", "role": "Dealer", "verified": "Verified", "language": "Language", "signOut": "Sign out" },
+    "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
+    "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
+    "toast": { "previewOnly": "Preview only — actions enable on rollout" }
+  },
   "tv": {
     "level": "Level",
     "blinds": "Blinds",
