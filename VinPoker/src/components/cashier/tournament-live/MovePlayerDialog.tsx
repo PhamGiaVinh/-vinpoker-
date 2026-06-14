@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -231,16 +231,16 @@ export function MovePlayerDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={close}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <Sheet open={open} onOpenChange={close}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[90vh] overflow-y-auto sm:mx-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
               <ArrowRightLeft className="w-4 h-4 text-primary" /> Chuyển ghế — {playerName}
-            </DialogTitle>
-            <DialogDescription>
+            </SheetTitle>
+            <SheetDescription>
               Chuyển qua RPC có kiểm soát: phiếu cũ bị thay thế, phiếu mới được in, lý do được ghi vào lịch sử ghế.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
 
           {phase === "pick" && (
             <div className="space-y-3">
@@ -324,7 +324,7 @@ export function MovePlayerDialog({
             </div>
           )}
 
-          <DialogFooter>
+          <SheetFooter className="mt-3 flex-row justify-end gap-2">
             {phase === "pick" && (
               <>
                 <Button variant="outline" onClick={() => close(false)}>Quay lại</Button>
@@ -352,9 +352,9 @@ export function MovePlayerDialog({
                 <Button onClick={() => close(false)}>Đóng</Button>
               </>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen} receipt={receipt} />
     </>
