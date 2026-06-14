@@ -2879,7 +2879,7 @@ function RosterPanel({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Tìm dealer..."
-          className="w-full h-7 pl-7 pr-2 text-xs bg-muted/50 border border-border rounded outline-none focus:border-success/50 text-foreground placeholder-zinc-600"
+          className="w-full h-7 pl-7 pr-2 text-xs bg-muted/50 border border-border rounded outline-none focus:border-success/50 text-foreground placeholder:text-muted-foreground"
         />
       </div>
 
@@ -2908,7 +2908,7 @@ function RosterPanel({
                 {/* Section header */}
                 <div className="flex items-center gap-1.5 mb-1.5 sticky top-0 z-10 pb-0.5">
                   {batchMode && (
-                    <input type="checkbox" className="w-3 h-3 accent-emerald-500 cursor-pointer"
+                    <input type="checkbox" className="w-3 h-3 accent-[hsl(var(--primary))] cursor-pointer"
                       checked={allSelected}
                       onChange={() => toggleAllInSection(group.map((d) => d.id))} />
                   )}
@@ -2937,7 +2937,7 @@ function RosterPanel({
                       ].join(" ")}>
                         {/* Checkbox — batch mode only */}
                         {batchMode && (
-                          <input type="checkbox" className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer flex-shrink-0"
+                          <input type="checkbox" className="w-3.5 h-3.5 accent-[hsl(var(--primary))] cursor-pointer flex-shrink-0"
                             checked={selectedIds.has(d.id)}
                             onChange={() => toggleId(d.id)} />
                         )}
@@ -3198,7 +3198,7 @@ function BreakPoolCard({
             const rowClass = cn(
               "flex items-center gap-2 pl-2.5 pr-2 py-1.5 border-l-2 rounded-none transition-colors",
               isRest
-                ? "border-violet-500/50 bg-violet-500/5 text-foreground"
+                ? "border-[hsl(var(--ds-rest)_/_0.5)] bg-[hsl(var(--ds-rest)_/_0.08)] text-foreground"
                 : visualState === "soon"
                   ? "border-warning bg-warning/5 text-warning"
                   : visualState === "overdue"

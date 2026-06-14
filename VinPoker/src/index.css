@@ -72,6 +72,7 @@
        assigned→muted/border are reused from the semantic tokens above. */
     --ds-preassign: 271 81% 66%; /* purple (default dark look) */
     --ds-active: 217 91% 60%;    /* blue — dealer currently at table */
+    --ds-rest: 258 35% 62%;      /* soft violet — dealer on a rest break */
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -140,6 +141,7 @@
     /* Dealer Swing "pre-assigned" status — warm terracotta */
     --ds-preassign: 16 53% 54%;        /* terracotta */
     --ds-active: 203 40% 40%;          /* deeper slate-blue for ivory contrast */
+    --ds-rest: 285 16% 50%;            /* muted mauve — rest break (readable on cream) */
   }
 }
 

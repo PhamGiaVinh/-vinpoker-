@@ -36,10 +36,10 @@ export default function AttentionQueue({
     const otZero = !assignments.some((a) => a.status === "assigned" && a.overtime_started_at);
 
     return (
-      <div className="border border-emerald-500/30 bg-emerald-950/10 rounded-sm px-3 py-2.5">
+      <div className="border border-success/30 bg-success/10 rounded-sm px-3 py-2.5">
         <div className="flex items-center gap-1.5 mb-1.5">
           <span className="text-sm">✅</span>
-          <span className="text-[11px] font-semibold text-emerald-500">Hệ thống ổn định</span>
+          <span className="text-[11px] font-semibold text-success">Hệ thống ổn định</span>
         </div>
         <div className="text-[10px] text-muted-foreground space-y-0.5">
           <div>{assignedTables}/{activeTables} bàn có dealer</div>
@@ -87,8 +87,8 @@ export default function AttentionQueue({
         </span>
       </div>
 
-      {renderGroup(criticalItems, "Cần xử lý ngay", "🔴", "border-red-500", "text-red-500")}
-      {renderGroup(warningItems, "Cảnh báo", "⚠️", "border-amber-500", "text-amber-500")}
+      {renderGroup(criticalItems, "Cần xử lý ngay", "🔴", "border-destructive", "text-destructive")}
+      {renderGroup(warningItems, "Cảnh báo", "⚠️", "border-warning", "text-warning")}
     </div>
   );
 }

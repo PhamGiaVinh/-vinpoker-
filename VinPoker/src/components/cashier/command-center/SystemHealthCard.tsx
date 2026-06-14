@@ -32,22 +32,22 @@ export default function SystemHealthCard({
         <KpiBox
           label="Bàn đã gán"
           value={coverageDisplay}
-          color={totalTables > 0 && assignedTables === totalTables ? "text-emerald-500" : "text-amber-500"}
+          color={totalTables > 0 && assignedTables === totalTables ? "text-success" : "text-warning"}
         />
         <KpiBox
           label="OT"
           value={otTables}
-          color={otTables > 0 ? "text-red-500" : "text-muted-foreground"}
+          color={otTables > 0 ? "text-destructive" : "text-muted-foreground"}
         />
         <KpiBox
           label="Sẵn sàng"
           value={availableDealers}
-          color={availableDealers > 0 ? "text-emerald-500" : "text-muted-foreground"}
+          color={availableDealers > 0 ? "text-success" : "text-muted-foreground"}
         />
         <KpiBox
           label="Cần xử lý"
           value={needAttention}
-          color={needAttention > 0 ? "text-red-500" : "text-emerald-500"}
+          color={needAttention > 0 ? "text-destructive" : "text-success"}
         />
       </div>
     </div>
