@@ -78,7 +78,7 @@ export const DuplicateNameGuard = () => {
     <Dialog open={open} onOpenChange={() => { /* not dismissible */ }}>
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-amber-500">
+          <DialogTitle className="flex items-center gap-2 text-warning">
             <AlertTriangle className="w-5 h-5" /> {t("duplicateName.title")}
           </DialogTitle>
           <DialogDescription>

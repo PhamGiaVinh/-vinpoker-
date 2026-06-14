@@ -35,12 +35,12 @@ export const PerformanceCard = ({ stats, displayName }: { stats: PlayerStats; di
           </div>
           <div className="flex flex-col gap-1 items-end">
             {stats.verified && (
-              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">
+              <Badge className="bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)]">
                 <ShieldCheck className="w-3 h-3 mr-1" /> {t("performanceCard.verified")}
               </Badge>
             )}
             {stats.current_streak >= 3 && (
-              <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/40">
+              <Badge className="bg-warning/20 text-warning border-warning/40">
                 <Flame className="w-3 h-3 mr-1" /> {t("performanceCard.streak", { n: stats.current_streak })}
               </Badge>
             )}
@@ -49,11 +49,11 @@ export const PerformanceCard = ({ stats, displayName }: { stats: PlayerStats; di
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
           <Stat label={t("performanceCard.played")} value={stats.tournaments_played.toString()} />
-          <Stat label={t("performanceCard.itm")} value={`${stats.itm_rate}%`} accent="text-cyan-400" />
+          <Stat label={t("performanceCard.itm")} value={`${stats.itm_rate}%`} accent="text-[hsl(var(--ds-active))]" />
           <Stat
             label={t("performanceCard.roi")}
             value={`${roiPositive ? "+" : ""}${stats.roi_percentage}%`}
-            accent={roiPositive ? "text-green-500" : "text-red-500"}
+            accent={roiPositive ? "text-success" : "text-destructive"}
             icon={roiPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
           />
           <Stat label={t("performanceCard.avgFinish")} value={stats.avg_finish ? `#${stats.avg_finish}` : "—"} />
@@ -63,7 +63,7 @@ export const PerformanceCard = ({ stats, displayName }: { stats: PlayerStats; di
       <CardContent className="p-5 space-y-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t("performanceCard.totalPnl")}</span>
-          <span className={`font-bold ${stats.total_profit_loss >= 0 ? "text-green-500" : "text-red-500"}`}>
+          <span className={`font-bold ${stats.total_profit_loss >= 0 ? "text-success" : "text-destructive"}`}>
             {stats.total_profit_loss >= 0 ? "+" : ""}{fmt(stats.total_profit_loss)} đ
           </span>
         </div>

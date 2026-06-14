@@ -82,11 +82,11 @@ export const InstallPWAButton = () => {
           </DialogHeader>
 
           {inApp && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-2">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
                 <div className="text-sm">
-                  <div className="font-bold text-amber-500 mb-1">
+                  <div className="font-bold text-warning mb-1">
                     {t("installPwa.openedFromFacebookZalo")}
                   </div>
                   <p className="text-foreground/90 leading-relaxed">

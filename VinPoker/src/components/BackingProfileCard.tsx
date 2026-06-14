@@ -149,25 +149,25 @@ export const BackingProfileCard = () => {
       </div>
 
       {stats.looking_for_backing && stats.backing_status === "pending" && (
-        <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-2 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-yellow-500 shrink-0" />
-          <span className="text-xs text-yellow-500">{t("backingProfile.pending")}</span>
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-2 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-warning shrink-0" />
+          <span className="text-xs text-warning">{t("backingProfile.pending")}</span>
         </div>
       )}
       {stats.looking_for_backing && stats.backing_status === "approved" && (
-        <div className="rounded-lg border border-green-500/40 bg-green-500/10 p-2 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-green-500 shrink-0" />
-          <span className="text-xs text-green-500">{t("backingProfile.approved")}</span>
+        <div className="rounded-lg border border-success/40 bg-success/10 p-2 flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-success shrink-0" />
+          <span className="text-xs text-success">{t("backingProfile.approved")}</span>
         </div>
       )}
       {stats.looking_for_backing && stats.backing_status === "rejected" && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-2 space-y-1">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-2 space-y-1">
           <div className="flex items-center gap-2">
-            <X className="w-4 h-4 text-red-500 shrink-0" />
-            <span className="text-xs font-semibold text-red-500">{t("backingProfile.rejected")}</span>
+            <X className="w-4 h-4 text-destructive shrink-0" />
+            <span className="text-xs font-semibold text-destructive">{t("backingProfile.rejected")}</span>
           </div>
           {stats.backing_review_note && (
-            <p className="text-xs text-red-400 italic pl-6">"{stats.backing_review_note}"</p>
+            <p className="text-xs text-destructive italic pl-6">"{stats.backing_review_note}"</p>
           )}
           <p className="text-xs text-muted-foreground pl-6">{t("backingProfile.rejectedHint")}</p>
         </div>
@@ -189,9 +189,9 @@ export const BackingProfileCard = () => {
       )}
 
       {stats.looking_for_backing && stats.backing_status === "approved" && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-2 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
-          <span className="text-xs text-yellow-500">{t("backingProfile.reapproveWarn")}</span>
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+          <span className="text-xs text-warning">{t("backingProfile.reapproveWarn")}</span>
         </div>
       )}
 
@@ -216,9 +216,9 @@ export const BackingProfileCard = () => {
                   <Badge
                     className={
                       i.status === "pending"
-                        ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/40"
+                        ? "bg-warning/20 text-warning border-warning/40"
                         : i.status === "contacted"
-                        ? "bg-green-500/20 text-green-500 border-green-500/40"
+                        ? "bg-success/20 text-success border-success/40"
                         : "bg-muted text-muted-foreground"
                     }
                   >
@@ -227,7 +227,7 @@ export const BackingProfileCard = () => {
                 </div>
                 {i.message && <p className="text-xs text-muted-foreground italic">"{i.message}"</p>}
                 {i.status === "contacted" && p?.phone && (
-                  <div className="text-xs text-green-500">{t("backingProfile.phoneRevealed", { phone: p.phone })}</div>
+                  <div className="text-xs text-success">{t("backingProfile.phoneRevealed", { phone: p.phone })}</div>
                 )}
                 {i.status === "pending" && (
                   <div className="flex gap-2">

@@ -129,11 +129,11 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
                 <>
                   <div className="pt-3 flex items-center justify-center">
                     {stats.verified ? (
-                      <Badge className="bg-green-500/20 text-green-500 border-green-500/40">
+                      <Badge className="bg-success/20 text-success border-success/40">
                         <ShieldCheck className="w-3 h-3 mr-1" /> {t("myQr.verified")}
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="border-yellow-500/40 text-yellow-500">
+                      <Badge variant="outline" className="border-warning/40 text-warning">
                         <ShieldAlert className="w-3 h-3 mr-1" /> {t("myQr.notVerified")}
                       </Badge>
                     )}
@@ -142,11 +142,11 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-md bg-background/50 py-2">
                       <div className="text-[10px] text-muted-foreground tracking-wider">ITM</div>
-                      <div className="font-bold text-cyan-400">{stats.itm_rate}%</div>
+                      <div className="font-bold text-[hsl(var(--ds-active))]">{stats.itm_rate}%</div>
                     </div>
                     <div className="rounded-md bg-background/50 py-2">
                       <div className="text-[10px] text-muted-foreground tracking-wider">ROI</div>
-                      <div className={`font-bold flex items-center justify-center gap-0.5 ${roiPositive ? "text-green-500" : "text-red-500"}`}>
+                      <div className={`font-bold flex items-center justify-center gap-0.5 ${roiPositive ? "text-success" : "text-destructive"}`}>
                         {roiPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {roiPositive ? "+" : ""}{stats.roi_percentage}%
                       </div>
@@ -180,7 +180,7 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div className="rounded-md bg-background/40 px-3 py-2">
                       <div className="text-[10px] text-muted-foreground">{t("myQr.profitLoss")}</div>
-                      <div className={`text-sm font-bold ${(stats.total_profit_loss ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      <div className={`text-sm font-bold ${(stats.total_profit_loss ?? 0) >= 0 ? "text-success" : "text-destructive"}`}>
                         {(stats.total_profit_loss ?? 0) >= 0 ? "+" : "-"}
                         {formatVnd(Math.abs(Number(stats.total_profit_loss ?? 0)))}đ
                       </div>

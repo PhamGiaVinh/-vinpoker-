@@ -56,7 +56,7 @@ export const RatingDialog = ({ open, onOpenChange, dealId, counterpartyName, onS
               >
                 <Star
                   className={`w-9 h-9 transition-colors ${
-                    i <= (hover || rating) ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40"
+                    i <= (hover || rating) ? "fill-warning text-warning" : "text-muted-foreground/40"
                   }`}
                 />
               </button>

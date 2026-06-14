@@ -133,7 +133,7 @@ export const UpcomingEventsManager = () => {
         <div className="space-y-2">
           {events.map((e) => {
             const eventProofs = proofs.get(e.id) ?? [];
-            const markupColor = e.markup <= 1.0 ? "text-muted-foreground" : e.markup <= 1.3 ? "text-green-500" : "text-orange-500";
+            const markupColor = e.markup <= 1.0 ? "text-muted-foreground" : e.markup <= 1.3 ? "text-success" : "text-warning";
             return (
               <div key={e.id} className="rounded-lg border border-border/40 p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">

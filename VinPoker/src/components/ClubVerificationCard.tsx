@@ -113,11 +113,11 @@ export function ClubVerificationCard({ userId }: Props) {
   // STATE C
   if (verifiedClub) {
     return (
-      <Card className="p-4 space-y-2 border-blue-500/40">
+      <Card className="p-4 space-y-2 border-[hsl(var(--ds-active)_/_0.4)]">
         <h3 className="font-semibold text-gold flex items-center gap-2">
           <ShieldCheck className="w-4 h-4" /> {t("clubVerification.title")}
         </h3>
-        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40">
+        <Badge className="bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)]">
           {t("clubVerification.verifiedBy", { name: verifiedClub.name })}
         </Badge>
       </Card>
@@ -136,7 +136,7 @@ export function ClubVerificationCard({ userId }: Props) {
 
       {pending && latestReq && (
         <div className="space-y-2">
-          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/40">
+          <Badge className="bg-warning/20 text-warning border-warning/40">
             {t("clubVerification.pendingBadge")}
           </Badge>
           <div className="text-sm text-muted-foreground">

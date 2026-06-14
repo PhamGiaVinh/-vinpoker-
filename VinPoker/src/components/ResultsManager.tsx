@@ -111,7 +111,7 @@ export const ResultsManager = () => {
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-sm">{r.tournament_name}</span>
                       {r.verified_by_admin && (
-                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40 text-[10px]">
+                        <Badge className="bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)] text-[10px]">
                           <ShieldCheck className="w-2.5 h-2.5 mr-0.5" /> {t("results.verified")}
                         </Badge>
                       )}
@@ -124,7 +124,7 @@ export const ResultsManager = () => {
                     <div className="flex flex-wrap gap-1.5 mt-2 text-xs">
                       <span className="text-muted-foreground">{t("results.buyIn")} <span className="text-foreground">{fmt(r.buy_in)}</span></span>
                       <span className="text-muted-foreground">{t("results.prize")} <span className="text-foreground">{fmt(r.prize)}</span></span>
-                      <span className={`font-semibold ${profit >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      <span className={`font-semibold ${profit >= 0 ? "text-success" : "text-destructive"}`}>
                         {profit >= 0 ? "+" : ""}{fmt(profit)}
                       </span>
                     </div>

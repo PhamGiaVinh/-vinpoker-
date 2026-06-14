@@ -281,7 +281,7 @@ export const Layout = () => {
                 </>
               )}
               {(isMedia || isAdmin) && (
-                <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-purple-500/40 text-purple-400 text-[11px] font-bold tracking-wider hover:bg-purple-500/15">
+                <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))] text-[11px] font-bold tracking-wider hover:bg-[hsl(var(--ds-preassign)_/_0.15)]">
                   MEDIA
                 </NavLink>
               )}
