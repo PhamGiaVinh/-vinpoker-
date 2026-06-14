@@ -101,6 +101,7 @@ export interface CareerProgramView {
   payRange?: string | null;
   status: "open" | "closed" | "applied";
   description?: string;
+  requirements?: string[];
 }
 
 export interface CareerApplicationView {
@@ -109,5 +110,20 @@ export interface CareerApplicationView {
   programTitle: string;
   kind: CareerProgramKind;
   status: CareerApplicationStatus;
-  createdAt: string;
+  createdAt: string; // ISO
+  note?: string | null;
+}
+
+export type CareerSessionKind = "interview" | "training";
+
+export interface CareerSessionView {
+  id: string;
+  kind: CareerSessionKind;
+  title: string;
+  scheduledAt: string; // ISO
+  mode: "online" | "onsite";
+  location?: string | null; // venue label (onsite)
+  joinUrl?: string | null; // meeting link (online)
+  status: "scheduled" | "done" | "cancelled";
+  programTitle?: string | null;
 }
