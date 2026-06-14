@@ -35,10 +35,10 @@ export function shiftWindowLabel(template: ShiftTemplate): string {
 }
 
 const SKILL_CLASSES: Record<string, string> = {
-  Cash: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  Tournament: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  PLO: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-  FinalTable: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  Cash: "bg-success/15 text-success border-success/30",
+  Tournament: "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]",
+  PLO: "bg-warning/15 text-warning border-warning/30",
+  FinalTable: "bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]",
 };
 
 export function skillBadgeClass(skill: string): string {
@@ -56,19 +56,19 @@ export function tierLabel(tier: DealerTier): string {
 }
 
 export function coverageChipClass(severity: "ok" | "warn" | "bad"): string {
-  if (severity === "ok") return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-  if (severity === "warn") return "bg-amber-500/15 text-amber-400 border-amber-500/30";
-  return "bg-red-500/15 text-red-400 border-red-500/30";
+  if (severity === "ok") return "bg-success/15 text-success border-success/30";
+  if (severity === "warn") return "bg-warning/15 text-warning border-warning/30";
+  return "bg-destructive/15 text-destructive border-destructive/30";
 }
 
 const STATUS_META: Record<ShiftStatus, { label: string; className: string }> = {
   draft: { label: "Nháp", className: "bg-muted text-muted-foreground border-border" },
-  published: { label: "Đã đăng", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  confirmed: { label: "Đã xác nhận", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  checked_in: { label: "Đã vào ca", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  published: { label: "Đã đăng", className: "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]" },
+  confirmed: { label: "Đã xác nhận", className: "bg-success/15 text-success border-success/30" },
+  checked_in: { label: "Đã vào ca", className: "bg-success/15 text-success border-success/30" },
   closed: { label: "Đã đóng ca", className: "bg-muted text-muted-foreground border-border" },
-  cancelled: { label: "Đã huỷ", className: "bg-red-500/15 text-red-400 border-red-500/30" },
-  no_show: { label: "Vắng", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+  cancelled: { label: "Đã huỷ", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  no_show: { label: "Vắng", className: "bg-destructive/15 text-destructive border-destructive/30" },
 };
 
 export function statusMeta(status: ShiftStatus): { label: string; className: string } {

@@ -17,7 +17,7 @@ export function VerificationStatusCard() {
         <span
           className={cn(
             "inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border",
-            verified ? "text-primary border-primary/40 bg-primary/10" : "text-amber-400 border-amber-500/30 bg-amber-500/10"
+            verified ? "text-primary border-primary/40 bg-primary/10" : "text-warning border-warning/30 bg-warning/10"
           )}
         >
           {verified ? <BadgeCheck className="w-3.5 h-3.5" /> : <ShieldQuestion className="w-3.5 h-3.5" />}

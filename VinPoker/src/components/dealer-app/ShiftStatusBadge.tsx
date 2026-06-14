@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { ShiftStatus } from "@/types/shiftPlanner";
 
 const STYLE: Record<string, string> = {
-  published: "bg-blue-500/12 text-blue-400 border-blue-500/30",
+  published: "bg-[hsl(var(--ds-active)_/_0.12)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]",
   confirmed: "bg-primary/12 text-primary border-primary/35",
   checked_in: "bg-primary/15 text-primary border-primary/45",
   closed: "bg-muted text-muted-foreground border-border",

@@ -199,11 +199,11 @@ export default function ShiftTemplateEditor({ open, onOpenChange, clubId, refDat
                   {(r.required_skills ?? []).map((s) => (
                     <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>
                   ))}
-                  {r.needs_lead && <Badge variant="outline" className="text-[10px] bg-purple-500/15 text-purple-400 border-purple-500/30">Lead</Badge>}
+                  {r.needs_lead && <Badge variant="outline" className="text-[10px] bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]">Lead</Badge>}
                 </div>
                 <span className="text-xs text-muted-foreground">cần {r.need_count ?? 1}</span>
                 <Button size="icon" variant="ghost" className="h-7 w-7" disabled={busy} onClick={() => removeTemplate(r.id, r.label)}>
-                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
                 </Button>
               </div>
             ))

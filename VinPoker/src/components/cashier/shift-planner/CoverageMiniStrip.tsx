@@ -36,9 +36,9 @@ export default function CoverageMiniStrip({ coverage }: Props) {
         })}
       </div>
       <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />Đủ</span>
-        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Thiếu nhẹ</span>
-        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-red-400 inline-block" />Thiếu nặng</span>
+        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-success inline-block" />Đủ</span>
+        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-warning inline-block" />Thiếu nhẹ</span>
+        <span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-full bg-destructive inline-block" />Thiếu nặng</span>
       </div>
     </div>
   );

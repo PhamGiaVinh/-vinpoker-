@@ -139,7 +139,7 @@ export const StreamLinkManager = ({ clubId }: { clubId: string }) => {
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-muted capitalize">{s.platform}</span>
                     <span className="text-sm font-semibold truncate">{tourMap[s.tournament_id] ?? "?"}</span>
-                    {s.is_live && <span className="text-[10px] font-bold text-red-500">● LIVE</span>}
+                    {s.is_live && <span className="text-[10px] font-bold text-destructive">● LIVE</span>}
                   </div>
                   <a href={s.stream_url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground truncate block hover:text-primary">{s.stream_url}</a>
                   {s.title && <div className="text-xs text-muted-foreground italic">{s.title}</div>}

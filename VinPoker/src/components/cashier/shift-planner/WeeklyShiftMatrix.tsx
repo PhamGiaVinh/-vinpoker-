@@ -51,9 +51,9 @@ export default function WeeklyShiftMatrix({ workDate, dealers, assignments, avai
                   const isWork = d === workDate;
                   let cell: { label: string; className: string };
                   if (isWork && a) {
-                    cell = { label: a.templateLabel, className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+                    cell = { label: a.templateLabel, className: "bg-success/15 text-success border-success/30" };
                   } else if (isWork && leave) {
-                    cell = { label: "Nghỉ", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" };
+                    cell = { label: "Nghỉ", className: "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]" };
                   } else if (isWork) {
                     cell = { label: "Off", className: "bg-muted text-muted-foreground border-border" };
                   } else {

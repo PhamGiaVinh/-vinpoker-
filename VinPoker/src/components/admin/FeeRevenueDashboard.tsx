@@ -381,7 +381,7 @@ const FeeRevenueDashboard = () => {
                       <TableCell className="text-right text-xs">
                         <div>{formatVND(r.entryFee)}</div>
                         {r.entryCollected ? (
-                          <Badge className="text-[9px] mt-0.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/30" variant="secondary">Đã thu</Badge>
+                          <Badge className="text-[9px] mt-0.5 bg-success/15 text-success border-success/30" variant="secondary">Đã thu</Badge>
                         ) : (
                           <Badge className="text-[9px] mt-0.5 bg-muted text-muted-foreground" variant="secondary">Chưa check-in</Badge>
                         )}
@@ -390,12 +390,12 @@ const FeeRevenueDashboard = () => {
                         {r.archiveEligible ? (
                           <>
                             <div>{formatVND(r.archiveCollected)}</div>
-                            <Badge className="text-[9px] mt-0.5 bg-emerald-500/15 text-emerald-400 border-emerald-500/30" variant="secondary">Đã thu</Badge>
+                            <Badge className="text-[9px] mt-0.5 bg-success/15 text-success border-success/30" variant="secondary">Đã thu</Badge>
                           </>
                         ) : r.deal.status === "completed" ? (
                           <Badge className="text-[9px] bg-muted text-muted-foreground" variant="secondary">Không phát sinh</Badge>
                         ) : (
-                          <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30" variant="secondary">Chưa đủ ĐK</Badge>
+                          <Badge className="text-[9px] bg-warning/10 text-warning border-warning/30" variant="secondary">Chưa đủ ĐK</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right text-xs font-bold text-primary">{formatVND(r.totalCollected)}</TableCell>

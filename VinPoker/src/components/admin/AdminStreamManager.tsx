@@ -286,7 +286,7 @@ export const AdminStreamManager = () => {
                       <span className="text-xs px-2 py-0.5 rounded-full bg-muted capitalize">{s.platform}</span>
                       <span className="text-sm font-semibold truncate">{tourName}</span>
                       {t?.club_id && <span className="text-xs text-muted-foreground">· {clubMap[t.club_id] ?? ""}</span>}
-                      {s.is_live && <span className="text-[10px] font-bold text-red-500">● LIVE</span>}
+                      {s.is_live && <span className="text-[10px] font-bold text-destructive">● LIVE</span>}
                     </div>
                     {s.match_title && <div className="text-xs text-foreground/90">{s.match_title}</div>}
                     {s.title && <div className="text-xs text-foreground/70">{s.title}</div>}

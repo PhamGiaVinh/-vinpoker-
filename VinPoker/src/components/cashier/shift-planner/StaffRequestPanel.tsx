@@ -23,7 +23,7 @@ export default function StaffRequestPanel({ availability, templates, dealers }: 
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold truncate">{nameOf(r.dealerId)}</span>
             {r.leaveRequested ? (
-              <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-[10px]">
+              <Badge variant="outline" className="bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)] text-[10px]">
                 <CalendarOff className="w-3 h-3 mr-1" /> Xin nghỉ
               </Badge>
             ) : (
@@ -35,13 +35,13 @@ export default function StaffRequestPanel({ availability, templates, dealers }: 
 
           {r.preferredTemplateIds.length > 0 && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mt-1.5">
-              <Star className="w-3.5 h-3.5 text-amber-400" />
+              <Star className="w-3.5 h-3.5 text-warning" />
               Ưu tiên: {r.preferredTemplateIds.map(labelOf).join(", ")}
             </div>
           )}
           {r.availableTemplateIds.length > 0 && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mt-1">
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-success" />
               Có thể làm: {r.availableTemplateIds.map(labelOf).join(", ")}
             </div>
           )}

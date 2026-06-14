@@ -26,11 +26,11 @@ export default function ShiftSummaryCards({ templates, availability, draft }: Pr
 
   const metrics: Metric[] = [
     { label: "Tổng nhu cầu", value: `${totalNeed}`, hint: "ca", icon: Users, tone: "text-primary" },
-    { label: "Đã xếp", value: `${assigned}`, hint: "dealer", icon: CheckCircle2, tone: "text-emerald-400" },
-    { label: "Còn thiếu", value: `${missing}`, hint: "dealer", icon: AlertTriangle, tone: missing > 0 ? "text-amber-400" : "text-muted-foreground" },
-    { label: "Xin nghỉ", value: `${onLeave}`, hint: "người", icon: CalendarOff, tone: "text-blue-400" },
-    { label: "Tổng giờ dự kiến", value: `${totalHours.toFixed(0)}`, hint: "giờ", icon: Clock, tone: "text-purple-400" },
-    { label: "Cảnh báo", value: `${warnings}`, hint: "mục", icon: BellRing, tone: warnings > 0 ? "text-amber-400" : "text-muted-foreground" },
+    { label: "Đã xếp", value: `${assigned}`, hint: "dealer", icon: CheckCircle2, tone: "text-success" },
+    { label: "Còn thiếu", value: `${missing}`, hint: "dealer", icon: AlertTriangle, tone: missing > 0 ? "text-warning" : "text-muted-foreground" },
+    { label: "Xin nghỉ", value: `${onLeave}`, hint: "người", icon: CalendarOff, tone: "text-[hsl(var(--ds-active))]" },
+    { label: "Tổng giờ dự kiến", value: `${totalHours.toFixed(0)}`, hint: "giờ", icon: Clock, tone: "text-[hsl(var(--ds-preassign))]" },
+    { label: "Cảnh báo", value: `${warnings}`, hint: "mục", icon: BellRing, tone: warnings > 0 ? "text-warning" : "text-muted-foreground" },
   ];
 
   return (

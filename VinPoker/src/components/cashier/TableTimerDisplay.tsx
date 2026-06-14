@@ -51,8 +51,8 @@ function OTBadge({ overtimeStartedAt, className }: OTBadgeProps) {
     >
       {isCritical && (
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
         </span>
       )}
       <span>+{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}</span>

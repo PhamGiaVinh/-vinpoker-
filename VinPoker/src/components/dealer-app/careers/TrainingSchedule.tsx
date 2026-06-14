@@ -67,7 +67,7 @@ export function TrainingSchedule() {
                 {fmtDate(s.scheduledAt)} · {formatHm(s.scheduledAt)}
               </span>
               {s.mode === "online" ? (
-                <span className="inline-flex items-center gap-1 text-blue-400">
+                <span className="inline-flex items-center gap-1 text-[hsl(var(--ds-active))]">
                   <Video className="w-3.5 h-3.5" />
                   {t("dealer.careers.training.online", "Online")}
                 </span>

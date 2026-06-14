@@ -18,11 +18,11 @@ export default function CountdownTimer({ targetDate, label }: Props) {
       <div className="flex items-center gap-1.5 font-mono tabular-nums tracking-wider text-foreground">
         {days > 0 && (
           <>
-            <span className="font-semibold text-emerald-400">{days}</span>
+            <span className="font-semibold text-success">{days}</span>
             <span className="text-muted-foreground">{t('countdown.days')}</span>
           </>
         )}
-        <span className="font-semibold text-emerald-400">
+        <span className="font-semibold text-success">
           {String(hours).padStart(2, '0')}:{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
         </span>
       </div>

@@ -151,21 +151,21 @@ export default function RevenueReportTab({ clubIds, clubs }: Props) {
             </div>
             <div className="mt-1 text-lg font-bold font-mono">{formatVND(kpi.totalRevenue)}</div>
           </Card>
-          <Card className="p-4 border-blue-400/30">
+          <Card className="p-4 border-[hsl(var(--ds-active)_/_0.3)]">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <TrendingUp className="w-4 h-4 text-blue-400" /> Early Bird (gross)
+              <TrendingUp className="w-4 h-4 text-[hsl(var(--ds-active))]" /> Early Bird (gross)
             </div>
             <div className="mt-1 text-lg font-bold font-mono">{formatVND(kpi.earlyBirdGross)}</div>
           </Card>
-          <Card className="p-4 border-amber-400/30">
+          <Card className="p-4 border-warning/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <PiggyBank className="w-4 h-4 text-amber-400" /> Tổng Entry Fees
+              <PiggyBank className="w-4 h-4 text-warning" /> Tổng Entry Fees
             </div>
             <div className="mt-1 text-lg font-bold font-mono">{formatVND(kpi.totalEntryFees)}</div>
           </Card>
-          <Card className="p-4 border-violet-400/30">
+          <Card className="p-4 border-[hsl(var(--ds-preassign)_/_0.3)]">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FileSpreadsheet className="w-4 h-4 text-violet-400" /> Phí lưu trữ
+              <FileSpreadsheet className="w-4 h-4 text-[hsl(var(--ds-preassign))]" /> Phí lưu trữ
             </div>
             <div className="mt-1 text-lg font-bold font-mono">{formatVND(kpi.totalArchive)}</div>
           </Card>
