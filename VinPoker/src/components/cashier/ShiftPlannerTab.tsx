@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal } from "lucide-react";
+import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal, Save, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { buildSaveRunPayload } from "@/lib/shiftPlanner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,9 +34,55 @@ export default function ShiftPlannerTab({
 }) {
   const [workDate, setWorkDate] = useState<string>(todayInVN());
   const [editorOpen, setEditorOpen] = useState(false);
+  const [savedRunId, setSavedRunId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   // mode="mock" runs the in-memory demo; mode="live" reads the dealer_shift_* tables
   // (Phase 2, after the migration is applied live).
   const { data, loading, source, regenerate, refetch } = useShiftPlanner({ clubIds, workDate, mode });
+
+  // dealer_shift_* RPCs aren't in the generated types yet → untyped client.
+  const rpc = supabase as unknown as {
+    rpc: (fn: string, args: object) => Promise<{ data: any; error: { message?: string } | null }>;
+  };
+
+  const changeDate = (d: string) => { setWorkDate(d || todayInVN()); setSavedRunId(null); };
+
+  // Persist the current draft via save_shift_run (returns the new run id).
+  const persistDraft = async (): Promise<string | null> => {
+    if (!data || clubIds.length === 0) return null;
+    const { data: res, error } = await rpc.rpc("save_shift_run", buildSaveRunPayload(clubIds[0], workDate, data.draft));
+    if (error) {
+      if (String(error.message ?? "").includes("published_schedule_exists")) {
+        toast.error("Lịch ngày này đã được publish — không thể ghi đè.");
+      } else {
+        toast.error(error.message ?? "Lưu nháp thất bại");
+      }
+      return null;
+    }
+    const runId = (res?.run_id as string) ?? null;
+    setSavedRunId(runId);
+    return runId;
+  };
+
+  const handleSave = async () => {
+    setBusy(true);
+    try {
+      const runId = await persistDraft();
+      if (runId) toast.success(`Đã lưu nháp (${data?.draft.assignments.length ?? 0} ca)`);
+    } finally { setBusy(false); }
+  };
+
+  const handlePublish = async () => {
+    setBusy(true);
+    try {
+      const runId = await persistDraft();
+      if (!runId) return;
+      const { error } = await rpc.rpc("publish_shift_run", { p_run_id: runId });
+      if (error) { toast.error(error.message ?? "Publish thất bại"); return; }
+      toast.success("Đã publish lịch — phát sự kiện cho chấm công");
+      refetch();
+    } finally { setBusy(false); }
+  };
 
   const dateLabel = useMemo(
     () =>
@@ -69,7 +117,7 @@ export default function ShiftPlannerTab({
           <Input
             type="date"
             value={workDate}
-            onChange={(e) => setWorkDate(e.target.value || todayInVN())}
+            onChange={(e) => changeDate(e.target.value)}
             className="h-9 w-[150px]"
           />
           <Button variant="outline" size="sm" className="h-9" onClick={() => { regenerate(); toast.success("Đã tạo lại bản nháp"); }}>
@@ -80,14 +128,30 @@ export default function ShiftPlannerTab({
               <SlidersHorizontal className="w-4 h-4 mr-1.5" /> Quản lý ca
             </Button>
           )}
-          <Button
-            size="sm"
-            className="h-9"
-            disabled
-            title="Publish + chấm công sẽ mở khi áp dụng DB (Phase 2, cần owner duyệt)"
-          >
-            <Send className="w-4 h-4 mr-1.5" /> Publish lịch
-          </Button>
+          {source === "live" ? (
+            <>
+              <Button
+                variant="outline" size="sm" className="h-9"
+                onClick={handleSave}
+                disabled={busy || !data || data.draft.assignments.length === 0}
+              >
+                {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />} Lưu nháp
+              </Button>
+              <Button
+                size="sm" className="h-9"
+                onClick={handlePublish}
+                disabled={busy || !data || data.draft.assignments.length === 0}
+                title="Lưu + khoá lịch ngày này; phát sự kiện cho chấm công"
+              >
+                {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />} Publish lịch
+              </Button>
+              {savedRunId && <span className="text-[11px] text-emerald-400 self-center">✓ đã lưu nháp</span>}
+            </>
+          ) : (
+            <Button size="sm" className="h-9" disabled title="Publish khả dụng ở chế độ live (Phase 2)">
+              <Send className="w-4 h-4 mr-1.5" /> Publish lịch
+            </Button>
+          )}
         </div>
       </div>
 
