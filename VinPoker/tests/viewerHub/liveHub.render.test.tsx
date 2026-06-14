@@ -69,7 +69,22 @@ describe("Viewer Event Hub — Increment A (presentational)", () => {
     expect(html).toContain("Bàn 2"); // all-tables strip
     expect(html).toContain("Cập nhật"); // live updates feed
     expect(html).toContain("ALL-IN 5k"); // feed row
-    expect(html).toContain("Ngang"); // orientation toggle (Increment C)
+    expect(html).toContain("Ngang"); // orientation toggle
     expect(html).toContain("Dọc");
+  });
+
+  it("LiveHub injects the orientation override into the child viewer (Ngang/Dọc wiring)", () => {
+    // The real child is <TournamentLiveView/>, which consumes orientationOverride
+    // (presentational only). Use a stub to assert the prop is actually passed.
+    const Viewer = ({ orientationOverride }: { orientationOverride?: "landscape" | "portrait" | null }) => (
+      <div>ORIENT:{orientationOverride}</div>
+    );
+    const html = wrap(
+      <LiveHub tournamentId="t1" title="X" onShare={noop}>
+        <Viewer />
+      </LiveHub>
+    );
+    // SSR (no mobile media match) → defaults to landscape.
+    expect(html).toContain("ORIENT:landscape");
   });
 });
