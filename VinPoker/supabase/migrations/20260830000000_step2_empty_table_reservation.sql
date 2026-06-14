@@ -230,6 +230,13 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object('ok', true, 'outcome', 'ok');
+EXCEPTION WHEN unique_violation THEN
+  -- Ultimate race guard: a concurrent manual/Step-1 assign already created the
+  -- table/dealer 'assigned' row, so the promote hit one of the existing unique
+  -- indexes (idx_unique_active_assignment on table_id / idx_unique_active_attendance
+  -- / idx_unique_active_dealer / idx_one_active_per_dealer). The whole promote
+  -- rolls back → NO double-assign. Return a clean conflict for the edge to cancel.
+  RETURN jsonb_build_object('ok', false, 'outcome', 'conflict_active_assignment');
 END;
 $$;
 
