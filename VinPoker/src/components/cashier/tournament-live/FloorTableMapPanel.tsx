@@ -115,11 +115,24 @@ export function FloorTableMapPanel({
         .sort((a, b) => (a.table_number ?? 1e9) - (b.table_number ?? 1e9));
       setTables(built);
 
+      // A seat's table_id may reference EITHER game_tables.id (older draw seats) OR
+      // tournament_tables.id (seats created by move_player_seat / manual inserts) —
+      // the live DB carries both conventions. Normalize every id to the table's
+      // canonical key (game_tables.id = tournament_tables.table_id) so occupancy
+      // shows regardless of which convention the seat used.
+      const canonicalByAny: Record<string, string> = {};
+      for (const t of built) {
+        if (t.table_id) {
+          canonicalByAny[t.table_id] = t.table_id; // game_tables.id → itself
+          canonicalByAny[t.tt_id] = t.table_id;    // tournament_tables.id → game_tables.id
+        }
+      }
       const seats = (seatsRes.data?.data ?? []) as MapSeat[];
       const grouped: Record<string, MapSeat[]> = {};
       for (const s of seats) {
         if (!s.is_active) continue;
-        (grouped[s.table_id] ??= []).push(s);
+        const key = canonicalByAny[s.table_id] ?? s.table_id;
+        (grouped[key] ??= []).push(s);
       }
       for (const k of Object.keys(grouped)) grouped[k].sort((a, b) => a.seat_number - b.seat_number);
       setSeatsByTable(grouped);
