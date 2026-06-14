@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -57,6 +58,7 @@ const toLocalInputValue = (iso: string) => {
 };
 
 export default function BulkCreateTournaments() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [authChecked, setAuthChecked] = useState(false);
   const [clubs, setClubs] = useState<{ id: string; name: string }[]>([]);
@@ -72,7 +74,7 @@ export default function BulkCreateTournaments() {
       if (!user) { navigate("/auth"); return; }
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
       const isAdmin = roles?.some((r: any) => r.role === "super_admin");
-      if (!isAdmin) { toast.error("Chỉ super admin được truy cập"); navigate("/"); return; }
+      if (!isAdmin) { toast.error(t("bulkCreate.adminOnly")); navigate("/"); return; }
       setAuthChecked(true);
       const { data: cs } = await supabase.from("clubs").select("id,name").eq("status", "approved").order("name");
       setClubs(cs ?? []);
@@ -99,7 +101,7 @@ export default function BulkCreateTournaments() {
 
   const processAll = async () => {
     const todo = images.filter(i => i.status === "pending" || i.status === "error");
-    if (todo.length === 0) { toast.info("Không có ảnh chờ xử lý"); return; }
+    if (todo.length === 0) { toast.info(t("bulkCreate.noPending")); return; }
 
     for (const img of todo) {
       setImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "processing", error: undefined } : i));
@@ -128,10 +130,10 @@ export default function BulkCreateTournaments() {
         setImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "done", count: tours.length } : i));
       } catch (e: any) {
         setImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "error", error: e.message } : i));
-        toast.error(`Lỗi: ${e.message}`);
+        toast.error(t("bulkCreate.errorPrefix", { msg: e.message }));
       }
     }
-    toast.success("Hoàn tất xử lý ảnh");
+    toast.success(t("bulkCreate.processDone"));
   };
 
   const updateRow = (tempId: string, patch: Partial<ParsedTour>) => {
@@ -142,9 +144,9 @@ export default function BulkCreateTournaments() {
 
   const createAll = async () => {
     const rows = parsed.filter(p => p.selected);
-    if (rows.length === 0) { toast.error("Chưa chọn dòng nào"); return; }
+    if (rows.length === 0) { toast.error(t("bulkCreate.noRowSelected")); return; }
     const invalid = rows.find(r => !r.name.trim() || !r.start_time || !r.club_id);
-    if (invalid) { toast.error("Mỗi dòng phải có tên, ngày giờ và club"); return; }
+    if (invalid) { toast.error(t("bulkCreate.rowValidation")); return; }
 
     setCreating(true);
     const scheduleUploadId = crypto.randomUUID();
@@ -161,7 +163,7 @@ export default function BulkCreateTournaments() {
     const { error } = await (supabase as any).from("tournaments").insert(payload as any);
     setCreating(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(`Đã tạo ${rows.length} tournament`);
+    toast.success(t("bulkCreate.created", { count: rows.length }));
     setParsed(prev => prev.filter(p => !p.selected));
   };
 
@@ -178,9 +180,9 @@ export default function BulkCreateTournaments() {
     <div className="container max-w-6xl mx-auto p-4 space-y-4">
       <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" size="sm" onClick={() => navigate("/admin")}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Quay lại
+          <ArrowLeft className="h-4 w-4 mr-1" /> {t("bulkCreate.back")}
         </Button>
-        <h1 className="text-xl md:text-2xl font-bold">Tạo Tournament hàng loạt từ ảnh</h1>
+        <h1 className="text-xl md:text-2xl font-bold">{t("bulkCreate.title")}</h1>
         <div />
       </div>
 
@@ -193,8 +195,8 @@ export default function BulkCreateTournaments() {
           onDrop={(e) => { e.preventDefault(); onFiles(e.dataTransfer.files); }}
         >
           <ImagePlus className="h-12 w-12 mx-auto text-primary mb-2" />
-          <p className="font-medium">Kéo thả hoặc nhấn để tải lên ảnh lịch thi đấu</p>
-          <p className="text-sm text-muted-foreground mt-1">JPG / PNG · Có thể chọn nhiều ảnh</p>
+          <p className="font-medium">{t("bulkCreate.uploadPrompt")}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("bulkCreate.uploadHint")}</p>
           <input
             ref={inputRef}
             type="file"
@@ -216,7 +218,7 @@ export default function BulkCreateTournaments() {
                       {img.status === "processing" && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                       {img.status === "done" && <CheckCircle2 className="h-3 w-3 mr-1" />}
                       {img.status === "error" && <AlertCircle className="h-3 w-3 mr-1" />}
-                      {img.status === "done" ? `${img.count} giải` : img.status}
+                      {img.status === "done" ? t("bulkCreate.tourCount", { count: img.count }) : img.status}
                     </Badge>
                   </div>
                   <Button size="icon" variant="destructive" className="absolute bottom-1 right-1 h-6 w-6"
@@ -230,10 +232,10 @@ export default function BulkCreateTournaments() {
 
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <Button onClick={processAll} disabled={images.every(i => i.status === "done" || i.status === "processing")}>
-                <Wand2 className="h-4 w-4 mr-1" /> Phân tích bằng AI
+                <Wand2 className="h-4 w-4 mr-1" /> {t("bulkCreate.analyzeAi")}
               </Button>
               <div className="text-sm text-muted-foreground ml-auto">
-                {stats.uploaded} ảnh · {stats.done} done · {stats.error} lỗi · {stats.detected} giải phát hiện
+                {t("bulkCreate.statsLine", { uploaded: stats.uploaded, done: stats.done, errors: stats.error, detected: stats.detected })}
               </div>
             </div>
           </>
@@ -244,22 +246,22 @@ export default function BulkCreateTournaments() {
       {parsed.length > 0 && (
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium">Gán club mặc định cho dòng chưa có:</span>
+            <span className="text-sm font-medium">{t("bulkCreate.assignDefaultClub")}</span>
             <Select value={defaultClubId} onValueChange={(v) => {
               setDefaultClubId(v);
               setParsed(prev => prev.map(p => p.club_id ? p : { ...p, club_id: v }));
             }}>
-              <SelectTrigger className="w-64"><SelectValue placeholder="Chọn club..." /></SelectTrigger>
+              <SelectTrigger className="w-64"><SelectValue placeholder={t("bulkCreate.selectClubPh")} /></SelectTrigger>
               <SelectContent>
                 {clubs.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Button variant="secondary" size="sm" onClick={() => setParsed(prev => prev.map(p => ({ ...p, club_id: defaultClubId })))} disabled={!defaultClubId}>
-              Áp dụng cho tất cả
+              {t("bulkCreate.applyAll")}
             </Button>
             <Button className="ml-auto" onClick={createAll} disabled={creating}>
               {creating && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Tạo {parsed.filter(p => p.selected).length} tournament
+              {t("bulkCreate.createCount", { count: parsed.filter(p => p.selected).length })}
             </Button>
           </div>
 
@@ -268,12 +270,12 @@ export default function BulkCreateTournaments() {
               <thead className="bg-muted">
                 <tr>
                   <th className="p-2 text-left w-8"><input type="checkbox" checked={parsed.every(p => p.selected)} onChange={(e) => setParsed(prev => prev.map(p => ({ ...p, selected: e.target.checked })))} /></th>
-                  <th className="p-2 text-left">Tên giải</th>
-                  <th className="p-2 text-left">Ngày giờ</th>
-                  <th className="p-2 text-left">Buy-in (VND)</th>
-                  <th className="p-2 text-left">Stack</th>
-                  <th className="p-2 text-left">Loại</th>
-                  <th className="p-2 text-left">Club</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colName")}</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colDateTime")}</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colBuyIn")}</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colStack")}</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colType")}</th>
+                  <th className="p-2 text-left">{t("bulkCreate.colClub")}</th>
                   <th className="p-2"></th>
                 </tr>
               </thead>
@@ -300,7 +302,7 @@ export default function BulkCreateTournaments() {
                     </td>
                     <td className="p-2">
                       <Select value={p.club_id} onValueChange={(v) => updateRow(p.tempId, { club_id: v })}>
-                        <SelectTrigger className="h-8 w-44"><SelectValue placeholder="Chọn club" /></SelectTrigger>
+                        <SelectTrigger className="h-8 w-44"><SelectValue placeholder={t("bulkCreate.selectClub")} /></SelectTrigger>
                         <SelectContent>
                           {clubs.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                         </SelectContent>
