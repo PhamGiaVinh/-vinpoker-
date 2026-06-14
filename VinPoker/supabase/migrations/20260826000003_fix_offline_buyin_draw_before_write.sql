@@ -235,4 +235,9 @@ BEGIN
 END;
 $$;
 
+-- Least-privilege: PUBLIC (and thus anon) get EXECUTE by default on CREATE FUNCTION.
+-- Revoke so only authenticated callers reach the auth.uid()/owner-cashier gate
+-- (matches the confirm_registration_and_assign_seat P0 guard hardening).
+REVOKE EXECUTE ON FUNCTION public.create_offline_buyin_and_seat(UUID, TEXT, BIGINT, BIGINT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.create_offline_buyin_and_seat(UUID, TEXT, BIGINT, BIGINT, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.create_offline_buyin_and_seat(UUID, TEXT, BIGINT, BIGINT, TEXT) TO authenticated;
