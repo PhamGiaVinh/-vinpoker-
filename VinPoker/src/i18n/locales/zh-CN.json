@@ -46,7 +46,8 @@
       "uploaded": "上传成功",
       "missingFile": "请选择文件或粘贴链接",
       "tooLarge": "文件过大"
-    }
+    },
+    "viewerOpenExternal": "在浏览器中打开"
   },
   "icmCalc": {
     "title": "计算 (ICM)",
@@ -2196,7 +2197,9 @@
     "send": "发送",
     "loginToComment": "登录后发表评论",
     "sendFailed": "评论发送失败",
-    "invalidContent": "内容无效"
+    "invalidContent": "内容无效",
+    "emptyContent": "请输入内容",
+    "max500": "最多 500 个字符"
   },
   "support": {
     "supportNotConfigured": "客服账号尚未配置",
@@ -2386,5 +2389,64 @@
     "sending": "发送中...",
     "needProof": "需要转账截图",
     "transferred": "已转账"
+  },
+  "documentUpload": {
+    "subtitleType": "字幕必须是 .srt 或 .txt 文件",
+    "subtitleTooLarge": "字幕文件太大（最大 2MB）",
+    "subtitleLabel": "字幕（.srt 或 .txt）",
+    "alreadyHas": "已有：",
+    "lineCount": "{{count}} 行",
+    "srtReadError": "无法读取此 SRT 文件。",
+    "previewNote": "预览（检查以确认是正确的新版本）："
+  },
+  "resultQR": {
+    "copiedDealId": "已复制 Deal ID",
+    "title": "给收银员的结果确认码",
+    "desc": "在批准结果前，将此屏幕出示给柜台的收银员以核对身份。",
+    "scanHint": "收银员可以扫描二维码或手动输入 Deal ID #{{shortId}}",
+    "close": "关闭"
+  },
+  "seatReceipt": {
+    "title": "座位票",
+    "tableLabel": "桌",
+    "seatLabel": "座位",
+    "player": "玩家",
+    "startingStack": "初始筹码：",
+    "footerNote": "入桌时出示此票。代码可被扫描以核对。",
+    "printError": "无法打开打印窗口。请允许弹出窗口。",
+    "dialogDesc": "玩家已确认并安排座位。为玩家打印或下载座位票。",
+    "downloadPdf": "下载 PDF",
+    "close": "关闭",
+    "print": "打印"
+  },
+  "syncingBadge": {
+    "staleTitle": "无法获取新数据 — 显示最近的缓存版本",
+    "usingCachedData": "正在使用缓存数据",
+    "syncing": "同步中..."
+  },
+  "timeAgo": {
+    "justNow": "刚刚",
+    "secondsAgo": "{{count}} 秒前",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前",
+    "minutesShort": "{{count}} 分钟",
+    "hoursShort": "{{count}} 小时",
+    "daysShort": "{{count}} 天"
+  },
+  "unsubscribe": {
+    "missingEmail": "链接中缺少电子邮件地址。",
+    "genericError": "发生错误。",
+    "success": "已为 {{email}} 取消订阅邮件。您可以随时在通知设置中重新启用。",
+    "title": "取消订阅 VinPoker 邮件",
+    "processing": "处理中...",
+    "retry": "重试",
+    "footnote": "账户验证和安全邮件在必要时仍会发送。"
+  },
+  "updateBanner": {
+    "newVersionTitle": "有新版本可用",
+    "newVersionDesc": "重新加载以使用最新版本。",
+    "updateBtn": "更新",
+    "closeAria": "关闭"
   }
 }

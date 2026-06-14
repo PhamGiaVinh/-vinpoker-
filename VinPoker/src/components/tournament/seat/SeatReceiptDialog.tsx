@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,7 @@ const PX_TO_MM = 25.4 / 96;
  * Reusable for the initial draw and (later) for reprints.
  */
 export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -34,7 +36,7 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
     if (!ref.current) return;
     const win = window.open("", "_blank", "width=420,height=680");
     if (!win) {
-      toast.error("Không mở được cửa sổ in. Vui lòng cho phép pop-up.");
+      toast.error(t("seatReceipt.printError"));
       return;
     }
     win.document.write(
@@ -81,9 +83,9 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Phiếu xếp ghế</DialogTitle>
+          <DialogTitle>{t("seatReceipt.title")}</DialogTitle>
           <DialogDescription className="text-xs">
-            Player đã được xác nhận và xếp ghế. In hoặc tải phiếu cho người chơi.
+            {t("seatReceipt.dialogDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -95,13 +97,13 @@ export function SeatReceiptDialog({ open, onOpenChange, receipt }: Props) {
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={printReceipt} disabled={!receipt}>
-            <Printer className="w-4 h-4 mr-1" /> In
+            <Printer className="w-4 h-4 mr-1" /> {t("seatReceipt.print")}
           </Button>
           <Button onClick={downloadPdf} disabled={!receipt || busy}>
-            {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} Tải PDF
+            {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />} {t("seatReceipt.downloadPdf")}
           </Button>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Đóng
+            {t("seatReceipt.close")}
           </Button>
         </DialogFooter>
       </DialogContent>

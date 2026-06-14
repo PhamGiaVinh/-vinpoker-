@@ -88,7 +88,8 @@
       "uploaded": "Đã tải lên thành công",
       "missingFile": "Vui lòng chọn tệp hoặc nhập link",
       "tooLarge": "Tệp quá lớn"
-    }
+    },
+    "viewerOpenExternal": "Mở trong trình duyệt"
   },
   "icmCalc": {
     "title": "Tính toán (ICM)",
@@ -2344,7 +2345,9 @@
     "send": "Gửi",
     "loginToComment": "Đăng nhập để bình luận",
     "sendFailed": "Gửi bình luận thất bại",
-    "invalidContent": "Nội dung không hợp lệ"
+    "invalidContent": "Nội dung không hợp lệ",
+    "emptyContent": "Hãy nhập nội dung",
+    "max500": "Tối đa 500 ký tự"
   },
   "support": {
     "supportNotConfigured": "Tài khoản hỗ trợ chưa được cấu hình",
@@ -2534,5 +2537,64 @@
     "sending": "Đang gửi...",
     "needProof": "Cần tải ảnh CK",
     "transferred": "Đã chuyển khoản"
+  },
+  "documentUpload": {
+    "subtitleType": "Phụ đề phải là file .srt hoặc .txt",
+    "subtitleTooLarge": "File phụ đề quá lớn (tối đa 2MB)",
+    "subtitleLabel": "Phụ đề (.srt hoặc .txt)",
+    "alreadyHas": "Đã có:",
+    "lineCount": "{{count}} dòng",
+    "srtReadError": "Không đọc được file SRT này.",
+    "previewNote": "Xem trước (kiểm tra để chắc đúng bản mới):"
+  },
+  "resultQR": {
+    "copiedDealId": "Đã copy Deal ID",
+    "title": "Mã xác nhận kết quả cho Cashier",
+    "desc": "Đưa màn hình này cho Cashier tại quầy để đối chiếu danh tính trước khi duyệt kết quả.",
+    "scanHint": "Cashier có thể quét QR hoặc nhập tay Deal ID #{{shortId}}",
+    "close": "Đóng"
+  },
+  "seatReceipt": {
+    "title": "Phiếu xếp ghế",
+    "tableLabel": "BÀN",
+    "seatLabel": "GHẾ",
+    "player": "NGƯỜI CHƠI",
+    "startingStack": "Stack đầu:",
+    "footerNote": "Xuất trình phiếu này khi vào bàn. Mã có thể được quét để đối chiếu.",
+    "printError": "Không mở được cửa sổ in. Vui lòng cho phép pop-up.",
+    "dialogDesc": "Player đã được xác nhận và xếp ghế. In hoặc tải phiếu cho người chơi.",
+    "downloadPdf": "Tải PDF",
+    "close": "Đóng",
+    "print": "In"
+  },
+  "syncingBadge": {
+    "staleTitle": "Không cập nhật được dữ liệu mới — đang hiển thị bản gần nhất",
+    "usingCachedData": "Đang dùng dữ liệu cũ",
+    "syncing": "Đang đồng bộ..."
+  },
+  "timeAgo": {
+    "justNow": "vừa xong",
+    "secondsAgo": "{{count}} giây trước",
+    "minutesAgo": "{{count}} phút trước",
+    "hoursAgo": "{{count}} giờ trước",
+    "daysAgo": "{{count}} ngày trước",
+    "minutesShort": "{{count}} phút",
+    "hoursShort": "{{count}} giờ",
+    "daysShort": "{{count}} ngày"
+  },
+  "unsubscribe": {
+    "missingEmail": "Thiếu địa chỉ email trong liên kết.",
+    "genericError": "Có lỗi xảy ra.",
+    "success": "Đã hủy nhận email cho {{email}}. Bạn có thể bật lại bất cứ lúc nào trong Cài đặt thông báo.",
+    "title": "Hủy nhận email VinPoker",
+    "processing": "Đang xử lý...",
+    "retry": "Thử lại",
+    "footnote": "Email xác thực tài khoản và bảo mật vẫn được gửi khi cần thiết."
+  },
+  "updateBanner": {
+    "newVersionTitle": "Có bản cập nhật mới",
+    "newVersionDesc": "Tải lại để dùng phiên bản mới nhất.",
+    "updateBtn": "Cập nhật",
+    "closeAria": "Đóng"
   }
 }

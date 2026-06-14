@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
 export default function Unsubscribe() {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   const email = params.get("email") ?? "";
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
@@ -12,7 +14,7 @@ export default function Unsubscribe() {
   const handle = async () => {
     if (!email) {
       setStatus("error");
-      setMsg("Thiếu địa chỉ email trong liên kết.");
+      setMsg(t("unsubscribe.missingEmail"));
       return;
     }
     setStatus("loading");
@@ -21,10 +23,10 @@ export default function Unsubscribe() {
     });
     if (error || (data as any)?.error) {
       setStatus("error");
-      setMsg((data as any)?.error || error?.message || "Có lỗi xảy ra.");
+      setMsg((data as any)?.error || error?.message || t("unsubscribe.genericError"));
     } else {
       setStatus("done");
-      setMsg(`Đã hủy nhận email cho ${email}. Bạn có thể bật lại bất cứ lúc nào trong Cài đặt thông báo.`);
+      setMsg(t("unsubscribe.success", { email }));
     }
   };
 
@@ -37,15 +39,15 @@ export default function Unsubscribe() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center space-y-4">
-        <h1 className="text-2xl font-bold text-foreground">Hủy nhận email VinPoker</h1>
-        {status === "loading" && <p className="text-muted-foreground">Đang xử lý...</p>}
+        <h1 className="text-2xl font-bold text-foreground">{t("unsubscribe.title")}</h1>
+        {status === "loading" && <p className="text-muted-foreground">{t("unsubscribe.processing")}</p>}
         {status === "done" && <p className="text-emerald-400">{msg}</p>}
         {status === "error" && <p className="text-destructive">{msg}</p>}
         {status === "error" && email && (
-          <Button onClick={handle} variant="default">Thử lại</Button>
+          <Button onClick={handle} variant="default">{t("unsubscribe.retry")}</Button>
         )}
         <p className="text-xs text-muted-foreground">
-          Email xác thực tài khoản và bảo mật vẫn được gửi khi cần thiết.
+          {t("unsubscribe.footnote")}
         </p>
       </div>
     </div>

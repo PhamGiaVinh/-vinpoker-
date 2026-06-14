@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { formatDateTime, formatStack } from "@/lib/format";
 
@@ -27,9 +28,10 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
     { tournamentName, tournamentDate, playerName, tableNumber, seatNumber, receiptCode, startingStack, qrValue },
     ref,
   ) => {
+    const { t } = useTranslation();
     const cells = [
-      { label: "BÀN", value: tableNumber ?? "—" },
-      { label: "GHẾ", value: seatNumber },
+      { label: t("seatReceipt.tableLabel"), value: tableNumber ?? "—" },
+      { label: t("seatReceipt.seatLabel"), value: seatNumber },
     ];
     return (
       <div
@@ -48,7 +50,7 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
         {/* Header */}
         <div style={{ textAlign: "center", borderBottom: "2px dashed #cbd5e1", paddingBottom: 12, marginBottom: 16 }}>
           <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#64748b" }}>
-            Phiếu xếp ghế
+            {t("seatReceipt.title")}
           </div>
           <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, lineHeight: 1.25 }}>{tournamentName}</div>
           {tournamentDate ? (
@@ -78,13 +80,13 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
 
         {/* Player */}
         <div style={{ textAlign: "center", marginBottom: startingStack != null ? 4 : 12 }}>
-          <div style={{ fontSize: 11, letterSpacing: 1, color: "#64748b" }}>NGƯỜI CHƠI</div>
+          <div style={{ fontSize: 11, letterSpacing: 1, color: "#64748b" }}>{t("seatReceipt.player")}</div>
           <div style={{ fontSize: 20, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>{playerName}</div>
         </div>
 
         {startingStack != null ? (
           <div style={{ textAlign: "center", fontSize: 13, color: "#475569", marginBottom: 12 }}>
-            Stack đầu: <strong>{formatStack(startingStack)}</strong>
+            {t("seatReceipt.startingStack")} <strong>{formatStack(startingStack)}</strong>
           </div>
         ) : null}
 
@@ -106,7 +108,7 @@ export const SeatReceipt = forwardRef<HTMLDivElement, SeatReceiptData>(
         </div>
 
         <div style={{ textAlign: "center", fontSize: 10, color: "#94a3b8", marginTop: 12, fontStyle: "italic" }}>
-          Xuất trình phiếu này khi vào bàn. Mã có thể được quét để đối chiếu.
+          {t("seatReceipt.footerNote")}
         </div>
       </div>
     );

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -48,14 +49,14 @@ interface FeedStory {
   is_viewed?: boolean;
 }
 
-function relTime(iso: string) {
+function relTime(iso: string, t: TFunction) {
   const d = Date.now() - new Date(iso).getTime();
   const m = Math.floor(d / 60000);
-  if (m < 1) return "vừa xong";
-  if (m < 60) return `${m} phút`;
+  if (m < 1) return t("timeAgo.justNow");
+  if (m < 60) return t("timeAgo.minutesShort", { count: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} giờ`;
-  return `${Math.floor(h / 24)} ngày`;
+  if (h < 24) return t("timeAgo.hoursShort", { count: h });
+  return t("timeAgo.daysShort", { count: Math.floor(h / 24) });
 }
 
 export default function Feed() {
@@ -295,7 +296,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: () 
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{post.author?.display_name ?? t("feed.anonymousPlayer")}</div>
-          <div className="text-[11px] text-muted-foreground">{relTime(post.created_at)} {t("feed.ago")}</div>
+          <div className="text-[11px] text-muted-foreground">{relTime(post.created_at, t)} {t("feed.ago")}</div>
         </div>
         {post.post_type === "hand_review" && (
           <span className="text-[10px] px-2 py-0.5 rounded-full border border-primary/40 text-primary">HAND</span>
@@ -590,7 +591,7 @@ function StoryViewer({ story, currentUserId, onClose }: { story: FeedStory; curr
                 {story.author?.display_name ?? t("feed.anonymousPlayer")}
               </span>
               <span className="text-white/70 text-xs drop-shadow">
-                {relTime(story.created_at)} {t("feed.ago")}
+                {relTime(story.created_at, t)} {t("feed.ago")}
               </span>
             </div>
 

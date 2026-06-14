@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, playAlertSound } from "@/lib/notifySound";
+import i18n from "@/i18n";
 
 export type NotificationType =
   | "deal_committed"
@@ -213,12 +214,12 @@ export function useNotifications(limit = 20) {
 
 export function timeAgo(iso: string) {
   const sec = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (sec < 60) return `${sec} giây trước`;
+  if (sec < 60) return i18n.t("timeAgo.secondsAgo", { count: sec });
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} phút trước`;
+  if (min < 60) return i18n.t("timeAgo.minutesAgo", { count: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} giờ trước`;
+  if (hr < 24) return i18n.t("timeAgo.hoursAgo", { count: hr });
   const d = Math.floor(hr / 24);
-  if (d < 7) return `${d} ngày trước`;
+  if (d < 7) return i18n.t("timeAgo.daysAgo", { count: d });
   return new Date(iso).toLocaleDateString("vi-VN");
 }

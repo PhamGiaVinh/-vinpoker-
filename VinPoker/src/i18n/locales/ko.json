@@ -243,7 +243,8 @@
       "uploaded": "성공적으로 업로드됨",
       "missingFile": "파일을 선택하거나 링크를 붙여넣으세요.",
       "tooLarge": "파일이 너무 큽니다."
-    }
+    },
+    "viewerOpenExternal": "브라우저에서 열기"
   },
   "icmCalc": {
     "title": "계산기 (ICM)",
@@ -2192,7 +2193,9 @@
     "send": "보내기",
     "loginToComment": "로그인하여 댓글 작성",
     "sendFailed": "댓글 전송 실패",
-    "invalidContent": "잘못된 내용입니다"
+    "invalidContent": "잘못된 내용입니다",
+    "emptyContent": "내용을 입력하세요",
+    "max500": "최대 500자"
   },
   "support": {
     "supportNotConfigured": "고객지원 계정이 설정되지 않았습니다",
@@ -2382,5 +2385,64 @@
     "sending": "전송 중...",
     "needProof": "이체 이미지가 필요합니다",
     "transferred": "이체 완료"
+  },
+  "documentUpload": {
+    "subtitleType": "자막은 .srt 또는 .txt 파일이어야 합니다",
+    "subtitleTooLarge": "자막 파일이 너무 큽니다 (최대 2MB)",
+    "subtitleLabel": "자막 (.srt 또는 .txt)",
+    "alreadyHas": "이미 있음:",
+    "lineCount": "{{count}} 줄",
+    "srtReadError": "이 SRT 파일을 읽을 수 없습니다.",
+    "previewNote": "미리보기 (올바른 새 버전인지 확인하세요):"
+  },
+  "resultQR": {
+    "copiedDealId": "Deal ID 복사됨",
+    "title": "캐셔용 결과 확인 코드",
+    "desc": "결과를 승인하기 전에 카운터의 캐셔에게 이 화면을 보여 신원을 확인하세요.",
+    "scanHint": "캐셔는 QR을 스캔하거나 Deal ID #{{shortId}}를 직접 입력할 수 있습니다",
+    "close": "닫기"
+  },
+  "seatReceipt": {
+    "title": "좌석 티켓",
+    "tableLabel": "테이블",
+    "seatLabel": "좌석",
+    "player": "플레이어",
+    "startingStack": "시작 스택:",
+    "footerNote": "테이블 입장 시 이 티켓을 제시하세요. 코드를 스캔하여 확인할 수 있습니다.",
+    "printError": "인쇄 창을 열 수 없습니다. 팝업을 허용해 주세요.",
+    "dialogDesc": "플레이어가 확인되고 좌석이 배정되었습니다. 플레이어용 티켓을 인쇄하거나 다운로드하세요.",
+    "downloadPdf": "PDF 다운로드",
+    "close": "닫기",
+    "print": "인쇄"
+  },
+  "syncingBadge": {
+    "staleTitle": "새 데이터를 가져오지 못했습니다 — 최신 캐시 버전 표시 중",
+    "usingCachedData": "캐시된 데이터 사용 중",
+    "syncing": "동기화 중..."
+  },
+  "timeAgo": {
+    "justNow": "방금",
+    "secondsAgo": "{{count}}초 전",
+    "minutesAgo": "{{count}}분 전",
+    "hoursAgo": "{{count}}시간 전",
+    "daysAgo": "{{count}}일 전",
+    "minutesShort": "{{count}}분",
+    "hoursShort": "{{count}}시간",
+    "daysShort": "{{count}}일"
+  },
+  "unsubscribe": {
+    "missingEmail": "링크에 이메일 주소가 없습니다.",
+    "genericError": "오류가 발생했습니다.",
+    "success": "{{email}} 이메일 수신을 취소했습니다. 알림 설정에서 언제든지 다시 켤 수 있습니다.",
+    "title": "VinPoker 이메일 수신 거부",
+    "processing": "처리 중...",
+    "retry": "다시 시도",
+    "footnote": "계정 인증 및 보안 이메일은 필요 시 계속 발송됩니다."
+  },
+  "updateBanner": {
+    "newVersionTitle": "새 업데이트가 있습니다",
+    "newVersionDesc": "최신 버전을 사용하려면 새로고침하세요.",
+    "updateBtn": "업데이트",
+    "closeAria": "닫기"
   }
 }
