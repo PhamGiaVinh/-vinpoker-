@@ -4,8 +4,15 @@
 // with NO database and tests stay deterministic.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import type { CareerProgramView, DealerProfileView, DealerShiftView } from "@/types/dealerApp";
+import type {
+  CareerApplicationView,
+  CareerProgramView,
+  CareerSessionView,
+  DealerProfileView,
+  DealerShiftView,
+} from "@/types/dealerApp";
 import { weekDates } from "./selectors";
+import { addDays } from "./clock";
 
 const MOCK_DEALER_ID = "mock-dealer-001";
 const MOCK_CLUB_ID = "mock-club-001";
@@ -90,7 +97,8 @@ export function mockCareerPrograms(): CareerProgramView[] {
       gameTypes: ["Baccarat"],
       payRange: "18–25tr / tháng",
       status: "open",
-      description: "Chia bài Baccarat, ca linh hoạt, có đào tạo.",
+      description: "Chia bài Baccarat tại sàn, ca linh hoạt, có đào tạo nội bộ.",
+      requirements: ["Kinh nghiệm chia bài ≥ 6 tháng", "Giao tiếp tốt", "Chấp nhận ca xoay"],
     },
     {
       id: "rp2",
@@ -98,7 +106,8 @@ export function mockCareerPrograms(): CareerProgramView[] {
       title: "Nâng cấp Senior Dealer",
       subtitle: "Lộ trình thăng tiến rõ ràng",
       status: "open",
-      description: "Đánh giá kỹ năng + đào tạo nâng bậc lên Senior.",
+      description: "Đánh giá kỹ năng + đào tạo nâng bậc lên Senior Dealer.",
+      requirements: ["Đang là dealer chính thức", "Đạt đánh giá kỹ năng ≥ 80%"],
     },
     {
       id: "rp3",
@@ -106,7 +115,8 @@ export function mockCareerPrograms(): CareerProgramView[] {
       title: "Đào tạo Tournament",
       subtitle: "Kỹ năng chia bài giải đấu",
       status: "open",
-      description: "Khóa đào tạo dealer giải đấu (clock, color-up, redraw).",
+      description: "Khóa đào tạo dealer giải đấu: clock, color-up, redraw, payout.",
+      requirements: ["Mở cho mọi dealer", "Cam kết hoàn thành khóa"],
     },
     {
       id: "rp4",
@@ -118,7 +128,65 @@ export function mockCareerPrograms(): CareerProgramView[] {
       gameTypes: ["NLH", "PLO"],
       payRange: "Thỏa thuận",
       status: "open",
-      description: "Cơ hội làm việc tại các giải quốc tế trong khu vực.",
+      description: "Cơ hội làm việc tại các giải quốc tế trong khu vực châu Á.",
+      requirements: ["English communication", "Tournament dealing certificate a plus", "Willing to travel"],
+    },
+  ];
+}
+
+export function mockApplications(anchorDate: string): CareerApplicationView[] {
+  return [
+    {
+      id: "app1",
+      programId: "rp3",
+      programTitle: "Đào tạo Tournament",
+      kind: "tournament",
+      status: "interview",
+      createdAt: `${addDays(anchorDate, -5)}T09:30:00+07:00`,
+      note: "Mong muốn học chia bài giải đấu.",
+    },
+    {
+      id: "app2",
+      programId: "rp2",
+      programTitle: "Nâng cấp Senior Dealer",
+      kind: "senior_upgrade",
+      status: "screening",
+      createdAt: `${addDays(anchorDate, -12)}T14:00:00+07:00`,
+    },
+  ];
+}
+
+export function mockTrainingSessions(anchorDate: string): CareerSessionView[] {
+  return [
+    {
+      id: "s1",
+      kind: "interview",
+      title: "Phỏng vấn — Đào tạo Tournament",
+      scheduledAt: `${addDays(anchorDate, 2)}T15:00:00+07:00`,
+      mode: "online",
+      joinUrl: "https://meet.example.com/vbk-td",
+      status: "scheduled",
+      programTitle: "Đào tạo Tournament",
+    },
+    {
+      id: "s2",
+      kind: "training",
+      title: "Buổi 1 — Kỹ năng chia bài giải đấu",
+      scheduledAt: `${addDays(anchorDate, 5)}T18:00:00+07:00`,
+      mode: "onsite",
+      location: "Grand Poker Club · Tầng 2",
+      status: "scheduled",
+      programTitle: "Đào tạo Tournament",
+    },
+    {
+      id: "s3",
+      kind: "training",
+      title: "Buổi định hướng Senior Dealer",
+      scheduledAt: `${addDays(anchorDate, -3)}T10:00:00+07:00`,
+      mode: "onsite",
+      location: "Grand Poker Club",
+      status: "done",
+      programTitle: "Nâng cấp Senior Dealer",
     },
   ];
 }
