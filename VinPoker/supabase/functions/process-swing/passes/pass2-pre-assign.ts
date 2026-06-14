@@ -117,7 +117,7 @@ export async function pass2PreAssignNext(
         .select(`
           id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
           pre_assigned_attendance_id,
-          game_tables!inner(id, table_name, table_type),
+          game_tables!inner(id, table_name, table_type, shift_id),
           dealer_attendance!attendance_id(
             dealers!inner(full_name, telegram_username, telegram_user_id)
           )
@@ -143,7 +143,7 @@ export async function pass2PreAssignNext(
         .select(`
           id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
           pre_assigned_attendance_id,
-          game_tables!inner(id, table_name, table_type),
+          game_tables!inner(id, table_name, table_type, shift_id),
           dealer_attendance!attendance_id(
             dealers!inner(full_name, telegram_username, telegram_user_id)
           )
@@ -166,7 +166,7 @@ export async function pass2PreAssignNext(
         .select(`
           id, table_id, attendance_id, swing_due_at, version, overtime_started_at,
           pre_assigned_attendance_id,
-          game_tables!inner(id, table_name, table_type),
+          game_tables!inner(id, table_name, table_type, shift_id),
           dealer_attendance!attendance_id(
             dealers!inner(full_name, telegram_username, telegram_user_id)
           )
@@ -221,6 +221,24 @@ export async function pass2PreAssignNext(
       `${cycleExcludedIds.size} dealers_excluded_from_pool_this_tick`,
     );
 
+    // Tour name per shift (so the Telegram pre-announce shows which tour) —
+    // one dealer_shifts lookup for all tables due this tick.
+    const shiftIds = [...new Set(
+      upcomingAssignments
+        .map((a) => (a.game_tables as any)?.shift_id)
+        .filter((id): id is string => !!id),
+    )];
+    const shiftTourMap = new Map<string, string>();
+    if (shiftIds.length > 0) {
+      const { data: shiftRows } = await admin
+        .from("dealer_shifts")
+        .select("id, tour_name")
+        .in("id", shiftIds);
+      for (const s of (shiftRows ?? [])) {
+        if (s?.id && s?.tour_name) shiftTourMap.set(s.id as string, s.tour_name as string);
+      }
+    }
+
     // ════════════════════════════════════════════════════════
     // STEP 2: Pre-assign one dealer per table
     // ════════════════════════════════════════════════════════
@@ -228,6 +246,7 @@ export async function pass2PreAssignNext(
     for (const assignment of upcomingAssignments) {
       try {
         const tableName = (assignment.game_tables as any)?.table_name ?? "??";
+        const tourName = shiftTourMap.get((assignment.game_tables as any)?.shift_id) ?? null;
 
         // PATCH D: per-table exclude set starts from shared pool snapshot.
         // Failed candidates are added here so the next attempt tries a different
@@ -373,6 +392,7 @@ export async function pass2PreAssignNext(
                     attendanceId: nextDealer.id,
                     outAttendanceId: outgoingAtt.id ?? null,
                     tableName,
+                    tournamentName: tourName,
                     zone: clubZone,
                     outName: outgoing.full_name ?? "Unknown",
                     outUsername: outgoing.telegram_username ?? null,

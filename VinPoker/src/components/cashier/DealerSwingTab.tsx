@@ -62,7 +62,7 @@ import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
-  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog, ChevronDown,
+  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog, ChevronDown, X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -337,6 +337,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [newTourName, setNewTourName] = useState("");
   const [newTourStartTime, setNewTourStartTime] = useState("");
   const [newTourEndTime, setNewTourEndTime] = useState("");
+  const [deleteTour, setDeleteTour] = useState<{ id: string; name: string } | null>(null);
+  const [deletingTour, setDeletingTour] = useState(false);
 
   // Load auto_swing_enabled setting
   useEffect(() => {
@@ -1429,11 +1431,23 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             Tổng thể
           </button>
           {(tours ?? []).map((t) => (
-            <button key={t.id} onClick={() => { setSelectedTour(t.id); setActiveView("tables"); }}
-              className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
-              {t.tour_name} ({t.start_time?.slice(0, 5)}-{t.end_time?.slice(0, 5)})
-            </button>
+            <div key={t.id} className="relative">
+              <button onClick={() => { setSelectedTour(t.id); setActiveView("tables"); }}
+                className={`text-xs pl-3 pr-5 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
+                {t.tour_name} ({t.start_time?.slice(0, 5)}-{t.end_time?.slice(0, 5)})
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setDeleteTour({ id: t.id, name: t.tour_name }); }}
+                title="Xoá tour"
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-700 border border-zinc-600 text-zinc-300 hover:bg-red-500 hover:text-white flex items-center justify-center">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
           ))}
+          <button onClick={() => setCreateTourOpen(true)}
+            title="Tạo tour mới (đặt tên để Telegram gửi đúng tour)"
+            className="text-xs px-2.5 py-1.5 rounded-full border border-primary/40 text-primary bg-primary/10 hover:bg-primary/20 transition inline-flex items-center gap-1">
+            <Plus className="w-3 h-3" /> Tạo tour
+          </button>
         </div>
         {(tours ?? []).length === 0 && selectedTour === null && (
           <div className="text-xs text-amber-500 mt-1 flex items-center gap-2">
@@ -2366,46 +2380,97 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Tên tour</Label>
-              <Input value={newTourName} onChange={(e) => setNewTourName(e.target.value)} placeholder="VD: Tour Sáng" />
+              <Input value={newTourName} onChange={(e) => setNewTourName(e.target.value)} placeholder="VD: Tour Sáng" autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter" && newTourName.trim()) (e.currentTarget.closest('[role="dialog"]')?.querySelector('[data-create-tour]') as HTMLButtonElement | null)?.click(); }} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Giờ bắt đầu</Label>
+                <Label className="text-xs">Giờ bắt đầu <span className="text-muted-foreground">(tự điền nếu trống)</span></Label>
                 <Input type="time" value={newTourStartTime} onChange={(e) => setNewTourStartTime(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">Giờ kết thúc</Label>
+                <Label className="text-xs">Giờ kết thúc <span className="text-muted-foreground">(tự điền nếu trống)</span></Label>
                 <Input type="time" value={newTourEndTime} onChange={(e) => setNewTourEndTime(e.target.value)} />
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateTourOpen(false)}>Huỷ</Button>
-            <Button disabled={!newTourName.trim() || !newTourStartTime || !newTourEndTime}
+            <Button data-create-tour disabled={!newTourName.trim() || processing === "create_tour"}
               onClick={async () => {
                 setProcessing("create_tour");
                 const clubId = clubFilter ?? filteredClubIds[0];
-                if (!clubId || !newTourName.trim() || !newTourStartTime || !newTourEndTime) { setProcessing(null); return; }
-                const { error } = await supabase.from("dealer_shifts").insert({
+                if (!clubId || !newTourName.trim()) { setProcessing(null); return; }
+                // Quick create: name only. Auto-fill times if left blank
+                // (start = now, end = +8h clamped to 23:59) — dealer_shifts
+                // requires NOT NULL start_time/end_time.
+                const pad = (n: number) => String(n).padStart(2, "0");
+                const now = new Date();
+                const startAuto = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                const endD = new Date(now.getTime() + 8 * 3600 * 1000);
+                const sameDay = endD.getDate() === now.getDate() && endD.getMonth() === now.getMonth();
+                const endAuto = sameDay ? `${pad(endD.getHours())}:${pad(endD.getMinutes())}` : "23:59";
+                const startVal = newTourStartTime || startAuto;
+                const endVal = newTourEndTime || endAuto;
+                const { data: created, error } = await supabase.from("dealer_shifts").insert({
                   club_id: clubId,
                   tour_name: newTourName.trim(),
-                  start_time: newTourStartTime,
-                  end_time: newTourEndTime,
-                });
+                  start_time: startVal,
+                  end_time: endVal,
+                }).select("id").single();
                 setProcessing(null);
                 if (error) { toast.error(error.message); return; }
-                toast.success("Đã tạo tour mới");
+                toast.success(`Đã tạo tour "${newTourName.trim()}". Bấm chip tour để lọc bàn vào tour.`);
                 setCreateTourOpen(false);
                 setNewTourName("");
                 setNewTourStartTime("");
                 setNewTourEndTime("");
-                refetchTours();
+                await refetchTours();
+                // NOTE: do NOT auto-select the new tour — selecting it would
+                // filter the battle map to that (empty) tour and hide the other
+                // tables, which looks like "tables disappeared". Stay on the
+                // current view; the operator taps the chip when ready.
+                void created;
               }}>
               {processing === "create_tour" ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Plus className="w-3.5 h-3.5 mr-1" />Tạo tour</>}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete tour confirmation */}
+      <AlertDialog open={!!deleteTour} onOpenChange={(o) => { if (!o) setDeleteTour(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xoá tour "{deleteTour?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Các bàn thuộc tour này KHÔNG bị xoá — chúng trở về bàn chung (bỏ gán tour).
+              Hành động này không hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingTour}
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!deleteTour) return;
+                setDeletingTour(true);
+                const { error } = await supabase.from("dealer_shifts").delete().eq("id", deleteTour.id);
+                setDeletingTour(false);
+                if (error) { toast.error(error.message); return; }
+                toast.success("Đã xoá tour");
+                if (selectedTour === deleteTour.id) setSelectedTour(null);
+                setDeleteTour(null);
+                await refetchTours();
+                await refetchTables();
+              }}>
+              {deletingTour ? <Loader2 className="w-3 h-3 animate-spin" /> : "Xoá tour"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Special Dates Dialog (Bug 6) */}
       <Dialog open={specialDatesOpen} onOpenChange={setSpecialDatesOpen}>
