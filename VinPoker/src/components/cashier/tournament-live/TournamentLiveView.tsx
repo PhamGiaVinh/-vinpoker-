@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { FEATURES } from "@/lib/featureFlags";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -50,6 +51,9 @@ const STREET_LABELS: Record<string, string> = {
 };
 
 const POLL_INTERVAL_MS = 30_000;
+// Live Action Engine MVP: faster refresh cadence while a hand is in progress
+// (flag-gated). Slow enough to stay cheap, fast enough to feel live.
+const LIVE_ACTION_POLL_MS = 2_500;
 
 function formatClockTime(d: Date): string {
   return d.toLocaleTimeString("vi-VN", { hour12: false });
@@ -84,6 +88,9 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   const [softErrorAt, setSoftErrorAt] = useState<Date | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("connecting");
+  // Live Action Engine MVP: true while the latest hand is in_progress (drives the
+  // flag-gated fast-poll so spectators see each action live).
+  const [handInProgress, setHandInProgress] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
@@ -175,6 +182,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     let nextPot = 0;
     let nextActions: ActionLog[] = [];
     let nextBreakdown: PotBreakdown | null = null;
+    let nextInProgress = false;
 
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
@@ -183,6 +191,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
       nextButtonSeat = hand.button_seat || 1;
       nextCommunity = (hand.community_cards as string[]) || [];
       nextPot = hand.pot_size || 0;
+      nextInProgress = hand.status === "in_progress";
 
       const { data: actionData } = await supabase
         .from("hand_actions")
@@ -264,6 +273,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setPotSize(nextPot);
     setActions(nextActions);
     setPotBreakdown(nextBreakdown);
+    setHandInProgress(nextInProgress);
 
     if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
@@ -307,6 +317,19 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     }, POLL_INTERVAL_MS);
   }, [loadAllData]);
 
+  // Live Action Engine MVP (flag-gated, frontend-only): while a hand is in
+  // progress, fast-poll so spectators see each recorded action in near-real-time
+  // — `record_action` only writes `hand_actions`, which fires no
+  // `tournament_hands` realtime event, so the default path refreshes only when
+  // the hand is finalised. Reuses loadAllData (requestSeqRef guard intact).
+  // Never runs in replay mode or when the flag is off → zero behaviour change.
+  useEffect(() => {
+    if (!FEATURES.liveActionEngine) return;
+    if (!tournamentId || mode !== "live" || !handInProgress) return;
+    const id = window.setInterval(() => loadAllData(), LIVE_ACTION_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [tournamentId, mode, handInProgress, loadAllData]);
+
   // Reset all state when switching tournaments, then load.
   useEffect(() => {
     if (!tournamentId) return;
@@ -325,6 +348,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setFatalError(null);
     setSoftErrorAt(null);
     setLastUpdatedAt(null);
+    setHandInProgress(false);
     setMode("live");
     setReplayHandId(null);
     setReplayHand(null);

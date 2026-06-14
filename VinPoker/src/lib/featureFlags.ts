@@ -88,4 +88,16 @@ export const FEATURES = {
    * applied live and the hook is switched to mode="live" (Phase 2, owner-gated).
    */
   dealerShiftPlanner: false,
+  /**
+   * Tracker Live Action Engine MVP — live per-action playback on the public
+   * tournament viewer (/live/:id). While a hand is in_progress, the viewer
+   * fast-polls so spectators see each recorded action in near-real-time
+   * (`record_action` only writes `hand_actions`, which fires no
+   * `tournament_hands` realtime event, so the default path updates only after
+   * the hand is finalised). Default **OFF**: while false the viewer behaves
+   * exactly as today (realtime + 30s polling fallback only). Frontend-only — no
+   * DB/publication change; a later phase can swap the fast-poll for a
+   * `hand_actions` realtime subscription (controlled publication op).
+   */
+  liveActionEngine: false,
 } as const;
