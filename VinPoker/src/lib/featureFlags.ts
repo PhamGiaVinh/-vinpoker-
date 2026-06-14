@@ -134,10 +134,12 @@ export const FEATURES = {
    * the same transaction, releases every tour table + sends its dealers to the
    * break pool (on_break) — via the SECURITY DEFINER RPC
    * `archive_and_close_dealer_tour` (PR2 source-only, owner-gated apply).
-   * Default **OFF**: while false the "Đóng tour" button is hidden. The confirm
-   * dialog requires typing "DONG TOUR". Flip to true ONLY after the RPC is
-   * applied live in a controlled DB session and owner UAT passes; until then the
-   * button never appears and no close can run.
+   * The confirm dialog requires typing "DONG TOUR". **ON** (2026-06-15): the
+   * migration `20260902000000_dealer_swing_close_tour.sql` (RPC + archive table)
+   * is APPLIED LIVE + verified in a controlled session, and the owner chose a
+   * GLOBAL launch — so all dealer-control staff see "Đóng tour". The RPC is
+   * still permission-gated (each closes only their own club's tours) + idempotent
+   * + archives before any release. Kill-switch: set false to hide the button.
    */
-  dealerSwingCloseTourArchive: false,
+  dealerSwingCloseTourArchive: true,
 } as const;
