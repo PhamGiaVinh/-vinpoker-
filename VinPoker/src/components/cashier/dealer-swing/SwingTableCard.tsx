@@ -232,7 +232,7 @@ export default function SwingTableCard({
           {/* Header: Bàn N + status pill */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-zinc-100">Bàn {t.table_name}</div>
+              <div className="truncate text-sm font-semibold text-zinc-100">{t.table_name}</div>
               <div className="mt-1 flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
                 <span className={cn("text-[11px] font-medium", s.text)}>{s.label}</span>
@@ -283,7 +283,7 @@ export default function SwingTableCard({
       <PopoverContent align="start" className="w-72 border-zinc-700 bg-zinc-900 p-3">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-zinc-100">Bàn {t.table_name}</div>
+            <div className="truncate text-sm font-semibold text-zinc-100">{t.table_name}</div>
             <div className="truncate text-[11px] text-zinc-400">
               {dealer ? dealer.full_name : preAssigned ? `⬆ ${preAssigned.full_name}` : "Chưa gán"}
             </div>
