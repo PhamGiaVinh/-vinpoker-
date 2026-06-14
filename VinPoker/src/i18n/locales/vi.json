@@ -1202,7 +1202,8 @@
     "conversationClosed": "Cuộc trò chuyện đã đóng",
     "typeMsg": "Nhập tin nhắn...",
     "imagesOnly": "Chỉ ảnh",
-    "max10": "Ảnh tối đa 10MB"
+    "max10": "Ảnh tối đa 10MB",
+    "defaultPlayer": "Người tập huấn"
   },
   "chatInbox": {
     "titleAdmin": "Hộp thư đặt Stack",
@@ -2499,5 +2500,39 @@
   },
   "stickyBar": {
     "register": "Đăng ký"
+  },
+  "tournamentRegister": {
+    "title": "Đăng ký giải tập huấn",
+    "regError": "Lỗi đăng ký",
+    "copied": "Đã copy {{label}}",
+    "labelAccountNumber": "số TK",
+    "labelTransferContent": "nội dung",
+    "onlyImageTypes": "Chỉ chấp nhận JPG/PNG/WEBP",
+    "maxImage5": "Ảnh tối đa 5MB",
+    "proofUploaded": "Đã tải ảnh chuyển khoản",
+    "uploadFailed": "Không thể tải lên",
+    "markedToast": "Đã ghi nhận! CLB sẽ xác nhận trong vòng 5–10 phút.",
+    "confirmCancel": "Bạn chắc chắn muốn huỷ đăng ký này?",
+    "cancelled": "Đã huỷ đăng ký.",
+    "freeRakeBanner": "🎉 Bạn được miễn phí dịch vụ CLB (tiết kiệm {{savings}}). Vui lòng thanh toán trong 5 phút để giữ ưu đãi.",
+    "feeLabel": "Lệ phí tập huấn",
+    "freeClubService": "Miễn phí dịch vụ CLB",
+    "totalPay": "Tổng thanh toán",
+    "transferInfo": "Thông tin chuyển khoản",
+    "bank": "Ngân hàng",
+    "accountHolder": "Chủ TK",
+    "accountNumber": "Số TK",
+    "transferContentLabel": "Nội dung CK (bắt buộc)",
+    "proofTitle": "Ảnh chụp giao dịch",
+    "proofHint": "Bắt buộc — chụp màn hình biên lai CK",
+    "uploaded": "Đã tải",
+    "notUploaded": "Chưa tải",
+    "reupload": "Tải lại ảnh",
+    "uploadProof": "Tải ảnh chuyển khoản",
+    "cancelReg": "Huỷ đăng ký",
+    "sentWaiting": "Đã gửi — chờ CLB",
+    "sending": "Đang gửi...",
+    "needProof": "Cần tải ảnh CK",
+    "transferred": "Đã chuyển khoản"
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,6 +49,7 @@ const useCountdown = (deadline: number) => {
 };
 
 export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, onClose, onCompleted }: Props) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState<RegInfo | null>(null);
@@ -69,7 +71,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       if (!mounted) return;
       setLoading(false);
       if (error || (data as any)?.error) {
-        toast.error((data as any)?.error ?? error?.message ?? "Lỗi đăng ký");
+        toast.error((data as any)?.error ?? error?.message ?? t("tournamentRegister.regError"));
         onClose();
         return;
       }
@@ -85,16 +87,16 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
   const transferContent = info ? `VINPoker ${info.reference_code}` : "";
   const copy = (txt: string, lbl: string) => {
     navigator.clipboard.writeText(txt);
-    toast.success(`Đã copy ${lbl}`);
+    toast.success(t("tournamentRegister.copied", { label: lbl }));
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.files?.[0];
     if (!raw || !user || !info) return;
     if (!["image/jpeg","image/png","image/webp"].includes(raw.type)) {
-      toast.error("Chỉ chấp nhận JPG/PNG/WEBP"); return;
+      toast.error(t("tournamentRegister.onlyImageTypes")); return;
     }
-    if (raw.size > 5 * 1024 * 1024) { toast.error("Ảnh tối đa 5MB"); return; }
+    if (raw.size > 5 * 1024 * 1024) { toast.error(t("tournamentRegister.maxImage5")); return; }
     setUploading(true);
     try {
       const file = await compressImage(raw, { maxEdge: 1600, quality: 0.8 });
@@ -114,9 +116,9 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
         .eq("id", info.registration_id);
       if (updErr) throw updErr;
       setProofUrl(url);
-      toast.success("Đã tải ảnh chuyển khoản");
+      toast.success(t("tournamentRegister.proofUploaded"));
     } catch (e: any) {
-      toast.error(e.message ?? "Không thể tải lên");
+      toast.error(e.message ?? t("tournamentRegister.uploadFailed"));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -133,13 +135,13 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     setSubmitting(false);
     if (error) { toast.error(error.message); return; }
     setProofSubmitted(true);
-    toast.success("Đã ghi nhận! CLB sẽ xác nhận trong vòng 5–10 phút.");
+    toast.success(t("tournamentRegister.markedToast"));
     onCompleted?.();
   };
 
   const cancelReg = async () => {
     if (!info) return;
-    if (!confirm("Bạn chắc chắn muốn huỷ đăng ký này?")) return;
+    if (!confirm(t("tournamentRegister.confirmCancel"))) return;
     setCancelling(true);
     const { error } = await supabase
       .from("tournament_registrations")
@@ -149,7 +151,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       .eq("status", "pending");
     setCancelling(false);
     if (error) { toast.error(error.message); return; }
-    toast.success("Đã huỷ đăng ký.");
+    toast.success(t("tournamentRegister.cancelled"));
     onClose();
   };
 
@@ -157,7 +159,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Đăng ký giải tập huấn</DialogTitle>
+          <DialogTitle>{t("tournamentRegister.title")}</DialogTitle>
           <DialogDescription className="text-xs">{tournamentName}</DialogDescription>
         </DialogHeader>
 
@@ -171,23 +173,22 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
               <div className="rounded-xl border border-success/30 bg-success/5 p-3 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-success mt-0.5 shrink-0" />
                 <div className="text-xs text-success font-semibold">
-                  🎉 Bạn được miễn phí dịch vụ CLB (tiết kiệm {formatStack(info.savings ?? 0)}).
-                  Vui lòng thanh toán trong 5 phút để giữ ưu đãi.
+                  {t("tournamentRegister.freeRakeBanner", { savings: formatStack(info.savings ?? 0) })}
                 </div>
               </div>
             )}
 
             {/* Breakdown */}
             <div className="rounded-xl border border-border bg-card/40 p-3 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Lệ phí tập huấn</span><span className="font-mono">{formatVND(info.breakdown.buy_in)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{t("tournamentRegister.feeLabel")}</span><span className="font-mono">{formatVND(info.breakdown.buy_in)}</span></div>
               {info.savings && info.savings > 0 && (
                 <div className="flex justify-between text-success">
-                  <span className="text-xs">Miễn phí dịch vụ CLB</span>
+                  <span className="text-xs">{t("tournamentRegister.freeClubService")}</span>
                   <span className="font-mono text-xs">-{formatStack(info.savings)}</span>
                 </div>
               )}
               <div className="flex justify-between pt-2 border-t border-border/60">
-                <span className="font-semibold">Tổng thanh toán</span>
+                <span className="font-semibold">{t("tournamentRegister.totalPay")}</span>
                 <span className="font-mono font-bold text-primary text-base">{formatVND(info.total_pay)}</span>
               </div>
             </div>
@@ -195,16 +196,16 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
 
             {/* Bank info */}
             <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2">
-              <div className="text-xs font-semibold text-primary">Thông tin chuyển khoản</div>
+              <div className="text-xs font-semibold text-primary">{t("tournamentRegister.transferInfo")}</div>
               <div className="text-sm">
-                <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">Ngân hàng</span><span className="font-medium">{info.bank_name}</span></div>
-                <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">Chủ TK</span><span className="font-medium">{info.account_holder}</span></div>
+                <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">{t("tournamentRegister.bank")}</span><span className="font-medium">{info.bank_name}</span></div>
+                <div className="flex justify-between gap-2"><span className="text-muted-foreground text-xs">{t("tournamentRegister.accountHolder")}</span><span className="font-medium">{info.account_holder}</span></div>
                 <div className="flex items-center justify-between gap-2 mt-1.5 p-2 rounded-lg border border-primary/40 bg-primary/5">
                   <div className="min-w-0">
-                    <div className="text-[10px] uppercase text-muted-foreground">Số TK</div>
+                    <div className="text-[10px] uppercase text-muted-foreground">{t("tournamentRegister.accountNumber")}</div>
                     <div className="font-mono font-bold text-primary">{info.account_number}</div>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => copy(info.account_number, "số TK")}><Copy className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => copy(info.account_number, t("tournamentRegister.labelAccountNumber"))}><Copy className="w-4 h-4" /></Button>
                 </div>
               </div>
               {info.qr_code_url && (
@@ -215,22 +216,22 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
             {/* Reference code */}
             <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[10px] uppercase text-muted-foreground">Nội dung CK (bắt buộc)</div>
+                <div className="text-[10px] uppercase text-muted-foreground">{t("tournamentRegister.transferContentLabel")}</div>
                 <div className="font-mono font-bold text-primary truncate">{transferContent}</div>
               </div>
-              <Button size="icon" variant="ghost" onClick={() => copy(transferContent, "nội dung")}><Copy className="w-4 h-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => copy(transferContent, t("tournamentRegister.labelTransferContent"))}><Copy className="w-4 h-4" /></Button>
             </div>
 
             {/* Proof upload */}
             <div className="rounded-xl border border-border bg-card/40 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-xs">
-                  <div className="font-semibold">Ảnh chụp giao dịch <span className="text-destructive">*</span></div>
-                  <div className="text-[10px] text-muted-foreground">Bắt buộc — chụp màn hình biên lai CK</div>
+                  <div className="font-semibold">{t("tournamentRegister.proofTitle")} <span className="text-destructive">*</span></div>
+                  <div className="text-[10px] text-muted-foreground">{t("tournamentRegister.proofHint")}</div>
                 </div>
                 {proofUrl ? (
-                  <span className="text-xs text-success flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Đã tải</span>
-                ) : <span className="text-xs text-muted-foreground">Chưa tải</span>}
+                  <span className="text-xs text-success flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {t("tournamentRegister.uploaded")}</span>
+                ) : <span className="text-xs text-muted-foreground">{t("tournamentRegister.notUploaded")}</span>}
               </div>
               <input
                 ref={inputRef}
@@ -241,7 +242,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
               />
               <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => inputRef.current?.click()} disabled={uploading}>
                 {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
-                {proofUrl ? "Tải lại ảnh" : "Tải ảnh chuyển khoản"}
+                {proofUrl ? t("tournamentRegister.reupload") : t("tournamentRegister.uploadProof")}
               </Button>
               {proofUrl && (
                 <a href={proofUrl} target="_blank" rel="noreferrer" className="block">
@@ -254,11 +255,11 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 text-destructive border-destructive/40 hover:bg-destructive/10"
                 onClick={cancelReg} disabled={cancelling || submitting || proofSubmitted}>
-                Huỷ đăng ký
+                {t("tournamentRegister.cancelReg")}
               </Button>
               <Button className="flex-1 gradient-neon text-primary-foreground font-bold"
                 onClick={markTransferred} disabled={submitting || uploading || proofSubmitted || !proofUrl}>
-                {proofSubmitted ? "Đã gửi — chờ CLB" : submitting ? "Đang gửi..." : !proofUrl ? "Cần tải ảnh CK" : "Đã chuyển khoản"}
+                {proofSubmitted ? t("tournamentRegister.sentWaiting") : submitting ? t("tournamentRegister.sending") : !proofUrl ? t("tournamentRegister.needProof") : t("tournamentRegister.transferred")}
               </Button>
             </div>
           </div>

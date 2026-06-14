@@ -1150,7 +1150,8 @@
     "conversationClosed": "会話が閉じました",
     "typeMsg": "メッセージを入力...",
     "imagesOnly": "画像のみ",
-    "max10": "最大10MBの画像"
+    "max10": "最大10MBの画像",
+    "defaultPlayer": "プレイヤー"
   },
   "chatInbox": {
     "titleAdmin": "スタック予約ボックス",
@@ -2351,5 +2352,39 @@
   },
   "stickyBar": {
     "register": "登録する"
+  },
+  "tournamentRegister": {
+    "title": "トレーニングトーナメントに登録",
+    "regError": "登録エラー",
+    "copied": "{{label}}をコピーしました",
+    "labelAccountNumber": "口座番号",
+    "labelTransferContent": "振込メモ",
+    "onlyImageTypes": "JPG/PNG/WEBP のみ対応",
+    "maxImage5": "画像は最大 5MB",
+    "proofUploaded": "振込画像をアップロードしました",
+    "uploadFailed": "アップロードに失敗しました",
+    "markedToast": "受け付けました！クラブが 5〜10 分以内に確認します。",
+    "confirmCancel": "この登録をキャンセルしてもよろしいですか？",
+    "cancelled": "登録をキャンセルしました。",
+    "freeRakeBanner": "🎉 クラブサービスが無料です（{{savings}} お得）。特典を保持するには 5 分以内にお支払いください。",
+    "feeLabel": "トレーニング料金",
+    "freeClubService": "無料クラブサービス",
+    "totalPay": "お支払い総額",
+    "transferInfo": "振込情報",
+    "bank": "銀行",
+    "accountHolder": "口座名義",
+    "accountNumber": "口座番号",
+    "transferContentLabel": "振込メモ（必須）",
+    "proofTitle": "取引のスクリーンショット",
+    "proofHint": "必須 — 振込明細のスクリーンショット",
+    "uploaded": "アップロード済み",
+    "notUploaded": "未アップロード",
+    "reupload": "画像を再アップロード",
+    "uploadProof": "振込画像をアップロード",
+    "cancelReg": "登録をキャンセル",
+    "sentWaiting": "送信済み — クラブ待ち",
+    "sending": "送信中...",
+    "needProof": "振込画像が必要です",
+    "transferred": "振込完了"
   }
 }

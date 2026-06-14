@@ -1096,7 +1096,8 @@
     "conversationClosed": "대화 종료됨",
     "typeMsg": "메시지를 입력하세요...",
     "imagesOnly": "이미지 전용",
-    "max10": "최대 이미지 크기는 10MB입니다"
+    "max10": "최대 이미지 크기는 10MB입니다",
+    "defaultPlayer": "플레이어"
   },
   "chatInbox": {
     "titleAdmin": "예약 대화",
@@ -2347,5 +2348,39 @@
   },
   "stickyBar": {
     "register": "등록하기"
+  },
+  "tournamentRegister": {
+    "title": "트레이닝 토너먼트 등록",
+    "regError": "등록 오류",
+    "copied": "{{label}} 복사됨",
+    "labelAccountNumber": "계좌번호",
+    "labelTransferContent": "이체 메모",
+    "onlyImageTypes": "JPG/PNG/WEBP만 허용됩니다",
+    "maxImage5": "이미지 최대 5MB",
+    "proofUploaded": "이체 이미지를 업로드했습니다",
+    "uploadFailed": "업로드 실패",
+    "markedToast": "접수되었습니다! 클럽이 5~10분 이내에 확인합니다.",
+    "confirmCancel": "이 등록을 취소하시겠습니까?",
+    "cancelled": "등록이 취소되었습니다.",
+    "freeRakeBanner": "🎉 클럽 서비스가 무료입니다 ({{savings}} 절약). 혜택을 유지하려면 5분 이내에 결제해 주세요.",
+    "feeLabel": "트레이닝 비용",
+    "freeClubService": "무료 클럽 서비스",
+    "totalPay": "총 결제 금액",
+    "transferInfo": "이체 정보",
+    "bank": "은행",
+    "accountHolder": "예금주",
+    "accountNumber": "계좌번호",
+    "transferContentLabel": "이체 메모 (필수)",
+    "proofTitle": "거래 스크린샷",
+    "proofHint": "필수 — 이체 영수증 스크린샷",
+    "uploaded": "업로드됨",
+    "notUploaded": "업로드 안 됨",
+    "reupload": "이미지 다시 업로드",
+    "uploadProof": "이체 이미지 업로드",
+    "cancelReg": "등록 취소",
+    "sentWaiting": "전송됨 — 클럽 대기 중",
+    "sending": "전송 중...",
+    "needProof": "이체 이미지가 필요합니다",
+    "transferred": "이체 완료"
   }
 }

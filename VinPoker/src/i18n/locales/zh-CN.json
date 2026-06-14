@@ -1165,7 +1165,8 @@
     "conversationClosed": "会话已关闭",
     "typeMsg": "输入消息...",
     "imagesOnly": "仅支持图片",
-    "max10": "图片最大 10MB"
+    "max10": "图片最大 10MB",
+    "defaultPlayer": "玩家"
   },
   "chatInbox": {
     "titleAdmin": "预订对话",
@@ -2351,5 +2352,39 @@
   },
   "stickyBar": {
     "register": "立即报名"
+  },
+  "tournamentRegister": {
+    "title": "报名培训赛",
+    "regError": "报名出错",
+    "copied": "已复制{{label}}",
+    "labelAccountNumber": "账号",
+    "labelTransferContent": "转账备注",
+    "onlyImageTypes": "仅接受 JPG/PNG/WEBP",
+    "maxImage5": "图片最大 5MB",
+    "proofUploaded": "转账截图已上传",
+    "uploadFailed": "上传失败",
+    "markedToast": "已记录！俱乐部将在 5–10 分钟内确认。",
+    "confirmCancel": "确定要取消此报名吗？",
+    "cancelled": "已取消报名。",
+    "freeRakeBanner": "🎉 您获得免费俱乐部服务（节省 {{savings}}）。请在 5 分钟内付款以保留优惠。",
+    "feeLabel": "培训费",
+    "freeClubService": "免费俱乐部服务",
+    "totalPay": "应付总额",
+    "transferInfo": "转账信息",
+    "bank": "银行",
+    "accountHolder": "账户持有人",
+    "accountNumber": "账号",
+    "transferContentLabel": "转账备注（必填）",
+    "proofTitle": "交易截图",
+    "proofHint": "必填 — 转账凭证截图",
+    "uploaded": "已上传",
+    "notUploaded": "未上传",
+    "reupload": "重新上传图片",
+    "uploadProof": "上传转账截图",
+    "cancelReg": "取消报名",
+    "sentWaiting": "已发送 — 等待俱乐部",
+    "sending": "发送中...",
+    "needProof": "需要转账截图",
+    "transferred": "已转账"
   }
 }
