@@ -127,3 +127,18 @@ export interface CareerSessionView {
   status: "scheduled" | "done" | "cancelled";
   programTitle?: string | null;
 }
+
+// ── Onboarding / account linking (open market) ─────────────────────────────────
+
+/** How an auth user links to a dealer record. */
+export type DealerLinkMethod = "phone" | "telegram";
+
+/** A club dealer record in the staff "invite to app" directory (mock). */
+export interface DealerDirectoryRow {
+  id: string;
+  fullName: string;
+  phone: string;
+  region?: string | null;
+  status: string; // active | inactive | on_leave
+  linked: boolean; // already linked to an auth user?
+}

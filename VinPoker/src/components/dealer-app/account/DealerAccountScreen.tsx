@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LogOut, BadgeCheck, MapPin, Building2, Award } from "lucide-react";
+import { LogOut, BadgeCheck, Building2, Award, Link2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useDealerLink } from "@/hooks/dealer/useDealerLink";
+import { VerificationStatusCard } from "../onboarding/VerificationStatusCard";
+import { DealerClaimDrawer } from "../onboarding/DealerClaimDrawer";
+import { StaffInviteDrawer } from "../onboarding/StaffInviteDrawer";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -12,13 +16,14 @@ function initials(name: string): string {
 
 export function DealerAccountScreen() {
   const { t } = useTranslation();
-  const { signOut } = useAuth();
+  const { signOut, isAdmin, isClubOwner } = useAuth();
   const { dealer } = useDealerLink();
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [staffOpen, setStaffOpen] = useState(false);
 
   const rows = [
     { Icon: Award, label: t("dealer.account.tier", "Hạng dealer"), value: dealer?.tier ? `Tier ${dealer.tier}` : "—" },
     { Icon: Building2, label: t("dealer.account.club", "Câu lạc bộ"), value: dealer?.clubName || "—" },
-    { Icon: MapPin, label: t("dealer.account.region", "Khu vực"), value: dealer?.region || "—" },
   ];
 
   return (
@@ -43,6 +48,8 @@ export function DealerAccountScreen() {
         </div>
       </div>
 
+      <VerificationStatusCard />
+
       <div className="rounded-2xl border border-border bg-card divide-y divide-border mb-3">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3">
@@ -52,6 +59,31 @@ export function DealerAccountScreen() {
           </div>
         ))}
       </div>
+
+      <button
+        onClick={() => setClaimOpen(true)}
+        className="w-full flex items-center justify-between rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3.5 font-bold text-primary mb-2"
+      >
+        <span className="flex items-center gap-2">
+          <Link2 className="w-4 h-4" />
+          {t("dealer.onboarding.claimEntry", "Liên kết tài khoản dealer")}
+        </span>
+        <span>›</span>
+      </button>
+
+      {(isAdmin || isClubOwner) && (
+        <button
+          onClick={() => setStaffOpen(true)}
+          className="w-full flex items-center justify-between rounded-2xl border border-[#E6B84C]/30 bg-card px-4 py-3.5 font-bold mb-3"
+          style={{ color: "#E6B84C" }}
+        >
+          <span className="flex items-center gap-2">
+            <UserPlus className="w-4 h-4" />
+            {t("dealer.onboarding.staffEntry", "Mời dealer vào app (Staff)")}
+          </span>
+          <span>›</span>
+        </button>
+      )}
 
       <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 mb-3">
         <span className="text-[13px] text-muted-foreground">{t("dealer.account.language", "Ngôn ngữ")}</span>
@@ -66,6 +98,9 @@ export function DealerAccountScreen() {
         <LogOut className="w-4 h-4 mr-1.5" />
         {t("dealer.account.signOut", "Đăng xuất")}
       </Button>
+
+      <DealerClaimDrawer open={claimOpen} onOpenChange={setClaimOpen} />
+      <StaffInviteDrawer open={staffOpen} onOpenChange={setStaffOpen} />
     </div>
   );
 }
