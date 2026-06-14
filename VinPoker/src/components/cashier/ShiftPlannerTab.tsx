@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Sparkles, Send, Info, ListChecks } from "lucide-react";
+import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import DailyShiftTable from "./shift-planner/DailyShiftTable";
 import SuggestionPanel from "./shift-planner/SuggestionPanel";
 import StaffRequestPanel from "./shift-planner/StaffRequestPanel";
 import WeeklyShiftMatrix from "./shift-planner/WeeklyShiftMatrix";
+import ShiftTemplateEditor from "./shift-planner/ShiftTemplateEditor";
 
 type ClubRow = { id: string; name: string };
 
@@ -21,11 +22,19 @@ function todayInVN(): string {
   return new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
-export default function ShiftPlannerTab({ clubIds }: { clubIds: string[]; clubs: ClubRow[] }) {
+export default function ShiftPlannerTab({
+  clubIds,
+  mode = "mock",
+}: {
+  clubIds: string[];
+  clubs: ClubRow[];
+  mode?: "mock" | "live";
+}) {
   const [workDate, setWorkDate] = useState<string>(todayInVN());
-  // Phase 1 runs on the in-memory demo scenario (no DB). Switch to "live" only
-  // after the additive migration is applied and the owner approves (Phase 2).
-  const { data, loading, source, regenerate } = useShiftPlanner({ clubIds, workDate, mode: "mock" });
+  const [editorOpen, setEditorOpen] = useState(false);
+  // mode="mock" runs the in-memory demo; mode="live" reads the dealer_shift_* tables
+  // (Phase 2, after the migration is applied live).
+  const { data, loading, source, regenerate, refetch } = useShiftPlanner({ clubIds, workDate, mode });
 
   const dateLabel = useMemo(
     () =>
@@ -66,6 +75,11 @@ export default function ShiftPlannerTab({ clubIds }: { clubIds: string[]; clubs:
           <Button variant="outline" size="sm" className="h-9" onClick={() => { regenerate(); toast.success("Đã tạo lại bản nháp"); }}>
             <Sparkles className="w-4 h-4 mr-1.5" /> Tạo nháp AI
           </Button>
+          {source === "live" && (
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setEditorOpen(true)}>
+              <SlidersHorizontal className="w-4 h-4 mr-1.5" /> Quản lý ca
+            </Button>
+          )}
           <Button
             size="sm"
             className="h-9"
@@ -165,6 +179,16 @@ export default function ShiftPlannerTab({ clubIds }: { clubIds: string[]; clubs:
             bản nháp đề xuất — chưa ghi vào hệ thống chấm công cho đến khi Publish (Phase 2).
           </p>
         </>
+      )}
+
+      {source === "live" && clubIds[0] && (
+        <ShiftTemplateEditor
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          clubId={clubIds[0]}
+          refDate={workDate}
+          onChanged={refetch}
+        />
       )}
     </div>
   );
