@@ -88,14 +88,21 @@ const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
 // ── Step 1 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
 // Auto-STAFF an empty ACTIVE table (never opens/activates a new table) with a
 // genuinely-FREE dealer ONLY (availableOnly — never pulls an on_break dealer,
-// rest guard preserved) + a direct DM to the chosen dealer. Default EMPTY =
-// OFF for every club. Enabling requires OWNER APPROVAL: add the club UUID to
-// this set (one club at a time for the test window). Distinct from the legacy
-// global AUTO_OPEN_EMPTY_TABLES_ENABLED (on_break-inclusive) which stays OFF.
+// rest guard preserved) + a direct DM to the chosen dealer.
+//
+// Source = Edge Function ENV/SECRET only: `AUTO_STAFF_EMPTY_TABLES_CLUB_IDS`,
+// a comma/space/newline-separated list of club UUIDs. UNSET / empty = OFF for
+// EVERY club. Enabling a club = set the secret in Supabase Edge env (no code
+// change, NO club UUID committed to the repo). Comparison is case-insensitive.
+// Distinct from the legacy global AUTO_OPEN_EMPTY_TABLES_ENABLED (on_break-
+// inclusive) which stays OFF.
 // NOTE: predictive pre-assign of a still-on-break dealer is Step 2 — NOT here.
-const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = new Set<string>([
-  // "00000000-0000-0000-0000-000000000000", // ← owner-approved test club
-]);
+const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = new Set<string>(
+  (Deno.env.get("AUTO_STAFF_EMPTY_TABLES_CLUB_IDS") ?? "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0),
+);
 // Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
 // The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
 // that auto-picks an UNPLANNED pool dealer for an overdue table is disabled:
@@ -1270,7 +1277,7 @@ Deno.serve(async (req: Request) => {
         // Per-club path runs with availableOnly=true: only genuinely-free
         // dealers (no on_break), rest guard preserved, never opens a new table,
         // + a direct DM to the chosen dealer.
-        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(cid);
+        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(String(cid).toLowerCase());
         if (!dryRun && (AUTO_OPEN_EMPTY_TABLES_ENABLED || autoStaffThisClub)) {
           fillResult = await fillEmptyTables(
             admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt,
