@@ -7712,6 +7712,19 @@ export type Database = {
         }
         Returns: Json
       }
+      reenter_tournament_player: {
+        Args: {
+          p_buy_in: number
+          p_draw_mode?: string
+          p_entry_id: string
+          p_fee: number
+        }
+        Returns: Json
+      }
+      void_registration: {
+        Args: { p_reason?: string; p_registration_id: string }
+        Returns: Json
+      }
       dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
       delete_last_action: {
         Args: { p_hand_id: string; p_user_id?: string }

@@ -21,6 +21,18 @@ export const FEATURES = {
    */
   offlineBuyIn: true,
   /**
+   * Registration extensions for cashiers: VOID (cancel a confirmed registration →
+   * free seat + refund + revenue auto-reverse, via `void_registration`) and
+   * RE-ENTRY (re-buy a busted player → new entry + seat + receipt, via
+   * `reenter_tournament_player`). Default **OFF** because both need their RPCs
+   * applied live first (`20260901000000` + `20260901000001`). While false: the
+   * Void buttons are hidden in the registration lists, and the "Re-entry" panel —
+   * shown to admins/club owners for UAT — keeps its action button disabled
+   * ("Cần bật RPC") and never calls a missing RPC. Flip to true ONLY after the two
+   * RPCs are applied live in a controlled DB session.
+   */
+  registrationExtensions: false,
+  /**
    * Move-player dialog + System-A row locking in TableDrawPanel.
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
    * actor bound to auth.uid(), PUBLIC/anon execute revoked, spoof/anon/noop

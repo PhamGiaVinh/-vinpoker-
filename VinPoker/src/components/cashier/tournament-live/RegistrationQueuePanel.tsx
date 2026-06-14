@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Dices, Ticket, XCircle, Copy, ArrowRightLeft } from "lucide-react";
+import { Loader2, RefreshCw, Dices, Ticket, XCircle, Copy, ArrowRightLeft, Undo2 } from "lucide-react";
 import { formatVND, formatDateTime } from "@/lib/format";
 import { FEATURES } from "@/lib/featureFlags";
 import { SeatDrawDialog, type DrawRegistration } from "./SeatDrawDialog";
@@ -14,6 +14,7 @@ import { MovePlayerDialog } from "./MovePlayerDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { CancelRegistrationDialog } from "@/components/cashier/registrations/CancelRegistrationDialog";
+import { VoidRegistrationDialog } from "@/components/cashier/registrations/VoidRegistrationDialog";
 
 const POLL_MS = 15_000; // tournament_registrations is NOT realtime-published — honest poll + seats-channel piggyback (refreshTrigger)
 
@@ -49,6 +50,19 @@ const maskPhone = (p?: string | null) => {
   return s.slice(0, 3) + "****" + s.slice(-3);
 };
 
+// Maps void_registration RPC error codes to cashier-facing Vietnamese.
+function mapVoidErr(res: any, raw?: string): string {
+  switch (res?.error ?? raw) {
+    case "unauthorized": return "Phiên đăng nhập hết hạn — đăng nhập lại.";
+    case "actor_not_allowed": return "Tài khoản của bạn không có quyền huỷ cho CLB này.";
+    case "registration_not_found": return "Không tìm thấy đăng ký.";
+    case "already_cancelled": return "Đăng ký đã được huỷ trước đó.";
+    case "invalid_status": return "Chỉ huỷ được đăng ký đã xác nhận.";
+    case "entry_not_voidable": return "Người chơi đã bust/kết thúc — không thể huỷ (dùng re-entry nếu cần).";
+    default: return res?.error ? `Huỷ thất bại (${res.error}).` : (raw || "Huỷ thất bại.");
+  }
+}
+
 const QUEUE_BADGE: Record<QueueStatus, { label: string; cls: string }> = {
   waiting: { label: "⏳ Chờ xếp ghế", cls: "text-warning border-warning/40" },
   seated: { label: "🪑 Đã có ghế", cls: "text-success border-success/40" },
@@ -80,6 +94,8 @@ export function RegistrationQueuePanel({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<QueueRow | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<QueueRow | null>(null);
+  const [voidBusy, setVoidBusy] = useState(false);
   const [moveRow, setMoveRow] = useState<QueueRow | null>(null);
   const seqRef = useRef(0);
 
@@ -197,6 +213,23 @@ export function RegistrationQueuePanel({
     load();
   };
 
+  // Void a CONFIRMED registration: cascades seat/entry/receipt + reverses revenue
+  // via the void_registration RPC (actor bound to auth.uid() server-side).
+  const voidReg = async (reason: string) => {
+    if (!voidTarget) return;
+    setVoidBusy(true);
+    const { data, error } = await supabase.rpc("void_registration", {
+      p_registration_id: voidTarget.id,
+      p_reason: reason,
+    });
+    setVoidBusy(false);
+    const res = data as any;
+    if (error || !res?.ok) { toast.error(mapVoidErr(res, error?.message)); return; }
+    setVoidTarget(null);
+    toast.success(`Đã huỷ & hoàn ${formatVND(res.refund_amount ?? voidTarget.total_pay)} — ghế đã giải phóng`);
+    load();
+  };
+
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -284,6 +317,12 @@ export function RegistrationQueuePanel({
                       <ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Chuyển ghế
                     </Button>
                   )}
+                  {FEATURES.registrationExtensions && r.queueStatus !== "waiting" && (
+                    <Button size="sm" variant="outline" className="flex-1 h-9 text-destructive border-destructive/40"
+                      onClick={() => setVoidTarget(r)}>
+                      <Undo2 className="w-3.5 h-3.5 mr-1" /> Huỷ & hoàn
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -308,6 +347,17 @@ export function RegistrationQueuePanel({
         referenceCode={cancelTarget?.reference_code ?? ""}
         busy={cancelBusy}
         onCancel={cancel}
+      />
+
+      <VoidRegistrationDialog
+        open={voidTarget !== null}
+        onOpenChange={(v) => { if (!v) setVoidTarget(null); }}
+        playerName={voidTarget?.player_name ?? "Player"}
+        referenceCode={voidTarget?.reference_code ?? ""}
+        refundAmount={voidTarget?.total_pay ?? 0}
+        seatLabel={voidTarget?.receipt ? `Bàn ${voidTarget.receipt.table_number ?? "?"} · Ghế ${voidTarget.receipt.seat_number}` : null}
+        busy={voidBusy}
+        onConfirm={voidReg}
       />
 
       {moveRow?.entry_id && (
