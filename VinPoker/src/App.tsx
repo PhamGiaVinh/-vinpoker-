@@ -83,6 +83,13 @@ const TournamentDisplay = lazy(() => import("./pages/TournamentDisplay"));
 // GE-2D online-poker shell (dark; gated by FEATURES.onlinePoker)
 const OnlinePoker = lazy(() => import("./pages/OnlinePoker"));
 const OnlinePokerTable = lazy(() => import("./pages/OnlinePokerTable"));
+// Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
+const DealerAppShell = lazy(() => import("./components/dealer-app/DealerAppShell"));
+const DealerHome = lazy(() => import("./pages/dealer/DealerHome"));
+const DealerDay = lazy(() => import("./pages/dealer/DealerDay"));
+const DealerWeek = lazy(() => import("./pages/dealer/DealerWeek"));
+const DealerCareers = lazy(() => import("./pages/dealer/DealerCareers"));
+const DealerAccount = lazy(() => import("./pages/dealer/DealerAccount"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -133,6 +140,15 @@ const App = () => (
               <Route path="/tv/pair" element={<TvPair />} />
               <Route path="/tv/:tournamentId" element={<TournamentTv />} />
               <Route path="/display/:displayToken" element={<TournamentDisplay />} />
+              {/* Dealer Mobile App — its own mobile shell, separate from Layout
+                  chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}
+              <Route element={<DealerAppShell />}>
+                <Route path="/dealer" element={<DealerHome />} />
+                <Route path="/dealer/day" element={<DealerDay />} />
+                <Route path="/dealer/week" element={<DealerWeek />} />
+                <Route path="/dealer/careers" element={<DealerCareers />} />
+                <Route path="/dealer/account" element={<DealerAccount />} />
+              </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
                 <Route path="/tournament/:id" element={<TournamentDetail />} />

@@ -102,4 +102,16 @@ export const FEATURES = {
    * `hand_actions` realtime subscription (controlled publication op).
    */
   liveActionEngine: false,
+  /**
+   * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
+   * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
+   * Default **OFF**: while false the app shows <DealerComingSoon/> to everyone
+   * except super_admin / club owners (so the owner can UAT). Live data ALSO
+   * requires `dealerShiftPlanner` ON + its additive migration applied; otherwise
+   * the app runs entirely on in-memory mock. NEVER touches the live Dealer Swing
+   * / attendance / payroll tables. Self-service write RPCs (confirm/check-in) are
+   * a separate owner-gated migration; until applied the action buttons are
+   * preview-only. Flip to true after owner UAT.
+   */
+  dealerMobileApp: false,
 } as const;

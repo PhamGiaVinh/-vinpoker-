@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2 } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -25,6 +25,7 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
 import appLogo from "@/assets/app-logo.png";
+import { FEATURES } from "@/lib/featureFlags";
 
 const tabsData = [
   { to: "/", labelKey: "schedule", icon: Calendar, end: true, label: "Lịch giải" },
@@ -241,6 +242,21 @@ export const Layout = () => {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+
+            {/* Dealer Mobile App entry (mobile + desktop). Shown to admins/owners
+                for UAT while the flag is OFF, and to everyone once it's ON (open
+                market — non-dealers land on the "link/apply" screen). */}
+            {user && (FEATURES.dealerMobileApp || isAdmin || isClubOwner) && (
+              <NavLink
+                to="/dealer"
+                className="inline-flex items-center gap-1 px-2.5 py-2 md:py-1.5 rounded-lg bg-card border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/10 transition-colors"
+                aria-label="Dealer App"
+                title="Dealer App"
+              >
+                <Spade className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />
+                <span className="hidden min-[400px]:inline">DEALER</span>
+              </NavLink>
             )}
 
             <div className="hidden md:flex items-center gap-1.5">
