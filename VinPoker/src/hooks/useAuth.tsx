@@ -26,6 +26,7 @@ interface AuthContextValue {
   isMedia: boolean; // media role
   isMediaOrAdmin: boolean; // can manage CMS / support
   isTracker: boolean; // tracker role — can access live tracker
+  isDealer: boolean; // linked to a dealers row (dealers.user_id = auth.uid())
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isClubOwner, setIsClubOwner] = useState(false);
+  const [isDealer, setIsDealer] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setRoles([]);
         setIsClubOwner(false);
+        setIsDealer(false);
         setTimeout(() => logoutUser(), 0);
       }
     });
@@ -70,18 +73,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const fetchRoles = async (userId: string) => {
-    const [{ data: roleRows }, { data: ownedClubs }] = await Promise.all([
+    const [{ data: roleRows }, { data: ownedClubs }, { data: dealerRows }] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("clubs").select("id").eq("owner_id", userId).limit(1),
+      // A user "is a dealer" if linked to a dealers row. Self-read is permitted by
+      // the dealers_select_control policy (USING ... OR auth.uid() = user_id).
+      supabase.from("dealers").select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
     ]);
     setRoles((roleRows ?? []).map((r: any) => r.role as AppRole));
     setIsClubOwner((ownedClubs ?? []).length > 0);
+    setIsDealer((dealerRows ?? []).length > 0);
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setRoles([]);
     setIsClubOwner(false);
+    setIsDealer(false);
   };
 
   return (
@@ -95,6 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isMedia: roles.includes("media"),
       isMediaOrAdmin: roles.includes("super_admin") || roles.includes("media"),
       isTracker: roles.includes("tracker"),
+      isDealer,
     }}>
       {children}
     </AuthContext.Provider>
