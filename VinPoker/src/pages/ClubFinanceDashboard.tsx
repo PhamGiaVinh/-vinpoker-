@@ -178,7 +178,7 @@ const ClubFinanceDashboard = () => {
             <Kpi icon={<Coins className="w-3.5 h-3.5" />} label="Doanh thu thật" value={formatVND(summary.revenue.total)} hint="phí + rake" accent="text-primary" />
             <Kpi icon={<Users className="w-3.5 h-3.5" />} label="Chi phí lương" value={formatVND(summary.cost.payrollNet)} hint="đã lưu" accent="text-[#f0997b]" />
             <Kpi icon={<TrendingUp className="w-3.5 h-3.5" />} label="Lãi ròng" value={formatVND(summary.net)} hint={`biên ${formatPct(margin(summary.net, summary.revenue.total))}`} accent="text-primary" highlight />
-            <Kpi icon={<Clock className="w-3.5 h-3.5" />} label="Lương chưa trả" value={formatVND(summary.unpaidTotal)} hint="chờ chi trả" accent="text-amber-400" />
+            <Kpi icon={<Clock className="w-3.5 h-3.5" />} label="Lương chưa trả" value={formatVND(summary.unpaidTotal)} hint="chờ chi trả" accent="text-warning" />
             <Kpi icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Đã đối soát" value={formatVND(summary.reconciledTotal)} hint="hoàn tất" accent="text-[#378ADD]" />
           </div>
 

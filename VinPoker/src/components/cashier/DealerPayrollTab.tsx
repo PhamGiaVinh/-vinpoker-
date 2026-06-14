@@ -50,12 +50,12 @@ const ADJ_TYPE_LABELS: Record<AdjType, string> = {
 };
 
 const ADJ_TYPE_COLORS: Record<AdjType, string> = {
-  BONUS: "border-emerald-500 text-emerald-400",
-  PENALTY: "border-red-500 text-red-400",
-  DEDUCTION: "border-orange-500 text-orange-400",
-  ADVANCE: "border-blue-500 text-blue-400",
-  OTHER: "border-zinc-500 text-zinc-400",
-  TIPS: "border-yellow-500 text-yellow-400",
+  BONUS: "border-success text-success",
+  PENALTY: "border-destructive text-destructive",
+  DEDUCTION: "border-warning text-warning",
+  ADVANCE: "border-[hsl(var(--ds-active))] text-[hsl(var(--ds-active))]",
+  OTHER: "border-border text-muted-foreground",
+  TIPS: "border-warning text-warning",
 };
 
 // ── Column config (single source of truth for table + export + PDF) ──────────
@@ -216,16 +216,16 @@ function MetricCard({ label, value, sub, variant = "default" }: {
   variant?: MetricVariant;
 }) {
   const variantStyles: Record<MetricVariant, string> = {
-    default: "text-zinc-100",
-    success: "text-emerald-400",
-    danger: "text-red-400",
-    warning: "text-amber-400",
+    default: "text-foreground",
+    success: "text-success",
+    danger: "text-destructive",
+    warning: "text-warning",
   };
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 flex flex-col gap-1 min-w-0">
-      <span className="text-[11px] text-zinc-500 uppercase tracking-wider truncate">{label}</span>
+    <div className="bg-card border border-border rounded-lg p-2.5 flex flex-col gap-1 min-w-0">
+      <span className="text-[11px] text-muted-foreground uppercase tracking-wider truncate">{label}</span>
       <span className={`text-base font-semibold ${variantStyles[variant]} truncate`}>{value}</span>
-      {sub && <span className="text-[10px] text-zinc-500 truncate">{sub}</span>}
+      {sub && <span className="text-[10px] text-muted-foreground truncate">{sub}</span>}
     </div>
   );
 }
@@ -724,7 +724,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               {r.full_name}
               {!isLocked && savedRecords[r.dealer_id] && (
                 <button
-                  className="text-[10px] text-zinc-400 hover:text-emerald-400 ml-1"
+                  className="text-[10px] text-muted-foreground hover:text-success ml-1"
                   onClick={() => openAdjustDialog(r.dealer_id)}
                   title="Thêm điều chỉnh"
                 >
@@ -739,13 +739,13 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     <Badge variant="outline" className={`text-[9px] px-1 py-0 h-4 ${ADJ_TYPE_COLORS[a.adjustment_type as AdjType] ?? ""}`}>
                       {ADJ_TYPE_LABELS[a.adjustment_type as AdjType] ?? a.adjustment_type}
                     </Badge>
-                    <span className={(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER") ? "text-emerald-400" : "text-red-400"}>
+                    <span className={(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER") ? "text-success" : "text-destructive"}>
                       {(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER" ? "+" : "-")}{Number(a.amount_vnd).toLocaleString("vi-VN")}
                     </span>
-                    <span className="text-zinc-500">{a.reason}</span>
+                    <span className="text-muted-foreground">{a.reason}</span>
                     {!isLocked && (
                       <button
-                        className="text-zinc-600 hover:text-red-400 ml-0.5"
+                        className="text-muted-foreground hover:text-destructive ml-0.5"
                         onClick={() => handleDeleteAdjustment(a.id)}
                         title="Xóa"
                       >
@@ -762,7 +762,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         return (
           <Badge
             variant="outline"
-            className={`text-[10px] ${isFullTime ? "border-emerald-500 text-emerald-400" : "border-amber-500 text-amber-400"}`}
+            className={`text-[10px] ${isFullTime ? "border-success text-success" : "border-warning text-warning"}`}
           >
             {isFullTime ? "FT" : "PT"}
           </Badge>
@@ -770,46 +770,46 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       case "total_shifts": {
         const hasOvernight = r.shifts.some((s) => s.is_overnight);
         return (
-          <div className={`${baseRight.replace("text-right", "text-center")} text-zinc-300`}>
+          <div className={`${baseRight.replace("text-right", "text-center")} text-foreground`}>
             <div className="flex items-center justify-center gap-1">
               {r.total_shifts || "—"}
-              {hasOvernight && <Moon className="w-3 h-3 text-indigo-400" />}
+              {hasOvernight && <Moon className="w-3 h-3 text-[hsl(var(--ds-active))]" />}
             </div>
           </div>
         );
       }
-      case "total_hours":     return <span className={`${baseRight} text-zinc-300`}>{formatHours(r.total_hours)}</span>;
-      case "regular_hours":   return <span className={`${baseRight} text-zinc-300`}>{formatHours(r.regular_hours)}</span>;
-      case "ot_hours":        return <span className={`${baseRight} ${r.ot_hours > 0 ? "text-red-400 font-semibold" : "text-zinc-500"}`}>{r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}</span>;
+      case "total_hours":     return <span className={`${baseRight} text-foreground`}>{formatHours(r.total_hours)}</span>;
+      case "regular_hours":   return <span className={`${baseRight} text-foreground`}>{formatHours(r.regular_hours)}</span>;
+      case "ot_hours":        return <span className={`${baseRight} ${r.ot_hours > 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>{r.ot_hours > 0 ? formatHours(r.ot_hours) : "—"}</span>;
       case "base_pay": {
         const isProrated = isFullTime && r.monthly_salary_vnd > 0 && r.total_shifts < (r.standard_shifts_per_month ?? 26);
         return (
-          <div className={`${baseRight} text-zinc-300`}>
+          <div className={`${baseRight} text-foreground`}>
             <div>
               {isFullTime
                 ? r.base_salary_vnd > 0 ? formatVNDShort(r.base_salary_vnd) : "—"
                 : r.hourly_rate_vnd ? `${(r.hourly_rate_vnd / 1000).toFixed(0)}K/h` : "—"}
             </div>
             {isProrated && (
-              <div className="text-[10px] text-amber-500 leading-tight">
+              <div className="text-[10px] text-warning leading-tight">
                 {formatVNDShort(r.monthly_salary_vnd)}×{r.total_shifts}/{r.standard_shifts_per_month ?? 26}
               </div>
             )}
           </div>
         );
       }
-      case "regular_pay":     return <span className={`${baseRight} text-zinc-300`}>{formatVND(r.regular_pay_vnd)}</span>;
-      case "ot_pay":          return <span className={`${baseRight} ${r.ot_pay_vnd > 0 ? "text-red-400" : "text-zinc-500"}`}>{r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}</span>;
-      case "gross_pay":       return <span className={`${baseRight} font-semibold text-emerald-400`}>{formatVND(r.gross_pay_vnd)}</span>;
-      case "tips":            return <span className={`${baseRight} text-zinc-500`}>{r.tips_amount_vnd > 0 ? formatVND(r.tips_amount_vnd) : "—"}</span>;
-      case "bhxh":            return <span className={`${baseRight} ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>{isFullTime && r.bhxh_deduction_vnd > 0 ? formatVND(r.bhxh_deduction_vnd) : "—"}</span>;
-      case "bhyt":            return <span className={`${baseRight} ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>{isFullTime && r.bhyt_deduction_vnd > 0 ? formatVND(r.bhyt_deduction_vnd) : "—"}</span>;
-      case "bhtn":            return <span className={`${baseRight} ${isFullTime ? "text-zinc-300" : "text-zinc-600"}`}>{isFullTime && r.bhtn_deduction_vnd > 0 ? formatVND(r.bhtn_deduction_vnd) : "—"}</span>;
-      case "pit":             return <span className={`${baseRight} text-zinc-500`}>{r.pit_deduction_vnd > 0 ? formatVND(r.pit_deduction_vnd) : "—"}</span>;
-      case "net_after_tax":   return <span className={`${baseRight} font-semibold text-emerald-400`}>{formatVND(r.net_pay_after_tax_vnd)}</span>;
+      case "regular_pay":     return <span className={`${baseRight} text-foreground`}>{formatVND(r.regular_pay_vnd)}</span>;
+      case "ot_pay":          return <span className={`${baseRight} ${r.ot_pay_vnd > 0 ? "text-destructive" : "text-muted-foreground"}`}>{r.ot_pay_vnd > 0 ? formatVND(r.ot_pay_vnd) : "—"}</span>;
+      case "gross_pay":       return <span className={`${baseRight} font-semibold text-success`}>{formatVND(r.gross_pay_vnd)}</span>;
+      case "tips":            return <span className={`${baseRight} text-muted-foreground`}>{r.tips_amount_vnd > 0 ? formatVND(r.tips_amount_vnd) : "—"}</span>;
+      case "bhxh":            return <span className={`${baseRight} ${isFullTime ? "text-foreground" : "text-muted-foreground"}`}>{isFullTime && r.bhxh_deduction_vnd > 0 ? formatVND(r.bhxh_deduction_vnd) : "—"}</span>;
+      case "bhyt":            return <span className={`${baseRight} ${isFullTime ? "text-foreground" : "text-muted-foreground"}`}>{isFullTime && r.bhyt_deduction_vnd > 0 ? formatVND(r.bhyt_deduction_vnd) : "—"}</span>;
+      case "bhtn":            return <span className={`${baseRight} ${isFullTime ? "text-foreground" : "text-muted-foreground"}`}>{isFullTime && r.bhtn_deduction_vnd > 0 ? formatVND(r.bhtn_deduction_vnd) : "—"}</span>;
+      case "pit":             return <span className={`${baseRight} text-muted-foreground`}>{r.pit_deduction_vnd > 0 ? formatVND(r.pit_deduction_vnd) : "—"}</span>;
+      case "net_after_tax":   return <span className={`${baseRight} font-semibold text-success`}>{formatVND(r.net_pay_after_tax_vnd)}</span>;
       case "adjustments":
         return (
-          <span className={`${baseRight} ${r.total_adjustments_vnd > 0 ? "text-emerald-400" : r.total_adjustments_vnd < 0 ? "text-red-400" : "text-zinc-500"}`}>
+          <span className={`${baseRight} ${r.total_adjustments_vnd > 0 ? "text-success" : r.total_adjustments_vnd < 0 ? "text-destructive" : "text-muted-foreground"}`}>
             {r.total_adjustments_vnd !== 0 ? formatVND(r.total_adjustments_vnd) : "—"}
           </span>
         );
@@ -820,7 +820,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             <button
               onClick={() => exportSinglePdf(r)}
               disabled={exporting === r.dealer_id}
-              className="p-1 rounded text-zinc-500 hover:text-emerald-400 disabled:opacity-50"
+              className="p-1 rounded text-muted-foreground hover:text-success disabled:opacity-50"
               title="Xuất PDF"
             >
               {exporting === r.dealer_id ? (
@@ -832,7 +832,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             {!isLocked && savedRecords[r.dealer_id] && (
               <button
                 onClick={() => openAdjustDialog(r.dealer_id)}
-                className="p-1 rounded text-zinc-500 hover:text-emerald-400"
+                className="p-1 rounded text-muted-foreground hover:text-success"
                 title="Điều chỉnh"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -845,7 +845,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   };
 
   const renderRow = (r: DealerPayrollRow) => (
-    <TableRow key={r.dealer_id} className="hover:bg-zinc-800/50">
+    <TableRow key={r.dealer_id} className="hover:bg-muted/50">
       {COLUMNS.map((col) => {
         const cellClass = col.hideBelow ? `hidden ${col.hideBelow}:table-cell` : "";
         return (
@@ -899,7 +899,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         </Button>
 
         {payrollRows.length > 0 && (
-          <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={doExport}>
+          <Button size="sm" className="h-8 text-xs bg-success hover:bg-success text-white" onClick={doExport}>
             <Download className="w-3.5 h-3.5 mr-1" />
             Xuất Excel
           </Button>
@@ -907,14 +907,14 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
         {/* Save button (always in toolbar) */}
         {payrollRows.length > 0 && !savedPeriodId && (
-          <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white" onClick={handleSave} disabled={saving}>
+          <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
             Lưu bảng lương
           </Button>
         )}
 
         {payrollStatus === "draft" && savedPeriodId && (
-          <Button size="sm" className="h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white" onClick={handleSave} disabled={saving}>
+          <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
             Lưu lại
           </Button>
@@ -922,12 +922,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
         <div className="flex-1" />
 
-        <div className="text-xs text-zinc-500 flex items-center gap-2">
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
           {payrollRows.length > 0 && (
             <span>{payrollRows.length} dealer · {period.start} → {period.end}</span>
           )}
           {lastRefreshedAt && (
-            <span className="text-zinc-600" title="Thời điểm dữ liệu được tải lần cuối">
+            <span className="text-muted-foreground" title="Thời điểm dữ liệu được tải lần cuối">
               · Cập nhật {lastRefreshedAt.toLocaleTimeString("vi-VN")}
             </span>
           )}
@@ -937,12 +937,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       {payrollRows.length > 0 && (
         <>
           {/* ── Owner Finance Summary — số liệu đối chiếu, không thay đổi số lương đã lưu ── */}
-          <div className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/60">
+          <div className="border border-border rounded-lg p-3 bg-card/60">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-medium">
+              <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
                 Tổng quan tài chính chủ doanh nghiệp
               </span>
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-muted-foreground">
                 Số liệu đối chiếu — không thay đổi số lương đã lưu
               </span>
             </div>
@@ -986,12 +986,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               )}
             </div>
             {finance.topCostDealers.length > 0 && (
-              <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-zinc-500">
-                <TrendingUp className="w-3 h-3 text-zinc-500" />
+              <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+                <TrendingUp className="w-3 h-3 text-muted-foreground" />
                 <span className="uppercase tracking-wider text-[10px]">Chi phí cao nhất:</span>
                 {finance.topCostDealers.map((d, i) => (
-                  <span key={d.dealerId} className="text-zinc-300">
-                    {i + 1}. {d.dealerName} <span className="text-zinc-500">({formatVNDShort(d.netPayVnd)})</span>
+                  <span key={d.dealerId} className="text-foreground">
+                    {i + 1}. {d.dealerName} <span className="text-muted-foreground">({formatVNDShort(d.netPayVnd)})</span>
                   </span>
                 ))}
               </div>
@@ -1001,29 +1001,29 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           {/* ── Owner Decision Strip — Trạng thái sẵn sàng chi trả ── */}
           <div className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${
             finance.approvalRiskLevel === "blocked"
-              ? "border-red-600/50 bg-red-950/40"
+              ? "border-destructive/50 bg-destructive/40"
               : finance.approvalRiskLevel === "review"
-                ? "border-amber-600/50 bg-amber-950/30"
-                : "border-emerald-600/40 bg-emerald-950/20"
+                ? "border-warning/50 bg-warning/30"
+                : "border-success/40 bg-success/20"
           }`}>
             {finance.approvalRiskLevel === "blocked" ? (
-              <ShieldAlert className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+              <ShieldAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
             ) : finance.approvalRiskLevel === "review" ? (
-              <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
             )}
             <div className="min-w-0">
               <div className={`text-xs font-semibold ${
-                finance.approvalRiskLevel === "blocked" ? "text-red-300" :
-                finance.approvalRiskLevel === "review" ? "text-amber-300" : "text-emerald-300"
+                finance.approvalRiskLevel === "blocked" ? "text-destructive" :
+                finance.approvalRiskLevel === "review" ? "text-warning" : "text-success"
               }`}>
                 Trạng thái sẵn sàng chi trả: {
                   finance.approvalRiskLevel === "blocked" ? "Không nên chi trước khi đối chiếu" :
                   finance.approvalRiskLevel === "review" ? "Cần kiểm tra trước khi duyệt" : "Sẵn sàng duyệt"
                 }
               </div>
-              <ul className="text-[11px] text-zinc-400 mt-0.5 space-y-0.5">
+              <ul className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
                 {finance.riskReasons.map((reason, i) => (
                   <li key={i}>• {reason}</li>
                 ))}
@@ -1033,35 +1033,35 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
           {/* ── Anomaly warning strip — rủi ro vận hành ── */}
           {anomalyGroups.length > 0 && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+            <div className="rounded-lg border border-border bg-card/50">
               <button
                 className="w-full flex items-center justify-between px-3 py-2 text-left"
                 onClick={() => setAnomaliesExpanded((v) => !v)}
               >
-                <span className="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+                <span className="text-xs font-medium text-warning flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   Rủi ro vận hành: {anomalyGroups.reduce((s, g) => s + g.items.length, 0)} cảnh báo
                   ({anomalyGroups.length} nhóm)
                 </span>
                 {anomaliesExpanded
-                  ? <ChevronUp className="w-3.5 h-3.5 text-zinc-500" />
-                  : <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />}
+                  ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                  : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
               </button>
               {anomaliesExpanded && (
                 <div className="px-3 pb-3 space-y-2">
                   {anomalyGroups.map((group) => (
                     <div key={group.label}>
-                      <div className={`text-[11px] font-medium ${group.level === "danger" ? "text-red-400" : "text-amber-400"}`}>
+                      <div className={`text-[11px] font-medium ${group.level === "danger" ? "text-destructive" : "text-warning"}`}>
                         {group.label} ({group.items.length})
                       </div>
-                      <ul className="text-[11px] text-zinc-400 mt-0.5 space-y-0.5 ml-3">
+                      <ul className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5 ml-3">
                         {group.items.slice(0, 10).map((item, i) => (
                           <li key={`${item.dealerId}-${i}`}>
-                            <span className="text-zinc-300">{item.dealerName}</span> — {item.detail}
+                            <span className="text-foreground">{item.dealerName}</span> — {item.detail}
                           </li>
                         ))}
                         {group.items.length > 10 && (
-                          <li className="text-zinc-600">… và {group.items.length - 10} mục khác</li>
+                          <li className="text-muted-foreground">… và {group.items.length - 10} mục khác</li>
                         )}
                       </ul>
                     </div>
@@ -1099,15 +1099,15 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs transition-colors ${
                       isActive
                         ? f.danger
-                          ? "bg-red-950 border-red-500 text-red-300"
-                          : "bg-zinc-100 border-zinc-100 text-zinc-900 font-medium"
+                          ? "bg-destructive border-destructive text-destructive"
+                          : "bg-foreground border-foreground text-background font-medium"
                         : f.danger
-                          ? "border-red-900 text-red-400 hover:bg-red-950"
-                          : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                          ? "border-destructive text-destructive hover:bg-destructive"
+                          : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                     }`}
                   >
                     {f.label}
-                    <span className={`text-[10px] rounded-full px-1.5 ${isActive ? "bg-zinc-700/30" : "bg-zinc-800"}`}>
+                    <span className={`text-[10px] rounded-full px-1.5 ${isActive ? "bg-secondary/30" : "bg-muted"}`}>
                       {count}
                     </span>
                   </button>
@@ -1118,8 +1118,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               onClick={() => setCostRankingOn((v) => !v)}
               className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full border text-xs transition-colors ${
                 costRankingOn
-                  ? "bg-emerald-950 border-emerald-500 text-emerald-300"
-                  : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                  ? "bg-success border-success text-success"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
               title="Sắp xếp theo thực lãnh cao nhất"
             >
@@ -1128,20 +1128,20 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             </button>
             <div className="flex-1" />
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500 text-xs">⌕</span>
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">⌕</span>
               <input
                 type="text"
                 placeholder="Tìm tên dealer..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 w-48 bg-zinc-900 border border-zinc-700 rounded-md pl-7 pr-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                className="h-7 w-48 bg-card border border-border rounded-md pl-7 pr-2 text-xs text-white placeholder:text-muted-foreground focus:outline-none focus:border-success"
               />
             </div>
           </div>
 
           {/* Empty state when both sections filtered out */}
           {filteredFt.length === 0 && filteredPt.length === 0 && (
-            <div className="text-center text-zinc-500 text-sm py-8">
+            <div className="text-center text-muted-foreground text-sm py-8">
               Không tìm thấy dealer phù hợp
               {searchQuery && <span className="block text-xs mt-1">Từ khoá: "{searchQuery}"</span>}
             </div>
@@ -1160,14 +1160,14 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center text-red-400 text-sm">
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-center text-destructive text-sm">
           {error}
         </div>
       )}
 
       {/* No data */}
       {!loading && !error && payrollRows.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Calculator className="w-10 h-10 mb-3 opacity-40" />
           <p className="text-sm">Chưa có dữ liệu lương cho tháng này</p>
           <p className="text-xs mt-1">Chọn tháng và CLB, rồi nhấn "Làm mới"</p>
@@ -1181,16 +1181,16 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           {filteredFt.length > 0 && (
             <div className="mb-4">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-emerald-600 text-white text-[10px]">Full-time</Badge>
-                <span className="text-xs text-zinc-400">{filteredFt.length} dealer</span>
+                <Badge className="bg-success text-white text-[10px]">Full-time</Badge>
+                <span className="text-xs text-muted-foreground">{filteredFt.length} dealer</span>
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="border-zinc-800">
+                  <TableRow className="border-border">
                     {COLUMNS.map((col) => (
                       <TableHead
                         key={col.key}
-                        className={`text-zinc-400 text-xs ${col.key === "full_name" ? "" : "text-right"} ${col.key === "employment_type" ? "w-12 text-center" : ""} ${col.key === "total_shifts" ? "w-10 text-center" : ""} ${col.hideBelow ? `hidden ${col.hideBelow}:table-cell` : ""}`}
+                        className={`text-muted-foreground text-xs ${col.key === "full_name" ? "" : "text-right"} ${col.key === "employment_type" ? "w-12 text-center" : ""} ${col.key === "total_shifts" ? "w-10 text-center" : ""} ${col.hideBelow ? `hidden ${col.hideBelow}:table-cell` : ""}`}
                       >
                         {col.label}
                       </TableHead>
@@ -1199,35 +1199,35 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </TableHeader>
                 <TableBody>
                   {filteredFt.map(renderRow)}
-                  <TableRow className="border-t-2 border-emerald-600/30 bg-emerald-600/5">
-                    <TableCell className="font-bold text-emerald-400 text-xs" colSpan={3}>FT subtotal</TableCell>
+                  <TableRow className="border-t-2 border-success/30 bg-success/5">
+                    <TableCell className="font-bold text-success text-xs" colSpan={3}>FT subtotal</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ftDealers.reduce((s, d) => s + d.total_hours, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ftDealers.reduce((s, d) => s + d.regular_hours, 0))}</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-destructive">
                       {(() => { const total = ftDealers.reduce((s, d) => s + d.ot_hours, 0); return total > 0 ? formatHours(total) : "—"; })()}
                     </TableCell>
                     <TableCell />
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatVND(ftDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-destructive">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.ot_pay_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-success">{formatVND(ftDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.tips_amount_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.bhxh_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.bhyt_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.bhtn_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                    <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.pit_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ftDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-success">{formatVND(ftDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">
                       {(() => { const t = ftDealers.reduce((s, d) => s + d.total_adjustments_vnd, 0); return t !== 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
@@ -1241,16 +1241,16 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           {filteredPt.length > 0 && (
             <div className="mb-4">
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-amber-600 text-white text-[10px]">Part-time</Badge>
-                <span className="text-xs text-zinc-400">{filteredPt.length} dealer</span>
+                <Badge className="bg-warning text-white text-[10px]">Part-time</Badge>
+                <span className="text-xs text-muted-foreground">{filteredPt.length} dealer</span>
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="border-zinc-800">
+                  <TableRow className="border-border">
                     {COLUMNS.map((col) => (
                       <TableHead
                         key={col.key}
-                        className={`text-zinc-400 text-xs ${col.key === "full_name" ? "" : "text-right"} ${col.key === "employment_type" ? "w-12 text-center" : ""} ${col.key === "total_shifts" ? "w-10 text-center" : ""} ${col.hideBelow ? `hidden ${col.hideBelow}:table-cell` : ""}`}
+                        className={`text-muted-foreground text-xs ${col.key === "full_name" ? "" : "text-right"} ${col.key === "employment_type" ? "w-12 text-center" : ""} ${col.key === "total_shifts" ? "w-10 text-center" : ""} ${col.hideBelow ? `hidden ${col.hideBelow}:table-cell` : ""}`}
                       >
                         {col.label}
                       </TableHead>
@@ -1259,25 +1259,25 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </TableHeader>
                 <TableBody>
                   {filteredPt.map(renderRow)}
-                  <TableRow className="border-t-2 border-amber-600/30 bg-amber-600/5">
-                    <TableCell className="font-bold text-amber-400 text-xs" colSpan={3}>PT subtotal</TableCell>
+                  <TableRow className="border-t-2 border-warning/30 bg-warning/5">
+                    <TableCell className="font-bold text-warning text-xs" colSpan={3}>PT subtotal</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ptDealers.reduce((s, d) => s + d.total_hours, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatHours(ptDealers.reduce((s, d) => s + d.regular_hours, 0))}</TableCell>
                     <TableCell />
                     <TableCell />
                     <TableCell className="text-right font-mono text-xs font-semibold">{formatVND(ptDealers.reduce((s, d) => s + d.regular_pay_vnd, 0))}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-success">{formatVND(ptDealers.reduce((s, d) => s + d.gross_pay_vnd, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">
                       {(() => { const t = ptDealers.reduce((s, d) => s + d.tips_amount_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-zinc-600">—</TableCell>
-                    <TableCell className="text-right font-mono text-xs font-semibold text-zinc-400">
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">—</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
                       {(() => { const t = ptDealers.reduce((s, d) => s + d.pit_deduction_vnd, 0); return t > 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">{formatVND(ptDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
+                    <TableCell className="text-right font-mono text-xs font-bold text-success">{formatVND(ptDealers.reduce((s, d) => s + d.net_pay_after_tax_vnd, 0))}</TableCell>
                     <TableCell className="text-right font-mono text-xs font-semibold">
                       {(() => { const t = ptDealers.reduce((s, d) => s + d.total_adjustments_vnd, 0); return t !== 0 ? formatVND(t) : "—"; })()}
                     </TableCell>
@@ -1288,47 +1288,47 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           )}
 
           {/* Grand Total */}
-          <div className="mt-2 p-4 rounded-lg bg-zinc-900 border border-emerald-600/30">
+          <div className="mt-2 p-4 rounded-lg bg-card border border-success/30">
             <div className="grid grid-cols-4 md:grid-cols-10 gap-3 text-center">
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Dealer</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Dealer</div>
                 <div className="text-lg font-bold text-white">{payrollRows.length}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Ca</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Ca</div>
                 <div className="text-lg font-bold text-white">{totals.totalShifts}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Tổng giờ</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Tổng giờ</div>
                 <div className="text-lg font-bold text-white">{formatHours(totals.totalHours)}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Lương cơ bản</div>
-                <div className="text-base font-semibold text-zinc-300">{formatVND(totals.totalBase)}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Lương cơ bản</div>
+                <div className="text-base font-semibold text-foreground">{formatVND(totals.totalBase)}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">OT</div>
-                <div className="text-base font-semibold text-red-400">{totals.totalOt > 0 ? formatVND(totals.totalOt) : "—"}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">OT</div>
+                <div className="text-base font-semibold text-destructive">{totals.totalOt > 0 ? formatVND(totals.totalOt) : "—"}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Gộp</div>
-                <div className="text-base font-semibold text-emerald-400">{formatVND(totals.totalGross)}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Gộp</div>
+                <div className="text-base font-semibold text-success">{formatVND(totals.totalGross)}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Tips</div>
-                <div className="text-base font-semibold text-zinc-300">{totals.totalTips > 0 ? formatVND(totals.totalTips) : "—"}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Tips</div>
+                <div className="text-base font-semibold text-foreground">{totals.totalTips > 0 ? formatVND(totals.totalTips) : "—"}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">BHXH</div>
-                <div className="text-base font-semibold text-zinc-300">{totals.totalBhxh > 0 ? formatVND(totals.totalBhxh) : "—"}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">BHXH</div>
+                <div className="text-base font-semibold text-foreground">{totals.totalBhxh > 0 ? formatVND(totals.totalBhxh) : "—"}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Sau thuế</div>
-                <div className="text-base font-semibold text-emerald-400">{formatVND(totals.totalNetAfterTax)}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Sau thuế</div>
+                <div className="text-base font-semibold text-success">{formatVND(totals.totalNetAfterTax)}</div>
               </div>
               <div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Thực lãnh</div>
-                <div className="text-lg font-bold text-emerald-400">{formatVND(totals.totalNet)}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Thực lãnh</div>
+                <div className="text-lg font-bold text-success">{formatVND(totals.totalNet)}</div>
               </div>
             </div>
           </div>
@@ -1337,21 +1337,21 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
       {/* Approval footer */}
       {!loading && !error && payrollRows.length > 0 && savedPeriodId && (
-        <div className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/50 mt-2">
+        <div className="border border-border rounded-lg p-3 bg-card/50 mt-2">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             {/* Left: status + history */}
             <div className="flex flex-col gap-1.5 min-w-0">
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${
-                  payrollStatus === "approved" ? "bg-emerald-500" :
-                  payrollStatus === "locked" ? "bg-zinc-500" :
-                  payrollStatus === "rejected" ? "bg-red-500" :
-                  payrollStatus === "submitted" ? "bg-amber-500" :
-                  payrollStatus === "payment_prepared" ? "bg-amber-400" :
-                  payrollStatus === "paid" ? "bg-emerald-500" :
-                  payrollStatus === "reconciled" ? "bg-emerald-400" : "bg-zinc-400"
+                  payrollStatus === "approved" ? "bg-success" :
+                  payrollStatus === "locked" ? "bg-muted-foreground" :
+                  payrollStatus === "rejected" ? "bg-destructive" :
+                  payrollStatus === "submitted" ? "bg-warning" :
+                  payrollStatus === "payment_prepared" ? "bg-warning" :
+                  payrollStatus === "paid" ? "bg-success" :
+                  payrollStatus === "reconciled" ? "bg-success" : "bg-muted-foreground"
                 }`} />
-                <span className="text-sm font-medium text-zinc-200">
+                <span className="text-sm font-medium text-foreground">
                   {payrollStatus === "draft" ? "Bản nháp" :
                    payrollStatus === "submitted" ? "Chờ duyệt" :
                    payrollStatus === "approved" ? "Đã duyệt" :
@@ -1362,75 +1362,75 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                    payrollStatus === "reconciled" ? "Đã đối soát" : "—"}
                 </span>
               </div>
-              <div className="text-[11px] text-zinc-500 space-y-0.5">
+              <div className="text-[11px] text-muted-foreground space-y-0.5">
                 {submittedAtMeta && (
                   <div>
-                    Gửi duyệt bởi: <span className="text-zinc-400">{submittedByMeta?.slice(0, 8) ?? "—"}</span>
+                    Gửi duyệt bởi: <span className="text-muted-foreground">{submittedByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(submittedAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {approvedAtMeta && (
                   <div>
-                    Phê duyệt bởi: <span className="text-zinc-400">{approvedByMeta?.slice(0, 8) ?? "—"}</span>
+                    Phê duyệt bởi: <span className="text-muted-foreground">{approvedByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(approvedAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {lockedAtMeta && (
                   <div>
-                    Khoá sổ bởi: <span className="text-zinc-400">{lockedByMeta?.slice(0, 8) ?? "—"}</span>
+                    Khoá sổ bởi: <span className="text-muted-foreground">{lockedByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(lockedAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {paymentPreparedAtMeta && (
                   <div>
-                    Chuẩn bị chi bởi: <span className="text-zinc-400">{paymentPreparedByMeta?.slice(0, 8) ?? "—"}</span>
+                    Chuẩn bị chi bởi: <span className="text-muted-foreground">{paymentPreparedByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(paymentPreparedAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {paidAtMeta && (
-                  <div className="text-emerald-300/80">
-                    Chi trả bởi: <span className="text-emerald-300">{paidByMeta?.slice(0, 8) ?? "—"}</span>
+                  <div className="text-success/80">
+                    Chi trả bởi: <span className="text-success">{paidByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(paidAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {reconciledAtMeta && (
-                  <div className="text-emerald-300/80">
-                    Đối soát bởi: <span className="text-emerald-300">{reconciledByMeta?.slice(0, 8) ?? "—"}</span>
+                  <div className="text-success/80">
+                    Đối soát bởi: <span className="text-success">{reconciledByMeta?.slice(0, 8) ?? "—"}</span>
                     {" · "}{new Date(reconciledAtMeta).toLocaleString("vi-VN")}
                   </div>
                 )}
                 {payrollStatus === "rejected" && (
-                  <div className="text-red-300">
+                  <div className="text-destructive">
                     Từ chối bởi: {rejectedBy?.slice(0, 8) ?? "—"}
                     {rejectedAt ? ` · ${new Date(rejectedAt).toLocaleString("vi-VN")}` : ""}
                     {storedRejectionReason ? ` — Lý do: ${storedRejectionReason}` : ""}
                   </div>
                 )}
-                <div className="text-zinc-600">
+                <div className="text-muted-foreground">
                   Người xem hiện tại: {user?.id?.slice(0, 8) ?? "—"}
                   {lastRefreshedAt ? ` · Dữ liệu cập nhật ${lastRefreshedAt.toLocaleTimeString("vi-VN")}` : ""}
                 </div>
               </div>
               <button
                 onClick={openAuditLog}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 mt-1 w-fit"
+                className="text-[11px] text-success hover:text-success mt-1 w-fit"
               >
                 Xem audit log →
               </button>
 
               {paymentRecord && (
-                <div className="mt-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-[11px] space-y-0.5">
-                  <div className="text-zinc-300 font-medium">Hồ sơ chi trả</div>
-                  <div className="text-zinc-500">
-                    Số tiền chi: <span className="text-emerald-300">{formatVND(paymentRecord.total_net_vnd)}</span>
+                <div className="mt-2 rounded-md border border-border bg-card/60 px-3 py-2 text-[11px] space-y-0.5">
+                  <div className="text-foreground font-medium">Hồ sơ chi trả</div>
+                  <div className="text-muted-foreground">
+                    Số tiền chi: <span className="text-success">{formatVND(paymentRecord.total_net_vnd)}</span>
                     {" · "}{paymentRecord.dealer_count} dealer
                   </div>
-                  <div className="text-zinc-500">
-                    Hình thức: <span className="text-zinc-400">{paymentRecord.payment_method ?? "—"}</span>
-                    {paymentRecord.payment_ref ? <> · Mã GD: <span className="text-zinc-400">{paymentRecord.payment_ref}</span></> : null}
+                  <div className="text-muted-foreground">
+                    Hình thức: <span className="text-muted-foreground">{paymentRecord.payment_method ?? "—"}</span>
+                    {paymentRecord.payment_ref ? <> · Mã GD: <span className="text-muted-foreground">{paymentRecord.payment_ref}</span></> : null}
                   </div>
                   {paymentRecord.reconciliation_ref && (
-                    <div className="text-zinc-500">Mã đối soát: <span className="text-zinc-400">{paymentRecord.reconciliation_ref}</span></div>
+                    <div className="text-muted-foreground">Mã đối soát: <span className="text-muted-foreground">{paymentRecord.reconciliation_ref}</span></div>
                   )}
                 </div>
               )}
@@ -1441,7 +1441,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               {payrollStatus === "draft" && (
                 <button
                   onClick={handleSubmit}
-                  className="h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium"
+                  className="h-8 px-3 rounded-md bg-warning hover:bg-warning text-white text-xs font-medium"
                 >
                   Gửi duyệt
                 </button>
@@ -1452,18 +1452,18 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     placeholder="Nhập lý do từ chối..."
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
-                    className="h-14 text-xs bg-zinc-900 border border-zinc-700 rounded-md p-2 text-white placeholder:text-zinc-500 resize-none focus:outline-none focus:border-emerald-500"
+                    className="h-14 text-xs bg-card border border-border rounded-md p-2 text-white placeholder:text-muted-foreground resize-none focus:outline-none focus:border-success"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleReject(rejectionReason)}
-                      className="flex-1 h-8 rounded-md border border-red-500 text-red-400 hover:bg-red-950 text-xs font-medium"
+                      className="flex-1 h-8 rounded-md border border-destructive text-destructive hover:bg-destructive text-xs font-medium"
                     >
                       Từ chối
                     </button>
                     <button
                       onClick={handleApprove}
-                      className="flex-[2] h-8 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+                      className="flex-[2] h-8 rounded-md bg-success hover:bg-success text-white text-xs font-medium"
                     >
                       Duyệt bảng lương
                     </button>
@@ -1473,7 +1473,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               {payrollStatus === "approved" && (
                 <button
                   onClick={handleLock}
-                  className="h-8 px-3 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs font-medium"
+                  className="h-8 px-3 rounded-md bg-destructive hover:bg-destructive text-white text-xs font-medium"
                 >
                   Khoá sổ
                 </button>
@@ -1481,7 +1481,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               {payrollStatus === "rejected" && (
                 <button
                   onClick={handleResubmit}
-                  className="h-8 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium"
+                  className="h-8 px-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium"
                 >
                   Sửa lại và gửi duyệt
                 </button>
@@ -1491,7 +1491,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white focus:outline-none focus:border-amber-500"
+                    className="h-8 text-xs bg-card border border-border rounded-md px-2 text-white focus:outline-none focus:border-warning"
                   >
                     <option value="bank_transfer">Chuyển khoản</option>
                     <option value="cash">Tiền mặt</option>
@@ -1501,7 +1501,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                   <button
                     onClick={handlePreparePayment}
                     disabled={paymentBusy}
-                    className="h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-medium"
+                    className="h-8 px-3 rounded-md bg-warning hover:bg-warning disabled:opacity-50 text-white text-xs font-medium"
                   >
                     Chuẩn bị chi trả
                   </button>
@@ -1514,12 +1514,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     placeholder="Mã/tham chiếu thanh toán..."
                     value={paymentRef}
                     onChange={(e) => setPaymentRef(e.target.value)}
-                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                    className="h-8 text-xs bg-card border border-border rounded-md px-2 text-white placeholder:text-muted-foreground focus:outline-none focus:border-success"
                   />
                   <button
                     onClick={handleMarkPaid}
                     disabled={paymentBusy}
-                    className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-medium"
+                    className="h-8 px-3 rounded-md bg-success hover:bg-success disabled:opacity-50 text-white text-xs font-medium"
                   >
                     Xác nhận đã chi trả
                   </button>
@@ -1532,20 +1532,20 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     placeholder="Mã đối soát (tuỳ chọn)..."
                     value={reconRef}
                     onChange={(e) => setReconRef(e.target.value)}
-                    className="h-8 text-xs bg-zinc-900 border border-zinc-700 rounded-md px-2 text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                    className="h-8 text-xs bg-card border border-border rounded-md px-2 text-white placeholder:text-muted-foreground focus:outline-none focus:border-success"
                   />
                   <button
                     onClick={handleReconcile}
                     disabled={paymentBusy}
-                    className="h-8 px-3 rounded-md border border-emerald-500 text-emerald-400 hover:bg-emerald-950 disabled:opacity-50 text-xs font-medium"
+                    className="h-8 px-3 rounded-md border border-success text-success hover:bg-success disabled:opacity-50 text-xs font-medium"
                   >
                     Đối soát
                   </button>
-                  <p className="text-[10px] text-zinc-600">Người đối soát phải khác người chi trả.</p>
+                  <p className="text-[10px] text-muted-foreground">Người đối soát phải khác người chi trả.</p>
                 </>
               )}
               {payrollStatus === "reconciled" && (
-                <div className="text-[11px] text-emerald-400 border border-emerald-500/40 rounded-md px-3 py-2 text-center">
+                <div className="text-[11px] text-success border border-success/40 rounded-md px-3 py-2 text-center">
                   ✓ Đã hoàn tất chi trả &amp; đối soát
                 </div>
               )}
@@ -1565,27 +1565,27 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           </DialogHeader>
           <div className="max-h-96 overflow-auto space-y-2">
             {auditLog.length === 0 ? (
-              <p className="text-xs text-zinc-500 text-center py-4">Chưa có lịch sử</p>
+              <p className="text-xs text-muted-foreground text-center py-4">Chưa có lịch sử</p>
             ) : (
               auditLog.map((entry) => {
                 const diffs = auditFieldDiffs(entry.old_values, entry.new_values);
                 return (
-                  <div key={entry.id} className="text-xs border border-zinc-800 rounded p-2 bg-zinc-900/50">
-                    <div className="flex justify-between text-zinc-400">
+                  <div key={entry.id} className="text-xs border border-border rounded p-2 bg-card/50">
+                    <div className="flex justify-between text-muted-foreground">
                       <span className="font-medium">{entry.action}</span>
                       <span>{new Date(entry.changed_at).toLocaleString("vi-VN")}</span>
                     </div>
-                    <div className="text-zinc-500 mt-1">
+                    <div className="text-muted-foreground mt-1">
                       {entry.table_name} · {entry.changed_by?.slice(0, 8) ?? "—"}
                     </div>
                     {diffs.length > 0 && (
-                      <div className="mt-1.5 space-y-0.5 border-t border-zinc-800 pt-1.5">
+                      <div className="mt-1.5 space-y-0.5 border-t border-border pt-1.5">
                         {diffs.map((d) => (
                           <div key={d.field} className="flex items-center gap-1.5 font-mono text-[10px]">
-                            <span className="text-zinc-500">{d.field}:</span>
-                            <span className="text-red-400/80 line-through">{d.from}</span>
-                            <span className="text-zinc-600">→</span>
-                            <span className="text-emerald-400">{d.to}</span>
+                            <span className="text-muted-foreground">{d.field}:</span>
+                            <span className="text-destructive/80 line-through">{d.from}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="text-success">{d.to}</span>
                           </div>
                         ))}
                       </div>
@@ -1613,7 +1613,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label className="text-xs text-zinc-400">Loại điều chỉnh</Label>
+              <Label className="text-xs text-muted-foreground">Loại điều chỉnh</Label>
               <div className="flex gap-2 mt-1 flex-wrap">
                 {(Object.entries(ADJ_TYPE_LABELS) as [AdjType, string][]).map(([key, label]) => (
                   <button
@@ -1621,8 +1621,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     onClick={() => setAdjType(key)}
                     className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                       adjType === key
-                        ? "bg-emerald-600 text-white border-emerald-600"
-                        : `bg-zinc-900 text-zinc-400 border-zinc-700 hover:text-white hover:bg-zinc-700`
+                        ? "bg-success text-white border-success"
+                        : `bg-card text-muted-foreground border-border hover:text-white hover:bg-secondary`
                     }`}
                   >
                     {label}
@@ -1631,28 +1631,28 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
               </div>
             </div>
             <div>
-              <Label className="text-xs text-zinc-400">Số tiền (VND)</Label>
+              <Label className="text-xs text-muted-foreground">Số tiền (VND)</Label>
               <Input
                 type="number"
                 value={adjAmount}
                 onChange={(e) => setAdjAmount(e.target.value)}
                 placeholder="VD: 500000"
-                className="bg-zinc-900 border-zinc-700 text-white"
+                className="bg-card border-border text-white"
               />
             </div>
             <div>
-              <Label className="text-xs text-zinc-400">Lý do</Label>
+              <Label className="text-xs text-muted-foreground">Lý do</Label>
               <Input
                 value={adjReason}
                 onChange={(e) => setAdjReason(e.target.value)}
                 placeholder={ADJ_TYPE_LABELS[adjType]}
-                className="bg-zinc-900 border-zinc-700 text-white"
+                className="bg-card border-border text-white"
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdjDialogOpen(false)}>Huỷ</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white" onClick={handleAddAdjustment} disabled={adjSaving || !adjAmount}>
+            <Button className="bg-success hover:bg-success text-white" onClick={handleAddAdjustment} disabled={adjSaving || !adjAmount}>
               {adjSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
               Thêm
             </Button>
