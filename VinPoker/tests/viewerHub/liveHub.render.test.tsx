@@ -69,5 +69,7 @@ describe("Viewer Event Hub — Increment A (presentational)", () => {
     expect(html).toContain("Bàn 2"); // all-tables strip
     expect(html).toContain("Cập nhật"); // live updates feed
     expect(html).toContain("ALL-IN 5k"); // feed row
+    expect(html).toContain("Ngang"); // orientation toggle (Increment C)
+    expect(html).toContain("Dọc");
   });
 });

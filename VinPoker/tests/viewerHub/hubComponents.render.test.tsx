@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveTablesStrip } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesStrip";
 import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
+import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-hub/OrientationToggle";
 import type { HubFeedItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
 
 const tables: HubTableSummary[] = [
@@ -38,5 +39,14 @@ describe("LiveUpdatesFeed", () => {
   it("shows an empty state when no actions", () => {
     const html = renderToStaticMarkup(<LiveUpdatesFeed feed={[]} />);
     expect(html).toContain("Chưa có hành động");
+  });
+});
+
+describe("OrientationToggle (UI-only)", () => {
+  it("renders both orientations, defaulting to landscape selected", () => {
+    const html = renderToStaticMarkup(<OrientationToggle />);
+    expect(html).toContain("Ngang");
+    expect(html).toContain("Dọc");
+    expect(html).toContain('aria-pressed="true"'); // default landscape is pressed
   });
 });
