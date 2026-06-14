@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
+import { sendTelegramNotification, getClubTelegramChatId, mention } from "../_shared/telegram.ts";
 import { startMealBreak } from "../_shared/mealBreakService.ts";
 
 // Shared dealer state labels (VI) for status / check-in / check-out replies.
@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
     // ── Find linked dealer for remaining commands ────────────────────────
     const { data: dealer } = await admin
       .from("dealers")
-      .select("id, club_id, full_name, telegram_user_id")
+      .select("id, club_id, full_name, telegram_username, telegram_user_id")
       .eq("telegram_user_id", userId)
       .maybeSingle();
 
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
         const usernamePattern = username.replace(/([%_\\])/g, "\\$1");
         const { data: dealer2 } = await admin
           .from("dealers")
-          .select("id, club_id, full_name, telegram_user_id")
+          .select("id, club_id, full_name, telegram_username, telegram_user_id")
           .ilike("telegram_username", usernamePattern)
           .maybeSingle();
 
@@ -375,7 +375,7 @@ async function handleCheckout(
   admin: any,
   botToken: string,
   chatId: number,
-  dealer: { id: string; club_id: string; full_name: string },
+  dealer: { id: string; club_id: string; full_name: string; telegram_username?: string | null; telegram_user_id?: number | null },
 ) {
   const { data: att } = await admin
     .from("dealer_attendance")
@@ -544,10 +544,15 @@ async function handleCheckout(
           timeZone: "Asia/Ho_Chi_Minh",
         });
       const inStr = checkInTime ? fmt(new Date(checkInTime)) : "?";
+      const dealerMention = mention({
+        full_name: dealer.full_name,
+        telegram_username: dealer.telegram_username ?? null,
+        telegram_user_id: dealer.telegram_user_id ? Number(dealer.telegram_user_id) : null,
+      });
       await sendTelegramNotification(
         botToken,
         groupChatId,
-        `Dealer ${dealer.full_name} check out - thời gian làm việc ${inStr}-${fmt(new Date(nowISO))}: ${totalHours} tiếng`,
+        `${dealerMention} check out - thời gian làm việc ${inStr}-${fmt(new Date(nowISO))}: ${totalHours} tiếng`,
       ).catch(() => {});
     }
   } catch { /* non-critical */ }
@@ -568,7 +573,7 @@ async function handleCommand(
   botToken: string,
   chatId: number,
   text: string,
-  dealer: { id: string; club_id: string; full_name: string; telegram_user_id?: number | null },
+  dealer: { id: string; club_id: string; full_name: string; telegram_username?: string | null; telegram_user_id?: number | null },
   userId: number,
 ) {
   const normalizedText = text.toLowerCase().trim();
