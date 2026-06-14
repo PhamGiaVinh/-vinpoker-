@@ -65,7 +65,7 @@ const mobileMenuData = MOBILE_MENU_ROUTES
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isCashier, isStaffOps, isMedia, isTracker, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -194,7 +194,7 @@ export const Layout = () => {
 
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier).
                 Each destination guards itself; this is a UI entry only. */}
-            {(isCashier || isTracker || isAdmin) && (
+            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -231,6 +231,12 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/dealer-swing")} className="gap-2.5 cursor-pointer">
                       <Table2 className="w-4 h-4" />
                       Dealer Swing
+                    </DropdownMenuItem>
+                  )}
+                  {(isClubAdmin || isClubOwner) && (
+                    <DropdownMenuItem onClick={() => nav("/club/admin/finance")} className="gap-2.5 cursor-pointer">
+                      <TrendingUp className="w-4 h-4" />
+                      Tài chính
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
