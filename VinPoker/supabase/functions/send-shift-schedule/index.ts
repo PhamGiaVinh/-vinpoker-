@@ -102,15 +102,24 @@ Deno.serve(async (req: Request) => {
     const png = decodeBase64Png(image_base64);
     const title = caption_title ?? `🗓️ Lịch dealer ngày ${work_date}`;
 
-    // 1) Group / floor chat.
-    let groupSent = false;
+    // 1) Group chat(s): the dealer/club group (telegram_chat_id — the same group
+    //    that gets swing notifications) + the floor-manager chat if configured.
     const { data: cs } = await admin
       .from("club_settings")
       .select("floor_manager_chat_id, telegram_chat_id")
       .eq("club_id", club_id)
       .maybeSingle();
-    const groupChat = (cs as any)?.floor_manager_chat_id ?? (cs as any)?.telegram_chat_id ?? null;
-    if (groupChat) groupSent = await sendPhoto(botToken, String(groupChat), png, title);
+    const groupTargets = [
+      ...new Set(
+        [(cs as any)?.telegram_chat_id, (cs as any)?.floor_manager_chat_id]
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+    let groupSent = false;
+    for (const chat of groupTargets) {
+      if (await sendPhoto(botToken, chat, png, title)) groupSent = true;
+    }
 
     // 2) Per-dealer DM (only dealers that have linked Telegram).
     let dmSent = 0;
@@ -136,7 +145,7 @@ Deno.serve(async (req: Request) => {
     return json({
       outcome: "sent",
       group_sent: groupSent,
-      group_configured: !!groupChat,
+      group_configured: groupTargets.length > 0,
       dm_sent: dmSent,
       dm_skipped: dmSkipped,
     });
