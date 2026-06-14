@@ -18,7 +18,7 @@ export function useTodayShift(dealerId: string | undefined, workDate: string) {
     enabled: source === "mock" || !!dealerId,
     staleTime: 30_000,
     queryFn: async (): Promise<DealerShiftView | null> => {
-      if (source === "mock") return mockTodayShift(workDate);
+      if (source === "mock") return mockTodayShift(workDate, dealerId);
       if (!dealerId) return null;
       const { data, error } = await db
         .from("dealer_shift_assignments")

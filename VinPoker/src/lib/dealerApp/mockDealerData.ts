@@ -16,52 +16,79 @@ import { weekDates } from "./selectors";
 import { addDays } from "./clock";
 
 const MOCK_DEALER_ID = "mock-dealer-001";
-const MOCK_CLUB_ID = "mock-club-001";
+const MOCK_DEALER_ID_2 = "mock-dealer-002";
 
 function iso(date: string, time: string): string {
   return `${date}T${time}:00+07:00`;
 }
 
-export function mockDealerProfile(): DealerProfileView {
-  return {
-    dealerId: MOCK_DEALER_ID,
+// Two demo memberships for ONE user (multi-club): a dealer of both Grand Poker
+// Club and VinPoker Club, so the club switcher + per-club schedule are demoable.
+interface ClubMock {
+  dealerId: string;
+  clubId: string;
+  clubName: string;
+  floor: string;
+  tier: string;
+}
+const CLUBS: ClubMock[] = [
+  { dealerId: MOCK_DEALER_ID, clubId: "mock-club-001", clubName: "Grand Poker Club", floor: "Tầng 2", tier: "B" },
+  { dealerId: MOCK_DEALER_ID_2, clubId: "mock-club-002", clubName: "VinPoker Club", floor: "Tầng 1", tier: "A" },
+];
+function clubOf(dealerId?: string): ClubMock {
+  return CLUBS.find((c) => c.dealerId === dealerId) ?? CLUBS[0];
+}
+
+/** All dealer memberships linked to the current (mock) user — one row per club. */
+export function mockDealerMemberships(): DealerProfileView[] {
+  return CLUBS.map((c) => ({
+    dealerId: c.dealerId,
     userId: "mock-user-001",
-    clubId: MOCK_CLUB_ID,
-    clubName: "Grand Poker Club",
+    clubId: c.clubId,
+    clubName: c.clubName,
     fullName: "Nguyễn Thu Hà",
-    tier: "B",
+    tier: c.tier,
     status: "active",
     region: "VN",
     avatarUrl: null,
     isVerified: true,
-  };
+  }));
 }
 
-export function mockTodayShift(workDate: string): DealerShiftView {
+/** Back-compat single-membership accessor (first club). */
+export function mockDealerProfile(): DealerProfileView {
+  return mockDealerMemberships()[0];
+}
+
+export function mockTodayShift(workDate: string, dealerId?: string): DealerShiftView {
+  const c = clubOf(dealerId);
+  const second = c.dealerId === MOCK_DEALER_ID_2;
   return {
-    id: "mock-shift-today",
-    dealerId: MOCK_DEALER_ID,
-    clubId: MOCK_CLUB_ID,
+    id: `mock-shift-today-${c.dealerId}`,
+    dealerId: c.dealerId,
+    clubId: c.clubId,
     workDate,
-    scheduledStartAt: iso(workDate, "11:00"),
-    scheduledEndAt: iso(workDate, "19:00"),
+    scheduledStartAt: iso(workDate, second ? "16:00" : "11:00"),
+    scheduledEndAt: iso(workDate, second ? "00:00" : "19:00"),
     role: "Dealer",
-    status: "confirmed",
+    status: second ? "published" : "confirmed",
     checkedInAt: null,
     checkedOutAt: null,
-    gameType: "Baccarat",
-    tableName: "Bàn B2",
-    venueName: "Grand Poker Club",
-    floorName: "Tầng 2",
+    gameType: second ? "Poker" : "Baccarat",
+    tableName: second ? "Bàn P1" : "Bàn B2",
+    venueName: c.clubName,
+    floorName: c.floor,
   };
 }
 
-export function mockWeekShifts(anchorDate: string): DealerShiftView[] {
+export function mockWeekShifts(anchorDate: string, dealerId?: string): DealerShiftView[] {
+  const c = clubOf(dealerId);
+  const second = c.dealerId === MOCK_DEALER_ID_2;
   const d = weekDates(anchorDate); // [Mon..Sun]
   const mk = (i: number, start: string, end: string, extra: Partial<DealerShiftView> = {}): DealerShiftView => ({
-    id: `mock-wk-${i}`,
-    dealerId: MOCK_DEALER_ID,
-    clubId: MOCK_CLUB_ID,
+    id: `mock-wk-${c.dealerId}-${i}`,
+    dealerId: c.dealerId,
+    clubId: c.clubId,
     workDate: d[i],
     scheduledStartAt: iso(d[i], start),
     scheduledEndAt: iso(d[i], end),
@@ -69,14 +96,22 @@ export function mockWeekShifts(anchorDate: string): DealerShiftView[] {
     status: "published",
     checkedInAt: null,
     checkedOutAt: null,
-    gameType: "Baccarat",
-    tableName: "Bàn B2",
-    venueName: "Grand Poker Club",
-    floorName: "Tầng 2",
+    gameType: second ? "Poker" : "Baccarat",
+    tableName: second ? "Bàn P1" : "Bàn B2",
+    venueName: c.clubName,
+    floorName: c.floor,
     ...extra,
   });
-  // Mon off · Tue 11–19 · Wed 11–19 (confirmed) · Thu 16–00 (overnight) · Fri 11–19
-  // · Sat 18–02 (overnight night shift) · Sun off
+  if (second) {
+    // VinPoker Club: lighter evening pattern (Mon / Wed / Fri).
+    return [
+      mk(0, "16:00", "00:00"),
+      mk(2, "16:00", "00:00", { status: "confirmed" }),
+      mk(4, "18:00", "02:00"),
+    ];
+  }
+  // Grand Poker Club: Tue 11–19 · Wed 11–19 (confirmed) · Thu 16–00 (overnight)
+  // · Fri 11–19 · Sat 18–02 (overnight night shift).
   return [
     mk(1, "11:00", "19:00"),
     mk(2, "11:00", "19:00", { status: "confirmed" }),

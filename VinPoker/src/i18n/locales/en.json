@@ -4,6 +4,7 @@
     "appEntry": "Dealer App",
     "back": "Back to home",
     "nav": { "home": "Home", "day": "Day", "week": "Week", "careers": "Careers", "account": "Account" },
+    "club": { "label": "Club", "switch": "Switch club", "linkedTitle": "Linked clubs", "active": "Viewing", "switchTo": "Select" },
     "home": {
       "todayShift": "TODAY'S SHIFT",
       "greeting": "Hi {{name}}",

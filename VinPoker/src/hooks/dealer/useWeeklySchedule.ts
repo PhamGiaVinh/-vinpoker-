@@ -21,7 +21,7 @@ export function useWeeklySchedule(dealerId: string | undefined, anchorDate: stri
     enabled: source === "mock" || !!dealerId,
     staleTime: 60_000,
     queryFn: async (): Promise<DealerShiftView[]> => {
-      if (source === "mock") return mockWeekShifts(anchorDate);
+      if (source === "mock") return mockWeekShifts(anchorDate, dealerId);
       if (!dealerId) return [];
       const { startMs, endMs } = localWeekBounds(anchorDate, DEALER_TZ_OFFSET_MINUTES);
       const lowIso = new Date(startMs - DAY_MS).toISOString();
