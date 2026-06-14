@@ -26,15 +26,16 @@ import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
+import { ReentryPanel } from "@/components/cashier/ReentryPanel";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Ticket, UserPlus,
+  Ticket, UserPlus, RotateCcw,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "offline_buyin";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "offline_buyin" | "reentry";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -103,6 +104,9 @@ export default function CashierDashboard() {
   // Offline (cash / walk-in) buy-in — same UAT-override rollout as registrations:
   // hidden from regular cashiers until FEATURES.offlineBuyIn flips; admins/owners see it.
   const showOfflineBuyIn = clubIds.length > 0 && (FEATURES.offlineBuyIn || isAdmin || isClubOwner);
+  // Re-entry (re-buy a busted player) — same UAT-override rollout; the panel's own
+  // action button stays gated by FEATURES.registrationExtensions until the RPC is live.
+  const showReentry = clubIds.length > 0 && (FEATURES.registrationExtensions || isAdmin || isClubOwner);
 
   const navItems: { key: SectionKey; label: string; icon: any }[] = [
     { key: "overview", label: "Tổng quan", icon: LayoutDashboard },
@@ -111,6 +115,7 @@ export default function CashierDashboard() {
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
     ...(showOfflineBuyIn ? [{ key: "offline_buyin" as SectionKey, label: "Buy-in tại quầy", icon: UserPlus }] : []),
+    ...(showReentry ? [{ key: "reentry" as SectionKey, label: "Re-entry", icon: RotateCcw }] : []),
   ];
 
   return (
@@ -175,6 +180,15 @@ export default function CashierDashboard() {
           {section === "offline_buyin" && (
             showOfflineBuyIn ? (
               <OfflineBuyInPanel clubIds={clubIds} />
+            ) : (
+              <Card className="p-8 text-center text-sm text-muted-foreground">
+                Tính năng này chưa được mở cho tài khoản của bạn.
+              </Card>
+            )
+          )}
+          {section === "reentry" && (
+            showReentry ? (
+              <ReentryPanel clubIds={clubIds} />
             ) : (
               <Card className="p-8 text-center text-sm text-muted-foreground">
                 Tính năng này chưa được mở cho tài khoản của bạn.

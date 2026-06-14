@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Copy, ImageIcon, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Copy, ImageIcon, RefreshCw, CheckCircle2, XCircle, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatVND, formatDateTime } from "@/lib/format";
+import { FEATURES } from "@/lib/featureFlags";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import { ConfirmPaymentDialog, type DrawMode } from "@/components/cashier/registrations/ConfirmPaymentDialog";
 import { CancelRegistrationDialog } from "@/components/cashier/registrations/CancelRegistrationDialog";
+import { VoidRegistrationDialog } from "@/components/cashier/registrations/VoidRegistrationDialog";
 
 type Row = {
   id: string;
@@ -53,6 +55,7 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<Row | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Row | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Row | null>(null);
   // Stale-response guard: mount + clubs-loaded fire loads back to back; only the
   // latest request may write state (observed: empty first response landing last).
   const loadSeq = useState({ n: 0 })[0];
@@ -188,6 +191,22 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
     load();
   };
 
+  // Void a CONFIRMED registration: cascades seat/entry/receipt + reverses revenue
+  // via the void_registration RPC (actor bound to auth.uid() server-side).
+  const voidReg = async (r: Row, reason: string) => {
+    setBusy(r.id);
+    const { data, error } = await supabase.rpc("void_registration", {
+      p_registration_id: r.id,
+      p_reason: reason,
+    });
+    setBusy(null);
+    const res = data as { ok?: boolean; error?: string; refund_amount?: number } | null;
+    if (error || !res?.ok) { toast.error(mapVoidError(res?.error, error?.message)); return; }
+    setVoidTarget(null);
+    toast.success(`Đã huỷ & hoàn ${formatVND(res.refund_amount ?? r.total_pay)} — ghế đã giải phóng`);
+    load();
+  };
+
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -253,6 +272,13 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
                   </Button>
                 </div>
               )}
+              {FEATURES.registrationExtensions && r.status === "confirmed" && (
+                <div className="flex md:flex-col gap-2 md:w-40">
+                  <Button size="sm" variant="outline" className="flex-1 h-9 text-destructive border-destructive/40" disabled={busy === r.id} onClick={() => setVoidTarget(r)}>
+                    <Undo2 className="w-3.5 h-3.5 mr-1" /> Huỷ & hoàn
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -288,6 +314,16 @@ export const TournamentRegistrationsTab = ({ clubIds }: { clubIds?: string[] } =
         onCancel={(reason) => { if (cancelTarget) cancel(cancelTarget, reason); }}
       />
 
+      <VoidRegistrationDialog
+        open={voidTarget !== null}
+        onOpenChange={(v) => { if (!v) setVoidTarget(null); }}
+        playerName={voidTarget?.player?.display_name ?? "Player"}
+        referenceCode={voidTarget?.reference_code ?? ""}
+        refundAmount={voidTarget?.total_pay ?? 0}
+        busy={busy === voidTarget?.id}
+        onConfirm={(reason) => { if (voidTarget) voidReg(voidTarget, reason); }}
+      />
+
       <SeatReceiptDialog open={receiptOpen} onOpenChange={setReceiptOpen} receipt={receipt} />
     </Card>
   );
@@ -316,6 +352,19 @@ function mapError(code?: string): string {
     case "no_seat_available": return "Không còn bàn/ghế trống — thêm bàn cho giải rồi xác nhận lại.";
     case "already_confirmed_no_entry": return "Đăng ký đã xác nhận trước đó nhưng chưa có ghế — cần xếp ghế thủ công.";
     default: return code ? `Xác nhận thất bại (${code}).` : "Xác nhận thất bại.";
+  }
+}
+
+// Maps void_registration RPC error codes to cashier-facing Vietnamese.
+function mapVoidError(code?: string, raw?: string): string {
+  switch (code ?? raw) {
+    case "unauthorized": return "Phiên đăng nhập hết hạn — đăng nhập lại.";
+    case "actor_not_allowed": return "Tài khoản của bạn không có quyền huỷ cho CLB này.";
+    case "registration_not_found": return "Không tìm thấy đăng ký.";
+    case "already_cancelled": return "Đăng ký đã được huỷ trước đó.";
+    case "invalid_status": return "Chỉ huỷ được đăng ký đã xác nhận.";
+    case "entry_not_voidable": return "Người chơi đã bust/kết thúc — không thể huỷ (dùng re-entry nếu cần).";
+    default: return code ? `Huỷ thất bại (${code}).` : (raw || "Huỷ thất bại.");
   }
 }
 
