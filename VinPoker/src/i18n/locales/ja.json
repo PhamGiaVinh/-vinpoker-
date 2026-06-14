@@ -52,7 +52,10 @@
     "account": "アカウント",
     "login": "ログイン",
     "mobileStake": "提携",
-    "mobileBacker": "コーチ"
+    "mobileBacker": "コーチ",
+    "feed": "フィード",
+    "news": "ニュース",
+    "international": "国際大会"
   },
   "documentsPage": {
     "title": "ドキュメント",
@@ -961,7 +964,11 @@
     "cashier": "カウンター",
     "ranking": "ランキング",
     "super": "スーパー",
-    "signOut": "サインアウト"
+    "signOut": "サインアウト",
+    "discover": "見つける",
+    "operations": "クラブ運営",
+    "operationsShort": "運営",
+    "finance": "財務"
   },
   "notifications": {
     "title": "通知",

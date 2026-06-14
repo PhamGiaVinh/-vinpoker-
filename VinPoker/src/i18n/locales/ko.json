@@ -249,7 +249,10 @@
     "account": "계정",
     "login": "로그인",
     "mobileStake": "파트너",
-    "mobileBacker": "코치"
+    "mobileBacker": "코치",
+    "feed": "피드",
+    "news": "뉴스",
+    "international": "국제 대회"
   },
   "documentsPage": {
     "title": "문서",
@@ -1061,7 +1064,11 @@
     "cashier": "캐셔",
     "ranking": "랭킹",
     "super": "슈퍼",
-    "signOut": "로그아웃"
+    "signOut": "로그아웃",
+    "discover": "둘러보기",
+    "operations": "클럽 운영",
+    "operationsShort": "운영",
+    "finance": "재무"
   },
   "notifications": {
     "title": "알림",

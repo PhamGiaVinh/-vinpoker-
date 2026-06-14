@@ -93,7 +93,7 @@ export const Layout = () => {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Khám phá</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("layout.discover")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {mobileMenuData.map((m) => {
                   const active = location.pathname === m.to;
@@ -201,14 +201,14 @@ export const Layout = () => {
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 px-2.5 py-2 md:py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
-                    aria-label="Vận hành CLB"
+                    aria-label={t("layout.operations")}
                   >
                     <Wallet className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />
-                    <span className="hidden min-[400px]:inline">VẬN HÀNH</span>
+                    <span className="hidden min-[400px]:inline">{t("layout.operationsShort")}</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel>Vận hành CLB</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t("layout.operations")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {(isTracker || isAdmin) && (
                     <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
@@ -237,7 +237,7 @@ export const Layout = () => {
                   {(isClubAdmin || isClubOwner) && (
                     <DropdownMenuItem onClick={() => nav("/club/admin/finance")} className="gap-2.5 cursor-pointer">
                       <TrendingUp className="w-4 h-4" />
-                      Tài chính
+                      {t("layout.finance")}
                     </DropdownMenuItem>
                   )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
