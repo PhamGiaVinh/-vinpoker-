@@ -8,7 +8,14 @@ export const FEATURES = {
    * still see it so the owner can UAT production before exposing it.
    */
   cashierRegistrations: false,
-  /** Offline buy-in dialog — requires create_offline_registration RPC (NOT live). */
+  /**
+   * Cashier "Buy-in tại quầy" (offline cash / walk-in): pick tournament → name →
+   * buy-in + fee → auto-draw seat + receipt. Requires the source-only RPC
+   * `create_offline_buyin_and_seat` (20260826000002) applied live. Default **OFF**:
+   * panel hidden from regular cashiers (admins/club owners see it for UAT); the
+   * Buy-in button shows disabled "Cần bật RPC" and never calls the RPC. Flip to
+   * true ONLY after the RPC is applied live in a controlled DB session.
+   */
   offlineBuyIn: false,
   /**
    * Move-player dialog + System-A row locking in TableDrawPanel.

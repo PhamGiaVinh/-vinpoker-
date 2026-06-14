@@ -25,15 +25,16 @@ import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
+import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
   ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
-  Ticket,
+  Ticket, UserPlus,
 } from "lucide-react";
 
 type ClubRow = { id: string; name: string };
-type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations";
+type SectionKey = "overview" | "staking" | "members" | "reports" | "tournament_registrations" | "offline_buyin";
 
 export default function CashierDashboard() {
   const { user, loading, isAdmin, isCashier } = useAuth();
@@ -99,6 +100,9 @@ export default function CashierDashboard() {
   // Flag-gated rollout (plan 2026-06-13): hidden from regular cashiers until the
   // flag flips; admins and club owners always see it so production UAT can run.
   const showRegistrations = clubIds.length > 0 && (FEATURES.cashierRegistrations || isAdmin || isClubOwner);
+  // Offline (cash / walk-in) buy-in — same UAT-override rollout as registrations:
+  // hidden from regular cashiers until FEATURES.offlineBuyIn flips; admins/owners see it.
+  const showOfflineBuyIn = clubIds.length > 0 && (FEATURES.offlineBuyIn || isAdmin || isClubOwner);
 
   const navItems: { key: SectionKey; label: string; icon: any }[] = [
     { key: "overview", label: "Tổng quan", icon: LayoutDashboard },
@@ -106,6 +110,7 @@ export default function CashierDashboard() {
     { key: "members", label: "Thành viên", icon: UsersIcon },
     { key: "reports", label: "Doanh thu", icon: FileBarChart },
     ...(showRegistrations ? [{ key: "tournament_registrations" as SectionKey, label: "Đăng ký giải", icon: Ticket }] : []),
+    ...(showOfflineBuyIn ? [{ key: "offline_buyin" as SectionKey, label: "Buy-in tại quầy", icon: UserPlus }] : []),
   ];
 
   return (
@@ -162,6 +167,15 @@ export default function CashierDashboard() {
             ) : (
               // Deep-link guard: tab hidden while the feature flag is off and the
               // viewer is neither admin nor club owner.
+              <Card className="p-8 text-center text-sm text-muted-foreground">
+                Tính năng này chưa được mở cho tài khoản của bạn.
+              </Card>
+            )
+          )}
+          {section === "offline_buyin" && (
+            showOfflineBuyIn ? (
+              <OfflineBuyInPanel clubIds={clubIds} />
+            ) : (
               <Card className="p-8 text-center text-sm text-muted-foreground">
                 Tính năng này chưa được mở cho tài khoản của bạn.
               </Card>
