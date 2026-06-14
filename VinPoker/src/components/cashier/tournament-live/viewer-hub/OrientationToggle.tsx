@@ -28,7 +28,7 @@ export function OrientationToggle({ defaultValue = "landscape", onChange }: Orie
       aria-label={label}
       onClick={() => pick(o)}
       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition ${
-        value === o ? "bg-amber-500/20 text-amber-200" : "text-muted-foreground hover:text-foreground"
+        value === o ? "bg-warning/20 text-warning" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       <Icon className="w-3 h-3" aria-hidden="true" /> {label}

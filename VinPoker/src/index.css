@@ -44,6 +44,13 @@
     --input: 213 9% 16%;
     --ring: 152 100% 50%;
 
+    /* Poker table identity — burgundy felt + gold rim/cards + cyan stack.
+       Kept constant across themes so the felt stays a poker table (NOT cream). */
+    --poker-felt: 354 74% 24%;
+    --poker-felt-dark: 352 80% 13%;
+    --poker-gold: 41 60% 60%;
+    --poker-stack: 188 78% 62%;
+
     --radius: 0.875rem;
 
     --gradient-neon: linear-gradient(135deg, hsl(152 100% 50%), hsl(152 100% 40%));
@@ -118,6 +125,12 @@
     --border: 39 29% 78%;              /* #D8D0BF taupe */
     --input: 39 29% 78%;
     --ring: 16 53% 54%;
+
+    /* Poker felt stays burgundy/gold in warm too (intentional); stack tuned darker for cream bg. */
+    --poker-felt: 354 74% 24%;
+    --poker-felt-dark: 352 80% 13%;
+    --poker-gold: 41 60% 60%;
+    --poker-stack: 190 77% 35%;
 
     --gradient-neon: linear-gradient(135deg, hsl(16 53% 54%), hsl(16 53% 46%));
     --gradient-felt: linear-gradient(180deg, hsl(43 44% 95%), hsl(41 40% 92%));

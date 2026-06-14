@@ -23,11 +23,11 @@ export function LiveTablesStrip({ tables, activeTableId }: LiveTablesStripProps)
             <div
               key={t.tableId}
               className={`shrink-0 w-28 rounded-xl border p-2.5 bg-card/60 ${
-                isActive ? "border-amber-400/70 shadow-[0_0_12px_rgba(245,179,64,0.25)]" : "border-border/50"
+                isActive ? "border-warning/70 shadow-[0_0_12px_rgba(245,179,64,0.25)]" : "border-border/50"
               }`}
             >
               <div className="flex items-center gap-1.5 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-semibold text-foreground truncate">{t.name}</span>
               </div>
               <div className="text-[11px] text-muted-foreground">

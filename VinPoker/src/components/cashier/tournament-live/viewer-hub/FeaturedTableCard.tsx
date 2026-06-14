@@ -27,10 +27,10 @@ export function FeaturedTableCard({
   footer,
 }: FeaturedTableCardProps) {
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-card/60 overflow-hidden shadow-[0_0_24px_rgba(0,0,0,0.35)] animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 bg-gradient-to-r from-amber-500/10 to-transparent border-b border-amber-500/15">
-        <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-amber-300 uppercase tracking-wide min-w-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+    <div className="rounded-2xl border border-warning/30 bg-card/60 overflow-hidden shadow-[0_0_24px_rgba(0,0,0,0.35)] animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 bg-gradient-to-r from-warning/10 to-transparent border-b border-border">
+        <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-warning uppercase tracking-wide min-w-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
           <span className="truncate">{badge}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
