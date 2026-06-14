@@ -1523,7 +1523,10 @@
       "saving": "保存中...",
       "updated": "セッションが更新されました",
       "added": "セッションが追加されました"
-    }
+    },
+    "loadError": "データを読み込めませんでした",
+    "loadErrorHint": "接続を確認して再試行してください。",
+    "retry": "再試行"
   },
   "languagePrompt": {
     "titleKo": "韓国語に切り替えますか？",
@@ -2239,5 +2242,89 @@
     "subtitlesLabel": "字幕",
     "chat": "チャット",
     "toggleSubtitlesAriaLabel": "字幕の表示切り替え"
+  },
+  "authPage": {
+    "forgotPassword": "パスワードをお忘れですか？",
+    "tosAgree": "<tos>利用規約とプライバシーポリシー</tos>を読み、同意します"
+  },
+  "clubQrScan": {
+    "invalidQr": "無効なQRコードです",
+    "notAssignedClub": "このクラブには割り当てられていません",
+    "cameraOpenFailed": "カメラを開けませんでした",
+    "pasteValidUrlOrUuid": "有効なURLまたはUUIDを貼り付けてください",
+    "title": "クラブカードをスキャン",
+    "description": "クラブ会員カードのQRにカメラを向けると、そのクラブで取引をすばやく絞り込めます。",
+    "cameraErrorHint": "カメラエラー：{{error}}。下に手動で貼り付けできます。",
+    "manualLabel": "またはクラブのURL / UUIDを貼り付け：",
+    "manualPlaceholder": "https://vinpoker.live/cashier/scan?club_id=…",
+    "apply": "適用"
+  },
+  "forgotPassword": {
+    "title": "パスワードを忘れた",
+    "invalidEmail": "無効なメールアドレスです",
+    "resetEmailSent": "パスワードを再設定するにはメールをご確認ください",
+    "prompt": "アカウントのメールアドレスを入力すると、パスワード再設定リンクをお送りします。",
+    "emailLabel": "メールアドレス",
+    "emailPlaceholder": "you@email.com",
+    "sendResetLink": "再設定リンクを送信",
+    "backToLogin": "ログインに戻る",
+    "sentTo": "パスワード再設定リンクを <1>{{email}}</1> に送信しました。",
+    "checkSpamHint": "数分以内にメールが届かない場合は迷惑メールフォルダもご確認ください。リンクは1時間で失効します。"
+  },
+  "resetPassword": {
+    "title": "パスワードをリセット",
+    "verifyingLink": "リンクを確認しています…",
+    "newPasswordLabel": "新しいパスワード（8文字以上、英字と数字を含む）",
+    "confirmPasswordLabel": "パスワードの確認",
+    "submitButton": "パスワードをリセット",
+    "passwordMin": "パスワードは8文字以上で入力してください",
+    "passwordLettersAndNumbers": "パスワードには英字と数字の両方を含めてください",
+    "passwordsDoNotMatch": "パスワードが一致しません",
+    "resetSuccess": "パスワードをリセットしました"
+  },
+  "scanQr": {
+    "invalidQr": "無効なQRコード",
+    "scannedOpenChat": "スキャン完了 — チャットを開きます",
+    "cameraOpenFailed": "カメラを開けませんでした",
+    "pasteValidUrlUuid": "有効なURL / UUIDを貼り付けてください",
+    "title": "QRをスキャンして友達を追加",
+    "description": "他のVBackerメンバーのQRにカメラを向けて、プロフィールを開いてつながりましょう。",
+    "cameraErrorHint": "カメラエラー: {{error}}。ブラウザにカメラの許可を与えるか、下にURL/IDを貼り付けてください。",
+    "orPasteLabel": "またはプロフィールURL / プレイヤーIDを貼り付けてください:",
+    "pastePlaceholder": "vinpoker://user/… または https://vbacker.live/player/…",
+    "open": "開く"
+  },
+  "transferInstructions": {
+    "copied": "{{label}}をコピーしました",
+    "labelAmount": "金額",
+    "labelContent": "内容",
+    "onlyJpgPngWebp": "JPG/PNG/WEBPのみ対応",
+    "imageMax5mb": "画像は最大5MB",
+    "proofUploaded": "振込証明をアップロードしました",
+    "uploadFailed": "アップロードできませんでした",
+    "uploadProofFirst": "先に振込明細をアップロードしてください",
+    "recordedAdminConfirm": "受け付けました！管理者が5〜10分以内に確認します。",
+    "confirmCancel": "この予約をキャンセルしてもよろしいですか？",
+    "cancelled": "予約をキャンセルしました。",
+    "transferExpired": "振込期限が切れました",
+    "timeRemaining": "振込までの残り時間",
+    "maybeAutoCancelled": "自動キャンセルされる場合があります。すでに振込済みの場合は管理者にご連絡ください。",
+    "amountToTransfer": "振込金額",
+    "transferContent": "振込内容",
+    "contentHint": "管理者が照合できるよう、この内容を正確に入力してください。",
+    "transactionScreenshot": "取引のスクリーンショット",
+    "requiredParen": "（必須）",
+    "cashierNeedsProof": "キャッシャーが取引を確認するには明細画像が必要です。画像がない場合は拒否されます。",
+    "uploaded": "アップロード済み",
+    "requiredStar": "* 必須",
+    "reuploadImage": "画像を再アップロード",
+    "uploadTransferImage": "振込画像をアップロード",
+    "proofImageAlt": "振込証明",
+    "cancelTransaction": "取引をキャンセル",
+    "uploadProofFirstTitle": "先に明細をアップロードしてください",
+    "sentWaitingAdmin": "送信済み — 管理者待ち",
+    "sending": "送信中...",
+    "needProof": "明細が必要です",
+    "transferred": "振込完了"
   }
 }

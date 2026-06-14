@@ -285,10 +285,10 @@ export default function BankrollManager() {
         {isError && !data && (
           <Card className="p-3 border-destructive/40 bg-destructive/10 flex items-center justify-between gap-3">
             <div className="text-sm">
-              <p className="font-semibold text-destructive">Không tải được dữ liệu</p>
-              <p className="text-muted-foreground text-xs">Kiểm tra kết nối rồi thử lại.</p>
+              <p className="font-semibold text-destructive">{t("bankroll.loadError")}</p>
+              <p className="text-muted-foreground text-xs">{t("bankroll.loadErrorHint")}</p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => refetch()}>Thử lại</Button>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>{t("bankroll.retry")}</Button>
           </Card>
         )}
 

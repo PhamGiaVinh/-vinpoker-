@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +32,7 @@ function extractUserId(text: string): string | null {
 }
 
 export default function ScanQrDialog({ open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -46,11 +48,11 @@ export default function ScanQrDialog({ open, onOpenChange }: Props) {
     const handle = (text: string) => {
       const id = extractUserId(text);
       if (!id) {
-        toast.error("QR không hợp lệ");
+        toast.error(t("scanQr.invalidQr"));
         return;
       }
       onOpenChange(false);
-      toast.success("Đã quét — mở chat");
+      toast.success(t("scanQr.scannedOpenChat"));
       navigate(`/chat/${id}?hello=1`);
     };
     handleRef.current = handle;
@@ -70,7 +72,7 @@ export default function ScanQrDialog({ open, onOpenChange }: Props) {
           try { scanner.clear(); } catch {}
         }
       } catch (e: any) {
-        setCameraError(e?.message || "Không mở được camera");
+        setCameraError(e?.message || t("scanQr.cameraOpenFailed"));
       }
     })();
 
@@ -86,7 +88,7 @@ export default function ScanQrDialog({ open, onOpenChange }: Props) {
 
   const submitManual = () => {
     const id = extractUserId(manual);
-    if (!id) { toast.error("Dán URL / UUID hợp lệ"); return; }
+    if (!id) { toast.error(t("scanQr.pasteValidUrlUuid")); return; }
     onOpenChange(false);
     navigate(`/player/${id}`);
   };
@@ -95,9 +97,9 @@ export default function ScanQrDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Quét QR kết bạn</DialogTitle>
+          <DialogTitle>{t("scanQr.title")}</DialogTitle>
           <DialogDescription>
-            Hướng camera vào QR của thành viên VBacker khác để mở hồ sơ và kết nối.
+            {t("scanQr.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -105,19 +107,19 @@ export default function ScanQrDialog({ open, onOpenChange }: Props) {
 
         {cameraError && (
           <p className="text-xs text-destructive">
-            Camera lỗi: {cameraError}. Hãy cấp quyền camera cho trình duyệt, hoặc dán URL/ID bên dưới.
+            {t("scanQr.cameraErrorHint", { error: cameraError })}
           </p>
         )}
 
         <div className="space-y-2 pt-2 border-t">
-          <label className="text-xs text-muted-foreground">Hoặc dán URL hồ sơ / Player ID:</label>
+          <label className="text-xs text-muted-foreground">{t("scanQr.orPasteLabel")}</label>
           <div className="flex gap-2">
             <Input
               value={manual}
               onChange={(e) => setManual(e.target.value)}
-              placeholder="vinpoker://user/… hoặc https://vbacker.live/player/…"
+              placeholder={t("scanQr.pastePlaceholder")}
             />
-            <Button onClick={submitManual}>Mở</Button>
+            <Button onClick={submitManual}>{t("scanQr.open")}</Button>
           </div>
         </div>
       </DialogContent>

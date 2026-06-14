@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,6 +39,7 @@ export const TransferInstructions = ({
   purchaseId, dealId, amount, reference, committedAt, initialProofUrl, initialProofSubmitted,
   onMarkedTransferred, onCancel, hideCancel,
 }: Props) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const startedAt = committedAt ? new Date(committedAt).getTime() : Date.now();
   const deadline = startedAt + TIMEOUT_MS;
@@ -54,16 +56,16 @@ export const TransferInstructions = ({
 
   const copy = (txt: string, lbl: string) => {
     navigator.clipboard.writeText(txt);
-    toast.success(`Đã copy ${lbl}`);
+    toast.success(t("transferInstructions.copied", { label: lbl }));
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.files?.[0];
     if (!raw || !user) return;
     if (!["image/jpeg","image/png","image/webp"].includes(raw.type)) {
-      toast.error("Chỉ chấp nhận JPG/PNG/WEBP"); return;
+      toast.error(t("transferInstructions.onlyJpgPngWebp")); return;
     }
-    if (raw.size > 5 * 1024 * 1024) { toast.error("Ảnh tối đa 5MB"); return; }
+    if (raw.size > 5 * 1024 * 1024) { toast.error(t("transferInstructions.imageMax5mb")); return; }
     setUploading(true);
     try {
       const file = await compressImage(raw, { maxEdge: 1600, quality: 0.8 });
@@ -85,9 +87,9 @@ export const TransferInstructions = ({
         if (updErr) throw updErr;
       }
       setProofUrl(url);
-      toast.success("Đã tải ảnh chuyển khoản");
+      toast.success(t("transferInstructions.proofUploaded"));
     } catch (e: any) {
-      toast.error(e.message ?? "Không thể tải lên");
+      toast.error(e.message ?? t("transferInstructions.uploadFailed"));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -96,7 +98,7 @@ export const TransferInstructions = ({
 
   const markTransferred = async () => {
     if (!proofUrl) {
-      toast.error("Vui lòng tải ảnh biên lai chuyển khoản trước");
+      toast.error(t("transferInstructions.uploadProofFirst"));
       return;
     }
     setSubmitting(true);
@@ -109,12 +111,12 @@ export const TransferInstructions = ({
       if (error) { toast.error(error.message); return; }
     }
     setProofSubmitted(true);
-    toast.success("Đã ghi nhận! Admin sẽ xác nhận trong vòng 5–10 phút.");
+    toast.success(t("transferInstructions.recordedAdminConfirm"));
     onMarkedTransferred?.();
   };
 
   const cancelDeal = async () => {
-    if (!confirm("Bạn chắc chắn muốn huỷ giữ chỗ này?")) return;
+    if (!confirm(t("transferInstructions.confirmCancel"))) return;
     setCancelling(true);
     if (purchaseId) {
       const { error } = await supabase
@@ -126,7 +128,7 @@ export const TransferInstructions = ({
       setCancelling(false);
       if (error) { toast.error(error.message); return; }
     }
-    toast.success("Đã huỷ giữ chỗ.");
+    toast.success(t("transferInstructions.cancelled"));
     onCancel?.();
   };
 
@@ -136,14 +138,14 @@ export const TransferInstructions = ({
       <div className={`rounded-xl border p-4 text-center ${expired ? "border-destructive/50 bg-destructive/10" : "border-warning/50 bg-warning/10"}`}>
         <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
           <Clock className="w-3.5 h-3.5" />
-          {expired ? "Đã hết hạn chuyển khoản" : "Thời gian còn lại để chuyển khoản"}
+          {expired ? t("transferInstructions.transferExpired") : t("transferInstructions.timeRemaining")}
         </div>
         <div className={`text-3xl font-bold font-mono mt-1 ${expired ? "text-destructive" : "text-warning"}`}>
           {expired ? "00:00" : label}
         </div>
         {expired && (
           <p className="text-[11px] text-destructive mt-1">
-            Có thể bị tự động huỷ. Liên hệ Admin nếu bạn đã chuyển khoản.
+            {t("transferInstructions.maybeAutoCancelled")}
           </p>
         )}
       </div>
@@ -155,20 +157,20 @@ export const TransferInstructions = ({
       <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Số tiền cần chuyển</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("transferInstructions.amountToTransfer")}</div>
             <div className="text-2xl font-bold text-primary font-mono">{formatVND(amount)}</div>
           </div>
-          <Button size="icon" variant="ghost" onClick={() => copy(String(amount), "số tiền")}>
+          <Button size="icon" variant="ghost" onClick={() => copy(String(amount), t("transferInstructions.labelAmount"))}>
             <Copy className="w-4 h-4" />
           </Button>
         </div>
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-primary/20">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Nội dung chuyển khoản</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("transferInstructions.transferContent")}</div>
             <div className="font-mono font-bold text-primary truncate">{transferContent}</div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">Bắt buộc nhập đúng nội dung này để Admin đối chiếu.</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">{t("transferInstructions.contentHint")}</div>
           </div>
-          <Button size="icon" variant="ghost" onClick={() => copy(transferContent, "nội dung")}>
+          <Button size="icon" variant="ghost" onClick={() => copy(transferContent, t("transferInstructions.labelContent"))}>
             <Copy className="w-4 h-4" />
           </Button>
         </div>
@@ -179,18 +181,18 @@ export const TransferInstructions = ({
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs">
             <div className="font-semibold">
-              Ảnh chụp giao dịch <span className="text-destructive">(bắt buộc)</span>
+              {t("transferInstructions.transactionScreenshot")} <span className="text-destructive">{t("transferInstructions.requiredParen")}</span>
             </div>
             <div className="text-muted-foreground text-[11px]">
-              Cashier cần ảnh biên lai để xác nhận deal — không có ảnh sẽ bị từ chối.
+              {t("transferInstructions.cashierNeedsProof")}
             </div>
           </div>
           {proofUrl ? (
             <span className="text-xs text-success flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Đã tải
+              <CheckCircle2 className="w-3.5 h-3.5" /> {t("transferInstructions.uploaded")}
             </span>
           ) : (
-            <span className="text-xs font-semibold text-destructive">* Bắt buộc</span>
+            <span className="text-xs font-semibold text-destructive">{t("transferInstructions.requiredStar")}</span>
           )}
         </div>
         <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handleFile} />
@@ -203,11 +205,11 @@ export const TransferInstructions = ({
           disabled={uploading}
         >
           {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />}
-          {proofUrl ? "Tải lại ảnh" : "Tải ảnh chuyển khoản"}
+          {proofUrl ? t("transferInstructions.reuploadImage") : t("transferInstructions.uploadTransferImage")}
         </Button>
         {proofUrl && (
           <a href={proofUrl} target="_blank" rel="noreferrer" className="block">
-            <img src={proofUrl} alt="Tx" className="w-full max-h-40 object-contain rounded-md border border-border" />
+            <img src={proofUrl} alt={t("transferInstructions.proofImageAlt")} className="w-full max-h-40 object-contain rounded-md border border-border" />
           </a>
         )}
       </div>
@@ -221,16 +223,16 @@ export const TransferInstructions = ({
             onClick={cancelDeal}
             disabled={cancelling || submitting || proofSubmitted}
           >
-            Huỷ giao dịch
+            {t("transferInstructions.cancelTransaction")}
           </Button>
         )}
         <Button
           className="flex-1 gradient-neon text-primary-foreground font-bold"
           onClick={markTransferred}
           disabled={submitting || uploading || proofSubmitted || !proofUrl}
-          title={!proofUrl ? "Tải ảnh biên lai trước" : undefined}
+          title={!proofUrl ? t("transferInstructions.uploadProofFirstTitle") : undefined}
         >
-          {proofSubmitted ? "Đã gửi — chờ Admin" : submitting ? "Đang gửi..." : !proofUrl ? "Cần tải biên lai" : "Đã chuyển khoản"}
+          {proofSubmitted ? t("transferInstructions.sentWaitingAdmin") : submitting ? t("transferInstructions.sending") : !proofUrl ? t("transferInstructions.needProof") : t("transferInstructions.transferred")}
         </Button>
       </div>
     </div>

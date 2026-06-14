@@ -1523,7 +1523,10 @@
       "saving": "กำลังบันทึก...",
       "updated": "อัปเดตเซสชันแล้ว",
       "added": "เพิ่มเซสชันแล้ว"
-    }
+    },
+    "loadError": "โหลดข้อมูลไม่สำเร็จ",
+    "loadErrorHint": "ตรวจสอบการเชื่อมต่อแล้วลองใหม่",
+    "retry": "ลองใหม่"
   },
   "languagePrompt": {
     "titleKo": "เปลี่ยนเป็นภาษาเกาหลี?",
@@ -2239,5 +2242,89 @@
     "subtitlesLabel": "คำบรรยาย",
     "chat": "แชท",
     "toggleSubtitlesAriaLabel": "เปิด/ปิดคำบรรยาย"
+  },
+  "authPage": {
+    "forgotPassword": "ลืมรหัสผ่าน?",
+    "tosAgree": "ฉันได้อ่านและยอมรับ<tos>ข้อกำหนดและนโยบายความเป็นส่วนตัว</tos>"
+  },
+  "clubQrScan": {
+    "invalidQr": "คิวอาร์โค้ดไม่ถูกต้อง",
+    "notAssignedClub": "คุณไม่ได้รับมอบหมายให้ดูแลคลับนี้",
+    "cameraOpenFailed": "ไม่สามารถเปิดกล้องได้",
+    "pasteValidUrlOrUuid": "วาง URL หรือ UUID ที่ถูกต้อง",
+    "title": "สแกนบัตรคลับ",
+    "description": "เล็งกล้องไปที่คิวอาร์บนบัตรสมาชิกคลับเพื่อกรองดีลตามคลับนั้นอย่างรวดเร็ว",
+    "cameraErrorHint": "กล้องผิดพลาด: {{error}} คุณสามารถวางด้วยตนเองด้านล่างได้",
+    "manualLabel": "หรือวาง URL / UUID ของคลับ:",
+    "manualPlaceholder": "https://vinpoker.live/cashier/scan?club_id=…",
+    "apply": "ใช้"
+  },
+  "forgotPassword": {
+    "title": "ลืมรหัสผ่าน",
+    "invalidEmail": "อีเมลไม่ถูกต้อง",
+    "resetEmailSent": "กรุณาตรวจสอบอีเมลเพื่อรีเซ็ตรหัสผ่าน",
+    "prompt": "กรอกอีเมลบัญชีของคุณ แล้วเราจะส่งลิงก์รีเซ็ตรหัสผ่านให้",
+    "emailLabel": "อีเมล",
+    "emailPlaceholder": "you@email.com",
+    "sendResetLink": "ส่งลิงก์รีเซ็ตรหัสผ่าน",
+    "backToLogin": "กลับไปหน้าเข้าสู่ระบบ",
+    "sentTo": "ส่งลิงก์รีเซ็ตรหัสผ่านไปยัง <1>{{email}}</1> แล้ว",
+    "checkSpamHint": "หากไม่พบอีเมลภายในไม่กี่นาที โปรดตรวจสอบกล่องสแปมด้วย ลิงก์จะหมดอายุใน 1 ชั่วโมง"
+  },
+  "resetPassword": {
+    "title": "ตั้งรหัสผ่านใหม่",
+    "verifyingLink": "กำลังตรวจสอบลิงก์…",
+    "newPasswordLabel": "รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร มีทั้งตัวอักษรและตัวเลข)",
+    "confirmPasswordLabel": "ยืนยันรหัสผ่าน",
+    "submitButton": "ตั้งรหัสผ่านใหม่",
+    "passwordMin": "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+    "passwordLettersAndNumbers": "รหัสผ่านต้องมีทั้งตัวอักษรและตัวเลข",
+    "passwordsDoNotMatch": "รหัสผ่านทั้งสองไม่ตรงกัน",
+    "resetSuccess": "ตั้งรหัสผ่านใหม่สำเร็จ"
+  },
+  "scanQr": {
+    "invalidQr": "QR ไม่ถูกต้อง",
+    "scannedOpenChat": "สแกนแล้ว — กำลังเปิดแชท",
+    "cameraOpenFailed": "ไม่สามารถเปิดกล้องได้",
+    "pasteValidUrlUuid": "วาง URL / UUID ที่ถูกต้อง",
+    "title": "สแกน QR เพื่อเพิ่มเพื่อน",
+    "description": "หันกล้องไปที่ QR ของสมาชิก VBacker คนอื่นเพื่อเปิดโปรไฟล์และเชื่อมต่อ",
+    "cameraErrorHint": "กล้องผิดพลาด: {{error}} กรุณาอนุญาตให้เบราว์เซอร์ใช้กล้อง หรือวาง URL/ID ด้านล่าง",
+    "orPasteLabel": "หรือวาง URL โปรไฟล์ / Player ID:",
+    "pastePlaceholder": "vinpoker://user/… หรือ https://vbacker.live/player/…",
+    "open": "เปิด"
+  },
+  "transferInstructions": {
+    "copied": "คัดลอก{{label}}แล้ว",
+    "labelAmount": "จำนวนเงิน",
+    "labelContent": "เนื้อหา",
+    "onlyJpgPngWebp": "รับเฉพาะ JPG/PNG/WEBP เท่านั้น",
+    "imageMax5mb": "รูปภาพสูงสุด 5MB",
+    "proofUploaded": "อัปโหลดหลักฐานการโอนแล้ว",
+    "uploadFailed": "อัปโหลดไม่สำเร็จ",
+    "uploadProofFirst": "กรุณาอัปโหลดสลิปการโอนก่อน",
+    "recordedAdminConfirm": "บันทึกแล้ว! แอดมินจะยืนยันภายใน 5–10 นาที",
+    "confirmCancel": "คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการจองนี้?",
+    "cancelled": "ยกเลิกการจองแล้ว",
+    "transferExpired": "หมดเวลาการโอนแล้ว",
+    "timeRemaining": "เวลาที่เหลือสำหรับการโอน",
+    "maybeAutoCancelled": "อาจถูกยกเลิกอัตโนมัติ หากคุณโอนแล้วโปรดติดต่อแอดมิน",
+    "amountToTransfer": "จำนวนเงินที่ต้องโอน",
+    "transferContent": "เนื้อหาการโอน",
+    "contentHint": "ต้องกรอกเนื้อหานี้ให้ถูกต้องเพื่อให้แอดมินตรวจสอบ",
+    "transactionScreenshot": "ภาพหน้าจอธุรกรรม",
+    "requiredParen": "(จำเป็น)",
+    "cashierNeedsProof": "แคชเชียร์ต้องใช้รูปสลิปเพื่อยืนยันดีล — หากไม่มีจะถูกปฏิเสธ",
+    "uploaded": "อัปโหลดแล้ว",
+    "requiredStar": "* จำเป็น",
+    "reuploadImage": "อัปโหลดรูปใหม่",
+    "uploadTransferImage": "อัปโหลดรูปการโอน",
+    "proofImageAlt": "หลักฐานการโอน",
+    "cancelTransaction": "ยกเลิกธุรกรรม",
+    "uploadProofFirstTitle": "อัปโหลดสลิปก่อน",
+    "sentWaitingAdmin": "ส่งแล้ว — รอแอดมิน",
+    "sending": "กำลังส่ง...",
+    "needProof": "ต้องมีสลิป",
+    "transferred": "โอนแล้ว"
   }
 }

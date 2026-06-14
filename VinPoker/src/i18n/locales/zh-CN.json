@@ -1538,7 +1538,10 @@
       "saving": "保存中...",
       "updated": "场次已更新",
       "added": "场次已添加"
-    }
+    },
+    "loadError": "数据加载失败",
+    "loadErrorHint": "请检查网络连接后重试。",
+    "retry": "重试"
   },
   "pushNotifications": {
     "promptTitle": "开启推送通知",
@@ -2239,5 +2242,89 @@
     "subtitlesLabel": "字幕",
     "chat": "聊天",
     "toggleSubtitlesAriaLabel": "切换字幕"
+  },
+  "authPage": {
+    "forgotPassword": "忘记密码？",
+    "tosAgree": "我已阅读并同意<tos>条款和隐私政策</tos>"
+  },
+  "clubQrScan": {
+    "invalidQr": "二维码无效",
+    "notAssignedClub": "您未被分配到该俱乐部",
+    "cameraOpenFailed": "无法打开摄像头",
+    "pasteValidUrlOrUuid": "请粘贴有效的网址或 UUID",
+    "title": "扫描俱乐部卡",
+    "description": "将摄像头对准俱乐部会员卡上的二维码，即可按该俱乐部快速筛选交易。",
+    "cameraErrorHint": "摄像头错误：{{error}}。您可以在下方手动粘贴。",
+    "manualLabel": "或粘贴俱乐部网址 / UUID：",
+    "manualPlaceholder": "https://vinpoker.live/cashier/scan?club_id=…",
+    "apply": "应用"
+  },
+  "forgotPassword": {
+    "title": "忘记密码",
+    "invalidEmail": "邮箱无效",
+    "resetEmailSent": "请查收邮件以重置密码",
+    "prompt": "输入您的账户邮箱，我们将发送密码重置链接。",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "you@email.com",
+    "sendResetLink": "发送重置链接",
+    "backToLogin": "返回登录",
+    "sentTo": "密码重置链接已发送至 <1>{{email}}</1>。",
+    "checkSpamHint": "如果几分钟内未收到邮件，请检查垃圾邮件箱。链接将在 1 小时后失效。"
+  },
+  "resetPassword": {
+    "title": "重置密码",
+    "verifyingLink": "正在验证链接…",
+    "newPasswordLabel": "新密码（至少 8 个字符，包含字母和数字）",
+    "confirmPasswordLabel": "确认密码",
+    "submitButton": "重置密码",
+    "passwordMin": "密码至少需要 8 个字符",
+    "passwordLettersAndNumbers": "密码必须同时包含字母和数字",
+    "passwordsDoNotMatch": "两次输入的密码不一致",
+    "resetSuccess": "密码重置成功"
+  },
+  "scanQr": {
+    "invalidQr": "二维码无效",
+    "scannedOpenChat": "已扫描 — 正在打开聊天",
+    "cameraOpenFailed": "无法打开摄像头",
+    "pasteValidUrlUuid": "请粘贴有效的网址 / UUID",
+    "title": "扫码添加好友",
+    "description": "将摄像头对准其他 VBacker 会员的二维码，打开其资料并建立连接。",
+    "cameraErrorHint": "摄像头错误：{{error}}。请为浏览器授予摄像头权限，或在下方粘贴网址/ID。",
+    "orPasteLabel": "或粘贴资料网址 / 玩家 ID：",
+    "pastePlaceholder": "vinpoker://user/… 或 https://vbacker.live/player/…",
+    "open": "打开"
+  },
+  "transferInstructions": {
+    "copied": "已复制{{label}}",
+    "labelAmount": "金额",
+    "labelContent": "转账内容",
+    "onlyJpgPngWebp": "仅接受 JPG/PNG/WEBP",
+    "imageMax5mb": "图片最大 5MB",
+    "proofUploaded": "转账凭证已上传",
+    "uploadFailed": "上传失败",
+    "uploadProofFirst": "请先上传转账回单",
+    "recordedAdminConfirm": "已记录！管理员将在 5–10 分钟内确认。",
+    "confirmCancel": "确定要取消此预留吗？",
+    "cancelled": "预留已取消。",
+    "transferExpired": "转账时间已过期",
+    "timeRemaining": "剩余转账时间",
+    "maybeAutoCancelled": "可能被自动取消。如已转账请联系管理员。",
+    "amountToTransfer": "需转账金额",
+    "transferContent": "转账备注",
+    "contentHint": "必须填写此备注，以便管理员核对。",
+    "transactionScreenshot": "交易截图",
+    "requiredParen": "（必填）",
+    "cashierNeedsProof": "收银员需要回单图片来确认交易 — 没有图片将被拒绝。",
+    "uploaded": "已上传",
+    "requiredStar": "* 必填",
+    "reuploadImage": "重新上传图片",
+    "uploadTransferImage": "上传转账图片",
+    "proofImageAlt": "转账凭证",
+    "cancelTransaction": "取消交易",
+    "uploadProofFirstTitle": "请先上传回单",
+    "sentWaitingAdmin": "已发送 — 等待管理员",
+    "sending": "发送中...",
+    "needProof": "需要上传回单",
+    "transferred": "已转账"
   }
 }
