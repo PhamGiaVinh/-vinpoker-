@@ -8,6 +8,7 @@ import type {
   CareerApplicationView,
   CareerProgramView,
   CareerSessionView,
+  DealerDirectoryRow,
   DealerProfileView,
   DealerShiftView,
 } from "@/types/dealerApp";
@@ -188,5 +189,15 @@ export function mockTrainingSessions(anchorDate: string): CareerSessionView[] {
       status: "done",
       programTitle: "Nâng cấp Senior Dealer",
     },
+  ];
+}
+
+/** Staff "invite dealer to app" directory (mock). */
+export function mockUnlinkedDealers(): DealerDirectoryRow[] {
+  return [
+    { id: "d1", fullName: "Trần Văn Minh", phone: "09xx xxx 101", region: "VN", status: "active", linked: false },
+    { id: "d2", fullName: "Lê Thị Hồng", phone: "09xx xxx 202", region: "VN", status: "active", linked: false },
+    { id: "d3", fullName: "Somchai P.", phone: "+66 xx xxx 303", region: "TH", status: "active", linked: true },
+    { id: "d4", fullName: "Nguyễn Thu Hà", phone: "09xx xxx 404", region: "VN", status: "active", linked: true },
   ];
 }

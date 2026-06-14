@@ -1,16 +1,20 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { UserPlus, Briefcase } from "lucide-react";
+import { UserPlus, Briefcase, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DealerClaimDrawer } from "./onboarding/DealerClaimDrawer";
 
 /** In-shell state for an authenticated user whose account isn't linked to a
- *  dealer record. The Careers/marketplace tab stays reachable (open market), so
- *  un-hired applicants can still browse & apply. */
+ *  dealer record. Primary CTA opens the self-claim flow (phone / Telegram code);
+ *  the Careers/marketplace tab stays reachable (open market). */
 export function DealerNotLinkedScreen() {
   const { t } = useTranslation();
   const nav = useNavigate();
+  const [claimOpen, setClaimOpen] = useState(false);
+
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
       <span className="grid place-items-center w-16 h-16 rounded-2xl bg-card border border-primary/30 text-primary">
         <UserPlus className="w-8 h-8" />
       </span>
@@ -24,12 +28,17 @@ export function DealerNotLinkedScreen() {
         )}
       </p>
       <Button
-        className="gradient-neon text-primary-foreground border-0 font-bold"
-        onClick={() => nav("/dealer/careers")}
+        className="gradient-neon text-primary-foreground border-0 font-bold w-full max-w-[16rem]"
+        onClick={() => setClaimOpen(true)}
       >
+        <Link2 className="w-4 h-4 mr-1.5" />
+        {t("dealer.onboarding.claimEntry", "Liên kết tài khoản dealer")}
+      </Button>
+      <Button variant="outline" className="w-full max-w-[16rem]" onClick={() => nav("/dealer/careers")}>
         <Briefcase className="w-4 h-4 mr-1.5" />
         {t("dealer.notLinked.cta", "Xem tuyển dụng")}
       </Button>
+      <DealerClaimDrawer open={claimOpen} onOpenChange={setClaimOpen} />
     </div>
   );
 }
