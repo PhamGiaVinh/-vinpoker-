@@ -7,7 +7,7 @@
 // parent (the PR #12 safety machinery is untouched).
 
 import type { CSSProperties } from "react";
-import { PokerCard } from "./PokerVisuals";
+import { PokerCard, CardBack } from "./PokerVisuals";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
 
 export interface SeatInfo {
@@ -89,16 +89,16 @@ const SEAT_POSITIONS_PORTRAIT: Record<number, SeatPos> = {
 
 // Felt oval + board/pot anchor geometry per orientation.
 const LANDSCAPE_FELT = {
-  minHeight: "480px",
+  minHeight: "520px",
   viewBox: "0 0 800 600",
-  cx: 400, cy: 300, rx: 340, ry: 240, rx2: 338, ry2: 238, rx3: 316, ry3: 216,
-  boardBottom: "25%", potBottom: "10%",
+  cx: 400, cy: 300, rx: 350, ry: 250, rx2: 348, ry2: 248, rx3: 326, ry3: 226,
+  boardBottom: "25%", potBottom: "10%", vTop: "27%",
 };
 const PORTRAIT_FELT = {
-  minHeight: "560px",
+  minHeight: "600px",
   viewBox: "0 0 420 620",
-  cx: 210, cy: 310, rx: 190, ry: 296, rx2: 188, ry2: 294, rx3: 168, ry3: 274,
-  boardBottom: "48%", potBottom: "38%",
+  cx: 210, cy: 310, rx: 196, ry: 300, rx2: 194, ry2: 298, rx3: 174, ry3: 278,
+  boardBottom: "48%", potBottom: "38%", vTop: "20%",
 };
 
 export interface LiveFeltProps {
@@ -139,8 +139,8 @@ export function LiveFelt({
   const seatPositions = portrait ? SEAT_POSITIONS_PORTRAIT : SEAT_POSITIONS;
   return (
     <div
-      className="relative bg-gradient-to-b from-[#16090d] to-[#0c0d10] rounded-2xl border border-amber-700/30 shadow-inner overflow-hidden"
-      style={{ minHeight: felt.minHeight }}
+      className="relative rounded-2xl border bg-card shadow-inner overflow-hidden"
+      style={{ minHeight: felt.minHeight, borderColor: "hsl(var(--poker-gold) / 0.3)" }}
     >
       <svg
         className="absolute inset-0 w-full h-full"
@@ -149,9 +149,9 @@ export function LiveFelt({
       >
         <defs>
           <radialGradient id="feltGrad" cx="50%" cy="42%">
-            <stop offset="0%" style={{ stopColor: "#581723", stopOpacity: "0.96" }} />
-            <stop offset="62%" style={{ stopColor: "#2b0b13", stopOpacity: "0.98" }} />
-            <stop offset="100%" style={{ stopColor: "#1a070c", stopOpacity: "0.98" }} />
+            <stop offset="0%" style={{ stopColor: "hsl(var(--poker-felt))", stopOpacity: "0.97" }} />
+            <stop offset="62%" style={{ stopColor: "hsl(var(--poker-felt-dark))", stopOpacity: "0.98" }} />
+            <stop offset="100%" style={{ stopColor: "hsl(var(--poker-felt-dark))", stopOpacity: "1" }} />
           </radialGradient>
         </defs>
         <ellipse cx={felt.cx} cy={felt.cy} rx={felt.rx} ry={felt.ry} fill="url(#feltGrad)" />
@@ -161,7 +161,7 @@ export function LiveFelt({
           rx={felt.rx2}
           ry={felt.ry2}
           fill="none"
-          stroke="rgba(245,179,64,0.4)"
+          stroke="hsl(var(--poker-gold) / 0.5)"
           strokeWidth="4"
         />
         <ellipse
@@ -170,10 +170,25 @@ export function LiveFelt({
           rx={felt.rx3}
           ry={felt.ry3}
           fill="none"
-          stroke="rgba(245,179,64,0.14)"
+          stroke="hsl(var(--poker-gold) / 0.16)"
           strokeWidth="1.5"
         />
       </svg>
+
+      {/* Gold "V" felt mark (center, behind cards). No animal/crest. */}
+      <div
+        aria-hidden="true"
+        data-testid="felt-v"
+        className="pointer-events-none absolute left-1/2 z-[1] -translate-x-1/2 font-serif font-black leading-none"
+        style={{
+          top: felt.vTop,
+          fontSize: portrait ? "42px" : "54px",
+          color: "hsl(var(--poker-gold) / 0.9)",
+          textShadow: "0 2px 22px hsl(var(--poker-gold) / 0.35)",
+        }}
+      >
+        V
+      </div>
 
       {seats.map((seat) => {
         // Anchor by physical seat number so players never shift when others bust.
@@ -234,7 +249,7 @@ export function LiveFelt({
                 )}
               </div>
               <div className="flex justify-between items-center mb-1">
-                <span className="text-emerald-400 font-semibold text-xs truncate max-w-[52px] sm:max-w-[80px]">
+                <span className="text-zinc-100 font-semibold text-xs truncate max-w-[52px] sm:max-w-[80px]">
                   {seat.display_name}
                 </span>
                 {seat.position && (
@@ -249,10 +264,13 @@ export function LiveFelt({
                   </span>
                 )}
               </div>
-              <div className="text-white font-bold text-xs sm:text-sm font-mono">
+              <div
+                className="font-bold text-xs sm:text-sm font-mono"
+                style={{ color: "hsl(var(--poker-stack))" }}
+              >
                 {formatStack(seat.chip_count)}
                 {seatBB && (
-                  <span className="block text-[9px] font-normal text-muted-foreground">
+                  <span className="block text-[9px] font-normal text-white/45">
                     {seatBB}
                   </span>
                 )}
@@ -279,13 +297,18 @@ export function LiveFelt({
                   {seat.last_action}
                 </div>
               )}
-              {seat.hole_cards && seat.hole_cards.length > 0 && (
-                <div className="flex gap-0.5 justify-center mt-1">
-                  {seat.hole_cards.map((card: string, ci: number) => (
+              {/* Always exactly 2 hole-card elements: face-up ONLY when the dealer
+                  has revealed exactly 2 (Triton-style); otherwise 2 backs. Never
+                  invent values. Folded seats keep 2 dimmed backs (stable layout). */}
+              <div data-testid="seat-holecards" className="flex gap-0.5 justify-center mt-1">
+                {seat.hole_cards && seat.hole_cards.length === 2 ? (
+                  seat.hole_cards.map((card, ci) => (
                     <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} />)
+                )}
+              </div>
             </div>
           </div>
         );

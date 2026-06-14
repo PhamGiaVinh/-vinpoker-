@@ -112,6 +112,54 @@ export function PokerCard({
   );
 }
 
+/**
+ * Face-DOWN poker card — burgundy + gold, driven by the --poker-felt/--poker-gold
+ * tokens so it stays a poker card in every theme. Separate from PokerCard on
+ * purpose: PokerCard(null) keeps its empty-slot behavior (used by the board/replay).
+ * Used by the viewer when a seat's hole cards are not revealed (privacy-safe — no
+ * value is ever shown). Sizes mirror PokerCard so face-up/face-down line up.
+ */
+export function CardBack({
+  size = "xs",
+  muted = false,
+  className,
+}: {
+  size?: "xs" | "sm" | "md" | "lg";
+  muted?: boolean;
+  className?: string;
+}) {
+  const sizeClass = {
+    xs: "h-8 w-6 rounded-md text-[10px]",
+    sm: "h-11 w-8 rounded-md text-xs",
+    md: "h-16 w-12 rounded-lg text-base",
+    lg: "h-20 w-14 rounded-xl text-lg",
+  }[size];
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="card-back"
+      className={cn(
+        "relative shrink-0 overflow-hidden border font-serif font-black leading-none shadow-lg shadow-black/35",
+        muted && "opacity-55 grayscale",
+        sizeClass,
+        className
+      )}
+      style={{
+        background:
+          "linear-gradient(135deg, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt-dark)) 100%)",
+        borderColor: "hsl(var(--poker-gold) / 0.7)",
+        color: "hsl(var(--poker-gold))",
+      }}
+    >
+      <div
+        className="absolute inset-[2px] rounded-[inherit] border"
+        style={{ borderColor: "hsl(var(--poker-gold) / 0.3)" }}
+      />
+      <div className="absolute inset-0 grid place-items-center text-[0.95em] opacity-90">V</div>
+    </div>
+  );
+}
+
 export function TrackerVisualStyles() {
   return (
     <style>

@@ -9,10 +9,10 @@ export interface LiveUpdatesFeedProps {
 }
 
 const KIND_BADGE: Record<HubFeedKind, { text: string; cls: string }> = {
-  allin: { text: "ALL-IN", cls: "bg-red-500/15 text-red-300 border-red-500/40" },
-  raise: { text: "TỐ", cls: "bg-amber-500/15 text-amber-300 border-amber-500/40" },
-  bet: { text: "CƯỢC", cls: "bg-amber-500/15 text-amber-300 border-amber-500/40" },
-  call: { text: "THEO", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40" },
+  allin: { text: "ALL-IN", cls: "bg-destructive/15 text-destructive border-destructive/40" },
+  raise: { text: "TỐ", cls: "bg-warning/15 text-warning border-warning/40" },
+  bet: { text: "CƯỢC", cls: "bg-warning/15 text-warning border-warning/40" },
+  call: { text: "THEO", cls: "bg-success/15 text-success border-success/40" },
   check: { text: "CHECK", cls: "bg-secondary text-muted-foreground border-border/60" },
   fold: { text: "BỎ", cls: "bg-secondary text-muted-foreground border-border/60" },
   post: { text: "BLIND", cls: "bg-secondary text-muted-foreground border-border/60" },
@@ -23,7 +23,7 @@ export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
         Cập nhật • Trực tiếp
       </div>
       <div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/30 overflow-hidden">
@@ -41,7 +41,7 @@ export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
                 </span>
                 <span className="text-muted-foreground shrink-0">Ghế {item.seatNumber}</span>
                 <span className="font-semibold text-foreground truncate">{item.playerName}</span>
-                <span className="ml-auto text-amber-200/80 font-mono truncate">{item.label}</span>
+                <span className="ml-auto text-warning font-mono truncate">{item.label}</span>
               </div>
             );
           })

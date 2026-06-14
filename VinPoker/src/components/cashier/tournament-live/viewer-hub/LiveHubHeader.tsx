@@ -22,11 +22,11 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-[11px] sm:text-xs font-bold border border-emerald-500/30 shrink-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-success/10 text-success rounded-md text-[11px] sm:text-xs font-bold border border-success/30 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           TRỰC TIẾP
           {liveTableCount != null && liveTableCount > 0 && (
-            <span className="ml-1 text-emerald-300/90">· {liveTableCount} bàn</span>
+            <span className="ml-1 text-success/90">· {liveTableCount} bàn</span>
           )}
         </div>
         <div className="min-w-0">
@@ -36,7 +36,7 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
           ) : clubName && clubId ? (
             <Link
               to={`/club/${clubId}`}
-              className="text-xs text-muted-foreground hover:text-emerald-400 transition-colors"
+              className="text-xs text-muted-foreground hover:text-success transition-colors"
             >
               {clubName}
             </Link>
@@ -48,7 +48,7 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
       <Button
         size="sm"
         onClick={onShare}
-        className="bg-amber-500/90 hover:bg-amber-400 text-black font-bold shrink-0"
+        className="bg-warning hover:bg-warning/90 text-warning-foreground font-bold shrink-0"
       >
         <Share2 className="w-3.5 h-3.5 mr-1.5" /> Chia sẻ
       </Button>
