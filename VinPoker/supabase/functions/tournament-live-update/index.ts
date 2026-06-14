@@ -78,6 +78,28 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
+  // Structured telemetry for a rejected/flagged validation verdict. Emitted for
+  // BOTH enforce (hard 422) and warn (recorded anyway) so rejects are visible in
+  // the Supabase dashboard Edge logs (the CLI cannot read them, and enforce
+  // rejects otherwise leave no trail). Logs only non-sensitive identifiers + the
+  // verdict — never hole cards, amounts, full payload, secrets, or auth tokens.
+  const logValidationReject = (
+    fields: { validation_code: string; hand_id?: string; player_id?: string; action_type?: string; street?: string },
+  ) =>
+    console.warn(
+      "[tracker-validation:reject]",
+      JSON.stringify({
+        validation_code: fields.validation_code,
+        tournament_id,
+        hand_id: fields.hand_id,
+        player_id: fields.player_id,
+        action_type: fields.action_type,
+        street: fields.street,
+        mode: VALIDATION_MODE,
+        turn_order_enabled: ENFORCE_TURN_ORDER,
+      }),
+    );
+
   let result: any;
   let validationNote: any = undefined;
 
@@ -92,6 +114,7 @@ Deno.serve(async (req) => {
           const recon = reconcileSidePots(actions as ActionRow[], side_pots);
           authoritativeSidePots = recon.serverSidePots; // authoritative, always
           if (recon.tampered) {
+            logValidationReject({ validation_code: "SIDE_POTS_TAMPERED" });
             if (VALIDATION_MODE === "enforce") {
               return validationError("SIDE_POTS_TAMPERED", "side_pots không khớp với chuỗi hành động trên server.");
             }
@@ -197,12 +220,14 @@ Deno.serve(async (req) => {
               enforceTurnOrder: ENFORCE_TURN_ORDER,
             });
             if (!verdict.valid) {
+              // Telemetry first so the reject is observable in BOTH modes
+              // (enforce returns 422 below; warn records anyway).
+              logValidationReject({ validation_code: verdict.code, hand_id, player_id, action_type, street: street || "preflop" });
               if (VALIDATION_MODE === "enforce") {
                 return validationError(verdict.code, verdict.message);
               }
               // warn: record anyway, but surface the verdict for observability.
               validationNote = { code: verdict.code, message: verdict.message, normalizedAmount: verdict.normalizedAmount };
-              console.warn(`[tracker-validation:warn] hand=${hand_id} player=${player_id} ${action_type} -> ${verdict.code}`);
             }
           }
         }
