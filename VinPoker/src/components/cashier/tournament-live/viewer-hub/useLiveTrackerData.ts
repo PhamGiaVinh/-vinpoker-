@@ -102,11 +102,35 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
       });
     };
 
+    // Poll only while the tab is visible — pausing when hidden saves mobile
+    // battery/data, and we refresh immediately on return so data isn't stale.
+    let intervalId: number | null = null;
+    const startPolling = () => {
+      if (intervalId == null) intervalId = window.setInterval(load, POLL_MS);
+    };
+    const stopPolling = () => {
+      if (intervalId != null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        load();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
     load();
-    const id = window.setInterval(load, POLL_MS);
+    if (document.visibilityState !== "hidden") startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [tournamentId]);
 
