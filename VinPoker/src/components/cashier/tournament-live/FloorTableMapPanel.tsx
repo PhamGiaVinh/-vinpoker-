@@ -14,29 +14,43 @@ import { EditChipsDialog } from "./EditChipsDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
-type StatusKey = "playing" | "full" | "empty" | "closed";
+type StatusKey = "open" | "running" | "paused" | "closed";
 
 const STATUS_META: Record<StatusKey, { label: string; dot: string; text: string }> = {
-  playing: { label: "Đang chơi", dot: "bg-primary", text: "text-primary" },
-  full: { label: "Đầy", dot: "bg-destructive", text: "text-destructive" },
-  empty: { label: "Trống", dot: "bg-muted-foreground", text: "text-muted-foreground" },
+  open: { label: "Mở / trống", dot: "bg-primary", text: "text-primary" },
+  running: { label: "Đang chạy", dot: "bg-sky-500", text: "text-sky-400" },
+  paused: { label: "Tạm dừng", dot: "bg-amber-500", text: "text-amber-400" },
   closed: { label: "Đóng", dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
 };
 
-function tableStatus(occupied: number, maxSeats: number, raw: string): StatusKey {
+const STATUS_ORDER: StatusKey[] = ["open", "running", "paused", "closed"];
+
+// Pseudo-zones grouped by table number (Zone A = 1–20, B = 21–40, …) until an
+// explicit tournament_tables.zone column is added (see floor-zone-table-status-spec).
+const ZONE_SIZE = 20;
+function zoneOf(n: number | null): string {
+  if (n == null || n < 1) return "Khác";
+  return String.fromCharCode(65 + Math.floor((n - 1) / ZONE_SIZE));
+}
+
+// Status from data already loaded: closed (table broken/closed) → paused (room on
+// break) → running (has active players) → open. Per-table pause needs a table-level
+// field (deferred); break is room-wide via tournament.status.
+function tableStatus(occupied: number, raw: string, onBreak: boolean): StatusKey {
   if (raw !== "active") return "closed";
-  if (occupied >= maxSeats) return "full";
-  if (occupied > 0) return "playing";
-  return "empty";
+  if (onBreak) return "paused";
+  if (occupied > 0) return "running";
+  return "open";
 }
 
 /**
- * Floor table map — color-coded status grid scaling to 50–100 tables with status
- * filters, table/player search, density toggle and a sticky summary. Click a
- * table → detail sheet; tap a player there → Chuyển / Sửa chip / Phiếu / Loại.
- * Reuses existing backend only (tournament_tables select + get_seats edge action
- * + move_player_seat / update_seats). No zone column exists, so tables are a flat
- * grid ordered by table number.
+ * Floor table map — zone-grouped, color-coded status grid (Mở / Đang chạy / Tạm
+ * dừng / Đóng) scaling to 50–100 tables, with status filters, table/player search,
+ * density toggle, sticky summary and a legend. Click a table → detail sheet; tap a
+ * player there → Chuyển / Sửa chip / Phiếu / Loại. Reuses existing backend only
+ * (tournament_tables select + get_seats + move_player_seat / update_seats). Zones
+ * are derived from table number; status is derived client-side (paused = tournament
+ * on break).
  */
 export function FloorTableMapPanel({
   tournament,
@@ -47,6 +61,7 @@ export function FloorTableMapPanel({
 }) {
   const { user } = useAuth();
   const tid = tournament.id;
+  const onBreak = tournament.status === "break";
   const [tables, setTables] = useState<MapTable[] | null>(null);
   const [seatsByTable, setSeatsByTable] = useState<Record<string, MapSeat[]>>({});
   const [entryBySeat, setEntryBySeat] = useState<Record<string, string>>({});
@@ -119,11 +134,17 @@ export function FloorTableMapPanel({
 
   const enriched = useMemo(() => (tables ?? []).map((t) => {
     const seats = seatsByTable[t.table_id] ?? [];
-    return { table: t, seats, occ: seats.length, status: tableStatus(seats.length, t.max_seats, t.status) };
-  }), [tables, seatsByTable]);
+    return {
+      table: t,
+      seats,
+      occ: seats.length,
+      zone: zoneOf(t.table_number),
+      status: tableStatus(seats.length, t.status, onBreak),
+    };
+  }), [tables, seatsByTable, onBreak]);
 
   const counts = useMemo(() => {
-    const c = { total: enriched.length, playing: 0, full: 0, empty: 0, closed: 0 } as Record<string, number>;
+    const c: Record<string, number> = { total: enriched.length, open: 0, running: 0, paused: 0, closed: 0 };
     for (const e of enriched) c[e.status]++;
     return c;
   }, [enriched]);
@@ -135,6 +156,19 @@ export function FloorTableMapPanel({
     if (String(e.table.table_number ?? "").includes(q) || e.table.table_name.toLowerCase().includes(q)) return true;
     return e.seats.some((s) => (s.player_name || s.player_id).toLowerCase().includes(q));
   }), [enriched, filter, query]);
+
+  const zones = useMemo(() => {
+    const map = new Map<string, typeof visible>();
+    for (const e of visible) {
+      if (!map.has(e.zone)) map.set(e.zone, []);
+      map.get(e.zone)!.push(e);
+    }
+    return Array.from(map.entries()).sort((a, b) => {
+      if (a[0] === "Khác") return 1;
+      if (b[0] === "Khác") return -1;
+      return a[0] < b[0] ? -1 : 1;
+    });
+  }, [visible]);
 
   const bustSeat = async () => {
     if (!selected) return;
@@ -177,8 +211,8 @@ export function FloorTableMapPanel({
   };
 
   const cellCols = compact
-    ? "grid-cols-5 sm:grid-cols-8 lg:grid-cols-10"
-    : "grid-cols-3 sm:grid-cols-5 lg:grid-cols-6";
+    ? "grid-cols-5 sm:grid-cols-8 lg:grid-cols-12"
+    : "grid-cols-3 sm:grid-cols-6 lg:grid-cols-10";
 
   return (
     <Card className="p-3 sm:p-4 space-y-3">
@@ -197,20 +231,21 @@ export function FloorTableMapPanel({
         </div>
 
         <div className="grid grid-cols-5 gap-1.5 text-center">
-          {([
-            ["all", "Tổng", counts.total, "text-foreground"],
-            ["playing", "Đang chơi", counts.playing, STATUS_META.playing.text],
-            ["full", "Đầy", counts.full, STATUS_META.full.text],
-            ["empty", "Trống", counts.empty, STATUS_META.empty.text],
-            ["closed", "Đóng", counts.closed, STATUS_META.closed.text],
-          ] as [StatusKey | "all", string, number, string][]).map(([k, label, n, cls]) => (
+          <button
+            onClick={() => setFilter("all")}
+            className={`rounded-lg border px-1 py-1.5 ${filter === "all" ? "border-primary/50 bg-primary/5" : "border-border bg-card"}`}
+          >
+            <div className="text-base font-semibold text-foreground">{counts.total}</div>
+            <div className="text-[10px] text-muted-foreground">Tổng</div>
+          </button>
+          {STATUS_ORDER.map((k) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
               className={`rounded-lg border px-1 py-1.5 ${filter === k ? "border-primary/50 bg-primary/5" : "border-border bg-card"}`}
             >
-              <div className={`text-base font-semibold ${cls}`}>{n}</div>
-              <div className="text-[10px] text-muted-foreground">{label}</div>
+              <div className={`text-base font-semibold ${STATUS_META[k].text}`}>{counts[k]}</div>
+              <div className="text-[10px] text-muted-foreground">{STATUS_META[k].label.split(" / ")[0]}</div>
             </button>
           ))}
         </div>
@@ -234,23 +269,42 @@ export function FloorTableMapPanel({
       ) : visible.length === 0 ? (
         <div className="py-10 text-center text-sm text-muted-foreground">Không có bàn khớp bộ lọc.</div>
       ) : (
-        <div className={`grid ${cellCols} gap-2`}>
-          {visible.map((e) => {
-            const meta = STATUS_META[e.status];
-            return (
-              <button
-                key={e.table.tt_id}
-                onClick={() => setDetailTable(e.table)}
-                className="rounded-lg border border-border bg-card p-1.5 transition-colors hover:border-primary/50"
-                title={`${e.table.table_name} · ${meta.label} · ${e.occ}/${e.table.max_seats}`}
-              >
-                <TableIcon number={e.table.table_number} colorClass={meta.text} />
-                <div className="mt-0.5 text-center font-mono text-[9px] text-muted-foreground">{e.occ}/{e.table.max_seats}</div>
-              </button>
-            );
-          })}
+        <div className="space-y-3">
+          {zones.map(([zoneName, items]) => (
+            <div key={zoneName}>
+              <div className="mb-1.5 flex items-baseline gap-2">
+                <span className="text-sm font-medium">Zone {zoneName}</span>
+                <span className="text-[11px] text-muted-foreground">{items.length} bàn</span>
+              </div>
+              <div className={`grid ${cellCols} gap-2`}>
+                {items.map((e) => {
+                  const meta = STATUS_META[e.status];
+                  return (
+                    <button
+                      key={e.table.tt_id}
+                      onClick={() => setDetailTable(e.table)}
+                      className="rounded-lg border border-border bg-card p-1.5 transition-colors hover:border-primary/50"
+                      title={`${e.table.table_name} · ${meta.label} · ${e.occ}/${e.table.max_seats}`}
+                    >
+                      <TableIcon number={e.table.table_number} colorClass={meta.text} />
+                      <div className="mt-0.5 text-center font-mono text-[9px] text-muted-foreground">{e.occ}/{e.table.max_seats}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-border pt-2 text-[11px] text-muted-foreground">
+        {STATUS_ORDER.map((k) => (
+          <span key={k} className="flex items-center gap-1.5">
+            <span className={`inline-block h-2.5 w-2.5 rounded-sm ${STATUS_META[k].dot}`} /> {STATUS_META[k].label}
+          </span>
+        ))}
+      </div>
 
       <FloorTableDetailSheet
         open={detailTable !== null}
