@@ -241,7 +241,7 @@ const Marketplace = () => {
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">HỢP TÁC</span>
+              <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">{t('marketplace.badge')}</span>
             </div>
 
             {/* Title */}

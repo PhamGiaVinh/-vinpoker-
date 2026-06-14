@@ -55,8 +55,8 @@ const NewsDetail = () => {
     if (isError) {
       return (
         <Card className="p-10 text-center space-y-3">
-          <p className="text-destructive font-semibold">Không tải được bài viết</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>Thử lại</Button>
+          <p className="text-destructive font-semibold">{t('newsPage.loadErrorDetail')}</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>{t('newsPage.retry')}</Button>
         </Card>
       );
     }

@@ -157,7 +157,8 @@
     "findPlayers": "プレイヤーを探す",
     "noActiveBacking": "アクティブなバッキングはありません",
     "backerCount": "{{n}} バッカー",
-    "activeDeals": "{{n}} アクティブディール"
+    "activeDeals": "{{n}} アクティブディール",
+    "badge": "マーケット・プレイヤー探し"
   },
   "backingProfile": {
     "title": "バッキングプロフィール",
@@ -485,7 +486,8 @@
     "pickRange": "{{min}}% から {{max}}% を選択",
     "reservedToast": "{{pct}}% が予約されました！ 30分以内に振り込んでください。",
     "cantReserve": "予約できません",
-    "openProfile": "プロフィールを開く"
+    "openProfile": "プロフィールを開く",
+    "badge": "ステーキング"
   },
   "stakingNew": {
     "title": "新しいコスト協力登録券を作成",
@@ -1445,7 +1447,11 @@
       "scheduled": "配信予定",
       "draftSaved": "下書きが保存されました",
       "published": "公開済み"
-    }
+    },
+    "badge": "ニュース",
+    "loadError": "ニュースを読み込めませんでした",
+    "loadErrorDetail": "記事を読み込めませんでした",
+    "retry": "再試行"
   },
   "bankroll": {
     "title": "バンクロール管理",
@@ -2326,5 +2332,24 @@
     "sending": "送信中...",
     "needProof": "明細が必要です",
     "transferred": "振込完了"
+  },
+  "clubDetail": {
+    "dailySchedule": "デイリースケジュール",
+    "weeklySchedule": "ウィークリースケジュール"
+  },
+  "countdown": {
+    "days": "日"
+  },
+  "packageCard": {
+    "endsIn": "終了まで"
+  },
+  "packageListing": {
+    "title": "トーナメントパッケージ",
+    "subtitle": "ぴったりのパッケージを選んで今すぐ参加",
+    "loadError": "パッケージの読み込みに失敗しました",
+    "empty": "トーナメントパッケージはありません"
+  },
+  "stickyBar": {
+    "register": "登録する"
   }
 }

@@ -246,7 +246,7 @@ const News = () => {
           <div className="inline-flex items-center gap-2 mb-4">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-semibold text-primary">
               <Newspaper className="w-3.5 h-3.5" />
-              TIN TỨC
+              {t('newsPage.badge')}
             </span>
           </div>
           <h1 className="font-display text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground mb-2">
@@ -268,8 +268,8 @@ const News = () => {
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
       ) : isError && items.length === 0 ? (
         <Card className="p-10 text-center space-y-3">
-          <p className="text-destructive font-semibold">Không tải được tin tức</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>Thử lại</Button>
+          <p className="text-destructive font-semibold">{t('newsPage.loadError')}</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>{t('newsPage.retry')}</Button>
         </Card>
       ) : items.length === 0 ? (
         <Card className="p-10 text-center text-muted-foreground">{t("newsPage.empty")}</Card>

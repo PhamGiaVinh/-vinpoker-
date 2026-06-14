@@ -1,4 +1,5 @@
 import { useCountdown } from '@/hooks/useCountdown'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   targetDate: string | null
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function CountdownTimer({ targetDate, label }: Props) {
+  const { t } = useTranslation()
   const { days, hours, minutes, seconds, expired } = useCountdown(targetDate)
 
   if (!targetDate || expired) return null
@@ -17,7 +19,7 @@ export default function CountdownTimer({ targetDate, label }: Props) {
         {days > 0 && (
           <>
             <span className="font-semibold text-emerald-400">{days}</span>
-            <span className="text-muted-foreground">ngày</span>
+            <span className="text-muted-foreground">{t('countdown.days')}</span>
           </>
         )}
         <span className="font-semibold text-emerald-400">

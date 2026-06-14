@@ -193,7 +193,8 @@
     "findPlayers": "플레이어 찾기",
     "noActiveBacking": "활성 백킹 딜이 없습니다",
     "backerCount": "백커 {{n}}명",
-    "activeDeals": "활성 딜 {{n}}개"
+    "activeDeals": "활성 딜 {{n}}개",
+    "badge": "마켓 · 플레이어 찾기"
   },
   "nav": {
     "schedule": "일정",
@@ -425,7 +426,8 @@
     "pickRange": "{{min}}%에서 {{max}}% 사이를 선택하세요",
     "reservedToast": "{{pct}}% 예약! 30분 이내에 이체해주세요.",
     "cantReserve": "예약할 수 없습니다",
-    "openProfile": "프로필 열기"
+    "openProfile": "프로필 열기",
+    "badge": "스테이킹"
   },
   "clubsPage": {
     "title": "클럽",
@@ -1472,7 +1474,11 @@
       "scheduled": "예약됨",
       "draftSaved": "임시 저장됨",
       "published": "게시됨"
-    }
+    },
+    "badge": "뉴스",
+    "loadError": "뉴스를 불러올 수 없습니다",
+    "loadErrorDetail": "기사를 불러올 수 없습니다",
+    "retry": "다시 시도"
   },
   "privacy": {
     "title": "개인정보처리방침",
@@ -2322,5 +2328,24 @@
     "sending": "전송 중...",
     "needProof": "영수증 필요",
     "transferred": "이체 완료"
+  },
+  "clubDetail": {
+    "dailySchedule": "일간 일정",
+    "weeklySchedule": "주간 일정"
+  },
+  "countdown": {
+    "days": "일"
+  },
+  "packageCard": {
+    "endsIn": "종료까지"
+  },
+  "packageListing": {
+    "title": "토너먼트 패키지",
+    "subtitle": "맞는 패키지를 선택하고 지금 참가하세요",
+    "loadError": "패키지 목록을 불러올 수 없습니다",
+    "empty": "토너먼트 패키지가 없습니다"
+  },
+  "stickyBar": {
+    "register": "등록하기"
   }
 }

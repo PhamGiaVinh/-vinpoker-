@@ -68,13 +68,13 @@ const ClubDetail = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {club.daily_schedule_image_url && (
             <Card className="p-2 overflow-hidden">
-              <div className="text-xs font-semibold text-gold mb-2 px-1">Lịch hàng ngày</div>
+              <div className="text-xs font-semibold text-gold mb-2 px-1">{t('clubDetail.dailySchedule')}</div>
               <img src={club.daily_schedule_image_url} alt="Daily schedule" className="w-full h-auto object-contain rounded-md" />
             </Card>
           )}
           {club.weekly_schedule_image_url && (
             <Card className="p-2 overflow-hidden">
-              <div className="text-xs font-semibold text-gold mb-2 px-1">Lịch hàng tuần</div>
+              <div className="text-xs font-semibold text-gold mb-2 px-1">{t('clubDetail.weeklySchedule')}</div>
               <img src={club.weekly_schedule_image_url} alt="Weekly schedule" className="w-full h-auto object-contain rounded-md" />
             </Card>
           )}

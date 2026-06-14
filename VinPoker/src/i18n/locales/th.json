@@ -157,7 +157,8 @@
     "findPlayers": "ค้นหาผู้เล่น",
     "noActiveBacking": "คุณไม่มีดีลที่กำลังสนับสนุน",
     "backerCount": "{{n}} แบ็คเกอร์",
-    "activeDeals": "{{n}} ดีลที่กำลังดำเนินการ"
+    "activeDeals": "{{n}} ดีลที่กำลังดำเนินการ",
+    "badge": "ตลาด · หาผู้เล่น"
   },
   "backingProfile": {
     "title": "โปรไฟล์การสนับสนุน",
@@ -485,7 +486,8 @@
     "pickRange": "เลือกจาก {{min}}% ถึง {{max}}%",
     "reservedToast": "ได้จอง {{pct}}%! กรุณาโอนภายใน 30 นาที",
     "cantReserve": "ไม่สามารถจองได้",
-    "openProfile": "เปิดโปรไฟล์"
+    "openProfile": "เปิดโปรไฟล์",
+    "badge": "สเตคกิ้ง"
   },
   "stakingNew": {
     "title": "สร้างใบสมัครร่วมทุนใหม่",
@@ -1445,7 +1447,11 @@
       "scheduled": "กำหนดการ",
       "draftSaved": "บันทึกแบบร่างแล้ว",
       "published": "เผยแพร่"
-    }
+    },
+    "badge": "ข่าวสาร",
+    "loadError": "ไม่สามารถโหลดข่าวได้",
+    "loadErrorDetail": "ไม่สามารถโหลดบทความได้",
+    "retry": "ลองอีกครั้ง"
   },
   "bankroll": {
     "title": "ตัวจัดการ Bankroll",
@@ -2326,5 +2332,24 @@
     "sending": "กำลังส่ง...",
     "needProof": "ต้องมีสลิป",
     "transferred": "โอนแล้ว"
+  },
+  "clubDetail": {
+    "dailySchedule": "ตารางรายวัน",
+    "weeklySchedule": "ตารางรายสัปดาห์"
+  },
+  "countdown": {
+    "days": "วัน"
+  },
+  "packageCard": {
+    "endsIn": "สิ้นสุดใน"
+  },
+  "packageListing": {
+    "title": "แพ็กเกจทัวร์นาเมนต์",
+    "subtitle": "เลือกแพ็กเกจที่เหมาะสมและเข้าร่วมตอนนี้",
+    "loadError": "ไม่สามารถโหลดรายการแพ็กเกจได้",
+    "empty": "ยังไม่มีแพ็กเกจทัวร์นาเมนต์"
+  },
+  "stickyBar": {
+    "register": "ลงทะเบียน"
   }
 }
