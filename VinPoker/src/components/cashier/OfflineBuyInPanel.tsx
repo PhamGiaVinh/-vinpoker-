@@ -83,8 +83,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     if (!BUYIN_LIVE || !selected) return; // defence-in-depth: never call a missing RPC
     setBusy(true);
     try {
-      // TODO: remove cast after DB apply + types regen (RPC not yet in generated types)
-      const { data, error } = await (supabase.rpc as any)("create_offline_buyin_and_seat", {
+      const { data, error } = await supabase.rpc("create_offline_buyin_and_seat", {
         p_tournament_id: selected.id,
         p_player_name: playerName.trim(),
         p_buy_in: Number(buyIn),
