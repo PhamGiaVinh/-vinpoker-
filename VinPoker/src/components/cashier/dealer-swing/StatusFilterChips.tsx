@@ -25,7 +25,7 @@ interface Chip {
 }
 
 const CHIPS: Chip[] = [
-  { value: "all", label: "Tất cả", dot: "bg-zinc-400", activeText: "text-primary" },
+  { value: "all", label: "Tất cả", dot: "bg-muted-foreground", activeText: "text-primary" },
   ...DEALER_STATUS_ORDER.map((k): Chip => ({
     value: k,
     label: dealerStatusStyle[k].label,
@@ -50,7 +50,7 @@ export default function StatusFilterChips({ counts, value, onChange }: StatusFil
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
               active
                 ? `border-primary/60 bg-primary/10 ${chip.activeText}`
-                : "border-zinc-700 text-zinc-400 bg-zinc-900/40 hover:border-zinc-600",
+                : "border-border text-muted-foreground bg-card/40 hover:border-border",
             ].join(" ")}
           >
             <span className={["w-1.5 h-1.5 rounded-full", chip.dot].join(" ")} aria-hidden="true" />
