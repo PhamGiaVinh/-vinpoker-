@@ -1,6 +1,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendTelegramNotification } from "../_shared/telegram.ts";
+import { sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
 import { startMealBreak } from "../_shared/mealBreakService.ts";
+
+// Shared dealer state labels (VI) for status / check-in / check-out replies.
+const STATE_LABELS: Record<string, string> = {
+  available: "Sẵn sàng",
+  assigned: "Đang bàn",
+  on_break: "Đang nghỉ",
+  pre_assigned: "Đang chờ phân bàn",
+  in_transition: "Đang chuyển bàn",
+  checked_out: "Đã check-out",
+  swing_ready: "Sẵn sàng swing",
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -226,7 +237,7 @@ async function handleSetup(
     .update({ telegram_user_id: userId, telegram_username: username })
     .eq("id", target.id);
 
-  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Trạng thái\n• /an_com — Nghỉ ăn cơm\n• /unlink — Hủy liên kết`);
+  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /checkout — Kết thúc ca\n• /status — Xem trạng thái\n• /an_com — Nghỉ ăn cơm\n• /unlink — Hủy liên kết`);
 }
 
 // ── /unlink handler ───────────────────────────────────────────────────────
@@ -262,6 +273,262 @@ async function handleUnlink(
   await sendDM(botToken, chatId, `✅ Đã hủy liên kết với "${dealer.full_name}".\nDùng /setup <Tên> để liên kết lại.`);
 }
 
+// ── /checkin — real check-in → into the available pool ─────────────────────
+// Mirrors doCheckin in DealerSwingTab.tsx: INSERT a fresh dealer_attendance row
+// (status='checked_in', current_state='available'). Idempotent: if the dealer
+// already has an active checked-in row, report status instead of duplicating.
+async function handleCheckin(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; club_id: string; full_name: string },
+) {
+  const { data: existing } = await admin
+    .from("dealer_attendance")
+    .select("id, current_state, status")
+    .eq("dealer_id", dealer.id)
+    .eq("status", "checked_in")
+    .order("check_in_time", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    const label = STATE_LABELS[existing.current_state] ?? existing.current_state;
+    await sendDM(
+      botToken,
+      chatId,
+      `✅ *${dealer.full_name}* đã check-in rồi.\nTrạng thái: *${label}*` +
+        (existing.current_state === "available"
+          ? "\n\n🟢 Bạn đang trong pool sẵn sàng — chờ DC phân bàn."
+          : ""),
+    );
+    return;
+  }
+
+  // Resolve the club's first tour/shift (same basis as the operator check-in UI).
+  const today = new Date().toISOString().split("T")[0];
+  const { data: shifts } = await admin
+    .from("dealer_shifts")
+    .select("id")
+    .eq("club_id", dealer.club_id)
+    .order("start_time")
+    .limit(1);
+  const shiftId = (shifts ?? [])[0]?.id ?? null;
+
+  // Partial unique index idx_one_active_checkin_per_dealer guards double active
+  // check-in (dealer_id, shift_date WHERE status='checked_in').
+  const { error } = await admin.from("dealer_attendance").insert({
+    dealer_id: dealer.id,
+    shift_id: shiftId,
+    shift_date: today,
+    status: "checked_in",
+    current_state: "available",
+    check_in_time: new Date().toISOString(),
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      await sendDM(botToken, chatId, `✅ *${dealer.full_name}* đã ở trong pool sẵn sàng.`);
+      return;
+    }
+    console.error("[telegram-bot] checkin insert error:", error.message);
+    await sendDM(botToken, chatId, "❌ Check-in thất bại. Vui lòng thử lại hoặc báo DC.");
+    return;
+  }
+
+  await sendDM(
+    botToken,
+    chatId,
+    `✅ *${dealer.full_name}* đã check-in!\n🟢 Bạn đã vào *pool sẵn sàng* — DC sẽ phân bàn cho bạn.\n\nGõ /checkout khi kết thúc ca.`,
+  );
+}
+
+// ── /status — read-only current state ──────────────────────────────────────
+async function handleStatus(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; full_name: string },
+) {
+  const { data: att } = await admin
+    .from("dealer_attendance")
+    .select("current_state, status")
+    .eq("dealer_id", dealer.id)
+    .eq("status", "checked_in")
+    .order("check_in_time", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!att) {
+    await sendDM(botToken, chatId, `❌ *${dealer.full_name}* chưa check-in.\nGõ /checkin để vào ca.`);
+    return;
+  }
+
+  const label = STATE_LABELS[att.current_state] ?? att.current_state;
+  await sendDM(botToken, chatId, `✅ *${dealer.full_name}*\nTrạng thái: *${label}*`);
+}
+
+// ── /checkout — self check-out (safe states only) ──────────────────────────
+// Replicates checkout-dealer's OT/break computation + state transition, but
+// ONLY for dealers not committed to a live table. Releasing a live table must
+// go through DC (operator) so a replacement is arranged — so assigned /
+// pre_assigned / in_transition are deferred with a "báo DC" message.
+async function handleCheckout(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; club_id: string; full_name: string },
+) {
+  const { data: att } = await admin
+    .from("dealer_attendance")
+    .select("id, current_state, status, check_in_time")
+    .eq("dealer_id", dealer.id)
+    .eq("status", "checked_in")
+    .order("check_in_time", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!att) {
+    await sendDM(botToken, chatId, `ℹ️ *${dealer.full_name}* chưa check-in (hoặc đã check-out).`);
+    return;
+  }
+
+  if (
+    att.current_state === "assigned" ||
+    att.current_state === "pre_assigned" ||
+    att.current_state === "in_transition"
+  ) {
+    const where = STATE_LABELS[att.current_state] ?? att.current_state;
+    await sendDM(
+      botToken,
+      chatId,
+      `⚠️ Bạn đang *${where}*. Vui lòng báo DC để swing ra khỏi bàn trước, rồi /checkout.`,
+    );
+    return;
+  }
+
+  // ── Worked / overtime minutes (mirror checkout-dealer: 480-min shift,
+  // subtract completed + in-progress breaks) ──
+  const STANDARD_SHIFT_MINUTES = 480;
+  let workedMinutes = 0;
+  let overtimeMinutes = 0;
+  let totalHours = 0;
+  const checkInTime: string | null = att.check_in_time;
+
+  if (checkInTime) {
+    const totalMinutes = Math.round((Date.now() - new Date(checkInTime).getTime()) / 60000);
+
+    const { data: assignments } = await admin
+      .from("dealer_assignments")
+      .select("id")
+      .eq("attendance_id", att.id);
+    const assignmentIds = (assignments ?? []).map((a: any) => a.id);
+
+    const breakRows: Array<{ id: string; break_start: string; break_end: string | null }> = [];
+    const { data: attBreaks } = await admin
+      .from("dealer_breaks")
+      .select("id, break_start, break_end")
+      .eq("attendance_id", att.id);
+    breakRows.push(...((attBreaks ?? []) as any[]));
+    if (assignmentIds.length) {
+      const { data: assBreaks } = await admin
+        .from("dealer_breaks")
+        .select("id, break_start, break_end")
+        .in("assignment_id", assignmentIds);
+      breakRows.push(...((assBreaks ?? []) as any[]));
+    }
+
+    const byId = new Map<string, { break_start: string; break_end: string | null }>();
+    for (const b of breakRows) byId.set(b.id, { break_start: b.break_start, break_end: b.break_end });
+    const breakMinutes = [...byId.values()].reduce((sum, b) => {
+      const end = b.break_end ? new Date(b.break_end).getTime() : Date.now();
+      return sum + Math.max(0, Math.round((end - new Date(b.break_start).getTime()) / 60000));
+    }, 0);
+
+    workedMinutes = totalMinutes - breakMinutes;
+    overtimeMinutes = Math.max(0, workedMinutes - STANDARD_SHIFT_MINUTES);
+    totalHours = Math.round(workedMinutes / 6) / 10;
+  }
+
+  // State transition (validated + audited inside the RPC), then checkout fields.
+  const { data: txResult } = await admin.rpc("transition_dealer_state", {
+    p_attendance_id: att.id,
+    p_new_state: "checked_out",
+    p_reason: "dealer_self_checkout_telegram",
+  });
+  if (txResult && txResult.ok === false) {
+    console.error("[telegram-bot] checkout transition failed:", txResult.error);
+    await sendDM(botToken, chatId, "❌ Check-out thất bại (trạng thái không hợp lệ). Vui lòng báo DC.");
+    return;
+  }
+
+  const nowISO = new Date().toISOString();
+  const { error: coErr } = await admin
+    .from("dealer_attendance")
+    .update({
+      status: "checked_out",
+      check_out_time: nowISO,
+      pre_assigned_table_id: null,
+      pre_assigned_at: null,
+      overtime_minutes: overtimeMinutes,
+      worked_minutes_since_last_break: 0,
+      total_worked_minutes_today: workedMinutes,
+    })
+    .eq("id", att.id)
+    .eq("status", "checked_in"); // anti-double-checkout guard
+
+  if (coErr) {
+    console.error("[telegram-bot] checkout update error:", coErr.message);
+    await sendDM(botToken, chatId, "❌ Check-out thất bại. Vui lòng thử lại hoặc báo DC.");
+    return;
+  }
+
+  // Best-effort audit (never block the checkout reply).
+  try {
+    await admin.from("audit_logs").insert({
+      club_id: dealer.club_id,
+      actor_id: null,
+      action: "checkout_dealer",
+      entity_type: "dealer_attendance",
+      entity_id: att.id,
+      payload: {
+        dealer_name: dealer.full_name,
+        source: "telegram_self_checkout",
+        total_worked_minutes: workedMinutes,
+        overtime_minutes: overtimeMinutes,
+      },
+    });
+  } catch { /* non-critical */ }
+
+  // Group-chat notify (mirror checkout-dealer message format).
+  try {
+    const groupChatId = await getClubTelegramChatId(admin, dealer.club_id);
+    if (groupChatId) {
+      const fmt = (d: Date) =>
+        d.toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "Asia/Ho_Chi_Minh",
+        });
+      const inStr = checkInTime ? fmt(new Date(checkInTime)) : "?";
+      await sendTelegramNotification(
+        botToken,
+        groupChatId,
+        `Dealer ${dealer.full_name} check out - thời gian làm việc ${inStr}-${fmt(new Date(nowISO))}: ${totalHours} tiếng`,
+      ).catch(() => {});
+    }
+  } catch { /* non-critical */ }
+
+  await sendDM(
+    botToken,
+    chatId,
+    `👋 *${dealer.full_name}* đã check-out.\n⏱ Thời gian làm: *${totalHours} tiếng*` +
+      (overtimeMinutes > 0 ? ` (OT ${overtimeMinutes}p)` : "") +
+      `\n\nHẹn gặp lại! Gõ /checkin khi vào ca mới.`,
+  );
+}
+
 // ── Existing commands ──────────────────────────────────────────────────────
 
 async function handleCommand(
@@ -281,41 +548,32 @@ async function handleCommand(
       `🤖 *VinPoker Dealer Bot*\n\n` +
         `Lệnh:\n` +
         `• /setup <Tên> — Liên kết tài khoản\n` +
-        `• /checkin — Kiểm tra trạng thái\n` +
+        `• /checkin — Vào ca (vào pool sẵn sàng)\n` +
+        `• /checkout — Kết thúc ca\n` +
+        `• /status — Xem trạng thái hiện tại\n` +
         `• /an_com — Đăng ký nghỉ ăn cơm (+15p bonus)\n` +
         `• /unlink — Hủy liên kết Telegram\n\n` +
-        `💡 Nghỉ ăn cơm: 1 lần/7 tiếng. Thời gian nghỉ linh hoạt theo tỉ lệ bàn/dealer.`,
+        `💡 /checkin xong là bạn vào pool, DC sẽ phân bàn. Nghỉ ăn cơm: 1 lần/7 tiếng.`,
     );
     return;
   }
 
   if (normalizedText === "/checkin" || normalizedText === "checkin") {
-    const { data: att } = await admin
-      .from("dealer_attendance")
-      .select("id, current_state, status, last_meal_break_at")
-      .eq("dealer_id", dealer.id)
-      .eq("status", "checked_in")
-      .maybeSingle();
+    await handleCheckin(admin, botToken, chatId, dealer);
+    return;
+  }
 
-    if (!att) {
-      await sendDM(botToken, chatId, `❌ ${dealer.full_name} chưa check-in. Vui lòng check-in trước.`);
-      return;
-    }
+  if (normalizedText === "/checkout" || normalizedText === "checkout") {
+    await handleCheckout(admin, botToken, chatId, dealer);
+    return;
+  }
 
-    const stateLabels: Record<string, string> = {
-      available: "Sẵn sàng",
-      assigned: "Đang bàn",
-      on_break: "Đang nghỉ",
-      pre_assigned: "Đang chờ",
-      in_transition: "Đang chuyển bàn",
-      swing_ready: "Sẵn sàng swing",
-    };
-
-    await sendDM(
-      botToken,
-      chatId,
-      `✅ *${dealer.full_name}*\nTrạng thái: ${stateLabels[att.current_state] ?? att.current_state}`,
-    );
+  if (
+    normalizedText === "/status" ||
+    normalizedText === "status" ||
+    normalizedText === "/trangthai"
+  ) {
+    await handleStatus(admin, botToken, chatId, dealer);
     return;
   }
 
