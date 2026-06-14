@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, KeyRound } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { toast } from "sonner";
 
 const ResetPassword = () => {
@@ -42,7 +43,8 @@ const ResetPassword = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-4 py-10">
+      <BackButton to="/" label={t("common.home")} className="absolute top-4 left-4" />
       <Card className="w-full max-w-md gradient-card border-gold p-6 shadow-gold space-y-4">
         <div className="flex items-center gap-2">
           <KeyRound className="w-5 h-5 text-primary" />

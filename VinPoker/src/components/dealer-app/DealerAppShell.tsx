@@ -11,6 +11,7 @@ import { DealerBottomNav } from "./DealerBottomNav";
 import { DealerNotificationBell } from "./DealerNotificationBell";
 import { DealerComingSoon } from "./DealerComingSoon";
 import { DealerClubSwitcher } from "./DealerClubSwitcher";
+import { BackButton } from "@/components/BackButton";
 
 /**
  * Dealer Mobile App shell — its own 5-tab mobile chrome, separate from the main
@@ -62,6 +63,7 @@ export default function DealerAppShell() {
       </header>
 
       <main className="flex-1 mx-auto w-full max-w-md px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-in">
+        <BackButton to="/" label={t("dealer.exitToMain", "Về app chính")} className="mb-2" />
         <Outlet />
       </main>
 

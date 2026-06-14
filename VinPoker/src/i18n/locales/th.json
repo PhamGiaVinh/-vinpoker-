@@ -40,7 +40,8 @@
     "account": { "title": "Account", "tier": "Dealer tier", "club": "Club", "region": "Region", "role": "Dealer", "verified": "Verified", "language": "Language", "signOut": "Sign out" },
     "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
     "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
-    "toast": { "previewOnly": "Preview only — actions enable on rollout" }
+    "toast": { "previewOnly": "Preview only — actions enable on rollout" },
+    "exitToMain": "แอปหลัก"
   },
   "nav": {
     "schedule": "ตารางแข่งขัน",
@@ -164,7 +165,8 @@
     "no": "ไม่",
     "language": "ภาษา",
     "vietnamese": "ภาษาเวียดนาม",
-    "english": "ภาษาอังกฤษ"
+    "english": "ภาษาอังกฤษ",
+    "home": "หน้าหลัก"
   },
   "findBacker": {
     "title": "ผู้เล่น",

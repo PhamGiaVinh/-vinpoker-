@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Coins, Layers, MapPin, Calendar, Users, Loader2, Radio } from "lucide-react";
+import { Coins, Layers, MapPin, Calendar, Users, Loader2, Radio } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { formatVND, formatStack, formatDateTime } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import { getTournamentPrice } from "@/lib/tournament";
@@ -81,9 +82,7 @@ const TournamentDetail = () => {
 
   return (
     <div className={livestreamMode ? "space-y-4 pb-32 md:pb-4" : "space-y-4 pb-40 md:pb-4"}>
-      <button onClick={() => nav(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> {tr("tournamentDetail.back")}
-      </button>
+      <BackButton label={tr("tournamentDetail.back")} />
 
       <Card className="gradient-card border-gold p-5 shadow-gold">
         <div className="text-xs text-gold/80 uppercase tracking-widest">{t.club?.name}</div>

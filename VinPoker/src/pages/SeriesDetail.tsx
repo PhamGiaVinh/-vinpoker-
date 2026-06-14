@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, Calendar, MapPin, Loader2, Plus, Trash2, Save, Upload, Pencil } from "lucide-react";
+import { Calendar, MapPin, Loader2, Plus, Trash2, Save, Upload, Pencil } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 
 type Series = {
   id: string;
@@ -61,9 +62,7 @@ const SeriesDetail = () => {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      <button onClick={() => nav(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> Back
-      </button>
+      <BackButton />
 
       <Card className="overflow-hidden border border-primary/30 p-0">
         <div className="aspect-[16/6] bg-gradient-to-br from-secondary to-background relative">

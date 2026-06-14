@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Newspaper, Link2, Facebook } from "lucide-react";
+import { Loader2, Newspaper, Link2, Facebook } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { formatDateTime } from "@/lib/format";
 import { toast } from "sonner";
 import { SyncingBadge } from "@/components/SyncingBadge";
@@ -66,7 +67,7 @@ const NewsDetail = () => {
   return (
     <article className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Link to="/news"><Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4 mr-1" /> {t("newsPage.backToAll")}</Button></Link>
+        <BackButton to="/news" label={t("newsPage.backToAll")} />
         <SyncingBadge isFetching={isFetching && !isLoading} isError={isError && !!post} />
       </div>
       {post.cover_url ? (

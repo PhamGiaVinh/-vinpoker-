@@ -84,7 +84,8 @@
     },
     "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
     "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
-    "toast": { "previewOnly": "Preview only — actions enable on rollout" }
+    "toast": { "previewOnly": "Preview only — actions enable on rollout" },
+    "exitToMain": "Main app"
   },
   "tv": {
     "level": "Level",
@@ -250,7 +251,8 @@
     "no": "No",
     "language": "Language",
     "vietnamese": "Vietnamese",
-    "english": "English"
+    "english": "English",
+    "home": "Home"
   },
   "findBacker": {
     "title": "PLAYERS",

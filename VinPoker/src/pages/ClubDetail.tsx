@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, MapPin, Star, Calendar, Loader2, Spade } from "lucide-react";
+import { MapPin, Star, Calendar, Loader2, Spade } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import royalPokerLogo from "@/assets/royal-poker-logo.jpg";
@@ -31,9 +32,7 @@ const ClubDetail = () => {
 
   return (
     <div className="space-y-4">
-      <button onClick={() => nav(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> {t("clubsPage.back")}
-      </button>
+      <BackButton label={t("clubsPage.back")} />
 
       <Card className="gradient-card border-gold p-5 shadow-gold">
         <div className="flex items-start gap-3">

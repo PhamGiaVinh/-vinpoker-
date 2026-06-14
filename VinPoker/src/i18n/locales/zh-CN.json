@@ -40,7 +40,8 @@
     "account": { "title": "Account", "tier": "Dealer tier", "club": "Club", "region": "Region", "role": "Dealer", "verified": "Verified", "language": "Language", "signOut": "Sign out" },
     "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
     "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
-    "toast": { "previewOnly": "Preview only — actions enable on rollout" }
+    "toast": { "previewOnly": "Preview only — actions enable on rollout" },
+    "exitToMain": "返回主应用"
   },
   "nav": {
     "schedule": "赛程",
@@ -164,7 +165,8 @@
     "no": "否",
     "language": "语言",
     "vietnamese": "越南语",
-    "english": "英语"
+    "english": "英语",
+    "home": "首页"
   },
   "findBacker": {
     "title": "选手",

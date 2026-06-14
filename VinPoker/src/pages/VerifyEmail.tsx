@@ -6,6 +6,7 @@ import { Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { BackButton } from "@/components/BackButton";
 import { toast } from "sonner";
 
 const VerifyEmail = () => {
@@ -28,7 +29,8 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10">
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-10">
+      <BackButton to="/" label={t("common.home")} className="absolute top-4 left-4" />
       <Card className="w-full max-w-md gradient-card border-gold p-6 shadow-gold space-y-4 text-center">
         <div className="flex justify-center">
           <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center">

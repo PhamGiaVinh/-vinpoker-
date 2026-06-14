@@ -86,7 +86,7 @@ export const Layout = () => {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/60 transition-colors"
+                  className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/60 transition-colors"
                   aria-label="Menu"
                 >
                   <Menu className="w-5 h-5" />
@@ -200,7 +200,7 @@ export const Layout = () => {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 px-2.5 py-2 md:py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
+                    className="inline-flex items-center justify-center gap-1 min-h-[40px] md:min-h-0 px-2.5 py-2 md:py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
                     aria-label={t("layout.operations")}
                   >
                     <Wallet className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />

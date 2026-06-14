@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 import appLogo from "@/assets/app-logo.png";
 import { toast } from "sonner";
 import TosAgreementModal from "@/components/TosAgreementModal";
+import { BackButton } from "@/components/BackButton";
 import { playSuccess, playError } from "@/lib/sound";
 
 const Auth = () => {
@@ -70,7 +71,8 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-4 py-10">
+      <BackButton to="/" label={t("common.home")} className="absolute top-4 left-4" />
       <div className="flex items-center gap-3 mb-8">
         <img src={appLogo} alt="VBacker" className="w-12 h-12 rounded-xl object-cover shadow-gold" />
         <div>
