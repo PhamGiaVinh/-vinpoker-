@@ -340,6 +340,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [newTourEndTime, setNewTourEndTime] = useState("");
   const [deleteTour, setDeleteTour] = useState<{ id: string; name: string } | null>(null);
   const [closeTourOpen, setCloseTourOpen] = useState(false);
+  const [closingTour, setClosingTour] = useState(false);
   const [deletingTour, setDeletingTour] = useState(false);
 
   // Load auto_swing_enabled setting
@@ -913,6 +914,62 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       toast.error(e.message);
     } finally {
       setClosingTable(false);
+    }
+  };
+
+  // Archive & Close Tour — server-authoritative via the SECURITY DEFINER RPC
+  // archive_and_close_dealer_tour (one transaction: snapshot → release tour
+  // tables → dealers to break pool). Gated by FEATURES.dealerSwingCloseTourArchive
+  // (the button is hidden when OFF, so this only runs once the flag is ON AND
+  // the migration is applied live). NEVER raw-updates from the client.
+  const closeTour = async () => {
+    if (!selectedTour) return;
+    const tour = (tours ?? []).find((t) => t.id === selectedTour);
+    const clubId = (tour as any)?.club_id ?? clubFilter ?? filteredClubIds[0];
+    if (!clubId) { toast.error("Thiếu thông tin club."); return; }
+    setClosingTour(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("archive_and_close_dealer_tour", {
+        p_tour_id: selectedTour,
+        p_club_id: clubId,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as any;
+      if (!r?.ok) {
+        const msgMap: Record<string, string> = {
+          permission_denied: "Bạn không có quyền đóng tour này.",
+          tour_not_found: "Không tìm thấy tour.",
+        };
+        toast.error(msgMap[r?.outcome] ?? `Đóng tour thất bại: ${r?.outcome ?? "lỗi không xác định"}`);
+        return;
+      }
+      if (r.outcome === "already_closed") toast.info("Tour đã được đóng trước đó.");
+      else toast.success("Đã lưu trữ Swing và đóng tour thành công.");
+
+      // Best-effort: download the archive snapshot as a JSON file.
+      if (r.archive_id) {
+        try {
+          const { data: arch } = await (supabase.from("dealer_swing_archives") as any)
+            .select("snapshot, archive_filename").eq("id", r.archive_id).single();
+          if (arch?.snapshot) {
+            const blob = new Blob([JSON.stringify(arch.snapshot, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = arch.archive_filename ?? `swing_archive_${r.archive_id}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch { /* download is best-effort, ignore */ }
+      }
+
+      setCloseTourOpen(false);
+      setSelectedTour(null);
+      await Promise.all([refetchTours(), refetchTables(), refetchBreakPool?.()]);
+    } catch (e: any) {
+      toast.error(`Đóng tour thất bại: ${e.message}`);
+    } finally {
+      setClosingTour(false);
     }
   };
 
@@ -2521,11 +2578,13 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Archive & Close Tour (PR1: preview-only — onConfirm wired in PR3) */}
+      {/* Archive & Close Tour — wired to the server RPC (gated by the flag). */}
       <CloseTourDialog
         open={closeTourOpen}
         onOpenChange={setCloseTourOpen}
         preview={closeTourPreview}
+        onConfirm={closeTour}
+        busy={closingTour}
       />
 
       {/* Special Dates Dialog (Bug 6) */}
