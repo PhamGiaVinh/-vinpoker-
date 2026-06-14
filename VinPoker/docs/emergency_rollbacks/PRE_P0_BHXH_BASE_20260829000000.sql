@@ -1,0 +1,21 @@
+-- Rollback for migration 20260829000000_payroll_p0_bhxh_base_contract_salary.sql
+-- (Payroll P0 — BHXH/BHYT/BHTN base = contractual monthly salary instead of gross.)
+--
+-- Pre-apply live state: calculate_dealer_payroll == the B2-PR3 body
+--   (md5 59c28609f586c5f80b83a2b1ea8daf97), defined by migration
+--   20260819000002_payroll_b2_break_deduction_formula.sql, where the insurance base is
+--   `v_bhxh_base := LEAST(v_gross_pay_vnd, v_bhxh_cap);`.
+--
+-- VERIFY BEFORE APPLY (read-only):
+--   select md5(pg_get_functiondef('public.calculate_dealer_payroll(uuid,date,date,integer)'::regprocedure));
+--   -- expect 59c28609f586c5f80b83a2b1ea8daf97 (or capture the live md5 fresh and store it here)
+--
+-- ROLLBACK (if the golden diff or post-apply check fails):
+--   Re-apply the FULL body of migration
+--     supabase/migrations/20260819000002_payroll_b2_break_deduction_formula.sql
+--   via the same controlled Management-API path (CREATE OR REPLACE FUNCTION …).
+--   That restores `v_bhxh_base := LEAST(v_gross_pay_vnd, v_bhxh_cap);` and drops
+--   `v_insurance_base`. The function is read-only / a pure calculator, so rollback is
+--   a single CREATE OR REPLACE with no data implications.
+--
+-- After rollback verify: md5(pg_get_functiondef(...)) == the captured pre-apply md5.
