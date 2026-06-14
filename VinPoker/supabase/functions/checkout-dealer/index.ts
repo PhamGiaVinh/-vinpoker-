@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, jsonResponse, pickNextDealer } from "../_shared/dealer-utils.ts";
 import {
-  sendTelegramNotification, getClubTelegramChatId,
+  sendTelegramNotification, getClubTelegramChatId, mention,
 } from "../_shared/telegram.ts";
 
 interface AttendanceRow {
@@ -95,6 +95,11 @@ async function processOneCheckout(
 
   const clubId = dealer?.club_id ?? "";
   const dealerName = dealer?.full_name ?? "";
+  const dealerMention = mention({
+    full_name: dealerName,
+    telegram_username: dealer?.telegram_username ?? null,
+    telegram_user_id: dealer?.telegram_user_id ? Number(dealer.telegram_user_id) : null,
+  });
   const checkInTime = att.check_in_time;
 
   // Auth check for first item only (caller already verified for this club)
@@ -242,7 +247,7 @@ async function processOneCheckout(
       if (groupChatId) {
         const checkInStr = checkInTime ? fmtTime(new Date(checkInTime)) : "?";
         const checkOutStr = fmtTime(new Date(nowISO));
-        const msg = `Dealer ${dealerName} check out - thời gian làm việc ${checkInStr}-${checkOutStr}: ${totalHours} tiếng`;
+        const msg = `${dealerMention} check out - thời gian làm việc ${checkInStr}-${checkOutStr}: ${totalHours} tiếng`;
         await sendTelegramNotification(botToken, groupChatId, msg).catch(() => {});
       }
     } catch { /* non-critical */ }
@@ -258,7 +263,7 @@ async function processOneCheckout(
       const fmChatId = (cs as any)?.floor_manager_chat_id;
       if (fmChatId) {
         await sendTelegramNotification(botToken, fmChatId,
-          `🚨 *Check-out đột ngột!*\n\n${preAssignedDealerName} (đang pre_assigned cho bàn ${preAssignedTableName ?? "N/A"}) vừa check-out.\nCần gán dealer mới cho bàn này!`,
+          `🚨 *Check-out đột ngột!*\n\n${dealerMention} (đang pre_assigned cho bàn ${preAssignedTableName ?? "N/A"}) vừa check-out.\nCần gán dealer mới cho bàn này!`,
           { logError: (err) => console.error("checkout FM alert error:", err) }
         ).catch(() => {});
       }
@@ -266,7 +271,7 @@ async function processOneCheckout(
       const groupChatId2 = await getClubTelegramChatId(admin, clubId);
       if (groupChatId2) {
         await sendTelegramNotification(botToken, groupChatId2,
-          `⚠️ ${preAssignedDealerName} vừa check-out (đang pre_assigned cho bàn ${preAssignedTableName ?? "N/A"}).`
+          `⚠️ ${dealerMention} vừa check-out (đang pre_assigned cho bàn ${preAssignedTableName ?? "N/A"}).`
         ).catch(() => {});
       }
     }

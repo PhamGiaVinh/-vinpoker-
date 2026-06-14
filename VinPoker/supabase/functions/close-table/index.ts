@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { formatCloseTableMessage, sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
+import { formatCloseTableMessage, sendTelegramNotification, getClubTelegramChatId, mention } from "../_shared/telegram.ts";
 
 function decodeJWT(token: string): { sub: string } | null {
   try {
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
     let dealerBreakId: string | null = null;
     let hadDealer = false;
-    let lastDealerInfo: { full_name: string; telegram_username?: string | null; workedMinutes: number } | null = null;
+    let lastDealerInfo: { full_name: string; telegram_username?: string | null; telegram_user_id?: number | null; workedMinutes: number } | null = null;
 
     // Break duration for this club (used when transitioning dealer to on_break)
     const { data: breakDurationRow } = await admin
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       // Get dealer info for notification
       const { data: att } = await admin
         .from("dealer_attendance")
-        .select("dealer_id, dealers!inner(full_name, telegram_username)")
+        .select("dealer_id, dealers!inner(full_name, telegram_username, telegram_user_id)")
         .eq("id", assignment.attendance_id)
         .maybeSingle();
       if (att) {
@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
         lastDealerInfo = {
           full_name: d.full_name,
           telegram_username: d.telegram_username,
+          telegram_user_id: d.telegram_user_id ? Number(d.telegram_user_id) : null,
           workedMinutes: Math.round((Date.now() - new Date(assignment.assigned_at).getTime()) / 60000),
         };
       }
@@ -221,7 +222,7 @@ Deno.serve(async (req) => {
       if (botToken && chatId) {
         const msg = formatCloseTableMessage({
           tableName: table.table_name,
-          dealerName: lastDealerInfo?.full_name ?? "N/A",
+          dealer: lastDealerInfo ?? { full_name: "N/A" },
           tourName: table.tour_tier ?? undefined,
         });
         sendTelegramNotification(botToken, chatId, msg).catch(() => {});
