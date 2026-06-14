@@ -23,6 +23,8 @@ export interface SeatInfo {
   is_folded?: boolean;
   is_all_in?: boolean;
   hole_cards?: string[];
+  /** Chips committed on the CURRENT street (Live Action Engine overlay; 0/undef → no chip shown). */
+  current_bet?: number;
 }
 
 export interface ActionLog {
@@ -104,6 +106,8 @@ export interface LiveFeltProps {
   seats: SeatInfo[];
   /** The most recent actor — gets the gold spotlight ring. */
   lastActorId: string | null;
+  /** The player whose turn it is to act next (Live Action Engine); null → no spotlight. */
+  toActId?: string | null;
   /** Community cards padded to 5 slots ("" = empty). */
   displayCards: string[];
   potSize: number;
@@ -121,6 +125,7 @@ export interface LiveFeltProps {
 export function LiveFelt({
   seats,
   lastActorId,
+  toActId = null,
   displayCards,
   potSize,
   potBreakdown,
@@ -182,23 +187,32 @@ export function LiveFelt({
         if (pos.transform) posStyle.transform = pos.transform;
 
         const isLastActor = !seat.is_folded && lastActorId === seat.player_id;
+        // To-act spotlight (Live Action Engine): who the table is waiting on.
+        const isToAct = !seat.is_folded && !seat.is_all_in && toActId === seat.player_id;
         const seatBB = !seat.is_folded ? formatBB(seat.chip_count) : null;
 
         return (
           <div key={seat.player_id} className="absolute z-10" style={posStyle}>
             <div
-              className={`bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl text-center transition-all duration-300 ${
+              className={`relative bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl text-center transition-all duration-300 ${
                 portrait ? "p-1 w-[68px]" : "p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36"
               } ${
                 seat.is_folded
                   ? "border-border/20 opacity-50 grayscale-[0.5]"
                   : seat.is_all_in
                     ? "border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
-                    : isLastActor
-                      ? "border-amber-400/80 shadow-[0_0_14px_rgba(245,179,64,0.35)]"
-                      : "border-emerald-500/40 hover:border-emerald-400/60"
+                    : isToAct
+                      ? "border-amber-300 ring-2 ring-amber-300/70 shadow-[0_0_18px_rgba(245,179,64,0.55)]"
+                      : isLastActor
+                        ? "border-amber-400/80 shadow-[0_0_14px_rgba(245,179,64,0.35)]"
+                        : "border-emerald-500/40 hover:border-emerald-400/60"
               }`}
             >
+              {isToAct && (
+                <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[8.5px] font-bold uppercase tracking-wide whitespace-nowrap shadow">
+                  ● chờ
+                </div>
+              )}
               <div className="flex justify-center mb-1">
                 {seat.avatar_url ? (
                   <img
@@ -243,6 +257,11 @@ export function LiveFelt({
                   </span>
                 )}
               </div>
+              {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
+                <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300">
+                  Cược {formatStack(seat.current_bet)}
+                </div>
+              )}
               {seat.is_all_in && (
                 <div className="text-[10px] text-red-400 font-bold mt-1">ALL IN</div>
               )}

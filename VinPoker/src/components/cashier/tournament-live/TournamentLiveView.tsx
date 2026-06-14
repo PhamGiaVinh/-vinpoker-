@@ -18,6 +18,7 @@ import {
   contributionsFromActions,
   type PotBreakdown,
 } from "@/lib/tracker-poker/potEngine";
+import { nextToAct } from "@/lib/tracker-poker/handFlow";
 import {
   LiveFelt,
   formatStack,
@@ -91,6 +92,9 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
   // Live Action Engine MVP: true while the latest hand is in_progress (drives the
   // flag-gated fast-poll so spectators see each action live).
   const [handInProgress, setHandInProgress] = useState(false);
+  // Live Action Engine inc2: the player whose turn it is to act (flag-gated
+  // spotlight). null when the flag is off / no live hand.
+  const [toActId, setToActId] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
@@ -183,6 +187,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     let nextActions: ActionLog[] = [];
     let nextBreakdown: PotBreakdown | null = null;
     let nextInProgress = false;
+    let liveToActId: string | null = null;
 
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
@@ -261,6 +266,46 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
           hole_cards: holeCardsMap.get(s.player_id),
         }));
 
+        // Live Action Engine (flag-gated, inc2): per-street current bets + the
+        // to-act player. Restricted to THIS hand's participants (hand_players) so
+        // it never mixes tables; advisory display only — no card/server authority.
+        if (FEATURES.liveActionEngine && nextInProgress) {
+          const boardN = nextCommunity.length;
+          const curStreet =
+            boardN >= 5 ? "river" : boardN >= 4 ? "turn" : boardN >= 3 ? "flop" : "preflop";
+          const CONTRIB = ["bet", "raise", "call", "all_in", "post_sb", "post_bb", "post_ante"];
+          const POSTS = ["post_sb", "post_bb", "post_ante"];
+          const streetBets: Record<string, number> = {};
+          const acted = new Set<string>();
+          let lastActorSeat = nextButtonSeat;
+          let bbAmt = 0;
+          actionData.forEach((a: any) => {
+            if (a.action_type === "post_bb") bbAmt = Math.max(bbAmt, a.action_amount || 0);
+            if ((a.street || "preflop") !== curStreet) return;
+            if (CONTRIB.includes(a.action_type))
+              streetBets[a.player_id] = (streetBets[a.player_id] || 0) + (a.action_amount || 0);
+            if (!POSTS.includes(a.action_type)) acted.add(a.player_id);
+            lastActorSeat = seatMap.get(a.player_id) ?? lastActorSeat;
+          });
+          seatInfos = seatInfos.map((s) => ({ ...s, current_bet: streetBets[s.player_id] || 0 }));
+          const stackOf = new Map(seatInfos.map((s) => [s.player_id, s.chip_count]));
+          const flowPlayers = (handPlayers || []).map((hp: any) => ({
+            player_id: hp.player_id,
+            seat_number: hp.seat_number,
+            current_bet: streetBets[hp.player_id] || 0,
+            current_stack: stackOf.get(hp.player_id) ?? 0,
+            is_folded: foldedPlayers.has(hp.player_id),
+            is_all_in: allInPlayers.has(hp.player_id),
+          }));
+          liveToActId = nextToAct({
+            players: flowPlayers,
+            buttonSeat: nextButtonSeat,
+            actedThisStreet: acted,
+            lastActorSeat,
+            bigBlind: bbAmt,
+          });
+        }
+
         nextBreakdown = computePotBreakdown(contributionsFromActions(actionData as any));
       }
     }
@@ -274,6 +319,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setActions(nextActions);
     setPotBreakdown(nextBreakdown);
     setHandInProgress(nextInProgress);
+    setToActId(liveToActId);
 
     if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
@@ -349,6 +395,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     setSoftErrorAt(null);
     setLastUpdatedAt(null);
     setHandInProgress(false);
+    setToActId(null);
     setMode("live");
     setReplayHandId(null);
     setReplayHand(null);
@@ -611,6 +658,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
       ? {
           seats: replayFrame.seats,
           lastActorId: replayFrame.lastActorId,
+          toActId: null,
           displayCards: replayFrame.displayCards,
           potSize: replayFrame.potSize,
           potBreakdown: replayFrame.potBreakdown,
@@ -622,6 +670,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
       : {
           seats: [] as SeatInfo[],
           lastActorId: null,
+          toActId: null,
           displayCards: ["", "", "", "", ""],
           potSize: 0,
           potBreakdown: null,
@@ -633,6 +682,7 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
     : {
         seats: activeSeatsToRender,
         lastActorId,
+        toActId: FEATURES.liveActionEngine ? toActId : null,
         displayCards,
         potSize,
         potBreakdown,
