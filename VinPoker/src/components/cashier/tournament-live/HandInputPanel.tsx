@@ -446,8 +446,10 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       }
     }
 
-    // Snapshot the pre-action state so the operator can undo this exact step.
-    setUndoStack((prev) => [...prev, { players, actions, currentStreet, nextActionOrder }]);
+    // Snapshot the pre-action state so the operator can undo this exact step
+    // (also used to roll back below if the server rejects the action).
+    const preSnapshot = { players, actions, currentStreet, nextActionOrder };
+    setUndoStack((prev) => [...prev, preSnapshot]);
 
     const currentOrder = nextActionOrder;
     setNextActionOrder((prev) => prev + 1);
@@ -486,9 +488,18 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
       if (isValidationCode(rejCode)) {
         // The server rejected an illegal action (enforce) — it was NOT recorded.
-        // Roll the optimistic local step back so the operator's view matches the
-        // server, and explain why in plain Vietnamese (raw code kept as detail).
-        restoreLastSnapshot();
+        // Roll the optimistic local step back to the captured pre-action snapshot
+        // so the operator's view matches the server. Restore from the local
+        // `preSnapshot` (NOT restoreLastSnapshot(), whose undoStack closure is
+        // stale within this same call and would no-op on the first action), and
+        // pop the snapshot we just pushed. Explain why in plain Vietnamese.
+        setPlayers(preSnapshot.players);
+        setActions(preSnapshot.actions);
+        setCurrentStreet(preSnapshot.currentStreet);
+        setNextActionOrder(preSnapshot.nextActionOrder);
+        setUndoStack((prev) => prev.slice(0, -1));
+        setBetAmount("");
+        setSelectedActorId(null);
         toast.error(friendlyValidationError(rejCode, rejMsg), { description: `Mã lỗi: ${rejCode}` });
       } else if (rejMsg) {
         toast.error(rejMsg);
