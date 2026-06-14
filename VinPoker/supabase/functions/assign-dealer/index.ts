@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
 
     const { data: table, error: te } = await admin
       .from("game_tables")
-      .select("id, club_id, table_name, table_type, status")
+      .select("id, club_id, table_name, table_type, status, shift_id")
       .eq("id", table_id)
       .maybeSingle();
     if (te || !table) return json({ error: "Table not found" }, 404);
@@ -210,6 +210,19 @@ Deno.serve(async (req) => {
         const dealerUsername: string | null = dealerInfo.telegram_username ?? null;
         const dealerUserId: number | null = dealerInfo.telegram_user_id ? Number(dealerInfo.telegram_user_id) : null;
 
+        // Tour name for the message (table's dealer_shifts.tour_name) so Telegram
+        // shows which tour the table belongs to.
+        let tourName: string | null = null;
+        if ((table as any).shift_id) {
+          const { data: shiftRow } = await admin
+            .from("dealer_shifts")
+            .select("tour_name")
+            .eq("id", (table as any).shift_id)
+            .maybeSingle();
+          tourName = (shiftRow as any)?.tour_name ?? null;
+        }
+        const tourInfo = tourName ? ` (${tourName})` : "";
+
         notifyIncomingDealer(
           botToken,
           { full_name: dealerName, telegram_username: dealerUsername, telegram_user_id: dealerUserId },
@@ -222,7 +235,7 @@ Deno.serve(async (req) => {
             sendTelegramNotification(
               botToken,
               chatId,
-              `🪑 Vào bàn ${table.table_name}: ${mention({ full_name: dealerName, telegram_username: dealerUsername })}`,
+              `🪑 Vào bàn ${table.table_name}${tourInfo}: ${mention({ full_name: dealerName, telegram_username: dealerUsername })}`,
             ).catch(() => {});
           }
         }).catch(() => {});
