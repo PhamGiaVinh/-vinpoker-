@@ -66,6 +66,80 @@
     --gto-call: 142 71% 36%;   /* green */
     --gto-raise: 0 74% 50%;    /* red */
     --gto-allin: 0 73% 35%;    /* dark red */
+
+    /* Dealer Swing "pre-assigned / in-transition" status (theme-aware).
+       due→warning, overdue/none→destructive, break/available→success,
+       assigned→muted/border are reused from the semantic tokens above. */
+    --ds-preassign: 271 81% 66%; /* purple (default dark look) */
+    --ds-active: 217 91% 60%;    /* blue — dealer currently at table */
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Claude Warm — optional additive theme (ivory / charcoal /
+     terracotta / taupe). Default (no data-theme) keeps the dark
+     :root theme untouched. Only overrides variables that change;
+     unlisted vars (e.g. --gto-*) inherit :root.
+     ───────────────────────────────────────────────────────────── */
+  [data-theme="claude-warm"] {
+    color-scheme: light;
+
+    --background: 48 36% 95%;          /* #F6F4EC */
+    --foreground: 36 9% 10%;           /* #1D1B18 */
+
+    --card: 45 100% 98%;               /* #FFFDF7 */
+    --card-foreground: 36 9% 10%;
+
+    --popover: 45 100% 98%;
+    --popover-foreground: 36 9% 10%;
+
+    --primary: 16 53% 54%;             /* #C86B4A terracotta */
+    --primary-foreground: 45 100% 98%;
+    --primary-glow: 16 60% 62%;
+
+    --secondary: 40 36% 90%;           /* #EFE9DD */
+    --secondary-foreground: 36 9% 10%;
+
+    --muted: 40 36% 90%;
+    --muted-foreground: 37 8% 40%;     /* #6F695F */
+
+    --accent: 24 57% 86%;              /* #F0D8C8 */
+    --accent-foreground: 36 9% 10%;
+
+    --destructive: 10 46% 42%;         /* #9B4A3A */
+    --destructive-foreground: 45 100% 98%;
+
+    --success: 92 12% 44%;             /* #6F7D63 moss */
+    --success-foreground: 45 100% 98%;
+
+    --warning: 40 56% 51%;             /* #C99A3D */
+    --warning-foreground: 36 9% 10%;
+
+    --border: 41 24% 80%;              /* #D8D0BF taupe */
+    --input: 41 24% 80%;
+    --ring: 16 53% 54%;
+
+    --gradient-neon: linear-gradient(135deg, hsl(16 53% 54%), hsl(16 53% 46%));
+    --gradient-felt: linear-gradient(180deg, hsl(48 36% 96%), hsl(44 33% 93%));
+    --gradient-card: linear-gradient(150deg, hsl(45 100% 98%) 0%, hsl(44 40% 95%) 100%);
+    --shadow-neon: 0 0 0 1px hsl(16 53% 54% / 0.25);
+    --shadow-card: 0 4px 16px hsl(36 9% 10% / 0.08);
+
+    --sidebar-background: 40 33% 92%;
+    --sidebar-foreground: 36 9% 10%;
+    --sidebar-primary: 16 53% 54%;
+    --sidebar-primary-foreground: 45 100% 98%;
+    --sidebar-accent: 24 57% 86%;
+    --sidebar-accent-foreground: 36 9% 10%;
+    --sidebar-border: 41 24% 80%;
+    --sidebar-ring: 16 53% 54%;
+
+    /* Optional palette tokens for future use */
+    --poker-green: 103 15% 42%;        /* #647A5B */
+    --chip-gold: 39 55% 46%;           /* #B88A35 */
+
+    /* Dealer Swing "pre-assigned" status — warm terracotta */
+    --ds-preassign: 16 53% 54%;        /* terracotta */
+    --ds-active: 214 45% 42%;          /* deeper slate-blue for ivory contrast */
   }
 }
 

@@ -15,6 +15,7 @@ import * as XLSX from "xlsx";
 import { BackingProfileCard } from "@/components/BackingProfileCard";
 import { AvatarUploader } from "@/components/AvatarUploader";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { PlayerCheckInQR } from "@/components/PlayerCheckInQR";
 import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { EnableNotificationsCard } from "@/components/EnableNotificationsCard";
@@ -351,7 +352,10 @@ const Account = () => {
                 {roles.map(r => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-gold border border-gold/30">{r}</span>)}
               </div>
             </div>
-            <LanguageSwitcher />
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <LanguageSwitcher />
+              <ThemeSwitcher />
+            </div>
           </div>
         </div>
 
