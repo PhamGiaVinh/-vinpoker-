@@ -15,12 +15,13 @@
 | N2/P2 chip-conservation filter (`20260820000002`) | **LIVE**, dark |
 | `Database` types regenerated (adds `online_poker_*`) | **MERGED** (#102) |
 | GE-2D UI shell (#93) + client data spine (#95) | **MERGED**, dark |
-| **Edge fn `online-poker-action`** | **NOT DEPLOYED** (confirmed via `supabase functions list`) |
+| **Edge fn `online-poker-action`** | **DEPLOYED DARK** 2026-06-14 (`--no-verify-jwt`, v1; unauth→401, with-JWT→403 `disabled`) |
 | `online_poker_config.enabled` | **`false`** |
 | `FEATURES.onlinePoker` | **`false`** |
 | `RUNTIME_LIVE` (`src/lib/onlinePoker/types.ts`) | **`false`** |
+| G4 drill harness (`scripts/ge2-online-poker-drill.mjs` + `scripts/ge2-drill/sql/`) | **AUTHORED** (PR #113) |
 
-**Triple dark gate today:** the Edge entrypoint doesn't exist → RPCs refuse (flag false) → UI shows `PokerComingSoon` and disables every action. Enablement lifts these in a **safe order** so there is never a window where users can reach a half-live runtime.
+**Double dark gate now:** the Edge is live but `op_is_enabled()=false` → every op returns `disabled`; the UI shows `PokerComingSoon` (flags false). Enablement lifts these in a **safe order** so there is never a window where users can reach a half-live runtime.
 
 ---
 
@@ -49,13 +50,14 @@ FROM (SELECT pg_get_functiondef('public.op_submit_action(uuid,uuid,jsonb,jsonb,j
 > The DB flag can be ON while the **frontend** flags stay OFF — that is the intended drill window: the runtime is live and directly callable (for the drill), but no real user can reach `/poker` because the UI is still dark. Expose the UI **only after** the drill passes.
 
 ```
-A. Deploy the Edge function DARK
-   supabase functions deploy online-poker-action --no-verify-jwt
-   (JWT is verified in-code per G2; while enabled=false it returns 403 "disabled")
+A. Deploy the Edge function DARK  ✅ DONE 2026-06-14 (v1)
+   (cd VinPoker &&) supabase functions deploy online-poker-action --no-verify-jwt
+   verified: unauthenticated → 401 {"error":"unauthorized"} (function G2 gate)
 
-B. Verify Edge reachable + still dark
+B. Verify Edge reachable + still dark  (the 403-with-JWT proof — needs a test login)
    call online-poker-action with a valid Bearer JWT, op:"claim_daily_chips"
    → expect 403 {"error":"online poker is disabled"}  (op_is_enabled=false)
+   (or: scripts/ge2-online-poker-drill.mjs disabled-check)
 
 C. Flip the DB flag ON  (runtime live; UI still dark — only direct Edge calls work)
    UPDATE public.online_poker_config SET enabled = true;   -- super_admin only
@@ -78,25 +80,28 @@ F. Kill switch at any time:  UPDATE public.online_poker_config SET enabled=false
 
 ## 3. G4 live drill (on a disposable table only)
 
-Goal: prove the four required server backstops behave on a real hand before any user touches it. Run as the relevant role / via the Edge with test JWTs.
+Goal: prove the required server backstops behave on a real hand before any user touches it. **Tooling:** `scripts/ge2-online-poker-drill.mjs` (Edge-path, 2 disposable logins) + `scripts/ge2-drill/sql/*.sql` (service-role, via the keyring helper). See `scripts/ge2-drill/README.md`.
 
-**Setup**
-1. Create a disposable `online_poker_tables` row (status `open`, e.g. sb=25 bb=50, max_seats=6) on a clearly-marked test club.
-2. Two test auth users `uid_A`, `uid_B`; grant each play chips (`op_claim_daily_chips`) and `op_sit_down` (buy-in) on the table.
-3. `op_start_hand` (via Edge, as a seated user) → a hand exists (`status='betting'`, `state_version=0`).
+**Setup** (after `enabled=true`, frontend flags still OFF)
+1. `scripts/ge2-drill/sql/01_setup_disposable_table.sql` → a disposable `online_poker_tables` row (`name='GE2-DRILL-DISPOSABLE'`, `club_id NULL` = global lobby — **no real club**, sb=25 bb=50, max_seats=6). Copy the returned id into `scripts/.env.ge2-drill.local` `TABLE_ID`.
+2. `node --env-file=scripts/.env.ge2-drill.local scripts/ge2-online-poker-drill.mjs setup` → P1/P2 `claim_daily_chips` + `sit_down`, then `start_hand` → a hand exists.
 
-**Checks** (each via a crafted Edge `submit_action`; verify the documented outcome)
+**Checks** — `submit_action` carries client INTENT only; the engine recomputes state, so the two adversarial cases (4, 3) require a **direct service-role** call with a crafted/stale state (clients can't reach that RPC):
+
+| # | Check | Path / file | Expected |
+|---|---|---|---|
 
 | # | Check | How | Expected |
 |---|---|---|---|
-| 1 | **Idempotency replay** | submit a legal action with `idempotency_key=K`; then re-submit the *same* K | 1st = `ok`; 2nd returns the **stored** response; `online_poker_actions` has exactly **one** row for K; `state_version` advanced only once |
-| 2 | **Forbidden seat** | `uid_A` submits an action whose `seat` is `uid_B`'s seat | `{"outcome":"forbidden"}` (no write) |
-| 3 | **Race lost** | submit with a stale `p_expected_state_version` (one behind live) | `{"outcome":"race_lost"}` (no write) |
-| 4 | **Chip conservation** | submit a `p_new_state` whose Σ(seat stacks)+pot ≠ pre-total | `{"outcome":"rejected","detail":"chip conservation violated"}` — exercises the N2-filtered post-sum |
-| 5 | **Secrecy** | read public `online_poker_hands.state`; call `op_get_my_hole_cards` as each seat | public state has **no** `deck`/`holeCards`; each seat sees **only** its own cards; cross-seat read denied/empty |
+| 1 | **Idempotency replay** | Edge (`drill`): same `idempotencyKey` twice | 1st `ok`; 2nd returns the **stored** response; one `online_poker_actions` row for K; version advances once |
+| 2 | **Forbidden seat** | Edge (`drill`): P1 acts on P2's seat | `{"outcome":"forbidden"}` (no write) |
+| 3 | **Race lost** | SQL `03_race_lost.sql` (service-role, stale `p_expected_state_version`) | `{"outcome":"race_lost"}` (no write) |
+| 4 | **Chip conservation FAIL** | SQL `02_chip_conservation_fail.sql` (service-role, tampered `p_new_state`) | `{"outcome":"rejected","detail":"chip conservation violated"}` — exercises the N2-filtered post-sum |
+| 4b | **Chip conservation PASS** | Edge (`drill`): a legal action is accepted | `{"ok":true,...}` (conservation holds; state advances) |
+| 5 | **Secrecy** | Edge `get_my_hole_cards` (`drill`) + SQL `04_secrecy_read.sql` | public state has **no** `deck`/`holeCards`; each seat sees **only** its own cards; cross-seat denied |
 
 **Teardown**
-- Void/delete the disposable hand + table + test play-chip accounts (or leave clearly tagged on the test club). Touches **only** `online_poker_*` play tables — no real money, no business-ops tables.
+- `scripts/ge2-online-poker-drill.mjs teardown` (stand up) + `scripts/ge2-drill/sql/99_teardown.sql` — deletes the disposable hand + table + ledger scoped to `GE2-DRILL-DISPOSABLE` ONLY. Touches **only** `online_poker_*` play tables — no real money, no business-ops tables.
 
 > If any check fails: `UPDATE online_poker_config SET enabled=false;` immediately, fix, re-drill. Never expose the UI on a failed drill.
 
