@@ -10,13 +10,14 @@ export const FEATURES = {
   cashierRegistrations: false,
   /**
    * Cashier "Buy-in tại quầy" (offline cash / walk-in): pick tournament → name →
-   * buy-in + fee → auto-draw seat + receipt. Requires the source-only RPC
-   * `create_offline_buyin_and_seat` (20260826000002) applied live. Default **OFF**:
-   * panel hidden from regular cashiers (admins/club owners see it for UAT); the
-   * Buy-in button shows disabled "Cần bật RPC" and never calls the RPC. Flip to
-   * true ONLY after the RPC is applied live in a controlled DB session.
+   * buy-in + fee → auto-draw seat + receipt via `create_offline_buyin_and_seat`.
+   * ENABLED 2026-06-14: RPC applied live + hardened (PUBLIC/anon revoked) in a
+   * controlled session, owner UAT passed. Now the section is visible to all
+   * cashiers and the Buy-in button calls the live RPC. Kill-switch: set false to
+   * hide the section from regular cashiers (admins/owners keep it) and disable the
+   * button ("Cần bật RPC").
    */
-  offlineBuyIn: false,
+  offlineBuyIn: true,
   /**
    * Move-player dialog + System-A row locking in TableDrawPanel.
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
