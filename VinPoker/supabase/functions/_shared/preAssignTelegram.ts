@@ -81,7 +81,8 @@ function hhmm(date: Date): string {
 }
 
 export function formatPreAssignLine(item: PreAssignMessageItem): string {
-  return `📋 Tiếp theo ${item.tableName}: ` +
+  const tourInfo = item.tournamentName ? ` (${escapeHtml(item.tournamentName)})` : "";
+  return `📋 Tiếp theo ${item.tableName}${tourInfo}: ` +
     `${mentionDealer({ full_name: item.outName, telegram_username: item.outUsername, telegram_user_id: item.outTelegramUserId ?? null })} ra, ` +
     `${mentionDealer({ full_name: item.inName, telegram_username: item.inUsername, telegram_user_id: item.inTelegramUserId ?? null })} vào ` +
     `(${hhmm(item.swingAt)}, còn ${item.minutesLeft} phút)`;
