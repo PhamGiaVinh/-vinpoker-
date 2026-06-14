@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { TournamentPackage } from '@/hooks/useTournamentPackages'
 import CountdownTimer from './CountdownTimer'
 import CurrencyDisplay from './CurrencyDisplay'
@@ -12,6 +13,7 @@ interface Props {
 const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) + '…' : s)
 
 export default function PackageCard({ pkg, index }: Props) {
+  const { t } = useTranslation()
   return (
     <Link
       to={`/packages/${pkg.id}`}
@@ -66,7 +68,7 @@ export default function PackageCard({ pkg, index }: Props) {
       {/* Early Bird countdown */}
       {pkg.early_bird_end && (
         <div className="mt-4 border-t border-white/10 pt-3">
-          <CountdownTimer targetDate={pkg.early_bird_end} label="Kết thúc sau" />
+          <CountdownTimer targetDate={pkg.early_bird_end} label={t('packageCard.endsIn')} />
         </div>
       )}
     </Link>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import CurrencyDisplay from './CurrencyDisplay'
 import CountdownTimer from './CountdownTimer'
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function StickyBottomBar({ priceVND, originalPriceVND, earlyBirdEnd, onRegister }: Props) {
+  const { t } = useTranslation()
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-background/95 backdrop-blur-md md:hidden">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -26,7 +28,7 @@ export default function StickyBottomBar({ priceVND, originalPriceVND, earlyBirdE
           )}
         </div>
         <button onClick={onRegister} className="btn-primary shrink-0 whitespace-nowrap">
-          Đăng ký
+          {t('stickyBar.register')}
         </button>
       </div>
     </div>

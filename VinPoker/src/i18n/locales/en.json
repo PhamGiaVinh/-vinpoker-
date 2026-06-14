@@ -199,7 +199,8 @@
     "findPlayers": "Find Players",
     "noActiveBacking": "You have no active backing deals",
     "backerCount": "{{n}} backer(s)",
-    "activeDeals": "{{n}} active deal(s)"
+    "activeDeals": "{{n}} active deal(s)",
+    "badge": "MARKET · FIND PLAYER"
   },
   "backingProfile": {
     "title": "Backing Profile",
@@ -537,7 +538,8 @@
     "pickRange": "Pick between {{min}}% and {{max}}%",
     "reservedToast": "Reserved {{pct}}%! Please transfer within 30 minutes.",
     "cantReserve": "Couldn't reserve",
-    "openProfile": "Open Profile"
+    "openProfile": "Open Profile",
+    "badge": "STAKING"
   },
   "stakingNew": {
     "title": "Create New Staking Deal",
@@ -1497,7 +1499,11 @@
       "scheduled": "Scheduled",
       "draftSaved": "Draft saved",
       "published": "Published"
-    }
+    },
+    "badge": "NEWS",
+    "loadError": "Failed to load news",
+    "loadErrorDetail": "Failed to load article",
+    "retry": "Try again"
   },
   "bankroll": {
     "title": "Bankroll Manager",
@@ -2474,5 +2480,24 @@
     "sending": "Sending...",
     "needProof": "Receipt required",
     "transferred": "Transferred"
+  },
+  "clubDetail": {
+    "dailySchedule": "Daily Schedule",
+    "weeklySchedule": "Weekly Schedule"
+  },
+  "countdown": {
+    "days": "d"
+  },
+  "packageCard": {
+    "endsIn": "Ends in"
+  },
+  "packageListing": {
+    "title": "Tournament Packages",
+    "subtitle": "Choose the right package and join now",
+    "loadError": "Failed to load packages",
+    "empty": "No tournament packages available"
+  },
+  "stickyBar": {
+    "register": "Register"
   }
 }

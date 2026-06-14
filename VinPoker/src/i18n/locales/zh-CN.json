@@ -157,7 +157,8 @@
     "findPlayers": "寻找选手",
     "noActiveBacking": "您暂无活跃的支持项目",
     "backerCount": "{{n}} 位赞助者",
-    "activeDeals": "{{n}} 个活跃交易"
+    "activeDeals": "{{n}} 个活跃交易",
+    "badge": "市场 · 寻找玩家"
   },
   "backingProfile": {
     "title": "资金支持档案",
@@ -485,7 +486,8 @@
     "pickRange": "请选择 {{min}}% 与 {{max}}% 之间",
     "reservedToast": "已预订 {{pct}}%!请在 30 分钟内转账。",
     "cantReserve": "无法预订",
-    "openProfile": "打开资料"
+    "openProfile": "打开资料",
+    "badge": "合作"
   },
   "stakingNew": {
     "title": "创建新股份认购项目",
@@ -1460,7 +1462,11 @@
       "scheduled": "已设定定时发布",
       "draftSaved": "草稿已保存",
       "published": "已发布"
-    }
+    },
+    "badge": "新闻",
+    "loadError": "无法加载新闻",
+    "loadErrorDetail": "无法加载文章",
+    "retry": "重试"
   },
   "bankroll": {
     "title": "资金管理",
@@ -2326,5 +2332,24 @@
     "sending": "发送中...",
     "needProof": "需要上传回单",
     "transferred": "已转账"
+  },
+  "clubDetail": {
+    "dailySchedule": "每日赛程",
+    "weeklySchedule": "每周赛程"
+  },
+  "countdown": {
+    "days": "天"
+  },
+  "packageCard": {
+    "endsIn": "结束倒计时"
+  },
+  "packageListing": {
+    "title": "赛事套餐",
+    "subtitle": "选择合适的套餐，立即参与",
+    "loadError": "无法加载套餐列表",
+    "empty": "暂无赛事套餐"
+  },
+  "stickyBar": {
+    "register": "立即报名"
   }
 }

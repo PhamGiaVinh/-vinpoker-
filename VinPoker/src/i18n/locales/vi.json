@@ -199,7 +199,8 @@
     "findPlayers": "Tìm người chơi",
     "noActiveBacking": "Bạn chưa hỗ trợ deal nào",
     "backerCount": "{{n}} backer",
-    "activeDeals": "{{n}} deal đang hoạt động"
+    "activeDeals": "{{n}} deal đang hoạt động",
+    "badge": "THỊ TRƯỜNG · TÌM PLAYER"
   },
   "backingProfile": {
     "title": "Hồ sơ Backing",
@@ -537,7 +538,8 @@
     "pickRange": "Chọn từ {{min}}% đến {{max}}%",
     "reservedToast": "Đã giữ chỗ {{pct}}%! Vui lòng chuyển khoản trong 30 phút.",
     "cantReserve": "Không thể giữ chỗ",
-    "openProfile": "Mở Profile"
+    "openProfile": "Mở Profile",
+    "badge": "HỢP TÁC"
   },
   "stakingNew": {
     "title": "Tạo Phiếu đăng ký Hợp tác chi phí Mới",
@@ -1497,7 +1499,11 @@
       "scheduled": "Đã lên lịch",
       "draftSaved": "Đã lưu nháp",
       "published": "Đã đăng tin"
-    }
+    },
+    "badge": "TIN TỨC",
+    "loadError": "Không tải được tin tức",
+    "loadErrorDetail": "Không tải được bài viết",
+    "retry": "Thử lại"
   },
   "bankroll": {
     "title": "Quản lý Bankroll",
@@ -2474,5 +2480,24 @@
     "sending": "Đang gửi...",
     "needProof": "Cần tải biên lai",
     "transferred": "Đã chuyển khoản"
+  },
+  "clubDetail": {
+    "dailySchedule": "Lịch hàng ngày",
+    "weeklySchedule": "Lịch hàng tuần"
+  },
+  "countdown": {
+    "days": "ngày"
+  },
+  "packageCard": {
+    "endsIn": "Kết thúc sau"
+  },
+  "packageListing": {
+    "title": "Gói Tournament",
+    "subtitle": "Chọn gói phù hợp và tham gia ngay",
+    "loadError": "Không thể tải danh sách gói",
+    "empty": "Chưa có gói tournament nào"
+  },
+  "stickyBar": {
+    "register": "Đăng ký"
   }
 }

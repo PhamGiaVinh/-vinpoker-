@@ -86,7 +86,7 @@ const FindBacker = () => {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit">
             <TrendingUp className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">THỊ TRƯỜNG · TÌM PLAYER</span>
+            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">{t('findBacker.badge')}</span>
           </div>
 
           {/* Title */}
