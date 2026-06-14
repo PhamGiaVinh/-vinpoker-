@@ -1677,7 +1677,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                             </button>
                           </PopoverTrigger>
                           {bd && (
-                            <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-black border-border shadow-lg">
+                            <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-popover border-border shadow-lg">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
                                 <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-success" : "text-destructive"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
                                 <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-success" : "text-destructive"}>{bd.fairness}</span></div>
@@ -3870,7 +3870,7 @@ function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onE
 function TierBadge({ tier }: { tier: string }) {
   const colors: Record<string, string> = {
     A: "bg-warning/20 text-warning border-warning/40",
-    B: "bg-slate-400/20 text-slate-400 border-slate-400/40",
+    B: "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.4)]",
     C: "bg-warning/20 text-warning border-warning/40",
   };
   return (
