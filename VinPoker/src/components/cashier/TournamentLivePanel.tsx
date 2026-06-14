@@ -11,13 +11,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Clock, LayoutGrid, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
+  Clock, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
   Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
 import { ClockPanel } from "./tournament-live/ClockPanel";
-import { TableDrawPanel } from "./tournament-live/TableDrawPanel";
 import { HandInputPanel } from "./tournament-live/HandInputPanel";
 import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
 import { PlayersGroupedPanel } from "./tournament-live/PlayersGroupedPanel";
@@ -73,13 +72,13 @@ function StatusBadge({ status }: { status: string }) {
 // (default, so existing call sites are unchanged); tracker = live-tracking view,
 // floor = room-management view. live_view is in every set, so defaultValue stays valid.
 const MODE_TABS: Record<string, string[]> = {
-  full: ["table_map", "live_view", "clock", "table_draw", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
+  full: ["table_map", "live_view", "clock", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
   // Owner IA 2026-06-14: Floor OWNS room operations + physical display management
   // (table map/draw, queue/waitlist, player movement, prizes, blind structure, TV/display
   // assignment). Tracker OWNS live tracking (live view, clock, hand input/history,
   // leaderboard). ClockPanel only READS the stored blind structure (no own levels).
   tracker: ["live_view", "clock", "hand_input", "hand_history", "leaderboard"],
-  floor: ["table_map", "live_view", "table_draw", "players", "queue", "prizes", "blinds", "tv_displays"],
+  floor: ["table_map", "live_view", "players", "queue", "prizes", "blinds", "tv_displays"],
 };
 
 export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
@@ -333,7 +332,6 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
             { value: "table_map", icon: Grid3x3, label: "Sơ đồ bàn", render: () => <FloorTableMapPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
             { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
-            { value: "table_draw", icon: LayoutGrid, label: t("tournamentLive.tableDraw.title"), render: () => <TableDrawPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "queue", icon: ListOrdered, label: "Hàng chờ", render: () => (
               <RegistrationQueuePanel
                 tournamentId={selectedTournament.id}
