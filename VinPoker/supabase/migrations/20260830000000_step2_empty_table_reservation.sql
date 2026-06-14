@@ -50,9 +50,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_reserved_one_per_dealer
 
 -- ── 3. reserve_empty_table_for_dealer ───────────────────────────────────────
 -- Create a reservation row for an EMPTY active table. Idempotent + guarded.
--- Returns jsonb {ok, outcome, reservation_id}. Outcomes:
---   ok | table_not_active | table_occupied | dealer_not_found | dealer_busy
---   | already_reserved (idempotent: returns the existing reservation_id)
+-- Reserves a RESTING (on_break) dealer only. Returns jsonb {ok, outcome,
+-- reservation_id}. Outcomes:
+--   ok | already_reserved (idempotent, returns existing id) | table_not_active
+--   | table_occupied | dealer_not_found | dealer_not_on_break | dealer_busy
+--   | race_lost
 CREATE OR REPLACE FUNCTION public.reserve_empty_table_for_dealer(
   p_table_id        uuid,
   p_attendance_id   uuid,
@@ -65,9 +67,10 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_dealer_id uuid;
-  v_existing  uuid;
-  v_new_id    uuid;
+  v_dealer_id    uuid;
+  v_dealer_state text;
+  v_existing     uuid;
+  v_new_id       uuid;
 BEGIN
   -- Idempotent: an existing live reservation for this exact (table, dealer) pair
   -- is a success, returning that id.
@@ -98,9 +101,8 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'outcome', 'table_occupied');
   END IF;
 
-  -- Dealer must be checked in AND belong to this club (state is intentionally
-  -- NOT changed; on_break is fine — that is the predictive scenario).
-  SELECT da.dealer_id INTO v_dealer_id
+  -- Dealer must be checked in AND belong to this club.
+  SELECT da.dealer_id, da.current_state INTO v_dealer_id, v_dealer_state
   FROM dealer_attendance da
   JOIN dealers d ON d.id = da.dealer_id
   WHERE da.id = p_attendance_id AND da.status = 'checked_in' AND d.club_id = p_club_id;
@@ -108,11 +110,21 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'outcome', 'dealer_not_found');
   END IF;
 
-  -- Dealer must not already hold a live assignment/break/reservation anywhere.
+  -- Step 2 reserves a RESTING dealer (predictive: soon-free). Require on_break.
+  -- (Genuinely-available dealers are handled by Step 1 immediate fill, not here.)
+  IF v_dealer_state IS DISTINCT FROM 'on_break' THEN
+    RETURN jsonb_build_object('ok', false, 'outcome', 'dealer_not_on_break', 'state', v_dealer_state);
+  END IF;
+
+  -- Dealer must not already hold a live ACTIVE assignment or another reservation.
+  -- NOTE: we intentionally do NOT block on a live 'on_break' assignment row —
+  -- that is the dealer's own rest and is the eligible state to reserve from.
+  -- (On this DB an on_break dealer has no released_at-NULL row at all; this is
+  --  future-proofing per the owner review.)
   IF EXISTS (
     SELECT 1 FROM dealer_assignments
     WHERE attendance_id = p_attendance_id
-      AND status IN ('assigned', 'on_break', 'reserved')
+      AND status IN ('assigned', 'reserved')
       AND released_at IS NULL
   ) THEN
     RETURN jsonb_build_object('ok', false, 'outcome', 'dealer_busy');
@@ -141,9 +153,10 @@ $$;
 -- Promote a 'reserved' row to an active 'assigned' row ONCE the reserved dealer
 -- is back in the pool (current_state='available'). The caller (edge) must have
 -- already enforced the 13-min execute rest gate. Sets the swing clock from
--- p_swing_due_at (now + open-table grace + duration, computed by the caller).
--- Returns jsonb {ok, outcome}. Outcomes:
+-- p_swing_due_at (null-guarded). Re-checks table/dealer conflicts under the row
+-- lock before promoting. Returns jsonb {ok, outcome}. Outcomes:
 --   ok | reservation_not_found | dealer_not_ready (still on_break → no-op, retry)
+--   | table_not_active | table_occupied | dealer_busy (stale → edge cancels)
 CREATE OR REPLACE FUNCTION public.execute_empty_table_reservation(
   p_reservation_id uuid,
   p_swing_due_at   timestamptz
@@ -155,10 +168,11 @@ SET search_path = public
 AS $$
 DECLARE
   v_attendance_id uuid;
+  v_table_id      uuid;
   v_state         text;
   v_tx            jsonb;
 BEGIN
-  SELECT attendance_id INTO v_attendance_id
+  SELECT attendance_id, table_id INTO v_attendance_id, v_table_id
   FROM dealer_assignments
   WHERE id = p_reservation_id AND status = 'reserved' AND released_at IS NULL
   FOR UPDATE;
@@ -176,11 +190,34 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'outcome', 'dealer_not_ready', 'state', v_state);
   END IF;
 
+  -- Conflict re-check (the reservation may be stale: between reserve and execute,
+  -- a manual/Step-1 assign could have staffed the table or the dealer). Re-verify
+  -- under the row lock before promoting; the reservation row itself is excluded
+  -- by id. On conflict, do NOT promote — return the conflict so the edge cancels.
+  IF NOT EXISTS (SELECT 1 FROM game_tables WHERE id = v_table_id AND status = 'active') THEN
+    RETURN jsonb_build_object('ok', false, 'outcome', 'table_not_active');
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM dealer_assignments
+    WHERE table_id = v_table_id AND id <> p_reservation_id
+      AND status IN ('assigned', 'on_break', 'reserved') AND released_at IS NULL
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'outcome', 'table_occupied');
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM dealer_assignments
+    WHERE attendance_id = v_attendance_id AND id <> p_reservation_id
+      AND status IN ('assigned', 'reserved') AND released_at IS NULL
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'outcome', 'dealer_busy');
+  END IF;
+
   -- Promote the reservation in place → active assignment, start the swing clock.
+  -- Null-guard swing_due_at so a missing caller value can't violate NOT NULL.
   UPDATE dealer_assignments
   SET status = 'assigned',
       assigned_at = now(),
-      swing_due_at = p_swing_due_at,
+      swing_due_at = COALESCE(p_swing_due_at, now() + interval '45 minutes'),
       pre_assigned_at = NULL,
       pre_announce_due_at = NULL
   WHERE id = p_reservation_id;
@@ -199,10 +236,13 @@ $$;
 -- ── 5. cancel_empty_table_reservation ───────────────────────────────────────
 -- Idempotent cancel/expire of a reservation (stale, table closed, dealer gone).
 -- Does NOT touch the dealer's state (they stay on_break / wherever they are).
+-- Terminal status is 'swing_skipped' (NOT 'completed') — a reservation that
+-- never materialised was never a real dealing session, so it must NOT look like
+-- a completed assignment to payroll / "completed" reports. release_reason tags it.
 -- Returns jsonb {ok, outcome}. Outcomes: ok | not_reserved (idempotent no-op).
 CREATE OR REPLACE FUNCTION public.cancel_empty_table_reservation(
   p_reservation_id uuid,
-  p_reason         text DEFAULT 'cancelled'
+  p_reason         text DEFAULT 'reservation_cancelled'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -213,7 +253,7 @@ DECLARE
   v_updated int;
 BEGIN
   UPDATE dealer_assignments
-  SET status = 'completed', released_at = now(), release_reason = p_reason
+  SET status = 'swing_skipped', released_at = now(), release_reason = p_reason
   WHERE id = p_reservation_id AND status = 'reserved' AND released_at IS NULL;
   GET DIAGNOSTICS v_updated = ROW_COUNT;
   IF v_updated = 0 THEN
@@ -223,13 +263,21 @@ BEGIN
 END;
 $$;
 
--- ── 6. Grants (edge uses service_role; authenticated allowed; anon/public NOT) ─
-REVOKE ALL ON FUNCTION public.reserve_empty_table_for_dealer(uuid, uuid, timestamptz, uuid) FROM public, anon;
-REVOKE ALL ON FUNCTION public.execute_empty_table_reservation(uuid, timestamptz) FROM public, anon;
-REVOKE ALL ON FUNCTION public.cancel_empty_table_reservation(uuid, text) FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.reserve_empty_table_for_dealer(uuid, uuid, timestamptz, uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.execute_empty_table_reservation(uuid, timestamptz) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.cancel_empty_table_reservation(uuid, text) TO authenticated, service_role;
+-- ── 6. Grants — service_role ONLY ───────────────────────────────────────────
+-- These are SECURITY DEFINER and have NO in-body actor/authorization guard, so
+-- they must NOT be callable by ordinary `authenticated` users (any logged-in
+-- user knowing the ids could otherwise reserve/execute/cancel — RLS does not
+-- protect SECURITY DEFINER bodies). They are INTERNAL swing automation invoked
+-- only by the process-swing Edge function via the service role. Grant
+-- service_role only; revoke everyone else. (If an authenticated admin ever needs
+-- to call these directly, add an explicit auth.uid()-is-dealer-control-for-club
+-- guard inside each body FIRST, then widen the grant.)
+REVOKE ALL ON FUNCTION public.reserve_empty_table_for_dealer(uuid, uuid, timestamptz, uuid) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION public.execute_empty_table_reservation(uuid, timestamptz) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION public.cancel_empty_table_reservation(uuid, text) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reserve_empty_table_for_dealer(uuid, uuid, timestamptz, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.execute_empty_table_reservation(uuid, timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.cancel_empty_table_reservation(uuid, text) TO service_role;
 
 COMMIT;
 
