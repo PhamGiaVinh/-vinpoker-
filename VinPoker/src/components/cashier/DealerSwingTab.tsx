@@ -1440,18 +1440,18 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
         <div className="flex gap-1.5 flex-wrap items-center">
           <span className="text-xs font-semibold text-muted-foreground mr-1">Tour:</span>
           <button onClick={() => setSelectedTour(null)}
-            className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === null ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${selectedTour === null ? "bg-success/20 text-success border-success/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
             Tổng thể
           </button>
           {(tours ?? []).map((t) => (
             <div key={t.id} className="relative">
               <button onClick={() => { setSelectedTour(t.id); setActiveView("tables"); }}
-                className={`text-xs pl-3 pr-5 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-emerald-500/20 text-emerald-500 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
+                className={`text-xs pl-3 pr-5 py-1.5 rounded-full border transition ${selectedTour === t.id ? "bg-success/20 text-success border-success/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}>
                 {t.tour_name} ({t.start_time?.slice(0, 5)}-{t.end_time?.slice(0, 5)})
               </button>
               <button onClick={(e) => { e.stopPropagation(); setDeleteTour({ id: t.id, name: t.tour_name }); }}
                 title="Xoá tour"
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-700 border border-zinc-600 text-zinc-300 hover:bg-red-500 hover:text-white flex items-center justify-center">
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-secondary border border-border text-foreground hover:bg-destructive hover:text-white flex items-center justify-center">
                 <X className="w-2.5 h-2.5" />
               </button>
             </div>
@@ -1463,22 +1463,22 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           </button>
         </div>
         {(tours ?? []).length === 0 && selectedTour === null && (
-          <div className="text-xs text-amber-500 mt-1 flex items-center gap-2">
+          <div className="text-xs text-warning mt-1 flex items-center gap-2">
             <span>Chưa có tour nào. </span>
-            <button onClick={() => setCreateTourOpen(true)} className="underline hover:text-amber-400">Tạo tour mới</button>
+            <button onClick={() => setCreateTourOpen(true)} className="underline hover:text-warning">Tạo tour mới</button>
           </div>
         )}
       </div>
 
       {tablesError && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs p-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-xs p-3 rounded flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Lỗi tải bàn: {tablesError}</span>
           <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchTables}>Thử lại</Button>
         </div>
       )}
       {dealersError && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs p-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-xs p-3 rounded flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Lỗi tải dealer: {dealersError}</span>
           <Button size="sm" variant="ghost" className="ml-auto text-xs h-6" onClick={refetchDealers}>Thử lại</Button>
@@ -1502,7 +1502,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           nowMs={nowMs}
         />
         {/* Mobile tab bar (<md only). Tablet (md–lg) stacks all 3; desktop = 3-col. */}
-        <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-zinc-700/60 bg-zinc-900/70 p-1">
+        <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-border/60 bg-card/70 p-1">
           {([
             { k: "map", label: "Bản đồ bàn" },
             { k: "left", label: "Break Pool" },
@@ -1514,7 +1514,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onClick={() => setMobileTab(tab.k)}
               className={cn(
                 "h-10 flex-1 rounded-lg text-xs font-medium transition-colors",
-                mobileTab === tab.k ? "bg-primary/15 text-primary" : "text-zinc-400 hover:text-zinc-200",
+                mobileTab === tab.k ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.label}
@@ -1535,9 +1535,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
               onRetry={refetchBreakPool}
             />
             <Collapsible>
-              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-zinc-700/60 bg-zinc-900/70 px-3 py-2.5 text-left text-sm font-medium text-zinc-200 hover:bg-zinc-800/60 [&[data-state=open]>svg]:rotate-180">
+              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
                 <span className="font-display tracking-wider">ĐỘI HÌNH / CHECK-IN</span>
-                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
               </CollapsibleTrigger>
               <CollapsibleContent className="mt-3">
                 <RosterPanel
@@ -1566,9 +1566,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             {activeView === "dealers" ? (
               <>
                 {selectedTour && (
-                  <div className="text-xs text-amber-400 mb-2 flex items-center gap-2">
+                  <div className="text-xs text-warning mb-2 flex items-center gap-2">
                     <span>Tour đang chọn: {(tours ?? []).find(t => t.id === selectedTour)?.tour_name ?? selectedTour}</span>
-                    <button onClick={() => setActiveView("tables")} className="underline hover:text-amber-300">Xem bàn</button>
+                    <button onClick={() => setActiveView("tables")} className="underline hover:text-warning">Xem bàn</button>
                   </div>
                 )}
                 <DealerManagementTab clubIds={filteredClubIds} clubFilter={clubFilter} />
@@ -1679,13 +1679,13 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                           {bd && (
                             <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-black border-border shadow-lg">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
-                                <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
-                                <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-emerald-400" : "text-red-400"}>{bd.fairness}</span></div>
-                                {bd.no_back_to_back !== 0 && <div className="flex justify-between"><span>Tránh bàn cũ</span><span className="text-red-400">{bd.no_back_to_back}</span></div>}
-                                {bd.skill_bonus !== 0 && <div className="flex justify-between"><span>Kỹ năng</span><span className="text-emerald-400">+{bd.skill_bonus}</span></div>}
-                                {bd.heavy_worker_penalty !== 0 && <div className="flex justify-between"><span>Làm nhiều ca</span><span className="text-red-400">{bd.heavy_worker_penalty}</span></div>}
-                                {bd.consecutive_high_penalty !== 0 && <div className="flex justify-between"><span>Nhiều bàn HIGH</span><span className="text-red-400">{bd.consecutive_high_penalty}</span></div>}
-                                {bd.tier_back_to_back_penalty !== 0 && <div className="flex justify-between"><span>Bàn cũ (tier)</span><span className="text-red-400">{bd.tier_back_to_back_penalty}</span></div>}
+                                <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-success" : "text-destructive"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
+                                <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-success" : "text-destructive"}>{bd.fairness}</span></div>
+                                {bd.no_back_to_back !== 0 && <div className="flex justify-between"><span>Tránh bàn cũ</span><span className="text-destructive">{bd.no_back_to_back}</span></div>}
+                                {bd.skill_bonus !== 0 && <div className="flex justify-between"><span>Kỹ năng</span><span className="text-success">+{bd.skill_bonus}</span></div>}
+                                {bd.heavy_worker_penalty !== 0 && <div className="flex justify-between"><span>Làm nhiều ca</span><span className="text-destructive">{bd.heavy_worker_penalty}</span></div>}
+                                {bd.consecutive_high_penalty !== 0 && <div className="flex justify-between"><span>Nhiều bàn HIGH</span><span className="text-destructive">{bd.consecutive_high_penalty}</span></div>}
+                                {bd.tier_back_to_back_penalty !== 0 && <div className="flex justify-between"><span>Bàn cũ (tier)</span><span className="text-destructive">{bd.tier_back_to_back_penalty}</span></div>}
                                 <div className="border-t border-border pt-0.5 mt-0.5 flex justify-between font-semibold">
                                   <span>Tổng</span><span className="text-primary">{s.score}</span>
                                 </div>
@@ -1830,8 +1830,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   return (
                     <div>
                       <div className="flex items-center gap-1.5 mb-1 sticky top-0 bg-card z-10 pb-1">
-                        <UserMinus className="w-3 h-3 text-amber-400" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">Check-in lại</span>
+                        <UserMinus className="w-3 h-3 text-warning" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">Check-in lại</span>
                         <Badge variant="outline" className="text-[10px] ml-auto">{reCheckins.length}</Badge>
                       </div>
                       <div className="space-y-1">
@@ -1847,7 +1847,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                             />
                             <span className="font-semibold">{d.full_name}</span>
                             <Badge variant="outline" className="text-[10px]">{d.tier}</Badge>
-                            <span className="text-[10px] text-amber-400">(Đã kết thúc ca)</span>
+                            <span className="text-[10px] text-warning">(Đã kết thúc ca)</span>
                           </label>
                         ))}
                       </div>
@@ -1862,8 +1862,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   return (
                     <div>
                       <div className="flex items-center gap-1.5 mb-1 sticky top-0 bg-card z-10 pb-1">
-                        <UserPlus className="w-3 h-3 text-emerald-400" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">Check-in mới</span>
+                        <UserPlus className="w-3 h-3 text-success" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-success">Check-in mới</span>
                         <Badge variant="outline" className="text-[10px] ml-auto">{newCheckins.length}</Badge>
                       </div>
                       <div className="space-y-1">
@@ -1917,7 +1917,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             <DialogDescription>
               {batchCheckoutWarnings.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <p className="text-amber-500 text-sm font-medium">
+                  <p className="text-warning text-sm font-medium">
                     ⚠️ Các dealer sau đang có assignment:
                   </p>
                   {batchCheckoutWarnings.map((w, i) => (
@@ -1984,8 +1984,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           <div className={[
             "text-xs px-2.5 py-1.5 rounded border",
             selectedTour
-              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
-              : "text-amber-400 border-amber-500/30 bg-amber-500/5",
+              ? "text-success border-success/30 bg-success/5"
+              : "text-warning border-warning/30 bg-warning/5",
           ].join(" ")}>
             {selectedTour
               ? `Thêm bàn vào: ${(tours ?? []).find((t) => t.id === selectedTour)?.tour_name ?? "tour đang chọn"}`
@@ -2000,7 +2000,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             />
             <div className="max-h-48 overflow-y-auto space-y-1 border border-border p-1">
               {poolError ? (
-                <div className="text-xs text-red-500 text-center py-4">Lỗi tải danh sách bàn: {poolError}. Vui lòng thử lại.</div>
+                <div className="text-xs text-destructive text-center py-4">Lỗi tải danh sách bàn: {poolError}. Vui lòng thử lại.</div>
               ) : poolLoading ? (
                 <div className="text-xs text-muted-foreground text-center py-4">Đang tải...</div>
               ) : !poolTables || poolTables.length === 0 ? (
@@ -2031,9 +2031,9 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                           <span className="font-semibold">{t.table_name}</span>
                         </div>
                         {isAssigned ? (
-                          <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Đã có dealer</Badge>
+                          <Badge variant="secondary" className="text-[10px] bg-warning/10 text-warning border-warning/20">Đã có dealer</Badge>
                         ) : t.status === "active" ? (
-                          <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Sẵn sàng</Badge>
+                          <Badge variant="secondary" className="text-[10px] bg-success/10 text-success border-success/20">Sẵn sàng</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground">Chưa active</Badge>
                         )}
@@ -2197,8 +2197,8 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                 onClick={() => setPayrollDatePreset(preset)}
                 className={`px-3 py-1 text-xs rounded-full transition-colors ${
                   payrollDatePreset === preset
-                    ? "bg-emerald-600 text-white"
-                    : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
+                    ? "bg-success text-success-foreground"
+                    : "bg-muted text-muted-foreground hover:text-white hover:bg-secondary"
                 }`}
               >
                 {preset === "today" ? "Hôm nay" : preset === "month" ? "Tháng này" : "Tuỳ chỉnh"}
@@ -2301,7 +2301,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                             <input
                               type="number"
                               step="0.1"
-                              className="w-20 bg-zinc-900 border border-zinc-700 text-white text-xs text-right px-1 py-0.5 rounded"
+                              className="w-20 bg-card border border-border text-white text-xs text-right px-1 py-0.5 rounded"
                               value={edits.adjustedHours ?? r.total_hours}
                               onChange={(e) => {
                                 const v = parseFloat(e.target.value);
@@ -2312,7 +2312,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                             Number(displayRow.total_hours).toFixed(1)
                           )}
                         </TableCell>
-                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-red-400 font-semibold" : ""}`}>
+                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-destructive font-semibold" : ""}`}>
                           {r.overtime_minutes > 0 ? (() => { const h = Math.floor(r.overtime_minutes / 60); const m = r.overtime_minutes % 60; return h > 0 ? `${h}h ${m}ph` : `${m}ph`; })() : "—"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">{r.total_swings}</TableCell>
@@ -2321,7 +2321,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                             <input
                               type="number"
                               step="1000"
-                              className="w-24 bg-zinc-900 border border-zinc-700 text-white text-xs text-right px-1 py-0.5 rounded"
+                              className="w-24 bg-card border border-border text-white text-xs text-right px-1 py-0.5 rounded"
                               value={edits.adjustedRate ?? r.hourly_rate_vnd}
                               onChange={(e) => {
                                 const v = parseInt(e.target.value, 10);
@@ -2333,20 +2333,20 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">{Number(displayRow.base_pay).toLocaleString("vi-VN")}</TableCell>
-                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-red-400 font-semibold" : ""}`}>
+                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-destructive font-semibold" : ""}`}>
                           {displayRow.overtime_pay > 0 ? Number(displayRow.overtime_pay).toLocaleString("vi-VN") : <span className="text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-400">{Number(displayRow.total_pay).toLocaleString("vi-VN")}</TableCell>
+                        <TableCell className="text-right font-mono text-xs font-semibold text-success">{Number(displayRow.total_pay).toLocaleString("vi-VN")}</TableCell>
                       </TableRow>
                       );
                     })}
-                    <TableRow className="border-t-2 border-emerald-600/40 bg-emerald-600/5">
-                      <TableCell className="font-bold text-emerald-400">TỔNG</TableCell>
+                    <TableRow className="border-t-2 border-success/40 bg-success/5">
+                      <TableCell className="font-bold text-success">TỔNG</TableCell>
                       <TableCell colSpan={2} />
                       <TableCell className="text-right font-mono text-xs font-semibold">
                         {(payrollData ?? []).reduce((s, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + (e.adjustedHours ?? r.total_hours); }, 0).toFixed(1)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-amber-400">
+                      <TableCell className="text-right font-mono text-xs font-semibold text-warning">
                         {(() => { const total = payrollData?.reduce((s: number, r: any) => s + (r.overtime_minutes ?? 0), 0) ?? 0; const h = Math.floor(total / 60); const m = total % 60; return total > 0 ? (h > 0 ? `${h}h ${m}ph` : `${m}ph`) : "—"; })()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs font-semibold">
@@ -2356,10 +2356,10 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                       <TableCell className="text-right font-mono text-xs font-semibold">
                         {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).base_pay); }, 0)).toLocaleString("vi-VN")}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-red-400">
+                      <TableCell className="text-right font-mono text-xs font-semibold text-destructive">
                         {(() => { const total = (payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).overtime_pay); }, 0); return total > 0 ? Number(total).toLocaleString("vi-VN") : "—"; })()}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-400">
+                      <TableCell className="text-right font-mono text-xs font-bold text-success">
                         {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).total_pay); }, 0)).toLocaleString("vi-VN")}
                       </TableCell>
                     </TableRow>
@@ -2465,7 +2465,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive"
               disabled={deletingTour}
               onClick={async (e) => {
                 e.preventDefault();
@@ -2585,9 +2585,9 @@ function FatigueDot({ workedMinutes, priorityBreakFlag }: { workedMinutes: numbe
   const worked = workedMinutes;
   const priority = priorityBreakFlag;
   let color: string;
-  if (priority || worked >= 90) color = "bg-red-500";
-  else if (worked >= 60) color = "bg-amber-500";
-  else color = "bg-emerald-500";
+  if (priority || worked >= 90) color = "bg-destructive";
+  else if (worked >= 60) color = "bg-warning";
+  else color = "bg-success";
   return <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} title={`Đã làm ${Math.round(worked)}p${priority ? " (ưu tiên nghỉ)" : ""}`} />;
 }
 
@@ -2649,7 +2649,7 @@ function CollapsibleSection<T>({
       </div>
       {hidden > 0 && (
         <button
-          className="w-full text-[10px] text-zinc-500 hover:text-zinc-300 py-1.5 text-center transition-colors"
+          className="w-full text-[10px] text-muted-foreground hover:text-foreground py-1.5 text-center transition-colors"
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? `Thu gọn` : `+${hidden} dealer khác`}
@@ -2690,9 +2690,9 @@ function BreakDurationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-zinc-900 border-zinc-700 max-w-[260px]">
+      <DialogContent className="bg-card border-border max-w-[260px]">
         <DialogHeader>
-          <DialogTitle className="text-zinc-200 text-sm">Chọn thời gian nghỉ</DialogTitle>
+          <DialogTitle className="text-foreground text-sm">Chọn thời gian nghỉ</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-4 gap-1.5">
@@ -2701,8 +2701,8 @@ function BreakDurationDialog({
                 key={m}
                 className={`px-2 py-1.5 text-xs rounded-md transition-colors ${
                   !custom && selected === m
-                    ? "bg-emerald-600 text-white"
-                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    ? "bg-success text-success-foreground"
+                    : "bg-muted text-foreground hover:bg-secondary"
                 }`}
                 onClick={() => { setSelected(m); setCustom(""); }}
               >
@@ -2718,13 +2718,13 @@ function BreakDurationDialog({
               placeholder="Custom"
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
-              className="h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-200"
+              className="h-7 text-xs bg-muted border-border text-foreground"
             />
-            <span className="text-xs text-zinc-500">phút</span>
+            <span className="text-xs text-muted-foreground">phút</span>
           </div>
           <Button
             size="sm"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="w-full bg-success hover:bg-success text-success-foreground"
             disabled={effectiveMinutes === null}
             onClick={() => { if (effectiveMinutes !== null) onConfirm(effectiveMinutes); }}
           >
@@ -2842,9 +2842,9 @@ function RosterPanel({
   }, [dealers, searchQuery, dealerStatuses]);
 
   const sections = [
-    { key: "Sẵn sàng", icon: Users, color: "text-emerald-400", dot: "bg-emerald-500" },
-    { key: "Đang bàn", icon: Table2, color: "text-blue-400", dot: "bg-blue-500" },
-    { key: "Đang chờ", icon: Clock, color: "text-purple-400", dot: "bg-purple-500" },
+    { key: "Sẵn sàng", icon: Users, color: "text-success", dot: "bg-success" },
+    { key: "Đang bàn", icon: Table2, color: "text-[hsl(var(--ds-active))]", dot: "bg-[hsl(var(--ds-active))]" },
+    { key: "Đang chờ", icon: Clock, color: "text-[hsl(var(--ds-preassign))]", dot: "bg-[hsl(var(--ds-preassign))]" },
   ] as const;
 
   return (
@@ -2864,7 +2864,7 @@ function RosterPanel({
 
       {/* ── Stats row ── */}
       <div className="text-[11px] text-muted-foreground mb-2 flex items-center gap-1.5">
-        <span className="text-emerald-400 font-semibold">{checkedInCount ?? filteredDealers.length}</span>
+        <span className="text-success font-semibold">{checkedInCount ?? filteredDealers.length}</span>
         <span>/</span>
         <span>{totalDealers}</span>
         <span className="ml-1">đang hoạt động</span>
@@ -2872,14 +2872,14 @@ function RosterPanel({
 
       {/* ── Search input ── */}
       <div className="relative mb-2">
-        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
         </svg>
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Tìm dealer..."
-          className="w-full h-7 pl-7 pr-2 text-xs bg-zinc-800/50 border border-zinc-700 rounded outline-none focus:border-emerald-500/50 text-zinc-300 placeholder-zinc-600"
+          className="w-full h-7 pl-7 pr-2 text-xs bg-muted/50 border border-border rounded outline-none focus:border-success/50 text-foreground placeholder-zinc-600"
         />
       </div>
 
@@ -2933,7 +2933,7 @@ function RosterPanel({
                     return (
                       <div key={d.id} className={[
                         "flex items-center gap-2 px-2 py-1.5 rounded transition-all",
-                        isOt ? "bg-red-950/20" : "hover:bg-zinc-800/30",
+                        isOt ? "bg-destructive/20" : "hover:bg-muted/30",
                       ].join(" ")}>
                         {/* Checkbox — batch mode only */}
                         {batchMode && (
@@ -2945,13 +2945,13 @@ function RosterPanel({
                         {/* Status dot */}
                         <div className={[
                           "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                          isOt ? "bg-red-500" : sec.dot,
+                          isOt ? "bg-destructive" : sec.dot,
                         ].join(" ")} />
 
                         {/* Name */}
                         <span className={[
                           "text-xs font-medium truncate min-w-0 flex-1",
-                          isOt ? "text-red-300" : "text-zinc-200",
+                          isOt ? "text-destructive" : "text-foreground",
                         ].join(" ")}>
                           {dd?.full_name ?? "—"}
                         </span>
@@ -2959,19 +2959,19 @@ function RosterPanel({
                         {/* Tier (compact) */}
                         <span className={[
                           "text-[9px] font-bold leading-none flex-shrink-0",
-                          dd?.tier === "A" ? "text-amber-500" : dd?.tier === "B" ? "text-blue-400" : "text-zinc-500",
+                          dd?.tier === "A" ? "text-warning" : dd?.tier === "B" ? "text-[hsl(var(--ds-active))]" : "text-muted-foreground",
                         ].join(" ")}>
                           {dd?.tier ?? "C"}
                         </span>
 
                         {/* Table badge */}
                         {info?.tableName && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 leading-none flex-shrink-0">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border leading-none flex-shrink-0">
                             {info.tableName}
                           </span>
                         )}
                         {preAssignStatusLabel && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 leading-none flex-shrink-0">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/20 leading-none flex-shrink-0">
                             {preAssignStatusLabel}
                           </span>
                         )}
@@ -2983,7 +2983,7 @@ function RosterPanel({
                         {info && sec.key === "Đang bàn" && (
                           <span className={[
                             "font-mono text-[10px] flex-shrink-0 tabular-nums",
-                            isOt ? "text-red-400 font-bold" : "text-zinc-400",
+                            isOt ? "text-destructive font-bold" : "text-muted-foreground",
                           ].join(" ")}>
                             <DealerTimer startTime={info.timerStart} />
                           </span>
@@ -3006,7 +3006,7 @@ function RosterPanel({
                               const h = Math.floor(remMin / 60);
                               const m = remMin % 60;
                               return (
-                                <button disabled className="text-zinc-600 cursor-not-allowed flex items-center gap-0.5" title={`Còn ${h}h${m}m`}>
+                                <button disabled className="text-muted-foreground cursor-not-allowed flex items-center gap-0.5" title={`Còn ${h}h${m}m`}>
                                   <Coffee className="w-3 h-3" />
                                   <span className="text-[8px] leading-none">{h > 0 ? `${h}h` : `${m}m`}</span>
                                 </button>
@@ -3014,7 +3014,7 @@ function RosterPanel({
                             }
                             return (
                               <button
-                                className="text-amber-400 hover:text-amber-300 transition-colors"
+                                className="text-warning hover:text-warning transition-colors"
                                 title="Nghỉ ăn cơm (+15p)"
                                 onClick={() => onMealBreak(d.id)}
                                 disabled={isBusy}
@@ -3024,7 +3024,7 @@ function RosterPanel({
                             );
                           })()}
                           {ready && (
-                            <button className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Gửi nghỉ"
+                            <button className="text-muted-foreground hover:text-foreground transition-colors" title="Gửi nghỉ"
                               onClick={() => onSendToBreak(d.id)} disabled={isBusy}>
                               <Clock className="w-3 h-3" />
                             </button>
@@ -3047,13 +3047,13 @@ function RosterPanel({
             renderItem={(d) => {
               const dd = d.dealers;
               return (
-                <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/30">
-                  <div className="w-5 h-5 rounded bg-zinc-800 flex items-center justify-center text-[9px] font-bold text-zinc-500 flex-shrink-0">
+                <div key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/30">
+                  <div className="w-5 h-5 rounded bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground flex-shrink-0">
                     {dd?.full_name?.charAt(0) ?? "?"}
                   </div>
-                  <span className="text-xs text-zinc-500 truncate flex-1">{dd?.full_name ?? "—"}</span>
-                  <span className="text-[9px] text-zinc-600">{dd?.tier ?? "C"}</span>
-                  <span className="text-[10px] text-zinc-600">
+                  <span className="text-xs text-muted-foreground truncate flex-1">{dd?.full_name ?? "—"}</span>
+                  <span className="text-[9px] text-muted-foreground">{dd?.tier ?? "C"}</span>
+                  <span className="text-[10px] text-muted-foreground">
                     {d.check_out_time ? format(new Date(d.check_out_time), "HH:mm") : "?"}
                   </span>
                   <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
@@ -3076,8 +3076,8 @@ function RosterPanel({
 
       {/* ── Sticky batch action footer ── */}
       {batchMode && selectedIds.size > 0 && (
-        <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-700 p-2 mt-2 flex items-center gap-2 rounded-b-lg">
-          <span className="text-xs text-zinc-400 flex-1">{selectedIds.size} dealer đã chọn</span>
+        <div className="sticky bottom-0 bg-card border-t border-border p-2 mt-2 flex items-center gap-2 rounded-b-lg">
+          <span className="text-xs text-muted-foreground flex-1">{selectedIds.size} dealer đã chọn</span>
           <Button size="sm" variant="destructive" className="text-xs h-7"
             onClick={() => { onBatchCheckout([...selectedIds]); setSelectedIds(new Set()); }}>
             <UserMinus className="w-3 h-3 mr-1" /> Check-out
@@ -3095,7 +3095,7 @@ function RosterPanel({
           {checkedInCount !== undefined && checkedInCount > 0 ? (
             <>
               {/* When dealers are checked in: checkout is primary, check-in is secondary */}
-              <Button size="sm" className="flex-[2] text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={onCheckoutOpen}>
+              <Button size="sm" className="flex-[2] text-xs bg-success hover:bg-success text-success-foreground" onClick={onCheckoutOpen}>
                 <UserMinus className="w-3 h-3 mr-1" /> Check-out ({checkedInCount})
               </Button>
               <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckinOpen}>
@@ -3105,7 +3105,7 @@ function RosterPanel({
           ) : (
             <>
               {/* No dealers checked in: check-in is primary */}
-              <Button size="sm" className="flex-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white" onClick={onCheckinOpen}>
+              <Button size="sm" className="flex-1 text-xs bg-success hover:bg-success text-success-foreground" onClick={onCheckinOpen}>
                 <UserPlus className="w-3 h-3 mr-1" /> Check-in
               </Button>
               <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCheckoutOpen}>
@@ -3155,19 +3155,19 @@ function BreakPoolCard({
     <Card className="p-3 flex flex-col min-h-0">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <Coffee className="w-4 h-4 text-amber-400" />
+          <Coffee className="w-4 h-4 text-warning" />
           <span className="font-display text-sm tracking-wider">BREAK POOL</span>
           {loading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
         </div>
         <div className="flex items-center gap-1">
           <Badge variant="outline" className="text-[9px]">{entries.length}</Badge>
           {summary.soon > 0 && (
-            <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-300">
+            <Badge variant="outline" className="text-[9px] border-warning/30 text-warning">
               Sắp hết {summary.soon}
             </Badge>
           )}
           {summary.overdue > 0 && (
-            <Badge variant="outline" className="text-[9px] border-red-500/30 text-red-300">
+            <Badge variant="outline" className="text-[9px] border-destructive/30 text-destructive">
               Quá giờ {summary.overdue}
             </Badge>
           )}
@@ -3175,7 +3175,7 @@ function BreakPoolCard({
       </div>
 
       {errorMessage && (
-        <div className="mt-2 flex items-center gap-2 border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
+        <div className="mt-2 flex items-center gap-2 border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="min-w-0 flex-1 truncate">Lỗi tải break pool: {errorMessage}</span>
           <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={onRetry}>
@@ -3198,11 +3198,11 @@ function BreakPoolCard({
             const rowClass = cn(
               "flex items-center gap-2 pl-2.5 pr-2 py-1.5 border-l-2 rounded-none transition-colors",
               isRest
-                ? "border-violet-500/50 bg-violet-500/5 text-zinc-200"
+                ? "border-violet-500/50 bg-violet-500/5 text-foreground"
                 : visualState === "soon"
-                  ? "border-amber-500 bg-amber-500/5 text-amber-100"
+                  ? "border-warning bg-warning/5 text-warning"
                   : visualState === "overdue"
-                    ? "border-red-500 bg-red-500/5 text-red-100"
+                    ? "border-destructive bg-destructive/5 text-destructive"
                     : "border-border bg-muted/20 text-foreground",
             );
             // For rest entries, compute seconds remaining
@@ -3218,17 +3218,17 @@ function BreakPoolCard({
                       {isRest ? "Nghỉ" : entry.breakType === "meal" ? "Cơm" : "Break"}
                     </Badge>
                     {isRest && remainingSeconds <= 60 && remainingSeconds > 0 && (
-                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-emerald-500/30 text-emerald-300 shrink-0">
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-success/30 text-success shrink-0">
                         Sắp xong
                       </Badge>
                     )}
                     {!isRest && visualState === "soon" && (
-                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-amber-500/30 text-amber-300 shrink-0">
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-warning/30 text-warning shrink-0">
                         Sắp hết giờ
                       </Badge>
                     )}
                     {!isRest && visualState === "overdue" && (
-                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-red-500/30 text-red-300 shrink-0">
+                      <Badge variant="outline" className="text-[9px] h-5 px-1.5 border-destructive/30 text-destructive shrink-0">
                         Quá giờ
                       </Badge>
                     )}
@@ -3267,7 +3267,7 @@ function BreakPoolCard({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9 text-[10px] shrink-0 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                    className="h-9 text-[10px] shrink-0 border-success/40 text-success hover:bg-success/10"
                     disabled={processing === entry.attendanceId}
                     onClick={() => onSendToBreak(entry.attendanceId)}
                   >
@@ -3280,9 +3280,9 @@ function BreakPoolCard({
                     className={cn(
                       "h-9 text-[10px] shrink-0",
                       visualState === "soon"
-                        ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                        ? "border-warning/40 text-warning hover:bg-warning/10"
                         : visualState === "overdue"
-                          ? "border-red-500/40 text-red-300 hover:bg-red-500/10"
+                          ? "border-destructive/40 text-destructive hover:bg-destructive/10"
                           : "",
                     )}
                     disabled={isBusy}
@@ -3434,7 +3434,7 @@ function TableGrid({
         <Badge variant="outline" className="ml-auto text-xs">{filteredTables.length} bàn</Badge>
         {FEATURES.roomReconcileWizard && (
           <Button size="sm" variant="outline"
-            className="text-xs h-9 text-orange-400 border-orange-500/40 hover:bg-orange-500/10"
+            className="text-xs h-9 text-warning border-warning/40 hover:bg-warning/10"
             title="Sửa domino nhiều bàn — đối soát thực tế nhiều bàn cùng lúc (có audit)"
             onClick={onOpenRoomReconcile}>
             Sửa domino
@@ -3496,7 +3496,7 @@ function TableGrid({
         )}
       </div>
 
-      <div className="mt-3 border-t border-zinc-800 pt-2.5">
+      <div className="mt-3 border-t border-border pt-2.5">
         <DealerStatusLegend />
       </div>
 
@@ -3518,7 +3518,7 @@ function TableGrid({
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction
-              className={confirmSwing?.isOt ? "bg-red-600 hover:bg-red-700" : undefined}
+              className={confirmSwing?.isOt ? "bg-destructive hover:bg-destructive" : undefined}
               onClick={() => {
                 if (confirmSwing) onSwingTable(confirmSwing.assignmentId);
                 setConfirmSwing(null);
@@ -3656,7 +3656,7 @@ function CommandCenter({
           {/* Stop Swing button — small, tucked in header */}
           <button
             onClick={() => setStopConfirmOpen(true)}
-            className="text-[9px] text-red-500/60 hover:text-red-400 transition-colors px-1 py-0.5"
+            className="text-[9px] text-destructive/60 hover:text-destructive transition-colors px-1 py-0.5"
             title="Dừng toàn bộ Swing"
           >
             ⏹ Dừng
@@ -3806,7 +3806,7 @@ function CommandCenter({
           <AlertDialogFooter>
             <AlertDialogCancel>Huỷ</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="bg-destructive hover:bg-destructive text-destructive-foreground"
               onClick={handleStopSwing}
               disabled={stopSaving}
             >
@@ -3854,8 +3854,8 @@ function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onE
   }, [timeLeft, attendanceId, assignmentId, onExpired]);
 
   let color = "text-primary";
-  if (timeLeft <= critAt) color = "text-red-500";
-  else if (timeLeft <= warnAt) color = "text-amber-500";
+  if (timeLeft <= critAt) color = "text-destructive";
+  else if (timeLeft <= warnAt) color = "text-warning";
 
   return (
     <div className={`font-jetbrains tabular-nums text-lg font-bold ${color}`}>
@@ -3869,9 +3869,9 @@ function TimerCell({ swingDueAt, warnAt, critAt, attendanceId, assignmentId, onE
    ============================================================== */
 function TierBadge({ tier }: { tier: string }) {
   const colors: Record<string, string> = {
-    A: "bg-yellow-500/20 text-yellow-500 border-yellow-500/40",
+    A: "bg-warning/20 text-warning border-warning/40",
     B: "bg-slate-400/20 text-slate-400 border-slate-400/40",
-    C: "bg-amber-700/20 text-amber-700 border-amber-700/40",
+    C: "bg-warning/20 text-warning border-warning/40",
   };
   return (
     <span className={`text-[10px] px-1.5 py-0.5 border font-bold ${colors[tier] ?? colors.C} rounded-none`}>
@@ -3891,7 +3891,7 @@ function TableTypeBadge({ type }: { type: string }) {
     tournament: "Tournament",
   };
   const colors: Record<string, string> = {
-    tournament: "bg-blue-500/10 text-blue-500 border-blue-500/30",
+    tournament: "bg-[hsl(var(--ds-active)_/_0.1)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]",
   };
   return (
     <span className={`text-[10px] px-1.5 py-0.5 border font-semibold ${colors[type] ?? "bg-primary/10 text-primary border-primary/30"} rounded-none`}>
@@ -3962,9 +3962,9 @@ function AutoAdjustSection({
 
   const staffingLabel =
     poolRatio == null ? null
-    : poolRatio < 0.8 ? { text: "Thiếu dealer", color: "text-red-500" }
-    : poolRatio < 1.1 ? { text: "Bình thường",  color: "text-yellow-500" }
-    :                    { text: "Đủ dealer",     color: "text-green-500" };
+    : poolRatio < 0.8 ? { text: "Thiếu dealer", color: "text-destructive" }
+    : poolRatio < 1.1 ? { text: "Bình thường",  color: "text-warning" }
+    :                    { text: "Đủ dealer",     color: "text-success" };
 
   const range = maxDuration - minDuration;
   const basePct = range > 0 ? ((baseDuration - minDuration) / range) * 100 : 50;
@@ -4002,9 +4002,9 @@ function AutoAdjustSection({
   };
 
   const suggestBadge = (status: string) => {
-    if (status === "understaffed") return { text: "Thiếu dealer", color: "bg-red-500/20 text-red-500" };
-    if (status === "overstaffed") return { text: "Đủ dealer", color: "bg-green-500/20 text-green-500" };
-    return { text: "Bình thường", color: "bg-yellow-500/20 text-yellow-500" };
+    if (status === "understaffed") return { text: "Thiếu dealer", color: "bg-destructive/20 text-destructive" };
+    if (status === "overstaffed") return { text: "Đủ dealer", color: "bg-success/20 text-success" };
+    return { text: "Bình thường", color: "bg-warning/20 text-warning" };
   };
 
   return (
@@ -4120,7 +4120,7 @@ function AutoAdjustSection({
             <div className="absolute h-full w-0.5 bg-primary"
               style={{ left: `${basePct}%` }} />
             {effectivePct != null && (
-              <div className="absolute h-full w-1 bg-green-500 rounded"
+              <div className="absolute h-full w-1 bg-success rounded"
                 style={{ left: `${effectivePct}%` }} />
             )}
           </div>
@@ -4408,10 +4408,10 @@ function RecentActivitySection({ logs, totalCount, onViewAll }: { logs: any[]; t
 
 function StatusPill({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    "Sẵn sàng": "bg-emerald-500/20 text-emerald-500",
-    "Đang bàn": "bg-blue-500/20 text-blue-500",
-    "Đang nghỉ": "bg-amber-500/20 text-amber-500",
-    "Đang chờ": "bg-purple-500/20 text-purple-500",
+    "Sẵn sàng": "bg-success/20 text-success",
+    "Đang bàn": "bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))]",
+    "Đang nghỉ": "bg-warning/20 text-warning",
+    "Đang chờ": "bg-[hsl(var(--ds-preassign)_/_0.2)] text-[hsl(var(--ds-preassign))]",
   };
   return (
     <span className={`text-[10px] px-1.5 py-[1px] font-medium ${colors[status] ?? "bg-muted text-muted-foreground"} rounded-none`}>
