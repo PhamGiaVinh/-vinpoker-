@@ -283,10 +283,16 @@ async function handleCheckin(
   chatId: number,
   dealer: { id: string; club_id: string; full_name: string },
 ) {
+  // Today's shift_date (UTC date), matching DealerSwingTab.doCheckin so the bot
+  // and operator UI share the same idempotency key + unique-index scope. A stale
+  // checked_in row from a PREVIOUS day must NOT short-circuit today's check-in.
+  const today = new Date().toISOString().split("T")[0];
+
   const { data: existing } = await admin
     .from("dealer_attendance")
     .select("id, current_state, status")
     .eq("dealer_id", dealer.id)
+    .eq("shift_date", today)
     .eq("status", "checked_in")
     .order("check_in_time", { ascending: false })
     .limit(1)
@@ -306,7 +312,6 @@ async function handleCheckin(
   }
 
   // Resolve the club's first tour/shift (same basis as the operator check-in UI).
-  const today = new Date().toISOString().split("T")[0];
   const { data: shifts } = await admin
     .from("dealer_shifts")
     .select("id")
@@ -393,22 +398,31 @@ async function handleCheckout(
     return;
   }
 
-  if (
-    att.current_state === "assigned" ||
-    att.current_state === "pre_assigned" ||
-    att.current_state === "in_transition"
-  ) {
-    const where = STATE_LABELS[att.current_state] ?? att.current_state;
-    await sendDM(
-      botToken,
-      chatId,
-      `⚠️ Bạn đang *${where}*. Vui lòng báo DC để swing ra khỏi bàn trước, rồi /checkout.`,
-    );
+  // Self-checkout is allowed ONLY from the idle pool (available). Any other
+  // state involves a live table, a pending swing, or an open break that the
+  // bot must not unwind on its own (e.g. on_break leaves an active meal-break
+  // row the cron can't close once checked_out) → defer to DC / break ending.
+  if (att.current_state !== "available") {
+    if (att.current_state === "on_break") {
+      await sendDM(
+        botToken,
+        chatId,
+        `⚠️ Bạn đang *nghỉ*. Chờ hết giờ nghỉ (tự về pool) rồi /checkout, hoặc báo DC.`,
+      );
+    } else {
+      const where = STATE_LABELS[att.current_state] ?? att.current_state;
+      await sendDM(
+        botToken,
+        chatId,
+        `⚠️ Bạn đang *${where}*. Vui lòng báo DC để swing ra khỏi bàn trước, rồi /checkout.`,
+      );
+    }
     return;
   }
 
   // ── Worked / overtime minutes (mirror checkout-dealer: 480-min shift,
-  // subtract completed + in-progress breaks) ──
+  // subtract COMPLETED breaks only — open breaks are excluded, same as the
+  // canonical operator path, so payroll minutes match between the two) ──
   const STANDARD_SHIFT_MINUTES = 480;
   let workedMinutes = 0;
   let overtimeMinutes = 0;
@@ -428,13 +442,15 @@ async function handleCheckout(
     const { data: attBreaks } = await admin
       .from("dealer_breaks")
       .select("id, break_start, break_end")
-      .eq("attendance_id", att.id);
+      .eq("attendance_id", att.id)
+      .not("break_end", "is", null);
     breakRows.push(...((attBreaks ?? []) as any[]));
     if (assignmentIds.length) {
       const { data: assBreaks } = await admin
         .from("dealer_breaks")
         .select("id, break_start, break_end")
-        .in("assignment_id", assignmentIds);
+        .in("assignment_id", assignmentIds)
+        .not("break_end", "is", null);
       breakRows.push(...((assBreaks ?? []) as any[]));
     }
 
@@ -451,13 +467,17 @@ async function handleCheckout(
   }
 
   // State transition (validated + audited inside the RPC), then checkout fields.
-  const { data: txResult } = await admin.rpc("transition_dealer_state", {
+  // Capture the error channel too: supabase-js .rpc() returns {data:null,error}
+  // on a DB-level failure (lock/timeout/permission) WITHOUT throwing, so a null
+  // result must abort — otherwise we'd flip status='checked_out' while
+  // current_state was never transitioned (status/current_state desync).
+  const { data: txResult, error: txErr } = await admin.rpc("transition_dealer_state", {
     p_attendance_id: att.id,
     p_new_state: "checked_out",
     p_reason: "dealer_self_checkout_telegram",
   });
-  if (txResult && txResult.ok === false) {
-    console.error("[telegram-bot] checkout transition failed:", txResult.error);
+  if (txErr || !txResult || txResult.ok === false) {
+    console.error("[telegram-bot] checkout transition failed:", txErr?.message ?? txResult?.error);
     await sendDM(botToken, chatId, "❌ Check-out thất bại (trạng thái không hợp lệ). Vui lòng báo DC.");
     return;
   }
@@ -482,6 +502,25 @@ async function handleCheckout(
     await sendDM(botToken, chatId, "❌ Check-out thất bại. Vui lòng thử lại hoặc báo DC.");
     return;
   }
+
+  // Release any dangling active assignment for this attendance (mirror
+  // checkout-dealer step 5) so a now-checked-out dealer doesn't leave a table
+  // counted as "occupied" by fillEmptyTables. needs_replacement lets the
+  // scheduler prioritise refilling it. (available dealers normally have none.)
+  try {
+    const { data: activeAss } = await admin
+      .from("dealer_assignments")
+      .select("id")
+      .eq("attendance_id", att.id)
+      .eq("status", "assigned")
+      .is("released_at", null);
+    if (activeAss && activeAss.length > 0) {
+      await admin
+        .from("dealer_assignments")
+        .update({ released_at: nowISO, status: "completed", needs_replacement: true })
+        .eq("id", activeAss[0].id);
+    }
+  } catch { /* non-critical */ }
 
   // Best-effort audit (never block the checkout reply).
   try {
