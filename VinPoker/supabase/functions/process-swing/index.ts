@@ -28,6 +28,7 @@ import {
   type SwingConfig,
 } from "./calculateBatchSwingDuration.ts";
 import { pass2PreAssignNext } from "./passes/pass2-pre-assign.ts";
+import { runEmptyTablePreAssign } from "./passes/passS2-empty-table-preassign.ts";
 import { pass25InitialAssign } from "./passes/pass2.5-initial-assign.ts";
 import { pass15RotationPlanner } from "./passes/pass1.5-rotation-planner.ts";
 import { postSwingPreAssign } from "./passes/pass3-post-swing-assign.ts";
@@ -87,15 +88,26 @@ const FORCE_RELEASE_ENABLED = false;
 const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
 // ── Step 1 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
 // Auto-STAFF an empty ACTIVE table (never opens/activates a new table) with a
-// genuinely-FREE dealer ONLY (availableOnly — never pulls an on_break dealer,
-// rest guard preserved) + a direct DM to the chosen dealer. Default EMPTY =
-// OFF for every club. Enabling requires OWNER APPROVAL: add the club UUID to
-// this set (one club at a time for the test window). Distinct from the legacy
-// global AUTO_OPEN_EMPTY_TABLES_ENABLED (on_break-inclusive) which stays OFF.
-// NOTE: predictive pre-assign of a still-on-break dealer is Step 2 — NOT here.
-const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = new Set<string>([
-  // "00000000-0000-0000-0000-000000000000", // ← owner-approved test club
-]);
+// genuinely-FREE (current_state='available') dealer ONLY + a direct DM.
+// Source = Edge ENV/SECRET `AUTO_STAFF_EMPTY_TABLES_CLUB_IDS` (comma/space-
+// separated club UUIDs, case-insensitive). UNSET/empty = OFF for every club.
+// Enable a club = set the secret (no code change, no committed UUID).
+function parseClubIdEnv(name: string): Set<string> {
+  return new Set(
+    (Deno.env.get(name) ?? "")
+      .split(/[\s,]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0),
+  );
+}
+const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = parseClubIdEnv("AUTO_STAFF_EMPTY_TABLES_CLUB_IDS");
+// ── Step 2 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
+// Predictive PRE-ASSIGN: when an empty active table has no available dealer to
+// fill now, reserve the soonest-free ON_BREAK dealer + countdown Telegram, and
+// execute (promote reserved→assigned) when their break ends + 13-min rest gate.
+// Source = Edge ENV `AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS`. UNSET/empty = OFF.
+// Independent of Step 1's flag so each can be enabled per-club separately.
+const AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS = parseClubIdEnv("AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS");
 // Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
 // The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
 // that auto-picks an UNPLANNED pool dealer for an overdue table is disabled:
@@ -1270,7 +1282,7 @@ Deno.serve(async (req: Request) => {
         // Per-club path runs with availableOnly=true: only genuinely-free
         // dealers (no on_break), rest guard preserved, never opens a new table,
         // + a direct DM to the chosen dealer.
-        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(cid);
+        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(String(cid).toLowerCase());
         if (!dryRun && (AUTO_OPEN_EMPTY_TABLES_ENABLED || autoStaffThisClub)) {
           fillResult = await fillEmptyTables(
             admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt,
@@ -1292,6 +1304,29 @@ Deno.serve(async (req: Request) => {
               }))
             );
             sendTelegramNotification(botToken, pass2ChatId, mopMsg).catch(err => console.error("[process-swing] Telegram error:", err));
+          }
+        }
+
+        // ── PASS S2 — predictive pre-assign for empty tables (owner Step 2) ────
+        // Per-club, default OFF. Runs AFTER Step-1 fill (so only tables with NO
+        // available dealer remain empty) and after Pass 0e (freed dealers are
+        // already 'available'). Reserves the soonest-free on_break dealer +
+        // countdown Telegram, and executes reservations whose dealer's break has
+        // ended (13-min rest gate). All via the reservation RPCs — never raw
+        // updates. NEVER opens a new table; never pulls a dealer off break early.
+        if (!dryRun && AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS.has(String(cid).toLowerCase())) {
+          try {
+            const s2 = await runEmptyTablePreAssign(admin, cid, {
+              botToken: botToken ?? undefined,
+              chatId: pass2ChatId,
+              minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
+              swingDurationMinutes: (clubCfg as any).swing_duration_minutes ?? undefined,
+            });
+            if (s2.executed || s2.reserved || s2.cancelled) {
+              console.log(`[passS2] club=${cid} executed=${s2.executed} reserved=${s2.reserved} cancelled=${s2.cancelled}`);
+            }
+          } catch (s2Err) {
+            console.error("[passS2] error:", s2Err instanceof Error ? s2Err.message : s2Err);
           }
         }
 

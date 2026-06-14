@@ -504,7 +504,9 @@ export async function buildDealerCandidates(
       .from("dealer_assignments")
       .select("dealer_id, table_id, status")
       .in("dealer_id", dealerIds)
-      .in("status", ["assigned", "pre_assigned", "on_break"])
+      // 'reserved' = Step-2 empty-table reservation: the dealer is held for an
+      // empty table, so they must NOT be picked for another table.
+      .in("status", ["assigned", "pre_assigned", "on_break", "reserved"])
       .is("released_at", null);
 
     if (currentTableId) {
