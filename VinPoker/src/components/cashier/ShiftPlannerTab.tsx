@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal, Save, Loader2 } from "lucide-react";
+import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal, Save, Loader2, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { buildSaveRunPayload } from "@/lib/shiftPlanner";
+import { buildSaveRunPayload, buildSchedulePng } from "@/lib/shiftPlanner";
+import { buildShiftGroups } from "./shift-planner/ShiftPlanner.utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,6 +97,51 @@ export default function ShiftPlannerTab({
     [workDate]
   );
 
+  // Render the schedule to a PNG and broadcast it to Telegram (floor chat + DMs)
+  // via the send-shift-schedule Edge Function (which holds the bot token).
+  const handleSendTelegram = async () => {
+    if (!data || clubIds.length === 0) return;
+    if (data.draft.assignments.length === 0) { toast.error("Chưa có ca nào để gửi"); return; }
+    setBusy(true);
+    try {
+      const dealersById = new Map(data.dealers.map((d) => [d.id, d]));
+      const groups = buildShiftGroups(data.templates, data.draft.assignments).map((g) => ({
+        label: g.template.label,
+        window: `${g.template.startAt.slice(11, 16)} – ${g.template.endAt.slice(11, 16)}`,
+        need: g.template.needCount,
+        rows: g.assignments.map((a) => ({
+          name: a.dealerName,
+          role: a.role,
+          skills: dealersById.get(a.dealerId)?.skills ?? [],
+        })),
+      }));
+      const png = await buildSchedulePng({
+        title: `Lịch dealer · ${dateLabel}`,
+        subtitle: `${data.draft.assignments.length} ca`,
+        groups,
+      });
+      const recipients = data.draft.assignments.map((a) => ({
+        dealer_id: a.dealerId,
+        shift_label: `${a.templateLabel} (${a.scheduledStartAt.slice(11, 16)}–${a.scheduledEndAt.slice(11, 16)})`,
+      }));
+      const { data: res, error } = await supabase.functions.invoke("send-shift-schedule", {
+        body: {
+          club_id: clubIds[0],
+          work_date: workDate,
+          caption_title: `🗓️ Lịch dealer ngày ${workDate}`,
+          image_base64: png,
+          recipients,
+        },
+      });
+      if (error) { toast.error(error.message ?? "Gửi Telegram thất bại"); return; }
+      const r = res as { group_sent?: boolean; group_configured?: boolean; dm_sent?: number; dm_skipped?: number } | null;
+      const groupTxt = r?.group_sent ? "nhóm ✓" : r?.group_configured ? "nhóm lỗi" : "nhóm chưa cấu hình";
+      toast.success(`Đã gửi Telegram — ${groupTxt}, DM ${r?.dm_sent ?? 0} người${r?.dm_skipped ? `, bỏ qua ${r.dm_skipped}` : ""}`);
+    } catch {
+      toast.error("Không tạo được ảnh lịch để gửi");
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -144,6 +190,14 @@ export default function ShiftPlannerTab({
                 title="Lưu + khoá lịch ngày này; phát sự kiện cho chấm công"
               >
                 {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />} Publish lịch
+              </Button>
+              <Button
+                variant="outline" size="sm" className="h-9"
+                onClick={handleSendTelegram}
+                disabled={busy || !data || data.draft.assignments.length === 0}
+                title="Gửi ảnh lịch lên nhóm floor + DM từng dealer"
+              >
+                {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <MessageCircle className="w-4 h-4 mr-1.5" />} Gửi Telegram
               </Button>
               {savedRunId && <span className="text-[11px] text-emerald-400 self-center">✓ đã lưu nháp</span>}
             </>

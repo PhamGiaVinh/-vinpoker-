@@ -43,3 +43,5 @@ export {
 } from "./templateSeeds";
 export { buildSaveRunPayload } from "./savePayload";
 export type { SaveRunArgs, SaveRunAssignmentRow } from "./savePayload";
+export { buildScheduleSvg, svgToPngDataUrl, buildSchedulePng } from "./scheduleImage";
+export type { ScheduleImageInput, ScheduleImageGroup, ScheduleImageRow } from "./scheduleImage";
