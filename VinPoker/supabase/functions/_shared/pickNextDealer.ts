@@ -68,6 +68,10 @@ export interface PickDealerOptions {
    *  can reserve a dealer who will be ready by the delayed handoff time.
    *  The pool cooldown guard still applies. */
   reservationMode?: boolean;
+  /** Empty-table auto-fill (owner policy 2026-06-15): pick ONLY genuinely-free
+   *  dealers — never an on_break dealer (don't pull anyone off break). Defaults
+   *  to false so every existing caller is unchanged. */
+  availableOnly?: boolean;
 }
 
 export interface DealerCandidate {
@@ -230,6 +234,7 @@ export async function buildDealerCandidates(
     minInterSwingRestMinutes: rawMinInterSwingRestMinutes = 10,
     swingDueAt,
     reservationMode = false,
+    availableOnly = false,
   } = options;
   const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? 10);
 
@@ -651,6 +656,13 @@ export async function buildDealerCandidates(
     if (row.current_state === "pre_assigned") {
       diag.busy_excluded++;
       console.warn(`[pickNextDealer] Dealer ${row.dealer_id} skipped: current_state=pre_assigned`);
+      continue;
+    }
+
+    // ── availableOnly (empty-table auto-fill, owner policy 2026-06-15) ──────────
+    // Pick ONLY genuinely-free dealers — never pull an on_break dealer off break.
+    if (availableOnly && row.current_state !== "available") {
+      diag.on_break_excluded++;
       continue;
     }
 

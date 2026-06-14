@@ -73,6 +73,11 @@ export async function fillEmptyTables(
   initialExclude?: Set<string>,
   swingDueAt?: string,
   minInterSwingRestMinutes?: number,
+  // Empty-table auto-fill (owner policy 2026-06-15, Step 1): when true, pick
+  // ONLY genuinely-free (current_state='available') dealers — never pull an
+  // on_break dealer — and DM the chosen dealer directly. Default false keeps
+  // every existing manual caller (mass-assign / assign-dealer) unchanged.
+  availableOnly = false,
 ): Promise<FillResult> {
   const result: FillResult = {
     assignments: [],
@@ -162,9 +167,22 @@ export async function fillEmptyTables(
 
   const localExclude = new Set<string>(initialExclude ?? []);
 
+  // Structured audit log (owner req 2026-06-15). One line per event, JSON
+  // payload, greppable by `event` key.
+  const slog = (event: string, data: Record<string, unknown>) =>
+    console.log(`[fillEmptyTables] ${event} ${JSON.stringify({ club_id: clubId, ...data })}`);
+
+  slog("empty_table_fill_started", {
+    available_only: availableOnly,
+    empty_table_count: emptyTables.length,
+    empty_table_ids: emptyTables.map((t) => t.id),
+  });
+
   // Step 5: Assign dealers to each empty table with per-table swing_due_at
   // Priority: table override > tournament config > club default (swingDueAt param)
   const now = new Date();
+  const hhmm = (d: Date) =>
+    d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
   for (const [index, table] of emptyTables.entries()) {
     let assigned = false;
@@ -200,9 +218,19 @@ export async function fillEmptyTables(
         currentTableId: table.id,
         excludeAttendanceIds: excludeSet,
         minInterSwingRestMinutes: minInterSwingRestMinutes ?? 10,
+        availableOnly,
       });
 
       if (!dealer) break;
+
+      slog("empty_table_fill_candidate_selected", {
+        table_id: table.id,
+        table_name: table.table_name,
+        attendance_id: dealer.id,
+        dealer_name: dealer.full_name,
+        current_state: dealer.current_state,
+        attempt: attempt + 1,
+      });
 
       const rpcClient = admin as unknown as {
         rpc: (
@@ -241,6 +269,39 @@ export async function fillEmptyTables(
           telegram_username: dealer.telegram_username ?? null,
         });
         assigned = true;
+        slog("empty_table_fill_assigned", {
+          table_id: table.id,
+          table_name: table.table_name,
+          attendance_id: dealer.id,
+          dealer_name: dealer.full_name,
+          current_state: dealer.current_state,
+        });
+
+        // Direct DM to the staffed dealer (owner req 2026-06-15): which table,
+        // why (mở bàn trống), and when they take it. Only in the auto-fill path
+        // (availableOnly) so manual mass-assign / assign-dealer behavior is
+        // unchanged.
+        if (availableOnly && botToken) {
+          if (dealer.telegram_user_id) {
+            const dmText =
+              `🆕 Bạn được gọi vào <b>${table.table_name}</b>.\n` +
+              `Lý do: mở bàn trống.\n` +
+              `Giờ nhận bàn: ${hhmm(now)}.`;
+            try {
+              const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chat_id: String(dealer.telegram_user_id), text: dmText, parse_mode: "HTML" }),
+              });
+              if (res.ok) slog("empty_table_fill_dm_sent", { table_id: table.id, attendance_id: dealer.id });
+              else slog("empty_table_fill_dm_failed", { table_id: table.id, attendance_id: dealer.id, http_status: res.status });
+            } catch (e) {
+              slog("empty_table_fill_dm_failed", { table_id: table.id, attendance_id: dealer.id, error: e instanceof Error ? e.message : String(e) });
+            }
+          } else {
+            slog("empty_table_fill_dm_failed", { table_id: table.id, attendance_id: dealer.id, reason: "no_telegram_user_id" });
+          }
+        }
         break;
       }
 
@@ -263,6 +324,11 @@ export async function fillEmptyTables(
       console.warn(
         `[fillEmptyTables] Could not assign dealer to table ${table.table_name} after 3 attempts`
       );
+      slog("empty_table_fill_skipped_no_dealer", {
+        table_id: table.id,
+        table_name: table.table_name,
+        available_only: availableOnly,
+      });
     }
   }
 
