@@ -25,18 +25,18 @@ export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, 
     <div
       className={`flex items-center gap-2 pl-2.5 pr-2 py-2 border-l-2 rounded-none cursor-pointer transition-colors ${
         isCritical
-          ? "border-red-500 bg-red-500/5 hover:bg-red-500/10"
-          : "border-amber-500 bg-amber-500/5 hover:bg-amber-500/10"
+          ? "border-destructive bg-destructive/5 hover:bg-destructive/10"
+          : "border-warning bg-warning/5 hover:bg-warning/10"
       }`}
       onClick={() => onFocusTable?.(item.tableId ?? "")}
     >
-      <span className={`flex-shrink-0 ${isCritical ? "text-red-500" : "text-amber-500"}`}>
+      <span className={`flex-shrink-0 ${isCritical ? "text-destructive" : "text-warning"}`}>
         {ICON_MAP[item.type]}
       </span>
 
       <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
         <span className={`text-[11px] font-medium leading-tight truncate ${
-          isCritical ? "text-red-400" : "text-amber-400"
+          isCritical ? "text-destructive" : "text-warning"
         }`}>
           {item.title}
         </span>

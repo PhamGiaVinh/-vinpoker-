@@ -142,7 +142,7 @@ export default function ExceptionCenter({
           </span>
         </div>
         {criticalCount > 0 && (
-          <span className="text-[9px] font-bold text-red-500">{criticalCount} nghiêm trọng</span>
+          <span className="text-[9px] font-bold text-destructive">{criticalCount} nghiêm trọng</span>
         )}
       </div>
 
@@ -152,18 +152,18 @@ export default function ExceptionCenter({
             key={ex.id}
             className={`border-l-2 pl-2 py-1.5 pr-1 flex items-start gap-1.5 ${
               ex.severity === "critical"
-                ? "border-red-500 bg-red-500/5"
-                : "border-amber-500 bg-amber-500/5"
+                ? "border-destructive bg-destructive/5"
+                : "border-warning bg-warning/5"
             }`}
           >
             <div className="mt-0.5 flex-shrink-0">
-              <span className={ex.severity === "critical" ? "text-red-500" : "text-amber-500"}>
+              <span className={ex.severity === "critical" ? "text-destructive" : "text-warning"}>
                 {iconMap[ex.type]}
               </span>
             </div>
             <div className="flex-1 min-w-0">
               <div className={`text-[11px] font-medium leading-tight truncate ${
-                ex.severity === "critical" ? "text-red-400" : "text-amber-400"
+                ex.severity === "critical" ? "text-destructive" : "text-warning"
               }`}>
                 {ex.title}
               </div>

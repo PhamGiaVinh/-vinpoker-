@@ -27,24 +27,24 @@ function HealthBadge({ enabled, coverageRatio, exceptions }: {
   if (!enabled) {
     return (
       <div className="flex items-center gap-1.5">
-        <XCircle className="w-3.5 h-3.5 text-red-500" />
-        <span className="text-[11px] font-semibold text-red-500">Đã tắt</span>
+        <XCircle className="w-3.5 h-3.5 text-destructive" />
+        <span className="text-[11px] font-semibold text-destructive">Đã tắt</span>
       </div>
     );
   }
   if (exceptions > 0 || coverageRatio < 0.8) {
     return (
       <div className="flex items-center gap-1.5">
-        <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-        <span className="text-[11px] font-semibold text-amber-500">Cảnh báo</span>
+        <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+        <span className="text-[11px] font-semibold text-warning">Cảnh báo</span>
         <span className="text-[10px] text-muted-foreground">{exceptions} vấn đề</span>
       </div>
     );
   }
   return (
     <div className="flex items-center gap-1.5">
-      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-      <span className="text-[11px] font-semibold text-emerald-500">Đang chạy</span>
+      <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+      <span className="text-[11px] font-semibold text-success">Đang chạy</span>
     </div>
   );
 }
