@@ -56,13 +56,14 @@ import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTa
 import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
 import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
 import DealerSearchPanel from "./dealer-swing/DealerSearchPanel";
+import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
 import {
   Users, Table2, Bell, Play, RefreshCw, UserPlus, UserMinus,
   FileSpreadsheet, Loader2, Clock, AlertTriangle, Coffee,
-  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog, ChevronDown, X,
+  Plus, MessageCircle, Save, Settings, Trash2, Zap, LayoutDashboard, UserCog, ChevronDown, X, Archive,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -338,6 +339,7 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [newTourStartTime, setNewTourStartTime] = useState("");
   const [newTourEndTime, setNewTourEndTime] = useState("");
   const [deleteTour, setDeleteTour] = useState<{ id: string; name: string } | null>(null);
+  const [closeTourOpen, setCloseTourOpen] = useState(false);
   const [deletingTour, setDeletingTour] = useState(false);
 
   // Load auto_swing_enabled setting
@@ -939,6 +941,32 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return tour ? tour.tour_name : "";
   };
 
+  // Preview summary for the "Đóng tour" (Archive & Close Tour) dialog. Derived
+  // from already-loaded data only (no extra query). Counts = the tour's ACTIVE
+  // tables + the dealers currently on them (who will be archived + sent to the
+  // break pool on close). The authoritative counts come from the server RPC.
+  const closeTourPreview = useMemo<CloseTourPreview | null>(() => {
+    if (!selectedTour) return null;
+    const tour = (tours ?? []).find((t) => t.id === selectedTour);
+    if (!tour) return null;
+    const tourTables = (tables ?? []).filter((t) => t.shift_id === selectedTour && t.status === "active");
+    const tourTableIds = new Set(tourTables.map((t) => t.id));
+    const live = (assignments ?? []).filter((a) => tourTableIds.has(a.table_id) && !a.released_at);
+    const assignedDealers = live.filter((a) => a.status === "assigned").length;
+    const onBreakDealers = live.filter((a) => a.status === "on_break").length;
+    const reservedDealers = live.filter((a) => String(a.status) === "reserved").length;
+    const datePart = new Date(nowMs).toISOString().slice(0, 10);
+    const safeName = tour.tour_name.replace(/[^\p{L}\p{N}]+/gu, "_").slice(0, 40).replace(/^_+|_+$/g, "");
+    return {
+      tourName: tour.tour_name,
+      activeTables: tourTables.length,
+      assignedDealers,
+      onBreakDealers,
+      reservedDealers,
+      archiveFilename: `swing_${safeName || "tour"}_${datePart}.json`,
+    };
+  }, [selectedTour, tours, tables, assignments, nowMs]);
+
   // Load dealers for manual check-in — includes checked-out dealers (re-check-in) in separate section
   const loadCheckinDealers = async () => {
     const today = new Date().toISOString().split("T")[0];
@@ -1461,6 +1489,13 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
             className="text-xs px-2.5 py-1.5 rounded-full border border-primary/40 text-primary bg-primary/10 hover:bg-primary/20 transition inline-flex items-center gap-1">
             <Plus className="w-3 h-3" /> Tạo tour
           </button>
+          {FEATURES.dealerSwingCloseTourArchive && selectedTour !== null && (
+            <button onClick={() => setCloseTourOpen(true)}
+              title="Lưu trữ & Đóng tour"
+              className="text-xs px-3 py-2 min-h-[40px] rounded-full border border-destructive/40 text-destructive bg-destructive/10 hover:bg-destructive/20 transition inline-flex items-center gap-1">
+              <Archive className="w-3 h-3" /> Đóng tour
+            </button>
+          )}
         </div>
         {(tours ?? []).length === 0 && selectedTour === null && (
           <div className="text-xs text-warning mt-1 flex items-center gap-2">
@@ -2485,6 +2520,13 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Archive & Close Tour (PR1: preview-only — onConfirm wired in PR3) */}
+      <CloseTourDialog
+        open={closeTourOpen}
+        onOpenChange={setCloseTourOpen}
+        preview={closeTourPreview}
+      />
 
       {/* Special Dates Dialog (Bug 6) */}
       <Dialog open={specialDatesOpen} onOpenChange={setSpecialDatesOpen}>

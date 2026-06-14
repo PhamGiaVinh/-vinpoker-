@@ -127,4 +127,17 @@ export const FEATURES = {
    * preview-only. Flip to true after owner UAT.
    */
   dealerMobileApp: false,
+  /**
+   * Dealer Swing "Đóng tour" — Archive & Close Tour. Floor closes a whole tour:
+   * the server archives the full swing snapshot (tour, tables, assignments,
+   * break pool, reserved, audit) into `dealer_swing_archives` and ONLY THEN, in
+   * the same transaction, releases every tour table + sends its dealers to the
+   * break pool (on_break) — via the SECURITY DEFINER RPC
+   * `archive_and_close_dealer_tour` (PR2 source-only, owner-gated apply).
+   * Default **OFF**: while false the "Đóng tour" button is hidden. The confirm
+   * dialog requires typing "DONG TOUR". Flip to true ONLY after the RPC is
+   * applied live in a controlled DB session and owner UAT passes; until then the
+   * button never appears and no close can run.
+   */
+  dealerSwingCloseTourArchive: false,
 } as const;
