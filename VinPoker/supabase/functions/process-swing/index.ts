@@ -85,6 +85,17 @@ const MAX_SWING_RETRIES = 3;
 // automatic behavior.
 const FORCE_RELEASE_ENABLED = false;
 const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
+// ── Step 1 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
+// Auto-STAFF an empty ACTIVE table (never opens/activates a new table) with a
+// genuinely-FREE dealer ONLY (availableOnly — never pulls an on_break dealer,
+// rest guard preserved) + a direct DM to the chosen dealer. Default EMPTY =
+// OFF for every club. Enabling requires OWNER APPROVAL: add the club UUID to
+// this set (one club at a time for the test window). Distinct from the legacy
+// global AUTO_OPEN_EMPTY_TABLES_ENABLED (on_break-inclusive) which stays OFF.
+// NOTE: predictive pre-assign of a still-on-break dealer is Step 2 — NOT here.
+const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = new Set<string>([
+  // "00000000-0000-0000-0000-000000000000", // ← owner-approved test club
+]);
 // Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
 // The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
 // that auto-picks an UNPLANNED pool dealer for an overdue table is disabled:
@@ -1252,12 +1263,20 @@ Deno.serve(async (req: Request) => {
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
         let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
-        // Owner policy: NEVER auto-open/auto-staff an empty table. Opening is
-        // manual-only (the "Gán" / "Gán loạt" buttons → assign-dealer / mass-assign
-        // edge functions, which call fillEmptyTables independently and are NOT
-        // affected by this gate). The cron must not auto-fill or send "Mở Bàn".
-        if (!dryRun && AUTO_OPEN_EMPTY_TABLES_ENABLED) {
-          fillResult = await fillEmptyTables(admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt, clubCfg.min_inter_swing_rest_minutes);
+        // Auto-fill empty ACTIVE tables. Gated: legacy global flag (OFF) OR the
+        // Step-1 per-club opt-in (owner policy 2026-06-15, default OFF). Manual
+        // "Gán" / "Gán loạt" buttons (assign-dealer / mass-assign) call
+        // fillEmptyTables independently and are NOT affected by this gate.
+        // Per-club path runs with availableOnly=true: only genuinely-free
+        // dealers (no on_break), rest guard preserved, never opens a new table,
+        // + a direct DM to the chosen dealer.
+        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(cid);
+        if (!dryRun && (AUTO_OPEN_EMPTY_TABLES_ENABLED || autoStaffThisClub)) {
+          fillResult = await fillEmptyTables(
+            admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt,
+            clubCfg.min_inter_swing_rest_minutes,
+            autoStaffThisClub, // availableOnly — only on the per-club Step-1 path
+          );
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           // Pass 1 swing_in intentionally NOT enqueued here:
           // formatMassAssignMessage already sends "Mở Bàn (N bàn)" batch.
