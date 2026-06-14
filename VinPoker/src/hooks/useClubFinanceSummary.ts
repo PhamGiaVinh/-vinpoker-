@@ -8,6 +8,11 @@ import {
 
 // Read-only money-flow summary for one club (owner) or all clubs (super_admin).
 // NEVER recomputes payroll — reads SAVED dealer_payroll values only.
+//
+// Phase 3: prefers the server RPC `get_club_finance_summary` (one RLS-checked call that
+// also reads payment_records for accurate paid/reconciled/aging). If the RPC is not applied
+// yet / errors, it transparently FALLS BACK to the original client-side aggregation below —
+// so the dashboard works at every step with zero regression.
 
 export interface ClubFinanceSummary {
   revenue: { stakingFees: number; payoutFees: number; rake: number; total: number };
@@ -60,9 +65,41 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const fromTs = new Date(from + "T00:00:00").toISOString();
+    const toTs = new Date(to + "T23:59:59").toISOString();
+
+    // ===== Phase 3: server RPC first (accurate payment state, single RLS-checked call) =====
     try {
-      const fromTs = new Date(from + "T00:00:00").toISOString();
-      const toTs = new Date(to + "T23:59:59").toISOString();
+      const { data, error: rpcErr } = await (supabase as any).rpc("get_club_finance_summary", {
+        p_from: fromTs,
+        p_to: toTs,
+        p_club_id: clubFilter !== "all" ? clubFilter : null,
+      });
+      const d = data as any;
+      if (!rpcErr && d && typeof d === "object" && d.revenue && d.cost) {
+        setClubs(Array.isArray(d.clubs) ? d.clubs : []);
+        setSummary({
+          revenue: d.revenue,
+          cost: d.cost,
+          net: Number(d.net ?? 0),
+          statusTotals: { ...emptyStatusTotals(), ...(d.statusTotals ?? {}) },
+          unpaidTotal: Number(d.unpaidTotal ?? 0),
+          reconciledTotal: Number(d.reconciledTotal ?? 0),
+          aging: { ...emptyAging(), ...(d.aging ?? {}) },
+          trend: Array.isArray(d.trend) ? d.trend : [],
+          perPeriod: Array.isArray(d.perPeriod) ? d.perPeriod : [],
+          perClub: Array.isArray(d.perClub) ? d.perClub : [],
+        });
+        setLoading(false);
+        return;
+      }
+      // rpcErr (e.g. function not applied yet) → fall through to client-side aggregation
+    } catch {
+      // network/unknown → fall through to client-side aggregation
+    }
+
+    // ===== Fallback: client-side aggregation (works before the RPC is applied) =====
+    try {
       const nowMs = Date.now();
 
       // ---- scope (mirror FeeRevenueDashboard: owner → owned clubs; admin → all) ----
@@ -99,22 +136,25 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
 
       let stakingFees = 0, payoutFees = 0, rake = 0;
 
-      // ===== Revenue 1 — staking platform fees (mirror FeeRevenueDashboard.computeRow) =====
+      // ===== Revenue 1 — staking platform fees (fixed + percent on check-in, archive on completed) =====
       {
         let q = supabase.from("staking_deals")
-          .select("club_id, status, platform_fixed_fee, platform_archive_fee, result_prize_vnd, player_checked_in, created_at")
+          .select("club_id, status, platform_fixed_fee, platform_percent_fee, platform_archive_fee, result_prize_vnd, player_checked_in, created_at")
           .gte("created_at", fromTs).lte("created_at", toTs).limit(5000);
         if (restrictIds) q = q.in("club_id", restrictIds);
         const { data, error: e } = await q;
         if (e) throw e;
         (data ?? []).forEach((d) => {
           if (!inScope(d.club_id)) return;
+          const checkedIn = !!d.player_checked_in;
           const entryFee = Number(d.platform_fixed_fee ?? 0);
+          const percentFee = Number((d as any).platform_percent_fee ?? 0);
           const archiveFee = Number(d.platform_archive_fee ?? ARCHIVE_DEFAULT);
-          const entry = d.player_checked_in && entryFee > 0 ? entryFee : 0;
+          const entry = checkedIn && entryFee > 0 ? entryFee : 0;
+          const percent = checkedIn && percentFee > 0 ? percentFee : 0;
           const prize = Number(d.result_prize_vnd ?? 0);
           const archive = d.status === "completed" && prize > 0 ? Math.min(archiveFee, prize) : 0;
-          const v = entry + archive;
+          const v = entry + percent + archive;
           if (v > 0) { stakingFees += v; addRev(d.club_id!, v, monthKey(d.created_at)); }
         });
       }
