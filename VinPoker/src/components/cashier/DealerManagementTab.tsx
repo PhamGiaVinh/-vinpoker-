@@ -8,7 +8,7 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Plus, Search, X, Pencil, Trash2, Loader2, Send, Copy, Unlink2 } from "lucide-react";
+import { Plus, Search, X, Pencil, Trash2, Loader2, Send, Copy, Unlink2, Link2 } from "lucide-react";
 import { useAllDealers, useDealerScores, type DealerRecord, type DealerScore } from "@/hooks/useDealerManagement";
 import AddDealerDialog from "./AddDealerDialog";
 import DealerAdjustDialog from "./DealerAdjustDialog";
@@ -25,7 +25,7 @@ type FilterMode = "all" | "full_time" | "part_time" | "A" | "B" | "C";
 
 export default function DealerManagementTab({ clubIds, clubFilter }: DealerManagementTabProps) {
   const activeClubId = clubFilter ?? clubIds[0] ?? "";
-  const { data: dealers, loading: dealersLoading } = useAllDealers(clubIds);
+  const { data: dealers, loading: dealersLoading, refetch: refetchDealers } = useAllDealers(clubIds);
   const { data: scores, loading: scoresLoading } = useDealerScores(activeClubId);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +36,8 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
   const [deleting, setDeleting] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>("dealers");
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [usernameDrafts, setUsernameDrafts] = useState<Record<string, string>>({});
 
   // Soft-delete handler
   const handleSoftDelete = async () => {
@@ -65,10 +67,41 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
         .eq("id", dealerId);
       if (error) throw error;
       toast.success("Đã huỷ liên kết Telegram");
+      refetchDealers();
     } catch (e: any) {
       toast.error(e?.message ?? "Lỗi huỷ liên kết");
     } finally {
       setUnlinkingId(null);
+    }
+  };
+
+  // Operator-side link: store the dealer's @username (handle). The bot fills in
+  // the numeric telegram_user_id automatically the first time that dealer
+  // messages it (e.g. their first /checkin) — see telegram-bot username match.
+  const handleSetUsername = async (dealerId: string) => {
+    const handle = (usernameDrafts[dealerId] ?? "").trim().replace(/^@+/, "");
+    if (!handle) {
+      toast.error("Nhập @username Telegram của dealer");
+      return;
+    }
+    setLinkingId(dealerId);
+    try {
+      const { error } = await supabase
+        .from("dealers")
+        .update({ telegram_username: handle })
+        .eq("id", dealerId);
+      if (error) throw error;
+      toast.success(`Đã lưu @${handle}. Dealer gõ /checkin lần đầu là tự liên kết.`);
+      setUsernameDrafts((d) => {
+        const next = { ...d };
+        delete next[dealerId];
+        return next;
+      });
+      refetchDealers();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi lưu username");
+    } finally {
+      setLinkingId(null);
     }
   };
 
@@ -430,10 +463,12 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
               {/* Rows */}
               {dealers.map((dealer) => {
                 const isLinked = dealer.telegram_user_id != null;
+                const isPending = !isLinked && !!dealer.telegram_username;
+                const draft = usernameDrafts[dealer.id] ?? "";
                 return (
                   <div
                     key={dealer.id}
-                    className="grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded hover:bg-zinc-800/50 border border-transparent"
+                    className="grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded hover:bg-zinc-800/50 border border-transparent items-center"
                   >
                     <div className="col-span-3 text-white truncate">
                       {dealer.full_name}
@@ -459,12 +494,29 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                             ? `@${dealer.telegram_username}`
                             : `ID: ${dealer.telegram_user_id}`}
                         </span>
+                      ) : isPending ? (
+                        <span className="text-amber-400 text-xs">
+                          ⏳ @{dealer.telegram_username} · chờ dealer nhắn bot
+                        </span>
                       ) : (
-                        <span className="text-zinc-500 text-xs">Chưa liên kết</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-zinc-500 text-xs">@</span>
+                          <Input
+                            value={draft}
+                            onChange={(e) =>
+                              setUsernameDrafts((d) => ({ ...d, [dealer.id]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSetUsername(dealer.id);
+                            }}
+                            placeholder="username Telegram"
+                            className="h-7 text-xs bg-zinc-900 border-zinc-700"
+                          />
+                        </div>
                       )}
                     </div>
                     <div className="col-span-3 flex items-center justify-end gap-1">
-                      {isLinked ? (
+                      {isLinked || isPending ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -474,21 +526,39 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                         >
                           {unlinkingId === dealer.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                          ) : (
+                          ) : isLinked ? (
                             <Unlink2 className="w-3.5 h-3.5 mr-1" />
+                          ) : (
+                            <X className="w-3.5 h-3.5 mr-1" />
                           )}
-                          Huỷ liên kết
+                          {isLinked ? "Huỷ liên kết" : "Huỷ"}
                         </Button>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCopyInviteLink(dealer.full_name)}
-                          className="h-7 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
-                        >
-                          <Copy className="w-3.5 h-3.5 mr-1" />
-                          Link mời
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleSetUsername(dealer.id)}
+                            disabled={linkingId === dealer.id || !draft.trim()}
+                            className="h-7 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                          >
+                            {linkingId === dealer.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                            ) : (
+                              <Link2 className="w-3.5 h-3.5 mr-1" />
+                            )}
+                            Liên kết
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyInviteLink(dealer.full_name)}
+                            title="Copy link mời (cách cũ)"
+                            className="h-7 w-7 p-0 text-zinc-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
