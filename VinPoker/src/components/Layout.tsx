@@ -25,7 +25,6 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
 import appLogo from "@/assets/app-logo.png";
-import { FEATURES } from "@/lib/featureFlags";
 
 const tabsData = [
   { to: "/", labelKey: "schedule", icon: Calendar, end: true, label: "Lịch giải" },
@@ -66,7 +65,7 @@ const mobileMenuData = MOBILE_MENU_ROUTES
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, isDealer, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -193,9 +192,10 @@ export const Layout = () => {
               </div>
             )}
 
-            {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier).
-                Each destination guards itself; this is a UI entry only. */}
-            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner) && (
+            {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier + dealer).
+                Each destination guards itself; this is a UI entry only. A pure dealer
+                (no operator role) sees this menu with ONLY the Dealer App item. */}
+            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -240,23 +240,17 @@ export const Layout = () => {
                       Tài chính
                     </DropdownMenuItem>
                   )}
+                  {/* Dealer App — shown to dealers (their only operator entry) and to
+                      admins/owners. Operator items above stay role-gated, so a pure
+                      dealer sees only this one. */}
+                  {(isDealer || isAdmin || isClubOwner) && (
+                    <DropdownMenuItem onClick={() => nav("/dealer")} className="gap-2.5 cursor-pointer">
+                      <Spade className="w-4 h-4" />
+                      Dealer App
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
-
-            {/* Dealer Mobile App entry (mobile + desktop). Shown to admins/owners
-                for UAT while the flag is OFF, and to everyone once it's ON (open
-                market — non-dealers land on the "link/apply" screen). */}
-            {user && (FEATURES.dealerMobileApp || isAdmin || isClubOwner) && (
-              <NavLink
-                to="/dealer"
-                className="inline-flex items-center gap-1 px-2.5 py-2 md:py-1.5 rounded-lg bg-card border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/10 transition-colors"
-                aria-label="Dealer App"
-                title="Dealer App"
-              >
-                <Spade className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />
-                <span className="hidden min-[400px]:inline">DEALER</span>
-              </NavLink>
             )}
 
             <div className="hidden md:flex items-center gap-1.5">
