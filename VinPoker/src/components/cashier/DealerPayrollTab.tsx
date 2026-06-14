@@ -951,13 +951,13 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 label="Cần chuẩn bị chi trả"
                 value={formatVND(finance.totalNetVnd)}
                 sub={`${finance.dealerCount} dealer · ${currentRange?.label ?? ""}`}
-                variant="success"
+                variant="default"
               />
               <MetricCard
                 label="Trạng thái bảng lương"
                 value={finance.statusLabel}
                 sub={savedPeriodId ? "Đã lưu vào hệ thống" : "Chưa lưu — số liệu tính trực tiếp"}
-                variant={payrollStatus === "locked" ? "default" : payrollStatus === "approved" ? "success" : "warning"}
+                variant="default"
               />
               <MetricCard
                 label="FT / PT"
