@@ -202,7 +202,10 @@ Deno.serve(async (req) => {
         },
       });
 
-      // Telegram notification
+      // Telegram notification.
+      // wasEmpty = the table had no active dealer before this assignment, i.e.
+      // we are OPENING it (vs swinging/replacing a dealer on an occupied table).
+      const wasEmpty = !activeAssignment;
       const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
       if (botToken) {
         const dealerInfo = (attendance as any)?.dealers ?? {};
@@ -222,23 +225,30 @@ Deno.serve(async (req) => {
           tourName = (shiftRow as any)?.tour_name ?? null;
         }
         const tourInfo = tourName ? ` (${tourName})` : "";
+        const dealerMention = mention({ full_name: dealerName, telegram_username: dealerUsername });
 
-        notifyIncomingDealer(
-          botToken,
-          { full_name: dealerName, telegram_username: dealerUsername, telegram_user_id: dealerUserId },
-          table.table_name,
-          swingDuration,
-        ).catch(() => {});
+        // Distinct message when this assignment OPENS a previously-empty table.
+        const groupMsg = wasEmpty
+          ? `🆕 Mở bàn: ${dealerMention} - ${table.table_name}${tourInfo}`
+          : `🪑 Vào bàn ${table.table_name}${tourInfo}: ${dealerMention}`;
 
-        getClubTelegramChatId(admin, table.club_id).then((chatId) => {
-          if (chatId) {
-            sendTelegramNotification(
-              botToken,
-              chatId,
-              `🪑 Vào bàn ${table.table_name}${tourInfo}: ${mention({ full_name: dealerName, telegram_username: dealerUsername })}`,
-            ).catch(() => {});
-          }
-        }).catch(() => {});
+        const chatId = await getClubTelegramChatId(admin, table.club_id);
+        // Run the sends as a background task that the runtime keeps alive past
+        // the response (EdgeRuntime.waitUntil) so they reliably deliver. The
+        // previous fire-and-forget sends were dropped when the function froze on
+        // return, so manual opens often sent nothing. Fallback: await locally.
+        const sends = Promise.allSettled([
+          notifyIncomingDealer(
+            botToken,
+            { full_name: dealerName, telegram_username: dealerUsername, telegram_user_id: dealerUserId },
+            table.table_name,
+            swingDuration,
+          ),
+          chatId ? sendTelegramNotification(botToken, chatId, groupMsg) : Promise.resolve(),
+        ]);
+        const er = (globalThis as any).EdgeRuntime;
+        if (er?.waitUntil) er.waitUntil(sends);
+        else await sends;
       }
 
       return json({ assignment: { id: assignmentId, status: "success" }, status: "success" });
