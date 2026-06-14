@@ -95,7 +95,9 @@ jobs:
           result4=$?
           deploy_func telegram-bot
           result5=$?
-          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
+          deploy_func send-shift-schedule
+          result6=$?
+          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && [ $result6 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
           echo "=== Some functions failed ===" && exit 1
         working-directory: ./VinPoker
         env:
