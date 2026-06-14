@@ -83,54 +83,54 @@
   [data-theme="claude-warm"] {
     color-scheme: light;
 
-    --background: 48 36% 95%;          /* #F6F4EC */
-    --foreground: 36 9% 10%;           /* #1D1B18 */
+    --background: 43 44% 94%;          /* #F6F4EC */
+    --foreground: 33 17% 10%;           /* #1D1B18 */
 
     --card: 45 100% 98%;               /* #FFFDF7 */
-    --card-foreground: 36 9% 10%;
+    --card-foreground: 33 17% 10%;
 
     --popover: 45 100% 98%;
-    --popover-foreground: 36 9% 10%;
+    --popover-foreground: 33 17% 10%;
 
     --primary: 16 53% 54%;             /* #C86B4A terracotta */
     --primary-foreground: 45 100% 98%;
     --primary-glow: 16 60% 62%;
 
-    --secondary: 40 36% 90%;           /* #EFE9DD */
-    --secondary-foreground: 36 9% 10%;
+    --secondary: 42 42% 91%;           /* #EFE9DD */
+    --secondary-foreground: 33 17% 10%;
 
-    --muted: 40 36% 90%;
-    --muted-foreground: 37 8% 40%;     /* #6F695F */
+    --muted: 42 42% 91%;
+    --muted-foreground: 32 13% 38%;     /* #6F695F */
 
-    --accent: 24 57% 86%;              /* #F0D8C8 */
-    --accent-foreground: 36 9% 10%;
+    --accent: 21 57% 86%;              /* #F0D8C8 */
+    --accent-foreground: 33 17% 10%;
 
-    --destructive: 10 46% 42%;         /* #9B4A3A */
+    --destructive: 9 45% 45%;         /* #9B4A3A */
     --destructive-foreground: 45 100% 98%;
 
     --success: 92 12% 44%;             /* #6F7D63 moss */
     --success-foreground: 45 100% 98%;
 
-    --warning: 40 56% 51%;             /* #C99A3D */
-    --warning-foreground: 36 9% 10%;
+    --warning: 40 63% 48%;             /* #C99A3D */
+    --warning-foreground: 33 17% 10%;
 
-    --border: 41 24% 80%;              /* #D8D0BF taupe */
-    --input: 41 24% 80%;
+    --border: 39 29% 78%;              /* #D8D0BF taupe */
+    --input: 39 29% 78%;
     --ring: 16 53% 54%;
 
     --gradient-neon: linear-gradient(135deg, hsl(16 53% 54%), hsl(16 53% 46%));
-    --gradient-felt: linear-gradient(180deg, hsl(48 36% 96%), hsl(44 33% 93%));
-    --gradient-card: linear-gradient(150deg, hsl(45 100% 98%) 0%, hsl(44 40% 95%) 100%);
+    --gradient-felt: linear-gradient(180deg, hsl(43 44% 95%), hsl(41 40% 92%));
+    --gradient-card: linear-gradient(150deg, hsl(45 100% 98%) 0%, hsl(44 50% 96%) 100%);
     --shadow-neon: 0 0 0 1px hsl(16 53% 54% / 0.25);
-    --shadow-card: 0 4px 16px hsl(36 9% 10% / 0.08);
+    --shadow-card: 0 1px 2px hsl(33 17% 10% / 0.06), 0 6px 18px hsl(33 17% 10% / 0.10);
 
-    --sidebar-background: 40 33% 92%;
-    --sidebar-foreground: 36 9% 10%;
+    --sidebar-background: 42 42% 91%;
+    --sidebar-foreground: 33 17% 10%;
     --sidebar-primary: 16 53% 54%;
     --sidebar-primary-foreground: 45 100% 98%;
-    --sidebar-accent: 24 57% 86%;
-    --sidebar-accent-foreground: 36 9% 10%;
-    --sidebar-border: 41 24% 80%;
+    --sidebar-accent: 21 57% 86%;
+    --sidebar-accent-foreground: 33 17% 10%;
+    --sidebar-border: 39 29% 78%;
     --sidebar-ring: 16 53% 54%;
 
     /* Optional palette tokens for future use */
@@ -139,7 +139,7 @@
 
     /* Dealer Swing "pre-assigned" status — warm terracotta */
     --ds-preassign: 16 53% 54%;        /* terracotta */
-    --ds-active: 214 45% 42%;          /* deeper slate-blue for ivory contrast */
+    --ds-active: 203 40% 40%;          /* deeper slate-blue for ivory contrast */
   }
 }
 
@@ -219,10 +219,10 @@
     box-shadow: none;
   }
   .card-premium {
-    background: linear-gradient(150deg, hsl(213 9% 13%) 0%, hsl(213 9% 9%) 100%);
-    border: 1px solid hsl(213 9% 20%);
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
     border-radius: 1rem;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+    box-shadow: var(--shadow-card);
   }
   .badge-early-bird {
     display: inline-flex;
