@@ -78,4 +78,13 @@ export const FEATURES = {
    * Flip to true ONLY after the RPC is applied live in a controlled DB session.
    */
   blindEditorSave: false,
+  /**
+   * Dealer Shift Planner V2.1 — "Xếp lịch dealer" tab in DealerSwingDashboard
+   * (staff scheduling: schedule dealers per day/week with flexible check-in times,
+   * SEPARATE from the live Dealer Swing rotation system). Default **OFF**: while
+   * false the tab is hidden and runs entirely on in-memory mock data. Flip to true
+   * ONLY after the additive migration `20260827000000_dealer_shift_planner.sql` is
+   * applied live and the hook is switched to mode="live" (Phase 2, owner-gated).
+   */
+  dealerShiftPlanner: false,
 } as const;

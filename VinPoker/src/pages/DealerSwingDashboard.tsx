@@ -5,9 +5,11 @@ import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Table2, Calculator } from "lucide-react";
+import { AlertTriangle, Table2, Calculator, CalendarRange } from "lucide-react";
 import SwingPanel from "@/components/cashier/DealerSwingTab";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
+import ShiftPlannerTab from "@/components/cashier/ShiftPlannerTab";
+import { FEATURES } from "@/lib/featureFlags";
 
 /**
  * Dealer Swing — Dealer Swing + Bảng lương (payroll) grouped in one destination.
@@ -58,9 +60,12 @@ export default function DealerSwingDashboard() {
       </div>
 
       <Tabs defaultValue="swing" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 h-auto">
+        <TabsList className={`grid w-full ${FEATURES.dealerShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto`}>
           <TabsTrigger value="swing"><Table2 className="w-4 h-4 mr-1" /> Dealer Swing</TabsTrigger>
           <TabsTrigger value="payroll"><Calculator className="w-4 h-4 mr-1" /> Bảng lương</TabsTrigger>
+          {FEATURES.dealerShiftPlanner && (
+            <TabsTrigger value="shift_planner"><CalendarRange className="w-4 h-4 mr-1" /> Xếp lịch dealer</TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="swing" className="mt-4">
           <SwingPanel clubIds={scopedIds} clubs={clubs} />
@@ -68,6 +73,11 @@ export default function DealerSwingDashboard() {
         <TabsContent value="payroll" className="mt-4">
           <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />
         </TabsContent>
+        {FEATURES.dealerShiftPlanner && (
+          <TabsContent value="shift_planner" className="mt-4">
+            <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
