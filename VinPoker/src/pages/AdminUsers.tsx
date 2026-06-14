@@ -198,7 +198,7 @@ const AdminUsers = () => {
                 </div>
                 <div className="flex flex-wrap gap-1 justify-end">
                     {roles.map(r => (
-                    <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border ${r === "super_admin" ? "bg-destructive/15 text-destructive border-destructive/30" : r === "cashier" ? "bg-primary/15 text-primary border-primary/30" : r === "club_admin" ? "bg-gold/15 text-gold border-gold/30" : r === "media" ? "bg-purple-500/15 text-purple-400 border-purple-500/30" : r === "dealer_control" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : r === "tracker" ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" : "bg-muted text-muted-foreground border-border"}`}>
+                    <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border ${r === "super_admin" ? "bg-destructive/15 text-destructive border-destructive/30" : r === "cashier" ? "bg-primary/15 text-primary border-primary/30" : r === "club_admin" ? "bg-gold/15 text-gold border-gold/30" : r === "media" ? "bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]" : r === "dealer_control" ? "bg-success/15 text-success border-success/30" : r === "tracker" ? "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]" : "bg-muted text-muted-foreground border-border"}`}>
                       {r}
                     </span>
                   ))}
@@ -207,7 +207,7 @@ const AdminUsers = () => {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {u.is_verified && <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-400 border-blue-500/30">✓ Verified Player</span>}
+                {u.is_verified && <span className="text-[10px] px-2 py-0.5 rounded-full border bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]">✓ Verified Player</span>}
               </div>
 
               {ownedClubs.length > 0 && (
@@ -247,7 +247,7 @@ const AdminUsers = () => {
                     Revoke Media
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="border-purple-500/40 text-purple-400" onClick={() => grant(u.user_id, "media")}>
+                  <Button size="sm" variant="outline" className="border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))]" onClick={() => grant(u.user_id, "media")}>
                     Grant Media
                   </Button>
                 )}
@@ -256,7 +256,7 @@ const AdminUsers = () => {
                     Revoke Dealer Control
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="border-emerald-500/40 text-emerald-400" onClick={() => grant(u.user_id, "dealer_control")}>
+                  <Button size="sm" variant="outline" className="border-success/40 text-success" onClick={() => grant(u.user_id, "dealer_control")}>
                     Grant Dealer Control
                   </Button>
                 )}
@@ -265,16 +265,16 @@ const AdminUsers = () => {
                     Revoke Tracker
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="border-cyan-500/40 text-cyan-400" onClick={() => grant(u.user_id, "tracker")}>
+                  <Button size="sm" variant="outline" className="border-[hsl(var(--ds-active)_/_0.4)] text-[hsl(var(--ds-active))]" onClick={() => grant(u.user_id, "tracker")}>
                     Grant Tracker
                   </Button>
                 )}
                 {u.is_verified ? (
-                  <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-400" onClick={() => toggleVerified(u.user_id, true)}>
+                  <Button size="sm" variant="outline" className="border-[hsl(var(--ds-active)_/_0.4)] text-[hsl(var(--ds-active))]" onClick={() => toggleVerified(u.user_id, true)}>
                     Bỏ xác minh
                   </Button>
                 ) : (
-                  <Button size="sm" variant="outline" className="border-blue-500/40 text-blue-400" onClick={() => toggleVerified(u.user_id, false)}>
+                  <Button size="sm" variant="outline" className="border-[hsl(var(--ds-active)_/_0.4)] text-[hsl(var(--ds-active))]" onClick={() => toggleVerified(u.user_id, false)}>
                     Verify Player
                   </Button>
                 )}
@@ -298,13 +298,13 @@ const AdminUsers = () => {
                     })}
                   </div>
                   {(cashierClubsByUser[u.user_id] ?? []).length === 0 && (
-                    <div className="text-[10px] text-amber-500 mt-1">⚠ Chưa được gán CLB nào — cashier sẽ không thấy deal nào.</div>
+                    <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — cashier sẽ không thấy deal nào.</div>
                   )}
                 </div>
               )}
               {roles.includes("dealer_control") && clubs.length > 0 && (
                 <div className="pt-2 border-t border-border/50">
-                  <div className="text-xs font-medium text-emerald-400 mb-1.5">Dealer Control cho CLB:</div>
+                  <div className="text-xs font-medium text-success mb-1.5">Dealer Control cho CLB:</div>
                   <div className="flex flex-wrap gap-1.5">
                     {clubs.map(c => {
                       const assigned = (dealerClubsByUser[u.user_id] ?? []).includes(c.id);
@@ -312,7 +312,7 @@ const AdminUsers = () => {
                         <button
                           key={c.id}
                           onClick={() => toggleDealerClub(u.user_id, c.id, assigned)}
-                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-success/20 text-success border-success/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
                         >
                           {assigned ? "✓ " : ""}{c.name}
                         </button>
@@ -320,13 +320,13 @@ const AdminUsers = () => {
                     })}
                   </div>
                   {(dealerClubsByUser[u.user_id] ?? []).length === 0 && (
-                    <div className="text-[10px] text-amber-500 mt-1">⚠ Chưa được gán CLB nào — dealer control sẽ không thấy gì.</div>
+                    <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — dealer control sẽ không thấy gì.</div>
                   )}
                 </div>
               )}
               {roles.includes("tracker") && clubs.length > 0 && (
                 <div className="pt-2 border-t border-border/50">
-                  <div className="text-xs font-medium text-cyan-400 mb-1.5">Tracker cho CLB:</div>
+                  <div className="text-xs font-medium text-[hsl(var(--ds-active))] mb-1.5">Tracker cho CLB:</div>
                   <div className="flex flex-wrap gap-1.5">
                     {clubs.map(c => {
                       const assigned = (trackerClubsByUser[u.user_id] ?? []).includes(c.id);
@@ -334,7 +334,7 @@ const AdminUsers = () => {
                         <button
                           key={c.id}
                           onClick={() => toggleTrackerClub(u.user_id, c.id, assigned)}
-                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-[hsl(var(--ds-active)_/_0.2)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.5)]" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
                         >
                           {assigned ? "✓ " : ""}{c.name}
                         </button>
@@ -342,7 +342,7 @@ const AdminUsers = () => {
                     })}
                   </div>
                   {(trackerClubsByUser[u.user_id] ?? []).length === 0 && (
-                    <div className="text-[10px] text-amber-500 mt-1">⚠ Chưa được gán CLB nào — tracker sẽ không thấy giải nào.</div>
+                    <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — tracker sẽ không thấy giải nào.</div>
                   )}
                 </div>
               )}

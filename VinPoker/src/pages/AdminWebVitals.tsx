@@ -34,9 +34,9 @@ const fmt = (name: string, v: number) => {
 };
 
 const ratingColor = (r: string | null) => {
-  if (r === "good") return "bg-emerald-500/15 text-emerald-600 border-emerald-500/30";
-  if (r === "needs-improvement") return "bg-amber-500/15 text-amber-600 border-amber-500/30";
-  if (r === "poor") return "bg-red-500/15 text-red-600 border-red-500/30";
+  if (r === "good") return "bg-success/15 text-success border-success/30";
+  if (r === "needs-improvement") return "bg-warning/15 text-warning border-warning/30";
+  if (r === "poor") return "bg-destructive/15 text-destructive border-destructive/30";
   return "bg-muted text-muted-foreground";
 };
 
@@ -171,13 +171,13 @@ const AdminWebVitals = () => {
               </div>
               <div className="text-xs text-muted-foreground mt-1">{s.count} mẫu</div>
               <div className="flex gap-1 mt-2 text-[10px]">
-                <span className="px-1.5 rounded bg-emerald-500/15 text-emerald-600">
+                <span className="px-1.5 rounded bg-success/15 text-success">
                   {s.good}
                 </span>
-                <span className="px-1.5 rounded bg-amber-500/15 text-amber-600">
+                <span className="px-1.5 rounded bg-warning/15 text-warning">
                   {s.ni}
                 </span>
-                <span className="px-1.5 rounded bg-red-500/15 text-red-600">
+                <span className="px-1.5 rounded bg-destructive/15 text-destructive">
                   {s.poor}
                 </span>
               </div>

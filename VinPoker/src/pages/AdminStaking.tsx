@@ -1443,8 +1443,8 @@ const RELEASE_STATUSES = ["result_entered","result_verified","release_requested"
 const STATUS_PILL: Record<string, string> = {
   result_entered: "border-warning/50 text-warning bg-warning/10",
   result_verified: "border-primary/50 text-primary bg-primary/10",
-  release_requested: "border-orange-500/50 text-orange-500 bg-orange-500/10",
-  cosigned: "border-purple-500/50 text-purple-400 bg-purple-500/10",
+  release_requested: "border-warning/50 text-warning bg-warning/10",
+  cosigned: "border-[hsl(var(--ds-preassign)_/_0.5)] text-[hsl(var(--ds-preassign))] bg-[hsl(var(--ds-preassign)_/_0.1)]",
   completed: "border-success/50 text-success bg-success/10",
 };
 
@@ -1688,7 +1688,7 @@ const ReleaseTab = ({ currentUserId, isSuperAdmin, cashierOnlyUserId }: { curren
                       )}
                       {d.status === "release_requested" && req && (
                         isSuperAdmin ? (
-                          <Button size="sm" onClick={() => setCosignReq({ req, deal: d })} className="bg-purple-600 hover:bg-purple-700 text-white" variant="outline">
+                          <Button size="sm" onClick={() => setCosignReq({ req, deal: d })} className="bg-[hsl(var(--ds-preassign))] hover:bg-[hsl(var(--ds-preassign))] text-white" variant="outline">
                             <Signature className="w-3.5 h-3.5 mr-1" /> Đồng ký (Emergency)
                           </Button>
                         ) : (
@@ -2053,7 +2053,7 @@ const CosignModal = ({ data, onClose, onDone }: { data: { req: ReleaseRequest; d
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>Đóng</Button>
-          <Button onClick={submit} disabled={!confirmed || submitting} className="bg-purple-600 hover:bg-purple-700 text-white">
+          <Button onClick={submit} disabled={!confirmed || submitting} className="bg-[hsl(var(--ds-preassign))] hover:bg-[hsl(var(--ds-preassign))] text-white">
             {submitting && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Đồng ký
           </Button>
         </DialogFooter>

@@ -522,9 +522,9 @@ const DealCard = ({
       </div>
 
       {/* Markup tag */}
-      <div className="inline-flex self-start items-center gap-1 border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
-        <span className="font-jetbrains text-sm text-emerald-400">{Number(deal.markup).toFixed(2)}x</span>
-        <span className="text-[10px] text-emerald-400/70 font-sans">{t("marketplace.markupLabel")}</span>
+      <div className="inline-flex self-start items-center gap-1 border border-success/20 bg-success/10 px-3 py-1">
+        <span className="font-jetbrains text-sm text-success">{Number(deal.markup).toFixed(2)}x</span>
+        <span className="text-[10px] text-success/70 font-sans">{t("marketplace.markupLabel")}</span>
       </div>
 
       {/* Progress bar */}
@@ -535,7 +535,7 @@ const DealCard = ({
         </div>
         <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
           <div className="h-full bg-[#10B981] transition-all" style={{ width: `${fundedW}%` }} />
-          <div className="h-full bg-amber-500/60 transition-all" style={{ width: `${pendingW}%` }} />
+          <div className="h-full bg-warning/60 transition-all" style={{ width: `${pendingW}%` }} />
         </div>
       </div>
 
@@ -557,7 +557,7 @@ const DealCard = ({
 
       {/* Countdown */}
       {showCountdown && (
-        <div className={`font-jetbrains text-xs text-center py-1.5 border ${isCritical ? "bg-red-500/10 border-red-500/20 text-red-400" : isUrgent ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-muted/10 border-[#1F1F1F] text-muted-foreground"}`}>
+        <div className={`font-jetbrains text-xs text-center py-1.5 border ${isCritical ? "bg-destructive/10 border-destructive/20 text-destructive" : isUrgent ? "bg-warning/10 border-warning/20 text-warning" : "bg-muted/10 border-[#1F1F1F] text-muted-foreground"}`}>
           <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />
           {t("marketplace.regClosesIn")} {String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
         </div>
@@ -728,11 +728,11 @@ const DealDetailDialog = ({
                 </div>
                 <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
                   <div className="h-full bg-[#10B981]" style={{ width: `${fundedW}%` }} />
-                  <div className="h-full bg-amber-500/60" style={{ width: `${pendingW}%` }} />
+                  <div className="h-full bg-warning/60" style={{ width: `${pendingW}%` }} />
                 </div>
                 <div className="flex items-center justify-between text-xs font-jetbrains">
                   <span className="text-muted-foreground">{t("marketplace.markupLabel")}</span>
-                  <span className="font-semibold text-emerald-400">{Number(deal.markup).toFixed(2)}x</span>
+                  <span className="font-semibold text-success">{Number(deal.markup).toFixed(2)}x</span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-jetbrains">
                   <span className="text-muted-foreground">{t("marketplace.pricePer1")}</span>
@@ -793,9 +793,9 @@ const DealDetailDialog = ({
                       {t("marketplace.buyAction", { pct: percent, price: formatVND(totalToPay) })}
                     </Button>
                   ) : (
-                    <div className="border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                    <div className="border border-warning/30 bg-warning/10 p-4 space-y-3">
                       <div className="flex items-start gap-2 text-sm font-sans">
-                        <Sparkles className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" />
+                        <Sparkles className="w-4 h-4 mt-0.5 text-warning shrink-0" />
                         <span>
                           <Trans
                             i18nKey="marketplace.confirmBuyText"

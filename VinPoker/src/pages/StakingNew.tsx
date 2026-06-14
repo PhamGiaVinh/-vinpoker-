@@ -282,9 +282,9 @@ const StakingNew = () => {
   if (!isVerified) {
     return (
       <div className="staking-scope max-w-2xl mx-auto py-12">
-        <div className="rounded-lg border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-orange-500/5 p-8 space-y-4 backdrop-blur-sm">
+        <div className="rounded-lg border border-warning/20 bg-gradient-to-br from-warning/5 to-warning/5 p-8 space-y-4 backdrop-blur-sm">
           <div className="flex items-center gap-3">
-            <Lock className="w-6 h-6 text-amber-500" />
+            <Lock className="w-6 h-6 text-warning" />
             <h1 className="text-2xl font-display font-bold text-foreground">Cần xác minh danh tính</h1>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -518,7 +518,7 @@ const SimulationPreview = ({
   return (
     <aside className="space-y-4 p-6 rounded-xl border border-primary/20 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-sm sticky top-20 h-fit">
       {fp?.hasDiscount && (
-        <div className="rounded-lg border border-success/30 bg-gradient-to-r from-success/10 to-emerald-500/5 p-3 text-xs text-success font-semibold">
+        <div className="rounded-lg border border-success/30 bg-gradient-to-r from-success/10 to-success/5 p-3 text-xs text-success font-semibold">
           🎉 Giải này đang có ưu đãi miễn phí DV CLB cho {fp.remainingSlots} suất đầu tiên. Còn {fp.remainingSlots} suất.
         </div>
       )}

@@ -226,13 +226,13 @@ const Tournaments = () => {
                   ? v === "livestream"
                     ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
                     : v === "livetracker"
-                    ? "bg-emerald-500/20 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                    ? "bg-success/20 text-success shadow-[0_0_12px_rgba(16,185,129,0.25)]"
                     : "gradient-neon text-primary-foreground shadow-neon"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/70"
               )}
             >
               {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
-              {v === "livetracker" && <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400 shrink-0" />}
+              {v === "livetracker" && <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-success shrink-0" />}
               {v === "news" && <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
               {v === "packages" && <span className="material-symbols-outlined text-sm sm:text-base shrink-0">redeem</span>}
               <span className="truncate">
@@ -623,7 +623,7 @@ const Tournaments = () => {
                                     <Link to={`/live/${t.id}`}>
                                       <Button
                                         size="sm"
-                                        className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-3 h-8"
+                                        className="bg-success/15 text-success border border-success/40 hover:bg-success/25 font-bold tracking-wider rounded-full px-3 h-8"
                                         variant="ghost"
                                       >
                                         <Eye className="w-3.5 h-3.5 mr-1" /> <span className="hidden sm:inline">Live</span>
@@ -743,17 +743,17 @@ const LiveTrackerSection = () => {
     final_table: "Bàn cuối",
   };
   const STATUS_CLS: Record<string, string> = {
-    registering: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    drawing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    live: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 animate-pulse",
-    break: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-    final_table: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+    registering: "bg-warning/15 text-warning border-warning/30",
+    drawing: "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]",
+    live: "bg-success/15 text-success border-success/30 animate-pulse",
+    break: "bg-warning/15 text-warning border-warning/30",
+    final_table: "bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]",
   };
 
   if (loading) {
     return (
       <Card className="p-12 text-center">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-400 mx-auto" />
+        <Loader2 className="w-6 h-6 animate-spin text-success mx-auto" />
       </Card>
     );
   }
@@ -771,7 +771,7 @@ const LiveTrackerSection = () => {
   return (
     <div className="space-y-3">
       {liveTournaments.map((t) => (
-        <Card key={t.id} className="border border-emerald-500/20 bg-gradient-to-r from-card to-emerald-950/10 p-4 hover:border-emerald-500/40 transition-all">
+        <Card key={t.id} className="border border-success/20 bg-gradient-to-r from-card to-success/10 p-4 hover:border-success/40 transition-all">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -795,13 +795,13 @@ const LiveTrackerSection = () => {
               <div className="hidden sm:flex items-center gap-4 text-xs">
                 {t.players_remaining != null && (
                   <div className="text-center">
-                    <div className="text-emerald-400 font-bold text-base">{t.players_remaining}</div>
+                    <div className="text-success font-bold text-base">{t.players_remaining}</div>
                     <div className="text-muted-foreground text-[10px]">Players</div>
                   </div>
                 )}
                 {t.current_level != null && (
                   <div className="text-center">
-                    <div className="text-amber-400 font-bold text-base">Lv {t.current_level}</div>
+                    <div className="text-warning font-bold text-base">Lv {t.current_level}</div>
                     <div className="text-muted-foreground text-[10px]">Level</div>
                   </div>
                 )}
@@ -822,7 +822,7 @@ const LiveTrackerSection = () => {
               <Button
                 size="sm"
                 onClick={() => nav(`/live/${t.id}`)}
-                className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-4 h-9"
+                className="bg-success/15 text-success border border-success/40 hover:bg-success/25 font-bold tracking-wider rounded-full px-4 h-9"
                 variant="ghost"
               >
                 <Eye className="w-4 h-4 mr-1.5" /> Theo dõi
@@ -833,13 +833,13 @@ const LiveTrackerSection = () => {
           <div className="sm:hidden mt-3 grid grid-cols-4 gap-2 text-xs text-center">
             {t.players_remaining != null && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-emerald-400 font-bold">{t.players_remaining}</div>
+                <div className="text-success font-bold">{t.players_remaining}</div>
                 <div className="text-muted-foreground text-[9px]">Players</div>
               </div>
             )}
             {t.current_level != null && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-amber-400 font-bold">Lv {t.current_level}</div>
+                <div className="text-warning font-bold">Lv {t.current_level}</div>
                 <div className="text-muted-foreground text-[9px]">Level</div>
               </div>
             )}
@@ -892,7 +892,7 @@ const PackagesSection = () => {
         <div className="border-t border-border px-5 py-3">
           <Link
             to="/packages"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-400 transition-colors hover:text-emerald-300"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-success transition-colors hover:text-success"
           >
             Xem tất cả gói giải đấu
             <span className="material-symbols-outlined text-base">arrow_forward</span>

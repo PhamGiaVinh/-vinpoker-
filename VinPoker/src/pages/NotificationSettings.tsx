@@ -161,7 +161,7 @@ export default function NotificationSettings() {
           <p className="text-xs text-muted-foreground">{t("notifSettings.notSupported")}</p>
         )}
         {isPreviewHost && (
-          <p className="text-xs text-amber-500">
+          <p className="text-xs text-warning">
             {t("notifSettings.previewNoticePrefix")} <a className="underline" href="https://www.vinpoker.live" target="_blank" rel="noopener">https://www.vinpoker.live</a> {t("notifSettings.previewNoticeSuffix")}
           </p>
         )}

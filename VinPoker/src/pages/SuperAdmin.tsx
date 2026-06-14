@@ -1271,7 +1271,7 @@ const PackageFormDialog = ({ open, onOpenChange, editing, tours, onSaved }: {
                     <Input placeholder="Label (VI)" value={b.label} onChange={e => updateBenefit(i, { label: e.target.value })} className="h-7 text-xs" />
                     <Input placeholder="Label (EN)" value={b.label_en} onChange={e => updateBenefit(i, { label_en: e.target.value })} className="h-7 text-xs" />
                   </div>
-                  {b.icon && <span className="material-symbols-outlined text-base text-emerald-400">{b.icon}</span>}
+                  {b.icon && <span className="material-symbols-outlined text-base text-success">{b.icon}</span>}
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeBenefit(i)}>
                   <Trash2 className="w-3.5 h-3.5 text-destructive" />
@@ -1287,7 +1287,7 @@ const PackageFormDialog = ({ open, onOpenChange, editing, tours, onSaved }: {
               {tours.length === 0 && <p className="text-xs text-muted-foreground">No tournaments available.</p>}
               {tours.map(t => (
                 <label key={t.id} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-white/5 rounded px-1 py-0.5">
-                  <input type="checkbox" checked={f.tournament_ids.includes(t.id)} onChange={() => toggleTour(t.id)} className="accent-emerald-500" />
+                  <input type="checkbox" checked={f.tournament_ids.includes(t.id)} onChange={() => toggleTour(t.id)} className="accent-success" />
                   {t.name}
                 </label>
               ))}

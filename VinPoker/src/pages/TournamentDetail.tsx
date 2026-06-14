@@ -100,14 +100,14 @@ const TournamentDetail = () => {
       </Card>
 
       {["live", "break", "final_table", "registering"].includes(t.status) && (
-        <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/40 to-emerald-900/10 p-4">
+        <div className="rounded-xl border border-success/30 bg-gradient-to-r from-success/40 to-success/10 p-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30 animate-pulse">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-success/15 text-success rounded-md text-xs font-bold border border-success/30 animate-pulse">
                 <Radio className="w-3.5 h-3.5" /> LIVE
               </div>
               <div>
-                <div className="text-sm font-bold text-emerald-400">
+                <div className="text-sm font-bold text-success">
                   {t.status === "registering" ? tr("tournamentDetailPage.statusRegistering") : t.status === "break" ? tr("tournamentDetailPage.statusBreak") : t.status === "final_table" ? tr("tournamentDetailPage.statusFinalTable") : tr("tournamentDetailPage.statusPlaying")}
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -118,7 +118,7 @@ const TournamentDetail = () => {
               </div>
             </div>
             <Link to={`/live/${t.id}`}>
-              <Button size="sm" className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
+              <Button size="sm" className="bg-success/15 text-success border border-success/40 hover:bg-success/25 font-bold tracking-wider rounded-full px-4 h-9" variant="ghost">
                 <Radio className="w-4 h-4 mr-1.5" /> {tr("tournamentDetailPage.watchLive")}
               </Button>
             </Link>

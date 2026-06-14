@@ -238,7 +238,7 @@ function OverviewPanel({ clubIds, onJump }: { clubIds: string[]; onJump: (s: Sec
   const cards = [
     { label: "Active Deals", value: stats?.active, icon: Coins, color: "text-primary", click: () => onJump("staking") },
     { label: "Chờ xác nhận FUNDED", value: stats?.pending, icon: Loader2, color: "text-warning", click: () => onJump("staking") },
-    { label: "Chờ kết quả", value: stats?.pendingResults, icon: CheckCircle2, color: "text-blue-400", click: () => onJump("staking") },
+    { label: "Chờ kết quả", value: stats?.pendingResults, icon: CheckCircle2, color: "text-[hsl(var(--ds-active))]", click: () => onJump("staking") },
     { label: "Check-in hôm nay", value: stats?.checkins, icon: ScanLine, color: "text-success", click: () => onJump("staking") },
   ];
 
