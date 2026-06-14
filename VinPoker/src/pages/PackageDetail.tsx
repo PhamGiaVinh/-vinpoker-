@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useTournamentPackage } from '@/hooks/useTournamentPackages'
 import CountdownTimer from '@/components/packages/CountdownTimer'
 import CurrencyDisplay from '@/components/packages/CurrencyDisplay'
@@ -10,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 export default function PackageDetail() {
   const { packageId } = useParams<{ packageId: string }>()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { data: pkg, isLoading, error } = useTournamentPackage(packageId)
 
   if (isLoading) {
@@ -34,10 +36,10 @@ export default function PackageDetail() {
           className="mb-4 flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
-          Quay lại
+          {t('packageDetailPage.backButton')}
         </button>
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          Không tìm thấy gói giải đấu.
+          {t('packageDetailPage.notFound')}
         </div>
       </div>
     )
@@ -56,7 +58,7 @@ export default function PackageDetail() {
           className="mb-4 flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <span className="material-symbols-outlined text-base">arrow_back</span>
-          Quay lại
+          {t('packageDetailPage.backButton')}
         </button>
 
         {/* Hero */}
@@ -88,19 +90,19 @@ export default function PackageDetail() {
 
           {pkg.early_bird_end && (
             <div className="mt-3">
-              <CountdownTimer targetDate={pkg.early_bird_end} label="Giá Early Bird kết thúc sau" />
+              <CountdownTimer targetDate={pkg.early_bird_end} label={t('packageDetailPage.earlyBirdCountdownLabel')} />
             </div>
           )}
 
           <button onClick={handleRegister} className="btn-primary mt-4 hidden w-full md:inline-flex">
-            Đăng ký ngay
+            {t('packageDetailPage.registerNow')}
           </button>
         </div>
 
         {/* Benefits */}
         {pkg.benefits.length > 0 && (
           <div className="card-premium mb-6 animate-fade-in-up p-5" style={{ animationDelay: '200ms' }}>
-            <h2 className="mb-3 text-base font-semibold text-foreground">Quyền lợi</h2>
+            <h2 className="mb-3 text-base font-semibold text-foreground">{t('packageDetailPage.benefitsHeading')}</h2>
             <BenefitGrid benefits={pkg.benefits} />
           </div>
         )}
@@ -108,7 +110,7 @@ export default function PackageDetail() {
         {/* Tournaments */}
         {pkg.tournaments.length > 0 && (
           <div className="card-premium animate-fade-in-up p-5" style={{ animationDelay: '300ms' }}>
-            <h2 className="mb-3 text-base font-semibold text-foreground">Giải đấu bao gồm</h2>
+            <h2 className="mb-3 text-base font-semibold text-foreground">{t('packageDetailPage.tournamentsHeading')}</h2>
             <div className="space-y-1.5">
               {pkg.tournaments.map((t) => (
                 <TournamentListItem key={t.id} tournament={t} />
@@ -121,7 +123,10 @@ export default function PackageDetail() {
         <div className="mt-6 flex items-center gap-4 text-xs text-muted-foreground">
           {pkg.max_participants && (
             <span>
-              Đã đăng ký: {pkg.registered_count} / {pkg.max_participants}
+              {t('packageDetailPage.registeredCount', {
+                registered: pkg.registered_count,
+                max: pkg.max_participants,
+              })}
             </span>
           )}
         </div>

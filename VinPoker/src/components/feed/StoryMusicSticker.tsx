@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Music2, Volume2, VolumeX, ExternalLink, Play, Pause } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export interface StickerMusic {
@@ -26,6 +27,7 @@ const MUTED_KEY = "story-music-muted";
  * - SoundCloud: uses hidden iframe + SoundCloud Widget API for play/pause/mute.
  */
 export function StoryMusicSticker({ music }: Props) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [muted, setMuted] = useState<boolean>(() => {
     try { return localStorage.getItem(MUTED_KEY) === "1"; } catch { return false; }
@@ -170,14 +172,14 @@ export function StoryMusicSticker({ music }: Props) {
             <button
               onClick={(e) => { e.stopPropagation(); togglePlay(); }}
               className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center shrink-0"
-              aria-label={playing ? "Tạm dừng" : "Phát"}
+              aria-label={playing ? t("storyMusicSticker.pause") : t("storyMusicSticker.play")}
             >
               {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
               className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center shrink-0"
-              aria-label={muted ? "Bật tiếng" : "Tắt tiếng"}
+              aria-label={muted ? t("storyMusicSticker.unmute") : t("storyMusicSticker.mute")}
             >
               {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
@@ -188,7 +190,7 @@ export function StoryMusicSticker({ music }: Props) {
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
                 className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center shrink-0"
-                aria-label="Mở trên SoundCloud"
+                aria-label={t("storyMusicSticker.openSoundcloud")}
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
@@ -200,7 +202,7 @@ export function StoryMusicSticker({ music }: Props) {
           <button
             onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
             className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center shrink-0"
-            aria-label={muted ? "Bật tiếng" : "Tắt tiếng"}
+            aria-label={muted ? t("storyMusicSticker.unmute") : t("storyMusicSticker.mute")}
           >
             {muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
           </button>
@@ -212,7 +214,7 @@ export function StoryMusicSticker({ music }: Props) {
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 px-4 py-2 rounded-full bg-black/70 backdrop-blur-md text-white text-sm font-semibold border border-white/20"
         >
-          <Play className="w-4 h-4 inline mr-1.5" /> Nhấn để bật nhạc
+          <Play className="w-4 h-4 inline mr-1.5" /> {t("storyMusicSticker.tapToPlay")}
         </button>
       )}
     </>

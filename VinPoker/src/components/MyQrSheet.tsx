@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -30,6 +31,7 @@ function formatVnd(n: number) {
 }
 
 export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [openPortfolio, setOpenPortfolio] = useState(false);
   const payload = `vinpoker://user/${userId}`;
@@ -62,7 +64,7 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
   const copy = async () => {
     await navigator.clipboard.writeText(userId);
     setCopied(true);
-    toast.success("Đã copy ID");
+    toast.success(t("myQr.copiedId"));
     setTimeout(() => setCopied(false), 1500);
   };
 
@@ -78,13 +80,13 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
       >
         <SheetHeader className="items-center text-center">
           <div className="flex items-center gap-2 mb-1">
-            <img src={appLogo} alt="VBacker" className="w-8 h-8 rounded-md" />
+            <img src={appLogo} alt={t("myQr.logoAlt")} className="w-8 h-8 rounded-md" />
             <span className="font-display font-black tracking-[0.18em] text-primary text-lg">VBACKER</span>
           </div>
-          <SheetTitle className="text-center">QR thành viên</SheetTitle>
+          <SheetTitle className="text-center">{t("myQr.memberQrTitle")}</SheetTitle>
           <SheetDescription className="text-center text-xs">
-            {displayName ? <>Xin chào <span className="text-foreground font-semibold">{displayName}</span><br /></> : null}
-            Đưa mã này cho nhân viên CLB để check-in giải, hoặc cho đối tác / bạn bè quét để kết nối &amp; hợp tác.
+            {displayName ? <><span>{t("myQr.greetingPrefix")} </span><span className="text-foreground font-semibold">{displayName}</span><br /></> : null}
+            {t("myQr.shareHint")}
           </SheetDescription>
         </SheetHeader>
 
@@ -97,7 +99,7 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
             className="text-[11px] font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
           >
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            Player ID: {userId.slice(0, 8)}…{userId.slice(-4)}
+            {t("myQr.playerIdLabel")}: {userId.slice(0, 8)}…{userId.slice(-4)}
           </button>
         </div>
 
@@ -109,8 +111,8 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/40 transition"
           >
             <div className="text-left">
-              <div className="text-sm font-semibold">Portfolio của tôi</div>
-              <div className="text-[11px] text-muted-foreground">Xem ITM · ROI · Buy-in của bạn</div>
+              <div className="text-sm font-semibold">{t("myQr.myPortfolio")}</div>
+              <div className="text-[11px] text-muted-foreground">{t("myQr.portfolioSubtitle")}</div>
             </div>
             {openPortfolio ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
@@ -118,21 +120,21 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
           {openPortfolio && (
             <div className="px-4 pb-4 space-y-3 border-t border-border/60">
               {isLoading ? (
-                <div className="py-6 text-center text-xs text-muted-foreground">Đang tải…</div>
+                <div className="py-6 text-center text-xs text-muted-foreground">{t("myQr.loading")}</div>
               ) : !stats || (portfolio?.totalResults ?? 0) === 0 ? (
                 <div className="py-6 text-center text-xs text-muted-foreground italic">
-                  Chưa có lịch sử giải đấu. Vào Tài khoản → Thành tích để thêm.
+                  {t("myQr.noHistory")}
                 </div>
               ) : (
                 <>
                   <div className="pt-3 flex items-center justify-center">
                     {stats.verified ? (
                       <Badge className="bg-green-500/20 text-green-500 border-green-500/40">
-                        <ShieldCheck className="w-3 h-3 mr-1" /> Đã xác minh
+                        <ShieldCheck className="w-3 h-3 mr-1" /> {t("myQr.verified")}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="border-yellow-500/40 text-yellow-500">
-                        <ShieldAlert className="w-3 h-3 mr-1" /> Chưa xác minh — chỉ bạn xem
+                        <ShieldAlert className="w-3 h-3 mr-1" /> {t("myQr.notVerified")}
                       </Badge>
                     )}
                   </div>
@@ -157,7 +159,7 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
 
                   <div>
                     <div className="text-[11px] font-semibold text-muted-foreground tracking-wider mb-2 px-0.5">
-                      PHÂN BỐ BUY-IN
+                      {t("myQr.buyinDistribution")}
                     </div>
                     <div className="space-y-1.5">
                       {portfolio!.buckets.map((b) => (
@@ -177,14 +179,14 @@ export function MyQrSheet({ open, onOpenChange, userId, displayName }: Props) {
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div className="rounded-md bg-background/40 px-3 py-2">
-                      <div className="text-[10px] text-muted-foreground">Lãi/lỗ</div>
+                      <div className="text-[10px] text-muted-foreground">{t("myQr.profitLoss")}</div>
                       <div className={`text-sm font-bold ${(stats.total_profit_loss ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
                         {(stats.total_profit_loss ?? 0) >= 0 ? "+" : "-"}
                         {formatVnd(Math.abs(Number(stats.total_profit_loss ?? 0)))}đ
                       </div>
                     </div>
                     <div className="rounded-md bg-background/40 px-3 py-2">
-                      <div className="text-[10px] text-muted-foreground">Cash lớn nhất</div>
+                      <div className="text-[10px] text-muted-foreground">{t("myQr.biggestCash")}</div>
                       <div className="text-sm font-bold text-gold">
                         {formatVnd(Number(stats.biggest_cash_amount ?? 0))}đ
                       </div>

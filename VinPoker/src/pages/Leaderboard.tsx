@@ -164,7 +164,7 @@ const Leaderboard = () => {
     : aggregate.map((p, i) => ({
         key: p.player_id ?? `cl-${i}`,
         rank: i + 1,
-        name: profiles[p.player_id]?.display_name ?? "Player",
+        name: profiles[p.player_id]?.display_name ?? t("leaderboardPage.fallbackPlayerName"),
         avatar_url: profiles[p.player_id]?.avatar_url ?? null,
         winnings: p.winnings,
         cashout: p.cashout as number | null,
@@ -179,7 +179,7 @@ const Leaderboard = () => {
       key: p.player_id,
       rank: i + 1,
       player_id: p.player_id,
-      name: prof?.display_name ?? "Player",
+      name: prof?.display_name ?? t("leaderboardPage.fallbackPlayerName"),
       avatar_url: prof?.avatar_url ?? null,
       played: p.played,
       cashed: p.cashed,
@@ -204,16 +204,16 @@ const Leaderboard = () => {
     exportToExcel(
       filteredTrusted,
       [
-        { header: "#", get: (r) => r.rank, width: 6 },
-        { header: "Người chơi", get: (r) => r.name },
-        { header: "Số giải", get: (r) => r.played },
-        { header: "Đã cashed", get: (r) => r.cashed },
-        { header: "Tổng cashout (VND)", get: (r) => Math.round(r.total) },
-        { header: "TB/giải (VND)", get: (r) => Math.round(r.avg) },
-        { header: "Giải lớn nhất (VND)", get: (r) => Math.round(r.biggest) },
+        { header: t("leaderboardPage.exportColRank"), get: (r) => r.rank, width: 6 },
+        { header: t("leaderboardPage.exportColPlayer"), get: (r) => r.name },
+        { header: t("leaderboardPage.exportColTournaments"), get: (r) => r.played },
+        { header: t("leaderboardPage.exportColCashed"), get: (r) => r.cashed },
+        { header: t("leaderboardPage.exportColTotal"), get: (r) => Math.round(r.total) },
+        { header: t("leaderboardPage.exportColAvg"), get: (r) => Math.round(r.avg) },
+        { header: t("leaderboardPage.exportColBiggest"), get: (r) => Math.round(r.biggest) },
       ],
       "nguoi-choi-uy-tin",
-      "Trusted",
+      t("leaderboardPage.exportSheetName"),
     );
   };
 
@@ -235,7 +235,7 @@ const Leaderboard = () => {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit">
             <Trophy className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">XẾP HẠNG</span>
+            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">{t("leaderboardPage.heroBadge")}</span>
           </div>
 
           {/* Title */}

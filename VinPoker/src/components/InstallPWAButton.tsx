@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Download, Share, ExternalLink, AlertTriangle, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -14,6 +15,7 @@ const isStandalone = () =>
   (window.navigator as any).standalone === true;
 
 export const InstallPWAButton = () => {
+  const { t } = useTranslation();
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [iosHelpOpen, setIosHelpOpen] = useState(false);
@@ -61,21 +63,21 @@ export const InstallPWAButton = () => {
     <>
       <button
         onClick={handleInstall}
-        aria-label="Cài app VBacker"
+        aria-label={t("installPwa.installAppAria")}
         className="fixed z-50 right-3 md:right-6 bottom-[calc(88px+env(safe-area-inset-bottom))] md:bottom-6 inline-flex items-center gap-1.5 rounded-full gradient-neon text-primary-foreground border border-primary-foreground/20 shadow-neon px-3.5 h-10 text-xs font-bold tracking-wider uppercase hover:opacity-90 active:scale-95 transition-all animate-fade-in"
       >
         <Download className="w-4 h-4" />
-        <span>Cài app</span>
+        <span>{t("installPwa.installApp")}</span>
       </button>
 
       <Dialog open={iosHelpOpen} onOpenChange={setIosHelpOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Cài VBacker lên màn hình</DialogTitle>
+            <DialogTitle>{t("installPwa.dialogTitle")}</DialogTitle>
             <DialogDescription>
               {ios
-                ? "Safari không có nút cài tự động. Hãy làm theo:"
-                : "Trình duyệt chưa hỗ trợ cài nhanh. Hãy làm theo:"}
+                ? t("installPwa.iosNoAutoInstall")
+                : t("installPwa.browserNoQuickInstall")}
             </DialogDescription>
           </DialogHeader>
 
@@ -85,14 +87,14 @@ export const InstallPWAButton = () => {
                 <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <div className="font-bold text-amber-500 mb-1">
-                    Bạn đang mở từ Facebook / Zalo
+                    {t("installPwa.openedFromFacebookZalo")}
                   </div>
                   <p className="text-foreground/90 leading-relaxed">
-                    Trình duyệt trong app <strong>không cài được</strong>. Hãy bấm nút{" "}
+                    {t("installPwa.inAppBrowserCantInstallPre")} <strong>{t("installPwa.cantInstall")}</strong>. {t("installPwa.pressButton")}{" "}
                     <MoreVertical className="inline w-3.5 h-3.5 -mt-0.5" />{" "}
-                    <strong>(3 chấm)</strong> ở góc <strong>trên bên phải</strong> màn hình → chọn{" "}
-                    <strong>"{ios ? "Mở trong Safari" : "Mở trong Chrome"}"</strong>, rồi quay lại bấm{" "}
-                    <strong>Cài app</strong>.
+                    <strong>{t("installPwa.threeDots")}</strong> {t("installPwa.atCorner")} <strong>{t("installPwa.topRight")}</strong> {t("installPwa.ofScreenSelect")}{" "}
+                    <strong>"{ios ? t("installPwa.openInSafariOption") : t("installPwa.openInChromeOption")}"</strong>, {t("installPwa.thenComeBackPress")}{" "}
+                    <strong>{t("installPwa.installApp")}</strong>.
                   </p>
                 </div>
               </div>
@@ -103,7 +105,7 @@ export const InstallPWAButton = () => {
                 size="sm"
               >
                 <ExternalLink className="w-4 h-4" />
-                Mở bằng {ios ? "Safari" : "Chrome"} ngay
+                {t("installPwa.openWithBrowserNow", { browser: ios ? "Safari" : "Chrome" })}
               </Button>
             </div>
           )}
@@ -111,25 +113,25 @@ export const InstallPWAButton = () => {
           {ios ? (
             <ol className="list-decimal pl-5 space-y-2 text-sm">
               <li>
-                Bấm nút <Share className="inline w-4 h-4 -mt-0.5" /> <strong>Share</strong> ở thanh dưới Safari.
+                {t("installPwa.iosStep1Pre")} <Share className="inline w-4 h-4 -mt-0.5" /> <strong>{t("installPwa.shareLabel")}</strong> {t("installPwa.iosStep1Post")}
               </li>
               <li>
-                Cuộn xuống chọn <strong>"Add to Home Screen-Thêm vào màn hình chính"</strong>.
+                {t("installPwa.iosStep2Pre")} <strong>"{t("installPwa.addToHomeScreen")}"</strong>.
               </li>
               <li>
-                Bấm <strong>Add</strong> ở góc phải trên.
+                {t("installPwa.iosStep3Pre")} <strong>{t("installPwa.addLabel")}</strong> {t("installPwa.iosStep3Post")}
               </li>
             </ol>
           ) : (
             <ol className="list-decimal pl-5 space-y-2 text-sm">
-              <li>Mở menu trình duyệt (⋮ hoặc ⋯).</li>
+              <li>{t("installPwa.androidStep1")}</li>
               <li>
-                Chọn <strong>"Cài đặt ứng dụng"</strong> hoặc <strong>"Add to Home Screen-Thêm vào màn hình chính"</strong>.
+                {t("installPwa.androidStep2Pre")} <strong>"{t("installPwa.installAppOption")}"</strong> {t("installPwa.or")} <strong>"{t("installPwa.addToHomeScreen")}"</strong>.
               </li>
-              <li>Xác nhận để thêm VBacker vào màn hình chính.</li>
+              <li>{t("installPwa.androidStep3")}</li>
             </ol>
           )}
-          <Button onClick={() => setIosHelpOpen(false)} className="w-full">Đã hiểu</Button>
+          <Button onClick={() => setIosHelpOpen(false)} className="w-full">{t("installPwa.gotIt")}</Button>
         </DialogContent>
       </Dialog>
     </>
