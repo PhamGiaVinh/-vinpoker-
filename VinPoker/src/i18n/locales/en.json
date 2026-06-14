@@ -1575,7 +1575,10 @@
       "saving": "Saving...",
       "updated": "Session updated",
       "added": "Session added"
-    }
+    },
+    "loadError": "Failed to load data",
+    "loadErrorHint": "Check your connection and try again.",
+    "retry": "Retry"
   },
   "languagePrompt": {
     "titleKo": "Switch to Korean?",
@@ -2387,5 +2390,89 @@
     "subtitlesLabel": "Subtitles",
     "chat": "Chat",
     "toggleSubtitlesAriaLabel": "Toggle subtitles"
+  },
+  "authPage": {
+    "forgotPassword": "Forgot password?",
+    "tosAgree": "I have read and agree to the <tos>Terms & Privacy Policy</tos>"
+  },
+  "clubQrScan": {
+    "invalidQr": "Invalid QR code",
+    "notAssignedClub": "You are not assigned to this club",
+    "cameraOpenFailed": "Could not open camera",
+    "pasteValidUrlOrUuid": "Paste a valid URL or UUID",
+    "title": "Scan club card",
+    "description": "Point the camera at the QR on the club membership card to quickly filter deals by that club.",
+    "cameraErrorHint": "Camera error: {{error}}. You can paste manually below.",
+    "manualLabel": "Or paste a club URL / UUID:",
+    "manualPlaceholder": "https://vinpoker.live/cashier/scan?club_id=…",
+    "apply": "Apply"
+  },
+  "forgotPassword": {
+    "title": "Forgot password",
+    "invalidEmail": "Invalid email",
+    "resetEmailSent": "Please check your email to reset your password",
+    "prompt": "Enter your account email and we'll send you a password reset link.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@email.com",
+    "sendResetLink": "Send reset link",
+    "backToLogin": "Back to login",
+    "sentTo": "A password reset link has been sent to <1>{{email}}</1>.",
+    "checkSpamHint": "Check your Spam folder if you don't see the email within a few minutes. The link expires in 1 hour."
+  },
+  "resetPassword": {
+    "title": "Reset password",
+    "verifyingLink": "Verifying link…",
+    "newPasswordLabel": "New password (≥ 8 characters, with letters and numbers)",
+    "confirmPasswordLabel": "Confirm password",
+    "submitButton": "Reset password",
+    "passwordMin": "Password must be at least 8 characters",
+    "passwordLettersAndNumbers": "Password must contain both letters and numbers",
+    "passwordsDoNotMatch": "The two passwords do not match",
+    "resetSuccess": "Password reset successfully"
+  },
+  "scanQr": {
+    "invalidQr": "Invalid QR code",
+    "scannedOpenChat": "Scanned — opening chat",
+    "cameraOpenFailed": "Could not open the camera",
+    "pasteValidUrlUuid": "Paste a valid URL / UUID",
+    "title": "Scan QR to add friend",
+    "description": "Point the camera at another VBacker member's QR to open their profile and connect.",
+    "cameraErrorHint": "Camera error: {{error}}. Please grant camera permission to your browser, or paste a URL/ID below.",
+    "orPasteLabel": "Or paste a profile URL / Player ID:",
+    "pastePlaceholder": "vinpoker://user/… or https://vbacker.live/player/…",
+    "open": "Open"
+  },
+  "transferInstructions": {
+    "copied": "Copied {{label}}",
+    "labelAmount": "amount",
+    "labelContent": "content",
+    "onlyJpgPngWebp": "Only JPG/PNG/WEBP accepted",
+    "imageMax5mb": "Image up to 5MB",
+    "proofUploaded": "Transfer proof uploaded",
+    "uploadFailed": "Upload failed",
+    "uploadProofFirst": "Please upload the transfer receipt first",
+    "recordedAdminConfirm": "Recorded! Admin will confirm within 5–10 minutes.",
+    "confirmCancel": "Are you sure you want to cancel this reservation?",
+    "cancelled": "Reservation cancelled.",
+    "transferExpired": "Transfer window expired",
+    "timeRemaining": "Time left to transfer",
+    "maybeAutoCancelled": "May be auto-cancelled. Contact Admin if you have already transferred.",
+    "amountToTransfer": "Amount to transfer",
+    "transferContent": "Transfer note",
+    "contentHint": "You must enter this exact note so Admin can reconcile.",
+    "transactionScreenshot": "Transaction screenshot",
+    "requiredParen": "(required)",
+    "cashierNeedsProof": "The cashier needs the receipt image to confirm the deal — without it the deal is rejected.",
+    "uploaded": "Uploaded",
+    "requiredStar": "* Required",
+    "reuploadImage": "Re-upload image",
+    "uploadTransferImage": "Upload transfer image",
+    "proofImageAlt": "Transfer proof",
+    "cancelTransaction": "Cancel transaction",
+    "uploadProofFirstTitle": "Upload the receipt first",
+    "sentWaitingAdmin": "Sent — waiting for Admin",
+    "sending": "Sending...",
+    "needProof": "Receipt required",
+    "transferred": "Transferred"
   }
 }

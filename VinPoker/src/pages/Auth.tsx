@@ -89,7 +89,7 @@ const Auth = () => {
             <Field label={t("auth.email")} v={email} set={setEmail} type="email" />
             <Field label={t("auth.password")} v={password} set={setPassword} type="password" />
             <div className="text-right">
-              <Link to="/forgot-password" className="text-xs text-primary hover:underline">Quên mật khẩu?</Link>
+              <Link to="/forgot-password" className="text-xs text-primary hover:underline">{t("authPage.forgotPassword")}</Link>
             </div>
             <Button onClick={signIn} disabled={submitting} className="w-full gradient-gold text-primary-foreground border-0">
               {submitting ? t("auth.processing") : t("auth.signIn")}
@@ -113,14 +113,18 @@ const Auth = () => {
                 }}
               />
               <label htmlFor="agree-tos" className="text-xs leading-relaxed text-muted-foreground cursor-pointer select-none">
-                Tôi đã đọc và đồng ý với{" "}
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); setTosOpen(true); }}
-                  className="text-primary underline underline-offset-2"
-                >
-                  Điều khoản & Chính sách bảo mật
-                </button>
+                <Trans
+                  i18nKey="authPage.tosAgree"
+                  components={{
+                    tos: (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setTosOpen(true); }}
+                        className="text-primary underline underline-offset-2"
+                      />
+                    ),
+                  }}
+                />
               </label>
             </div>
 

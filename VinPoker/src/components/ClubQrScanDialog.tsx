@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -30,6 +31,7 @@ function extractClubId(text: string): string | null {
 }
 
 export default function ClubQrScanDialog({ open, onOpenChange, allowedClubIds, onPicked }: Props) {
+  const { t } = useTranslation();
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manual, setManual] = useState("");
@@ -68,11 +70,11 @@ export default function ClubQrScanDialog({ open, onOpenChange, allowedClubIds, o
     const handle = (text: string) => {
       const id = extractClubId(text);
       if (!id) {
-        toast.error("QR không hợp lệ");
+        toast.error(t("clubQrScan.invalidQr"));
         return;
       }
       if (!allowed.has(id)) {
-        toast.error("Bạn không được phân công CLB này");
+        toast.error(t("clubQrScan.notAssignedClub"));
         return;
       }
       onPicked(id);
@@ -95,7 +97,7 @@ export default function ClubQrScanDialog({ open, onOpenChange, allowedClubIds, o
           try { scanner.clear(); } catch {}
         }
       } catch (e: any) {
-        setCameraError(e?.message || "Không mở được camera");
+        setCameraError(e?.message || t("clubQrScan.cameraOpenFailed"));
       }
     })();
 
@@ -111,8 +113,8 @@ export default function ClubQrScanDialog({ open, onOpenChange, allowedClubIds, o
 
   const submitManual = () => {
     const id = extractClubId(manual);
-    if (!id) { toast.error("Dán URL hoặc UUID hợp lệ"); return; }
-    if (!allowed.has(id)) { toast.error("Bạn không được phân công CLB này"); return; }
+    if (!id) { toast.error(t("clubQrScan.pasteValidUrlOrUuid")); return; }
+    if (!allowed.has(id)) { toast.error(t("clubQrScan.notAssignedClub")); return; }
     onPicked(id);
     onOpenChange(false);
   };
@@ -121,27 +123,27 @@ export default function ClubQrScanDialog({ open, onOpenChange, allowedClubIds, o
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Quét thẻ CLB</DialogTitle>
+          <DialogTitle>{t("clubQrScan.title")}</DialogTitle>
           <DialogDescription>
-            Hướng camera vào QR trên thẻ thành viên CLB để lọc nhanh deal theo CLB đó.
+            {t("clubQrScan.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div id="club-qr-reader" className="w-full rounded-md overflow-hidden bg-black/40 min-h-[260px]" />
 
         {cameraError && (
-          <p className="text-xs text-destructive">Camera lỗi: {cameraError}. Bạn có thể dán thủ công bên dưới.</p>
+          <p className="text-xs text-destructive">{t("clubQrScan.cameraErrorHint", { error: cameraError })}</p>
         )}
 
         <div className="space-y-2 pt-2 border-t">
-          <label className="text-xs text-muted-foreground">Hoặc dán URL / UUID CLB:</label>
+          <label className="text-xs text-muted-foreground">{t("clubQrScan.manualLabel")}</label>
           <div className="flex gap-2">
             <Input
               value={manual}
               onChange={(e) => setManual(e.target.value)}
-              placeholder="https://vinpoker.live/cashier/scan?club_id=…"
+              placeholder={t("clubQrScan.manualPlaceholder")}
             />
-            <Button onClick={submitManual}>Áp dụng</Button>
+            <Button onClick={submitManual}>{t("clubQrScan.apply")}</Button>
           </div>
         </div>
       </DialogContent>

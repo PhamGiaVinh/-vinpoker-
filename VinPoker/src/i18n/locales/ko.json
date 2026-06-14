@@ -1321,7 +1321,10 @@
     "deleted": "삭제됨",
     "clearConfirm": "모든 세션을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
     "clearedAll": "모두 지워짐",
-    "sampleCreated": "{{count}}개의 샘플 세션이 생성되었습니다."
+    "sampleCreated": "{{count}}개의 샘플 세션이 생성되었습니다.",
+    "loadError": "데이터를 불러오지 못했습니다",
+    "loadErrorHint": "연결을 확인한 후 다시 시도하세요.",
+    "retry": "다시 시도"
   },
   "performanceCard": {
     "title": "성과",
@@ -2235,5 +2238,89 @@
     "subtitlesLabel": "자막",
     "chat": "채팅",
     "toggleSubtitlesAriaLabel": "자막 켜기/끄기"
+  },
+  "authPage": {
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "tosAgree": "<tos>약관 및 개인정보 처리방침</tos>을 읽고 동의합니다"
+  },
+  "clubQrScan": {
+    "invalidQr": "잘못된 QR 코드",
+    "notAssignedClub": "이 클럽에 배정되지 않았습니다",
+    "cameraOpenFailed": "카메라를 열 수 없습니다",
+    "pasteValidUrlOrUuid": "유효한 URL 또는 UUID를 붙여넣으세요",
+    "title": "클럽 카드 스캔",
+    "description": "클럽 멤버십 카드의 QR에 카메라를 비추면 해당 클럽 기준으로 거래를 빠르게 필터링합니다.",
+    "cameraErrorHint": "카메라 오류: {{error}}. 아래에 수동으로 붙여넣을 수 있습니다.",
+    "manualLabel": "또는 클럽 URL / UUID 붙여넣기:",
+    "manualPlaceholder": "https://vinpoker.live/cashier/scan?club_id=…",
+    "apply": "적용"
+  },
+  "forgotPassword": {
+    "title": "비밀번호 찾기",
+    "invalidEmail": "유효하지 않은 이메일",
+    "resetEmailSent": "비밀번호를 재설정하려면 이메일을 확인하세요",
+    "prompt": "계정 이메일을 입력하면 비밀번호 재설정 링크를 보내드립니다.",
+    "emailLabel": "이메일",
+    "emailPlaceholder": "you@email.com",
+    "sendResetLink": "재설정 링크 보내기",
+    "backToLogin": "로그인으로 돌아가기",
+    "sentTo": "비밀번호 재설정 링크를 <1>{{email}}</1> 으로 보냈습니다.",
+    "checkSpamHint": "몇 분 내에 이메일이 보이지 않으면 스팸함도 확인하세요. 링크는 1시간 후 만료됩니다."
+  },
+  "resetPassword": {
+    "title": "비밀번호 재설정",
+    "verifyingLink": "링크 확인 중…",
+    "newPasswordLabel": "새 비밀번호 (8자 이상, 영문과 숫자 포함)",
+    "confirmPasswordLabel": "비밀번호 확인",
+    "submitButton": "비밀번호 재설정",
+    "passwordMin": "비밀번호는 최소 8자 이상이어야 합니다",
+    "passwordLettersAndNumbers": "비밀번호에는 영문과 숫자가 모두 포함되어야 합니다",
+    "passwordsDoNotMatch": "두 비밀번호가 일치하지 않습니다",
+    "resetSuccess": "비밀번호가 재설정되었습니다"
+  },
+  "scanQr": {
+    "invalidQr": "유효하지 않은 QR 코드",
+    "scannedOpenChat": "스캔 완료 — 채팅 열기",
+    "cameraOpenFailed": "카메라를 열 수 없습니다",
+    "pasteValidUrlUuid": "유효한 URL / UUID를 붙여넣으세요",
+    "title": "QR 스캔으로 친구 추가",
+    "description": "다른 VBacker 회원의 QR에 카메라를 비춰 프로필을 열고 연결하세요.",
+    "cameraErrorHint": "카메라 오류: {{error}}. 브라우저에 카메라 권한을 허용하거나 아래에 URL/ID를 붙여넣으세요.",
+    "orPasteLabel": "또는 프로필 URL / 플레이어 ID를 붙여넣으세요:",
+    "pastePlaceholder": "vinpoker://user/… 또는 https://vbacker.live/player/…",
+    "open": "열기"
+  },
+  "transferInstructions": {
+    "copied": "{{label}} 복사됨",
+    "labelAmount": "금액",
+    "labelContent": "내용",
+    "onlyJpgPngWebp": "JPG/PNG/WEBP만 허용됩니다",
+    "imageMax5mb": "이미지 최대 5MB",
+    "proofUploaded": "이체 증빙이 업로드되었습니다",
+    "uploadFailed": "업로드할 수 없습니다",
+    "uploadProofFirst": "먼저 이체 영수증을 업로드해 주세요",
+    "recordedAdminConfirm": "접수되었습니다! 관리자가 5~10분 내에 확인합니다.",
+    "confirmCancel": "이 예약을 취소하시겠습니까?",
+    "cancelled": "예약이 취소되었습니다.",
+    "transferExpired": "이체 시간이 만료되었습니다",
+    "timeRemaining": "이체 남은 시간",
+    "maybeAutoCancelled": "자동 취소될 수 있습니다. 이미 이체했다면 관리자에게 문의하세요.",
+    "amountToTransfer": "이체할 금액",
+    "transferContent": "이체 내용",
+    "contentHint": "관리자가 대조할 수 있도록 이 내용을 정확히 입력해야 합니다.",
+    "transactionScreenshot": "거래 스크린샷",
+    "requiredParen": "(필수)",
+    "cashierNeedsProof": "캐셔가 거래를 확인하려면 영수증 이미지가 필요합니다 — 없으면 거절됩니다.",
+    "uploaded": "업로드됨",
+    "requiredStar": "* 필수",
+    "reuploadImage": "이미지 다시 업로드",
+    "uploadTransferImage": "이체 이미지 업로드",
+    "proofImageAlt": "이체 증빙",
+    "cancelTransaction": "거래 취소",
+    "uploadProofFirstTitle": "먼저 영수증을 업로드하세요",
+    "sentWaitingAdmin": "전송됨 — 관리자 대기 중",
+    "sending": "전송 중...",
+    "needProof": "영수증 필요",
+    "transferred": "이체 완료"
   }
 }
