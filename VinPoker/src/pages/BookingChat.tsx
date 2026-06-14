@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +12,7 @@ import { playNotifySound } from "@/lib/notifySound";
 import { compressImage } from "@/lib/compressImage";
 
 const BookingChat = () => {
+  const { t } = useTranslation();
   const { tournamentId } = useParams();
   const [params] = useSearchParams();
   const asReceptionistChatId = params.get("asReceptionist");
@@ -33,11 +35,11 @@ const BookingChat = () => {
   const setup = async () => {
     if (!tournamentId || !user) return;
     setLoading(true);
-    const { data: t } = await supabase.from("tournaments")
+    const { data: tour } = await supabase.from("tournaments")
       .select("*, club:clubs(id,name,owner_id,address,bot_enabled,bot_qr_url,bot_welcome_message)").eq("id", tournamentId).maybeSingle();
-    if (!t) { toast.error("Tournament not found"); nav(-1); return; }
-    setTournament(t);
-    setClub(t.club);
+    if (!tour) { toast.error(t("bookingChat.notFound")); nav(-1); return; }
+    setTournament(tour);
+    setClub(tour.club);
 
     let existing: any = null;
 
@@ -51,26 +53,26 @@ const BookingChat = () => {
         .eq("tournament_id", tournamentId).eq("player_id", user.id).maybeSingle();
       existing = data;
 
-      if (!existing && t.club?.owner_id !== user.id && !isAdmin) {
+      if (!existing && tour.club?.owner_id !== user.id && !isAdmin) {
         const { data: created, error } = await supabase.from("booking_chats").insert({
-          tournament_id: tournamentId, club_id: t.club.id, player_id: user.id,
+          tournament_id: tournamentId, club_id: tour.club.id, player_id: user.id,
         }).select("*").single();
-        if (error) { toast.error("Cannot create chat: " + error.message); setLoading(false); return; }
+        if (error) { toast.error(t("bookingChat.cantCreate") + error.message); setLoading(false); return; }
         existing = created;
         await supabase.from("chat_messages").insert({
           chat_id: created.id, sender_id: null, kind: "system",
-          content: `I'd like to book a stack for [${t.name}]`,
+          content: t("bookingChat.defaultMsg", { name: tour.name }),
         });
 
         // Auto-send chatbot welcome (QR + message) if club has it enabled
-        if (t.club?.bot_enabled) {
+        if (tour.club?.bot_enabled) {
           const botMsgs: any[] = [];
-          if (t.club?.bot_qr_url) {
+          if (tour.club?.bot_qr_url) {
             botMsgs.push({
-              chat_id: created.id, sender_id: null, kind: "image", content: t.club.bot_qr_url,
+              chat_id: created.id, sender_id: null, kind: "image", content: tour.club.bot_qr_url,
             });
           }
-          const welcome = (t.club?.bot_welcome_message ?? "").trim();
+          const welcome = (tour.club?.bot_welcome_message ?? "").trim();
           if (welcome) {
             botMsgs.push({
               chat_id: created.id, sender_id: null, kind: "text", content: welcome,
@@ -83,7 +85,7 @@ const BookingChat = () => {
       }
     }
 
-    if (!existing) { toast.error("Chat not found"); setLoading(false); return; }
+    if (!existing) { toast.error(t("bookingChat.chatNotFound")); setLoading(false); return; }
     setChat(existing);
     await loadMessages(existing.id);
     // Mark as read on open
@@ -152,8 +154,8 @@ const BookingChat = () => {
 
   const handleImageUpload = async (raw: File) => {
     if (!chat || !user) return;
-    if (!raw.type.startsWith("image/")) { toast.error("Images only"); return; }
-    if (raw.size > 10 * 1024 * 1024) { toast.error("Max image size is 10MB"); return; }
+    if (!raw.type.startsWith("image/")) { toast.error(t("bookingChat.imagesOnly")); return; }
+    if (raw.size > 10 * 1024 * 1024) { toast.error(t("bookingChat.max10")); return; }
     setUploading(true);
     const file = await compressImage(raw, { maxEdge: 1600, quality: 0.8 });
     const ext = file.type === "image/png" ? "png" : "jpg";
@@ -194,9 +196,9 @@ const BookingChat = () => {
     await supabase.from("booking_chats").update({ status: "closed", closed_by: user?.id ?? null, closed_at: new Date().toISOString() } as any).eq("id", chat.id);
     await supabase.from("chat_messages").insert({
       chat_id: chat.id, sender_id: null, kind: "system",
-      content: "✅ Reception confirmed your booking. You have been added to the tournament.",
+      content: t("bookingChat.sysConfirmed"),
     });
-    toast.success("Player confirmed and added");
+    toast.success(t("bookingChat.playerConfirmed"));
   };
 
   const reject = async () => {
@@ -209,9 +211,9 @@ const BookingChat = () => {
     await supabase.from("booking_chats").update({ status: "closed", closed_by: user?.id ?? null, closed_at: new Date().toISOString() } as any).eq("id", chat.id);
     await supabase.from("chat_messages").insert({
       chat_id: chat.id, sender_id: null, kind: "system",
-      content: "❌ Reception declined this stack booking request.",
+      content: t("bookingChat.sysRejected"),
     });
-    toast("Request declined");
+    toast(t("bookingChat.requestDeclined"));
   };
 
   const confirmPayment = async () => {
@@ -220,7 +222,7 @@ const BookingChat = () => {
     const { data: existingReg } = await supabase.from("stack_registrations").select("*")
       .eq("user_id", chat.player_id).eq("tournament_id", chat.tournament_id).maybeSingle();
     const wasConfirmed = existingReg?.status === "confirmed";
-    if (chat.payment_confirmed && wasConfirmed) return toast.success("Payment already confirmed");
+    if (chat.payment_confirmed && wasConfirmed) return toast.success(t("bookingChat.paymentDone"));
     if (existingReg) {
       if (!wasConfirmed) {
         const { error } = await supabase.from("stack_registrations").update({ status: "confirmed" }).eq("id", existingReg.id);
@@ -240,38 +242,38 @@ const BookingChat = () => {
     }
     await supabase.from("chat_messages").insert({
       chat_id: chat.id, sender_id: null, kind: "system",
-      content: "💰 Reception confirmed payment. Buy-in is complete and the player was added.",
+      content: t("bookingChat.sysPaid"),
     });
-    toast.success("Payment confirmed and player added");
+    toast.success(t("bookingChat.paymentConfirmed"));
   };
 
   if (authLoading || loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
   if (!user) { nav("/auth"); return null; }
 
-  const playerName = profiles[chat?.player_id]?.display_name ?? "Player";
+  const playerName = profiles[chat?.player_id]?.display_name ?? t("bookingChat.defaultPlayer");
   const playerPhone = profiles[chat?.player_id]?.phone;
 
   return (
     <div className="flex flex-col h-[calc(100vh-9rem)]">
       <button onClick={() => nav(-1)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
-        <ArrowLeft className="w-4 h-4" /> Back
+        <ArrowLeft className="w-4 h-4" /> {t("bookingChat.back")}
       </button>
 
       <Card className="p-3 gradient-card border-primary/30 mb-2">
         <div className="text-xs text-muted-foreground">
-          {isReceptionist ? `Receptionist · ${club?.name}` : `Stack booking chat · ${club?.name}`}
+          {isReceptionist ? t("bookingChat.receptionist", { club: club?.name }) : t("bookingChat.stackBooking", { club: club?.name })}
         </div>
         <div className="font-display text-lg">{tournament?.name}</div>
         {isReceptionist && (
-          <div className="text-xs text-muted-foreground mt-0.5">Player: <span className="text-foreground font-medium">{playerName}</span>{playerPhone && ` · ${playerPhone}`}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{t("bookingChat.playerLabel")} <span className="text-foreground font-medium">{playerName}</span>{playerPhone && ` · ${playerPhone}`}</div>
         )}
         <div className="text-xs text-muted-foreground mt-0.5">
-          Status: <span className={chat?.status === "closed" ? "text-muted-foreground" : "text-primary"}>{chat?.status === "closed" ? "Closed" : "Active"}</span>
-          {chat?.payment_confirmed && <span className="ml-2 text-success">· Paid ✓</span>}
+          {t("bookingChat.status")} <span className={chat?.status === "closed" ? "text-muted-foreground" : "text-primary"}>{chat?.status === "closed" ? t("bookingChat.closed") : t("bookingChat.active")}</span>
+          {chat?.payment_confirmed && <span className="ml-2 text-success">{t("bookingChat.paid")}</span>}
         </div>
         {chat?.archived_at && (
           <div className="mt-2 flex items-center justify-between gap-2 text-xs bg-muted/40 border border-dashed rounded-md px-2 py-1.5">
-            <span className="text-muted-foreground">📦 Cuộc trò chuyện này đã được tự động lưu trữ.</span>
+            <span className="text-muted-foreground">{t("bookingChat.archivedNote")}</span>
             {(isReceptionist || isAdmin) && (
               <Button
                 size="sm"
@@ -280,10 +282,10 @@ const BookingChat = () => {
                 onClick={async () => {
                   const { error } = await supabase.from("booking_chats").update({ archived_at: null }).eq("id", chat.id);
                   if (error) toast.error(error.message);
-                  else { setChat({ ...chat, archived_at: null }); toast.success("Đã bỏ lưu trữ"); }
+                  else { setChat({ ...chat, archived_at: null }); toast.success(t("bookingChat.unarchiveOk")); }
                 }}
               >
-                <ArchiveRestore className="w-3 h-3 mr-1" /> Bỏ lưu trữ
+                <ArchiveRestore className="w-3 h-3 mr-1" /> {t("bookingChat.unarchive")}
               </Button>
             )}
           </div>
@@ -301,7 +303,7 @@ const BookingChat = () => {
           }
           const isBot = !m.sender_id;
           const mine = !isBot && m.sender_id === user.id;
-          const name = isBot ? "🤖 Trợ lý CLB" : (profiles[m.sender_id]?.display_name ?? "User");
+          const name = isBot ? t("bookingChat.botName") : (profiles[m.sender_id]?.display_name ?? t("bookingChat.defaultUser"));
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${mine ? "bg-primary text-primary-foreground" : isBot ? "bg-muted/60 border border-primary/20 text-foreground" : "bg-muted text-foreground"}`}>
@@ -327,7 +329,7 @@ const BookingChat = () => {
             onClick={confirmPayment}
           >
             <CreditCard className="w-4 h-4 mr-1" />
-            {chat?.payment_confirmed ? "Sync Paid Registration" : "Confirm Payment & Buy-in"}
+            {chat?.payment_confirmed ? t("bookingChat.syncPaid") : t("bookingChat.confirmPay")}
           </Button>
           <Button
             size="sm"
@@ -335,7 +337,7 @@ const BookingChat = () => {
             className="border-destructive/40 text-destructive hover:bg-destructive/10"
             onClick={reject}
           >
-            <X className="w-4 h-4 mr-1" />Reject
+            <X className="w-4 h-4 mr-1" />{t("bookingChat.reject")}
           </Button>
         </div>
       )}
@@ -353,12 +355,12 @@ const BookingChat = () => {
           size="icon"
           onClick={() => fileRef.current?.click()}
           disabled={uploading || chat?.status === "closed"}
-          title="Send / capture photo"
+          title={t("bookingChat.photoTip")}
         >
           {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
         </Button>
         <Input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
-          placeholder={chat?.status === "closed" ? "Conversation closed" : "Type a message..."}
+          placeholder={chat?.status === "closed" ? t("bookingChat.conversationClosed") : t("bookingChat.typeMsg")}
           disabled={chat?.status === "closed" || sending} />
         <Button onClick={send} disabled={sending || !text.trim() || chat?.status === "closed"}>
           <Send className="w-4 h-4" />

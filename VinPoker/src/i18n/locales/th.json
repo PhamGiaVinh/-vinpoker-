@@ -1150,7 +1150,8 @@
     "conversationClosed": "การสนทนาถูกปิดแล้ว",
     "typeMsg": "พิมพ์ข้อความ...",
     "imagesOnly": "เฉพาะภาพ",
-    "max10": "ภาพสูงสุด 10MB"
+    "max10": "ภาพสูงสุด 10MB",
+    "defaultPlayer": "ผู้เล่น"
   },
   "chatInbox": {
     "titleAdmin": "กล่องจดหมายการจองสแต็ค",
@@ -2351,5 +2352,39 @@
   },
   "stickyBar": {
     "register": "ลงทะเบียน"
+  },
+  "tournamentRegister": {
+    "title": "ลงทะเบียนทัวร์นาเมนต์ฝึกอบรม",
+    "regError": "เกิดข้อผิดพลาดในการลงทะเบียน",
+    "copied": "คัดลอก{{label}}แล้ว",
+    "labelAccountNumber": "เลขบัญชี",
+    "labelTransferContent": "หมายเหตุการโอน",
+    "onlyImageTypes": "รองรับเฉพาะ JPG/PNG/WEBP",
+    "maxImage5": "รูปภาพสูงสุด 5MB",
+    "proofUploaded": "อัปโหลดรูปการโอนแล้ว",
+    "uploadFailed": "อัปโหลดไม่สำเร็จ",
+    "markedToast": "บันทึกแล้ว! คลับจะยืนยันภายใน 5–10 นาที",
+    "confirmCancel": "คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการลงทะเบียนนี้?",
+    "cancelled": "ยกเลิกการลงทะเบียนแล้ว",
+    "freeRakeBanner": "🎉 คุณได้รับบริการคลับฟรี (ประหยัด {{savings}}) กรุณาชำระเงินภายใน 5 นาทีเพื่อรักษาสิทธิ์",
+    "feeLabel": "ค่าธรรมเนียมการฝึกอบรม",
+    "freeClubService": "บริการคลับฟรี",
+    "totalPay": "ยอดชำระทั้งหมด",
+    "transferInfo": "ข้อมูลการโอนเงิน",
+    "bank": "ธนาคาร",
+    "accountHolder": "เจ้าของบัญชี",
+    "accountNumber": "เลขบัญชี",
+    "transferContentLabel": "หมายเหตุการโอน (จำเป็น)",
+    "proofTitle": "ภาพหน้าจอธุรกรรม",
+    "proofHint": "จำเป็น — ภาพหน้าจอใบเสร็จการโอน",
+    "uploaded": "อัปโหลดแล้ว",
+    "notUploaded": "ยังไม่ได้อัปโหลด",
+    "reupload": "อัปโหลดรูปใหม่",
+    "uploadProof": "อัปโหลดรูปการโอน",
+    "cancelReg": "ยกเลิกการลงทะเบียน",
+    "sentWaiting": "ส่งแล้ว — รอคลับ",
+    "sending": "กำลังส่ง...",
+    "needProof": "ต้องมีรูปการโอน",
+    "transferred": "โอนแล้ว"
   }
 }

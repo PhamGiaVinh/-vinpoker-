@@ -1202,7 +1202,8 @@
     "conversationClosed": "Conversation closed",
     "typeMsg": "Type a message...",
     "imagesOnly": "Images only",
-    "max10": "Max image size is 10MB"
+    "max10": "Max image size is 10MB",
+    "defaultPlayer": "Player"
   },
   "chatInbox": {
     "titleAdmin": "Booking Conversations",
@@ -2499,5 +2500,39 @@
   },
   "stickyBar": {
     "register": "Register"
+  },
+  "tournamentRegister": {
+    "title": "Register for training tournament",
+    "regError": "Registration error",
+    "copied": "Copied {{label}}",
+    "labelAccountNumber": "account number",
+    "labelTransferContent": "transfer note",
+    "onlyImageTypes": "Only JPG/PNG/WEBP accepted",
+    "maxImage5": "Image max 5MB",
+    "proofUploaded": "Transfer image uploaded",
+    "uploadFailed": "Upload failed",
+    "markedToast": "Recorded! The club will confirm within 5–10 minutes.",
+    "confirmCancel": "Are you sure you want to cancel this registration?",
+    "cancelled": "Registration cancelled.",
+    "freeRakeBanner": "🎉 You get free club service (saving {{savings}}). Please pay within 5 minutes to keep the offer.",
+    "feeLabel": "Training fee",
+    "freeClubService": "Free club service",
+    "totalPay": "Total payment",
+    "transferInfo": "Transfer information",
+    "bank": "Bank",
+    "accountHolder": "Account holder",
+    "accountNumber": "Account number",
+    "transferContentLabel": "Transfer note (required)",
+    "proofTitle": "Transaction screenshot",
+    "proofHint": "Required — screenshot of the transfer receipt",
+    "uploaded": "Uploaded",
+    "notUploaded": "Not uploaded",
+    "reupload": "Re-upload image",
+    "uploadProof": "Upload transfer image",
+    "cancelReg": "Cancel registration",
+    "sentWaiting": "Sent — waiting for club",
+    "sending": "Sending...",
+    "needProof": "Need transfer image",
+    "transferred": "Transferred"
   }
 }
