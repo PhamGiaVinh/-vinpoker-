@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Radio, Share2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { TournamentLiveView } from "@/components/cashier/tournament-live/TournamentLiveView";
+import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
 
 const TournamentLiveTracker = () => {
   const { tournamentId } = useParams();
@@ -92,33 +93,14 @@ const TournamentLiveTracker = () => {
         </button>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 text-emerald-400 rounded-md text-xs font-bold border border-emerald-500/30 animate-pulse">
-            <Radio className="w-3.5 h-3.5" /> LIVE
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-lg leading-tight">{tournament.name}</h1>
-            {tournament.club?.name && (
-              <Link
-                to={`/club/${tournament.club.id}`}
-                className="text-xs text-muted-foreground hover:text-emerald-400 transition-colors"
-              >
-                {tournament.club.name}
-              </Link>
-            )}
-          </div>
-        </div>
-        <Button
-          size="sm"
-          onClick={handleShare}
-          className="bg-amber-500/90 hover:bg-amber-400 text-black font-bold"
-        >
-          <Share2 className="w-3.5 h-3.5 mr-1.5" /> Chia sẻ
-        </Button>
-      </div>
-
-      <TournamentLiveView tournamentId={tournamentId!} />
+      <LiveHub
+        title={tournament.name}
+        clubName={tournament.club?.name}
+        clubId={tournament.club?.id}
+        onShare={handleShare}
+      >
+        <TournamentLiveView tournamentId={tournamentId!} />
+      </LiveHub>
     </div>
   );
 };
