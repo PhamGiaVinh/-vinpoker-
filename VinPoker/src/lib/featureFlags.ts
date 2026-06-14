@@ -6,8 +6,12 @@ export const FEATURES = {
    * Cashier "Đăng ký giải" tab (confirm online registration → seat → receipt).
    * While false the tab is hidden from regular cashiers; admins and club owners
    * still see it so the owner can UAT production before exposing it.
+   *
+   * ⚠️ UAT BRANCH ONLY (uat/cashier-registrations-flag-on) — flipped true here for
+   * a Vercel PREVIEW UAT. DO NOT MERGE this flip to main until UAT passes; main
+   * must keep this false until the owner approves the production rollout.
    */
-  cashierRegistrations: false,
+  cashierRegistrations: true,
   /**
    * Cashier "Buy-in tại quầy" (offline cash / walk-in): pick tournament → name →
    * buy-in + fee → auto-draw seat + receipt via `create_offline_buyin_and_seat`.
