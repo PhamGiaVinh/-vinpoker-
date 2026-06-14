@@ -21,7 +21,7 @@ import { useAdminPendingCounts } from "@/hooks/useAdminPendingCounts";
 import { DuplicateNameGuard } from "@/components/DuplicateNameGuard";
 import { SupportFloatingButton } from "@/components/SupportFloatingButton";
 import { InstallPWAButton } from "@/components/InstallPWAButton";
-import { OpenInBrowserMenu } from "@/components/OpenInBrowserMenu";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
 import appLogo from "@/assets/app-logo.png";
@@ -307,7 +307,7 @@ export const Layout = () => {
               </Button>
             )}
 
-            <OpenInBrowserMenu />
+            <ThemeSwitcher />
           </div>
         </div>
       </header>

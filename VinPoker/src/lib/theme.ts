@@ -11,11 +11,6 @@ export type AppTheme = "default" | "claude-warm";
 
 export const THEME_KEY = "vinpoker.theme";
 
-export const THEMES: { value: AppTheme; labelVi: string; labelEn: string }[] = [
-  { value: "default", labelVi: "Mặc định (Tối)", labelEn: "Default (Dark)" },
-  { value: "claude-warm", labelVi: "Claude Warm (Sáng)", labelEn: "Claude Warm (Light)" },
-];
-
 export function getStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem(THEME_KEY);
