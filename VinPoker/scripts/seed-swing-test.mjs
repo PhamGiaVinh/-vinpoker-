@@ -10,20 +10,28 @@
 import pg from "pg";
 const { Pool } = pg;
 
-// ── DB connection (from `supabase db dump --linked --dry-run`) ──────
+// ── DB connection ───────────────────────────────────────────────────
+// Credentials come from the ENVIRONMENT — never hardcode the DB password.
+// Copy scripts/.env.test.example -> scripts/.env.test.local (gitignored) and run:
+//   node --env-file=scripts/.env.test.local scripts/seed-swing-test.mjs
 const DB_CONFIG = {
-  host: "db.orlesggcjamwuknxwcpk.supabase.co",
-  port: 5432,
-  user: "cli_login_postgres",
-  password: "ztKtITZnKZrPWTFVjKxtIUfYkZboWIAd",
-  database: "postgres",
+  host: process.env.SUPABASE_DB_HOST ?? "db.orlesggcjamwuknxwcpk.supabase.co",
+  port: Number(process.env.SUPABASE_DB_PORT ?? 5432),
+  user: process.env.SUPABASE_DB_USER ?? "cli_login_postgres",
+  password: process.env.SUPABASE_DB_PASSWORD,
+  database: process.env.SUPABASE_DB_NAME ?? "postgres",
   ssl: { rejectUnauthorized: false },
 };
+if (!DB_CONFIG.password) {
+  console.error("Missing env SUPABASE_DB_PASSWORD — see scripts/.env.test.example. Aborting.");
+  process.exit(2);
+}
 
 // ── Edge function endpoints ─────────────────────────────────────────
-const SUPABASE_URL = "https://orlesggcjamwuknxwcpk.supabase.co";
-// Use the anon key for edge functions (service_role key is unknown)
-const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A";
+const SUPABASE_URL = process.env.SUPABASE_URL ?? "https://orlesggcjamwuknxwcpk.supabase.co";
+// The anon (publishable) key is PUBLIC by design; overridable via env.
+const ANON_KEY = process.env.SUPABASE_ANON_KEY
+  ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A";
 
 // ── Constants ───────────────────────────────────────────────────────
 const CLUB_IDS = [
