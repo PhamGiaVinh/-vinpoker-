@@ -137,7 +137,10 @@
     "account": "Tài khoản",
     "login": "Đăng nhập",
     "mobileStake": "Hợp tác",
-    "mobileBacker": "Người tập huấn"
+    "mobileBacker": "Người tập huấn",
+    "feed": "Bảng tin",
+    "news": "Tin tức",
+    "international": "Giải quốc tế"
   },
   "documentsPage": {
     "title": "Tài liệu",
@@ -1056,7 +1059,11 @@
     "cashier": "QUẦY",
     "ranking": "XẾP HẠNG",
     "super": "SUPER",
-    "signOut": "Đăng xuất"
+    "signOut": "Đăng xuất",
+    "discover": "Khám phá",
+    "operations": "Vận hành CLB",
+    "operationsShort": "VẬN HÀNH",
+    "finance": "Tài chính"
   },
   "notifications": {
     "title": "Thông báo",

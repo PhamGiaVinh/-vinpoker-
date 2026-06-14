@@ -137,7 +137,10 @@
     "account": "Account",
     "login": "Login",
     "mobileStake": "Partner",
-    "mobileBacker": "Coach"
+    "mobileBacker": "Coach",
+    "feed": "Feed",
+    "news": "News",
+    "international": "International"
   },
   "documentsPage": {
     "title": "Documents",
@@ -1056,7 +1059,11 @@
     "cashier": "CASHIER",
     "ranking": "RANKING",
     "super": "SUPER",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "discover": "Discover",
+    "operations": "Club Operations",
+    "operationsShort": "OPS",
+    "finance": "Finance"
   },
   "notifications": {
     "title": "Notifications",

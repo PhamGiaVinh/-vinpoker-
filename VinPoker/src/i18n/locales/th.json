@@ -52,7 +52,10 @@
     "account": "บัญชี",
     "login": "เข้าสู่ระบบ",
     "mobileStake": "ร่วมทุน",
-    "mobileBacker": "โค้ช"
+    "mobileBacker": "โค้ช",
+    "feed": "ฟีด",
+    "news": "ข่าว",
+    "international": "ทัวร์นาเมนต์สากล"
   },
   "documentsPage": {
     "title": "เอกสาร",
@@ -961,7 +964,11 @@
     "cashier": "เคาน์เตอร์",
     "ranking": "อันดับ",
     "super": "SUPER",
-    "signOut": "ออกจากระบบ"
+    "signOut": "ออกจากระบบ",
+    "discover": "สำรวจ",
+    "operations": "การดำเนินงานคลับ",
+    "operationsShort": "ปฏิบัติการ",
+    "finance": "การเงิน"
   },
   "notifications": {
     "title": "การแจ้งเตือน",

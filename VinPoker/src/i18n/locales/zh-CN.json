@@ -52,7 +52,10 @@
     "account": "账户",
     "login": "登录",
     "mobileStake": "合作",
-    "mobileBacker": "教练"
+    "mobileBacker": "教练",
+    "feed": "动态",
+    "news": "新闻",
+    "international": "国际赛事"
   },
   "documentsPage": {
     "title": "资料",
@@ -976,7 +979,11 @@
     "cashier": "收银台",
     "ranking": "排行榜",
     "super": "超级",
-    "signOut": "退出"
+    "signOut": "退出",
+    "discover": "发现",
+    "operations": "俱乐部运营",
+    "operationsShort": "运营",
+    "finance": "财务"
   },
   "notifications": {
     "title": "通知",
