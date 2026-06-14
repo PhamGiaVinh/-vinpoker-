@@ -7702,6 +7702,16 @@ export type Database = {
         Returns: Json
       }
       count_available_dealers: { Args: { p_club_id: string }; Returns: number }
+      create_offline_buyin_and_seat: {
+        Args: {
+          p_buy_in: number
+          p_draw_mode?: string
+          p_fee: number
+          p_player_name: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
       delete_last_action: {
         Args: { p_hand_id: string; p_user_id?: string }
