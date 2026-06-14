@@ -1,18 +1,15 @@
 /**
- * StatusFilterChips — battle-map status filter for the Dealer Swing operator
- * panel (UI Phase 4 operator-panel recompose).
- *
- * PRESENTATION ONLY: one row of pill chips with live counts; clicking a chip
- * filters the visual table map ("BẢN ĐỒ CHIẾN TRƯỜNG") by status. Receives the
- * per-status counts + the active filter as props and emits the next filter via
- * onChange. The status kinds mirror getSwingTableStatus exactly (empty / overdue
- * / due_soon / ok) so the chip counts and the per-card badges never diverge.
- * Never changes swing/timer logic. Stitch Dark / neon-green.
+ * StatusFilterChips — battle-map status filter for the Dealer Control operator
+ * panel (UI polish). One row of pill chips with live counts; clicking filters
+ * the visual table map by the 7-status system (see dealerStatusStyle.ts).
+ * PRESENTATION ONLY: receives per-status counts + active filter, emits the next
+ * filter. Status kinds + colors come from the shared dealerStatusStyle so chips,
+ * cards and legend stay in lockstep. Never changes swing/timer logic.
  */
 
-import type { SwingTableStatusKind } from "./swingTableStatus";
+import { dealerStatusStyle, DEALER_STATUS_ORDER, type DealerTableStatus } from "./dealerStatusStyle";
 
-export type StatusFilterValue = "all" | SwingTableStatusKind;
+export type StatusFilterValue = "all" | DealerTableStatus;
 
 export interface StatusFilterChipsProps {
   counts: Record<StatusFilterValue, number>;
@@ -20,21 +17,21 @@ export interface StatusFilterChipsProps {
   onChange: (next: StatusFilterValue) => void;
 }
 
-interface ChipDef {
+interface Chip {
   value: StatusFilterValue;
   label: string;
-  /** Classes applied only when the chip is the active filter. */
-  activeClass: string;
-  /** Leading status dot color. */
   dot: string;
+  activeText: string;
 }
 
-const CHIPS: ChipDef[] = [
-  { value: "all", label: "Tất cả", activeClass: "border-primary text-primary bg-primary/10", dot: "bg-zinc-400" },
-  { value: "ok", label: "Ổn định", activeClass: "border-primary text-primary bg-primary/10", dot: "bg-primary" },
-  { value: "due_soon", label: "Sắp đến giờ", activeClass: "border-amber-500/60 text-amber-400 bg-amber-500/10", dot: "bg-amber-400" },
-  { value: "overdue", label: "Quá hạn", activeClass: "border-red-500/60 text-red-400 bg-red-500/10", dot: "bg-red-400" },
-  { value: "empty", label: "Trống", activeClass: "border-zinc-500/60 text-zinc-200 bg-zinc-700/40", dot: "bg-zinc-400" },
+const CHIPS: Chip[] = [
+  { value: "all", label: "Tất cả", dot: "bg-zinc-400", activeText: "text-primary" },
+  ...DEALER_STATUS_ORDER.map((k): Chip => ({
+    value: k,
+    label: dealerStatusStyle[k].label,
+    dot: dealerStatusStyle[k].dot,
+    activeText: dealerStatusStyle[k].text,
+  })),
 ];
 
 export default function StatusFilterChips({ counts, value, onChange }: StatusFilterChipsProps) {
@@ -51,7 +48,9 @@ export default function StatusFilterChips({ counts, value, onChange }: StatusFil
             onClick={() => onChange(chip.value)}
             className={[
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
-              active ? chip.activeClass : "border-zinc-700 text-zinc-400 bg-zinc-900/40 hover:border-zinc-600",
+              active
+                ? `border-primary/60 bg-primary/10 ${chip.activeText}`
+                : "border-zinc-700 text-zinc-400 bg-zinc-900/40 hover:border-zinc-600",
             ].join(" ")}
           >
             <span className={["w-1.5 h-1.5 rounded-full", chip.dot].join(" ")} aria-hidden="true" />

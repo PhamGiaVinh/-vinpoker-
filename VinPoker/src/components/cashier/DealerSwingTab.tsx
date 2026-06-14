@@ -52,7 +52,8 @@ import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
-import { deriveTableSwingView, type TableTimeline } from "./dealer-swing/swingTableView";
+import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
+import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
 import { calculateLiveWorkedMinutes } from "@/lib/dealerWorkedMinutes";
@@ -468,6 +469,29 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       warnings: emptyActive + predictedMissing,
     };
   }, [tables, assignments, dealers, timelineByTableId, nextDealerMap, preAssignedMap, tableAssignmentMap]);
+
+  // Performance KPIs (UI Phase 4 — "Hiệu suất" card). Derived from existing data:
+  // stability = successful/total swings today; earliest-shortage = soonest
+  // planned_relief_at among rotation slots flagged is_shortage.
+  const performanceKpis = useMemo(() => {
+    let total = 0, ok = 0;
+    for (const m of swingMetrics ?? []) {
+      total += (m as any).total_swings ?? 0;
+      ok += (m as any).successful_swings ?? 0;
+    }
+    const stabilityPct = total > 0 ? Math.round((ok / total) * 100) : null;
+
+    let earliestMs: number | null = null;
+    for (const slots of Object.values(scheduleByTableId ?? {})) {
+      for (const s of [slots?.slot0, slots?.slot1, slots?.slot2]) {
+        if (s?.is_shortage && s.planned_relief_at) {
+          const ms = new Date(s.planned_relief_at).getTime();
+          if (Number.isFinite(ms) && (earliestMs == null || ms < earliestMs)) earliestMs = ms;
+        }
+      }
+    }
+    return { stabilityPct, earliestShortageLabel: earliestMs != null ? formatTimeHHmm(earliestMs) : null };
+  }, [swingMetrics, scheduleByTableId]);
 
   // Get swing config for a table
   const getConfig = (tableType: string): SwingConfig | undefined =>
@@ -1433,6 +1457,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           predictedPending={summaryCounts.predictedPending}
           overdue={summaryCounts.overdue}
           warnings={summaryCounts.warnings}
+          stabilityPct={performanceKpis.stabilityPct}
+          earliestShortageLabel={performanceKpis.earliestShortageLabel}
           nowMs={nowMs}
         />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -3217,31 +3243,33 @@ function TableGrid({
     return base.filter((t) => t.shift_id === selectedTour);
   }, [tables, selectedTour]);
 
-  // Per-table status (same classifier as the card badge) → drives chip counts
-  // and the status filter. Recomputed on the live clock so "Sắp đến giờ" /
-  // "Quá hạn" counts stay in sync with the countdowns.
+  // Per-table 7-status (single source — same classifier the card uses) → drives
+  // chip counts + the status filter. Recomputed on the live clock so the
+  // "Sắp đến giờ" / "Quá hạn" counts stay in sync with the countdowns.
   const tablesWithStatus = useMemo(
-    () => filteredTables.map((t) => ({
-      table: t,
-      status: deriveTableSwingView(
-        t, tableAssignmentMap[t.id], timelineByTableId[t.id], tournaments, swingConfigs, nowMs,
-      ).status,
-    })),
-    [filteredTables, tableAssignmentMap, timelineByTableId, tournaments, swingConfigs, nowMs],
+    () => filteredTables.map((t) => {
+      const a = tableAssignmentMap[t.id];
+      const view = deriveTableSwingView(t, a, timelineByTableId[t.id], tournaments, swingConfigs, nowMs);
+      const isTour = !!view.tableTournament || t.table_type === "tournament";
+      const dealerStatus = deriveDealerTableStatus(view, a, scheduleByTableId?.[t.id], preAssignedMap[t.id], isTour);
+      return { table: t, dealerStatus };
+    }),
+    [filteredTables, tableAssignmentMap, timelineByTableId, tournaments, swingConfigs, nowMs, scheduleByTableId, preAssignedMap],
   );
 
   const statusCounts = useMemo(() => {
     const c: Record<StatusFilterValue, number> = {
-      all: tablesWithStatus.length, ok: 0, due_soon: 0, overdue: 0, empty: 0,
+      all: tablesWithStatus.length,
+      stable: 0, soon: 0, missing: 0, overdue: 0, break: 0, planned: 0, tour: 0,
     };
-    for (const { status } of tablesWithStatus) c[status.kind] += 1;
+    for (const { dealerStatus } of tablesWithStatus) c[dealerStatus] += 1;
     return c;
   }, [tablesWithStatus]);
 
   const visibleTables = useMemo(
     () => (statusFilter === "all"
       ? tablesWithStatus
-      : tablesWithStatus.filter((x) => x.status.kind === statusFilter)),
+      : tablesWithStatus.filter((x) => x.dealerStatus === statusFilter)),
     [tablesWithStatus, statusFilter],
   );
 
@@ -3291,7 +3319,7 @@ function TableGrid({
         <StatusFilterChips counts={statusCounts} value={statusFilter} onChange={setStatusFilter} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto pr-0.5">
         {filteredTables.length === 0 ? (
           <div className="col-span-full text-xs text-muted-foreground text-center py-6">
             {selectedTour ? "Chưa có bàn nào trong tour này. Hãy tạo bàn mới hoặc assign dealer." : "Chưa có bàn nào."}
@@ -3301,11 +3329,12 @@ function TableGrid({
             Không có bàn ở trạng thái này.
           </div>
         ) : (
-          visibleTables.map(({ table: t }) => (
+          visibleTables.map(({ table: t, dealerStatus }) => (
             <SwingTableCard
               key={t.id}
               table={t}
               assignment={tableAssignmentMap[t.id]}
+              dealerStatus={dealerStatus}
               timeline={timelineByTableId[t.id]}
               slots={scheduleByTableId?.[t.id]}
               pred={nextDealerMap?.[t.id]}
@@ -3335,6 +3364,10 @@ function TableGrid({
             />
           ))
         )}
+      </div>
+
+      <div className="mt-3 border-t border-zinc-800 pt-2.5">
+        <DealerStatusLegend />
       </div>
 
       {/* Final-handoff confirmation — Chốt đổi dealer / Chốt đổi khẩn cấp */}

@@ -9,9 +9,11 @@
  * this never changes swing/timer logic.
  */
 
-import type { DealerAssignment, SwingConfig } from "@/hooks/useDealerSwing";
+import type { DealerAssignment, PreAssignedInfo, SwingConfig } from "@/hooks/useDealerSwing";
+import type { RotationTableSlots } from "@/hooks/useRotationSchedule";
 import type { TournamentWithTables } from "@/types/tournament";
 import { getSwingTableStatus, type SwingTableStatus } from "./swingTableStatus";
+import type { DealerTableStatus } from "./dealerStatusStyle";
 
 /** Per-table timeline cache (computed in SwingPanel from existing data). */
 export type TableTimeline = {
@@ -99,4 +101,34 @@ export function deriveTableSwingView(
     tableTournament, warnAt, swingDurationMs, swingDueMs, actualDueMs,
     isOt, isPastDue, canSwing, remainingMinutes, status,
   };
+}
+
+/**
+ * deriveDealerTableStatus — collapse the existing per-table signals into ONE of
+ * the 7 display statuses (UI polish), by operator-urgency precedence:
+ *   overdue > break > missing > soon > planned > tour > stable.
+ * Pure / presentation only — reuses `deriveTableSwingView` output + existing
+ * assignment / rotation-slot / pre-assign / tournament fields. No timing math.
+ */
+export function deriveDealerTableStatus(
+  view: SwingTableView,
+  a: DealerAssignment | null | undefined,
+  slots: RotationTableSlots | null | undefined,
+  preAssigned: PreAssignedInfo | null | undefined,
+  isTour: boolean,
+): DealerTableStatus {
+  if (a && (view.isOt || view.isPastDue)) return "overdue";
+  if (a && a.status === "on_break") return "break";
+  if (!a) return "missing";
+  if (view.status.kind === "due_soon") return "soon";
+
+  const slot0 = slots?.slot0;
+  const isPlanned =
+    (!!a.pre_assigned_attendance_id && a.pre_assign_status === "valid")
+    || (slot0?.status === "predicted" && !!slot0?.in_attendance_id && !slot0?.is_shortage)
+    || !!preAssigned;
+  if (isPlanned) return "planned";
+
+  if (isTour) return "tour";
+  return "stable";
 }
