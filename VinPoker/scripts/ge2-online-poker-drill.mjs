@@ -193,9 +193,24 @@ async function teardown() {
 }
 
 const cmd = process.argv[2];
-const run = { 'disabled-check': disabledCheck, setup, drill, teardown }[cmd];
+// loadtest — the LIVE 1/3/10/30-table throughput run is a Phase-D exercise that needs
+// many authenticated bot logins (≈270 for 30×9) or a service-role bot driver, plus
+// enabled=true. It is NOT runnable with the 2 disposable logins here. The pre-Phase-D
+// engine-level proof of 1/3/10/30 × 9 seats is the in-process simulator:
+//   npx vitest run tests/onlinePoker/loadSim.test.ts
+function loadtest() {
+  console.log('# GE-2 load test');
+  console.log('# Pre-Phase-D (runnable now, no DB/Edge/flag): in-process engine simulator');
+  console.log('#   npx vitest run tests/onlinePoker/loadSim.test.ts   (1/3/10/30 tables × 9 seats)');
+  console.log('# Live multi-table throughput (Phase D only): needs enabled=true + ~270 bot logins');
+  console.log('#   or a service-role bot driver. Build as a Phase-D extension; measures real Edge');
+  console.log('#   latency + Supabase Realtime fanout. Not run from this script today.');
+  return Promise.resolve();
+}
+
+const run = { 'disabled-check': disabledCheck, setup, drill, teardown, loadtest }[cmd];
 if (!run) {
-  console.log('usage: node ge2-online-poker-drill.mjs <disabled-check|setup|drill|teardown>');
+  console.log('usage: node ge2-online-poker-drill.mjs <disabled-check|setup|drill|teardown|loadtest>');
   process.exit(2);
 }
 run().then(() => {
