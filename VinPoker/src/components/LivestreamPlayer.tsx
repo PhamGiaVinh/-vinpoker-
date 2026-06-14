@@ -124,8 +124,8 @@ export const LivestreamPlayer = ({ tournamentId }: { tournamentId: string }) => 
           {t("livestream.title")}
         </h3>
         {anyLive && (
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-red-500">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-destructive">
+            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
             {t("livestream.live")}
           </span>
         )}

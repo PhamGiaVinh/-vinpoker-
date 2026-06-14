@@ -115,8 +115,8 @@ export const LivestreamSection = () => {
                 )}
               </div>
               {live && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-500 shrink-0">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> LIVE
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-destructive shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" /> LIVE
                 </span>
               )}
             </div>
@@ -172,8 +172,8 @@ export const LivestreamSection = () => {
                 <Radio className="w-4 h-4 text-gold" />
                 {t("livestream.title")}
                 {playing?.streams.some((s) => s.is_live) && (
-                  <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-red-500">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-destructive">
+                    <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
                     {t("livestream.live")}
                   </span>
                 )}

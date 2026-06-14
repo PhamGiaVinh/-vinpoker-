@@ -168,7 +168,7 @@ const RowCard = ({ row, actions }: { row: Row; actions: React.ReactNode }) => {
           </div>
           <div className="text-xs text-muted-foreground mt-1">
             {row.tournaments_played} giải · ITM {row.itm_rate}% ·
-            <span className={roiPositive ? "text-green-500" : "text-red-500"}> ROI {roiPositive ? "+" : ""}{row.roi_percentage}%</span>
+            <span className={roiPositive ? "text-success" : "text-destructive"}> ROI {roiPositive ? "+" : ""}{row.roi_percentage}%</span>
             · Bán {row.backing_percentage_available ?? 20}%
           </div>
           {row.backing_description && (
@@ -177,7 +177,7 @@ const RowCard = ({ row, actions }: { row: Row; actions: React.ReactNode }) => {
             </p>
           )}
           {row.backing_review_note && row.backing_status === "rejected" && (
-            <Badge className="mt-2 bg-red-500/20 text-red-500 border-red-500/40">
+            <Badge className="mt-2 bg-destructive/20 text-destructive border-destructive/40">
               Lý do từ chối: {row.backing_review_note}
             </Badge>
           )}

@@ -147,7 +147,7 @@ const Row = ({
   warn?: boolean;
 }) => {
   const Icon = ok ? CheckCircle2 : warn ? AlertCircle : XCircle;
-  const color = ok ? "text-emerald-500" : warn ? "text-amber-500" : "text-red-500";
+  const color = ok ? "text-success" : warn ? "text-warning" : "text-destructive";
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
