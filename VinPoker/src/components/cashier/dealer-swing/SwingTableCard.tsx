@@ -1,26 +1,29 @@
 /**
- * SwingTableCard — one battle-map table card for the Dealer Swing operator
- * panel (UI Phase 4 operator-panel recompose).
+ * SwingTableCard — one battle-map table card for the Dealer Control operator
+ * panel (UI polish).
  *
- * Extracted verbatim from the TableGrid `.map` body: all timing/label/guard
- * computation is lifted unchanged (now sharing deriveTableSwingView so the card
- * and the status-filter chip counts can never diverge) and the JSX is preserved
- * 1:1. PRESENTATION ONLY — receives raw row data + parent-supplied guarded
- * handlers; never changes swing/timer/RPC logic. Stitch Dark / neon-green.
+ * Compact, scannable, button-less card: status pill + dealer + timer + next +
+ * bottom progress, colored by the shared 7-status system (dealerStatusStyle).
+ * Clicking the card opens a Popover with the full per-table actions, wired to
+ * the SAME parent handlers. PRESENTATION ONLY — all timing/status come from
+ * deriveTableSwingView; never changes swing/timer/RPC logic.
  */
 
-import { Trash2, Users } from "lucide-react";
+import { Trash2, Clock, UserRound, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { TableCardKebab } from "../TableCardKebab";
 import SwingTableActions from "./SwingTableActions";
 import { deriveTableSwingView, formatTimeHHmm, type TableTimeline } from "./swingTableView";
+import { dealerStatusStyle, type DealerTableStatus } from "./dealerStatusStyle";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
 import { OPEN_TABLE_GRACE_MINUTES } from "@/lib/breakPoolState";
 import type {
   DealerAssignment, DealerAttendance, PreAssignedInfo, NextDealerPrediction, SwingConfig,
 } from "@/hooks/useDealerSwing";
-import type { RotationScheduleRow, RotationTableSlots } from "@/hooks/useRotationSchedule";
+import type { RotationTableSlots } from "@/hooks/useRotationSchedule";
 import type { TournamentWithTables } from "@/types/tournament";
 
 /** Payload the card hands to the parent to open the final-handoff confirm dialog. */
@@ -35,6 +38,8 @@ export interface ConfirmSwingRequest {
 export interface SwingTableCardProps {
   table: any;
   assignment: DealerAssignment | null;
+  /** Pre-derived 7-status (single source — see deriveDealerTableStatus). */
+  dealerStatus: DealerTableStatus;
   timeline: TableTimeline | undefined;
   slots: RotationTableSlots | undefined;
   pred: NextDealerPrediction | undefined;
@@ -67,6 +72,7 @@ export interface SwingTableCardProps {
 export default function SwingTableCard({
   table: t,
   assignment: a,
+  dealerStatus,
   timeline: tl,
   slots,
   pred,
@@ -95,20 +101,18 @@ export default function SwingTableCard({
   onRequestConfirmSwing,
 }: SwingTableCardProps) {
   const dealer = a ? (a as any).dealer_attendance?.dealers : null;
+  const s = dealerStatusStyle[dealerStatus];
 
-  // ── Shared timing/status view (single source of truth — see swingTableView) ──
+  // ── Shared timing view (single source of truth — see swingTableView) ──
   const {
-    swingDurationMs, swingDueMs, actualDueMs, isOt, isPastDue, canSwing, status: tableStatus,
+    swingDurationMs, swingDueMs, actualDueMs, isOt, isPastDue, canSwing,
   } = deriveTableSwingView(t, a, tl, tournaments, swingConfigs, nowMs);
 
   const preAssignStatus = a?.pre_assign_status ?? "none";
   const preAssignLabel = getPreAssignStatusLabel(preAssignStatus);
 
   // Open-table warmup: show "Vào swing sau M:SS" ONLY if swing_due_at actually
-  // encodes the open-table grace (open-path: swing_due_at = assigned_at + grace + duration).
-  // perform_swing rotation handoffs set swing_due_at = assigned_at + duration (no grace) —
-  // inWarmup must NOT trigger for them, so we detect grace by checking whether the
-  // scheduled window is longer than the nominal swing duration.
+  // encodes the open-table grace. (perform_swing rotations have no grace.)
   const assignedMs = a?.assigned_at ? new Date(a.assigned_at).getTime() : 0;
   const hasGrace = a?.swing_due_at != null && assignedMs > 0
     && (swingDueMs - assignedMs) > swingDurationMs;
@@ -123,12 +127,9 @@ export default function SwingTableCard({
   const slot0ReliefLabel = slot0?.planned_relief_at
     ? formatTimeHHmm(new Date(slot0.planned_relief_at).getTime())
     : null;
-  const forecastSlots = [slots?.slot1, slots?.slot2].filter(
-    (s): s is RotationScheduleRow => !!s?.in_attendance_id,
-  );
   const isTableOverdue = !!tl?.isOverdue;
 
-  // Honest overdue states — driven by the rotation schedule.
+  // Honest overdue state — driven by the rotation schedule (shown in the popover).
   let overdueState: { label: string; className: string } | null = null;
   if (isTableOverdue && a) {
     if (slot0 && slot0Locked && slot0HasDealer) {
@@ -175,31 +176,28 @@ export default function SwingTableCard({
       timerColor = preAssignLabel ? "text-amber-400" : "text-red-400";
     }
   }
-  // Warmup overrides the swing countdown for the first grace window.
   if (inWarmup) {
     const warmSec = Math.max(0, Math.floor((warmupUntilMs - nowMs) / 1000));
     timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
     timerColor = "text-sky-400";
   }
   const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
+  const remainingDisplay = isOt ? otLabel : timerLabel;
 
-  // Status-tone top strip color (UI Phase 4 mockup) — strongest signal wins so
-  // the card edge reads at a glance and matches the status-filter chips.
-  const topStripColor = isOt ? "bg-red-500"
-    : inWarmup ? "bg-sky-500"
-    : preAssignStatus === "in_progress" ? "bg-purple-500"
-    : tableStatus.tone === "destructive" ? "bg-red-500"
-    : tableStatus.tone === "warning" ? "bg-amber-500"
-    : tableStatus.tone === "primary" ? "bg-primary"
-    : "bg-zinc-600";
+  // Progress along the current swing window (presentation only).
+  let progressPct = 0;
+  if (a && a.assigned_at) {
+    const totalMs = swingDueMs - new Date(a.assigned_at).getTime();
+    const elapsedMs = nowMs - new Date(a.assigned_at).getTime();
+    progressPct = totalMs > 0 ? Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100)) : 0;
+  }
 
-  const tableTypeLabel = t.table_type === "high" ? "HIGH" : t.table_type === "tournament" ? "TOUR" : "MED";
-
-  const statusToneClass =
-    tableStatus.tone === "destructive" ? "text-red-400 bg-red-500/15 border-red-500/30"
-    : tableStatus.tone === "warning" ? "text-amber-400 bg-amber-500/15 border-amber-500/30"
-    : tableStatus.tone === "primary" ? "text-primary bg-primary/10 border-primary/30"
-    : "text-zinc-400 bg-zinc-800 border-zinc-700";
+  const dealerLabel = dealer?.full_name ?? (preAssigned ? preAssigned.full_name : null);
+  const nextLabel = slot0HasDealer
+    ? `${slot0Name}${slot0ReliefLabel ? ` · ${slot0ReliefLabel}` : ""}`
+    : preAssigned
+      ? preAssigned.full_name
+      : pred?.nextDealerName ?? null;
 
   // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
   const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
@@ -218,185 +216,87 @@ export default function SwingTableCard({
     : "Đổi dealer thay thế dự kiến cho bàn này (không thực hiện swing)";
 
   return (
-    <div id={`table-card-${t.id}`} className={[
-      "relative overflow-hidden border rounded-xl transition-all duration-300",
-      isOt ? "border-red-500/60 bg-red-950/20 shadow-[0_0_24px_-8px_rgba(239,68,68,0.35)]" : "border-zinc-700/60 bg-zinc-900/70",
-      isAnimating?.(t.id) ? "table-card--swinging" : "",
-      focused ? "table-card--focused" : "",
-    ].join(" ")}>
-      {/* ── Status-tone top strip (replaces progress bar; reads at a glance) ── */}
-      <div className={["h-1 w-full", topStripColor].join(" ")} aria-hidden="true" />
-
-      {/* ── Card body ── */}
-      <div className="p-3.5 space-y-2.5">
-        {/* Header: status chip + table name + type tag + kebab + close */}
-        <div className="flex items-center gap-2">
-          <span className={["shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border leading-none whitespace-nowrap", statusToneClass].join(" ")}>
-            {tableStatus.label}
-          </span>
-          <span className="text-base font-medium text-zinc-100 truncate">{t.table_name}</span>
-          <span className={[
-            "shrink-0 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded leading-none",
-            t.table_type === "high"
-              ? "bg-rose-500/15 text-rose-400 border border-rose-500/20"
-              : "bg-zinc-800 text-zinc-400 border border-zinc-700",
-          ].join(" ")}>
-            {tableTypeLabel}
-          </span>
-          <div className="ml-auto flex items-center gap-1 shrink-0">
-            {onManualSwing && onForceClose && (
-              <TableCardKebab
-                tableId={t.id}
-                tableName={t.table_name}
-                hasActiveAssign={!!a}
-                onManualSwing={() => onManualSwing(t.id)}
-                onForceClose={() => onForceClose(t.id)}
-              />
-            )}
-            {closeConfirm ? (
-              <div className="flex items-center gap-1">
-                <button className="text-destructive text-[10px] hover:underline" onClick={onCloseTableConfirm} disabled={closingTable}>
-                  Xác nhận
-                </button>
-                <button className="text-muted-foreground text-[10px] hover:underline" onClick={onCloseTableCancel}>
-                  Huỷ
-                </button>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id={`table-card-${t.id}`}
+          className={cn(
+            "group relative w-full overflow-hidden rounded-xl border p-3 text-left transition",
+            "bg-zinc-900/70 hover:bg-zinc-800/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            s.border,
+            isAnimating?.(t.id) && "table-card--swinging",
+            focused && "ring-2 ring-primary/80",
+          )}
+        >
+          {/* Header: Bàn N + status pill */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-zinc-100">Bàn {t.table_name}</div>
+              <div className="mt-1 flex items-center gap-1.5">
+                <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
+                <span className={cn("text-[11px] font-medium", s.text)}>{s.label}</span>
               </div>
-            ) : (
-              <button className="text-zinc-600 hover:text-red-400 p-1" title="Đóng bàn"
-                onClick={() => onCloseTableClick(t.id)}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+            </div>
+            {(dealerStatus === "missing" || dealerStatus === "overdue") && (
+              <AlertTriangle className="h-4 w-4 shrink-0 text-orange-300" aria-hidden="true" />
             )}
           </div>
-        </div>
 
-        {/* ── Dealer → big countdown (dealer present) / pre-assign / empty ── */}
-        {dealer ? (
-          <>
-            <div className="flex items-center gap-2">
-              <div className={["w-2 h-2 rounded-full flex-shrink-0", isOt ? "bg-red-500" : "bg-emerald-500"].join(" ")} />
-              <span className="text-sm font-medium text-zinc-100 truncate">{dealer.full_name}</span>
-              <span className={[
-                "shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded leading-none",
-                dealer.tier === "A" ? "bg-amber-500/20 text-amber-400" : dealer.tier === "B" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400",
-              ].join(" ")}>
-                {dealer.tier}
-              </span>
+          {/* Dealer · timer · next */}
+          <div className="mt-2.5 space-y-1.5">
+            <div className="flex items-center gap-2 text-xs">
+              <UserRound className="h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden="true" />
+              {dealerLabel ? (
+                <span className="truncate text-zinc-200">
+                  {preAssigned && !dealer ? "⬆ " : ""}{dealerLabel}
+                </span>
+              ) : (
+                <span className="text-amber-400/90">Chưa gán</span>
+              )}
             </div>
 
             {a && a.assigned_at && (
-              <div>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className={[
-                    "font-serif text-[30px] font-semibold tabular-nums leading-none",
-                    isOt ? "text-red-400" : timerColor,
-                  ].join(" ")}>
-                    {isOt ? otLabel : timerLabel}
-                  </span>
-                  {overdueState ? (
-                    <span className={["text-[10px] uppercase tracking-wider font-medium", overdueState.className].join(" ")}>
-                      {overdueState.label}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
-                      {statusLabel}
-                    </span>
-                  )}
-                </div>
-                {a.swing_due_at && (
-                  <div className="text-[9px] text-zinc-600 font-mono mt-1">
-                    Swing lúc {new Date(a.swing_due_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
-                  </div>
-                )}
+              <div className="flex items-center gap-2 text-xs">
+                <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
+                <span className={cn("font-mono tabular-nums", isOt ? "text-red-400" : timerColor)}>{remainingDisplay}</span>
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{statusLabel}</span>
               </div>
             )}
-          </>
-        ) : preAssigned ? (
-          <div className="flex items-center gap-2 text-primary">
-            <span className="text-sm">⬆</span>
-            <span className="text-sm font-medium truncate">{preAssigned.full_name}</span>
-            {preAssignLabel ? (
-              <span className={[
-                "shrink-0 text-[10px] font-medium",
-                preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
-              ].join(" ")}>· {preAssignLabel}</span>
-            ) : null}
+
+            {dealer && nextLabel && (
+              <div className="truncate text-[11px] text-zinc-500">
+                Dự kiến: <span className="text-zinc-300">{nextLabel}</span>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex flex-col items-center py-4 text-zinc-500">
-            <svg className="w-8 h-8 mb-1.5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span className="text-xs text-amber-500/80 mb-2">Đợi dealer</span>
-            <Button size="sm" variant="outline" className="text-sm h-11 px-5 text-emerald-500 border-emerald-500/40 hover:bg-emerald-500/10"
-              onClick={() => onAssign(t.id)}>
-              <Users className="w-4 h-4 mr-1.5" /> Gán dealer
-            </Button>
+
+          {/* Bottom progress bar (status-colored) */}
+          {a && a.assigned_at && (
+            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full rounded-full transition-all", s.progress)} style={{ width: `${progressPct}%` }} />
+            </div>
+          )}
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent align="start" className="w-72 border-zinc-700 bg-zinc-900 p-3">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-zinc-100">Bàn {t.table_name}</div>
+            <div className="truncate text-[11px] text-zinc-400">
+              {dealer ? dealer.full_name : preAssigned ? `⬆ ${preAssigned.full_name}` : "Chưa gán"}
+            </div>
           </div>
+          <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium", s.border, s.bg, s.text)}>
+            {s.label}
+          </span>
+        </div>
+
+        {overdueState && (
+          <div className={cn("mb-2 font-mono text-[11px]", overdueState.className)}>{overdueState.label}</div>
         )}
 
-        {/* ── Next dealer inline (inside card body) ── */}
-        {/* Schedule slot0 (source of truth) → preAssigned (confirmed) → pred (prediction RPC). */}
-        {dealer && (slot0HasDealer || forecastSlots.length > 0 || preAssigned || pred?.nextDealerName) && (
-          <>
-            <div className="border-t border-zinc-800" />
-            {(slot0HasDealer || preAssigned || pred?.nextDealerName) && (
-              <div className="flex items-center gap-2 pt-0.5 flex-wrap">
-                <span className="text-[10px] text-zinc-500">Tiếp:</span>
-                {slot0HasDealer ? (
-                  slot0Locked ? (
-                    <span className="text-[11px] text-emerald-400 font-medium">
-                      <span className="text-emerald-500">✓</span> CHỐT {slot0Name}
-                      {slot0ReliefLabel ? (
-                        <span className="ml-1 text-emerald-500/80">· {slot0ReliefLabel}</span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-amber-400">
-                      ~ DỰ ĐOÁN {slot0Name}
-                      {slot0ReliefLabel ? (
-                        <span className="ml-1 text-amber-400/80">· {slot0ReliefLabel}</span>
-                      ) : null}
-                    </span>
-                  )
-                ) : preAssigned ? (
-                  <span className="text-[11px] text-emerald-400 font-medium">
-                    <span className="text-emerald-500">✓</span> {preAssigned.full_name}
-                    {preAssignLabel ? (
-                      <span className={[
-                        "ml-1",
-                        preAssignStatus === "in_progress" ? "text-purple-400" : "text-amber-400",
-                      ].join(" ")}>· {preAssignLabel}</span>
-                    ) : null}
-                  </span>
-                ) : pred?.nextDealerName ? (
-                  pred.confidence === "confirmed" ? (
-                    <span className="text-[11px] text-emerald-400 font-medium">
-                      <span className="text-emerald-500">✓</span> {pred.nextDealerName}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-zinc-400">~ DỰ ĐOÁN {pred.nextDealerName}</span>
-                  )
-                ) : null}
-                {/* "Đổi" mini-button removed — promoted to the "Đổi dự kiến"
-                    action-row button below (same handler, clearer placement). */}
-              </div>
-            )}
-            {forecastSlots.length > 0 && (
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="text-[9px] text-zinc-600 uppercase tracking-wider">~ Dự đoán:</span>
-                <span className="text-[10px] text-zinc-500 truncate">
-                  {forecastSlots
-                    .map((s) => `${s.in_dealer_name ?? "dealer"}${s.planned_relief_at ? ` ${formatTimeHHmm(new Date(s.planned_relief_at).getTime())}` : ""}`)
-                    .join(" · ")}
-                </span>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── Action buttons (grouped primary vs correction, ≥44px) ── */}
         <SwingTableActions
           mode={a && a.status === "assigned" ? "assigned" : "empty"}
           isOt={isOt}
@@ -428,7 +328,32 @@ export default function SwingTableCard({
           }}
           onAssign={() => onAssign(t.id)}
         />
-      </div>
-    </div>
+
+        {/* Secondary: manual swing / force close (kebab) + close table */}
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-800 pt-2">
+          {onManualSwing && onForceClose && (
+            <TableCardKebab
+              tableId={t.id}
+              tableName={t.table_name}
+              hasActiveAssign={!!a}
+              onManualSwing={() => onManualSwing(t.id)}
+              onForceClose={() => onForceClose(t.id)}
+            />
+          )}
+          {closeConfirm ? (
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" className="h-9 text-xs text-destructive" disabled={closingTable} onClick={onCloseTableConfirm}>
+                Xác nhận đóng
+              </Button>
+              <Button size="sm" variant="ghost" className="h-9 text-xs" onClick={onCloseTableCancel}>Huỷ</Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="ghost" className="h-9 text-xs text-zinc-400 hover:text-red-400" onClick={() => onCloseTableClick(t.id)}>
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Đóng bàn
+            </Button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
