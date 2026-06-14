@@ -20,6 +20,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   isAdmin: boolean;
   isClubAdmin: boolean;
+  isClubOwner: boolean; // owns >=1 club (clubs.owner_id) — independent of the club_admin role
   isCashier: boolean;
   isStaffOps: boolean; // super_admin OR cashier — can access staking ops
   isMedia: boolean; // media role
@@ -33,6 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
+  const [isClubOwner, setIsClubOwner] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 0);
       } else {
         setRoles([]);
+        setIsClubOwner(false);
         setTimeout(() => logoutUser(), 0);
       }
     });
@@ -67,13 +70,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const fetchRoles = async (userId: string) => {
-    const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-    setRoles((data ?? []).map((r: any) => r.role as AppRole));
+    const [{ data: roleRows }, { data: ownedClubs }] = await Promise.all([
+      supabase.from("user_roles").select("role").eq("user_id", userId),
+      supabase.from("clubs").select("id").eq("owner_id", userId).limit(1),
+    ]);
+    setRoles((roleRows ?? []).map((r: any) => r.role as AppRole));
+    setIsClubOwner((ownedClubs ?? []).length > 0);
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setRoles([]);
+    setIsClubOwner(false);
   };
 
   return (
@@ -81,6 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       session, user, roles, loading, signOut,
       isAdmin: roles.includes("super_admin"),
       isClubAdmin: roles.includes("club_admin") || roles.includes("super_admin"),
+      isClubOwner,
       isCashier: roles.includes("cashier") || roles.includes("club_cashier"),
       isStaffOps: roles.includes("super_admin") || roles.includes("cashier") || roles.includes("club_cashier"),
       isMedia: roles.includes("media"),
