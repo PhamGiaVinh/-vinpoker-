@@ -1,7 +1,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { UserPlus, UserCheck, ExternalLink, Lock, Plus } from "lucide-react";
+import { UserPlus, ExternalLink, Lock, Plus } from "lucide-react";
 import { formatVND } from "@/lib/format";
 
 export interface MapSeat {
@@ -90,7 +90,6 @@ export function FloorTableDetailSheet({
           <div className="text-xs text-muted-foreground">Thao tác bàn</div>
           <TooltipProvider>
             <div className="grid grid-cols-2 gap-2">
-              <SoonButton icon={UserCheck} label="Gán dealer" />
               <SoonButton icon={ExternalLink} label="Mở bàn" />
               <SoonButton icon={UserPlus} label="Thêm người" />
               <SoonButton icon={Lock} label="Đóng bàn" danger />

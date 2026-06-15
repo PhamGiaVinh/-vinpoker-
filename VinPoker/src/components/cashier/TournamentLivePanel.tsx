@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3, Bot,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -27,6 +27,7 @@ import { TournamentLiveView } from "./tournament-live/TournamentLiveView";
 import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
 import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
 import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
+import { TdAiTabPanel } from "@/components/td-ai/TdAiTabPanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -70,7 +71,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // Which tabs each operator role sees. "full" preserves the original panel
 // (default, so existing call sites are unchanged); tracker = live-tracking view,
-// floor = room-management view. live_view is in every set, so defaultValue stays valid.
+// floor = room-management view.
 const MODE_TABS: Record<string, string[]> = {
   full: ["table_map", "live_view", "clock", "players", "queue", "hand_input", "hand_history", "leaderboard", "blinds", "prizes", "tv_displays"],
   // Owner IA 2026-06-14: Floor OWNS room operations + physical display management
@@ -78,7 +79,9 @@ const MODE_TABS: Record<string, string[]> = {
   // assignment). Tracker OWNS live tracking (live view, clock, hand input/history,
   // leaderboard). ClockPanel only READS the stored blind structure (no own levels).
   tracker: ["live_view", "clock", "hand_input", "hand_history", "leaderboard"],
-  floor: ["table_map", "live_view", "players", "queue", "prizes", "blinds", "tv_displays"],
+  // Owner 2026-06-16: Floor drops the live-tracking "Xem trực tiếp" view (that's the
+  // Tracker's job) and surfaces the TD AI rules assistant as its own tab instead.
+  floor: ["table_map", "players", "queue", "prizes", "blinds", "tv_displays", "td_ai"],
 };
 
 export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
@@ -359,6 +362,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
                 }))}
               />
             ) },
+            { value: "td_ai", icon: Bot, label: "TD AI", render: () => <TdAiTabPanel tournamentId={selectedTournament.id} /> },
           ];
           const allowed = MODE_TABS[mode] ?? MODE_TABS.full;
           const visibleTabs = TAB_DEFS.filter((td) => allowed.includes(td.value));
