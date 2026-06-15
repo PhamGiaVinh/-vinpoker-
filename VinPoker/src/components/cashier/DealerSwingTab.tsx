@@ -256,6 +256,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
 
   // Break duration dialog state
   const [breakDurationOpen, setBreakDurationOpen] = useState<string | null>(null);
+  // V3 Priority Lane (top, full-width) — its own final-handoff confirm so the
+  // TableGrid card-swing wiring stays untouched. perform_swing itself unchanged.
+  const [laneConfirmSwing, setLaneConfirmSwing] = useState<ConfirmSwingRequest | null>(null);
 
   // Default break duration from swing_config, ref for timer callback stability
   const defaultBreakMinutes = useMemo(() => {
@@ -1603,12 +1606,76 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           earliestShortageLabel={performanceKpis.earliestShortageLabel}
           nowMs={nowMs}
         />
+
+        {/* ── PRIORITY LANE (V3) — full-width alerts band on top ── */}
+        <div className="mb-4">
+          <AttentionQueue
+            horizontal
+            assignments={assignments ?? []}
+            tables={tables ?? []}
+            dealers={dealers ?? []}
+            tableAssignmentMap={tableAssignmentMap}
+            timelineByTableId={timelineByTableId}
+            nextDealerMap={nextDealerMap}
+            scheduleByTableId={scheduleByTableId}
+            nowMs={nowMs}
+            autoSwingEnabled={autoSwingEnabled}
+            onSwing={(tableId) => {
+              const a = tableAssignmentMap[tableId];
+              if (!a?.id) { toast.warning("Bàn này không có assignment hiệu lực hoặc dữ liệu đã cũ. Vui lòng tải lại."); return; }
+              const t = (tables ?? []).find((x) => x.id === tableId);
+              const currentDealer = a.dealer_attendance?.dealers?.full_name ?? "Dealer hiện tại";
+              const nextDealer = a.pre_assigned_attendance_id
+                ? (assignments ?? []).find((x) => x.attendance_id === a.pre_assigned_attendance_id)?.dealer_attendance?.dealers?.full_name ?? null
+                : null;
+              setLaneConfirmSwing({
+                assignmentId: a.id,
+                tableName: t?.table_name ?? "Bàn",
+                outName: currentDealer,
+                inName: nextDealer,
+                isOt: !!a.overtime_started_at,
+              });
+            }}
+            onAssign={openAssignModal}
+            onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+            onFocusTable={focusTable}
+          />
+        </div>
+
+        {/* Priority Lane final-handoff confirm (separate from TableGrid's) */}
+        <AlertDialog open={!!laneConfirmSwing} onOpenChange={(o) => { if (!o) setLaneConfirmSwing(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {laneConfirmSwing?.isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi dealer"} — {laneConfirmSwing?.tableName}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {laneConfirmSwing?.outName} sẽ ra, {laneConfirmSwing?.inName ?? "dealer do hệ thống chọn"} sẽ vào ngay.
+                Đây là handoff cuối cùng — dealer hiện tại được giải phóng và swing log được ghi.
+                {laneConfirmSwing?.isOt
+                  ? " Bàn đang quá hạn: thao tác khẩn cấp, hãy chắc chắn dealer thay đã sẵn sàng."
+                  : ""}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Hủy</AlertDialogCancel>
+              <AlertDialogAction
+                className={laneConfirmSwing?.isOt ? "bg-destructive hover:bg-destructive" : undefined}
+                onClick={() => {
+                  if (laneConfirmSwing) performSwingForTable(laneConfirmSwing.assignmentId);
+                  setLaneConfirmSwing(null);
+                }}>
+                {laneConfirmSwing?.isOt ? "Chốt đổi khẩn cấp" : "Chốt đổi"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Mobile tab bar (<md only). Tablet (md–lg) stacks all 3; desktop = 3-col. */}
         <div className="md:hidden mb-3 flex gap-1 rounded-xl border border-border/60 bg-card/70 p-1">
           {([
             { k: "map", label: "Bản đồ bàn" },
-            { k: "left", label: "Break Pool" },
-            { k: "right", label: "Cảnh báo" },
+            { k: "right", label: "Điều khiển" },
           ] as const).map((tab) => (
             <button
               key={tab.k}
@@ -1624,47 +1691,8 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* LEFT COLUMN — Tìm kiếm + Break Pool + (gập) Đội hình */}
-          <div className={cn("order-3 lg:order-none lg:col-span-3 flex-col gap-4 min-h-0", mobileTab === "left" ? "flex" : "hidden md:flex")}>
-            <DealerSearchPanel value={tableSearch} onChange={setTableSearch} />
-            <BreakPoolCard
-              entries={breakPool ?? []}
-              loading={breakPoolLoading}
-              error={breakPoolError}
-              processing={processing}
-              onEndBreak={endBreak}
-              onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
-              onRetry={refetchBreakPool}
-            />
-            <Collapsible>
-              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
-                <span className="font-display tracking-wider">ĐỘI HÌNH / CHECK-IN</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-3">
-                <RosterPanel
-                  dealers={rosterDealers}
-                  assignments={assignments ?? []}
-                  swingConfigs={swingConfigs ?? []}
-                  processing={processing}
-                  totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
-                  checkedInCount={checkedInCount}
-                  checkedOutDealers={checkedOutDealers ?? []}
-                  onSendToBreak={(attId) => setBreakDurationOpen(attId)}
-                  onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
-                  onCheckoutOpen={() => setCheckoutOpen(true)}
-                  onBatchCheckout={handleBatchCheckoutClick}
-                  onReCheckin={doReCheckin}
-                  breakPolicies={breakPolicies ?? []}
-                  onMealBreak={handleMealBreak}
-                  mealBreakAvailability={mealBreakAvailability}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-
-          {/* CENTER COLUMN — battle map (first on mobile) */}
-          <div className={cn("order-1 lg:order-none lg:col-span-6", mobileTab === "map" ? "" : "hidden md:block")}>
+          {/* CENTER COLUMN — battle map (first on mobile, wider in V3) */}
+          <div className={cn("order-1 lg:order-none lg:col-span-8", mobileTab === "map" ? "" : "hidden md:block")}>
             {activeView === "dealers" ? (
               <>
                 {selectedTour && (
@@ -1711,8 +1739,43 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
             )}
           </div>
 
-          {/* RIGHT COLUMN — alerts + actions (after the map on mobile) */}
-          <div className={cn("order-2 lg:order-none lg:col-span-3", mobileTab === "right" ? "" : "hidden md:block")}>
+          {/* RIGHT COLUMN — Action Rail: Relief/Break Pool → Check-in/out → Quick actions */}
+          <div className={cn("order-2 lg:order-none lg:col-span-4 space-y-4 min-h-0", mobileTab === "right" ? "" : "hidden md:block")}>
+            <DealerSearchPanel value={tableSearch} onChange={setTableSearch} />
+            <BreakPoolCard
+              entries={breakPool ?? []}
+              loading={breakPoolLoading}
+              error={breakPoolError}
+              processing={processing}
+              onEndBreak={endBreak}
+              onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
+              onRetry={refetchBreakPool}
+            />
+            <Collapsible>
+              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
+                <span className="font-display tracking-wider">ĐỘI HÌNH / CHECK-IN</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-3">
+                <RosterPanel
+                  dealers={rosterDealers}
+                  assignments={assignments ?? []}
+                  swingConfigs={swingConfigs ?? []}
+                  processing={processing}
+                  totalDealers={allDealers?.filter(d => d.status === 'active').length ?? 0}
+                  checkedInCount={checkedInCount}
+                  checkedOutDealers={checkedOutDealers ?? []}
+                  onSendToBreak={(attId) => setBreakDurationOpen(attId)}
+                  onCheckinOpen={() => { loadCheckinDealers(); setCheckinOpen(true); }}
+                  onCheckoutOpen={() => setCheckoutOpen(true)}
+                  onBatchCheckout={handleBatchCheckoutClick}
+                  onReCheckin={doReCheckin}
+                  breakPolicies={breakPolicies ?? []}
+                  onMealBreak={handleMealBreak}
+                  mealBreakAvailability={mealBreakAvailability}
+                />
+              </CollapsibleContent>
+            </Collapsible>
             <CommandCenter
               auditLogs={auditLogs ?? []}
               onAutoSwing={autoSwingAll}
@@ -3692,7 +3755,7 @@ function CommandCenter({
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   const [stopSaving, setStopSaving] = useState(false);
   const [fullLogOpen, setFullLogOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(true);
   const [massConfirm, setMassConfirm] = useState(false);
 
   const testTelegram = async () => {
@@ -3761,8 +3824,8 @@ function CommandCenter({
         {/* ── HEADER ── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <Bell className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold tracking-wider">LIỆU &amp; CẢNH BÁO</span>
+            <Settings className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold tracking-wider">CÔNG CỤ ĐIỀU HÀNH</span>
           </div>
           {/* Stop Swing button — small, tucked in header */}
           <button
@@ -3774,43 +3837,9 @@ function CommandCenter({
           </button>
         </div>
 
-        {/* ── ATTENTION QUEUE ── */}
-        <AttentionQueue
-          assignments={assignments}
-          tables={tables ?? []}
-          dealers={dealers ?? []}
-          tableAssignmentMap={tableAssignmentMap}
-          timelineByTableId={timelineByTableId}
-          nextDealerMap={nextDealerMap}
-          scheduleByTableId={scheduleByTableId}
-          nowMs={nowMs}
-          autoSwingEnabled={autoSwingEnabled}
-          onSwing={(tableId) => {
-            const a = tableAssignmentMap[tableId];
-            if (!a?.id) {
-              toast.warning("Bàn này không có assignment hiệu lực hoặc dữ liệu đã cũ. Vui lòng tải lại.");
-              return;
-            }
-            const t = tables.find((x) => x.id === tableId);
-            const currentDealer = a.dealer_attendance?.dealers?.full_name ?? "Dealer hiện tại";
-            const nextDealer = a.pre_assigned_attendance_id
-              ? assignments.find((x) => x.attendance_id === a.pre_assigned_attendance_id)?.dealer_attendance?.dealers?.full_name ?? null
-              : null;
-            const isOt = !!a.overtime_started_at;
-            setConfirmSwing({
-              assignmentId: a.id,
-              tableName: t?.table_name ?? "Bàn",
-              outName: currentDealer,
-              inName: nextDealer,
-              isOt,
-            });
-          }}
-          onAssign={onAssign}
-          onSendToBreak={onSendToBreak}
-          onFocusTable={onFocusTable}
-        />
+        {/* (Alerts moved to the full-width Priority Lane on top — see SwingPanel.) */}
 
-        {/* ── Công cụ điều hành (collapsed by default — declutters the alerts feed) ── */}
+        {/* ── Công cụ điều hành ── */}
         <Collapsible open={toolsOpen} onOpenChange={setToolsOpen}>
           <CollapsibleContent className="space-y-3">
             <hr className="border-border/40" />
