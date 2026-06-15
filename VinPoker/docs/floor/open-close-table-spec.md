@@ -126,39 +126,74 @@ Behavior (mirrors `create_offline_buyin_and_seat`, minus the draw):
 
 ---
 
-## 3. Feature — Đóng bàn (close / break a table)
+## 3. Feature — Đóng bàn (close / break a table) + REDRAW + fill empty seats
 
-**Goal:** standard table break — relocate this table's seated players to other open tables, then close it.
+**Goal:** standard tournament table break — when a table is closed, its players are **re-drawn** and
+used to **fill the empty seats** at the remaining tables, keeping the room balanced.
+
+**Owner-locked decisions (2026-06-16):**
+- **Redraw scope = broken-table players ONLY.** Players already seated at other tables do not move;
+  only the closed table's players are re-drawn. (Least disruptive, TDA-standard.)
+- **Fill style = random, shortest-table-first.** The closed table's players are assigned to empty seats
+  in **random** order (fairness) while filling the **currently shortest** table first (balance) — so no
+  remaining table is left short.
+- **No auto-open.** If there aren't enough empty seats, the break is **blocked** and the operator is told
+  to open a table first — never auto-open (owner policy).
 
 ### RPC `close_tournament_table`
 ```
 close_tournament_table(
   p_tournament_table_id  uuid,
-  p_draw_mode            text default 'random_balanced',  -- or 'fill_lowest_table'
+  p_draw_mode            text default 'redraw_balanced',  -- 'redraw_balanced' | 'fill_lowest_table'
   p_reason               text default 'table_break'
 ) returns jsonb
 ```
-Behavior:
-1. Auth + tournament-open. Lock tournament `FOR UPDATE`.
-2. Load this table's **active** seats (the players to relocate).
-3. **Empty table** → just set `status='closed'`, history `reason='close_empty_table'`, return `{ok, moved:[], closed:true}`.
-4. **Capacity precheck**: free seats across **other active tables** must be ≥ players to move; else
-   fail atomically with `insufficient_capacity` (open another table first). This keeps the break
-   all-or-nothing — no half-broken table.
-5. For each seated entry: draw a destination at another open table (per `p_draw_mode`), claim it via
-   the partial unique index (mirror `move_player_seat`), supersede old receipt → new receipt, append
-   history `reason='table_break'`. `unique_violation` on a race → reload + retry that one seat; if it
-   still can't place after retry, **roll back the whole break**.
-6. Set the source table `status='closed'`.
-7. Return `{ ok, table_number, closed:true, moved:[{player_name, from_seat, to_table_number, to_seat_number, receipt_code}] }`.
+`redraw_balanced` = the owner-locked default (random order, shortest-table-first).
+`fill_lowest_table` = deterministic alternative (gom người vào bàn số nhỏ trước, no shuffle).
+
+**Behavior (one atomic transaction — all-or-nothing):**
+1. **Auth + lock.** actor = `auth.uid()` = owner/cashier of the tournament's club; tournament open;
+   `SELECT … FOR UPDATE` on the tournament (serialize concurrent floor actions).
+2. **Movers** = active `tournament_seats` at `p_tournament_table_id` → (entry_id, player_name, from_seat).
+3. **Empty closed table** (no movers) → just `status='closed'`, history `reason='close_empty_table'`,
+   return `{ok, closed:true, moved:[]}`.
+4. **Holes** = every empty seat at OTHER active tables (`table_id` linked, `status='active'`,
+   `id <> p_tournament_table_id`): for each, `seat_number ∈ 1..max_seats` with no `is_active` seat.
+   Each hole carries its table's current occupancy.
+5. **Capacity precheck:** `count(holes) ≥ count(movers)`? If NOT → **ROLLBACK**, return
+   `insufficient_capacity {need, have}`. (No auto-open.)
+6. **Redraw (`redraw_balanced`):**
+   - Shuffle `movers` (random order → fairness).
+   - Repeatedly pick the hole whose table currently has the **fewest** players (ties broken randomly);
+     after each assignment, increment that table's running occupancy so the next pick re-balances.
+     → players land on the shortest tables first, randomly ordered.
+   - (`fill_lowest_table`: order holes by `table_number ASC, seat ASC`, no shuffle.)
+7. **Apply each move** (mirror `move_player_seat`): claim the destination seat via the **partial unique
+   index** `(table_id, seat_number) WHERE is_active=true`. On `unique_violation` (a concurrent grab) →
+   re-pick another still-free hole; if none remain → **roll back the whole break**. Per move: flip the
+   old seat inactive, insert the new active seat, **supersede old receipt → new receipt**
+   (`draw_type='table_break'`), append `seat_assignment_history` (`reason='table_break_redraw'`,
+   records from/to).
+8. **Close source table:** `status='closed'`.
+9. **Return** `{ ok, closed:true, table_number, moved:[{player_name, from_seat, to_table_number,
+   to_seat_number, receipt_code}] }` — UI reprints each moved player's new receipt.
 
 Errors: `unauthorized`, `actor_not_allowed`, `tournament_not_open`, `table_not_found`,
-`insufficient_capacity`.
+`insufficient_capacity`, `race_lost` (rollback after retry exhausted).
+
+### "Cân bàn" (assisted) — auto-pick the shortest table
+Optional companion: a room-level **"Cân bàn"** button computes the **shortest active table** and proposes
+closing it (same RPC, **operator confirms** — no silent auto-close). This is "fill vào những ghế trống"
+generalized: break the most-empty table to fill the scattered holes left by busts.
 
 ### UI (danger-styled, like `SeatDrawDialog`)
-- "Đóng bàn" → confirmation: "Bàn N có K người — sẽ chuyển sang các bàn khác rồi đóng bàn." + draw-mode select.
-- Progressive reveal of each move (reuse the `SeatDrawDialog` result-row pattern).
-- On `insufficient_capacity`: block with "Không đủ ghế trống — mở thêm bàn trước khi đóng."
+- **"Đóng bàn"** (per-table) → confirm: *"Bàn N có K người — sẽ bốc ngẫu nhiên sang ghế trống ở các
+  bàn khác rồi đóng bàn."* + draw-mode toggle (mặc định: redraw cân bàn).
+- **Progressive reveal** of each redraw move (reuse the `SeatDrawDialog` result-row pattern):
+  "Nguyễn A → Bàn 3 · Ghế 5".
+- On `insufficient_capacity`: block — *"Không đủ ghế trống (cần K, có M) — mở thêm bàn trước khi đóng"* —
+  with a shortcut to **"+ Mở bàn"**.
+- After success: list of moved players + **"In lại phiếu"** per player (new table/seat).
 
 ---
 
@@ -176,29 +211,39 @@ Errors: `unauthorized`, `actor_not_allowed`, `tournament_not_open`, `table_not_f
 - **Types:** new RPCs aren't in generated Supabase types until applied → narrow local cast at the call
   site only (`(supabase.rpc as any)(...)` with a `// TODO: remove after DB apply + types regen`).
 
-## 5. Open questions for the owner (decide before build)
+## 5. Decisions
 
+### Resolved (owner-locked 2026-06-16)
+- **Close-table redraw scope:** broken-table players **only** (others don't move).
+- **Fill style:** **random, shortest-table-first** (`redraw_balanced`) — fair + keeps tables balanced.
+- **Insufficient seats:** **block** the break + prompt "+ Mở bàn" — **never auto-open** (owner policy).
+- **"Cân bàn" helper:** auto-picks the shortest table, **operator confirms** (no silent auto-close).
+- **Mở bàn always manual** (no auto-open); a newly opened table's empty seats are filled by **new**
+  players (late reg / re-entry / offline buy-in), not by moving seated players.
+
+### Still open (decide before build)
 1. **game_tables link on open-table:** create a `game_tables` row + link, or reuse the existing
-   table-creation path (`tournament-live-draw` edge fn)? (Confirm the current "how does a table get
-   created today" path — `TableDrawPanel` was removed in #174.)
+   table-creation path (`tournament-live-draw` edge fn)? (Confirm how a table is created today —
+   `TableDrawPanel` was removed in #174.)
 2. **Add-player RPC:** new sibling `add_offline_player_to_seat` (recommended, keeps the live offline RPC
    untouched) vs. extend `create_offline_buyin_and_seat` with optional seat params?
-3. **Close-table when room is full:** hard-fail `insufficient_capacity` (recommended) vs. allow a partial
-   relocation + leave the rest?
-4. **Default `max_seats`** for a newly opened table: fixed 9, or read a tournament-level table-size?
-5. **"Mở bàn" scope:** room-level "+ Mở bàn" (new table) + per-table "re-open closed table" — confirm both.
+3. **Default `max_seats`** for a newly opened table: fixed 9, or read a tournament-level table-size?
+4. **"Mở bàn" scope:** room-level "+ Mở bàn" (new table) + per-table "re-open closed table" — confirm both.
 
 ## 6. Build order (one branch, when approved)
 
-1. Source-only migrations: `open_tournament_table`, `add_offline_player_to_seat`, `close_tournament_table`.
+1. Source-only migrations: `open_tournament_table`, `add_offline_player_to_seat`, `close_tournament_table`
+   (the last one carries the `redraw_balanced` shortest-table-first algorithm + capacity precheck).
 2. UI: `OpenTableDialog`, `AddPlayerDialog` (reuse offline-buyin + hidden-occupied seat picker),
-   `CloseTableDialog`; wire the three buttons in `FloorTableDetailSheet` (+ room-level "+ Mở bàn").
+   `CloseTableDialog` (danger confirm + progressive redraw reveal + reprint receipts); wire the three
+   buttons in `FloorTableDetailSheet` (+ room-level "+ Mở bàn" and "Cân bàn").
 3. `featureFlags`: `floorTableOps=false`; buttons "Cần bật RPC".
 4. `npx tsc --noEmit` + `npm run build`; diff + forbidden-path proof; draft PR (mixed FE + source-only
    migrations → flag to Coordinator; nothing applied by merge).
-5. Owner-gated: controlled apply of the three migrations → flip `floorTableOps=true` → floor UAT
-   (open a table, walk-in add to a chosen empty seat with receipt, break a table and verify all players
-   relocated + table closed).
+5. Owner-gated: controlled apply of the three migrations → flip `floorTableOps=true` → floor UAT:
+   open a table; walk-in add to a chosen empty seat with receipt; **break a table and verify its
+   players are randomly re-drawn into the shortest tables first, all get new receipts, and the room
+   stays balanced**; confirm `insufficient_capacity` blocks (no auto-open) when seats are short.
 
 ## 7. Risks
 
