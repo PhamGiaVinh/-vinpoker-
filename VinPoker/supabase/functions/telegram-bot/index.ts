@@ -279,7 +279,12 @@ async function provisionDealerAccount(
     email = u?.user?.email ?? null;
     if (email) await admin.auth.admin.updateUserById(authUserId, { password: tempPassword });
   } else {
-    email = `dealer.${userId}@dealer.vinpoker.live`;
+    // Account handle = the email local-part the dealer types on the dealer-app
+    // login (no real email needed). Short, unique, stable: dlr<base36(telegram id)>.
+    // The dealer-app login appends "@dealer.vinpoker.live", so the handle ↔ email
+    // map is a pure string rule (no pre-auth DB lookup). Keep this domain in sync
+    // with DEALER_EMAIL_DOMAIN in src/lib/dealerApp/constants.ts.
+    email = `dlr${userId.toString(36)}@dealer.vinpoker.live`;
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       password: tempPassword,
@@ -310,6 +315,9 @@ async function provisionDealerAccount(
   });
   const actionLink: string | null = linkData?.properties?.action_link ?? null;
 
+  // Account handle = email local-part (no email for the dealer to remember).
+  const accountCode = email.split("@")[0];
+
   // Reply in plain text so the long URL isn't mangled by Markdown.
   const lines = [
     `✅ Tài khoản dealer của "${target.full_name}" đã sẵn sàng — bạn đã được duyệt.`,
@@ -321,14 +329,14 @@ async function provisionDealerAccount(
   }
   lines.push(
     "",
-    "Đăng nhập lại sau bằng:",
-    `• Email: ${email}`,
+    "Đăng nhập lại sau (mục Đăng nhập dealer trong app):",
+    `• Tài khoản: ${accountCode}`,
     `• Mật khẩu tạm: ${tempPassword}`,
     "",
     "👉 Nên đổi mật khẩu trong mục Tài khoản sau khi đăng nhập.",
   );
   if (!actionLink && linkErr) {
-    lines.push("", "(Chưa tạo được link 1 chạm — dùng Email + Mật khẩu ở trên để đăng nhập.)");
+    lines.push("", "(Chưa tạo được link 1 chạm — dùng Tài khoản + Mật khẩu ở trên để đăng nhập.)");
   }
   await sendDM(botToken, chatId, lines.join("\n"), null);
 }

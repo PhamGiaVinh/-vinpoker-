@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Spade } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +10,7 @@ import { DealerBottomNav } from "./DealerBottomNav";
 import { DealerNotificationBell } from "./DealerNotificationBell";
 import { DealerComingSoon } from "./DealerComingSoon";
 import { DealerClubSwitcher } from "./DealerClubSwitcher";
+import { DealerLogin } from "./DealerLogin";
 import { BackButton } from "@/components/BackButton";
 
 /**
@@ -26,17 +26,14 @@ export default function DealerAppShell() {
   const { t } = useTranslation();
   const { user, isAdmin, isClubOwner, loading: authLoading } = useAuth();
   const { loading, source } = useDealerLink();
-  const nav = useNavigate();
 
   const flagOn = FEATURES.dealerMobileApp;
   const allowPreview = isAdmin || isClubOwner;
 
-  useEffect(() => {
-    if (!authLoading && source === "live" && !user) nav("/auth", { replace: true });
-  }, [authLoading, source, user, nav]);
-
   if (authLoading || loading) return <RouteLoader />;
-  if (source === "live" && !user) return null; // redirecting
+  // Live mode + not signed in → the dealer-app login (account code + password the
+  // Telegram bot sent, or the one-tap link), instead of the shared email login.
+  if (source === "live" && !user) return <DealerLogin />;
   if (!flagOn && !allowPreview) return <DealerComingSoon />;
 
   return (

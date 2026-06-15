@@ -16,3 +16,9 @@ export const WEEKLY_TARGET_HOURS = 40;
 /** Gold accent reserved for shift/earnings emphasis (hybrid Stitch theme). The
  *  app base stays neon-green (--primary); gold is a focused accent only. */
 export const DEALER_GOLD = "#E6B84C";
+
+/** Synthetic email domain for dealer-app accounts auto-provisioned via Telegram
+ *  `/setup`. The dealer logs in with just an account code (the email local-part)
+ *  + password — no email to remember; the dealer login appends "@<domain>". MUST
+ *  stay in sync with the telegram-bot edge function (`provisionDealerAccount`). */
+export const DEALER_EMAIL_DOMAIN = "dealer.vinpoker.live";

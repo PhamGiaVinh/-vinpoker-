@@ -85,6 +85,17 @@
     "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
     "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
     "toast": { "previewOnly": "Preview only — actions enable on rollout" },
+    "login": {
+      "title": "Dealer sign-in",
+      "account": "Account",
+      "accountPlaceholder": "Account code from the bot (e.g. dlr2cl8gqg)",
+      "password": "Password",
+      "submit": "Sign in",
+      "hint": "First time? Open Telegram and tap the one-tap login link the bot sent, or send /setup to get your account.",
+      "missing": "Enter account and password.",
+      "failed": "Wrong account or password.",
+      "ok": "Signed in."
+    },
     "exitToMain": "Main app"
   },
   "tv": {
