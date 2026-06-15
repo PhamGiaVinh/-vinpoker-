@@ -148,7 +148,16 @@ function resolveTableSwingTiming(
    SWING PANEL — Main 3-Column Layout
    ============================================================== */
 export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
-  const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
+  // Dealer Swing always operates on ONE club (no cross-club mixing) — default to
+  // the first accessible club; the selector switches clubs. (Owner: "club nào thì
+  // bàn club đó".)
+  const [clubFilter, setClubFilter] = useState<string | null>(clubIds[0] ?? null);
+  // Keep clubFilter valid once clubIds resolves / access changes.
+  useEffect(() => {
+    if (clubIds.length > 0 && (!clubFilter || !clubIds.includes(clubFilter))) {
+      setClubFilter(clubIds[0]);
+    }
+  }, [clubIds, clubFilter]);
   const filteredClubIds = useMemo(() => {
     const ids = clubFilter ? [clubFilter] : clubIds;
     return [...ids].sort();
@@ -1478,12 +1487,11 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {clubs.length > 1 && (
-          <Select value={clubFilter ?? "all"} onValueChange={(v) => setClubFilter(v === "all" ? null : v)}>
+          <Select value={clubFilter ?? undefined} onValueChange={(v) => setClubFilter(v)}>
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="Tất cả CLB" />
+              <SelectValue placeholder="Chọn CLB" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả CLB</SelectItem>
               {clubs.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
