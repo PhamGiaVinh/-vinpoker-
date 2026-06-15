@@ -63,6 +63,13 @@ C. Flip the DB flag ON  (runtime live; UI still dark — only direct Edge calls 
 
 D. Run the G4 LIVE DRILL on a disposable table  (§3)  — via direct Edge calls
 
+D2. Timeout sweep (PR C) — wire BEFORE real humans play (an AFK player must not stall a table):
+   - supabase functions deploy online-poker-timeout-sweep --no-verify-jwt
+       set Edge env  OP_TIMEOUT_SWEEP_SECRET = <random>
+   - set DB GUC      app.op_timeout_sweep_secret = <same value>   (ALTER DATABASE … SET …)
+   - apply migration 20260903000000_online_poker_timeout_sweep_cron.sql  (pg_cron every 15s)
+   - verify: a hand left past act_deadline auto-folds/checks; idempotent (re-run = no double action)
+
 E. If the drill PASSES → expose the UI (separate frontend PR):
      FEATURES.onlinePoker = true   AND   RUNTIME_LIVE = true
    build + deploy. The client's live hooks (useLobby/useTableHand) activate; the
