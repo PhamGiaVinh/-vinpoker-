@@ -132,6 +132,15 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    // ── /taotaikhoan [gmail] — create the dealer-app account (already linked) ─
+    // For a dealer who is ALREADY telegram-linked but has no app account yet:
+    // issues the account ONCE. Optional <gmail> binds a real email so they can
+    // sign in + self-recover by email. Aliases for typing convenience.
+    if (["/taotaikhoan", "/tao_tai_khoan", "/taotk", "/taikhoan", "/account"].includes(rawCmd)) {
+      await handleCreateAccount(admin, botToken, chatId, userId, cmdArgs);
+      return json({ ok: true });
+    }
+
     // ── /unlink ──────────────────────────────────────────────────────────
     if (rawCmd === "/unlink") {
       await handleUnlink(admin, botToken, chatId, userId, false);
@@ -257,6 +266,55 @@ async function handleSetup(
   await provisionDealerAccount(admin, botToken, chatId, userId, target);
 }
 
+function isEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+// ── /taotaikhoan handler — create the dealer-app account on demand ──────────
+// Precondition: the sender is ALREADY telegram-linked (a dealer row carries their
+// telegram_user_id). Without a real-email arg, the account is issued ONCE; once it
+// exists the command will NOT silently re-issue — the dealer recovers via email or
+// gets a Gmail bound. With a <gmail> arg, a real email is set (create or bind) so
+// the dealer can sign in + reset by email "như bình thường".
+async function handleCreateAccount(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  userId: number,
+  emailArg: string,
+) {
+  const cols = "id, full_name, club_id, status, user_id, telegram_user_id, telegram_username";
+  const { data: target } = await admin.from("dealers").select(cols).eq("telegram_user_id", userId).maybeSingle();
+
+  if (!target) {
+    await sendDM(
+      botToken,
+      chatId,
+      "Bạn chưa liên kết Telegram với hồ sơ dealer.\nGõ /setup trước (hoặc nhờ Floor/DC nhập @username của bạn), rồi gõ /taotaikhoan lại.",
+    );
+    return;
+  }
+
+  const email = emailArg.trim();
+  if (email && !isEmail(email)) {
+    await sendDM(botToken, chatId, "Email không hợp lệ. Ví dụ: /taotaikhoan ten@gmail.com");
+    return;
+  }
+
+  // Already has an account + no new email → enforce "cấp 1 lần"; point to recovery.
+  if (target.user_id && !email) {
+    await sendDM(
+      botToken,
+      chatId,
+      "Bạn đã có tài khoản dealer (chỉ cấp 1 lần).\nNếu quên mật khẩu:\n• Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự đặt lại mật khẩu, hoặc\n• Liên hệ DC để được cấp lại.",
+    );
+    return;
+  }
+
+  // Create (no account) OR bind a real email to the existing account.
+  await provisionDealerAccount(admin, botToken, chatId, userId, target, email || null);
+}
+
 // ── Auto-provision a VBacker account for a (floor-approved) dealer ──────────
 // Creates an auth user (deterministic synthetic email + temp password), links
 // dealers.user_id, and replies with a one-tap magic link + the temp credentials.
@@ -268,23 +326,35 @@ async function provisionDealerAccount(
   chatId: number,
   userId: number,
   target: any,
+  explicitEmail: string | null = null,
 ) {
   const tempPassword = randomPassword();
   let authUserId: string | null = target.user_id ?? null;
   let email: string | null = null;
 
   if (authUserId) {
-    // Existing account → fetch email, reset to the temp password we will send.
-    const { data: u } = await admin.auth.admin.getUserById(authUserId);
-    email = u?.user?.email ?? null;
-    if (email) await admin.auth.admin.updateUserById(authUserId, { password: tempPassword });
+    if (explicitEmail) {
+      // Bind a real email (Gmail) to the existing account so the dealer can sign
+      // in with it AND self-recover via the normal email password reset.
+      await admin.auth.admin.updateUserById(authUserId, {
+        email: explicitEmail,
+        email_confirm: true,
+        password: tempPassword,
+      });
+      email = explicitEmail;
+    } else {
+      // Existing account → fetch email, reset to the temp password we will send.
+      const { data: u } = await admin.auth.admin.getUserById(authUserId);
+      email = u?.user?.email ?? null;
+      if (email) await admin.auth.admin.updateUserById(authUserId, { password: tempPassword });
+    }
   } else {
     // Account handle = the email local-part the dealer types on the dealer-app
     // login (no real email needed). Short, unique, stable: dlr<base36(telegram id)>.
     // The dealer-app login appends "@dealer.vinpoker.live", so the handle ↔ email
     // map is a pure string rule (no pre-auth DB lookup). Keep this domain in sync
     // with DEALER_EMAIL_DOMAIN in src/lib/dealerApp/constants.ts.
-    email = `dlr${userId.toString(36)}@dealer.vinpoker.live`;
+    email = explicitEmail ?? `dlr${userId.toString(36)}@dealer.vinpoker.live`;
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       password: tempPassword,
@@ -315,7 +385,8 @@ async function provisionDealerAccount(
   });
   const actionLink: string | null = linkData?.properties?.action_link ?? null;
 
-  // Account handle = email local-part (no email for the dealer to remember).
+  // Synthetic (code) account vs a real bound email (Gmail).
+  const isSynthetic = email.endsWith("@dealer.vinpoker.live");
   const accountCode = email.split("@")[0];
 
   // Reply in plain text so the long URL isn't mangled by Markdown.
@@ -327,16 +398,20 @@ async function provisionDealerAccount(
   if (actionLink) {
     lines.push("", "Đăng nhập 1 chạm (bấm là vào thẳng app, hết hạn sau ~1 giờ):", actionLink);
   }
-  lines.push(
-    "",
-    "Đăng nhập lại sau (mục Đăng nhập dealer trong app):",
-    `• Tài khoản: ${accountCode}`,
-    `• Mật khẩu tạm: ${tempPassword}`,
-    "",
-    "👉 Nên đổi mật khẩu trong mục Tài khoản sau khi đăng nhập.",
-  );
+  lines.push("", "Đăng nhập lại sau (mục Đăng nhập dealer trong app):");
+  if (isSynthetic) {
+    lines.push(`• Tài khoản: ${accountCode}`, `• Mật khẩu tạm: ${tempPassword}`);
+  } else {
+    lines.push(`• Email/Gmail: ${email}`, `• Mật khẩu tạm: ${tempPassword}`);
+  }
+  lines.push("", "👉 Nên đổi mật khẩu trong mục Tài khoản sau khi đăng nhập.");
+  if (isSynthetic) {
+    lines.push("ℹ️ Tài khoản này chỉ cấp 1 lần. Mất? Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự khôi phục.");
+  } else {
+    lines.push("Quên mật khẩu sau này? Đặt lại qua email/Gmail như bình thường.");
+  }
   if (!actionLink && linkErr) {
-    lines.push("", "(Chưa tạo được link 1 chạm — dùng Tài khoản + Mật khẩu ở trên để đăng nhập.)");
+    lines.push("", "(Chưa tạo được link 1 chạm — dùng thông tin đăng nhập ở trên.)");
   }
   await sendDM(botToken, chatId, lines.join("\n"), null);
 }
