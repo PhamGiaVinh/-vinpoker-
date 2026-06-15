@@ -13,7 +13,7 @@ export function LiveTablesStrip({ tables, activeTableId }: LiveTablesStripProps)
   if (!tables || tables.length <= 1) return null; // single table → no strip needed
   return (
     <div className="space-y-1.5">
-      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
+      <div className="tracker-display text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
         Các bàn trực tiếp
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">

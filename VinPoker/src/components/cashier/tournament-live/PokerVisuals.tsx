@@ -172,15 +172,16 @@ export function TrackerVisualStyles() {
           0% { transform: translate(-50%, -50%) scale(.94); opacity: .7; }
           100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
         }
+        /* Subtle breathing — depth via a soft drop shadow, NOT a neon outer glow. */
         @keyframes tracker-pot-pulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(251, 191, 36, .22); }
-          50% { transform: scale(1.045); box-shadow: 0 0 34px rgba(251, 191, 36, .36); }
+          0%, 100% { transform: scale(1); box-shadow: 0 1px 6px rgba(0, 0, 0, .4); }
+          50% { transform: scale(1.03); box-shadow: 0 2px 12px rgba(0, 0, 0, .5); }
         }
         /* One-shot chip pulse when a seat commits chips this street (Live Action Engine, cosmetic). */
         @keyframes tracker-bet-pulse {
-          0% { transform: scale(.6); opacity: 0; }
-          45% { transform: scale(1.18); opacity: 1; box-shadow: 0 0 14px rgba(251, 191, 36, .5); }
-          100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+          0% { transform: scale(.7); opacity: 0; }
+          50% { transform: scale(1.12); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
         }
         @keyframes tracker-glow-sweep {
           from { transform: translateX(-110%) skewX(-18deg); opacity: .12; }

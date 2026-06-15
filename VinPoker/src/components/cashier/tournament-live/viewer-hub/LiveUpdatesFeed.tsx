@@ -24,7 +24,7 @@ const KIND_META: Record<HubFeedKind, { text: string; cls: string; Icon: LucideIc
 export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
+      <div className="tracker-display flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
         Cập nhật • Trực tiếp
       </div>
@@ -50,7 +50,7 @@ export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
                     <span className="shrink-0 text-[10px] text-muted-foreground">Ghế {item.seatNumber}</span>
                     <span className="truncate font-semibold text-foreground">{item.playerName}</span>
                   </div>
-                  <div className="truncate font-mono text-[11px] text-warning">{item.label}</div>
+                  <div className="tracker-num truncate text-[11px] text-warning">{item.label}</div>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${meta.cls}`}>
                   {meta.text}
