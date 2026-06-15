@@ -1,17 +1,16 @@
 // src/components/poker/SeatRing.tsx
-// GE-2D — the table felt + seats (GG-style), pure presentation of a PublicHandView.
-// Each seat is an avatar (initials) + nameplate with stack in BB + chips; the
-// committed bet shows as a chip on the felt toward the pot; the to-act seat gets a
-// neon ring. The viewer's own seat (mySeat) is anchored at the bottom, larger, and
-// shows its private hole cards; every other seat shows face-down cards (or
-// revealedCards at showdown, or a folded marker). Sizes scale up on desktop so the
-// game state (board / pot / seats) reads as the focal point, not the chrome. Red
-// felt is permitted here (poker-table visual). Visual only — no logic.
+// GE-2D/2E — the table felt + seats (GG-style), pure presentation of a
+// PublicHandView. GE-2E polish: a premium, slightly-darker felt with a soft centre
+// glow + vignette, a layered rail for depth, a very subtle desktop-only "VinPoker"
+// watermark, a stronger hero spotlight, and a gentle to-act ring pulse. Face-up
+// cards (board / hero / showdown) flip in; face-down cards use the Royal Guilloché
+// back. Red/burgundy felt is permitted here (poker-table visual). Visual only.
 
 import { cn } from '@/lib/utils';
 import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
+import './pokerTable.css';
 import { Clock } from 'lucide-react';
 
 const AVATAR_BG = [
@@ -67,11 +66,11 @@ function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolea
   }
 
   const cards = isMe
-    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="md" />)
+    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />)
     : folded
       ? <span className="px-2 py-1 text-[11px] text-white/50">đã bỏ</span>
       : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" />)
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal />)
         : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
 
   return (
@@ -86,9 +85,7 @@ function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolea
           className={cn(
             'flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg sm:h-11 sm:w-11 sm:text-sm lg:h-12 lg:w-12',
             AVATAR_BG[seat.seat % AVATAR_BG.length],
-            seat.isToAct
-              ? 'ring-2 ring-primary ring-offset-2 ring-offset-black shadow-[0_0_18px_rgba(0,224,122,0.45)]'
-              : isMe ? 'ring-2 ring-white/40' : 'ring-1 ring-white/15',
+            seat.isToAct ? 'op-to-act-pulse' : isMe ? 'ring-2 ring-white/40' : 'ring-1 ring-white/15',
           )}
         >
           {initials(seat.displayName, seat.seat)}
@@ -122,23 +119,43 @@ export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
 
   return (
     <div className="relative mx-auto aspect-[5/4] w-full max-w-3xl sm:aspect-[16/10]">
-      {/* rail + felt (depth: rail border, inner rim, inset shadow, faint felt texture) */}
-      <div className="absolute inset-[6%] rounded-[46%] border-[6px] border-emerald-950 bg-[radial-gradient(ellipse_at_center,_#127a46_0%,_#0c5836_46%,_#06301f_100%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.65),0_14px_44px_rgba(0,0,0,0.55)]">
+      {/* rail (outer band for depth) */}
+      <div className="absolute inset-[4%] rounded-[47%] bg-gradient-to-b from-[#13241c] to-[#070d0a] shadow-[0_16px_46px_rgba(0,0,0,0.6)]" />
+
+      {/* felt — slightly darker, soft centre glow + vignette, thin neon rim */}
+      <div
+        className="absolute inset-[7%] rounded-[46%] border border-[#0a3a25] shadow-[inset_0_0_80px_rgba(0,0,0,0.72),inset_0_0_0_2px_rgba(0,224,122,0.14)]"
+        style={{ background: 'radial-gradient(ellipse at 50% 42%, #15784a 0%, #0c5234 44%, #06301f 78%, #04200f 100%)' }}
+      >
+        {/* center glow */}
+        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,224,122,0.16), transparent 55%)' }} />
+        {/* faint felt texture */}
         <div className="pointer-events-none absolute inset-0 rounded-[44%] opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)', backgroundSize: '15px 15px' }} />
+        {/* very subtle desktop/tablet-only watermark (hidden on mobile; never competes with board) */}
+        <div className="pointer-events-none absolute inset-0 hidden items-center justify-center sm:flex">
+          <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: 'rgba(0,224,122,0.06)' }}>VinPoker</span>
+        </div>
+        {/* inner rim */}
         <div className="pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset ring-emerald-200/10" />
 
         {/* board + pot — the focal point, scaled up on larger screens */}
-        <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
+        <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
           <div className="rounded-full bg-black/55 px-3 py-1 text-center shadow-md">
             <span className="text-xs font-bold tabular-nums text-white sm:text-sm">Pot {bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="ml-1.5 text-[10px] tabular-nums text-white/55">{fmtChips(hand.pot)}</span>}
           </div>
           <div className="flex gap-1">
-            {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="md" />)}
+            {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="md" reveal={!!hand.board[i]} />)}
           </div>
           <div className="text-[9px] uppercase tracking-[0.2em] text-white/55 sm:text-[10px]">{hand.street}</div>
         </div>
       </div>
+
+      {/* hero spotlight (bottom centre, behind the seats) */}
+      <div
+        className="pointer-events-none absolute bottom-0 left-1/2 z-0 h-[40%] w-[46%] -translate-x-1/2"
+        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,224,122,0.18), transparent 70%)' }}
+      />
 
       {/* committed-bet chips on the felt (toward the pot) */}
       {hand.seats.map((s) => {
@@ -156,7 +173,7 @@ export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
 
       {/* seats */}
       {hand.seats.map((s) => (
-        <div key={s.seat} className={cn('absolute', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
+        <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
           <SeatChip seat={s} isMe={s.seat === hand.mySeat} hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined} bb={bb} />
         </div>
       ))}
