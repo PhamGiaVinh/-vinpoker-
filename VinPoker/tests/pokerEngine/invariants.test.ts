@@ -50,7 +50,7 @@ describe('engine invariants (property-based)', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1, max: 99_999 }),
-        fc.integer({ min: 2, max: 6 }),
+        fc.integer({ min: 2, max: 9 }), // up to a full 9-handed table (was 6)
         fc.array(fc.integer({ min: 0, max: 11 }), { maxLength: 160 }),
         (seed, nSeats, picks) => {
           let state = freshFromSeed(seed, nSeats);
