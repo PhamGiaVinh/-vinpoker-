@@ -10,6 +10,7 @@
 
 import { cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
 import { LiveHubHeader } from "./LiveHubHeader";
+import { LiveStatsBar } from "./LiveStatsBar";
 import { FeaturedTableCard } from "./FeaturedTableCard";
 import { LiveTablesStrip } from "./LiveTablesStrip";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
@@ -25,15 +26,19 @@ export interface LiveHubProps {
   clubName?: string | null;
   clubId?: string | null;
   subtitle?: string | null;
+  /** Tournament prize pool (VND) — from `tournaments.prize_pool`; null when unset. */
+  prizePool?: number | null;
+  /** Players still alive — from `tournaments.players_remaining`; null when unset. */
+  playersRemaining?: number | null;
   onShare: () => void;
   /** The live table view (e.g. <TournamentLiveView/>). */
   children: ReactNode;
 }
 
-export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, onShare, children }: LiveHubProps) {
-  // Isolated hub data (count / all-tables strip / feed). Does NOT touch
-  // TournamentLiveView — the featured felt below still renders the real viewer.
-  const { liveTableCount, tables, feed } = useLiveTrackerData(tournamentId);
+export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, onShare, children }: LiveHubProps) {
+  // Isolated hub data (count / all-tables strip / feed / chip leader). Does NOT
+  // touch TournamentLiveView — the featured felt below still renders the real viewer.
+  const { liveTableCount, tables, feed, chipLeader } = useLiveTrackerData(tournamentId);
 
   // Orientation: default to the device (portrait on phones, landscape on desktop),
   // but let the viewer flip Ngang/Dọc on EITHER device via the header toggle.
@@ -62,6 +67,7 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, onSha
         liveTableCount={liveTableCount}
         onShare={onShare}
       />
+      <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
       <FeaturedTableCard
         badge="TRỰC TIẾP • BÀN ĐANG DIỄN RA"
         headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}

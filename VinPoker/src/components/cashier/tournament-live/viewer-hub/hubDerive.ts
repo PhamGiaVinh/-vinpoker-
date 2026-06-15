@@ -8,6 +8,7 @@ export interface RawSeat {
   player_name?: string | null;
   table_id?: string | null;
   is_active?: boolean | null;
+  chip_count?: number | null;
 }
 
 export interface RawAction {
@@ -34,7 +35,8 @@ export interface HubFeedItem {
   kind: HubFeedKind;
 }
 
-function fmt(n: number): string {
+/** Compact chip/amount formatter (1.2k, 3.4M) shared by the feed + stats bar. */
+export function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
   return String(n);
@@ -62,6 +64,35 @@ export function deriveTables(seats: RawSeat[], tableNames: Record<string, string
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export interface HubChipLeader {
+  playerName: string;
+  seatNumber: number;
+  chipCount: number;
+}
+
+/**
+ * The active player with the most chips ("chip leader"), across all tables.
+ * Returns null when no seated player has a positive stack (e.g. chip_count not
+ * tracked). Ties resolve to the first seat encountered — deterministic.
+ */
+export function deriveChipLeader(seats: RawSeat[]): HubChipLeader | null {
+  let best: RawSeat | null = null;
+  let bestChips = 0;
+  for (const s of activeSeats(seats)) {
+    const chips = s.chip_count ?? 0;
+    if (chips > bestChips) {
+      best = s;
+      bestChips = chips;
+    }
+  }
+  if (!best) return null;
+  return {
+    playerName: best.player_name || best.player_id.slice(0, 6),
+    seatNumber: best.seat_number,
+    chipCount: bestChips,
+  };
+}
+
 export function feedKind(actionType: string): HubFeedKind {
   switch (actionType) {
     case "all_in": return "allin";
@@ -78,7 +109,7 @@ export function feedKind(actionType: string): HubFeedKind {
 }
 
 export function feedLabel(actionType: string, amount: number): string {
-  const a = fmt(amount || 0);
+  const a = fmtCompact(amount || 0);
   switch (actionType) {
     case "all_in": return `ALL-IN ${a}`;
     case "raise": return `Tố ${a}`;
