@@ -193,6 +193,11 @@ export default function SwingTableCard({
   }
 
   const dealerLabel = dealer?.full_name ?? (preAssigned ? preAssigned.full_name : null);
+  const nextLabel = slot0HasDealer
+    ? `${slot0Name}${slot0ReliefLabel ? ` · ${slot0ReliefLabel}` : ""}`
+    : preAssigned
+      ? preAssigned.full_name
+      : pred?.nextDealerName ?? null;
 
   // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
   const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
@@ -255,6 +260,11 @@ export default function SwingTableCard({
                 <span className="truncate text-warning/90">Chưa gán</span>
               )}
             </div>
+            {dealer && nextLabel && (
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                Dự kiến: <span className="font-medium text-foreground">{nextLabel}</span>
+              </div>
+            )}
             <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", s.bg, s.text)}>
               <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
               {s.label}
