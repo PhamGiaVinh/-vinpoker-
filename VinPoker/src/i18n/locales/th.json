@@ -402,7 +402,8 @@
     "filtersActive": "{{count}} กำลังใช้งาน",
     "news": "ข่าวสาร",
     "packages": "แพ็คเกจ",
-    "livetracker": "Live Tracker"
+    "livetracker": "Live Tracker",
+    "more": "อื่นๆ"
   },
   "clubsPage": {
     "title": "คลับ",
