@@ -54,7 +54,7 @@
        Used for featured/active cues in the hub chrome; cyan stays reserved for live data. */
     --poker-accent: 14 62% 57%;
 
-    /* Royal Guilloché card-back palette (dark). Brighter set lives in claude-warm. */
+    /* Royal Guilloché card-back palette (dark). Brighter set lives in vinpoker-warm. */
     --poker-card-bg: #5b0f22;
     --poker-card-bg-deep: #310812;
     --poker-card-bg-soft: #7b1a31;
@@ -95,48 +95,49 @@
   }
 
   /* ─────────────────────────────────────────────────────────────
-     Claude Warm — optional additive theme (ivory / charcoal /
-     terracotta / taupe). Default (no data-theme) keeps the dark
+     VinPoker Warm — optional additive theme (deep parchment /
+     charcoal / terracotta / moss). Default (no data-theme) keeps the dark
      :root theme untouched. Only overrides variables that change;
      unlisted vars (e.g. --gto-*) inherit :root.
      ───────────────────────────────────────────────────────────── */
+  [data-theme="vinpoker-warm"],
   [data-theme="claude-warm"] {
     color-scheme: light;
 
-    --background: 43 44% 94%;          /* #F6F4EC */
-    --foreground: 33 17% 10%;           /* #1D1B18 */
+    --background: 38 38% 89%;          /* #E8DBC8 — deep warm parchment */
+    --foreground: 28 25% 10%;           /* #201810 — warm charcoal */
 
-    --card: 45 100% 98%;               /* #FFFDF7 */
-    --card-foreground: 33 17% 10%;
+    --card: 41 70% 95%;                /* #FAF4E7 — rich warm cream */
+    --card-foreground: 28 25% 10%;
 
-    --popover: 45 100% 98%;
-    --popover-foreground: 33 17% 10%;
+    --popover: 41 70% 95%;
+    --popover-foreground: 28 25% 10%;
 
-    --primary: 16 53% 54%;             /* #C86B4A terracotta */
-    --primary-foreground: 45 100% 98%;
-    --primary-glow: 16 60% 62%;
+    --primary: 12 68% 46%;             /* #C84028 — vivid terracotta */
+    --primary-foreground: 41 70% 95%;
+    --primary-glow: 12 68% 56%;
 
-    --secondary: 42 42% 91%;           /* #EFE9DD */
-    --secondary-foreground: 33 17% 10%;
+    --secondary: 36 48% 85%;           /* #E5D4B6 — warm sand */
+    --secondary-foreground: 28 25% 10%;
 
-    --muted: 42 42% 91%;
-    --muted-foreground: 32 13% 38%;     /* #6F695F */
+    --muted: 36 48% 85%;
+    --muted-foreground: 32 18% 38%;     /* #6B5545 — warm brown */
 
-    --accent: 21 57% 86%;              /* #F0D8C8 */
-    --accent-foreground: 33 17% 10%;
+    --accent: 16 55% 82%;              /* #EAC9B8 — terracotta tint */
+    --accent-foreground: 28 25% 10%;
 
-    --destructive: 9 45% 45%;         /* #9B4A3A */
-    --destructive-foreground: 45 100% 98%;
+    --destructive: 5 58% 40%;         /* #A13024 — deep clay red */
+    --destructive-foreground: 41 70% 95%;
 
-    --success: 92 12% 44%;             /* #6F7D63 moss */
-    --success-foreground: 45 100% 98%;
+    --success: 88 28% 40%;             /* #637553 — warm forest moss */
+    --success-foreground: 41 70% 95%;
 
-    --warning: 40 63% 48%;             /* #C99A3D */
-    --warning-foreground: 33 17% 10%;
+    --warning: 36 75% 42%;             /* #BA8820 — deep amber-brass */
+    --warning-foreground: 28 25% 10%;
 
-    --border: 39 29% 78%;              /* #D8D0BF taupe */
-    --input: 39 29% 78%;
-    --ring: 16 53% 54%;
+    --border: 36 38% 72%;              /* #CDB89D — crisp warm taupe */
+    --input: 36 38% 72%;
+    --ring: 12 68% 46%;
 
     /* Poker felt stays burgundy/gold in warm too (intentional); stack tuned darker for cream bg. */
     --poker-felt: 354 74% 24%;
@@ -155,29 +156,29 @@
     --poker-card-medallion: #74483f;
     --poker-card-text: #ffe2ae;
 
-    --gradient-neon: linear-gradient(135deg, hsl(16 53% 54%), hsl(16 53% 46%));
-    --gradient-felt: linear-gradient(180deg, hsl(43 44% 95%), hsl(41 40% 92%));
-    --gradient-card: linear-gradient(150deg, hsl(45 100% 98%) 0%, hsl(44 50% 96%) 100%);
-    --shadow-neon: 0 0 0 1px hsl(16 53% 54% / 0.25);
-    --shadow-card: 0 1px 2px hsl(33 17% 10% / 0.06), 0 6px 18px hsl(33 17% 10% / 0.10);
+    --gradient-neon: linear-gradient(135deg, hsl(12 68% 46%), hsl(36 75% 42%));
+    --gradient-felt: linear-gradient(180deg, hsl(38 38% 89%), hsl(36 48% 85%));
+    --gradient-card: linear-gradient(150deg, hsl(41 70% 95%) 0%, hsl(36 48% 85%) 100%);
+    --shadow-neon: 0 0 0 1px hsl(36 75% 42% / 0.28);
+    --shadow-card: 0 2px 4px hsl(28 25% 10% / 0.06), 0 8px 24px hsl(28 25% 10% / 0.10);
 
-    --sidebar-background: 42 42% 91%;
-    --sidebar-foreground: 33 17% 10%;
-    --sidebar-primary: 16 53% 54%;
-    --sidebar-primary-foreground: 45 100% 98%;
-    --sidebar-accent: 21 57% 86%;
-    --sidebar-accent-foreground: 33 17% 10%;
-    --sidebar-border: 39 29% 78%;
-    --sidebar-ring: 16 53% 54%;
+    --sidebar-background: 36 48% 85%;
+    --sidebar-foreground: 28 25% 10%;
+    --sidebar-primary: 12 68% 46%;
+    --sidebar-primary-foreground: 41 70% 95%;
+    --sidebar-accent: 16 55% 82%;
+    --sidebar-accent-foreground: 28 25% 10%;
+    --sidebar-border: 36 38% 72%;
+    --sidebar-ring: 12 68% 46%;
 
     /* Optional palette tokens for future use */
     --poker-green: 103 15% 42%;        /* #647A5B */
     --chip-gold: 39 55% 46%;           /* #B88A35 */
 
     /* Dealer Swing "pre-assigned" status — warm terracotta */
-    --ds-preassign: 16 53% 54%;        /* terracotta */
-    --ds-active: 203 40% 40%;          /* deeper slate-blue for ivory contrast */
-    --ds-rest: 285 16% 50%;            /* muted mauve — rest break (readable on cream) */
+    --ds-preassign: 12 68% 46%;        /* terracotta */
+    --ds-active: 208 52% 36%;          /* deep slate-blue for cream contrast */
+    --ds-rest: 280 22% 48%;            /* muted mauve — rest break (readable on cream) */
   }
 }
 
