@@ -1,8 +1,9 @@
 // TD AI assistant — advisory rules lookup for floor/TD staff.
 // Auth (real user) → role gate (staff/club-admin) → zod validate → retrieval
 // over the committed rules-index.json → below-threshold short-circuit (NO model
-// call) → Lovable/Gemini via callModel → deterministic no-hallucination
-// validator → TdAnswer. Never an official ruling; cites only retrieved rules.
+// call) → provider model via callModel (TD_AI_PROVIDER: gemini default / groq /
+// openrouter) → deterministic no-hallucination validator → TdAnswer. Never an
+// official ruling; cites only retrieved rules.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { retryFetch } from "../_shared/retry.ts";
 import { parseBody, z } from "../_shared/validate.ts";

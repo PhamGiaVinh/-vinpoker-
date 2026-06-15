@@ -1,7 +1,18 @@
-// Swap-friendly model adapter for the TD AI assistant.
-// Today: Lovable AI Gateway → google/gemini-2.5-flash (same gateway/key as
-// parse-tournament-schedule). To swap providers (e.g. Claude) later, only this
-// file changes — index.ts depends solely on the RawModelAnswer return shape.
+// Provider-agnostic model adapter for the TD AI assistant. NO Lovable.
+//
+// Provider + model are configured by Edge secrets, so swapping providers needs
+// no code change:
+//   TD_AI_PROVIDER = "gemini" (default) | "groq" | "openrouter"
+//   TD_AI_MODEL    = optional model override (per-provider default below)
+//   GEMINI_API_KEY        — Google AI Studio (Generative Language API) free tier
+//   GROQ_API_KEY          — optional, OpenAI-compatible
+//   OPENROUTER_API_KEY    — optional, OpenAI-compatible
+//
+// index.ts depends only on the RawModelAnswer shape; logic.ts's deterministic
+// no-hallucination validator sanitises whatever the model returns (drops
+// uncited rules, flags fabricated rule numbers). On ANY failure — missing key,
+// quota/429, network, bad JSON — callModel returns ok:false and the caller
+// falls back to the offline corpus, so the UI never breaks.
 
 export interface ModelRule {
   id: string;
@@ -39,6 +50,74 @@ function buildUserContent(situationText: string, rules: ModelRule[]): string {
   return `TÌNH HUỐNG:\n${situationText}\n\nCĂN CỨ ĐƯỢC PHÉP (chỉ dùng các ruleId này):\n${basis}`;
 }
 
+type Provider = "gemini" | "groq" | "openrouter";
+
+const DEFAULT_MODEL: Record<Provider, string> = {
+  gemini: "gemini-2.5-flash",
+  groq: "llama-3.3-70b-versatile",
+  openrouter: "google/gemini-2.0-flash-exp:free",
+};
+
+// ── Gemini native (Generative Language API, structured JSON output) ──────────
+// Uppercase Type enum per the Generative Language Schema spec; no
+// additionalProperties (unsupported by Gemini responseSchema).
+const GEMINI_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    recommendationVi: { type: "STRING" },
+    citations: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { ruleId: { type: "STRING" } }, required: ["ruleId"] },
+    },
+    reasoningVi: { type: "STRING" },
+    houseRuleOptionVi: { type: "STRING" },
+    playerWordingVi: { type: "STRING" },
+    confidence: { type: "STRING", enum: ["low", "medium", "high"] },
+    needMoreInfoVi: { type: "ARRAY", items: { type: "STRING" } },
+  },
+  required: ["recommendationVi", "citations", "reasoningVi", "playerWordingVi", "confidence"],
+};
+
+async function callGemini(
+  model: string,
+  key: string,
+  situationText: string,
+  rules: ModelRule[],
+  fetchImpl: typeof fetch,
+): Promise<ModelResult> {
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const resp = await fetchImpl(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: "user", parts: [{ text: buildUserContent(situationText, rules) }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 1200,
+        responseMimeType: "application/json",
+        responseSchema: GEMINI_RESPONSE_SCHEMA,
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    const status = resp.status === 429 ? 429 : 502;
+    return { ok: false, status, error: `Gemini ${resp.status}` };
+  }
+
+  const data = await resp.json();
+  const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) return { ok: false, status: 502, error: "Empty Gemini response" };
+  try {
+    return { ok: true, answer: JSON.parse(text) as RawModelAnswer };
+  } catch {
+    return { ok: false, status: 502, error: "Bad Gemini JSON" };
+  }
+}
+
+// ── OpenAI-compatible (Groq / OpenRouter), forced tool call ──────────────────
 const TOOL = {
   type: "function",
   function: {
@@ -64,19 +143,20 @@ const TOOL = {
   },
 };
 
-export async function callModel(
+async function callOpenAICompatible(
+  endpoint: string,
+  model: string,
+  key: string,
+  extraHeaders: Record<string, string>,
   situationText: string,
   rules: ModelRule[],
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch,
 ): Promise<ModelResult> {
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key) return { ok: false, status: 500, error: "LOVABLE_API_KEY not set" };
-
-  const resp = await fetchImpl("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await fetchImpl(endpoint, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model,
       temperature: 0,
       max_tokens: 1200,
       messages: [
@@ -100,5 +180,42 @@ export async function callModel(
     return { ok: true, answer: JSON.parse(toolCall.function.arguments) as RawModelAnswer };
   } catch {
     return { ok: false, status: 502, error: "Bad tool-call JSON" };
+  }
+}
+
+export async function callModel(
+  situationText: string,
+  rules: ModelRule[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<ModelResult> {
+  const provider = (Deno.env.get("TD_AI_PROVIDER") || "gemini").trim().toLowerCase() as Provider;
+  const model = Deno.env.get("TD_AI_MODEL")?.trim() || DEFAULT_MODEL[provider];
+
+  switch (provider) {
+    case "gemini": {
+      const key = Deno.env.get("GEMINI_API_KEY");
+      if (!key) return { ok: false, status: 500, error: "GEMINI_API_KEY not set" };
+      return callGemini(model, key, situationText, rules, fetchImpl);
+    }
+    case "groq": {
+      const key = Deno.env.get("GROQ_API_KEY");
+      if (!key) return { ok: false, status: 500, error: "GROQ_API_KEY not set" };
+      return callOpenAICompatible(
+        "https://api.groq.com/openai/v1/chat/completions",
+        model, key, {}, situationText, rules, fetchImpl,
+      );
+    }
+    case "openrouter": {
+      const key = Deno.env.get("OPENROUTER_API_KEY");
+      if (!key) return { ok: false, status: 500, error: "OPENROUTER_API_KEY not set" };
+      return callOpenAICompatible(
+        "https://openrouter.ai/api/v1/chat/completions",
+        model, key,
+        { "HTTP-Referer": "https://vinpoker.vercel.app", "X-Title": "VinPoker TD AI" },
+        situationText, rules, fetchImpl,
+      );
+    }
+    default:
+      return { ok: false, status: 500, error: `Unknown TD_AI_PROVIDER: ${provider}` };
   }
 }

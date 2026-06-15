@@ -1904,6 +1904,12 @@
       "ai": "AI tư vấn",
       "local": "Tra cứu offline"
     },
+    "citation": {
+      "viewHint": "Bấm để xem nội dung trích dẫn",
+      "suggestion": "Gợi ý xử lý",
+      "disclaimer": "Đây là tóm tắt diễn giải, KHÔNG phải văn bản TDA nguyên văn chính thức. Chỉ để tham khảo — TD xác nhận trước khi áp dụng.",
+      "notFound": "Không tìm thấy nội dung trích dẫn."
+    },
     "form": {
       "table": "Bàn",
       "tablePlaceholder": "VD: Bàn 4",

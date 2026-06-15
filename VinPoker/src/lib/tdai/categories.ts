@@ -1,5 +1,5 @@
 import { TD_RULES_CORPUS } from "./corpus";
-import type { TdRuleCategory } from "./types";
+import type { TdRule, TdRuleCategory } from "./types";
 
 // Maps a TdAnswer back to the domain it came from, by looking up its matched
 // rule ids in the corpus. Works for both the offline fallback and the real AI
@@ -9,6 +9,13 @@ import type { TdRuleCategory } from "./types";
 const CATEGORY_BY_ID = new Map<string, TdRuleCategory>(
   TD_RULES_CORPUS.map((r) => [r.id, r.category ?? "ruling"]),
 );
+
+const RULE_BY_ID = new Map<string, TdRule>(TD_RULES_CORPUS.map((r) => [r.id, r]));
+
+/** The full corpus entry behind a citation (so the UI can show its text). */
+export function findCorpusRule(ruleId: string): TdRule | undefined {
+  return RULE_BY_ID.get(ruleId);
+}
 
 /** Most-common category among the matched rules; null when nothing matched. */
 export function dominantCategory(matchedRuleIds: string[]): TdRuleCategory | null {

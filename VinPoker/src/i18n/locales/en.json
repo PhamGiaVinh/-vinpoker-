@@ -1904,6 +1904,12 @@
       "ai": "AI advice",
       "local": "Offline lookup"
     },
+    "citation": {
+      "viewHint": "Click to view the cited text",
+      "suggestion": "Suggested handling",
+      "disclaimer": "This is a paraphrased summary, NOT the official verbatim TDA text. Reference only — the TD confirms before applying.",
+      "notFound": "Cited content not found."
+    },
     "form": {
       "table": "Table",
       "tablePlaceholder": "e.g. Table 4",
