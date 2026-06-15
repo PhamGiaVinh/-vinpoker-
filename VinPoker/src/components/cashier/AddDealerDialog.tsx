@@ -116,7 +116,7 @@ export default function AddDealerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-[#0A0A0A] border border-border text-white max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md bg-popover border border-border text-foreground max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Thêm Dealer Mới</DialogTitle>
           <DialogDescription className="text-muted-foreground">
@@ -131,17 +131,17 @@ export default function AddDealerDialog({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Nguyễn Văn A"
-              className="bg-card border-border text-white"
+              className="bg-card border-border text-foreground"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Hạng</Label>
               <Select value={tier} onValueChange={setTier}>
-                <SelectTrigger className="bg-card border-border text-white">
+                <SelectTrigger className="bg-card border-border text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border text-white">
+                <SelectContent className="bg-card border-border text-foreground">
                   <SelectItem value="A">A — Cao cấp</SelectItem>
                   <SelectItem value="B">B — Trung cấp</SelectItem>
                   <SelectItem value="C">C — Cơ bản</SelectItem>
@@ -151,10 +151,10 @@ export default function AddDealerDialog({
             <div>
               <Label>Loại</Label>
               <Select value={employmentType} onValueChange={setEmploymentType}>
-                <SelectTrigger className="bg-card border-border text-white">
+                <SelectTrigger className="bg-card border-border text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border text-white">
+                <SelectContent className="bg-card border-border text-foreground">
                   <SelectItem value="full_time">Full-time</SelectItem>
                   <SelectItem value="part_time">Part-time</SelectItem>
                 </SelectContent>
@@ -172,7 +172,7 @@ export default function AddDealerDialog({
                 value={hourlyRate}
                 onChange={(e) => setHourlyRate(e.target.value)}
                 placeholder="VD: 100000"
-                className="bg-card border-border text-white"
+                className="bg-card border-border text-foreground"
               />
             </div>
           ) : (
@@ -185,7 +185,7 @@ export default function AddDealerDialog({
                   value={monthlySalary}
                   onChange={(e) => setMonthlySalary(e.target.value)}
                   placeholder="VD: 9000000"
-                  className="bg-card border-border text-white"
+                  className="bg-card border-border text-foreground"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -197,7 +197,7 @@ export default function AddDealerDialog({
                     value={standardHours}
                     onChange={(e) => setStandardHours(e.target.value)}
                     placeholder="8"
-                    className="bg-card border-border text-white"
+                    className="bg-card border-border text-foreground"
                   />
                 </div>
                 <div>
@@ -208,7 +208,7 @@ export default function AddDealerDialog({
                     value={otMultiplier}
                     onChange={(e) => setOtMultiplier(e.target.value)}
                     placeholder="1.5"
-                    className="bg-card border-border text-white"
+                    className="bg-card border-border text-foreground"
                   />
                 </div>
               </div>
@@ -226,7 +226,7 @@ export default function AddDealerDialog({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="090xxxxxxx"
-              className="bg-card border-border text-white"
+              className="bg-card border-border text-foreground"
             />
           </div>
           <div>
@@ -235,7 +235,7 @@ export default function AddDealerDialog({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ghi chú (không bắt buộc)"
-              className="bg-card border-border text-white"
+              className="bg-card border-border text-foreground"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">

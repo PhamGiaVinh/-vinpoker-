@@ -807,13 +807,13 @@ const LiveTrackerSection = () => {
                 )}
                 {t.current_blinds && (
                   <div className="text-center">
-                    <div className="text-white font-bold text-base">{t.current_blinds}</div>
+                    <div className="text-foreground font-bold text-base">{t.current_blinds}</div>
                     <div className="text-muted-foreground text-[10px]">Blinds</div>
                   </div>
                 )}
                 {t.average_stack != null && (
                   <div className="text-center">
-                    <div className="text-white font-bold text-base">{formatStack(t.average_stack)}</div>
+                    <div className="text-foreground font-bold text-base">{formatStack(t.average_stack)}</div>
                     <div className="text-muted-foreground text-[10px]">AVG Stack</div>
                   </div>
                 )}
@@ -845,13 +845,13 @@ const LiveTrackerSection = () => {
             )}
             {t.current_blinds && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-white font-bold">{t.current_blinds}</div>
+                <div className="text-foreground font-bold">{t.current_blinds}</div>
                 <div className="text-muted-foreground text-[9px]">Blinds</div>
               </div>
             )}
             {t.average_stack != null && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-white font-bold">{formatStack(t.average_stack)}</div>
+                <div className="text-foreground font-bold">{formatStack(t.average_stack)}</div>
                 <div className="text-muted-foreground text-[9px]">AVG</div>
               </div>
             )}

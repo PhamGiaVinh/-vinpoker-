@@ -334,7 +334,7 @@ const Marketplace = () => {
 
       {/* Player filter banner */}
       {playerFilter && (
-        <div className="flex items-center justify-between gap-3 p-3 border border-[#1F1F1F] bg-[#121212]">
+        <div className="flex items-center justify-between gap-3 p-3 border border-border bg-card">
           <div className="flex items-center gap-2 text-sm font-sans">
             <Users className="w-4 h-4 text-primary" />
             <span>
@@ -357,23 +357,23 @@ const Marketplace = () => {
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-[#121212] border border-[#1F1F1F] p-5">
+            <div key={i} className="bg-card border border-border p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-11 h-11 rounded-full bg-[#1F1F1F] animate-pulse" />
+                <div className="w-11 h-11 rounded-full bg-muted animate-pulse" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-[#1F1F1F] animate-pulse w-2/3" />
-                  <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/2" />
+                  <div className="h-4 bg-muted animate-pulse w-2/3" />
+                  <div className="h-3 bg-muted animate-pulse w-1/2" />
                 </div>
               </div>
-              <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/4 mb-3" />
-              <div className="h-2 bg-[#1F1F1F] animate-pulse mb-3" />
-              <div className="h-3 bg-[#1F1F1F] animate-pulse w-1/3 mb-4" />
-              <div className="h-10 bg-[#1F1F1F] animate-pulse" />
+              <div className="h-3 bg-muted animate-pulse w-1/4 mb-3" />
+              <div className="h-2 bg-muted animate-pulse mb-3" />
+              <div className="h-3 bg-muted animate-pulse w-1/3 mb-4" />
+              <div className="h-10 bg-muted animate-pulse" />
             </div>
           ))}
         </div>
       ) : filtered.length === 0 && soldDeals.length === 0 ? (
-        <div className="text-center py-24 border border-dashed border-[#1F1F1F]/50 bg-[#121212]/50 space-y-4 rounded-lg backdrop-blur-sm">
+        <div className="text-center py-24 border border-dashed border-border/50 bg-card/50 space-y-4 rounded-lg backdrop-blur-sm">
           <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground" />
           <h3 className="font-semibold font-sans">
             {playerFilter ? t("marketplace.emptyPlayerNoDeals") : t("marketplace.emptyNoMatch")}
@@ -382,7 +382,7 @@ const Marketplace = () => {
             {playerFilter ? t("marketplace.emptyPlayerNoDealsHint") : t("marketplace.emptyNoMatchHint")}
           </p>
           {!playerFilter && (
-            <Button onClick={() => nav("/find-backer")} variant="outline" size="sm" className="mt-2 border-[#1F1F1F] rounded-none font-sans">
+            <Button onClick={() => nav("/find-backer")} variant="outline" size="sm" className="mt-2 border-border rounded-none font-sans">
               <Users className="w-4 h-4 mr-1.5" /> {t("marketplace.discoverPlayers")}
             </Button>
           )}
@@ -408,7 +408,7 @@ const Marketplace = () => {
 
           {/* Sold-out section */}
           {soldDeals.length > 0 && (
-            <div className="space-y-4 pt-6 border-t border-[#1F1F1F]">
+            <div className="space-y-4 pt-6 border-t border-border">
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-[1px] bg-muted-foreground/30" />
                 <h2 className="font-bebas text-xl tracking-[0.04em] text-muted-foreground">
@@ -488,11 +488,11 @@ const DealCard = ({
   return (
     <div
       onClick={sold ? undefined : onClick}
-      className={`bg-[#121212] border ${sold ? "border-[#1F1F1F] opacity-50" : "border-[#1F1F1F] hover:border-[#333] hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] cursor-pointer"} transition-all p-5 flex flex-col gap-3`}
+      className={`bg-card border ${sold ? "border-border opacity-50" : "border-border hover:border-foreground/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] cursor-pointer"} transition-all p-5 flex flex-col gap-3`}
     >
       {/* Player row */}
       <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full overflow-hidden border border-[#1F1F1F] bg-[#1F1F1F] shrink-0">
+        <div className="w-11 h-11 rounded-full overflow-hidden border border-border bg-muted shrink-0">
           {deal.player?.avatar_url ? (
             <img src={deal.player.avatar_url} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -511,7 +511,7 @@ const DealCard = ({
               {deal.player?.display_name ?? t("marketplace.playerLabel")}
             </button>
             {verified && (
-              <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" title={t("marketplace.verified")} />
+              <span className="w-2 h-2 rounded-full bg-success shrink-0" title={t("marketplace.verified")} />
             )}
             {!verified && (
               <span className="w-2 h-2 rounded-full bg-muted-foreground/40 shrink-0" title={t("marketplace.unverified")} />
@@ -531,16 +531,16 @@ const DealCard = ({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs font-jetbrains text-muted-foreground">
           <span>{t("marketplace.sold")}: <span className="text-foreground font-semibold">{filledPct}%</span></span>
-          <span className="text-[#10B981]">{t("marketplace.remaining")}: {remaining}%</span>
+          <span className="text-success">{t("marketplace.remaining")}: {remaining}%</span>
         </div>
-        <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
-          <div className="h-full bg-[#10B981] transition-all" style={{ width: `${fundedW}%` }} />
+        <div className="flex h-1.5 bg-muted overflow-hidden">
+          <div className="h-full bg-success transition-all" style={{ width: `${fundedW}%` }} />
           <div className="h-full bg-warning/60 transition-all" style={{ width: `${pendingW}%` }} />
         </div>
       </div>
 
       {/* Key metrics */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1F1F1F]">
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
         <div className="text-center">
           <div className="font-jetbrains text-xs text-foreground">{filledPct}%</div>
           <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.sold")}</div>
@@ -550,14 +550,14 @@ const DealCard = ({
           <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.remaining")}</div>
         </div>
         <div className="text-center">
-          <div className="font-jetbrains text-xs text-[#10B981]">{formatVND(Math.round(pricePer1Pct))}</div>
+          <div className="font-jetbrains text-xs text-success">{formatVND(Math.round(pricePer1Pct))}</div>
           <div className="text-[10px] text-muted-foreground font-sans">{t("marketplace.pricePer1")}</div>
         </div>
       </div>
 
       {/* Countdown */}
       {showCountdown && (
-        <div className={`font-jetbrains text-xs text-center py-1.5 border ${isCritical ? "bg-destructive/10 border-destructive/20 text-destructive" : isUrgent ? "bg-warning/10 border-warning/20 text-warning" : "bg-muted/10 border-[#1F1F1F] text-muted-foreground"}`}>
+        <div className={`font-jetbrains text-xs text-center py-1.5 border ${isCritical ? "bg-destructive/10 border-destructive/20 text-destructive" : isUrgent ? "bg-warning/10 border-warning/20 text-warning" : "bg-muted/10 border-border text-muted-foreground"}`}>
           <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />
           {t("marketplace.regClosesIn")} {String(hrs).padStart(2, "0")}:{String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
         </div>
@@ -565,13 +565,13 @@ const DealCard = ({
 
       {/* CTA */}
       {sold ? (
-        <div className="w-full py-2.5 text-center text-xs font-jetbrains tracking-wider text-muted-foreground border border-[#1F1F1F]">
+        <div className="w-full py-2.5 text-center text-xs font-jetbrains tracking-wider text-muted-foreground border border-border">
           {t("marketplace.soldOut")}
         </div>
       ) : (
         <button
           onClick={(e) => { e.stopPropagation(); onClick(); }}
-          className="w-full bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider py-2.5 text-sm transition-colors"
+          className="w-full bg-success hover:bg-success/90 text-success-foreground font-bold font-jetbrains tracking-wider py-2.5 text-sm transition-colors"
         >
           {t("marketplace.buyActionShort")} <ChevronRight className="w-4 h-4 inline -mt-0.5" />
         </button>
@@ -678,12 +678,12 @@ const DealDetailDialog = ({
 
   return (
     <Dialog open={!!deal} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#0A0A0A] border border-[#1F1F1F] max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-popover border border-border max-w-lg max-h-[90vh] overflow-y-auto">
         {!committed ? (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3 font-bebas text-2xl tracking-[0.03em]">
-                <div className="w-10 h-10 rounded-full overflow-hidden border border-[#1F1F1F] bg-[#1F1F1F] shrink-0">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-border bg-muted shrink-0">
                   {deal.player?.avatar_url ? (
                     <img src={deal.player.avatar_url} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -701,33 +701,33 @@ const DealDetailDialog = ({
               {/* Stats */}
               {stats?.verified && stats.tournaments_played > 0 ? (
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="border border-[#1F1F1F] p-2">
+                  <div className="border border-border p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">ITM</div>
                     <div className="font-semibold font-jetbrains">{Number(stats.itm_rate).toFixed(1)}%</div>
                   </div>
-                  <div className="border border-[#1F1F1F] p-2">
+                  <div className="border border-border p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">ROI</div>
                     <div className="font-semibold font-jetbrains">{Number(stats.roi_percentage).toFixed(1)}%</div>
                   </div>
-                  <div className="border border-[#1F1F1F] p-2">
+                  <div className="border border-border p-2">
                     <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-sans">{t("marketplace.tournamentCount")}</div>
                     <div className="font-semibold font-jetbrains">{stats.tournaments_played}</div>
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-muted-foreground p-3 border border-[#1F1F1F] bg-[#0A0A0A] font-sans">
+                <div className="text-xs text-muted-foreground p-3 border border-border bg-popover font-sans">
                   {t("marketplace.noVerifiedStats")}
                 </div>
               )}
 
               {/* Deal breakdown */}
-              <div className="border border-[#1F1F1F] p-4 space-y-3">
+              <div className="border border-border p-4 space-y-3">
                 <div className="flex justify-between text-xs text-muted-foreground font-sans">
                   <span>{t("marketplace.soldFraction")} <strong className="text-foreground font-jetbrains">{filled}%</strong> / {sold}%</span>
-                  <span className="text-[#10B981] font-semibold font-jetbrains">{t("marketplace.remaining", { n: remaining })}</span>
+                  <span className="text-success font-semibold font-jetbrains">{t("marketplace.remaining", { n: remaining })}</span>
                 </div>
-                <div className="flex h-1.5 bg-[#1F1F1F] overflow-hidden">
-                  <div className="h-full bg-[#10B981]" style={{ width: `${fundedW}%` }} />
+                <div className="flex h-1.5 bg-muted overflow-hidden">
+                  <div className="h-full bg-success" style={{ width: `${fundedW}%` }} />
                   <div className="h-full bg-warning/60" style={{ width: `${pendingW}%` }} />
                 </div>
                 <div className="flex items-center justify-between text-xs font-jetbrains">
@@ -746,7 +746,7 @@ const DealDetailDialog = ({
 
               {/* Buy section */}
               {canBuy && (
-                <div className="border border-[#10B981]/30 p-4 space-y-3">
+                <div className="border border-success/30 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold font-sans">
                       {t("marketplace.buyHowMany")}
@@ -761,7 +761,7 @@ const DealDetailDialog = ({
                           const v = Math.floor(Number(e.target.value));
                           if (Number.isFinite(v)) setPercent(Math.max(effectiveMin, Math.min(remaining, v)));
                         }}
-                        className="w-20 text-right font-bold font-jetbrains bg-transparent border-[#1F1F1F] rounded-none h-9 text-sm"
+                        className="w-20 text-right font-bold font-jetbrains bg-transparent border-border rounded-none h-9 text-sm"
                         disabled={isLastSlice}
                       />
                       <span className="text-sm font-semibold font-jetbrains">%</span>
@@ -776,18 +776,18 @@ const DealDetailDialog = ({
                       onValueChange={(v) => setPercent(v[0])}
                     />
                   )}
-                  <div className="flex justify-between items-center pt-2 border-t border-[#10B981]/20">
+                  <div className="flex justify-between items-center pt-2 border-t border-success/20">
                     <span className="text-xs text-muted-foreground font-sans">{t("marketplace.youPay")}</span>
-                    <span className="text-xl font-bold font-jetbrains text-[#10B981]">{formatVND(totalToPay)}</span>
+                    <span className="text-xl font-bold font-jetbrains text-success">{formatVND(totalToPay)}</span>
                   </div>
                   {deal.description && (
-                    <div className="text-xs text-muted-foreground italic border-l-2 border-[#10B981]/40 pl-3 font-sans">
+                    <div className="text-xs text-muted-foreground italic border-l-2 border-success/40 pl-3 font-sans">
                       &ldquo;{deal.description}&rdquo;
                     </div>
                   )}
                   {!confirming ? (
                     <Button
-                      className="w-full bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none h-11"
+                      className="w-full bg-success hover:bg-success/90 text-success-foreground font-bold font-jetbrains tracking-wider rounded-none h-11"
                       onClick={() => setConfirming(true)}
                     >
                       {t("marketplace.buyAction", { pct: percent, price: formatVND(totalToPay) })}
@@ -805,11 +805,11 @@ const DealDetailDialog = ({
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1 border-[#1F1F1F] rounded-none font-sans" onClick={() => setConfirming(false)} disabled={submitting}>
+                        <Button variant="outline" className="flex-1 border-border rounded-none font-sans" onClick={() => setConfirming(false)} disabled={submitting}>
                           {t("marketplace.cancel")}
                         </Button>
                         <Button
-                          className="flex-1 bg-[#10B981] hover:bg-[#059669] text-black font-bold font-jetbrains tracking-wider rounded-none"
+                          className="flex-1 bg-success hover:bg-success/90 text-success-foreground font-bold font-jetbrains tracking-wider rounded-none"
                           onClick={handleBuy}
                           disabled={submitting}
                         >
@@ -823,7 +823,7 @@ const DealDetailDialog = ({
 
               {/* Sold out state */}
               {(!canBuy || isOwn) && (
-                <Button disabled className="w-full bg-[#1F1F1F] text-muted-foreground font-sans rounded-none h-11 cursor-not-allowed border border-[#1F1F1F]">
+                <Button disabled className="w-full bg-muted text-muted-foreground font-sans rounded-none h-11 cursor-not-allowed border border-border">
                   {isOwn ? t("marketplace.yourOwnDeal") : t("marketplace.soldOut")}
                 </Button>
               )}
