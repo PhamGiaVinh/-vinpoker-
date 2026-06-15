@@ -5,6 +5,7 @@
 // Supports both controlled (`value` + `onChange`) and uncontrolled use.
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Monitor, Smartphone } from "lucide-react";
 
 type Orientation = "landscape" | "portrait";
@@ -17,6 +18,7 @@ export interface OrientationToggleProps {
 }
 
 export function OrientationToggle({ value: controlled, defaultValue = "landscape", onChange }: OrientationToggleProps) {
+  const { t } = useTranslation();
   const [internal, setInternal] = useState<Orientation>(defaultValue);
   const value = controlled ?? internal;
   const pick = (o: Orientation) => {
@@ -38,8 +40,8 @@ export function OrientationToggle({ value: controlled, defaultValue = "landscape
   );
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-border/50 bg-card/60 p-0.5 shrink-0">
-      <Opt o="landscape" Icon={Monitor} label="Ngang" />
-      <Opt o="portrait" Icon={Smartphone} label="Dọc" />
+      <Opt o="landscape" Icon={Monitor} label={t("liveHub.orientation.landscape", "Ngang")} />
+      <Opt o="portrait" Icon={Smartphone} label={t("liveHub.orientation.portrait", "Dọc")} />
     </div>
   );
 }

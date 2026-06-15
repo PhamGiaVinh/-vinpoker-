@@ -31,8 +31,12 @@ export interface HubFeedItem {
   id: string;
   seatNumber: number;
   playerName: string;
+  /** Pre-built Vietnamese label (fallback for non-i18n contexts + tests). */
   label: string;
   kind: HubFeedKind;
+  /** Raw action_type + amount so the view can build a localized label via i18n. */
+  actionType?: string;
+  amount?: number;
 }
 
 /** Compact chip/amount formatter (1.2k, 3.4M) shared by the feed + stats bar. */
@@ -139,5 +143,7 @@ export function deriveFeed(
     playerName: nameByPlayer.get(a.player_id) || a.player_id.slice(0, 6),
     label: feedLabel(a.action_type, a.action_amount || 0),
     kind: feedKind(a.action_type),
+    actionType: a.action_type,
+    amount: a.action_amount || 0,
   }));
 }

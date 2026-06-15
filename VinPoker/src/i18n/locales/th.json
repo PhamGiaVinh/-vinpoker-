@@ -2611,5 +2611,67 @@
     "saving": "กำลังบันทึก...",
     "update": "อัปเดต",
     "create": "สร้าง"
+  },
+  "liveHub": {
+    "seat": "ที่นั่ง {{n}}",
+    "header": {
+      "live": "ถ่ายทอดสด",
+      "tables": "{{count}} โต๊ะ",
+      "share": "แชร์"
+    },
+    "featured": {
+      "badge": "ถ่ายทอดสด • โต๊ะที่กำลังเล่น"
+    },
+    "orientation": {
+      "landscape": "แนวนอน",
+      "portrait": "แนวตั้ง"
+    },
+    "tables": {
+      "title": "โต๊ะถ่ายทอดสด",
+      "players": "{{count}} คน"
+    },
+    "stats": {
+      "prize": "เงินรางวัล",
+      "remaining": "เหลือ",
+      "remainingUnit": "คน",
+      "chipLeader": "ผู้นำชิป"
+    },
+    "feed": {
+      "title": "อัปเดต • สด",
+      "empty": "ยังไม่มีแอ็กชันในมือนี้",
+      "badge": {
+        "allin": "ออลอิน",
+        "raise": "เรซ",
+        "bet": "เบ็ต",
+        "call": "คอล",
+        "check": "เช็ค",
+        "fold": "พับ",
+        "post": "ไบลนด์",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "ออลอิน {{amount}}",
+        "raise": "เรซ {{amount}}",
+        "bet": "เบ็ต {{amount}}",
+        "call": "คอล {{amount}}",
+        "check": "เช็ค",
+        "fold": "พับไพ่",
+        "post_sb": "SB {{amount}}",
+        "post_bb": "BB {{amount}}",
+        "post_ante": "แอนตี้ {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "พ็อต",
+      "main": "หลัก",
+      "side": "ข้าง {{i}}",
+      "toAct": "รอเล่น",
+      "bet": "เบ็ต {{amount}}",
+      "allIn": "ออลอิน",
+      "folded": "พับไพ่",
+      "action": "แอ็กชัน",
+      "multiTable": "ทัวร์นาเมนต์นี้มีหลายโต๊ะ — เลือกโต๊ะด้านบนเพื่อชมสด",
+      "waiting": "กำลังรอดีลเลอร์เริ่มแจกไพ่..."
+    }
   }
 }

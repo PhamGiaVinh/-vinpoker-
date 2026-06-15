@@ -2611,5 +2611,67 @@
     "saving": "保存中...",
     "update": "更新",
     "create": "创建"
+  },
+  "liveHub": {
+    "seat": "{{n}}号座",
+    "header": {
+      "live": "直播",
+      "tables": "{{count}} 桌",
+      "share": "分享"
+    },
+    "featured": {
+      "badge": "直播 • 进行中的牌桌"
+    },
+    "orientation": {
+      "landscape": "横向",
+      "portrait": "竖向"
+    },
+    "tables": {
+      "title": "直播牌桌",
+      "players": "{{count}} 人"
+    },
+    "stats": {
+      "prize": "奖池",
+      "remaining": "剩余",
+      "remainingUnit": "人",
+      "chipLeader": "筹码领先"
+    },
+    "feed": {
+      "title": "动态 • 直播",
+      "empty": "当前这手牌还没有动作",
+      "badge": {
+        "allin": "全下",
+        "raise": "加注",
+        "bet": "下注",
+        "call": "跟注",
+        "check": "过牌",
+        "fold": "弃牌",
+        "post": "盲注",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "全下 {{amount}}",
+        "raise": "加注 {{amount}}",
+        "bet": "下注 {{amount}}",
+        "call": "跟注 {{amount}}",
+        "check": "过牌",
+        "fold": "弃牌",
+        "post_sb": "小盲 {{amount}}",
+        "post_bb": "大盲 {{amount}}",
+        "post_ante": "前注 {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "底池",
+      "main": "主池",
+      "side": "边池 {{i}}",
+      "toAct": "待行动",
+      "bet": "下注 {{amount}}",
+      "allIn": "全下",
+      "folded": "弃牌",
+      "action": "动作",
+      "multiTable": "本锦标赛有多张牌桌 — 请在上方选择一张牌桌观看直播。",
+      "waiting": "等待荷官开始这手牌……"
+    }
   }
 }
