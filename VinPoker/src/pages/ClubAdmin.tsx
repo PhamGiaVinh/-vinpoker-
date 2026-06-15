@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight, Wallet } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
 import { formatDateTime, formatVND } from "@/lib/format";
@@ -179,6 +180,20 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to="/club/admin/finance">
                   <Wallet className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
+          {activeClub && (isClubAdmin || isClubOwner) && FEATURES.insuranceProfiles && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /> Bảo hiểm dealer</h3>
+                <p className="text-xs text-muted-foreground">Khai báo dealer nào tham gia BHXH/BHYT/BHTN, vùng &amp; lương căn cứ — không đổi công thức lương.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/insurance">
+                  <ShieldCheck className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>
