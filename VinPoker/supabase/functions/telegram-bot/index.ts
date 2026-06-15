@@ -315,11 +315,27 @@ async function handleCreateAccount(
   await provisionDealerAccount(admin, botToken, chatId, userId, target, email || null);
 }
 
-// ── Auto-provision a VBacker account for a (floor-approved) dealer ──────────
-// Creates an auth user (deterministic synthetic email + temp password), links
-// dealers.user_id, and replies with a one-tap magic link + the temp credentials.
-// Idempotent on dealers.user_id. Owner must allowlist DEALER_APP_URL as a magic-
-// link redirect. Never logs the password/link. Planner/identity only — no swing/payroll.
+/** Mask an email for logs/replies — keep first char + domain (n***@gmail.com). */
+function maskEmail(e: string | null): string {
+  if (!e) return "none";
+  const [local, domain] = e.split("@");
+  if (!domain) return "***";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
+const DEALER_SYNTH_SUFFIX = "@dealer.vinpoker.live";
+
+// ── Provision / recover a VBacker account for a (floor-approved) dealer ─────
+// Guards (hardened before deploy):
+//  • A temp PASSWORD is issued ONLY when a brand-new code account is created, and
+//    sent to the dealer ONCE. Existing accounts are NEVER re-passworded here
+//    (recovery = one-tap link + email reset).
+//  • A real email (Gmail) is bound ONLY when the current email is synthetic/absent;
+//    an already-set real email is NEVER overwritten via the bot.
+//  • A real email already used by ANOTHER account is refused (no account adoption /
+//    takeover) — only the synthetic (own-tgid) email may recover an existing row.
+//  • Never logs password / magic link / full email. Audit = masked, structured.
+// Owner must allowlist DEALER_APP_URL as a magic-link redirect. No swing/payroll.
 async function provisionDealerAccount(
   admin: any,
   botToken: string,
@@ -328,52 +344,98 @@ async function provisionDealerAccount(
   target: any,
   explicitEmail: string | null = null,
 ) {
-  const tempPassword = randomPassword();
   let authUserId: string | null = target.user_id ?? null;
   let email: string | null = null;
+  let tempPassword: string | null = null; // set ONLY for a freshly created account
+  let oldEmail: string | null = null;
+  let action = "";
+
+  const audit = (act: string, newE: string | null) =>
+    console.log(JSON.stringify({
+      evt: "dealer_account",
+      action: act,
+      telegram_id: userId,
+      dealer_id: target.id,
+      old_email: maskEmail(oldEmail),
+      new_email: maskEmail(newE),
+      ts: new Date().toISOString(),
+    }));
 
   if (authUserId) {
+    // Existing account — never reissue the password here.
+    const { data: u } = await admin.auth.admin.getUserById(authUserId);
+    const current: string | null = u?.user?.email ?? null;
+    oldEmail = current;
+    const currentIsSynthetic = !current || current.endsWith(DEALER_SYNTH_SUFFIX);
+
     if (explicitEmail) {
-      // Bind a real email (Gmail) to the existing account so the dealer can sign
-      // in with it AND self-recover via the normal email password reset.
-      await admin.auth.admin.updateUserById(authUserId, {
+      if (!currentIsSynthetic) {
+        // Guard: a real email is already set — do NOT overwrite it via the bot.
+        await sendDM(
+          botToken,
+          chatId,
+          `Tài khoản của bạn đã gắn email thật (${maskEmail(current)}).\nBot không đổi email. Dùng "Quên mật khẩu" qua email đó, hoặc liên hệ quản lý.`,
+        );
+        audit("bind_email_refused_existing_real", explicitEmail);
+        return;
+      }
+      // Bind the real email so the dealer can sign in + self-recover by email.
+      const { error: updErr } = await admin.auth.admin.updateUserById(authUserId, {
         email: explicitEmail,
         email_confirm: true,
-        password: tempPassword,
       });
+      if (updErr) {
+        await sendDM(
+          botToken,
+          chatId,
+          `Không gắn được Gmail (${maskEmail(explicitEmail)}) — có thể đã dùng cho tài khoản khác.\nDùng email khác, hoặc liên hệ quản lý.`,
+        );
+        audit("bind_email_refused_taken", explicitEmail);
+        return;
+      }
       email = explicitEmail;
+      action = "bind_email";
     } else {
-      // Existing account → fetch email, reset to the temp password we will send.
-      const { data: u } = await admin.auth.admin.getUserById(authUserId);
-      email = u?.user?.email ?? null;
-      if (email) await admin.auth.admin.updateUserById(authUserId, { password: tempPassword });
+      email = current;
+      action = "resend_link";
     }
   } else {
-    // Account handle = the email local-part the dealer types on the dealer-app
-    // login (no real email needed). Short, unique, stable: dlr<base36(telegram id)>.
-    // The dealer-app login appends "@dealer.vinpoker.live", so the handle ↔ email
-    // map is a pure string rule (no pre-auth DB lookup). Keep this domain in sync
-    // with DEALER_EMAIL_DOMAIN in src/lib/dealerApp/constants.ts.
-    email = explicitEmail ?? `dlr${userId.toString(36)}@dealer.vinpoker.live`;
+    // New account.
+    email = explicitEmail ?? `dlr${userId.toString(36)}${DEALER_SYNTH_SUFFIX}`;
+    tempPassword = randomPassword();
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
       password: tempPassword,
       email_confirm: true,
-      user_metadata: { display_name: target.full_name, dealer_id: target.id, source: "telegram_setup" },
+      user_metadata: { display_name: target.full_name, dealer_id: target.id, source: "telegram_account" },
     });
     if (createErr) {
-      // Prior partial run already created this email → recover the user + reset pw.
+      if (explicitEmail) {
+        // A REAL email collided with an existing account → refuse (no takeover).
+        await sendDM(
+          botToken,
+          chatId,
+          `Email "${maskEmail(email)}" đã được dùng cho một tài khoản khác.\nDùng email khác, hoặc liên hệ quản lý.`,
+        );
+        audit("create_email_refused_taken", email);
+        return;
+      }
+      // Synthetic (own-tgid) collision = this dealer's prior partial run → safe
+      // recover. Do NOT reset the password.
       const { data: link0 } = await admin.auth.admin.generateLink({ type: "magiclink", email });
       authUserId = link0?.user?.id ?? null;
-      if (authUserId) await admin.auth.admin.updateUserById(authUserId, { password: tempPassword });
+      tempPassword = null;
+      action = "recover_existing";
     } else {
       authUserId = created?.user?.id ?? null;
+      action = "create";
     }
     if (authUserId) await admin.from("dealers").update({ user_id: authUserId }).eq("id", target.id);
   }
 
   if (!authUserId || !email) {
     await sendDM(botToken, chatId, "Không tạo được tài khoản. Vui lòng liên hệ DC/kỹ thuật.");
+    audit("provision_failed", email);
     return;
   }
 
@@ -385,8 +447,7 @@ async function provisionDealerAccount(
   });
   const actionLink: string | null = linkData?.properties?.action_link ?? null;
 
-  // Synthetic (code) account vs a real bound email (Gmail).
-  const isSynthetic = email.endsWith("@dealer.vinpoker.live");
+  const isSynthetic = email.endsWith(DEALER_SYNTH_SUFFIX);
   const accountCode = email.split("@")[0];
 
   // Reply in plain text so the long URL isn't mangled by Markdown.
@@ -398,22 +459,36 @@ async function provisionDealerAccount(
   if (actionLink) {
     lines.push("", "Đăng nhập 1 chạm (bấm là vào thẳng app, hết hạn sau ~1 giờ):", actionLink);
   }
-  lines.push("", "Đăng nhập lại sau (mục Đăng nhập dealer trong app):");
+
   if (isSynthetic) {
-    lines.push(`• Tài khoản: ${accountCode}`, `• Mật khẩu tạm: ${tempPassword}`);
+    lines.push("", "Đăng nhập (mục Đăng nhập dealer trong app):", `• Mã tài khoản: ${accountCode}`);
+    if (tempPassword) {
+      lines.push(
+        `• Mật khẩu tạm: ${tempPassword}`,
+        "",
+        "⚠️ Thông tin này CHỈ được cấp 1 lần — hãy lưu lại.",
+        "Mất mật khẩu? Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự khôi phục, hoặc liên hệ quản lý.",
+      );
+    } else {
+      lines.push(
+        "",
+        "Tài khoản đã tồn tại — bot KHÔNG cấp lại mật khẩu.",
+        "Dùng link 1 chạm ở trên, hoặc gắn Gmail bằng /taotaikhoan <gmail>, hoặc liên hệ quản lý.",
+      );
+    }
   } else {
-    lines.push(`• Email/Gmail: ${email}`, `• Mật khẩu tạm: ${tempPassword}`);
-  }
-  lines.push("", "👉 Nên đổi mật khẩu trong mục Tài khoản sau khi đăng nhập.");
-  if (isSynthetic) {
-    lines.push("ℹ️ Tài khoản này chỉ cấp 1 lần. Mất? Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự khôi phục.");
-  } else {
-    lines.push("Quên mật khẩu sau này? Đặt lại qua email/Gmail như bình thường.");
+    lines.push(
+      "",
+      `Tài khoản dùng Gmail: ${maskEmail(email)}`,
+      "Từ giờ đăng nhập bằng Gmail này; quên mật khẩu thì dùng 'Quên mật khẩu' qua Gmail như bình thường.",
+    );
   }
   if (!actionLink && linkErr) {
-    lines.push("", "(Chưa tạo được link 1 chạm — dùng thông tin đăng nhập ở trên.)");
+    lines.push("", "(Chưa tạo được link 1 chạm — dùng cách đăng nhập ở trên.)");
   }
   await sendDM(botToken, chatId, lines.join("\n"), null);
+
+  audit(action, email);
 }
 
 // ── /unlink handler ───────────────────────────────────────────────────────
