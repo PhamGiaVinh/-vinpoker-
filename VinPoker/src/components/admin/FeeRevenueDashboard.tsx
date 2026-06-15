@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Coins, Download, RefreshCw, TrendingUp, Archive, Wallet, Building2, Filter, X } from "lucide-react";
+import { Coins, Download, RefreshCw, TrendingUp, Archive, Wallet, Building2, Filter, X, Percent } from "lucide-react";
 import { formatVND, formatDateTime } from "@/lib/format";
 import { exportToExcel, formatExcelDate } from "@/lib/exportExcel";
 
@@ -23,6 +23,7 @@ type FeeDeal = {
   buy_in_amount_vnd: number;
   status: string;
   platform_fixed_fee: number | null;
+  platform_percent_fee: number | null;
   platform_archive_fee: number | null;
   result_prize_vnd: number | null;
   player_checked_in: boolean | null;
@@ -81,7 +82,7 @@ const FeeRevenueDashboard = () => {
       .from("staking_deals")
       .select(`
         id, player_id, club_id, custom_event_name, buy_in_amount_vnd, status,
-        platform_fixed_fee, platform_archive_fee, result_prize_vnd,
+        platform_fixed_fee, platform_percent_fee, platform_archive_fee, result_prize_vnd,
         player_checked_in, player_checkin_at,
         committed_at, completed_at, created_at
       `)
@@ -134,14 +135,18 @@ const FeeRevenueDashboard = () => {
   type Row = ReturnType<typeof computeRow>;
   function computeRow(d: FeeDeal) {
     const entryFee = Number(d.platform_fixed_fee ?? 0);
+    const percentFee = Number(d.platform_percent_fee ?? 0);
     const archiveFee = Number(d.platform_archive_fee ?? ARCHIVE_DEFAULT);
     const checkedIn = !!d.player_checked_in;
     const entryCollected = checkedIn && entryFee > 0;
+    // Percent/transaction fee — collected on check-in, same gate as the fixed fee.
+    // Included here for consistency with Owner Finance (get_club_finance_summary).
+    const percentCollected = checkedIn && percentFee > 0 ? percentFee : 0;
     const prize = Number(d.result_prize_vnd ?? 0);
     const archiveEligible = d.status === "completed" && prize > 0;
     const archiveCollected = archiveEligible ? Math.min(archiveFee, prize) : 0;
-    const totalCollected = (entryCollected ? entryFee : 0) + archiveCollected;
-    return { deal: d, entryFee, entryCollected, checkedIn, archiveFee, archiveEligible, archiveCollected, totalCollected, prize };
+    const totalCollected = (entryCollected ? entryFee : 0) + percentCollected + archiveCollected;
+    return { deal: d, entryFee, entryCollected, percentFee, percentCollected, checkedIn, archiveFee, archiveEligible, archiveCollected, totalCollected, prize };
   }
 
   const filtered = useMemo(
@@ -155,7 +160,7 @@ const FeeRevenueDashboard = () => {
   const clubSummary = useMemo(() => {
     const map = new Map<string, {
       club_id: string; club_name: string;
-      checked_in_count: number; total_entry_fee: number;
+      checked_in_count: number; total_entry_fee: number; total_percent_fee: number;
       completed_with_prize_count: number; total_archive_fee: number;
       total_revenue: number;
     }>();
@@ -163,24 +168,26 @@ const FeeRevenueDashboard = () => {
       const id = d.club_id ?? "__none__";
       const name = d.club?.name ?? "Không xác định";
       if (!map.has(id)) {
-        map.set(id, { club_id: id, club_name: name, checked_in_count: 0, total_entry_fee: 0, completed_with_prize_count: 0, total_archive_fee: 0, total_revenue: 0 });
+        map.set(id, { club_id: id, club_name: name, checked_in_count: 0, total_entry_fee: 0, total_percent_fee: 0, completed_with_prize_count: 0, total_archive_fee: 0, total_revenue: 0 });
       }
       const r = computeRow(d);
       const s = map.get(id)!;
       if (r.entryCollected) { s.total_entry_fee += r.entryFee; s.checked_in_count += 1; }
+      s.total_percent_fee += r.percentCollected;
       if (r.archiveEligible) { s.total_archive_fee += r.archiveCollected; s.completed_with_prize_count += 1; }
-      s.total_revenue = s.total_entry_fee + s.total_archive_fee;
+      s.total_revenue = s.total_entry_fee + s.total_percent_fee + s.total_archive_fee;
     });
     return Array.from(map.values()).sort((a, b) => b.total_revenue - a.total_revenue);
   }, [deals]);
 
   const totals = useMemo(() => {
-    let entry = 0, archive = 0, ci = 0, comp = 0;
+    let entry = 0, percent = 0, archive = 0, ci = 0, comp = 0;
     rows.forEach((r) => {
       if (r.entryCollected) { entry += r.entryFee; ci += 1; }
+      percent += r.percentCollected;
       if (r.archiveEligible) { archive += r.archiveCollected; comp += 1; }
     });
-    return { entry, archive, total: entry + archive, deals: rows.length, checked_in: ci, completed: comp };
+    return { entry, percent, archive, total: entry + percent + archive, deals: rows.length, checked_in: ci, completed: comp };
   }, [rows]);
 
   const exportXlsx = async () => {
@@ -193,6 +200,7 @@ const FeeRevenueDashboard = () => {
         { header: "TÊN CÂU LẠC BỘ", get: (r) => r.club_name },
         { header: "TỔNG PHIẾU CHECK-IN", get: (r) => r.checked_in_count },
         { header: "TỔNG PHÍ ĐẦU VÀO (₫)", get: (r) => r.total_entry_fee },
+        { header: "TỔNG PHÍ %/GIAO DỊCH (₫)", get: (r) => r.total_percent_fee },
         { header: "TỔNG PHIẾU HOÀN TẤT CÓ THƯỞNG", get: (r) => r.completed_with_prize_count },
         { header: "TỔNG PHÍ LƯU TRỮ (₫)", get: (r) => r.total_archive_fee },
         { header: "TỔNG DOANH THU (₫)", get: (r) => r.total_revenue },
@@ -213,6 +221,7 @@ const FeeRevenueDashboard = () => {
         { header: "TÊN GIẢI TẬP HUẤN", get: (r) => r.deal.custom_event_name ?? "—" },
         { header: "LỆ PHÍ TẬP HUẤN (₫)", get: (r) => r.deal.buy_in_amount_vnd },
         { header: "PHÍ NỀN TẢNG ĐẦU VÀO (₫)", get: (r) => (r.entryCollected ? r.entryFee : 0) },
+        { header: "PHÍ %/GIAO DỊCH (₫)", get: (r) => r.percentCollected },
         { header: "TRẠNG THÁI ĐẦU VÀO", get: (r) => (r.entryCollected ? "Đã thu" : r.checkedIn ? "Không phát sinh" : "Chưa check-in") },
         { header: "THÀNH TÍCH (₫)", get: (r) => r.prize },
         { header: "PHÍ LƯU TRỮ HỒ SƠ (₫)", get: (r) => r.archiveCollected },
@@ -273,11 +282,16 @@ const FeeRevenueDashboard = () => {
       {/* RIGHT: Data */}
       <div className="space-y-4 min-w-0">
         {/* Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="p-4 gradient-card border-primary/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><TrendingUp className="w-3.5 h-3.5" /> Tổng phí đầu vào</div>
             <div className="text-2xl font-display font-bold text-primary mt-1">{formatVND(totals.entry)}</div>
             <div className="text-[11px] text-muted-foreground mt-1">{totals.checked_in} phiếu đã check-in</div>
+          </Card>
+          <Card className="p-4 gradient-card border-primary/30">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground"><Percent className="w-3.5 h-3.5" /> Tổng phí % / giao dịch</div>
+            <div className="text-2xl font-display font-bold text-primary mt-1">{formatVND(totals.percent)}</div>
+            <div className="text-[11px] text-muted-foreground mt-1">thu cùng phí đầu vào</div>
           </Card>
           <Card className="p-4 gradient-card border-primary/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Archive className="w-3.5 h-3.5" /> Tổng phí lưu trữ</div>
@@ -304,6 +318,7 @@ const FeeRevenueDashboard = () => {
                     <TableHead>Câu lạc bộ</TableHead>
                     <TableHead className="text-right">Check-in</TableHead>
                     <TableHead className="text-right">Phí đầu vào</TableHead>
+                    <TableHead className="text-right">Phí %</TableHead>
                     <TableHead className="text-right">HT có thưởng</TableHead>
                     <TableHead className="text-right">Phí lưu trữ</TableHead>
                     <TableHead className="text-right">Tổng</TableHead>
@@ -315,6 +330,7 @@ const FeeRevenueDashboard = () => {
                       <TableCell className="text-sm font-medium">{c.club_name}</TableCell>
                       <TableCell className="text-right text-xs">{c.checked_in_count}</TableCell>
                       <TableCell className="text-right text-xs">{formatVND(c.total_entry_fee)}</TableCell>
+                      <TableCell className="text-right text-xs">{formatVND(c.total_percent_fee)}</TableCell>
                       <TableCell className="text-right text-xs">{c.completed_with_prize_count}</TableCell>
                       <TableCell className="text-right text-xs">{formatVND(c.total_archive_fee)}</TableCell>
                       <TableCell className="text-right text-xs font-bold text-primary">{formatVND(c.total_revenue)}</TableCell>
@@ -326,6 +342,7 @@ const FeeRevenueDashboard = () => {
                     <TableCell className="font-bold">TỔNG CỘNG</TableCell>
                     <TableCell className="text-right">{clubSummary.reduce((s, c) => s + c.checked_in_count, 0)}</TableCell>
                     <TableCell className="text-right">{formatVND(clubSummary.reduce((s, c) => s + c.total_entry_fee, 0))}</TableCell>
+                    <TableCell className="text-right">{formatVND(clubSummary.reduce((s, c) => s + c.total_percent_fee, 0))}</TableCell>
                     <TableCell className="text-right">{clubSummary.reduce((s, c) => s + c.completed_with_prize_count, 0)}</TableCell>
                     <TableCell className="text-right">{formatVND(clubSummary.reduce((s, c) => s + c.total_archive_fee, 0))}</TableCell>
                     <TableCell className="text-right font-bold text-primary">{formatVND(clubSummary.reduce((s, c) => s + c.total_revenue, 0))}</TableCell>
@@ -351,6 +368,7 @@ const FeeRevenueDashboard = () => {
                   <TableHead>CLB</TableHead>
                   <TableHead className="text-right">Lệ phí</TableHead>
                   <TableHead className="text-right">Phí đầu vào</TableHead>
+                  <TableHead className="text-right">Phí %</TableHead>
                   <TableHead className="text-right">Phí lưu trữ</TableHead>
                   <TableHead className="text-right">Tổng phí</TableHead>
                 </TableRow>
@@ -358,10 +376,10 @@ const FeeRevenueDashboard = () => {
               <TableBody>
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={8}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={9}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                   ))
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Không có dữ liệu phí trong khoảng thời gian này.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Không có dữ liệu phí trong khoảng thời gian này.</TableCell></TableRow>
                 ) : (
                   rows.map((r) => (
                     <TableRow key={r.deal.id}>
@@ -386,6 +404,7 @@ const FeeRevenueDashboard = () => {
                           <Badge className="text-[9px] mt-0.5 bg-muted text-muted-foreground" variant="secondary">Chưa check-in</Badge>
                         )}
                       </TableCell>
+                      <TableCell className="text-right text-xs">{r.percentCollected > 0 ? formatVND(r.percentCollected) : "—"}</TableCell>
                       <TableCell className="text-right text-xs">
                         {r.archiveEligible ? (
                           <>
