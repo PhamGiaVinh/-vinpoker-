@@ -193,11 +193,14 @@ export default function SwingTableCard({
   }
 
   const dealerLabel = dealer?.full_name ?? (preAssigned ? preAssigned.full_name : null);
-  const nextLabel = slot0HasDealer
-    ? `${slot0Name}${slot0ReliefLabel ? ` · ${slot0ReliefLabel}` : ""}`
+  // Predicted relief dealer — name + entry time kept SEPARATE so the time is
+  // never truncated away when the name is long (one purple "Dự kiến" label only).
+  const nextName = slot0HasDealer
+    ? slot0Name
     : preAssigned
       ? preAssigned.full_name
       : pred?.nextDealerName ?? null;
+  const nextTime = slot0HasDealer ? slot0ReliefLabel : null;
 
   // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
   const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
@@ -260,15 +263,19 @@ export default function SwingTableCard({
                 <span className="truncate text-warning/90">Chưa gán</span>
               )}
             </div>
-            {dealer && nextLabel && (
-              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                Dự kiến: <span className="font-medium text-foreground">{nextLabel}</span>
-              </div>
-            )}
             <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", s.bg, s.text)}>
               <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
               {s.label}
             </span>
+            {dealer && nextName && (
+              <div className="mt-1 flex items-baseline gap-1 text-[11px] leading-tight">
+                <span className="shrink-0 text-[hsl(var(--ds-preassign))]" aria-hidden="true">→</span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{nextName}</span>
+                {nextTime && (
+                  <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{nextTime}</span>
+                )}
+              </div>
+            )}
           </div>
         </button>
       </PopoverTrigger>
