@@ -133,7 +133,7 @@ export function ActionBar({
                 )}
               >
                 <span className="text-[11px] font-semibold">{s.label}</span>
-                <span className="mt-0.5 text-[9px] tabular-nums opacity-70">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
+                <span className="mt-px text-[8px] tabular-nums opacity-55">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
               </button>
             ))}
           </div>
