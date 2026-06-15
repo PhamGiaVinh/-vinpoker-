@@ -1,6 +1,6 @@
 # Payroll P3 — cross-month overlap: golden-period before/after diff
 
-**Patch:** `supabase/migrations/20260907000000_payroll_p3_cross_month_overlap.sql`
+**Patch:** `supabase/migrations/20260909000000_payroll_p3_cross_month_overlap.sql` (slot moved from 20260907000000 → 20260909000000 to clear a collision with GE-2I; SQL body unchanged)
 **Builds on:** the live P2 body (`calculate_dealer_payroll`, md5 78e6d019…).
 **Owner decisions (2026-06-16):** split each shift by actual overlap with the payroll period; regular & OT prorated by the same ratio; base-salary shift credit = fractional overlap (sums to 1 per shift; OT never inflates it).
 **Run BEFORE any live apply.** Source-only; controlled Management-API apply is owner-gated. NO `db push`, NO `deploy_db`.

@@ -1,4 +1,4 @@
--- Rollback for migration 20260907000000_payroll_p3_cross_month_overlap.sql
+-- Rollback for migration 20260909000000_payroll_p3_cross_month_overlap.sql
 -- (Payroll P3 — cross-month overlap allocation of shift hours / OT / shift credit.)
 --
 -- Pre-apply live state: calculate_dealer_payroll == the P2-applied body
