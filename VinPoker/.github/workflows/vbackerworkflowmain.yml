@@ -9,6 +9,11 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      deploy_db:
+        description: "Run `supabase db push --linked` (DANGEROUS — owner-approved DB migration deploy ONLY). Leave false for a normal deploy."
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -37,10 +42,15 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy database migrations
+      # DB migrations are NEVER auto-applied. `supabase db push` runs ONLY on an
+      # explicit owner-approved manual run (workflow_dispatch with deploy_db=true).
+      # A normal push to main SKIPS this step entirely — no db push. `continue-on-error`
+      # is intentionally removed: when an owner explicitly opts in, a push failure MUST
+      # surface (not be silently swallowed). See VinPoker/CLAUDE.md migration-safety rules.
+      - name: Deploy database migrations (manual, owner-approved only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_db == true }}
         run: supabase db push --linked
         working-directory: ./VinPoker
-        continue-on-error: true
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
