@@ -1,10 +1,12 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, LayoutGrid } from "lucide-react";
+import { BackButton } from "@/components/BackButton";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
 
 /**
@@ -13,6 +15,7 @@ import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
  * former tournament_live section in CashierDashboard so data parity is preserved.
  */
 export default function FloorDashboard() {
+  const { t } = useTranslation();
   const { user, loading, isAdmin } = useAuth();
   const nav = useNavigate();
   const { clubs, clubIds, dealerClubIds } = useOperatorClubs();
@@ -46,6 +49,7 @@ export default function FloorDashboard() {
 
   return (
     <div className="container mx-auto p-3 md:p-6">
+      <BackButton to="/" label={t("nav.schedule")} className="mb-2" />
       <div className="mb-4 flex items-center gap-3">
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/15 text-primary rounded-md text-xs font-bold border border-primary/30">
           <LayoutGrid className="w-3.5 h-3.5" /> FLOOR
