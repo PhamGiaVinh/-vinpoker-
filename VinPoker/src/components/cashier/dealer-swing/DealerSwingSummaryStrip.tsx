@@ -1,23 +1,16 @@
 /**
- * DealerSwingSummaryStrip — KPI header for the Dealer Swing operator panel
- * (UI Phase 4). Three grouped cards (Hoạt động · Rủi ro · Hiệu suất) + a live
- * freshness indicator, matching the approved dashboard mockup.
+ * DealerSwingSummaryStrip — "Sức khoẻ sàn" header for the Dealer Swing operator
+ * console (V3 redesign). One scannable bar: big coverage number + a coverage
+ * meter, then a row of large stat readouts (mở / có dealer / trống / quá hạn /
+ * cảnh báo / nghỉ / dự kiến) + the stability %.
  *
  * PRESENTATION ONLY: receives already-derived counts/metrics as props (computed
- * in SwingPanel from existing data — no new query). Stitch Dark / neon-green,
- * generous spacing, no overlapping text.
+ * in SwingPanel from existing data — no new query). Fully token-driven
+ * (primary/warning/destructive/--ds-* + gradient-card/shadow-neon) so it
+ * auto-recolours in the warm theme.
  */
 
-interface Metric {
-  label: string;
-  value: string | number;
-  color: string;
-}
-
-interface GroupCard {
-  title: string;
-  metrics: Metric[];
-}
+import { cn } from "@/lib/utils";
 
 export interface DealerSwingSummaryStripProps {
   activeTables: number;
@@ -39,64 +32,71 @@ export interface DealerSwingSummaryStripProps {
   nowMs: number;
 }
 
+interface Readout {
+  label: string;
+  value: string | number;
+  color: string;
+}
+
 export default function DealerSwingSummaryStrip({
   activeTables, assignedTables, ghostAssignments = 0, onBreak, predictedPending, overdue, warnings,
   stabilityPct, earliestShortageLabel, nowMs,
 }: DealerSwingSummaryStripProps) {
   const allAssigned = assignedTables === activeTables && activeTables > 0;
+  const emptyTables = Math.max(0, activeTables - assignedTables);
+  const covPct = activeTables > 0 ? Math.round((assignedTables / activeTables) * 100) : 0;
 
-  const cards: GroupCard[] = [
-    {
-      title: "Tổng quan hoạt động",
-      metrics: [
-        { label: "Bàn đang mở", value: activeTables, color: "text-foreground" },
-        { label: "Bàn có dealer / mở", value: `${assignedTables}/${activeTables}`, color: allAssigned ? "text-primary" : "text-warning" },
-        { label: "Đang nghỉ", value: onBreak, color: "text-foreground" },
-      ],
-    },
-    {
-      title: "Quản lý rủi ro",
-      metrics: [
-        { label: "Dự kiến chờ", value: predictedPending, color: predictedPending > 0 ? "text-[hsl(var(--ds-active))]" : "text-muted-foreground" },
-        { label: "Cảnh báo", value: warnings, color: warnings > 0 ? "text-warning" : "text-muted-foreground" },
-        { label: "Quá hạn", value: overdue, color: overdue > 0 ? "text-destructive" : "text-muted-foreground" },
-      ],
-    },
-    {
-      title: "Hiệu suất",
-      metrics: [
-        { label: "Tỷ lệ ổn định", value: stabilityPct != null ? `${stabilityPct}%` : "—", color: stabilityPct != null && stabilityPct >= 90 ? "text-primary" : stabilityPct != null ? "text-warning" : "text-muted-foreground" },
-        { label: "Thiếu sớm nhất", value: earliestShortageLabel ?? "—", color: earliestShortageLabel ? "text-warning" : "text-muted-foreground" },
-      ],
-    },
+  const readouts: Readout[] = [
+    { label: "Bàn mở", value: activeTables, color: "text-foreground" },
+    { label: "Có dealer", value: assignedTables, color: allAssigned ? "text-primary" : "text-warning" },
+    { label: "Bàn trống", value: emptyTables, color: emptyTables > 0 ? "text-warning" : "text-muted-foreground" },
+    { label: "Quá hạn", value: overdue, color: overdue > 0 ? "text-destructive" : "text-muted-foreground" },
+    { label: "Cảnh báo", value: warnings, color: warnings > 0 ? "text-warning" : "text-muted-foreground" },
+    { label: "Đang nghỉ", value: onBreak, color: onBreak > 0 ? "text-[hsl(var(--ds-active))]" : "text-muted-foreground" },
+    { label: "Dự kiến", value: predictedPending, color: predictedPending > 0 ? "text-[hsl(var(--ds-preassign))]" : "text-muted-foreground" },
+    { label: "Ổn định", value: stabilityPct != null ? `${stabilityPct}%` : "—", color: stabilityPct != null && stabilityPct >= 90 ? "text-primary" : stabilityPct != null ? "text-warning" : "text-muted-foreground" },
   ];
 
   const hhmmss = new Date(nowMs).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
   return (
     <div className="mb-4">
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <span className="text-sm font-medium text-primary tracking-wide">Đài điều hành Dealer</span>
-        <span className="ml-auto inline-flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-full px-3 py-1.5 text-xs text-primary">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
-          Trực tiếp · cập nhật {hhmmss}
-        </span>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {cards.map((card) => (
-          <div key={card.title} className="bg-card/70 border border-primary/20 rounded-xl px-4 py-3.5">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2.5">{card.title}</div>
-            <div className="flex items-stretch">
-              {card.metrics.map((m, i) => (
-                <div key={m.label} className={["min-w-0", i > 0 ? "ml-3 border-l border-border/40 pl-3" : ""].join(" ")}>
-                  <div className={["text-2xl font-semibold tabular-nums leading-none", m.color].join(" ")}>{m.value}</div>
-                  <div className="text-[11px] text-muted-foreground mt-1.5 leading-tight">{m.label}</div>
-                </div>
-              ))}
+      <div className="rounded-xl border border-primary/20 bg-gradient-card shadow-card px-4 py-3.5">
+        <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
+          {/* Coverage block */}
+          <div className="min-w-[260px] flex-1">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="font-display text-[11px] uppercase tracking-wider text-muted-foreground">Sức khoẻ sàn</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] text-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                Trực tiếp · {hhmmss}
+              </span>
+            </div>
+            <div className="mb-2 flex items-baseline gap-2">
+              <span className={cn("text-3xl font-bold leading-none tabular-nums", allAssigned ? "text-primary" : "text-foreground")}>
+                {assignedTables}/{activeTables}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                bàn có dealer{emptyTables > 0 ? ` · ${emptyTables} trống` : ""}{overdue > 0 ? ` · ${overdue} OT` : ""}
+              </span>
+            </div>
+            <div className="flex h-2.5 overflow-hidden rounded-full border border-border bg-muted/40">
+              <div className={cn("h-full rounded-full transition-all", allAssigned ? "bg-primary shadow-neon" : "bg-primary")} style={{ width: `${covPct}%` }} />
             </div>
           </div>
-        ))}
+
+          {/* Stat readouts */}
+          <div className="flex items-stretch">
+            {readouts.map((r, i) => (
+              <div key={r.label} className={cn("px-3.5", i > 0 && "border-l border-border/40")}>
+                <div className={cn("text-2xl font-bold leading-none tabular-nums", r.color)}>{r.value}</div>
+                <div className="mt-1.5 text-[10px] leading-tight text-muted-foreground">{r.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
       {ghostAssignments > 0 && (
         <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
           <span aria-hidden="true">⚠️</span>

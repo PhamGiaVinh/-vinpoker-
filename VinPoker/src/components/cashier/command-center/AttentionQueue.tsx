@@ -60,7 +60,7 @@ export default function AttentionQueue({
           <span>{label}</span>
           <span className="ml-auto font-mono text-[9px] opacity-60">{items.length}</span>
         </div>
-        <div className="space-y-0.5">
+        <div className="space-y-1.5">
           {items.map((item) => (
             <AttentionItem
               key={item.id}

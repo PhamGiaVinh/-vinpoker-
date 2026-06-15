@@ -9,13 +9,14 @@
  * deriveTableSwingView; never changes swing/timer/RPC logic.
  */
 
-import { Trash2, Clock, UserRound, AlertTriangle } from "lucide-react";
+import { Trash2, UserRound, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { TableCardKebab } from "../TableCardKebab";
 import SwingTableActions from "./SwingTableActions";
+import SwingClockRing from "./SwingClockRing";
 import { deriveTableSwingView, formatTimeHHmm, type TableTimeline } from "./swingTableView";
 import { dealerStatusStyle, type DealerTableStatus } from "./dealerStatusStyle";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
@@ -181,7 +182,6 @@ export default function SwingTableCard({
     timerLabel = `${String(Math.floor(warmSec / 60)).padStart(2, "0")}:${String(warmSec % 60).padStart(2, "0")}`;
     timerColor = "text-[hsl(var(--ds-active))]";
   }
-  const statusLabel = inWarmup ? "Vào swing sau" : isOt ? "OT" : preAssignLabel ?? (isPastDue ? "Quá hạn" : "còn lại");
   const remainingDisplay = isOt ? otLabel : timerLabel;
 
   // Progress along the current swing window (presentation only).
@@ -193,11 +193,6 @@ export default function SwingTableCard({
   }
 
   const dealerLabel = dealer?.full_name ?? (preAssigned ? preAssigned.full_name : null);
-  const nextLabel = slot0HasDealer
-    ? `${slot0Name}${slot0ReliefLabel ? ` · ${slot0ReliefLabel}` : ""}`
-    : preAssigned
-      ? preAssigned.full_name
-      : pred?.nextDealerName ?? null;
 
   // ── Final-handoff guards (lifted verbatim from the action-row IIFE) ──
   const slot0Att = slot0HasDealer ? dealers.find((d) => d.id === slot0!.in_attendance_id) : undefined;
@@ -222,61 +217,49 @@ export default function SwingTableCard({
           type="button"
           id={`table-card-${t.id}`}
           className={cn(
-            "group relative w-full overflow-hidden rounded-xl border p-3 text-left transition",
-            "bg-card/70 hover:bg-muted/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            "group relative flex w-full items-center gap-3 overflow-hidden rounded-xl border p-3 text-left transition",
+            "bg-gradient-card shadow-card hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
             s.border,
+            !a && "border-dashed",
+            isOt && "shadow-neon",
             isAnimating?.(t.id) && "table-card--swinging",
-            focused && "ring-2 ring-primary/80",
+            focused && "ring-2 ring-primary/80 shadow-neon",
           )}
         >
-          {/* Header: Bàn N + status pill */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-foreground">{t.table_name}</div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
-                <span className={cn("text-[11px] font-medium", s.text)}>{s.label}</span>
-              </div>
-            </div>
-            {(dealerStatus === "missing" || dealerStatus === "overdue") && (
-              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-            )}
-          </div>
+          {/* ① Vòng đồng hồ swing (signature) */}
+          <SwingClockRing
+            fraction={a ? progressPct / 100 : 0}
+            colorClass={isOt ? "text-destructive" : timerColor}
+            label={a && a.assigned_at ? remainingDisplay : "—"}
+            caption={!a ? "TRỐNG" : isOt ? "OT" : inWarmup ? "WARMUP" : "CÒN"}
+            glow={isOt || dealerStatus === "stable"}
+            empty={!a}
+            size={56}
+          />
 
-          {/* Dealer · timer · next */}
-          <div className="mt-2.5 space-y-1.5">
-            <div className="flex items-center gap-2 text-xs">
-              <UserRound className="h-3.5 w-3.5 shrink-0 text-primary/80" aria-hidden="true" />
+          {/* ② tên bàn · ③ dealer · ④ badge trạng thái */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-bold text-foreground">{t.table_name}</span>
+              {(dealerStatus === "missing" || dealerStatus === "overdue") && (
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" />
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs">
+              <UserRound className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" />
               {dealerLabel ? (
-                <span className="truncate text-foreground">
+                <span className="truncate text-muted-foreground">
                   {preAssigned && !dealer ? "⬆ " : ""}{dealerLabel}
                 </span>
               ) : (
-                <span className="text-warning/90">Chưa gán</span>
+                <span className="truncate text-warning/90">Chưa gán</span>
               )}
             </div>
-
-            {a && a.assigned_at && (
-              <div className="flex items-center gap-2 text-xs">
-                <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <span className={cn("font-mono tabular-nums", isOt ? "text-destructive" : timerColor)}>{remainingDisplay}</span>
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{statusLabel}</span>
-              </div>
-            )}
-
-            {dealer && nextLabel && (
-              <div className="truncate text-[11px] text-muted-foreground">
-                Dự kiến: <span className="text-foreground">{nextLabel}</span>
-              </div>
-            )}
+            <span className={cn("mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", s.bg, s.text)}>
+              <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
+              {s.label}
+            </span>
           </div>
-
-          {/* Bottom progress bar (status-colored) */}
-          {a && a.assigned_at && (
-            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/10">
-              <div className={cn("h-full rounded-full transition-all", s.progress)} style={{ width: `${progressPct}%` }} />
-            </div>
-          )}
         </button>
       </PopoverTrigger>
 

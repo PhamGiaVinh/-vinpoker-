@@ -1,5 +1,6 @@
 import { Clock, Table2, UserMinus, HelpCircle, ChevronRight, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { AttentionItem as AttentionItemData } from "@/hooks/useAttentionQueue";
 
 interface Props {
@@ -11,63 +12,72 @@ interface Props {
 }
 
 const ICON_MAP: Record<string, React.ReactNode> = {
-  ot: <Clock className="w-3 h-3" />,
-  empty_table: <Table2 className="w-3 h-3" />,
-  break_due: <UserMinus className="w-3 h-3" />,
-  missing_next_dealer: <HelpCircle className="w-3 h-3" />,
-  shortage: <AlertTriangle className="w-3 h-3" />,
+  ot: <Clock className="h-3.5 w-3.5" />,
+  empty_table: <Table2 className="h-3.5 w-3.5" />,
+  break_due: <UserMinus className="h-3.5 w-3.5" />,
+  missing_next_dealer: <HelpCircle className="h-3.5 w-3.5" />,
+  shortage: <AlertTriangle className="h-3.5 w-3.5" />,
 };
 
+const TAG_MAP: Record<string, string> = {
+  ot: "Khẩn cấp · OT",
+  empty_table: "Khẩn cấp · Trống",
+  break_due: "Tới giờ nghỉ",
+  missing_next_dealer: "Thiếu dealer kế",
+  shortage: "Thiếu dealer",
+};
+
+/**
+ * AttentionItem — one priority card in the Dealer Swing alerts lane (V3 redesign).
+ * Compact card with a severity left-accent + tag + title and ONE prominent CTA
+ * (Swing / Gán / Cho nghỉ) plus a quiet "Xem". PRESENTATION ONLY — every action
+ * is the same parent handler as before; tokenized so it recolours in warm.
+ */
 export default function AttentionItem({ item, onSwing, onAssign, onSendToBreak, onFocusTable }: Props) {
   const isCritical = item.severity === "critical";
+  const accent = isCritical ? "text-destructive" : "text-warning";
 
   return (
     <div
-      className={`flex items-center gap-2 pl-2.5 pr-2 py-2 border-l-2 rounded-none cursor-pointer transition-colors ${
+      className={cn(
+        "cursor-pointer rounded-lg border border-l-[3px] p-2.5 transition-colors",
         isCritical
-          ? "border-destructive bg-destructive/5 hover:bg-destructive/10"
-          : "border-warning bg-warning/5 hover:bg-warning/10"
-      }`}
+          ? "border-destructive/35 border-l-destructive bg-destructive/5 hover:bg-destructive/10"
+          : "border-warning/35 border-l-warning bg-warning/5 hover:bg-warning/10",
+      )}
       onClick={() => onFocusTable?.(item.tableId ?? "")}
     >
-      <span className={`flex-shrink-0 ${isCritical ? "text-destructive" : "text-warning"}`}>
-        {ICON_MAP[item.type]}
-      </span>
-
-      <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
-        <span className={`text-[11px] font-medium leading-tight truncate ${
-          isCritical ? "text-destructive" : "text-warning"
-        }`}>
-          {item.title}
-        </span>
-        {item.subtitle && (
-          <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">
-            {item.subtitle}
-          </span>
-        )}
+      <div className="flex items-center gap-2">
+        <span className={cn("shrink-0", accent)}>{ICON_MAP[item.type]}</span>
+        <span className={cn("text-[10px] font-bold uppercase tracking-wide", accent)}>{TAG_MAP[item.type] ?? "Cần xử lý"}</span>
       </div>
 
-      <div className="flex-shrink-0 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <div className="mt-1 truncate text-xs font-semibold text-foreground">{item.title}</div>
+      {item.subtitle && (
+        <div className="truncate text-[10px] text-muted-foreground">{item.subtitle}</div>
+      )}
+
+      <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         {item.type === "ot" && item.tableId && onSwing && (
-          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
+          <Button size="sm" className="h-9 flex-1 bg-destructive px-3 text-xs font-bold text-destructive-foreground hover:bg-destructive/90"
             onClick={() => onSwing(item.tableId!)}>
-            Swing <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
+            Chốt khẩn cấp <ChevronRight className="ml-0.5 h-3 w-3" />
           </Button>
         )}
         {(item.type === "empty_table" || item.type === "missing_next_dealer") && item.tableId && onAssign && (
-          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
+          <Button size="sm" className="h-9 flex-1 bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90"
             onClick={() => onAssign(item.tableId!)}>
-            Gán <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
+            Gán dealer <ChevronRight className="ml-0.5 h-3 w-3" />
           </Button>
         )}
         {item.type === "break_due" && item.attendanceId && onSendToBreak && (
-          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs"
+          <Button size="sm" className="h-9 flex-1 bg-[hsl(var(--ds-active))] px-3 text-xs font-bold text-white hover:opacity-90"
             onClick={() => onSendToBreak(item.attendanceId!)}>
-            Break <ChevronRight className="w-2.5 h-2.5 ml-0.5" />
+            Cho nghỉ <ChevronRight className="ml-0.5 h-3 w-3" />
           </Button>
         )}
         {item.tableId && onFocusTable && (
-          <Button size="sm" variant="ghost" className="h-11 px-3 text-xs text-muted-foreground hover:text-foreground"
+          <Button size="sm" variant="ghost" className="h-9 px-3 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onFocusTable(item.tableId!)}>
             Xem
           </Button>
