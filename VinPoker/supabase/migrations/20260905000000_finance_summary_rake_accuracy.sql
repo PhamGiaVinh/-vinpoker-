@@ -6,25 +6,28 @@
 -- zero writes. Never recomputes payroll. No registration/cashier/staking/payroll BEHAVIOR change.
 --
 -- WHAT CHANGED (reporting only):
---   * Tournament rake is now measured from the ACTUAL collected fee per confirmed registration:
---        rakeActual = SUM( GREATEST(0, tournament_registrations.total_pay - buy_in) )  WHERE status='confirmed'
---     Rationale: the ONLINE register edge fn (tournament-register) stores platform_fixed_fee = 0 and
---     puts the rake into total_pay (total_pay = buy_in + rake). Offline buy-in / re-entry store the fee
---     in platform_fixed_fee, but for them (total_pay - buy_in) == that fee too. So (total_pay - buy_in)
---     is the ONE definition that is correct across all three sources (summing platform_fixed_fee would
---     undercount every online entry to 0).
---   * rakeExpected = the previous estimate (tournaments.rake_amount × GREATEST(0, confirmed - free_rake_used)).
---   * rakeVariance = rakeActual - rakeExpected.
---   * Source split of rakeActual by reference_code prefix (deterministic from the writers):
+--   * Tournament rake is a SINGLE CONFIGURED price per tour. `tournaments.rake_amount` is set once at
+--     tour setup and is identical for online & offline entries. The HEADLINE rake is therefore:
+--        rake (= rakeExpected) = SUM over tours of  rake_amount × paying confirmed entries
+--     split by source (online/offline/reentry) via reference_code prefix, with free-rake applied to
+--     ONLINE entries only:  cfg_online = rake_amount × GREATEST(0, n_online − free_rake_used).
+--   * rakeActual = SUM( GREATEST(0, tournament_registrations.total_pay − buy_in) ) WHERE status='confirmed'
+--     is carried as a RECONCILIATION metric only (what was actually collected). It uses (total_pay − buy_in)
+--     — NOT platform_fixed_fee — because the ONLINE register edge fn (tournament-register) stores
+--     platform_fixed_fee = 0 and folds the rake into total_pay; summing platform_fixed_fee would report
+--     0 for every online entry. (total_pay − buy_in) equals the configured rake on a normal entry and the
+--     typed fee for offline/re-entry, so it is the one definition correct across all three sources.
+--   * rakeVariance = rakeActual − rake (configured). Surfaces any gap between charged and configured.
+--   * Source split by reference_code prefix (deterministic from the writers):
 --        online  = reference_code 'VINReg…' (NOT CASH-/REENTRY-)   [tournament-register edge fn]
 --        offline = reference_code 'CASH-%'                          [create_offline_buyin_and_seat]
 --        reentry = reference_code 'REENTRY-%'                       [reenter_tournament_player]
 --   * Staking fees split into stakingFixed / stakingPercent / stakingArchive (was one lumped stakingFees).
---   * HEADLINE CHANGE: revenue.rake, revenue.total and net now use ACTUAL collected rake (real money in),
---     not the count×rake_amount estimate. Staking fees remain a SEPARATE stream (never mixed into rake).
+--   * revenue.rake, revenue.total and net use CONFIGURED rake (rake_amount × paying entries) — the owner's
+--     real, intended price. Staking fees remain a SEPARATE stream (never mixed into rake).
 --
 -- Revenue streams (club-attributable), kept strictly separate:
---   TOURNAMENT  -> rake (actual; online+offline+reentry)            [tournament rake]
+--   TOURNAMENT  -> rake (configured; online+offline+reentry)        [tournament rake]
 --   STAKING     -> stakingFixed + stakingPercent + stakingArchive   [staking service/txn/archive fees]
 --               -> payoutFees                                       [staking payout / ITM / cash-out fee]
 -- EXCLUDED from revenue/net: tournament buy-in (prize-pool pass-through), staking capital/escrow,
@@ -109,31 +112,19 @@ begin
     join public.staking_deals d on d.id = pr.deal_id
     where d.club_id = any(v_club_ids) and pr.created_at between p_from and p_to
   ),
-  -- Expected (estimate) tournament rake = rake_amount × paying confirmed entries.
-  tour_confirmed as (
-    select tr.tournament_id, count(*)::numeric as confirmed
-    from public.tournament_registrations tr
-    where tr.status = 'confirmed'
-      and tr.tournament_id in (
-        select id from public.tournaments
-        where club_id = any(v_club_ids) and created_at between p_from and p_to
-      )
-    group by tr.tournament_id
-  ),
-  rake_rows as (
-    select t.club_id, to_char(t.created_at, 'YYYY-MM') as ym,
-      coalesce(t.rake_amount,0) * greatest(0, coalesce(tc.confirmed,0)
-        - case when t.free_rake_enabled then coalesce(t.free_rake_used,0) else 0 end) as fee
-    from public.tournaments t
-    left join tour_confirmed tc on tc.tournament_id = t.id
-    where t.club_id = any(v_club_ids) and t.created_at between p_from and p_to
-  ),
-  -- ACTUAL collected tournament rake, per confirmed registration. (total_pay - buy_in) is the rake
-  -- portion across ALL sources; reference_code prefix classifies online/offline/reentry.
-  reg_rake as (
-    select t.club_id,
-           to_char(t.created_at, 'YYYY-MM') as ym,
-           tr.reference_code,
+  -- Tournament rake is CONFIGURED per tour: rake_amount is a single fixed value set at tour setup
+  -- (online & offline charge the same). Revenue = rake_amount × paying confirmed entries, split by
+  -- source via reference_code prefix. Free-rake slots are consumed by ONLINE entries.
+  -- rake_actual (Σ total_pay − buy_in) is carried for RECONCILIATION only (not the headline).
+  reg_src as (
+    select t.id as tour_id, t.club_id, to_char(t.created_at, 'YYYY-MM') as ym,
+           coalesce(t.rake_amount,0) as rake_amount,
+           case when t.free_rake_enabled then coalesce(t.free_rake_used,0) else 0 end as free_used,
+           case
+             when tr.reference_code like 'REENTRY-%' then 'reentry'
+             when tr.reference_code like 'CASH-%'    then 'offline'
+             else 'online'
+           end as src,
            greatest(0, coalesce(tr.total_pay,0) - coalesce(tr.buy_in,0)) as rake_actual
     from public.tournament_registrations tr
     join public.tournaments t on t.id = tr.tournament_id
@@ -141,11 +132,28 @@ begin
       and t.club_id = any(v_club_ids)
       and t.created_at between p_from and p_to
   ),
-  -- Total/trend/perClub revenue uses ACTUAL rake (real money in), not the estimate.
+  tour_src as (
+    select tour_id, club_id, ym, rake_amount, free_used,
+      count(*) filter (where src = 'online')  as n_online,
+      count(*) filter (where src = 'offline') as n_offline,
+      count(*) filter (where src = 'reentry') as n_reentry,
+      coalesce(sum(rake_actual),0)            as actual_sum
+    from reg_src
+    group by tour_id, club_id, ym, rake_amount, free_used
+  ),
+  rake_cfg as (
+    select club_id, ym,
+      rake_amount * greatest(0, n_online - free_used) as cfg_online,   -- free-rake applies to online
+      rake_amount * n_offline                          as cfg_offline,
+      rake_amount * n_reentry                          as cfg_reentry,
+      actual_sum
+    from tour_src
+  ),
+  -- Total/trend/perClub revenue uses CONFIGURED rake (fixed per-tour rake × paying entries).
   rev_all as (
     select club_id, ym, (fixed_fee + percent_fee + archive_fee) as fee from fee_rows
     union all select club_id, ym, fee from payout_rows
-    union all select club_id, ym, rake_actual as fee from reg_rake
+    union all select club_id, ym, (cfg_online + cfg_offline + cfg_reentry) as fee from rake_cfg
   ),
   period_agg as (
     select pp.id as period_id, pp.club_id, pp.period_year, pp.period_month, pp.period_end,
@@ -189,16 +197,15 @@ begin
       'stakingPercent', (select coalesce(sum(percent_fee),0) from fee_rows),
       'stakingArchive', (select coalesce(sum(archive_fee),0) from fee_rows),
       'payoutFees',     (select coalesce(sum(fee),0) from payout_rows),
-      'rake',           (select coalesce(sum(rake_actual),0) from reg_rake),  -- headline = ACTUAL collected
-      'rakeActual',     (select coalesce(sum(rake_actual),0) from reg_rake),
-      'rakeExpected',   (select coalesce(sum(fee),0) from rake_rows),
-      'rakeVariance',   (select coalesce(sum(rake_actual),0) from reg_rake)
-                        - (select coalesce(sum(fee),0) from rake_rows),
-      'rakeOnline',     (select coalesce(sum(rake_actual),0) from reg_rake
-                         where reference_code is null
-                            or (reference_code not like 'CASH-%' and reference_code not like 'REENTRY-%')),
-      'rakeOffline',    (select coalesce(sum(rake_actual),0) from reg_rake where reference_code like 'CASH-%'),
-      'rakeReentry',    (select coalesce(sum(rake_actual),0) from reg_rake where reference_code like 'REENTRY-%'),
+      -- headline = CONFIGURED rake (rake_amount × paying entries; free-rake on online)
+      'rake',           (select coalesce(sum(cfg_online + cfg_offline + cfg_reentry),0) from rake_cfg),
+      'rakeActual',     (select coalesce(sum(actual_sum),0) from rake_cfg),   -- reconciliation only (Σ total_pay − buy_in)
+      'rakeExpected',   (select coalesce(sum(cfg_online + cfg_offline + cfg_reentry),0) from rake_cfg),
+      'rakeVariance',   (select coalesce(sum(actual_sum),0) from rake_cfg)
+                        - (select coalesce(sum(cfg_online + cfg_offline + cfg_reentry),0) from rake_cfg),
+      'rakeOnline',     (select coalesce(sum(cfg_online),0)  from rake_cfg),
+      'rakeOffline',    (select coalesce(sum(cfg_offline),0) from rake_cfg),
+      'rakeReentry',    (select coalesce(sum(cfg_reentry),0) from rake_cfg),
       'total',          (select coalesce(sum(fee),0) from rev_all)
     ),
     'cost', jsonb_build_object(
