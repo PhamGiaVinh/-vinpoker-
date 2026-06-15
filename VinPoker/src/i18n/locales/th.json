@@ -2613,6 +2613,14 @@
     "create": "สร้าง"
   },
   "liveHub": {
+    "story": {
+      "title": "ความเคลื่อนไหวทัวร์นาเมนต์",
+      "eliminated": "{{name}} ตกรอบ — เหลือ {{count}} คน",
+      "eliminatedNoCount": "{{name}} ตกรอบ",
+      "remaining": "เหลือ {{count}} คน",
+      "finalTable": "ไฟนอลเทเบิล — เหลือ {{count}} คน",
+      "finalTableNoCount": "ไฟนอลเทเบิล"
+    },
     "seat": "ที่นั่ง {{n}}",
     "header": {
       "live": "ถ่ายทอดสด",

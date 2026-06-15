@@ -128,6 +128,106 @@ export function feedLabel(actionType: string, amount: number): string {
   }
 }
 
+// ── Tournament-wide STORY feed (#4 PR1) ─────────────────────────────────────
+// A persistent feed of TOURNAMENT-level events (separate from the current-hand
+// action ticker): player eliminations, players-remaining milestones, final table.
+// MVP = only events that are CERTAIN from the data. We never name a killer or a
+// "winner" (the DB stores neither) and never infer level-ups.
+
+export type HubStoryKind = "elimination" | "milestone" | "final_table";
+
+export interface HubStoryItem {
+  id: string;
+  kind: HubStoryKind;
+  /** Pre-built vi label — fallback for non-i18n contexts + tests. */
+  label: string;
+  /** Structured fields so the view can build a localized label. */
+  name?: string;
+  count?: number;
+}
+
+/** Minimal shape of a recent `hand_players` row used to detect eliminations. */
+export interface RawHandPlayer {
+  player_id: string;
+  hand_id: string;
+  is_eliminated?: boolean | null;
+  created_at?: string | null;
+}
+
+// Players-remaining milestones, descending. Final table (≤9) is its own event.
+const MILESTONE_THRESHOLDS = [100, 50, 27, 18, 9, 3, 2];
+
+/**
+ * Eliminations from recent `hand_players` rows (expected NEWEST-first). Each item
+ * has a STABLE id `elim:{hand_id}:{player_id}` so the hook can dedup across polls.
+ * Copy is "{name} bị loại — còn {N} người" — never "A loại B" / "thắng" (the DB
+ * stores no killer/winner).
+ */
+export function deriveEliminations(
+  rows: RawHandPlayer[],
+  nameByPlayer: Map<string, string>,
+  playersRemaining: number | null,
+): HubStoryItem[] {
+  const out: HubStoryItem[] = [];
+  for (const r of rows || []) {
+    if (!r.is_eliminated) continue;
+    const name = nameByPlayer.get(r.player_id) || r.player_id.slice(0, 6);
+    const n = playersRemaining;
+    out.push({
+      id: `elim:${r.hand_id}:${r.player_id}`,
+      kind: "elimination",
+      name,
+      count: n ?? undefined,
+      label: n != null ? `${name} bị loại — còn ${n} người` : `${name} bị loại`,
+    });
+  }
+  return out;
+}
+
+/**
+ * Players-remaining MILESTONE + FINAL-TABLE events, emitted ONCE per threshold
+ * crossed — the caller passes a persistent `seen` set (mutated here) so a value
+ * is never re-announced. At most one milestone item per call (the most
+ * significant newly-crossed threshold), so a multi-bust poll never spams. Final
+ * table prefers the official `status`, else falls back to ≤9 on a single table.
+ */
+export function deriveMilestones(
+  playersRemaining: number | null,
+  activeTableCount: number,
+  status: string | null | undefined,
+  seen: Set<string>,
+): HubStoryItem[] {
+  const out: HubStoryItem[] = [];
+  const n = playersRemaining;
+
+  const isFinalTable =
+    status === "final_table" || (n != null && n <= 9 && activeTableCount === 1);
+  if (isFinalTable && !seen.has("final_table")) {
+    seen.add("final_table");
+    out.push({
+      id: "story:final_table",
+      kind: "final_table",
+      count: n ?? undefined,
+      label: n != null ? `Final table — còn ${n} người` : "Final table",
+    });
+  }
+
+  if (n != null) {
+    let crossed: number | null = null;
+    for (const th of MILESTONE_THRESHOLDS) {
+      const key = `ms:${th}`;
+      if (n <= th && !seen.has(key)) {
+        seen.add(key);
+        crossed = th; // descending → ends on the smallest threshold still ≥ n
+      }
+    }
+    if (crossed != null) {
+      out.push({ id: `story:ms:${crossed}`, kind: "milestone", count: n, label: `Còn ${n} người` });
+    }
+  }
+  return out;
+}
+
 /**
  * Map already-loaded hand actions (expected NEWEST-first) into feed rows.
  * Player display names come from the seats' player_name.

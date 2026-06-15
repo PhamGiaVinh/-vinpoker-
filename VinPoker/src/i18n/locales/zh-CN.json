@@ -2613,6 +2613,14 @@
     "create": "创建"
   },
   "liveHub": {
+    "story": {
+      "title": "赛事动态",
+      "eliminated": "{{name}} 出局 — 剩 {{count}} 人",
+      "eliminatedNoCount": "{{name}} 出局",
+      "remaining": "剩 {{count}} 人",
+      "finalTable": "决赛桌 — 剩 {{count}} 人",
+      "finalTableNoCount": "决赛桌"
+    },
     "seat": "{{n}}号座",
     "header": {
       "live": "直播",

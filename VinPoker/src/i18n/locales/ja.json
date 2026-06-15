@@ -2613,6 +2613,14 @@
     "create": "作成"
   },
   "liveHub": {
+    "story": {
+      "title": "大会の動き",
+      "eliminated": "{{name}} が敗退 — 残り{{count}}人",
+      "eliminatedNoCount": "{{name}} が敗退",
+      "remaining": "残り{{count}}人",
+      "finalTable": "ファイナルテーブル — 残り{{count}}人",
+      "finalTableNoCount": "ファイナルテーブル"
+    },
     "seat": "席{{n}}",
     "header": {
       "live": "ライブ",

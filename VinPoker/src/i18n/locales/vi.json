@@ -2832,6 +2832,14 @@
     "create": "Tạo"
   },
   "liveHub": {
+    "story": {
+      "title": "Diễn biến giải",
+      "eliminated": "{{name}} bị loại — còn {{count}} người",
+      "eliminatedNoCount": "{{name}} bị loại",
+      "remaining": "Còn {{count}} người",
+      "finalTable": "Final table — còn {{count}} người",
+      "finalTableNoCount": "Final table"
+    },
     "seat": "Ghế {{n}}",
     "header": {
       "live": "TRỰC TIẾP",

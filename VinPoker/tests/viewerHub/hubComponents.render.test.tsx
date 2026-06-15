@@ -5,7 +5,14 @@ import { LiveTablesStrip } from "@/components/cashier/tournament-live/viewer-hub
 import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
 import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-hub/OrientationToggle";
 import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/LiveStatsBar";
-import type { HubFeedItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
+import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
+import type { HubFeedItem, HubStoryItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
+
+const storyItems: HubStoryItem[] = [
+  { id: "elim:h1:p1", kind: "elimination", name: "An", count: 18, label: "An bị loại — còn 18 người" },
+  { id: "story:ms:18", kind: "milestone", count: 18, label: "Còn 18 người" },
+  { id: "story:final_table", kind: "final_table", count: 9, label: "Final table — còn 9 người" },
+];
 
 const tables: HubTableSummary[] = [
   { tableId: "tA", name: "Bàn 1", playerCount: 8 },
@@ -85,6 +92,20 @@ describe("LiveStatsBar", () => {
   });
 });
 
+describe("LiveStoryFeed", () => {
+  it("renders the three story kinds with safe localized (vi) copy", () => {
+    const html = renderToStaticMarkup(<LiveStoryFeed items={storyItems} />);
+    expect(html).toContain("Diễn biến giải"); // section title
+    expect(html).toContain("An bị loại — còn 18 người"); // elimination
+    expect(html).toContain("Còn 18 người"); // milestone
+    expect(html).toContain("Final table — còn 9 người"); // final table
+    expect(html).not.toMatch(/loại B|thắng/); // never a killer/winner
+  });
+  it("renders nothing when there are no story items", () => {
+    expect(renderToStaticMarkup(<LiveStoryFeed items={[]} />)).toBe("");
+  });
+});
+
 describe("viewer-hub i18n wiring", () => {
   afterAll(async () => {
     await i18n.changeLanguage("vi"); // restore the deterministic test language
@@ -103,5 +124,10 @@ describe("viewer-hub i18n wiring", () => {
     const strip = renderToStaticMarkup(<LiveTablesStrip tables={tables} activeTableId="tA" />);
     expect(strip).toContain("Live tables");
     expect(strip).toContain("8 players");
+
+    const story = renderToStaticMarkup(<LiveStoryFeed items={storyItems} />);
+    expect(story).toContain("Tournament feed"); // localized section title
+    expect(story).toContain("An eliminated — 18 left"); // localized elimination, interpolated
+    expect(story).toContain("Final table — 9 left");
   });
 });
