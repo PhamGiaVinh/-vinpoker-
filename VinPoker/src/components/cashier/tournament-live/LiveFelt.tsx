@@ -14,6 +14,7 @@
 //  • Seats are avatar + name + stack only (no name boxes); position badge is small.
 
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
 
@@ -131,6 +132,7 @@ export function LiveFelt({
   formatBB,
   portrait = false,
 }: LiveFeltProps) {
+  const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
 
@@ -189,7 +191,7 @@ export function LiveFelt({
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
               >
                 <div className="tracker-display text-[8px] uppercase tracking-[0.22em]" style={{ color: "hsl(var(--poker-gold) / 0.78)" }}>
-                  Pot
+                  {t("liveHub.felt.pot", "Pot")}
                 </div>
                 <div className="tracker-num text-lg font-bold leading-tight sm:text-xl" style={{ color: "hsl(var(--poker-gold))" }}>
                   {formatStack(potSize)}
@@ -211,7 +213,7 @@ export function LiveFelt({
                           : "border-[hsl(var(--poker-gold)/0.4)] text-[hsl(var(--poker-gold))]"
                       }`}
                     >
-                      {i === 0 ? "Main" : `Side ${i}`} {formatStack(pot.amount)}
+                      {i === 0 ? t("liveHub.felt.main", "Main") : t("liveHub.felt.side", "Side {{i}}", { i })} {formatStack(pot.amount)}
                       <span className="ml-1 font-normal opacity-60">({pot.eligible_player_ids.length})</span>
                     </span>
                   ))}
@@ -254,7 +256,7 @@ export function LiveFelt({
                     className="tracker-display absolute -top-2 z-20 rounded-full px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wide whitespace-nowrap text-white shadow"
                     style={{ background: "hsl(var(--poker-accent))" }}
                   >
-                    ◀ chờ
+                    ◀ {t("liveHub.felt.toAct", "chờ")}
                   </div>
                 )}
                 <div className="relative">
@@ -299,11 +301,11 @@ export function LiveFelt({
                       color: "hsl(var(--poker-gold))",
                     }}
                   >
-                    Cược {formatStack(seat.current_bet)}
+                    {t("liveHub.felt.bet", "Cược {{amount}}", { amount: formatStack(seat.current_bet) })}
                   </div>
                 )}
-                {seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>ALL IN</div>}
-                {seat.is_folded && <div className="mt-0.5 text-[8px] text-zinc-300" style={nameShadow}>FOLDED</div>}
+                {seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>}
+                {seat.is_folded && <div className="mt-0.5 text-[8px] text-zinc-300" style={nameShadow}>{t("liveHub.felt.folded", "FOLDED")}</div>}
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                   <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90" style={nameShadow}>{seat.last_action}</div>
                 )}
@@ -322,7 +324,7 @@ export function LiveFelt({
         {multiTableUnresolved && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">
             <div className="rounded-lg bg-black/45 px-6 py-3 text-center text-sm text-zinc-200 backdrop-blur-sm">
-              Giải có nhiều bàn — chọn bàn ở trên để xem live.
+              {t("liveHub.felt.multiTable", "Giải có nhiều bàn — chọn bàn ở trên để xem live.")}
             </div>
           </div>
         )}
@@ -330,7 +332,7 @@ export function LiveFelt({
         {!multiTableUnresolved && !handNumber && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">
             <div className="rounded-lg bg-black/45 px-6 py-3 text-sm text-zinc-200 backdrop-blur-sm">
-              Chờ dealer bắt đầu hand...
+              {t("liveHub.felt.waiting", "Chờ dealer bắt đầu hand...")}
             </div>
           </div>
         )}
@@ -340,9 +342,9 @@ export function LiveFelt({
       {latestAction && (
         <div className="mt-2.5 px-2">
           <div className="tracker-display mx-auto flex w-fit max-w-full items-center gap-2 rounded-full border border-amber-500/30 bg-black/65 px-3.5 py-1.5 text-xs">
-            <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-amber-400/80">Hành động</span>
+            <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-amber-400/80">{t("liveHub.felt.action", "Hành động")}</span>
             <span className="truncate text-amber-100">
-              {latestAction.seat_number > 0 && <span className="text-amber-300/70">Ghế {latestAction.seat_number} · </span>}
+              {latestAction.seat_number > 0 && <span className="text-amber-300/70">{t("liveHub.seat", "Ghế {{n}}", { n: latestAction.seat_number })} · </span>}
               <span className="font-semibold text-emerald-300">{latestAction.display_name}</span>{" "}
               <span className="tracker-num">{formatActionLabel(latestAction)}</span>
             </span>
