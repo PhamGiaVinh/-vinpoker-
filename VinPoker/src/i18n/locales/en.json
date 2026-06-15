@@ -1900,11 +1900,27 @@
   "tdAi": {
     "entry": "Ask TD AI",
     "title": "TD AI Assistant",
-    "subtitle": "Look up tournament-dispute handling. Advisory only — the TD makes the final call.",
+    "subtitle": "Multi-purpose TD assistant: table rulings, tournament operations, floor procedure and basic strategy. Advisory only — the TD makes the final call.",
     "newLookup": "New lookup",
     "loading": "Asking TD AI…",
     "advisoryBanner": "Advisory only — not an official ruling. The TD confirms before applying.",
     "error": "Could not reach TD AI — using keyword lookup instead.",
+    "category": {
+      "ruling": "Ruling",
+      "operations": "Operations",
+      "floor": "Floor",
+      "strategy": "Strategy"
+    },
+    "source": {
+      "ai": "AI advice",
+      "local": "Offline lookup"
+    },
+    "citation": {
+      "viewHint": "Click to view the cited text",
+      "suggestion": "Suggested handling",
+      "disclaimer": "This is a paraphrased summary, NOT the official verbatim TDA text. Reference only — the TD confirms before applying.",
+      "notFound": "Cited content not found."
+    },
     "form": {
       "table": "Table",
       "tablePlaceholder": "e.g. Table 4",
@@ -2814,5 +2830,67 @@
     "saving": "Saving...",
     "update": "Update",
     "create": "Create"
+  },
+  "liveHub": {
+    "seat": "Seat {{n}}",
+    "header": {
+      "live": "LIVE",
+      "tables": "{{count}} tables",
+      "share": "Share"
+    },
+    "featured": {
+      "badge": "LIVE • TABLE IN PLAY"
+    },
+    "orientation": {
+      "landscape": "Landscape",
+      "portrait": "Portrait"
+    },
+    "tables": {
+      "title": "Live tables",
+      "players": "{{count}} players"
+    },
+    "stats": {
+      "prize": "Prize pool",
+      "remaining": "Remaining",
+      "remainingUnit": "players",
+      "chipLeader": "Chip Leader"
+    },
+    "feed": {
+      "title": "Updates • Live",
+      "empty": "No action in the current hand yet",
+      "badge": {
+        "allin": "ALL-IN",
+        "raise": "RAISE",
+        "bet": "BET",
+        "call": "CALL",
+        "check": "CHECK",
+        "fold": "FOLD",
+        "post": "BLIND",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "All-In {{amount}}",
+        "raise": "Raise {{amount}}",
+        "bet": "Bet {{amount}}",
+        "call": "Call {{amount}}",
+        "check": "Check",
+        "fold": "Fold",
+        "post_sb": "SB {{amount}}",
+        "post_bb": "BB {{amount}}",
+        "post_ante": "Ante {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "Pot",
+      "main": "Main",
+      "side": "Side {{i}}",
+      "toAct": "to act",
+      "bet": "Bet {{amount}}",
+      "allIn": "ALL IN",
+      "folded": "FOLDED",
+      "action": "Action",
+      "multiTable": "This tournament has multiple tables — pick a table above to watch live.",
+      "waiting": "Waiting for the dealer to start the hand..."
+    }
   }
 }

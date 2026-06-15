@@ -13,6 +13,7 @@
   "include": [
     "supabase/functions/_shared/pokerEngine",
     "supabase/functions/_shared/pokerAdapter",
+    "supabase/functions/_shared/pokerRuntime",
     "tests/pokerEngine",
     "tests/pokerAdapter"
   ]

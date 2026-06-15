@@ -12,20 +12,23 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   activeSeats,
+  deriveChipLeader,
   deriveFeed,
   deriveTables,
+  type HubChipLeader,
   type HubFeedItem,
   type HubTableSummary,
   type RawAction,
   type RawSeat,
 } from "./hubDerive";
 
-export type { HubTableSummary, HubFeedItem, HubFeedKind } from "./hubDerive";
+export type { HubTableSummary, HubFeedItem, HubFeedKind, HubChipLeader } from "./hubDerive";
 
 export interface LiveTrackerHubData {
   liveTableCount: number;
   tables: HubTableSummary[];
   feed: HubFeedItem[];
+  chipLeader: HubChipLeader | null;
   loading: boolean;
 }
 
@@ -37,6 +40,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
     liveTableCount: 0,
     tables: [],
     feed: [],
+    chipLeader: null,
     loading: true,
   });
   const seqRef = useRef(0);
@@ -52,7 +56,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
       const [{ data: seatRows }, { data: hands }] = await Promise.all([
         supabase
           .from("tournament_seats")
-          .select("player_id, seat_number, player_name, table_id, is_active")
+          .select("player_id, seat_number, player_name, table_id, is_active, chip_count")
           .eq("tournament_id", tournamentId),
         supabase
           .from("tournament_hands")
@@ -98,6 +102,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         liveTableCount: tables.length,
         tables,
         feed: deriveFeed(actions, nameByPlayer, seatByPlayer),
+        chipLeader: deriveChipLeader(seats),
         loading: false,
       });
     };

@@ -221,7 +221,7 @@ const Tournaments = () => {
               key={v}
               onClick={() => { setView(v); setPage(1); }}
               className={cn(
-                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
+                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
                 view === v
                   ? v === "livestream"
                     ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
@@ -807,13 +807,13 @@ const LiveTrackerSection = () => {
                 )}
                 {t.current_blinds && (
                   <div className="text-center">
-                    <div className="text-white font-bold text-base">{t.current_blinds}</div>
+                    <div className="text-foreground font-bold text-base">{t.current_blinds}</div>
                     <div className="text-muted-foreground text-[10px]">Blinds</div>
                   </div>
                 )}
                 {t.average_stack != null && (
                   <div className="text-center">
-                    <div className="text-white font-bold text-base">{formatStack(t.average_stack)}</div>
+                    <div className="text-foreground font-bold text-base">{formatStack(t.average_stack)}</div>
                     <div className="text-muted-foreground text-[10px]">AVG Stack</div>
                   </div>
                 )}
@@ -845,13 +845,13 @@ const LiveTrackerSection = () => {
             )}
             {t.current_blinds && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-white font-bold">{t.current_blinds}</div>
+                <div className="text-foreground font-bold">{t.current_blinds}</div>
                 <div className="text-muted-foreground text-[9px]">Blinds</div>
               </div>
             )}
             {t.average_stack != null && (
               <div className="rounded-md bg-muted/30 px-2 py-1.5">
-                <div className="text-white font-bold">{formatStack(t.average_stack)}</div>
+                <div className="text-foreground font-bold">{formatStack(t.average_stack)}</div>
                 <div className="text-muted-foreground text-[9px]">AVG</div>
               </div>
             )}

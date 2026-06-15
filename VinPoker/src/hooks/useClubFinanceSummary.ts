@@ -19,7 +19,8 @@ export interface ClubFinanceSummary {
     // staking stream (kept separate from tournament rake)
     stakingFees: number; stakingFixed: number; stakingPercent: number; stakingArchive: number;
     payoutFees: number;
-    // tournament rake stream — `rake` mirrors `rakeActual` (real money collected)
+    // tournament rake stream — `rake` = CONFIGURED (rake_amount × paying entries); `rakeActual`
+    // (Σ total_pay − buy_in) is reconciliation only; splits are configured per source.
     rake: number; rakeActual: number; rakeExpected: number; rakeVariance: number;
     rakeOnline: number; rakeOffline: number; rakeReentry: number;
     total: number;
@@ -51,9 +52,11 @@ const emptyRevenue = (): ClubFinanceSummary["revenue"] => ({
 });
 
 // Normalize a server `revenue` object, defaulting fields the OLD (pre-v2) RPC body
-// does not return — so the dashboard degrades gracefully until v2 is applied live:
-// rakeActual/Expected fall back to the legacy estimate `rake`, splits to 0, staking
-// sub-fees collapse into the lumped `stakingFees`.
+// does not return — so the dashboard degrades gracefully until v2 is applied live.
+// `rake` is the headline straight from the server (CONFIGURED in v2; the count-based
+// estimate in the old RPC — both are the intended price, so it maps through directly).
+// rakeActual/Expected fall back to `rake`, splits to 0, staking sub-fees collapse into
+// the lumped `stakingFees`.
 const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
   const r = rev ?? {};
   const rake = Number(r.rake ?? 0);
@@ -64,7 +67,7 @@ const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
     stakingPercent: Number(r.stakingPercent ?? 0),
     stakingArchive: Number(r.stakingArchive ?? 0),
     payoutFees: Number(r.payoutFees ?? 0),
-    rake: Number(r.rakeActual ?? rake),
+    rake,
     rakeActual: Number(r.rakeActual ?? rake),
     rakeExpected: Number(r.rakeExpected ?? rake),
     rakeVariance: Number(r.rakeVariance ?? 0),
@@ -222,11 +225,12 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         });
       }
 
-      // ===== Revenue 3 — tournament rake =====
-      //   rakeExpected = rake_amount × paying confirmed entries (legacy count-based estimate)
-      //   rakeActual   = Σ GREATEST(0, total_pay − buy_in) per confirmed registration (real money;
-      //                  correct for online where platform_fixed_fee=0). Split by reference_code prefix:
-      //                  REENTRY-=re-entry, CASH-=offline, else=online. Totals/trend use ACTUAL.
+      // ===== Revenue 3 — tournament rake (CONFIGURED model) =====
+      //   Tournament rake is a single fixed price per tour (tournaments.rake_amount), identical for
+      //   online & offline. HEADLINE rake = rake_amount × paying confirmed entries, split by source via
+      //   reference_code prefix (REENTRY-=re-entry, CASH-=offline, else=online); free-rake slots apply to
+      //   ONLINE only. rakeActual = Σ GREATEST(0, total_pay − buy_in) is carried for RECONCILIATION only
+      //   (uses total_pay − buy_in, not platform_fixed_fee, which is 0 for online entries).
       {
         let tq = supabase.from("tournaments")
           .select("id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at")
@@ -237,7 +241,13 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         const scopedTours = (tours ?? []).filter((t) => inScope(t.club_id));
         const tourById = new Map(scopedTours.map((t) => [t.id, t]));
         const tourIds = scopedTours.map((t) => t.id);
-        const confirmedByTour = new Map<string, number>();
+        // per-tour, per-source confirmed counts + actual collected (reconciliation)
+        const agg = new Map<string, { nOnline: number; nOffline: number; nReentry: number; actual: number }>();
+        const bump = (tid: string) => {
+          let a = agg.get(tid);
+          if (!a) { a = { nOnline: 0, nOffline: 0, nReentry: 0, actual: 0 }; agg.set(tid, a); }
+          return a;
+        };
         for (let i = 0; i < tourIds.length; i += CHUNK) {
           const chunk = tourIds.slice(i, i + CHUNK);
           if (!chunk.length) break;
@@ -245,27 +255,30 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
             .select("tournament_id, reference_code, total_pay, buy_in")
             .in("tournament_id", chunk).eq("status", "confirmed");
           (regs ?? []).forEach((r) => {
-            const t = tourById.get(r.tournament_id);
-            if (!t) return;
-            confirmedByTour.set(r.tournament_id, (confirmedByTour.get(r.tournament_id) ?? 0) + 1);
-            const actual = Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0));
-            if (actual <= 0) return;
-            rakeActual += actual;
+            if (!tourById.has(r.tournament_id)) return;
+            const a = bump(r.tournament_id);
             const ref = String((r as any).reference_code ?? "");
-            if (ref.startsWith("REENTRY-")) rakeReentry += actual;
-            else if (ref.startsWith("CASH-")) rakeOffline += actual;
-            else rakeOnline += actual;
-            addRev(t.club_id, actual, monthKey(t.created_at ?? toTs));
+            if (ref.startsWith("REENTRY-")) a.nReentry += 1;
+            else if (ref.startsWith("CASH-")) a.nOffline += 1;
+            else a.nOnline += 1;
+            a.actual += Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0));
           });
         }
         scopedTours.forEach((t) => {
-          const confirmed = confirmedByTour.get(t.id) ?? 0;
+          const a = agg.get(t.id) ?? { nOnline: 0, nOffline: 0, nReentry: 0, actual: 0 };
+          const rakeAmt = Number(t.rake_amount ?? 0);
           const free = t.free_rake_enabled ? Number(t.free_rake_used ?? 0) : 0;
-          const paying = Math.max(0, confirmed - free);
-          rakeExpected += Number(t.rake_amount ?? 0) * paying;
+          const cfgOnline = rakeAmt * Math.max(0, a.nOnline - free);
+          const cfgOffline = rakeAmt * a.nOffline;
+          const cfgReentry = rakeAmt * a.nReentry;
+          rakeOnline += cfgOnline; rakeOffline += cfgOffline; rakeReentry += cfgReentry;
+          rakeActual += a.actual;
+          const cfgTotal = cfgOnline + cfgOffline + cfgReentry;
+          if (cfgTotal > 0) addRev(t.club_id, cfgTotal, monthKey(t.created_at ?? toTs));
         });
       }
-      rake = rakeActual; // headline = actual collected (real money in)
+      rake = rakeOnline + rakeOffline + rakeReentry; // headline = CONFIGURED (rake_amount × paying entries)
+      rakeExpected = rake;                           // configured IS the expectation in this model
 
       // ===== Cost — SAVED dealer payroll (no recompute) + status/aging =====
       const statusTotals = emptyStatusTotals();
@@ -320,7 +333,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       }
 
       // ===== assemble =====
-      const revenueTotal = stakingFees + payoutFees + rakeActual;
+      const revenueTotal = stakingFees + payoutFees + rake; // configured rake (matches addRev feed)
       const months = Array.from(new Set([...revMonth.keys(), ...costMonth.keys()])).sort();
       const trend = months.map((mk) => ({
         key: `${mk.slice(5, 7)}/${mk.slice(2, 4)}`,
@@ -337,7 +350,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       setSummary({
         revenue: {
           stakingFees, stakingFixed, stakingPercent, stakingArchive, payoutFees,
-          rake: rakeActual, rakeActual, rakeExpected, rakeVariance: rakeActual - rakeExpected,
+          rake, rakeActual, rakeExpected, rakeVariance: rakeActual - rake,
           rakeOnline, rakeOffline, rakeReentry, total: revenueTotal,
         },
         cost: { payrollNet, payrollGross, adjustments },

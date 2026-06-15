@@ -56,3 +56,37 @@ describe("retrieveRules — golden set", () => {
     expect(r.hits.length).toBeLessThanOrEqual(8);
   });
 });
+
+describe("retrieveRules — advisory topics surface above threshold", () => {
+  // Operations / floor / strategy entries must be retrievable so the assistant
+  // can advise on them (the model only answers from what retrieval surfaces).
+  // Asserts the intended entry is among the top-K (not strictly top-1) since
+  // overlapping advisory topics can legitimately co-rank.
+  const cases: Array<[string, string]> = [
+    ["cơ cấu mù blind structure độ dài level", "ops-blind-structure"],
+    ["khi nào gom chip color up đua chip", "ops-color-up"],
+    ["cân bàn table balancing dồn người", "ops-table-balance"],
+    ["gộp bàn break table rút thăm lại", "ops-break-table"],
+    ["đóng đăng ký muộn re-entry", "ops-late-reg"],
+    ["cơ cấu trả thưởng payout chia tiền", "ops-payouts-icm"],
+    ["big blind ante đóng ante chung", "ops-big-blind-ante"],
+    ["bốc ghế ngẫu nhiên seat draw", "ops-registration-seat-draw"],
+    ["lịch nghỉ giải lao dinner break", "ops-clock-break-schedule"],
+    ["dealer đẩy pot nhầm người", "floor-pot-award-error"],
+    ["lệch chip thiếu chip không khớp", "floor-chip-discrepancy"],
+    ["thông đồng soft play chuyển chip", "floor-collusion-softplay"],
+    ["tiểu xảo angle shooting", "floor-angle-shoot"],
+    ["ghi nhận sự việc biên bản incident", "floor-incident-record"],
+    ["vị trí range mở bài position", "strat-position-ranges"],
+    ["pot odds đếm outs", "strat-pot-odds"],
+    ["áp lực bong bóng gần tiền bubble", "strat-icm-bubble"],
+    ["chơi stack ngắn push fold", "strat-stack-sizes"],
+    ["3bet 4bet re-raise", "strat-3bet-4bet"],
+    ["quản lý bankroll phương sai variance", "strat-bankroll-variance"],
+  ];
+  it.each(cases)("%s ⊇ %s", (q, expected) => {
+    const r = retrieveRules(sit(q), TD_RULES_CORPUS);
+    expect(r.belowThreshold).toBe(false);
+    expect(r.hits.map((h) => h.rule.id)).toContain(expected);
+  });
+});

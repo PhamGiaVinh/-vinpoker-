@@ -1,14 +1,22 @@
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Save, Megaphone } from "lucide-react";
+import { AlertTriangle, Save, Megaphone, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TdAiCitation } from "./TdAiCitation";
 import { TD_DEMO_NOTICE_VI } from "@/lib/tdai/buildLocalAnswer";
-import type { TdAnswer, TdConfidence } from "@/lib/tdai/types";
+import { dominantCategory, CATEGORY_I18N_KEY } from "@/lib/tdai/categories";
+import type { TdAnswer, TdConfidence, TdRuleCategory } from "@/lib/tdai/types";
 
 const CONFIDENCE_STYLE: Record<TdConfidence, string> = {
   low: "border-muted-foreground/30 bg-muted/40 text-muted-foreground",
   medium: "border-amber-500/40 bg-amber-500/10 text-amber-300",
   high: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+};
+
+const CATEGORY_STYLE: Record<TdRuleCategory, string> = {
+  ruling: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+  floor: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+  operations: "border-violet-500/40 bg-violet-500/10 text-violet-300",
+  strategy: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -23,8 +31,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** Fixed answer-card layout. Always shows the DEMO banner — never a ruling. */
 export function TdAiAnswerCard({ answer }: { answer: TdAnswer }) {
   const { t } = useTranslation();
+  const category = dominantCategory(answer.matchedRuleIds);
   return (
     <div className="space-y-4">
+      {/* Domain chip + source — what kind of help this is and where it came from. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {category && (
+          <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${CATEGORY_STYLE[category]}`}>
+            {t(CATEGORY_I18N_KEY[category])}
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <Sparkles className="h-3 w-3" />
+          {answer.source === "ai" ? t("tdAi.source.ai") : t("tdAi.source.local")}
+        </span>
+      </div>
+
       {/* Advisory banner — always visible. AI answers and the offline keyword
           fallback get different wording, but BOTH say it is not a ruling. */}
       <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">

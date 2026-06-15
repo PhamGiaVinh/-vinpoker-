@@ -73,7 +73,7 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     setSelected(t);
     setPlayerName("");
     setBuyIn(Number((t as any).buy_in) || 0);
-    setFee(0);
+    setFee(Number((t as any).rake_amount) || 0);
   };
 
   const total = (Number(buyIn) || 0) + (Number(fee) || 0);

@@ -464,6 +464,73 @@
   }
 }
 
+/* ── VinPoker Warm overrides for global hardcoded-color utilities ──
+   These classes ship fixed neon/red/amber hex for the dark theme (above);
+   the dark theme is intentionally left byte-identical. In warm mode only,
+   remap them to the warm semantic tokens so badges/buttons stay on-theme
+   across every page that uses them (packages, countdowns, OT, breaks). */
+[data-theme="vinpoker-warm"] .btn-primary {
+  background: var(--gradient-neon);
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 2px 12px hsl(var(--primary) / 0.30);
+}
+[data-theme="vinpoker-warm"] .btn-primary:hover {
+  box-shadow: 0 4px 20px hsl(var(--primary) / 0.42);
+}
+[data-theme="vinpoker-warm"] .btn-primary:active {
+  box-shadow: 0 1px 6px hsl(var(--primary) / 0.25);
+}
+[data-theme="vinpoker-warm"] .badge-early-bird {
+  background: linear-gradient(135deg, hsl(var(--success)), hsl(var(--success) / 0.82));
+  color: hsl(var(--success-foreground));
+}
+[data-theme="vinpoker-warm"] .neon-glow {
+  box-shadow: 0 0 12px 0 hsl(var(--primary) / 0.35);
+}
+[data-theme="vinpoker-warm"] .text-strikethrough {
+  text-decoration-color: hsl(var(--destructive));
+}
+[data-theme="vinpoker-warm"] .ot-badge--warning {
+  background: hsl(var(--warning) / 0.15);
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.35);
+}
+[data-theme="vinpoker-warm"] .ot-badge--critical {
+  background: hsl(var(--destructive) / 0.13);
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.40);
+}
+[data-theme="vinpoker-warm"] .countdown-badge--normal {
+  background: hsl(var(--success) / 0.12);
+  color: hsl(var(--success));
+  border-color: hsl(var(--success) / 0.28);
+}
+[data-theme="vinpoker-warm"] .countdown-badge--urgent {
+  background: hsl(var(--warning) / 0.14);
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.30);
+}
+[data-theme="vinpoker-warm"] .countdown-badge--overdue {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.30);
+}
+[data-theme="vinpoker-warm"] .priority-break-badge--mandatory {
+  background: hsl(var(--destructive) / 0.18);
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.40);
+}
+[data-theme="vinpoker-warm"] .priority-break-badge--warning {
+  background: hsl(var(--warning) / 0.15);
+  color: hsl(var(--warning));
+  border-color: hsl(var(--warning) / 0.30);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="vinpoker-warm"] .ot-badge--critical {
+    border-color: hsl(var(--destructive));
+  }
+}
+
 /* ── Table focus animation ────────────────────────────────── */
 .table-card--focused {
   animation: focusPulse 1s ease-in-out 3;
