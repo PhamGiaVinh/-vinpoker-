@@ -5,12 +5,12 @@ Implements the GE-2H spec (`GE2H_TABLE_RUNNER_AUTO_DEAL_SPEC.md`, Option C — h
 eligibility lister + a service-role Edge runner that deals the next hand per table. No cron,
 no Edge deploy, no secret, no flag flip in this PR.
 
-- DB: `supabase/migrations/20260909000000_op_run_due_table_ticks.sql` (lister + dry-run diag)
+- DB: `supabase/migrations/20260910000000_op_run_due_table_ticks.sql` (lister + dry-run diag)
 - Engine/runner core (unit-tested): `supabase/functions/_shared/pokerRuntime/{dealNextHand,tableRunner}.ts`
 - Edge: `supabase/functions/online-poker-table-runner/index.ts`
 - Harness: `scripts/ge2-table-runner-dryrun.mjs`
 - Phase-D probe: `scripts/ge2-drill/sql/07_table_runner.sql`
-- Rollback: `docs/emergency_rollbacks/PRE_GE2K_20260909000000_*_rollback.sql`
+- Rollback: `docs/emergency_rollbacks/PRE_GE2K_20260910000000_*_rollback.sql`
 - Depends on: GE-2I `20260907000000` (settlement writeback) + GE-2J `20260908000000` (stand-up guard)
 
 ---
@@ -80,7 +80,7 @@ All steps below are **NOT** done in this PR. Run only in a dedicated Phase-D ses
 (gate phrase `Proceed with G4 DB enable drill`), after GE-2I + GE-2J are applied:
 
 1. Apply migrations (controlled, single-file): `20260907000000` (GE-2I), `20260908000000` (GE-2J),
-   `20260909000000` (GE-2K lister) — verify each live, flag stays OFF.
+   `20260910000000` (GE-2K lister) — verify each live, flag stays OFF.
 2. Deploy the Edge: `supabase functions deploy online-poker-table-runner --no-verify-jwt`.
 3. Set the Edge secret `OP_TABLE_RUNNER_SECRET` (random) + the matching DB GUC
    `app.op_table_runner_secret`.
@@ -99,7 +99,7 @@ All steps below are **NOT** done in this PR. Run only in a dedicated Phase-D ses
 | **Master kill** | `UPDATE online_poker_config SET enabled=false` → lister/diag/runner all no-op instantly. No redeploy. |
 | **Stop dealing only** | `cron.unschedule('op-table-runner')` (once created) — existing hands finish; no new deals. |
 | **Neutralise the Edge** | remove `OP_TABLE_RUNNER_SECRET` / the GUC → the runner Edge refuses (401). |
-| **Remove the lister** | `docs/emergency_rollbacks/PRE_GE2K_20260909000000_*_rollback.sql` (DROPs both functions). |
+| **Remove the lister** | `docs/emergency_rollbacks/PRE_GE2K_20260910000000_*_rollback.sql` (DROPs both functions). |
 
 The runner has **no independent authority**: with the master flag off it does nothing.
 
