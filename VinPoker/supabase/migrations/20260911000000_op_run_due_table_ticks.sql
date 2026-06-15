@@ -1,5 +1,5 @@
 -- ============================================================================
--- 20260910000000_op_run_due_table_ticks.sql
+-- 20260911000000_op_run_due_table_ticks.sql
 --
 -- GE-2K table runner — DB lister + dry-run diagnostic (source-only, NOT scheduled).
 -- Implements the DB half of the GE-2H "table runner / auto-deal loop" spec
@@ -32,9 +32,10 @@
 --   service_role only (anon/authenticated/PUBLIC revoked), mirroring op_timeout_sweep.
 --
 -- SAFETY: runtime DARK; these never run in production yet. Pure additive source. NOT
---   applied by this PR. Slot 20260910000000 — DE-COLLIDED from 20260909000000, which
---   Payroll P3 (#223) merged on main; this is the next free slot after Payroll P3.
---   Live schema_migrations max is 20260820000002.
+--   applied by this PR. Slot 20260911000000 — DE-COLLIDED from 20260910000000: GE-2K (#224)
+--   and Payroll P4b (#226) both landed on 20260910000000 on main; the engine migration moves
+--   to the next free slot 20260911000000 (Payroll P4b keeps 20260910000000; also note
+--   20260909000000 = Payroll P3). Live schema_migrations max is 20260820000002.
 -- ============================================================================
 
 BEGIN;
