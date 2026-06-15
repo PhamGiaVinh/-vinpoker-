@@ -41,7 +41,7 @@ const TournamentLiveTracker = () => {
     (async () => {
       const { data } = await supabase
         .from("tournaments")
-        .select("id, name, status, club:clubs(id, name)")
+        .select("id, name, status, prize_pool, players_remaining, club:clubs(id, name)")
         .eq("id", tournamentId)
         .maybeSingle();
       setTournament(data);
@@ -94,6 +94,8 @@ const TournamentLiveTracker = () => {
         title={tournament.name}
         clubName={tournament.club?.name}
         clubId={tournament.club?.id}
+        prizePool={tournament.prize_pool}
+        playersRemaining={tournament.players_remaining}
         onShare={handleShare}
       >
         <TournamentLiveView tournamentId={tournamentId!} />
