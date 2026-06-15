@@ -230,7 +230,7 @@ async function handleSetup(
     .update({ telegram_user_id: userId, telegram_username: username })
     .eq("id", target.id);
 
-  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /checkout — Kết thúc ca\n• /status — Xem trạng thái\n• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p)\n• /unlink — Hủy liên kết`);
+  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /status — Xem trạng thái\n• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p)\n• /unlink — Hủy liên kết\n\nKết thúc ca: quản lý sàn (DC) check-out cho bạn.`);
 }
 
 // ── /unlink handler ───────────────────────────────────────────────────────
@@ -337,7 +337,7 @@ async function handleCheckin(
   await sendDM(
     botToken,
     chatId,
-    `✅ *${dealer.full_name}* đã check-in!\n🟢 Bạn đã vào *pool sẵn sàng* — DC sẽ phân bàn cho bạn.\n\nGõ /checkout khi kết thúc ca.`,
+    `✅ *${dealer.full_name}* đã check-in!\n🟢 Bạn đã vào *pool sẵn sàng* — DC sẽ phân bàn cho bạn.\n\nKết thúc ca: báo DC để được check-out.`,
   );
 }
 
@@ -366,11 +366,12 @@ async function handleStatus(
   await sendDM(botToken, chatId, `✅ *${dealer.full_name}*\nTrạng thái: *${label}*`);
 }
 
-// ── /checkout — self check-out (safe states only) ──────────────────────────
-// Replicates checkout-dealer's OT/break computation + state transition, but
-// ONLY for dealers not committed to a live table. Releasing a live table must
-// go through DC (operator) so a replacement is arranged — so assigned /
-// pre_assigned / in_transition are deferred with a "báo DC" message.
+// ── /checkout — self check-out (DISABLED — NO LONGER WIRED) ─────────────────
+// Owner 2026-06-16: dealer self-checkout removed; only dealer-control (DC) may
+// check a dealer out, via the Dealer Swing operator panel. The /checkout command
+// now returns a "báo DC" message (see handleCommand) and never calls this. Kept
+// here for reference/history only — do not re-wire without owner approval.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function handleCheckout(
   admin: any,
   botToken: string,
@@ -586,11 +587,10 @@ async function handleCommand(
         `Lệnh:\n` +
         `• /setup <Tên> — Liên kết tài khoản\n` +
         `• /checkin — Vào ca (vào pool sẵn sàng)\n` +
-        `• /checkout — Kết thúc ca\n` +
         `• /status — Xem trạng thái hiện tại\n` +
         `• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p bonus)\n` +
         `• /unlink — Hủy liên kết Telegram\n\n` +
-        `💡 /checkin xong là bạn vào pool, DC sẽ phân bàn. Nghỉ ăn cơm: 1 lần/7 tiếng.`,
+        `💡 /checkin xong là bạn vào pool, DC sẽ phân bàn. Kết thúc ca do DC check-out. Nghỉ ăn cơm: 1 lần/7 tiếng.`,
     );
     return;
   }
@@ -601,7 +601,13 @@ async function handleCommand(
   }
 
   if (normalizedText === "/checkout" || normalizedText === "checkout") {
-    await handleCheckout(admin, botToken, chatId, dealer);
+    // Dealer self-checkout DISABLED (owner 2026-06-16: chỉ dealer-control mới được
+    // check-out). Check-out is done by floor/operator (DC) on the Dealer Swing panel.
+    await sendDM(
+      botToken,
+      chatId,
+      `ℹ️ Lệnh /checkout đã ngừng.\n\nViệc *check-out* do quản lý sàn (DC) thực hiện trên hệ thống. Khi kết thúc ca, bạn *báo DC* để được check-out.`,
+    );
     return;
   }
 
