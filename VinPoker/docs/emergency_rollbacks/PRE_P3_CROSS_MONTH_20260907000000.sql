@@ -1,0 +1,21 @@
+-- Rollback for migration 20260907000000_payroll_p3_cross_month_overlap.sql
+-- (Payroll P3 — cross-month overlap allocation of shift hours / OT / shift credit.)
+--
+-- Pre-apply live state: calculate_dealer_payroll == the P2-applied body
+--   (md5 78e6d019f465b9299042bab19baca0dc), defined by migration
+--   20260906000000_payroll_p2_open_shift_standard.sql, which buckets shifts by
+--   `check_in_time::DATE BETWEEN p_start_date AND p_end_date` and counts each shift whole.
+--
+-- VERIFY BEFORE APPLY (read-only):
+--   select md5(pg_get_functiondef('public.calculate_dealer_payroll(uuid,date,date,integer)'::regprocedure));
+--   -- expect 78e6d019f465b9299042bab19baca0dc (or capture the live md5 fresh and store it here)
+--
+-- ROLLBACK (if the golden diff or post-apply check fails):
+--   Re-apply the FULL body of migration
+--     supabase/migrations/20260906000000_payroll_p2_open_shift_standard.sql
+--   via the same controlled Management-API path (CREATE OR REPLACE FUNCTION …).
+--   That restores the check-in-month bucketing and whole-shift counting.
+--   The function is read-only / a pure calculator, so rollback is a single
+--   CREATE OR REPLACE with no data implications.
+--
+-- After rollback verify: md5(pg_get_functiondef(...)) == 78e6d019f465b9299042bab19baca0dc.
