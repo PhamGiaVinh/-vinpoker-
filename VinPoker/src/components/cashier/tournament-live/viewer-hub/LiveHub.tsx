@@ -14,6 +14,7 @@ import { LiveHubHeader } from "./LiveHubHeader";
 import { LiveStatsBar } from "./LiveStatsBar";
 import { FeaturedTableCard } from "./FeaturedTableCard";
 import { LiveTablesStrip } from "./LiveTablesStrip";
+import { LiveStoryFeed } from "./LiveStoryFeed";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
 import { OrientationToggle } from "./OrientationToggle";
 import { useLiveTrackerData } from "./useLiveTrackerData";
@@ -39,7 +40,7 @@ export interface LiveHubProps {
 export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, onShare, children }: LiveHubProps) {
   // Isolated hub data (count / all-tables strip / feed / chip leader). Does NOT
   // touch TournamentLiveView — the featured felt below still renders the real viewer.
-  const { liveTableCount, tables, feed, chipLeader } = useLiveTrackerData(tournamentId);
+  const { liveTableCount, tables, feed, chipLeader, storyFeed } = useLiveTrackerData(tournamentId);
   const { t } = useTranslation();
 
   // Orientation: default to the device (portrait on phones, landscape on desktop),
@@ -79,6 +80,7 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
         {viewer}
       </FeaturedTableCard>
       <LiveTablesStrip tables={tables} />
+      <LiveStoryFeed items={storyFeed} />
       <LiveUpdatesFeed feed={feed} />
     </div>
   );

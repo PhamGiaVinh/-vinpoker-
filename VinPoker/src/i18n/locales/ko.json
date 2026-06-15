@@ -2609,6 +2609,14 @@
     "create": "생성"
   },
   "liveHub": {
+    "story": {
+      "title": "토너먼트 소식",
+      "eliminated": "{{name}} 탈락 — {{count}}명 남음",
+      "eliminatedNoCount": "{{name}} 탈락",
+      "remaining": "{{count}}명 남음",
+      "finalTable": "파이널 테이블 — {{count}}명 남음",
+      "finalTableNoCount": "파이널 테이블"
+    },
     "seat": "{{n}}번 좌석",
     "header": {
       "live": "라이브",

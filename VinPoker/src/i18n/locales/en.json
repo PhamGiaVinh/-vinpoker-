@@ -2832,6 +2832,14 @@
     "create": "Create"
   },
   "liveHub": {
+    "story": {
+      "title": "Tournament feed",
+      "eliminated": "{{name}} eliminated — {{count}} left",
+      "eliminatedNoCount": "{{name}} eliminated",
+      "remaining": "{{count}} players left",
+      "finalTable": "Final table — {{count}} left",
+      "finalTableNoCount": "Final table"
+    },
     "seat": "Seat {{n}}",
     "header": {
       "live": "LIVE",

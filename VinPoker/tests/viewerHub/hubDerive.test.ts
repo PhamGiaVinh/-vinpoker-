@@ -3,11 +3,14 @@ import {
   deriveTables,
   deriveFeed,
   deriveChipLeader,
+  deriveEliminations,
+  deriveMilestones,
   feedKind,
   feedLabel,
   fmtCompact,
   type RawSeat,
   type RawAction,
+  type RawHandPlayer,
 } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
 
 describe("hubDerive — deriveTables", () => {
@@ -107,5 +110,60 @@ describe("hubDerive — fmtCompact", () => {
     expect(fmtCompact(2400)).toBe("2.4k");
     expect(fmtCompact(48000)).toBe("48k");
     expect(fmtCompact(1_500_000)).toBe("1.5M");
+  });
+});
+
+describe("hubDerive — deriveEliminations", () => {
+  const names = new Map([["p1", "An"], ["p2", "Bình"]]);
+
+  it("maps is_eliminated rows to safe-copy items with a stable id", () => {
+    const rows: RawHandPlayer[] = [
+      { player_id: "p1", hand_id: "h9", is_eliminated: true, created_at: "t9" },
+      { player_id: "p2", hand_id: "h9", is_eliminated: false, created_at: "t9" }, // not eliminated → skipped
+    ];
+    const out = deriveEliminations(rows, names, 18);
+    expect(out).toEqual([
+      { id: "elim:h9:p1", kind: "elimination", name: "An", count: 18, label: "An bị loại — còn 18 người" },
+    ]);
+    expect(out[0].label).not.toMatch(/loại B|thắng/); // never names a killer/winner
+  });
+
+  it("omits the count when players_remaining is null", () => {
+    const out = deriveEliminations([{ player_id: "p1", hand_id: "h1", is_eliminated: true }], names, null);
+    expect(out[0].label).toBe("An bị loại");
+    expect(out[0].count).toBeUndefined();
+  });
+
+  it("falls back to a short id for an unknown player", () => {
+    const out = deriveEliminations([{ player_id: "ghost123", hand_id: "h1", is_eliminated: true }], new Map(), 5);
+    expect(out[0].name).toBe("ghost1");
+  });
+});
+
+describe("hubDerive — deriveMilestones", () => {
+  it("emits a milestone once per crossed threshold (no spam)", () => {
+    const seen = new Set<string>();
+    const a = deriveMilestones(27, 3, null, seen); // crosses 100/50/27 → one item
+    expect(a.map((x) => x.kind)).toEqual(["milestone"]);
+    expect(a[0].label).toBe("Còn 27 người");
+    expect(deriveMilestones(27, 3, null, seen)).toEqual([]); // same value → nothing new
+    expect(deriveMilestones(18, 3, null, seen)[0].label).toBe("Còn 18 người"); // crosses 18
+  });
+
+  it("emits final table from the official status", () => {
+    const out = deriveMilestones(8, 2, "final_table", new Set());
+    expect(out.find((x) => x.kind === "final_table")?.label).toBe("Final table — còn 8 người");
+  });
+
+  it("emits final table via heuristic (<=9 on a single active table)", () => {
+    expect(deriveMilestones(9, 1, null, new Set()).some((x) => x.kind === "final_table")).toBe(true);
+  });
+
+  it("does NOT emit final table with >1 active table and no status", () => {
+    expect(deriveMilestones(9, 2, null, new Set()).some((x) => x.kind === "final_table")).toBe(false);
+  });
+
+  it("emits nothing when players_remaining is null and not final table", () => {
+    expect(deriveMilestones(null, 3, null, new Set())).toEqual([]);
   });
 });

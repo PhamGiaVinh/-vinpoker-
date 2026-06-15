@@ -13,27 +13,35 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   activeSeats,
   deriveChipLeader,
+  deriveEliminations,
   deriveFeed,
+  deriveMilestones,
   deriveTables,
   type HubChipLeader,
   type HubFeedItem,
+  type HubStoryItem,
   type HubTableSummary,
   type RawAction,
+  type RawHandPlayer,
   type RawSeat,
 } from "./hubDerive";
 
-export type { HubTableSummary, HubFeedItem, HubFeedKind, HubChipLeader } from "./hubDerive";
+export type { HubTableSummary, HubFeedItem, HubFeedKind, HubChipLeader, HubStoryItem, HubStoryKind } from "./hubDerive";
 
 export interface LiveTrackerHubData {
   liveTableCount: number;
   tables: HubTableSummary[];
   feed: HubFeedItem[];
   chipLeader: HubChipLeader | null;
+  /** Tournament-wide story (eliminations / milestones / final table), newest-first. */
+  storyFeed: HubStoryItem[];
   loading: boolean;
 }
 
 const POLL_MS = 5_000;
 const FEED_LIMIT = 8;
+const HAND_PLAYERS_LIMIT = 16;
+const STORY_LIMIT = 12;
 
 export function useLiveTrackerData(tournamentId: string | undefined): LiveTrackerHubData {
   const [data, setData] = useState<LiveTrackerHubData>({
@@ -41,19 +49,29 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
     tables: [],
     feed: [],
     chipLeader: null,
+    storyFeed: [],
     loading: true,
   });
   const seqRef = useRef(0);
   const tableNamesRef = useRef<Record<string, string>>({});
+  // Story-feed dedup is VIEWER-SESSION only (not a persisted event ledger): a
+  // page reload re-seeds from the recent rows. Keyed sets make us robust to the
+  // poll-pauses-when-hidden gap (we re-confirm by stable id, not adjacent diff).
+  const seenElimRef = useRef<Set<string>>(new Set());
+  const seenMilestoneRef = useRef<Set<string>>(new Set());
+  const storyRef = useRef<HubStoryItem[]>([]);
 
   useEffect(() => {
     if (!tournamentId) return;
     let cancelled = false;
     const seq = ++seqRef.current;
     tableNamesRef.current = {};
+    seenElimRef.current = new Set();
+    seenMilestoneRef.current = new Set();
+    storyRef.current = [];
 
     const load = async () => {
-      const [{ data: seatRows }, { data: hands }] = await Promise.all([
+      const [{ data: seatRows }, { data: hands }, { data: handPlayerRows }, { data: tourMeta }] = await Promise.all([
         supabase
           .from("tournament_seats")
           .select("player_id, seat_number, player_name, table_id, is_active, chip_count")
@@ -65,6 +83,19 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
           .eq("is_voided", false)
           .order("created_at", { ascending: false })
           .limit(1),
+        // Recent per-hand player rows → eliminations for the story feed.
+        supabase
+          .from("hand_players")
+          .select("player_id, hand_id, is_eliminated, created_at")
+          .eq("tournament_id", tournamentId)
+          .order("created_at", { ascending: false })
+          .limit(HAND_PLAYERS_LIMIT),
+        // Tournament meta for milestones / final table (read-only single row).
+        supabase
+          .from("tournaments")
+          .select("players_remaining, status")
+          .eq("id", tournamentId)
+          .maybeSingle(),
       ]);
       if (cancelled || seq !== seqRef.current) return;
 
@@ -93,16 +124,38 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         actions = (acts as RawAction[]) || [];
       }
 
-      const seats = activeSeats((seatRows as RawSeat[]) || []);
+      const allSeatRows = (seatRows as RawSeat[]) || [];
+      const seats = activeSeats(allSeatRows);
       const nameByPlayer = new Map(seats.map((s) => [s.player_id, s.player_name || s.player_id.slice(0, 6)]));
       const seatByPlayer = new Map(seats.map((s) => [s.player_id, s.seat_number]));
       const tables = deriveTables(seats, tableNamesRef.current);
+
+      // Eliminated players are no longer ACTIVE seats, but their tournament_seats
+      // row persists (is_active=false) → build a name map over ALL seats so the
+      // story can name a busted player.
+      const nameByPlayerAll = new Map(
+        allSeatRows.filter((s) => !!s.player_id).map((s) => [s.player_id, s.player_name || s.player_id.slice(0, 6)])
+      );
+      const playersRemaining = (tourMeta as { players_remaining?: number | null } | null)?.players_remaining ?? null;
+      const status = (tourMeta as { status?: string | null } | null)?.status ?? null;
+
+      // Tournament-wide story: new eliminations (deduped by stable id) + milestone /
+      // final-table crossings (deduped via the persistent sets). Newest items first.
+      const freshElim = deriveEliminations((handPlayerRows as RawHandPlayer[]) || [], nameByPlayerAll, playersRemaining)
+        .filter((e) => !seenElimRef.current.has(e.id));
+      freshElim.forEach((e) => seenElimRef.current.add(e.id));
+      const freshMilestones = deriveMilestones(playersRemaining, tables.length, status, seenMilestoneRef.current);
+      const fresh = [...freshMilestones, ...freshElim];
+      if (fresh.length) {
+        storyRef.current = [...fresh, ...storyRef.current].slice(0, STORY_LIMIT);
+      }
 
       setData({
         liveTableCount: tables.length,
         tables,
         feed: deriveFeed(actions, nameByPlayer, seatByPlayer),
         chipLeader: deriveChipLeader(seats),
+        storyFeed: storyRef.current,
         loading: false,
       });
     };
