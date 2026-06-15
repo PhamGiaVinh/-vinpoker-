@@ -1,0 +1,130 @@
+import { describe, it, expect } from "vitest";
+import {
+  nextActionOrderFrom,
+  deriveResumeStreet,
+  replayActions,
+  type ResumeActionRow,
+  type ResumePlayer,
+} from "@/components/cashier/tournament-live/handinput/resumeHand";
+
+function player(id: string, stack: number): ResumePlayer {
+  return {
+    player_id: id,
+    starting_stack: stack,
+    current_stack: stack,
+    current_bet: 0,
+    total_bet: 0,
+    is_folded: false,
+    is_all_in: false,
+  };
+}
+
+function act(over: Partial<ResumeActionRow> & { action_order: number }): ResumeActionRow {
+  return {
+    player_id: over.player_id ?? "a",
+    action_type: over.action_type ?? "check",
+    action_amount: over.action_amount ?? 0,
+    street: over.street ?? "preflop",
+    action_order: over.action_order,
+  };
+}
+
+describe("resumeHand — nextActionOrderFrom (the P0 collision fix)", () => {
+  it("returns max(action_order) + 1 after actions 1..N", () => {
+    const rows = [act({ action_order: 1 }), act({ action_order: 2 }), act({ action_order: 3 })];
+    // Resuming a hand with actions 1,2,3 must submit the NEXT action as 4 — never 1.
+    expect(nextActionOrderFrom(rows)).toBe(4);
+  });
+
+  it("is robust to unordered / sparse action_order values", () => {
+    expect(nextActionOrderFrom([act({ action_order: 5 }), act({ action_order: 2 })])).toBe(6);
+  });
+
+  it("empty hand resumes at 1", () => {
+    expect(nextActionOrderFrom([])).toBe(1);
+  });
+});
+
+describe("resumeHand — deriveResumeStreet", () => {
+  it("uses community-card count when no actions are further along", () => {
+    expect(deriveResumeStreet([], 0)).toBe("preflop");
+    expect(deriveResumeStreet([], 3)).toBe("flop");
+    expect(deriveResumeStreet([], 4)).toBe("turn");
+    expect(deriveResumeStreet([], 5)).toBe("river");
+  });
+
+  it("takes the furthest of community vs last action street", () => {
+    // Flop dealt (3 cards) but the last action recorded is still preflop → flop.
+    expect(deriveResumeStreet([act({ action_order: 1, street: "preflop" })], 3)).toBe("flop");
+    // 4 cards on board, last action already on the turn → turn.
+    expect(deriveResumeStreet([act({ action_order: 9, street: "turn" })], 4)).toBe("turn");
+    // Actions reached the river before the community slot count caught up → river.
+    expect(deriveResumeStreet([act({ action_order: 12, street: "river" })], 4)).toBe("river");
+  });
+});
+
+describe("resumeHand — replayActions rebuilds mid-hand state", () => {
+  it("replays a preflop line: SB/BB post, call, fold", () => {
+    const base = [player("btn", 1000), player("sb", 1000), player("bb", 1000)];
+    const rows: ResumeActionRow[] = [
+      act({ action_order: 1, player_id: "sb", action_type: "post_sb", action_amount: 25 }),
+      act({ action_order: 2, player_id: "bb", action_type: "post_bb", action_amount: 50 }),
+      act({ action_order: 3, player_id: "btn", action_type: "call", action_amount: 50 }),
+      act({ action_order: 4, player_id: "sb", action_type: "fold" }),
+    ];
+    const out = replayActions(base, rows);
+    const byId = Object.fromEntries(out.map((p) => [p.player_id, p]));
+
+    expect(byId.btn.current_stack).toBe(950);
+    expect(byId.btn.current_bet).toBe(50);
+    expect(byId.btn.total_bet).toBe(50);
+
+    expect(byId.sb.is_folded).toBe(true);
+    expect(byId.sb.current_stack).toBe(975); // posted 25 then folded
+    expect(byId.sb.total_bet).toBe(25);
+
+    expect(byId.bb.current_stack).toBe(950);
+    expect(byId.bb.current_bet).toBe(50);
+  });
+
+  it("resets current_bet at a street boundary but keeps total_bet cumulative", () => {
+    const base = [player("a", 1000), player("b", 1000)];
+    const rows: ResumeActionRow[] = [
+      act({ action_order: 1, player_id: "a", action_type: "bet", action_amount: 100, street: "preflop" }),
+      act({ action_order: 2, player_id: "b", action_type: "call", action_amount: 100, street: "preflop" }),
+      act({ action_order: 3, player_id: "a", action_type: "bet", action_amount: 200, street: "flop" }),
+    ];
+    const out = replayActions(base, rows);
+    const a = out.find((p) => p.player_id === "a")!;
+    const b = out.find((p) => p.player_id === "b")!;
+
+    expect(a.current_bet).toBe(200); // only the flop bet — preflop bet was reset
+    expect(a.total_bet).toBe(300); // cumulative across streets
+    expect(a.current_stack).toBe(700);
+    expect(b.current_bet).toBe(0); // reset at the flop boundary
+    expect(b.total_bet).toBe(100);
+  });
+
+  it("marks a player all-in when an action empties the stack", () => {
+    const base = [player("hero", 300)];
+    const rows: ResumeActionRow[] = [
+      act({ action_order: 1, player_id: "hero", action_type: "all_in", action_amount: 300 }),
+    ];
+    const out = replayActions(base, rows);
+    expect(out[0].current_stack).toBe(0);
+    expect(out[0].is_all_in).toBe(true);
+  });
+
+  it("does not mutate the input players", () => {
+    const base = [player("a", 1000)];
+    replayActions(base, [act({ action_order: 1, player_id: "a", action_type: "bet", action_amount: 100 })]);
+    expect(base[0].current_stack).toBe(1000);
+    expect(base[0].current_bet).toBe(0);
+  });
+
+  it("ignores actions for unknown players (seat left mid-hand)", () => {
+    const base = [player("a", 1000)];
+    const out = replayActions(base, [act({ action_order: 1, player_id: "ghost", action_type: "bet", action_amount: 100 })]);
+    expect(out[0].current_stack).toBe(1000);
+  });
+});

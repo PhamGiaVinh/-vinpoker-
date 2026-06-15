@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Users, Coins, Clock, Layers, WifiOff, RefreshCw, AlertTriangle, Volume2, VolumeX, Bot, Radio, History } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { displayCard } from "@/components/shared/CardSlotPicker";
-import { getPosition } from "@/lib/tournament/button";
+import { getSeatPositions } from "@/lib/tournament/button";
 import { useAuth } from "@/hooks/useAuth";
 import { TdAiAssistantPanel } from "@/components/td-ai/TdAiAssistantPanel";
 import { TrackerVisualStyles } from "./PokerVisuals";
@@ -593,9 +593,14 @@ export function TournamentLiveView({
     const handMatchesView =
       handNumber != null && (handTableId == null || handTableId === effectiveTableId);
     if (!handMatchesView || active.length === 0) return visibleSeats;
+    // Gap-robust labels: getSeatPositions orders the OCCUPIED seats clockwise
+    // from the button, so non-contiguous seats (e.g. 1,3,5,7 after eliminations)
+    // still get the correct BTN/SB/BB/UTG… Raw getPosition (seat−btn mod count)
+    // mislabels once seats have gaps.
+    const posBySeat = getSeatPositions(active.map((s) => s.seat_number), buttonSeat);
     return visibleSeats.map((s) => ({
       ...s,
-      position: s.is_active ? getPosition(s.seat_number, buttonSeat, active.length) : "",
+      position: s.is_active ? posBySeat.get(s.seat_number) ?? "" : "",
     }));
   }, [visibleSeats, handNumber, handTableId, effectiveTableId, buttonSeat]);
 

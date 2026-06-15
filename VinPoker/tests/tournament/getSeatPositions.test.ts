@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getSeatPositions } from "@/lib/tournament/button";
+import { getSeatPositions, getPosition } from "@/lib/tournament/button";
 
 const obj = (m: Map<number, string>) => Object.fromEntries(m);
 
@@ -59,5 +59,14 @@ describe("getSeatPositions", () => {
     const m = getSeatPositions([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 1);
     expect(m.get(1)).toBe("+0");
     expect(m.get(2)).toBe("+1");
+  });
+
+  it("felt regression: getPosition mislabels gaps, getSeatPositions fixes it", () => {
+    // After eliminations the live felt had seats 1,3,5,7 with the button on 3.
+    // Old getPosition(seat, btn, total=4) does raw (seat−btn+total)%total, which
+    // ignores the gaps: seat 5 → offset (5−3+4)%4 = 2 → "BB" (WRONG).
+    expect(getPosition(5, 3, 4)).toBe("BB");
+    // getSeatPositions orders the occupied seats clockwise → seat 5 is the SB.
+    expect(getSeatPositions([1, 3, 5, 7], 3).get(5)).toBe("SB");
   });
 });
