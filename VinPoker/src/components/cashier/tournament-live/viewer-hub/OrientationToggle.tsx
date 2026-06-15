@@ -1,8 +1,8 @@
-// Orientation toggle (Viewer Event Hub — Increment C). UI-ONLY segmented control
-// (Ngang / Dọc) shown in the featured-table card header. Holds local selection
-// state only — it does NOT re-orient the felt yet (the felt's portrait/landscape
-// is decided inside TournamentLiveView via useIsMobile; wiring a real override is
-// a future increment that would need a TV prop). Purely a visual affordance here.
+// Orientation toggle (Viewer Event Hub). Segmented control (Ngang / Dọc) shown in
+// the featured-table card header. Now WIRED: the selected orientation is lifted to
+// LiveHub, which passes it to TournamentLiveView as a presentational override so
+// the felt actually re-orients (landscape ⇄ portrait) on phone AND desktop.
+// Supports both controlled (`value` + `onChange`) and uncontrolled use.
 
 import { useState } from "react";
 import { Monitor, Smartphone } from "lucide-react";
@@ -10,15 +10,17 @@ import { Monitor, Smartphone } from "lucide-react";
 type Orientation = "landscape" | "portrait";
 
 export interface OrientationToggleProps {
+  /** Controlled value. When provided, the toggle reflects it and defers state to the parent. */
+  value?: Orientation;
   defaultValue?: Orientation;
-  /** Optional callback (unused for now — kept for the future wiring increment). */
   onChange?: (value: Orientation) => void;
 }
 
-export function OrientationToggle({ defaultValue = "landscape", onChange }: OrientationToggleProps) {
-  const [value, setValue] = useState<Orientation>(defaultValue);
+export function OrientationToggle({ value: controlled, defaultValue = "landscape", onChange }: OrientationToggleProps) {
+  const [internal, setInternal] = useState<Orientation>(defaultValue);
+  const value = controlled ?? internal;
   const pick = (o: Orientation) => {
-    setValue(o);
+    if (controlled === undefined) setInternal(o);
     onChange?.(o);
   };
   const Opt = ({ o, Icon, label }: { o: Orientation; Icon: typeof Monitor; label: string }) => (

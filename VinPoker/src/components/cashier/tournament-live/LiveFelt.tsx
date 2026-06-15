@@ -78,8 +78,8 @@ const SEAT_POSITIONS_PORTRAIT: Record<number, SeatPos> = {
   1: { top: "1.5%", left: "50%", transform: "translateX(-50%)" },
   2: { top: "13%", right: "2%" },
   6: { top: "13%", left: "2%" },
-  3: { top: "27%", right: "0%" },
-  5: { top: "27%", left: "0%" },
+  3: { top: "27%", right: "1.5%" },
+  5: { top: "27%", left: "1.5%" },
   7: { top: "66%", right: "2%" },
   10: { top: "66%", left: "2%" },
   8: { bottom: "14%", right: "4%" },
@@ -89,15 +89,15 @@ const SEAT_POSITIONS_PORTRAIT: Record<number, SeatPos> = {
 
 // Felt oval + board/pot anchor geometry per orientation.
 const LANDSCAPE_FELT = {
-  minHeight: "520px",
-  viewBox: "0 0 800 600",
-  cx: 400, cy: 300, rx: 350, ry: 250, rx2: 348, ry2: 248, rx3: 326, ry3: 226,
-  boardBottom: "25%", potBottom: "10%", vTop: "27%",
+  minHeight: "500px",
+  viewBox: "0 0 820 560",
+  cx: 410, cy: 280, rx: 372, ry: 244, rx2: 370, ry2: 242, rx3: 346, ry3: 218,
+  boardBottom: "27%", potBottom: "12%", vTop: "26%",
 };
 const PORTRAIT_FELT = {
-  minHeight: "600px",
-  viewBox: "0 0 420 620",
-  cx: 210, cy: 310, rx: 196, ry: 300, rx2: 194, ry2: 298, rx3: 174, ry3: 278,
+  minHeight: "560px",
+  viewBox: "0 0 420 600",
+  cx: 210, cy: 300, rx: 198, ry: 290, rx2: 196, ry2: 288, rx3: 176, ry3: 268,
   boardBottom: "48%", potBottom: "38%", vTop: "20%",
 };
 
@@ -155,14 +155,15 @@ export function LiveFelt({
           </radialGradient>
         </defs>
         <ellipse cx={felt.cx} cy={felt.cy} rx={felt.rx} ry={felt.ry} fill="url(#feltGrad)" />
+        {/* Thick brass rim + thin inner accent line for depth. */}
         <ellipse
           cx={felt.cx}
           cy={felt.cy}
           rx={felt.rx2}
           ry={felt.ry2}
           fill="none"
-          stroke="hsl(var(--poker-gold) / 0.5)"
-          strokeWidth="4"
+          stroke="hsl(var(--poker-gold) / 0.7)"
+          strokeWidth="7"
         />
         <ellipse
           cx={felt.cx}
@@ -170,8 +171,8 @@ export function LiveFelt({
           rx={felt.rx3}
           ry={felt.ry3}
           fill="none"
-          stroke="hsl(var(--poker-gold) / 0.16)"
-          strokeWidth="1.5"
+          stroke="hsl(var(--poker-gold) / 0.22)"
+          strokeWidth="2"
         />
       </svg>
 
@@ -204,76 +205,91 @@ export function LiveFelt({
         const isLastActor = !seat.is_folded && lastActorId === seat.player_id;
         // To-act spotlight (Live Action Engine): who the table is waiting on.
         const isToAct = !seat.is_folded && !seat.is_all_in && toActId === seat.player_id;
-        const seatBB = !seat.is_folded ? formatBB(seat.chip_count) : null;
+        const initials = seat.display_name.slice(0, 2).toUpperCase();
+
+        // Accent by state: gold spotlight (to-act) > red (all-in) > gold glow
+        // (last actor) > resting gold rim. Folded dims the whole seat.
+        const avatarBorder = seat.is_folded
+          ? "border-border/30"
+          : seat.is_all_in
+            ? "border-red-400/70"
+            : isToAct
+              ? "border-amber-300"
+              : isLastActor
+                ? "border-amber-400/80"
+                : "border-[hsl(var(--poker-gold)/0.6)]";
+        const plaqueAccent = seat.is_folded
+          ? ""
+          : isToAct
+            ? "ring-1 ring-amber-300/70 shadow-[0_0_16px_rgba(245,179,64,0.6)]"
+            : seat.is_all_in
+              ? "shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+              : isLastActor
+                ? "shadow-[0_0_12px_rgba(245,179,64,0.3)]"
+                : "";
+        const widthCls = portrait ? "w-[62px]" : "w-[70px] sm:w-[84px]";
+        const avatarCls = portrait
+          ? "w-8 h-8 text-[10px]"
+          : "w-9 h-9 sm:w-10 sm:h-10 text-[11px] sm:text-xs";
 
         return (
-          <div key={seat.player_id} className="absolute z-10" style={posStyle}>
-            <div
-              className={`relative bg-gradient-to-br from-[#241015]/80 to-slate-900/70 backdrop-blur-sm border rounded-xl text-center transition-all duration-300 ${
-                portrait ? "p-1 w-[68px]" : "p-1.5 w-24 sm:p-2.5 sm:w-32 md:w-36"
-              } ${
-                seat.is_folded
-                  ? "border-border/20 opacity-50 grayscale-[0.5]"
-                  : seat.is_all_in
-                    ? "border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
-                    : isToAct
-                      ? "border-amber-300 ring-2 ring-amber-300/70 shadow-[0_0_18px_rgba(245,179,64,0.55)]"
-                      : isLastActor
-                        ? "border-amber-400/80 shadow-[0_0_14px_rgba(245,179,64,0.35)]"
-                        : "border-emerald-500/40 hover:border-emerald-400/60"
-              }`}
-            >
+          <div
+            key={seat.player_id}
+            className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}`}
+            style={posStyle}
+          >
+            {/* Mockup seat: round avatar OVERLAPPING a slim dark plaque (name +
+                cyan stack + position chip), with exactly 2 cards BELOW. */}
+            <div className={`relative flex flex-col items-center transition-all duration-300 ${widthCls}`}>
               {isToAct && (
-                <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[8.5px] font-bold uppercase tracking-wide whitespace-nowrap shadow">
-                  ● chờ
+                <div className="absolute -top-2 z-20 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[8px] font-bold uppercase tracking-wide whitespace-nowrap shadow">
+                  ◀ chờ
                 </div>
               )}
-              <div className="flex justify-center mb-1">
+              <div
+                className={`relative z-10 grid place-items-center overflow-hidden rounded-full border-2 font-bold ${avatarBorder} ${avatarCls}`}
+                style={{
+                  background: "linear-gradient(180deg,#2a141a,#0b090d)",
+                  color: "hsl(var(--poker-gold))",
+                }}
+              >
                 {seat.avatar_url ? (
-                  <img
-                    src={seat.avatar_url}
-                    alt=""
-                    loading="lazy"
-                    className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full object-cover border ${
-                      isLastActor ? "border-amber-400/80" : "border-emerald-500/40"
-                    }`}
-                  />
+                  <img src={seat.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
                 ) : (
-                  <div
-                    className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold bg-emerald-900/60 border ${
-                      isLastActor ? "border-amber-400/80 text-amber-300" : "border-emerald-500/40 text-emerald-300"
-                    }`}
-                  >
-                    {seat.display_name.slice(0, 2).toUpperCase()}
-                  </div>
+                  initials
                 )}
               </div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-zinc-100 font-semibold text-xs truncate max-w-[52px] sm:max-w-[80px]">
-                  {seat.display_name}
-                </span>
+              {/* Plaque stays dark/near-black in BOTH themes for poker contrast. */}
+              <div
+                className={`relative -mt-3 w-full rounded-lg border px-1 pt-3.5 pb-1 text-center ${plaqueAccent}`}
+                style={{
+                  background: "linear-gradient(180deg, rgba(20,12,8,0.94), rgba(8,6,5,0.94))",
+                  borderColor: "hsl(var(--poker-gold) / 0.34)",
+                }}
+              >
                 {seat.position && (
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                      seat.position === "BTN"
-                        ? "bg-amber-500 text-black"
-                        : "bg-emerald-500/20 text-emerald-400"
+                    className={`absolute -top-1.5 right-0 rounded-full px-1 py-px text-[7px] font-bold leading-none ${
+                      seat.position === "BTN" ? "text-black" : "text-amber-300"
                     }`}
+                    style={
+                      seat.position === "BTN"
+                        ? { background: "hsl(var(--poker-gold))" }
+                        : { background: "hsl(var(--poker-gold) / 0.22)" }
+                    }
                   >
                     {seat.position}
                   </span>
                 )}
-              </div>
-              <div
-                className="font-bold text-xs sm:text-sm font-mono"
-                style={{ color: "hsl(var(--poker-stack))" }}
-              >
-                {formatStack(seat.chip_count)}
-                {seatBB && (
-                  <span className="block text-[9px] font-normal text-white/45">
-                    {seatBB}
-                  </span>
-                )}
+                <div className="truncate text-[8.5px] font-semibold leading-tight text-zinc-100 sm:text-[10px]">
+                  {seat.display_name}
+                </div>
+                <div
+                  className="font-mono text-[10px] font-bold leading-tight sm:text-xs"
+                  style={{ color: "hsl(var(--poker-stack))" }}
+                >
+                  {formatStack(seat.chip_count)}
+                </div>
               </div>
               {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
                 // key = current_bet so the one-shot chip pulse replays whenever the
@@ -281,26 +297,22 @@ export function LiveFelt({
                 // CSS-only, reduced-motion respected, no JS timers).
                 <div
                   key={`bet-${seat.current_bet}`}
-                  className="tracker-bet-pulse mt-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono font-bold text-amber-300"
+                  className="tracker-bet-pulse mt-0.5 inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[8px] font-mono font-bold text-amber-300"
                 >
                   Cược {formatStack(seat.current_bet)}
                 </div>
               )}
-              {seat.is_all_in && (
-                <div className="text-[10px] text-red-400 font-bold mt-1">ALL IN</div>
-              )}
-              {seat.is_folded && (
-                <div className="text-[10px] text-muted-foreground mt-1">FOLDED</div>
-              )}
+              {seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400">ALL IN</div>}
+              {seat.is_folded && <div className="mt-0.5 text-[8px] text-muted-foreground">FOLDED</div>}
               {!seat.is_folded && !seat.is_all_in && seat.last_action && (
-                <div className="text-[10px] text-amber-300 mt-1 truncate">
+                <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90">
                   {seat.last_action}
                 </div>
               )}
               {/* Always exactly 2 hole-card elements: face-up ONLY when the dealer
                   has revealed exactly 2 (Triton-style); otherwise 2 backs. Never
                   invent values. Folded seats keep 2 dimmed backs (stable layout). */}
-              <div data-testid="seat-holecards" className="flex gap-0.5 justify-center mt-1">
+              <div data-testid="seat-holecards" className="mt-0.5 flex justify-center gap-0.5">
                 {seat.hole_cards && seat.hole_cards.length === 2 ? (
                   seat.hole_cards.map((card, ci) => (
                     <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />

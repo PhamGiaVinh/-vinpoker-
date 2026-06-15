@@ -60,7 +60,16 @@ function formatClockTime(d: Date): string {
   return d.toLocaleTimeString("vi-VN", { hour12: false });
 }
 
-export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
+export function TournamentLiveView({
+  tournamentId,
+  orientationOverride = null,
+}: {
+  tournamentId: string;
+  /** Presentational only: force the felt orientation (set by the viewer hub's
+      Ngang/Dọc toggle). null → auto by device (existing behaviour). Does NOT
+      affect any data path; operator callers omit it and are unchanged. */
+  orientationOverride?: "landscape" | "portrait" | null;
+}) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
   const canTdAi = isStaffOps || isClubAdmin;
@@ -857,7 +866,10 @@ export function TournamentLiveView({ tournamentId }: { tournamentId: string }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
         <div>
-          <LiveFelt {...feltProps} portrait={!!isMobile} />
+          <LiveFelt
+            {...feltProps}
+            portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
+          />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
           )}
