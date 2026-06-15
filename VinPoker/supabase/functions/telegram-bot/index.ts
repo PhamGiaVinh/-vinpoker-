@@ -26,12 +26,29 @@ function json(data: unknown, status = 200) {
   });
 }
 
-async function sendDM(botToken: string, chatId: number, text: string) {
+async function sendDM(botToken: string, chatId: number, text: string, parseMode: string | null = "Markdown") {
+  const payload: Record<string, unknown> = { chat_id: chatId, text };
+  if (parseMode) payload.parse_mode = parseMode;
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+    body: JSON.stringify(payload),
   });
+}
+
+// Dealer web app base URL (magic-link redirect target). Owner must allowlist
+// `${APP_BASE_URL}/dealer` in Supabase Auth → URL configuration.
+const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") ?? "https://vinpoker.live").replace(/\/+$/, "");
+const DEALER_APP_URL = `${APP_BASE_URL}/dealer`;
+
+// Cryptographically-random temporary password (ambiguity-free printable alphabet).
+function randomPassword(len = 16): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
 }
 
 Deno.serve(async (req: Request) => {
@@ -106,13 +123,21 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
-    // ── /setup <exact name> ──────────────────────────────────────────────
+    // ── /setup [Tên] — provision dealer-app account + send login ─────────
+    // Floor-approval gate: the sender must already be telegram-linked OR have
+    // been pre-entered by @username (Dealer Management → Telegram tab). A typed
+    // name is an optional legacy fallback. No arg required.
     if (rawCmd === "/setup") {
-      if (!cmdArgs) {
-        await sendDM(botToken, chatId, "Cách dùng: /setup <Tên chính xác>\nVí dụ: /setup Nguyễn Văn A");
-        return json({ ok: true });
-      }
       await handleSetup(admin, botToken, chatId, userId, username, cmdArgs);
+      return json({ ok: true });
+    }
+
+    // ── /taotaikhoan [gmail] — create the dealer-app account (already linked) ─
+    // For a dealer who is ALREADY telegram-linked but has no app account yet:
+    // issues the account ONCE. Optional <gmail> binds a real email so they can
+    // sign in + self-recover by email. Aliases for typing convenience.
+    if (["/taotaikhoan", "/tao_tai_khoan", "/taotk", "/taikhoan", "/account"].includes(rawCmd)) {
+      await handleCreateAccount(admin, botToken, chatId, userId, cmdArgs);
       return json({ ok: true });
     }
 
@@ -179,58 +204,291 @@ async function handleSetup(
   chatId: number,
   userId: number,
   username: string | null,
-  dealerName: string,
+  nameHint: string,
 ) {
-  // 1. Check if already linked
-  const { data: existing } = await admin
-    .from("dealers")
-    .select("id, full_name")
-    .eq("telegram_user_id", userId)
-    .maybeSingle();
+  const cols = "id, full_name, club_id, status, user_id, telegram_user_id, telegram_username";
 
-  if (existing) {
-    await sendDM(botToken, chatId, `Đã liên kết với "${existing.full_name}".\nDùng /unlink để hủy trước khi liên kết mới.`);
+  // 1. Resolve the dealer (floor-approval gate).
+  let target: any = null;
+
+  // (a) already telegram-linked by numeric id
+  const byId = await admin.from("dealers").select(cols).eq("telegram_user_id", userId).maybeSingle();
+  target = byId.data ?? null;
+
+  // (b) floor pre-entered this @username (Dealer Management → Telegram tab)
+  if (!target && username) {
+    const pattern = username.replace(/([%_\\])/g, "\\$1");
+    const byName = await admin.from("dealers").select(cols).ilike("telegram_username", pattern).maybeSingle();
+    if (byName.data && (!byName.data.telegram_user_id || byName.data.telegram_user_id === userId)) {
+      target = byName.data;
+    }
+  }
+
+  // (c) optional legacy typed-name fallback (/setup <name> / deep link)
+  if (!target && nameHint) {
+    const { data: candidates } = await admin.from("dealers").select(cols).ilike("full_name", nameHint).limit(5);
+    if (candidates && candidates.length > 1) {
+      await sendDM(botToken, chatId, `Tìm thấy nhiều người cùng tên "${nameHint}". Vui lòng liên hệ DC.`);
+      return;
+    }
+    if (candidates && candidates.length === 1 && !candidates[0].telegram_user_id) target = candidates[0];
+  }
+
+  if (!target) {
+    if (!username) {
+      await sendDM(
+        botToken,
+        chatId,
+        "Tài khoản Telegram của bạn chưa đặt @username công khai.\nVào Cài đặt Telegram → Username để đặt, rồi gõ /setup lại.\n(Hoặc nhờ DC xác minh và nhập tên bạn.)",
+      );
+    } else {
+      await sendDM(
+        botToken,
+        chatId,
+        "Chưa thấy bạn trong danh sách dealer.\nNhờ Floor/DC xác minh và nhập @username Telegram của bạn (Quản lý dealer → Telegram), rồi gõ /setup lại.",
+      );
+    }
     return;
   }
 
-  // 2. Find dealer (case-insensitive exact match)
-  const { data: candidates } = await admin
-    .from("dealers")
-    .select("id, full_name, club_id, telegram_user_id")
-    .ilike("full_name", dealerName)
-    .limit(5);
-
-  if (!candidates || candidates.length === 0) {
-    await sendDM(botToken, chatId, `Không tìm thấy dealer "${dealerName}". Kiểm tra chính tả hoặc liên hệ DC.`);
-    return;
-  }
-
-  if (candidates.length > 1) {
-    const list = candidates.map((c: any, i: number) =>
-      `${i + 1}. ${c.full_name} (ID: ${String(c.id).slice(0, 8)})`
-    ).join("\n");
-    await sendDM(botToken, chatId, `Tìm thấy nhiều người cùng tên:\n${list}\nVui lòng liên hệ DC để hỗ trợ.`);
-    return;
-  }
-
-  const target = candidates[0];
-
-  if (target.telegram_user_id) {
+  // Guard: the telegram link must belong to this sender.
+  if (target.telegram_user_id && target.telegram_user_id !== userId) {
     await sendDM(botToken, chatId, `"${target.full_name}" đã được liên kết với tài khoản Telegram khác.\nVui lòng liên hệ DC.`);
     return;
   }
 
-  // 3. Link.
-  // /setup is account-linking ONLY (so @mention works) — it is deliberately
-  // independent of work-shift check-in. A dealer links once, from anywhere
-  // (e.g. at home), and only runs /checkin later when their shift actually
-  // starts. Do NOT gate linking on dealer_attendance here.
-  await admin
-    .from("dealers")
-    .update({ telegram_user_id: userId, telegram_username: username })
-    .eq("id", target.id);
+  // Claim the telegram link if not yet set (floor approval → this sender).
+  if (!target.telegram_user_id) {
+    await admin.from("dealers").update({ telegram_user_id: userId, telegram_username: username }).eq("id", target.id);
+  }
 
-  await sendDM(botToken, chatId, `✅ Đã liên kết ${username ? `@${username}` : "tài khoản"} với "${target.full_name}".\n\nLệnh:\n• /checkin — Vào ca (vào pool sẵn sàng)\n• /status — Xem trạng thái\n• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p)\n• /unlink — Hủy liên kết\n\nKết thúc ca: quản lý sàn (DC) check-out cho bạn.`);
+  // 2. Provision (or reuse) the dealer-app account + send login over Telegram.
+  await provisionDealerAccount(admin, botToken, chatId, userId, target);
+}
+
+function isEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+// ── /taotaikhoan handler — create the dealer-app account on demand ──────────
+// Precondition: the sender is ALREADY telegram-linked (a dealer row carries their
+// telegram_user_id). Without a real-email arg, the account is issued ONCE; once it
+// exists the command will NOT silently re-issue — the dealer recovers via email or
+// gets a Gmail bound. With a <gmail> arg, a real email is set (create or bind) so
+// the dealer can sign in + reset by email "như bình thường".
+async function handleCreateAccount(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  userId: number,
+  emailArg: string,
+) {
+  const cols = "id, full_name, club_id, status, user_id, telegram_user_id, telegram_username";
+  const { data: target } = await admin.from("dealers").select(cols).eq("telegram_user_id", userId).maybeSingle();
+
+  if (!target) {
+    await sendDM(
+      botToken,
+      chatId,
+      "Bạn chưa liên kết Telegram với hồ sơ dealer.\nGõ /setup trước (hoặc nhờ Floor/DC nhập @username của bạn), rồi gõ /taotaikhoan lại.",
+    );
+    return;
+  }
+
+  const email = emailArg.trim();
+  if (email && !isEmail(email)) {
+    await sendDM(botToken, chatId, "Email không hợp lệ. Ví dụ: /taotaikhoan ten@gmail.com");
+    return;
+  }
+
+  // Already has an account + no new email → enforce "cấp 1 lần"; point to recovery.
+  if (target.user_id && !email) {
+    await sendDM(
+      botToken,
+      chatId,
+      "Bạn đã có tài khoản dealer (chỉ cấp 1 lần).\nNếu quên mật khẩu:\n• Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự đặt lại mật khẩu, hoặc\n• Liên hệ DC để được cấp lại.",
+    );
+    return;
+  }
+
+  // Create (no account) OR bind a real email to the existing account.
+  await provisionDealerAccount(admin, botToken, chatId, userId, target, email || null);
+}
+
+/** Mask an email for logs/replies — keep first char + domain (n***@gmail.com). */
+function maskEmail(e: string | null): string {
+  if (!e) return "none";
+  const [local, domain] = e.split("@");
+  if (!domain) return "***";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
+const DEALER_SYNTH_SUFFIX = "@dealer.vinpoker.live";
+
+// ── Provision / recover a VBacker account for a (floor-approved) dealer ─────
+// Guards (hardened before deploy):
+//  • A temp PASSWORD is issued ONLY when a brand-new code account is created, and
+//    sent to the dealer ONCE. Existing accounts are NEVER re-passworded here
+//    (recovery = one-tap link + email reset).
+//  • A real email (Gmail) is bound ONLY when the current email is synthetic/absent;
+//    an already-set real email is NEVER overwritten via the bot.
+//  • A real email already used by ANOTHER account is refused (no account adoption /
+//    takeover) — only the synthetic (own-tgid) email may recover an existing row.
+//  • Never logs password / magic link / full email. Audit = masked, structured.
+// Owner must allowlist DEALER_APP_URL as a magic-link redirect. No swing/payroll.
+async function provisionDealerAccount(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  userId: number,
+  target: any,
+  explicitEmail: string | null = null,
+) {
+  let authUserId: string | null = target.user_id ?? null;
+  let email: string | null = null;
+  let tempPassword: string | null = null; // set ONLY for a freshly created account
+  let oldEmail: string | null = null;
+  let action = "";
+
+  const audit = (act: string, newE: string | null) =>
+    console.log(JSON.stringify({
+      evt: "dealer_account",
+      action: act,
+      telegram_id: userId,
+      dealer_id: target.id,
+      old_email: maskEmail(oldEmail),
+      new_email: maskEmail(newE),
+      ts: new Date().toISOString(),
+    }));
+
+  if (authUserId) {
+    // Existing account — never reissue the password here.
+    const { data: u } = await admin.auth.admin.getUserById(authUserId);
+    const current: string | null = u?.user?.email ?? null;
+    oldEmail = current;
+    const currentIsSynthetic = !current || current.endsWith(DEALER_SYNTH_SUFFIX);
+
+    if (explicitEmail) {
+      if (!currentIsSynthetic) {
+        // Guard: a real email is already set — do NOT overwrite it via the bot.
+        await sendDM(
+          botToken,
+          chatId,
+          `Tài khoản của bạn đã gắn email thật (${maskEmail(current)}).\nBot không đổi email. Dùng "Quên mật khẩu" qua email đó, hoặc liên hệ quản lý.`,
+        );
+        audit("bind_email_refused_existing_real", explicitEmail);
+        return;
+      }
+      // Bind the real email so the dealer can sign in + self-recover by email.
+      const { error: updErr } = await admin.auth.admin.updateUserById(authUserId, {
+        email: explicitEmail,
+        email_confirm: true,
+      });
+      if (updErr) {
+        await sendDM(
+          botToken,
+          chatId,
+          `Không gắn được Gmail (${maskEmail(explicitEmail)}) — có thể đã dùng cho tài khoản khác.\nDùng email khác, hoặc liên hệ quản lý.`,
+        );
+        audit("bind_email_refused_taken", explicitEmail);
+        return;
+      }
+      email = explicitEmail;
+      action = "bind_email";
+    } else {
+      email = current;
+      action = "resend_link";
+    }
+  } else {
+    // New account.
+    email = explicitEmail ?? `dlr${userId.toString(36)}${DEALER_SYNTH_SUFFIX}`;
+    tempPassword = randomPassword();
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: { display_name: target.full_name, dealer_id: target.id, source: "telegram_account" },
+    });
+    if (createErr) {
+      if (explicitEmail) {
+        // A REAL email collided with an existing account → refuse (no takeover).
+        await sendDM(
+          botToken,
+          chatId,
+          `Email "${maskEmail(email)}" đã được dùng cho một tài khoản khác.\nDùng email khác, hoặc liên hệ quản lý.`,
+        );
+        audit("create_email_refused_taken", email);
+        return;
+      }
+      // Synthetic (own-tgid) collision = this dealer's prior partial run → safe
+      // recover. Do NOT reset the password.
+      const { data: link0 } = await admin.auth.admin.generateLink({ type: "magiclink", email });
+      authUserId = link0?.user?.id ?? null;
+      tempPassword = null;
+      action = "recover_existing";
+    } else {
+      authUserId = created?.user?.id ?? null;
+      action = "create";
+    }
+    if (authUserId) await admin.from("dealers").update({ user_id: authUserId }).eq("id", target.id);
+  }
+
+  if (!authUserId || !email) {
+    await sendDM(botToken, chatId, "Không tạo được tài khoản. Vui lòng liên hệ DC/kỹ thuật.");
+    audit("provision_failed", email);
+    return;
+  }
+
+  // One-tap magic link (logs in, then redirects into the dealer app).
+  const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+    options: { redirectTo: DEALER_APP_URL },
+  });
+  const actionLink: string | null = linkData?.properties?.action_link ?? null;
+
+  const isSynthetic = email.endsWith(DEALER_SYNTH_SUFFIX);
+  const accountCode = email.split("@")[0];
+
+  // Reply in plain text so the long URL isn't mangled by Markdown.
+  const lines = [
+    `✅ Tài khoản dealer của "${target.full_name}" đã sẵn sàng — bạn đã được duyệt.`,
+    "",
+    `Mở app: ${DEALER_APP_URL}`,
+  ];
+  if (actionLink) {
+    lines.push("", "Đăng nhập 1 chạm (bấm là vào thẳng app, hết hạn sau ~1 giờ):", actionLink);
+  }
+
+  if (isSynthetic) {
+    lines.push("", "Đăng nhập (mục Đăng nhập dealer trong app):", `• Mã tài khoản: ${accountCode}`);
+    if (tempPassword) {
+      lines.push(
+        `• Mật khẩu tạm: ${tempPassword}`,
+        "",
+        "⚠️ Thông tin này CHỈ được cấp 1 lần — hãy lưu lại.",
+        "Mất mật khẩu? Gõ /taotaikhoan <gmail của bạn> để gắn Gmail và tự khôi phục, hoặc liên hệ quản lý.",
+      );
+    } else {
+      lines.push(
+        "",
+        "Tài khoản đã tồn tại — bot KHÔNG cấp lại mật khẩu.",
+        "Dùng link 1 chạm ở trên, hoặc gắn Gmail bằng /taotaikhoan <gmail>, hoặc liên hệ quản lý.",
+      );
+    }
+  } else {
+    lines.push(
+      "",
+      `Tài khoản dùng Gmail: ${maskEmail(email)}`,
+      "Từ giờ đăng nhập bằng Gmail này; quên mật khẩu thì dùng 'Quên mật khẩu' qua Gmail như bình thường.",
+    );
+  }
+  if (!actionLink && linkErr) {
+    lines.push("", "(Chưa tạo được link 1 chạm — dùng cách đăng nhập ở trên.)");
+  }
+  await sendDM(botToken, chatId, lines.join("\n"), null);
+
+  audit(action, email);
 }
 
 // ── /unlink handler ───────────────────────────────────────────────────────

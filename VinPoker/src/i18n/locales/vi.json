@@ -85,6 +85,17 @@
     "notLinked": { "title": "Tài khoản chưa liên kết dealer", "body": "Tài khoản của bạn chưa được liên kết với hồ sơ dealer. Bạn vẫn có thể xem cơ hội tuyển dụng và ứng tuyển.", "cta": "Xem tuyển dụng" },
     "comingSoon": { "title": "Dealer App đang hoàn thiện", "body": "Cổng dealer sẽ sớm ra mắt. Vui lòng quay lại sau." },
     "toast": { "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai" },
+    "login": {
+      "title": "Đăng nhập dealer",
+      "account": "Tài khoản",
+      "accountPlaceholder": "Mã tài khoản bot gửi (vd dlr2cl8gqg)",
+      "password": "Mật khẩu",
+      "submit": "Đăng nhập",
+      "hint": "Lần đầu? Mở Telegram và bấm link đăng nhập 1 chạm bot đã gửi, hoặc gõ /setup để nhận tài khoản.",
+      "missing": "Nhập tài khoản và mật khẩu.",
+      "failed": "Sai tài khoản hoặc mật khẩu.",
+      "ok": "Đăng nhập thành công."
+    },
     "exitToMain": "Về app chính"
   },
   "tv": {
