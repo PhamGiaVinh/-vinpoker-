@@ -84,7 +84,18 @@
     },
     "notLinked": { "title": "Account not linked to a dealer", "body": "Your account isn't linked to a dealer profile yet. You can still browse openings and apply.", "cta": "View careers" },
     "comingSoon": { "title": "Dealer App coming soon", "body": "The dealer portal will launch soon. Please check back later." },
-    "toast": { "previewOnly": "Preview only — actions enable on rollout" },
+    "toast": {
+      "previewOnly": "Preview only — actions enable on rollout",
+      "confirmed": "Shift confirmed",
+      "checkedIn": "Checked in. Have a great shift!",
+      "checkedInLate": "Checked in (late)",
+      "checkedOut": "Checked out. Shift complete.",
+      "tooEarly": "Too early to check in (opens 30 min before start).",
+      "invalidState": "Shift status changed. Refreshed.",
+      "failed": "Action failed. Please try again.",
+      "availabilitySaved": "Availability saved.",
+      "leaveRequested": "Leave request sent."
+    },
     "login": {
       "title": "Dealer sign-in",
       "account": "Account",
@@ -95,6 +106,16 @@
       "missing": "Enter account and password.",
       "failed": "Wrong account or password.",
       "ok": "Signed in."
+    },
+    "leave": {
+      "title": "Request leave / unavailable",
+      "subtitle": "Sent to your club manager for scheduling.",
+      "dateLabel": "Date",
+      "kindLeave": "Leave",
+      "kindUnavailable": "Unavailable",
+      "noteLabel": "Reason (optional)",
+      "notePlaceholder": "e.g. family matters…",
+      "submit": "Send request"
     },
     "exitToMain": "Main app"
   },
