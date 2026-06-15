@@ -6,9 +6,10 @@
 // Edge function, which runs the engine and returns the authoritative next state.
 //
 // While the runtime is dark (RUNTIME_LIVE === false) every control is rendered but
-// DISABLED — this is a preview of the live bar, never a way to act. The %-pot quick
-// sizes + slider are display conveniences clamped to [minRaiseTo, maxRaiseTo]; the
-// server re-validates every submitted amount.
+// DISABLED — a preview of the live bar, never a way to act. The %-pot quick sizes +
+// slider are display conveniences clamped to [minRaiseTo, maxRaiseTo]; the server
+// re-validates every submitted amount. Visual hierarchy: Raise is the primary CTA
+// (neon), Call is positive (green), All-in is a muted/danger affordance (amber tint).
 
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -19,14 +20,26 @@ import type { WireLegalActions } from '@/lib/onlinePoker/wire';
 import { betSizingOptions, clampRaiseTo, fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { Clock } from 'lucide-react';
 
-/** Two-line amount: big "X BB" + small raw chips (falls back to chips-only). */
-function Amt({ chips, bb, className }: { chips: string; bb?: string; className?: string }) {
+/** "X BB" if bb known, else raw chips — for inline labels. */
+function bbLabel(chips: string, bb?: string): string {
   const inBB = bb ? fmtBB(chips, bb) : '';
-  if (!inBB) return <span className={cn('tabular-nums', className)}>{fmtChips(chips)}</span>;
+  return inBB ? `${inBB} BB` : fmtChips(chips);
+}
+
+/** Stacked button label: ACTION / "X BB" / chips (BB never wraps alone). */
+function BtnLabel({ action, chips, bb }: { action: string; chips: string; bb?: string }) {
+  const inBB = bb ? fmtBB(chips, bb) : '';
   return (
-    <span className={cn('flex flex-col items-center leading-none', className)}>
-      <span className="text-[13px] font-semibold tabular-nums">{inBB} BB</span>
-      <span className="text-[10px] tabular-nums opacity-75">{fmtChips(chips)}</span>
+    <span className="flex flex-col items-center gap-0.5 leading-none">
+      <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">{action}</span>
+      {inBB ? (
+        <>
+          <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">{inBB} BB</span>
+          <span className="text-[9px] tabular-nums opacity-75">{fmtChips(chips)}</span>
+        </>
+      ) : (
+        <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">{fmtChips(chips)}</span>
+      )}
     </span>
   );
 }
@@ -82,22 +95,30 @@ export function ActionBar({
   const act = (type: ActionType, amount?: string) => { if (!disabled) onAction?.({ type, amount }); };
 
   return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-3">
-      {/* turn-timer bar (purely visual while dark) */}
-      <div className="flex items-center gap-2">
-        <Clock className="h-3.5 w-3.5 text-primary/80" />
-        <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-primary" style={{ width: interactive ? '62%' : '100%' }} />
-        </div>
-        {!RUNTIME_LIVE && (
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-muted-foreground">Xem trước</span>
-        )}
+    <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-2.5 sm:p-3">
+      {/* turn / preview header */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn(
+          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium',
+          interactive ? 'bg-primary/15 text-primary' : 'bg-white/10 text-muted-foreground',
+        )}>
+          <Clock className="h-3 w-3" />
+          {interactive ? 'Lượt của bạn' : 'Xem trước · đã khóa'}
+        </span>
+        <span className="text-[11px] tabular-nums text-muted-foreground">
+          {canCheck ? `Pot ${bbLabel(hand.pot, bb)}` : `Cược ${bbLabel(legal.toCall, bb)} · Pot ${bbLabel(hand.pot, bb)}`}
+        </span>
       </div>
 
-      {/* %-pot sizing strip — shown when bet/raise is legal */}
+      {/* thin turn-timer bar (purely visual while dark) */}
+      <div className="h-1 overflow-hidden rounded-full bg-white/10">
+        <div className={cn('h-full rounded-full', interactive ? 'bg-primary' : 'bg-white/20')} style={{ width: interactive ? '62%' : '100%' }} />
+      </div>
+
+      {/* %-pot sizing strip — quick chips (label + amount) + slider with min/max */}
       {showSizing && (
-        <div className="space-y-2 rounded-lg bg-white/[0.03] p-2">
-          <div className="flex items-center gap-1.5">
+        <div className="space-y-1.5">
+          <div className="flex gap-1.5">
             {sizes.map((s) => (
               <button
                 key={s.key}
@@ -105,18 +126,19 @@ export function ActionBar({
                 disabled={disabled}
                 onClick={() => setRaiseTo(s.amount)}
                 className={cn(
-                  'h-9 flex-1 rounded-md border text-xs font-medium tabular-nums transition-colors',
+                  'flex h-11 flex-1 flex-col items-center justify-center rounded-md border leading-none transition-colors disabled:opacity-50',
                   s.amount === raiseTo
                     ? 'border-primary/60 bg-primary/15 text-primary'
                     : 'border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]',
-                  'disabled:opacity-50',
                 )}
               >
-                {s.label}
+                <span className="text-[11px] font-semibold">{s.label}</span>
+                <span className="mt-0.5 text-[9px] tabular-nums opacity-70">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-12 text-[10px] tabular-nums text-muted-foreground">{bbLabel(legal.minRaiseTo, bb)}</span>
             <Slider
               value={[sliderVal]}
               min={sliderMin}
@@ -127,26 +149,18 @@ export function ActionBar({
               className="flex-1"
               aria-label="Raise to"
             />
-            <div className="min-w-[88px] text-right">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Raise to</div>
-              <div className="text-sm font-semibold tabular-nums text-primary">
-                {bb && fmtBB(raiseTo, bb) ? `${fmtBB(raiseTo, bb)} BB` : fmtChips(raiseTo)}
-              </div>
-              {bb && fmtBB(raiseTo, bb) && (
-                <div className="text-[10px] tabular-nums text-muted-foreground">{fmtChips(raiseTo)}</div>
-              )}
-            </div>
+            <span className="w-12 text-right text-[10px] tabular-nums text-muted-foreground">{bbLabel(legal.maxRaiseTo, bb)}</span>
           </div>
         </div>
       )}
 
-      {/* primary actions: Fold · Check/Call · Bet/Raise */}
+      {/* primary actions: Fold · Check/Call · Bet/Raise (Raise = brightest CTA) */}
       <div className="flex items-stretch gap-2">
         {canFold && (
           <Button
             disabled={disabled}
             onClick={() => act('fold')}
-            className="min-h-[3.25rem] flex-1 bg-rose-800/90 text-rose-50 hover:bg-rose-700"
+            className="min-h-[3.25rem] flex-1 bg-rose-800/90 text-rose-50 hover:bg-rose-700 sm:min-h-[3rem]"
           >
             Fold
           </Button>
@@ -156,7 +170,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('check')}
-            className="min-h-[3.25rem] flex-1 bg-emerald-600 text-emerald-50 hover:bg-emerald-500"
+            className="min-h-[3.25rem] flex-1 bg-emerald-600 text-emerald-50 hover:bg-emerald-500 sm:min-h-[3rem]"
           >
             Check
           </Button>
@@ -164,10 +178,9 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('call', legal.toCall)}
-            className="min-h-[3.25rem] flex-1 flex-col gap-0 bg-emerald-600 text-emerald-50 hover:bg-emerald-500"
+            className="min-h-[3.25rem] flex-1 bg-emerald-600 text-emerald-50 hover:bg-emerald-500 sm:min-h-[3rem]"
           >
-            <span className="text-[11px] uppercase tracking-wide opacity-80">Call</span>
-            <Amt chips={legal.toCall} bb={bb} />
+            <BtnLabel action="Call" chips={legal.toCall} bb={bb} />
           </Button>
         ) : null}
 
@@ -175,24 +188,26 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
-            className="min-h-[3.25rem] flex-1 flex-col gap-0 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="min-h-[3.25rem] flex-[1.3] bg-primary text-primary-foreground hover:bg-primary/90 sm:min-h-[3rem]"
           >
-            <span className="text-[11px] uppercase tracking-wide opacity-80">{canRaise ? 'Raise to' : 'Bet'}</span>
-            <Amt chips={raiseTo} bb={bb} />
+            <BtnLabel action={canRaise ? 'Raise to' : 'Bet'} chips={raiseTo} bb={bb} />
           </Button>
         )}
       </div>
 
-      {/* all-in (full width) */}
+      {/* all-in — muted/danger affordance, deliberately NOT a primary CTA */}
       {canAllin && (
-        <Button
+        <button
+          type="button"
           disabled={disabled}
           onClick={() => act('allin', legal.maxRaiseTo)}
-          className="h-11 w-full bg-amber-500/90 text-amber-950 hover:bg-amber-500"
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-500/45 bg-amber-500/10 text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
         >
-          <span className="mr-2 text-[11px] uppercase tracking-wide opacity-80">All-in</span>
-          <Amt chips={legal.maxRaiseTo} bb={bb} className="flex-row items-baseline gap-1" />
-        </Button>
+          <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">All-in</span>
+          <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">
+            {bb && fmtBB(legal.maxRaiseTo, bb) ? `${fmtBB(legal.maxRaiseTo, bb)} BB · ${fmtChips(legal.maxRaiseTo)}` : fmtChips(legal.maxRaiseTo)}
+          </span>
+        </button>
       )}
     </div>
   );

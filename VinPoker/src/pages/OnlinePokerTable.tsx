@@ -58,7 +58,7 @@ export default function OnlinePokerTable() {
   const seated = hand.mySeat != null;
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-4 p-4">
+    <div className="container mx-auto max-w-4xl space-y-3 p-3 sm:p-4">
       <header className="flex items-center gap-2">
         <Button asChild variant="ghost" size="sm">
           <Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link>
@@ -69,7 +69,7 @@ export default function OnlinePokerTable() {
       </header>
 
       {/* the felt */}
-      <Card className="overflow-hidden bg-black/20 p-4">
+      <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
         <SeatRing hand={hand} bb={table.bb} />
       </Card>
 
