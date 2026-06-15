@@ -142,7 +142,9 @@ export function CardBack({
     lg: "h-20 w-14 rounded-xl",
   }[size];
   const uid = useId().replace(/:/g, "");
-  const compact = size === "xs" || size === "sm";
+  // Same lighter pattern on EVERY card (board backs match the player hole-card
+  // backs) — owner wants less guilloché on the board.
+  const compact = true;
   const rosetteCount = compact ? 10 : 30;
   const innerCount = compact ? 0 : 16;
   const rRx = compact ? 17 : 24;
