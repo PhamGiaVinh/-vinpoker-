@@ -24,12 +24,13 @@ export type ModelResult =
   | { ok: true; answer: RawModelAnswer }
   | { ok: false; status: number; error: string };
 
-const SYSTEM = `Bạn là trợ lý tra cứu luật cho Tournament Director (TD) poker Việt Nam.
+const SYSTEM = `Bạn là trợ lý đa năng cho Tournament Director (TD) và floor poker ở Việt Nam. Bạn vừa tra cứu luật/xử lý tranh chấp tại bàn, vừa tư vấn vận hành giải đấu, quy trình floor và chiến thuật cơ bản.
 QUY TẮC BẮT BUỘC:
-- CHỈ tư vấn, KHÔNG ra phán quyết chính thức. Luôn dùng giọng "Gợi ý xử lý", "Cần TD xác nhận". KHÔNG dùng "phải xử".
-- CHỈ trích dẫn (citations) bằng ruleId có trong danh sách "Căn cứ được phép" bên dưới. TUYỆT ĐỐI không bịa số quy tắc hay nguồn nào khác.
-- Nếu căn cứ không đủ, trả confidence "low" và nêu "Cần hỏi thêm" thay vì suy đoán.
-- Toàn bộ nội dung trả về bằng tiếng Việt, ngắn gọn, rõ ràng cho nhân viên sàn.`;
+- CHỈ tư vấn, KHÔNG ra phán quyết chính thức. Với tranh chấp/luật tại bàn (ruling): luôn dùng giọng "Gợi ý xử lý", "Cần TD xác nhận", KHÔNG dùng "phải xử". Với vận hành/floor: giọng "gợi ý vận hành". Với chiến thuật: giọng "tư vấn tham khảo, mang tính định hướng".
+- CHỈ dựa trên và trích dẫn (citations) các ruleId có trong danh sách "Căn cứ được phép" bên dưới. TUYỆT ĐỐI không bịa số quy tắc, không bịa nguồn, không dùng kiến thức ngoài danh sách căn cứ.
+- Nếu căn cứ không đủ hoặc không liên quan, trả confidence "low" và nêu "Cần hỏi thêm" thay vì suy đoán.
+- Với câu hỏi chiến thuật: nói rõ đây là định hướng chung, KHÔNG phải lời khuyên ràng buộc hay lời khuyên tài chính.
+- Toàn bộ trả về bằng tiếng Việt, ngắn gọn, rõ ràng cho nhân viên sàn. playerWordingVi: với tranh chấp là cách nói với khách; với vận hành là cách thông báo cho cả phòng; với chiến thuật là một câu định hướng ngắn.`;
 
 function buildUserContent(situationText: string, rules: ModelRule[]): string {
   const basis = rules
@@ -42,11 +43,11 @@ const TOOL = {
   type: "function",
   function: {
     name: "submit_td_answer",
-    description: "Trả về tư vấn xử lý tình huống TD, chỉ dựa trên căn cứ được phép.",
+    description: "Trả về tư vấn cho tình huống TD (luật/vận hành/floor/chiến thuật), chỉ dựa trên căn cứ được phép.",
     parameters: {
       type: "object",
       properties: {
-        recommendationVi: { type: "string", description: "Gợi ý xử lý, giọng tư vấn, không phải phán quyết." },
+        recommendationVi: { type: "string", description: "Khuyến nghị/gợi ý, giọng tư vấn theo loại tình huống (xử lý / vận hành / định hướng), không phải phán quyết." },
         citations: {
           type: "array",
           items: { type: "object", properties: { ruleId: { type: "string" } }, required: ["ruleId"], additionalProperties: false },

@@ -10,6 +10,7 @@ export interface TdRule {
   keywords: string[];
   suggestionVi: string; playerWordingVi: string;
   citationLabel: string; citationKind: string; source: string;
+  category?: string; // "ruling" | "operations" | "floor" | "strategy"
 }
 export type TdConfidence = "low" | "medium" | "high";
 export interface TdCitation { ruleId: string; label: string; kind: string; }
@@ -45,6 +46,29 @@ const SYNONYM_GROUPS: string[][] = [
   ["premature","board card","bai chung","lat som","flop som","turn som","river som"],
   ["away","roi ban","vang mat","khong co mat","absent","roi ghe"],
   ["unclear raise","raise khong ro","muc raise","ambiguous","mo ho","raise map mo"],
+  // operations
+  ["co cau mu","cau truc mu","blind structure","do dai level","nhay mu","tang mu","buoc nhay mu"],
+  ["gom chip","color up","colorup","dua chip","chip race","doi chip"],
+  ["can ban","table balance","balancing","chuyen ban can","don ban"],
+  ["gop ban","break table","dap ban","pha ban","redraw","rai nguoi"],
+  ["dang ky muon","late reg","late registration","re entry","reentry","tai dang ky"],
+  ["payout","tra thuong","co cau giai thuong","icm","chia tien","chip chop","deal ban chung ket"],
+  ["big blind ante","bb ante","ante chung"],
+  ["boc ghe","seat draw","random seat","xep ghe ngau nhien"],
+  ["dong ho giai","tournament clock","lich nghi","break giai lao","gio nghi","dinner break"],
+  // floor procedure / incidents
+  ["day pot nham","chung nham","trao pot sai","wrong pot","dem pot sai"],
+  ["lech chip","chip discrepancy","sai so chip","thieu chip","du chip","chip khong khop"],
+  ["thong dong","collusion","nuong tay","soft play","softplay","chuyen chip","chip dumping"],
+  ["tieu xao","angle","angle shoot","angleshooting","gia vo bo bai"],
+  ["ghi nhan su viec","incident","bien ban","log su viec","luu su viec"],
+  // strategy
+  ["vi tri","position","range mo","opening range","early position","late position","nut bai button"],
+  ["pot odds","ti le pot","equity","dem outs"],
+  ["bong bong","bubble","ap luc bubble","moc nhay thuong","pay jump"],
+  ["short stack","stack ngan","push fold","stack sau","deep stack"],
+  ["3bet","3 bet","re raise","tai cuoc","4bet","4 bet","raise lai"],
+  ["bankroll","quan ly von","variance","phuong sai","downswing","chuoi thua"],
 ];
 
 function expandTerms(nq: string): Set<string> {

@@ -1889,11 +1889,21 @@
   "tdAi": {
     "entry": "Hỏi TD AI",
     "title": "Trợ lý TD AI",
-    "subtitle": "Tra cứu tình huống xử lý của TD. Chỉ tư vấn — quyết định cuối cùng thuộc về TD.",
+    "subtitle": "Trợ lý TD đa năng: tư vấn xử lý tranh chấp/luật tại bàn, vận hành giải đấu, quy trình floor và chiến thuật cơ bản. Chỉ tư vấn — quyết định cuối cùng thuộc về TD.",
     "newLookup": "Tra cứu mới",
     "loading": "Đang hỏi TD AI…",
     "advisoryBanner": "Tư vấn hỗ trợ — không phải ruling chính thức. TD xác nhận trước khi áp dụng.",
     "error": "Không gọi được TD AI — đang dùng kết quả tra cứu từ khóa.",
+    "category": {
+      "ruling": "Luật / xử lý",
+      "operations": "Vận hành",
+      "floor": "Floor",
+      "strategy": "Chiến thuật"
+    },
+    "source": {
+      "ai": "AI tư vấn",
+      "local": "Tra cứu offline"
+    },
     "form": {
       "table": "Bàn",
       "tablePlaceholder": "VD: Bàn 4",

@@ -1,4 +1,4 @@
-import type { TdAnswer, TdConfidence, TdRule, TdSituation } from "./types";
+import type { TdAnswer, TdConfidence, TdRule, TdRuleCategory, TdSituation } from "./types";
 import { searchRules, type TdSearchHit } from "./localSearch";
 
 // Builds the fixed answer-card payload from local keyword hits ONLY — no
@@ -22,6 +22,22 @@ function confidenceFor(hits: TdSearchHit[]): TdConfidence {
 
 function buildQuery(s: TdSituation): string {
   return [s.description, s.actionSequence, s.playersInvolved].filter(Boolean).join(" ");
+}
+
+// Advisory prefix per domain. Ruling/floor keep the "DEMO … cần TD xác nhận"
+// wording (also asserted by tests); operations/strategy read as consulting, not
+// a ruling. The whole card still shows the DEMO banner regardless.
+function recommendationPrefix(category: TdRuleCategory | undefined): string {
+  switch (category) {
+    case "operations":
+      return "Gợi ý vận hành (tra cứu offline — cân nhắc theo luật giải): ";
+    case "strategy":
+      return "Tư vấn tham khảo (tra cứu offline — chỉ mang tính định hướng): ";
+    case "floor":
+    case "ruling":
+    default:
+      return "Gợi ý xử lý (DEMO, cần TD xác nhận): ";
+  }
 }
 
 function missingInfoPrompts(s: TdSituation): string[] {
@@ -69,7 +85,7 @@ export function buildLocalAnswer(situation: TdSituation, rules: TdRule[]): TdAns
   return {
     source: "local",
     isDemo: true,
-    recommendationVi: `Gợi ý xử lý (DEMO, cần TD xác nhận): ${topRule.suggestionVi}`,
+    recommendationVi: `${recommendationPrefix(topRule.category)}${topRule.suggestionVi}`,
     citations: top.map((h) => ({
       ruleId: h.rule.id,
       label: h.rule.citationLabel,
