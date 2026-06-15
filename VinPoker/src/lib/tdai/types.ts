@@ -15,6 +15,14 @@ export type TdStreet = "preflop" | "flop" | "turn" | "river" | "showdown" | "oth
 
 export type TdConfidence = "low" | "medium" | "high";
 
+// What kind of help an entry gives. "ruling" = dispute/rule resolution at the
+// table (strict, cite-backed). "operations" = running the tournament (blind
+// structure, color-up, balancing, breaks, late reg, payouts). "floor" = floor
+// procedure / incidents (penalties, clock, seat issues, dealer errors).
+// "strategy" = general educational poker advice (reference only, not a ruling).
+// Optional for back-compat: an entry with no category is treated as "ruling".
+export type TdRuleCategory = "ruling" | "operations" | "floor" | "strategy";
+
 /** 'local' = PR D keyword lookup. 'ai' = PR E model synthesis. */
 export type TdAnswerSource = "local" | "ai";
 
@@ -39,6 +47,8 @@ export interface TdRule {
   citationLabel: string;
   citationKind: TdCitationKind;
   source: TdRuleSource;
+  /** Domain of help. Defaults to "ruling" when omitted (legacy entries). */
+  category?: TdRuleCategory;
 }
 
 export interface TdCitation {

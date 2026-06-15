@@ -57,14 +57,20 @@ export const FEATURES = {
    */
   roomReconcileWizard: false,
   /**
-   * Remote TD AI: lets the assistant call the `td-ai-assistant` Edge Function
-   * (Gemini via Lovable). Default **OFF** — the kill switch. While false,
-   * `useTdAi` NEVER calls the Edge Function / network: it answers purely from
-   * the local keyword corpus (labelled DEMO, advisory-only). Flip to true ONLY
-   * after the function is deployed AND the owner enables PR E. Off keeps prod
-   * safe even though the PR E code is present on main but undeployed.
+   * Remote TD AI: lets the assistant call the `td-ai-assistant` Edge Function so
+   * it gives real AI advice across rulings, tournament operations, floor
+   * procedure and basic strategy — grounded ONLY in the committed corpus
+   * (no-hallucination validator drops any uncited/fabricated rule). The provider
+   * is configured by Edge secrets, NOT hardcoded: `TD_AI_PROVIDER` (gemini
+   * default / groq / openrouter) + `TD_AI_MODEL` + the matching key
+   * (`GEMINI_API_KEY` / `GROQ_API_KEY` / `OPENROUTER_API_KEY`). **ON**
+   * (owner-approved): the function is in the Deploy Edge Functions step so it
+   * ships on merge. `useTdAi` calls it and STILL falls back to the offline
+   * keyword corpus on ANY failure (function absent, network, quota/429, missing
+   * key), so the panel keeps working even if the model is unavailable.
+   * Kill-switch: set false to force the offline-only path. Advisory only.
    */
-  tdAiRemote: false,
+  tdAiRemote: true,
   /**
    * Online Poker (play-money, closed alpha) UI under /poker/*. Default **OFF** —
    * the dark switch for the GE-2D shell. While false, /poker and /poker/table/:id

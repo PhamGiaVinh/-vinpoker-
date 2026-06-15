@@ -1,23 +1,29 @@
 import type { TdRule } from "./types";
 import { MOCK_TD_RULES } from "./mockRules";
+import { ADVISORY_RULES } from "./advisoryRules";
 
-// ⚠️ NON-AUTHORITATIVE CORPUS — house rules + paraphrased TDA-topic summaries.
-// This is NOT the official TDA 2024 text and the "#NN" labels are topic
-// placeholders, not real rule numbers. Upgrading to official sourced text =
-// replacing entries here with source:"tda" + verbatim text + provenance; the
-// TdRule shape and everything downstream stay the same.
+// ⚠️ NON-AUTHORITATIVE CORPUS — table rulings (paraphrased TDA-topic summaries)
+// + club house rules + operations/floor/strategy advisory entries. This is NOT
+// the official TDA 2024 text and the "#NN" labels are topic placeholders, not
+// real rule numbers. Upgrading to official sourced text = replacing the ruling
+// entries with source:"tda" + verbatim text + provenance; the TdRule shape and
+// everything downstream stay the same.
 //
-// build-rules-index.ts serializes this into rules-index.json (committed to the
-// edge function dir AND src/assets/rules for offline parity).
+// buildIndex.ts serializes this into rules-index.json (committed to the edge
+// function dir) so the real AI assistant and the offline fallback share one
+// corpus. Regenerate after editing:
+//   REGEN=1 npx vitest run src/lib/tdai/rulesIndex.test.ts
 
-export const CORPUS_VERSION = "house-2024-v1.0";
+export const CORPUS_VERSION = "house-2024-v2.0-advisory";
 
 // PR D mock rules, re-labelled as TDA-topic *summaries* (not "placeholder").
+// They are table rulings → category "ruling".
 const TDA_SUMMARIES: TdRule[] = MOCK_TD_RULES.map((r) => ({
   ...r,
   source: "summary",
   citationKind: "tda_summary",
   citationLabel: r.citationLabel.replace("TDA placeholder", "Tóm tắt TDA"),
+  category: "ruling",
 }));
 
 // Club house rules (paraphrased, advisory — clearly club policy, not TDA).
@@ -34,6 +40,7 @@ const HOUSE_RULES: TdRule[] = [
     citationLabel: "LUẬT CLB",
     citationKind: "house",
     source: "house",
+    category: "floor",
   },
   {
     id: "house-clock-call",
@@ -47,6 +54,7 @@ const HOUSE_RULES: TdRule[] = [
     citationLabel: "LUẬT CLB",
     citationKind: "house",
     source: "house",
+    category: "floor",
   },
   {
     id: "house-penalty",
@@ -60,7 +68,8 @@ const HOUSE_RULES: TdRule[] = [
     citationLabel: "LUẬT CLB",
     citationKind: "house",
     source: "house",
+    category: "floor",
   },
 ];
 
-export const TD_RULES_CORPUS: TdRule[] = [...TDA_SUMMARIES, ...HOUSE_RULES];
+export const TD_RULES_CORPUS: TdRule[] = [...TDA_SUMMARIES, ...HOUSE_RULES, ...ADVISORY_RULES];

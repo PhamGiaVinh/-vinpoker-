@@ -1889,11 +1889,27 @@
   "tdAi": {
     "entry": "Ask TD AI",
     "title": "TD AI Assistant",
-    "subtitle": "Look up tournament-dispute handling. Advisory only — the TD makes the final call.",
+    "subtitle": "Multi-purpose TD assistant: table rulings, tournament operations, floor procedure and basic strategy. Advisory only — the TD makes the final call.",
     "newLookup": "New lookup",
     "loading": "Asking TD AI…",
     "advisoryBanner": "Advisory only — not an official ruling. The TD confirms before applying.",
     "error": "Could not reach TD AI — using keyword lookup instead.",
+    "category": {
+      "ruling": "Ruling",
+      "operations": "Operations",
+      "floor": "Floor",
+      "strategy": "Strategy"
+    },
+    "source": {
+      "ai": "AI advice",
+      "local": "Offline lookup"
+    },
+    "citation": {
+      "viewHint": "Click to view the cited text",
+      "suggestion": "Suggested handling",
+      "disclaimer": "This is a paraphrased summary, NOT the official verbatim TDA text. Reference only — the TD confirms before applying.",
+      "notFound": "Cited content not found."
+    },
     "form": {
       "table": "Table",
       "tablePlaceholder": "e.g. Table 4",
