@@ -16,6 +16,7 @@ export function PlayingCard({
   card,
   size = 'md',
   reveal = false,
+  revealDelayMs,
   className,
 }: {
   /** "Ah", "Td", … or undefined/"?" for a face-down card */
@@ -23,6 +24,8 @@ export function PlayingCard({
   size?: 'sm' | 'md' | 'lg';
   /** play a one-shot flip-in when the card mounts (deal / showdown reveal) */
   reveal?: boolean;
+  /** stagger the reveal flip (e.g. 2nd showdown card) — only applies when `reveal` */
+  revealDelayMs?: number;
   className?: string;
 }) {
   const dims = size === 'lg' ? 'h-16 w-11' : size === 'sm' ? 'h-8 w-6' : 'h-12 w-9';
@@ -49,6 +52,7 @@ export function PlayingCard({
         reveal && 'op-card-reveal',
         className,
       )}
+      style={reveal && revealDelayMs ? { animationDelay: `${revealDelayMs}ms` } : undefined}
       aria-label={card}
     >
       <span className={cn('absolute left-0.5 top-0 flex flex-col items-center font-bold leading-none', idx, color)}>

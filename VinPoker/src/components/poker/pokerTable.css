@@ -1,8 +1,8 @@
 /* src/components/poker/pokerTable.css
-   GE-2E — minimal, SAFE online-poker table animations. transform/opacity (+ box-
-   shadow for the pulse) only; GPU-friendly; fully disabled under reduced-motion.
-   Scope is namespaced `op-` so nothing else in the app is affected. No chip-to-pot
-   or winner glow yet (deferred to a later PR). */
+   GE-2E/2F — minimal, SAFE online-poker table animations. transform/opacity/box-
+   shadow + a left/top transition only; GPU-friendly; fully disabled under
+   reduced-motion. Scope is namespaced `op-` so nothing else in the app is affected.
+   GE-2F adds: chip-to-pot (collect), soft winner glow, staggered showdown reveal. */
 
 @keyframes op-card-reveal {
   0%   { transform: perspective(600px) rotateY(85deg); opacity: 0; }
@@ -21,7 +21,20 @@
 /* gentle ring pulse on the seat that is to act */
 .op-to-act-pulse { animation: op-to-act-pulse 2.2s ease-in-out infinite; }
 
+/* GE-2F — soft gold "winner" glow (pot + winning seat), deliberately gentle */
+@keyframes op-winner-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(217, 194, 122, 0.45), 0 0 8px rgba(217, 194, 122, 0.22); }
+  50%      { box-shadow: 0 0 0 1px rgba(217, 194, 122, 0.80), 0 0 18px rgba(217, 194, 122, 0.50); }
+}
+.op-winner-glow { animation: op-winner-glow 1.6s ease-in-out infinite; }
+
+/* GE-2F — chip-to-pot: a committed bet eases toward the pot (centre) when collected.
+   Pure left/top/opacity transition (no keyframe); the live runtime flips `collecting`. */
+.op-chip { transition: left 0.55s ease-out, top 0.55s ease-out, opacity 0.55s ease-out; }
+
 @media (prefers-reduced-motion: reduce) {
   .op-card-reveal,
-  .op-to-act-pulse { animation: none !important; }
+  .op-to-act-pulse,
+  .op-winner-glow { animation: none !important; }
+  .op-chip { transition: none !important; }
 }
