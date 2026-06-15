@@ -73,12 +73,18 @@ describe("Viewer Event Hub — Increment A (presentational)", () => {
     expect(html).toContain("Dọc");
   });
 
-  it("LiveHub injects the orientation override into the child viewer (Ngang/Dọc wiring)", () => {
+  it("LiveHub injects orientation + spectator overrides into the child viewer", () => {
     // The real child is <TournamentLiveView/>, which consumes orientationOverride
-    // (presentational only). Use a stub to assert the prop is actually passed.
-    const Viewer = ({ orientationOverride }: { orientationOverride?: "landscape" | "portrait" | null }) => (
-      <div>ORIENT:{orientationOverride}</div>
-    );
+    // and spectator (both presentational only). Use a stub to assert the props
+    // are actually passed: the public hub always marks the viewer as a spectator
+    // (→ TournamentLiveView hides operator chrome).
+    const Viewer = ({
+      orientationOverride,
+      spectator,
+    }: {
+      orientationOverride?: "landscape" | "portrait" | null;
+      spectator?: boolean;
+    }) => <div>ORIENT:{orientationOverride}|SPECTATOR:{String(spectator)}</div>;
     const html = wrap(
       <LiveHub tournamentId="t1" title="X" onShare={noop}>
         <Viewer />
@@ -86,5 +92,6 @@ describe("Viewer Event Hub — Increment A (presentational)", () => {
     );
     // SSR (no mobile media match) → defaults to landscape.
     expect(html).toContain("ORIENT:landscape");
+    expect(html).toContain("SPECTATOR:true");
   });
 });
