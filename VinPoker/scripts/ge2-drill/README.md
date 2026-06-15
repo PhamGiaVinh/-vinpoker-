@@ -56,7 +56,15 @@ a `loadtest` extension of `ge2-online-poker-drill.mjs` once Phase D is open. The
 simulator above is the pre-Phase-D evidence; the live run measures real Edge latency + Supabase
 Realtime fanout (the two MEDIUM capacity risks in the readiness research).
 
-> ⚠️ **Known gap → next PR C (not fixed here): `op_timeout_sweep` is unwired.** No cron/scheduler
-> calls it, so a disconnected/AFK player can stall a table indefinitely. The load simulator does
-> not model wall-clock timeouts. Wiring the timeout sweep (server-authoritative auto-fold /
-> sit-out) is the recommended **PR C — timeout-sweep hardening (source-only)**.
+> ✅ **PR C wires the timeout sweep (source-only).** `op_timeout_sweep` was unwired (an AFK /
+> disconnected player could stall a table). PR C adds the server-authoritative auto-fold/check:
+> - Edge fn `supabase/functions/online-poker-timeout-sweep/index.ts` — cron-invoked, service-role;
+>   for each expired hand runs the engine's `forcedTimeoutAction` through `op_submit_action`
+>   (CAS + deterministic idempotency key `timeout_<hand>_<version>` → no double-action).
+> - Migration `20260903000000_online_poker_timeout_sweep_cron.sql` — pg_cron every 15s → `net.http_post`
+>   to the sweep edge (secret from GUC `app.op_timeout_sweep_secret`, never hardcoded).
+> - Engine tests `tests/pokerEngine/timeout.test.ts`.
+>
+> **Source-only / dark:** the sweep edge is NOT in the deploy workflow and the cron migration is
+> NOT applied. Phase D: deploy the edge (`--no-verify-jwt`) with env `OP_TIMEOUT_SWEEP_SECRET`, set
+> DB GUC `app.op_timeout_sweep_secret` to the SAME value, then apply the cron migration.
