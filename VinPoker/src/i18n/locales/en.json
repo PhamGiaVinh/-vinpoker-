@@ -2819,5 +2819,67 @@
     "saving": "Saving...",
     "update": "Update",
     "create": "Create"
+  },
+  "liveHub": {
+    "seat": "Seat {{n}}",
+    "header": {
+      "live": "LIVE",
+      "tables": "{{count}} tables",
+      "share": "Share"
+    },
+    "featured": {
+      "badge": "LIVE • TABLE IN PLAY"
+    },
+    "orientation": {
+      "landscape": "Landscape",
+      "portrait": "Portrait"
+    },
+    "tables": {
+      "title": "Live tables",
+      "players": "{{count}} players"
+    },
+    "stats": {
+      "prize": "Prize pool",
+      "remaining": "Remaining",
+      "remainingUnit": "players",
+      "chipLeader": "Chip Leader"
+    },
+    "feed": {
+      "title": "Updates • Live",
+      "empty": "No action in the current hand yet",
+      "badge": {
+        "allin": "ALL-IN",
+        "raise": "RAISE",
+        "bet": "BET",
+        "call": "CALL",
+        "check": "CHECK",
+        "fold": "FOLD",
+        "post": "BLIND",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "All-In {{amount}}",
+        "raise": "Raise {{amount}}",
+        "bet": "Bet {{amount}}",
+        "call": "Call {{amount}}",
+        "check": "Check",
+        "fold": "Fold",
+        "post_sb": "SB {{amount}}",
+        "post_bb": "BB {{amount}}",
+        "post_ante": "Ante {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "Pot",
+      "main": "Main",
+      "side": "Side {{i}}",
+      "toAct": "to act",
+      "bet": "Bet {{amount}}",
+      "allIn": "ALL IN",
+      "folded": "FOLDED",
+      "action": "Action",
+      "multiTable": "This tournament has multiple tables — pick a table above to watch live.",
+      "waiting": "Waiting for the dealer to start the hand..."
+    }
   }
 }

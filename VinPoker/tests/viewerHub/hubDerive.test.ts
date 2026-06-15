@@ -45,7 +45,7 @@ describe("hubDerive — deriveFeed", () => {
       { id: "a1", player_id: "p1", action_type: "fold", action_amount: 0, action_order: 1 },
     ];
     const feed = deriveFeed(actions, names, seatsByP);
-    expect(feed[0]).toEqual({ id: "a3", seatNumber: 2, playerName: "Bình", label: "ALL-IN 5k", kind: "allin" });
+    expect(feed[0]).toEqual({ id: "a3", seatNumber: 2, playerName: "Bình", label: "ALL-IN 5k", kind: "allin", actionType: "all_in", amount: 5000 });
     expect(feed[1]).toMatchObject({ playerName: "An", kind: "raise", label: "Tố 1.2k" });
     expect(feed[2]).toMatchObject({ kind: "fold", label: "Bỏ bài" });
   });

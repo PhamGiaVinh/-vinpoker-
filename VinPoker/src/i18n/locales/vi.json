@@ -2819,5 +2819,67 @@
     "saving": "Đang lưu...",
     "update": "Cập nhật",
     "create": "Tạo"
+  },
+  "liveHub": {
+    "seat": "Ghế {{n}}",
+    "header": {
+      "live": "TRỰC TIẾP",
+      "tables": "{{count}} bàn",
+      "share": "Chia sẻ"
+    },
+    "featured": {
+      "badge": "TRỰC TIẾP • BÀN ĐANG DIỄN RA"
+    },
+    "orientation": {
+      "landscape": "Ngang",
+      "portrait": "Dọc"
+    },
+    "tables": {
+      "title": "Các bàn trực tiếp",
+      "players": "{{count}} người chơi"
+    },
+    "stats": {
+      "prize": "Giải thưởng",
+      "remaining": "Còn lại",
+      "remainingUnit": "người",
+      "chipLeader": "Chip Leader"
+    },
+    "feed": {
+      "title": "Cập nhật • Trực tiếp",
+      "empty": "Chưa có hành động nào trong ván hiện tại",
+      "badge": {
+        "allin": "ALL-IN",
+        "raise": "TỐ",
+        "bet": "CƯỢC",
+        "call": "THEO",
+        "check": "CHECK",
+        "fold": "BỎ",
+        "post": "BLIND",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "ALL-IN {{amount}}",
+        "raise": "Tố {{amount}}",
+        "bet": "Cược {{amount}}",
+        "call": "Theo {{amount}}",
+        "check": "Check",
+        "fold": "Bỏ bài",
+        "post_sb": "SB {{amount}}",
+        "post_bb": "BB {{amount}}",
+        "post_ante": "Ante {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "Pot",
+      "main": "Main",
+      "side": "Side {{i}}",
+      "toAct": "chờ",
+      "bet": "Cược {{amount}}",
+      "allIn": "ALL IN",
+      "folded": "FOLDED",
+      "action": "Hành động",
+      "multiTable": "Giải có nhiều bàn — chọn bàn ở trên để xem live.",
+      "waiting": "Chờ dealer bắt đầu hand..."
+    }
   }
 }

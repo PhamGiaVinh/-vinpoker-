@@ -147,6 +147,20 @@ export const Layout = () => {
                 VBacker
               </div>
             </NavLink>
+            <NavLink
+              to="/documents"
+              aria-label={t("nav.documents")}
+              className={({ isActive }) =>
+                cn(
+                  "md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border transition-colors shrink-0",
+                  isActive
+                    ? "text-primary border-primary/50 bg-primary/10"
+                    : "text-muted-foreground border-border hover:text-primary hover:border-primary/60"
+                )
+              }
+            >
+              <BookOpen className="w-5 h-5" />
+            </NavLink>
           </div>
 
           <nav className="hidden md:flex items-center gap-0.5">
