@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { CardSlotPicker, type Card, RANKS, SUIT_SYMBOL, SUIT_COLOR, isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { nextButton, getSeatPositions } from "@/lib/tournament/button";
+import { replayActions, deriveResumeStreet, nextActionOrderFrom, type ResumeActionRow } from "./handinput/resumeHand";
 import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { nextToAct, actorView } from "@/lib/tracker-poker/handFlow";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
@@ -366,10 +367,74 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const handleContinueOrphan = async () => {
     if (!orphanHand) return;
-    setHandId(orphanHand.id);
-    setHandStarted(true);
-    setOrphanHand(null);
-    toast.success("Resuming hand #" + orphanHand.hand_number);
+    setSubmitting(true);
+    try {
+      // Reload the hand's authoritative button + community cards…
+      const { data: hand, error: handErr } = await supabase
+        .from("tournament_hands")
+        .select("button_seat, community_cards")
+        .eq("id", orphanHand.id)
+        .single();
+      if (handErr || !hand) throw new Error(handErr?.message || "Không tải được hand đang diễn ra");
+
+      // …and every action already recorded for it, in order.
+      const { data: actionRows, error: actErr } = await supabase
+        .from("hand_actions")
+        .select("player_id, action_type, action_amount, action_order, street")
+        .eq("hand_id", orphanHand.id)
+        .order("action_order", { ascending: true });
+      if (actErr) throw new Error(actErr.message);
+      const rows = (actionRows ?? []) as ResumeActionRow[];
+
+      // Parse stored community cards into the fixed 5-slot UI shape.
+      const stored = Array.isArray(hand.community_cards) ? (hand.community_cards as unknown[]) : [];
+      const communitySlots: (Card | null)[] = [0, 1, 2, 3, 4].map((i) => (stored[i] as Card) ?? null);
+      const communityCount = stored.filter(Boolean).length;
+
+      // Rebuild mid-hand stacks/bets/folded/all-in by replaying the recorded
+      // actions over the dealt-in seats (loaded into `players` at table select).
+      const rebuiltPlayers = replayActions(players, rows);
+
+      // Reconstruct the local action log (seat/name derived from current seats).
+      const rebuiltActions: ActionRecord[] = rows.map((r) => {
+        const pl = players.find((p) => p.player_id === r.player_id);
+        return {
+          street: (r.street ?? "preflop") as Street,
+          player_id: r.player_id,
+          display_name: pl?.display_name || r.player_id.slice(0, 6),
+          seat_number: pl?.seat_number ?? 0,
+          action_type: r.action_type,
+          amount: r.action_amount ?? 0,
+          action_order: r.action_order,
+        };
+      });
+
+      // Streets whose community cards are already on the felt → don't re-confirm
+      // an "overwrite" the first time the operator re-sends them.
+      const sent = new Set<Street>();
+      if (communityCount >= 3) sent.add("flop");
+      if (communityCount >= 4) sent.add("turn");
+      if (communityCount >= 5) sent.add("river");
+
+      setButtonSeat(hand.button_seat ?? buttonSeat);
+      setCommunityCards(communitySlots);
+      setPlayers(rebuiltPlayers);
+      setActions(rebuiltActions);
+      setCurrentStreet(deriveResumeStreet(rows, communityCount));
+      // The next action continues the sequence — NEVER restart at 1.
+      setNextActionOrder(nextActionOrderFrom(rows));
+      setSentCommunityStreets(sent);
+      setUndoStack([]);
+      setSelectedActorId(null);
+      setHandId(orphanHand.id);
+      setHandStarted(true);
+      setOrphanHand(null);
+      toast.success("Resuming hand #" + orphanHand.hand_number);
+    } catch (e: any) {
+      toast.error(e.message || "Không thể tiếp tục hand");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleVoidOrphan = async () => {
