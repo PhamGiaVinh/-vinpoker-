@@ -4,7 +4,9 @@
 // glow + vignette, a layered rail for depth, a very subtle desktop-only "VinPoker"
 // watermark, a stronger hero spotlight, and a gentle to-act ring pulse. Face-up
 // cards (board / hero / showdown) flip in; face-down cards use the Royal Guilloché
-// back. Red/burgundy felt is permitted here (poker-table visual). Visual only.
+// back. GE-2F: staggered showdown reveal, a soft gold winner glow (pot + winning
+// seats via `winnerSeats`), and chip-to-pot collection (`collecting`). Red/burgundy
+// felt is permitted here (poker-table visual). Visual only.
 
 import { cn } from '@/lib/utils';
 import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
@@ -52,7 +54,7 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
-function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string }) {
+function SeatChip({ seat, isMe, hole, bb, isWinner }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean }) {
   const empty = seat.status === 'empty';
   const folded = seat.status === 'folded';
   const sittingOut = seat.status === 'sitting_out';
@@ -70,7 +72,7 @@ function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolea
     : folded
       ? <span className="px-2 py-1 text-[11px] text-white/50">đã bỏ</span>
       : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal />)
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
         : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
 
   return (
@@ -102,7 +104,8 @@ function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolea
 
       <div className={cn(
         'w-full rounded-lg border px-1.5 py-0.5 text-center',
-        seat.isToAct ? 'border-primary/60 bg-primary/10'
+        isWinner ? 'op-winner-glow border-amber-300/70 bg-amber-300/10'
+          : seat.isToAct ? 'border-primary/60 bg-primary/10'
           : isMe ? 'border-white/25 bg-black/65' : 'border-white/10 bg-black/55',
       )}>
         <div className="truncate text-[11px] font-medium text-white sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</div>
@@ -114,7 +117,19 @@ function SeatChip({ seat, isMe, hole, bb }: { seat: PublicSeatView; isMe: boolea
   );
 }
 
-export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
+export function SeatRing({
+  hand,
+  bb,
+  winnerSeats,
+  collecting = false,
+}: {
+  hand: PublicHandView;
+  bb?: string;
+  /** seats to highlight with the soft gold winner glow (live runtime supplies them) */
+  winnerSeats?: number[];
+  /** when true, committed bets ease toward the pot (end-of-street collection) */
+  collecting?: boolean;
+}) {
   const pos = seatPositions(hand.seats, hand.mySeat);
 
   return (
@@ -140,7 +155,7 @@ export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
 
         {/* board + pot — the focal point, scaled up on larger screens */}
         <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
-          <div className="rounded-full bg-black/55 px-3 py-1 text-center shadow-md">
+          <div className={cn('rounded-full bg-black/55 px-3 py-1 text-center shadow-md', winnerSeats?.length && 'op-winner-glow')}>
             <span className="text-xs font-bold tabular-nums text-white sm:text-sm">Pot {bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="ml-1.5 text-[10px] tabular-nums text-white/55">{fmtChips(hand.pot)}</span>}
           </div>
@@ -161,8 +176,9 @@ export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
       {hand.seats.map((s) => {
         if (!(Number(s.committed) > 0)) return null;
         const bp = towardCenter(pos[s.seat] ?? { x: 50, y: 50 });
+        const target = collecting ? { x: 50, y: 50 } : bp;
         return (
-          <div key={`bet-${s.seat}`} className="absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${bp.x}%`, top: `${bp.y}%` }}>
+          <div key={`bet-${s.seat}`} className="op-chip absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${target.x}%`, top: `${target.y}%`, opacity: collecting ? 0.2 : 1 }}>
             <span className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-black/75 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-300 shadow sm:text-[11px]">
               <span className="h-2 w-2 rounded-full bg-amber-400" />
               {bbOrChips(s.committed, bb)}
@@ -174,7 +190,7 @@ export function SeatRing({ hand, bb }: { hand: PublicHandView; bb?: string }) {
       {/* seats */}
       {hand.seats.map((s) => (
         <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
-          <SeatChip seat={s} isMe={s.seat === hand.mySeat} hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined} bb={bb} />
+          <SeatChip seat={s} isMe={s.seat === hand.mySeat} hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined} bb={bb} isWinner={winnerSeats?.includes(s.seat)} />
         </div>
       ))}
     </div>
