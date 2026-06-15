@@ -226,7 +226,7 @@ function PortfolioSection({ userId }: { userId: string }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((item) => (
-            <Card key={item.id} className="bg-[#121212] border border-[#1F1F1F] rounded-none hover:border-primary/40 transition-colors">
+            <Card key={item.id} className="bg-card border border-border rounded-none hover:border-primary/40 transition-colors">
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold truncate">
@@ -255,18 +255,18 @@ function PortfolioSection({ userId }: { userId: string }) {
                   </div>
                 </div>
                 {item.deal?.status === "completed" || item.deal?.status === "released" ? (
-                  <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
                     <span className="text-xs text-muted-foreground">P&L:</span>
                     <span className={`text-sm font-bold font-mono ${(item.deal?.backer_payout_vnd ?? 0) >= item.amount ? "text-success" : "text-destructive"}`}>
                       {item.deal?.backer_payout_vnd ? formatVND(item.deal.backer_payout_vnd - item.amount) : "—"}
                     </span>
                   </div>
                 ) : item.deal?.player_busted_out ? (
-                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-destructive">
+                  <div className="pt-2 border-t border-border text-xs text-destructive">
                     {t("notifications.player_busted_out")}
                   </div>
                 ) : (
-                  <div className="pt-2 border-t border-[#1F1F1F] text-xs text-muted-foreground">
+                  <div className="pt-2 border-t border-border text-xs text-muted-foreground">
                     {item.deal?.player_checked_in
                       ? `✅ ${t("portfolio.checkedIn")}`
                       : `⏳ ${t("myDeals.waitCheckIn")}`}
@@ -350,7 +350,7 @@ function CurrentlyBackedSection({ userId }: { userId: string }) {
       {deals.map((deal) => {
         const pnl = deal.backer_payout_vnd != null ? deal.backer_payout_vnd - (deal.purchase?.amount ?? 0) : null;
         return (
-          <Card key={deal.id} className="bg-[#121212] border border-[#1F1F1F] rounded-none hover:border-primary/40 transition-colors">
+          <Card key={deal.id} className="bg-card border border-border rounded-none hover:border-primary/40 transition-colors">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold truncate">
@@ -383,18 +383,18 @@ function CurrentlyBackedSection({ userId }: { userId: string }) {
               </div>
 
               {deal.player_busted_out ? (
-                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-destructive">
+                <div className="pt-2 border-t border-border text-xs text-destructive">
                   {t("notifications.player_busted_out")}
                 </div>
               ) : pnl !== null ? (
-                <div className="flex items-center justify-between pt-2 border-t border-[#1F1F1F]">
+                <div className="flex items-center justify-between pt-2 border-t border-border">
                   <span className="text-xs text-muted-foreground">P&L:</span>
                   <span className={`text-sm font-bold font-mono ${pnl >= 0 ? "text-success" : "text-destructive"}`}>
                     {pnl >= 0 ? "+" : ""}{formatVND(pnl)}
                   </span>
                 </div>
               ) : (
-                <div className="pt-2 border-t border-[#1F1F1F] text-xs text-muted-foreground">
+                <div className="pt-2 border-t border-border text-xs text-muted-foreground">
                   ✅ {t("portfolio.checkedIn")}
                 </div>
               )}
