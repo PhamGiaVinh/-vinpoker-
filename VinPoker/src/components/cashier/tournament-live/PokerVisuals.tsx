@@ -129,33 +129,62 @@ export function CardBack({
   className?: string;
 }) {
   const sizeClass = {
-    xs: "h-8 w-6 rounded-md text-[10px]",
-    sm: "h-11 w-8 rounded-md text-xs",
-    md: "h-16 w-12 rounded-lg text-base",
-    lg: "h-20 w-14 rounded-xl text-lg",
+    xs: "h-8 w-6 rounded-md",
+    sm: "h-11 w-8 rounded-md",
+    md: "h-16 w-12 rounded-lg",
+    lg: "h-20 w-14 rounded-xl",
+  }[size];
+  // Centered VinPoker "V" medallion — reads as a real casino card back.
+  const medallion = {
+    xs: "h-3.5 w-3.5 text-[8px]",
+    sm: "h-5 w-5 text-[11px]",
+    md: "h-7 w-7 text-base",
+    lg: "h-9 w-9 text-lg",
   }[size];
   return (
     <div
       aria-hidden="true"
       data-testid="card-back"
       className={cn(
-        "relative shrink-0 overflow-hidden border font-serif font-black leading-none shadow-lg shadow-black/35",
+        "relative shrink-0 overflow-hidden border shadow-md shadow-black/40",
         muted && "opacity-55 grayscale",
         sizeClass,
         className
       )}
       style={{
-        background:
-          "linear-gradient(135deg, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt-dark)) 100%)",
-        borderColor: "hsl(var(--poker-gold) / 0.7)",
-        color: "hsl(var(--poker-gold))",
+        background: "linear-gradient(140deg, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt-dark)) 100%)",
+        borderColor: "hsl(var(--poker-gold) / 0.55)",
       }}
     >
+      {/* Inner gold frame. */}
       <div
         className="absolute inset-[2px] rounded-[inherit] border"
-        style={{ borderColor: "hsl(var(--poker-gold) / 0.3)" }}
+        style={{ borderColor: "hsl(var(--poker-gold) / 0.28)" }}
       />
-      <div className="absolute inset-0 grid place-items-center text-[0.95em] opacity-90">V</div>
+      {/* Subtle gold dot pattern. */}
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage: "radial-gradient(hsl(var(--poker-gold) / 0.5) 0.5px, transparent 0.6px)",
+          backgroundSize: "5px 5px",
+        }}
+      />
+      {/* V medallion. */}
+      <div className="absolute inset-0 grid place-items-center">
+        <div
+          className={cn(
+            "grid place-items-center rounded-full border font-serif font-black leading-none",
+            medallion
+          )}
+          style={{
+            borderColor: "hsl(var(--poker-gold) / 0.7)",
+            background: "rgba(18,11,7,0.55)",
+            color: "hsl(var(--poker-gold))",
+          }}
+        >
+          V
+        </div>
+      </div>
     </div>
   );
 }
