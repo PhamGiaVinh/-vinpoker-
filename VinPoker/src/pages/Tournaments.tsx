@@ -221,7 +221,7 @@ const Tournaments = () => {
               key={v}
               onClick={() => { setView(v); setPage(1); }}
               className={cn(
-                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
+                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
                 view === v
                   ? v === "livestream"
                     ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
