@@ -1,0 +1,21 @@
+-- Rollback for migration 20260906000000_payroll_p2_open_shift_standard.sql
+-- (Payroll P2 — open-shift duration = check_in + standard shift, instead of now().)
+--
+-- Pre-apply live state: calculate_dealer_payroll == the P0-applied body
+--   (md5 622c8125a4ee0c46b0e273da292cc9f1), defined by migration
+--   20260829000000_payroll_p0_bhxh_base_contract_salary.sql, where the open-shift
+--   fallback is `COALESCE(da.check_out_time, now())`.
+--
+-- VERIFY BEFORE APPLY (read-only):
+--   select md5(pg_get_functiondef('public.calculate_dealer_payroll(uuid,date,date,integer)'::regprocedure));
+--   -- expect 622c8125a4ee0c46b0e273da292cc9f1 (or capture the live md5 fresh and store it here)
+--
+-- ROLLBACK (if the golden diff or post-apply check fails):
+--   Re-apply the FULL body of migration
+--     supabase/migrations/20260829000000_payroll_p0_bhxh_base_contract_salary.sql
+--   via the same controlled Management-API path (CREATE OR REPLACE FUNCTION …).
+--   That restores `COALESCE(da.check_out_time, now())` for the open-shift fallback.
+--   The function is read-only / a pure calculator, so rollback is a single
+--   CREATE OR REPLACE with no data implications.
+--
+-- After rollback verify: md5(pg_get_functiondef(...)) == 622c8125a4ee0c46b0e273da292cc9f1.
