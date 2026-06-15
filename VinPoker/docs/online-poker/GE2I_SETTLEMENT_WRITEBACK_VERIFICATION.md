@@ -4,8 +4,8 @@
 GE-2H spec finding fix, its idempotency / chip-conservation proofs, and the Phase-D verification
 to run after a real completed hand.
 
-- Patch: `supabase/migrations/20260906000000_op_submit_action_settlement_seat_writeback.sql`
-- Rollback: `docs/emergency_rollbacks/PRE_GE2I_20260906000000_*_rollback.sql`
+- Patch: `supabase/migrations/20260907000000_op_submit_action_settlement_seat_writeback.sql`
+- Rollback: `docs/emergency_rollbacks/PRE_GE2I_20260907000000_*_rollback.sql`
 - Phase-D check: `scripts/ge2-drill/sql/05_settlement_writeback.sql`
 
 ---
@@ -127,7 +127,7 @@ stack).
 ## 7. DB safety
 
 Source-only. **Not applied.** `schema_migrations` untouched (live max remains `20260820000002`;
-this slot `20260906000000` is unapplied like every slot after it). No `supabase db push`, no
+this slot `20260907000000` is unapplied like every slot after it). No `supabase db push`, no
 `deploy_db=true`, no Edge deploy, no flag flip. The runtime stays dark
 (`online_poker_config.enabled=false`), so `op_submit_action` does not execute in production and
 this patch carries no behavioural risk until the owner-gated apply. Rollback restores the
