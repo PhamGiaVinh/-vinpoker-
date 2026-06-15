@@ -48,14 +48,16 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
   const [orientation, setOrientation] = useState<Orientation | null>(null);
   const effectiveOrientation: Orientation = orientation ?? (isMobile ? "portrait" : "landscape");
 
-  // Inject the orientation as a presentational override into the child viewer
-  // (the real <TournamentLiveView/>). Additive prop only — no data-path change.
-  // Guard: only inject into component children (function/class), never a host DOM
-  // element, so the prop can't leak onto a <div> and trigger a React warning.
+  // Inject presentational overrides into the child viewer (the real
+  // <TournamentLiveView/>): the orientation, and `spectator` so the public hub
+  // hides operator-only chrome. Additive props only — no data-path change. Guard:
+  // only inject into component children (function/class), never a host DOM element,
+  // so the props can't leak onto a <div> and trigger a React warning.
   const viewer =
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation }>, {
+      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation; spectator?: boolean }>, {
           orientationOverride: effectiveOrientation,
+          spectator: true,
         })
       : children;
 

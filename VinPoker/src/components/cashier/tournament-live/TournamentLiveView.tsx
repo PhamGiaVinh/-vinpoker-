@@ -63,12 +63,18 @@ function formatClockTime(d: Date): string {
 export function TournamentLiveView({
   tournamentId,
   orientationOverride = null,
+  spectator = false,
 }: {
   tournamentId: string;
   /** Presentational only: force the felt orientation (set by the viewer hub's
       Ngang/Dọc toggle). null → auto by device (existing behaviour). Does NOT
       affect any data path; operator callers omit it and are unchanged. */
   orientationOverride?: "landscape" | "portrait" | null;
+  /** Presentational only: public spectator view (set by the viewer hub). Hides
+      operator-only chrome (realtime/debug banners, TD-AI, LIVE/Replay toggle,
+      the right action-timeline + table-stats sidebar). Operator callers omit it
+      → false → all chrome shown, unchanged. No data-path change. */
+  spectator?: boolean;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
@@ -709,10 +715,10 @@ export function TournamentLiveView({
   return (
     <div className="space-y-3">
       <TrackerVisualStyles />
-      {canTdAi && (
+      {canTdAi && !spectator && (
         <TdAiAssistantPanel open={tdAiOpen} onOpenChange={setTdAiOpen} tournamentId={tournamentId} />
       )}
-      {realtimeStatus === "offline" && (
+      {!spectator && realtimeStatus === "offline" && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/15 border border-amber-500/30 rounded-lg text-xs text-amber-400">
           <WifiOff className="w-4 h-4 shrink-0" />
           <span>
@@ -721,12 +727,12 @@ export function TournamentLiveView({
           </span>
         </div>
       )}
-      {realtimeStatus === "connecting" && (
+      {!spectator && realtimeStatus === "connecting" && (
         <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
           <RefreshCw className="w-3 h-3 animate-spin" /> Đang kết nối realtime...
         </div>
       )}
-      {softErrorAt && (
+      {!spectator && softErrorAt && (
         <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>
@@ -772,7 +778,7 @@ export function TournamentLiveView({
           )}
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {canTdAi && (
+          {canTdAi && !spectator && (
             <Button
               size="sm"
               variant="outline"
@@ -836,7 +842,8 @@ export function TournamentLiveView({
         </div>
       )}
 
-      {/* Live / Replay mode toggle */}
+      {/* Live / Replay mode toggle — operator-only, hidden in the public spectator view */}
+      {!spectator && (
       <div className="flex items-center gap-3 flex-wrap">
         <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
           <button
@@ -868,8 +875,9 @@ export function TournamentLiveView({
           />
         )}
       </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
+      <div className={spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
         <div>
           <LiveFelt
             {...feltProps}
@@ -880,6 +888,7 @@ export function TournamentLiveView({
           )}
         </div>
 
+        {!spectator && (
         <div className="space-y-3">
           {!isReplay && (
           <div className="bg-card border border-emerald-500/20 rounded-xl p-3">
@@ -990,6 +999,7 @@ export function TournamentLiveView({
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
