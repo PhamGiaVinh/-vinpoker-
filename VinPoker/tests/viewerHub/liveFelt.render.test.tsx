@@ -29,20 +29,23 @@ const baseProps = {
   formatBB: noBB,
 };
 
-// Count card elements inside each seat's hole-card slot only (NOT the board).
+// Count card elements inside each SEAT's hole-card slot only. The board is
+// rendered BEFORE the seats, so it lands in the dropped slots[0] and never
+// inflates a seat's count. Backs carry data-testid="card-back"; face-up
+// PokerCards carry "tracker-card-reveal".
 function seatCardCounts(html: string): number[] {
-  // Each seat slot is <div data-testid="seat-holecards" ...> ...two cards... </div>
   const slots = html.split('data-testid="seat-holecards"').slice(1);
   return slots.map((seg) => {
-    // The slot's own content ends at the seat wrapper close; count card-back +
-    // face-up cards before the next seat slot. Face-up PokerCards carry
-    // "tracker-card-reveal"; backs carry data-testid="card-back".
-    const cut = seg.length; // segment already starts right after one slot's attr
-    const region = seg.slice(0, cut);
-    const backs = (region.match(/data-testid="card-back"/g) || []).length;
-    const faces = (region.match(/tracker-card-reveal/g) || []).length;
+    const backs = (seg.match(/data-testid="card-back"/g) || []).length;
+    const faces = (seg.match(/tracker-card-reveal/g) || []).length;
     return backs + faces;
   });
+}
+
+// Isolate the community board region: from the board testid up to the first seat.
+function boardSegment(html: string): string {
+  const afterBoard = html.split('data-testid="board-cards"')[1] ?? "";
+  return afterBoard.split('data-testid="seat-holecards"')[0] ?? "";
 }
 
 describe("LiveFelt redesign render", () => {
@@ -58,11 +61,9 @@ describe("LiveFelt redesign render", () => {
       seat({ player_id: "c", seat_number: 3 }),
     ];
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
-    // 3 seat slots, each with exactly 2 card elements (all backs here).
     const counts = seatCardCounts(html);
     expect(counts.length).toBe(3);
     counts.forEach((c) => expect(c).toBe(2));
-    expect((html.match(/data-testid="card-back"/g) || []).length).toBe(6);
   });
 
   it("renders face-up cards (not backs) only when exactly 2 hole cards are revealed", () => {
@@ -71,14 +72,30 @@ describe("LiveFelt redesign render", () => {
       seat({ player_id: "b", seat_number: 2 }), // hidden → 2 backs
     ];
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
-    const counts = seatCardCounts(html);
-    expect(counts).toEqual([2, 2]); // every active seat still has exactly 2
-    expect((html.match(/data-testid="card-back"/g) || []).length).toBe(2); // only seat b
+    expect(seatCardCounts(html)).toEqual([2, 2]); // every active seat still has exactly 2
+    // Only seat a has face-up cards (board is all backs here → 0 reveals).
+    expect((html.match(/tracker-card-reveal/g) || []).length).toBe(2);
   });
 
   it("never invents cards: a seat with only 1 hole card falls back to 2 backs", () => {
     const seats = [seat({ player_id: "a", seat_number: 1, hole_cards: ["Ah"] })];
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
-    expect((html.match(/data-testid="card-back"/g) || []).length).toBe(2);
+    expect(seatCardCounts(html)).toEqual([2]);
+  });
+
+  it("fills the unrevealed board with 5 face-down V-logo backs (no empty slots)", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={[]} {...baseProps} />);
+    const board = boardSegment(html);
+    expect((board.match(/data-testid="card-back"/g) || []).length).toBe(5);
+    expect((board.match(/tracker-card-reveal/g) || []).length).toBe(0);
+  });
+
+  it("renders revealed board cards face-up and the rest as V backs", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt seats={[]} {...baseProps} displayCards={["Ah", "Kd", "Qc", "", ""]} />
+    );
+    const board = boardSegment(html);
+    expect((board.match(/tracker-card-reveal/g) || []).length).toBe(3); // flop face-up
+    expect((board.match(/data-testid="card-back"/g) || []).length).toBe(2); // turn+river backs
   });
 });

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const SUIT_SYMBOL: Record<string, string> = {
@@ -119,6 +119,13 @@ export function PokerCard({
  * Used by the viewer when a seat's hole cards are not revealed (privacy-safe — no
  * value is ever shown). Sizes mirror PokerCard so face-up/face-down line up.
  */
+/**
+ * Royal Guilloché card back — premium SVG (rosette linework + V medallion + double
+ * border + corner ornaments). All colors come from --poker-card-* tokens so it
+ * auto-switches dark↔warm (the warm set is intentionally brighter). Keeps the same
+ * API (size / muted / className) and data-testid so existing callers + tests work.
+ * xs/sm render a lighter "compact" density (fewer lines) for tiny hole cards.
+ */
 export function CardBack({
   size = "xs",
   muted = false,
@@ -129,33 +136,113 @@ export function CardBack({
   className?: string;
 }) {
   const sizeClass = {
-    xs: "h-8 w-6 rounded-md text-[10px]",
-    sm: "h-11 w-8 rounded-md text-xs",
-    md: "h-16 w-12 rounded-lg text-base",
-    lg: "h-20 w-14 rounded-xl text-lg",
+    xs: "h-8 w-6 rounded-md",
+    sm: "h-11 w-8 rounded-md",
+    md: "h-16 w-12 rounded-lg",
+    lg: "h-20 w-14 rounded-xl",
   }[size];
+  const uid = useId().replace(/:/g, "");
+  // Same lighter pattern on EVERY card (board backs match the player hole-card
+  // backs) — owner wants less guilloché on the board.
+  const compact = true;
+  const rosetteCount = compact ? 10 : 30;
+  const innerCount = compact ? 0 : 16;
+  const rRx = compact ? 17 : 24;
+  const rRy = compact ? 37 : 53;
+  const medR = compact ? 13 : 17;
+  const vSize = compact ? 19 : 26;
+
   return (
     <div
       aria-hidden="true"
       data-testid="card-back"
       className={cn(
-        "relative shrink-0 overflow-hidden border font-serif font-black leading-none shadow-lg shadow-black/35",
+        "relative shrink-0 overflow-hidden border shadow-md shadow-black/40",
         muted && "opacity-55 grayscale",
         sizeClass,
         className
       )}
-      style={{
-        background:
-          "linear-gradient(135deg, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt-dark)) 100%)",
-        borderColor: "hsl(var(--poker-gold) / 0.7)",
-        color: "hsl(var(--poker-gold))",
-      }}
+      style={{ borderColor: "var(--poker-card-border)" }}
     >
-      <div
-        className="absolute inset-[2px] rounded-[inherit] border"
-        style={{ borderColor: "hsl(var(--poker-gold) / 0.3)" }}
-      />
-      <div className="absolute inset-0 grid place-items-center text-[0.95em] opacity-90">V</div>
+      <svg viewBox="0 0 100 140" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id={`${uid}bg`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="var(--poker-card-bg-soft)" />
+            <stop offset="42%" stopColor="var(--poker-card-bg)" />
+            <stop offset="100%" stopColor="var(--poker-card-bg-deep)" />
+          </linearGradient>
+          <radialGradient id={`${uid}glow`} cx="50%" cy="40%" r="65%">
+            <stop offset="0%" stopColor="rgba(255,232,171,0.16)" />
+            <stop offset="55%" stopColor="rgba(255,232,171,0.03)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          </radialGradient>
+          <radialGradient id={`${uid}vig`} cx="50%" cy="50%" r="72%">
+            <stop offset="60%" stopColor="rgba(0,0,0,0)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0.30)" />
+          </radialGradient>
+        </defs>
+
+        <rect width="100" height="140" fill={`url(#${uid}bg)`} />
+        <rect width="100" height="140" fill={`url(#${uid}glow)`} />
+        <rect width="100" height="140" fill={`url(#${uid}vig)`} />
+
+        {/* Double border. */}
+        <rect x="4" y="4" width="92" height="132" rx="9" fill="none" stroke="var(--poker-card-border)" strokeWidth="1.6" opacity="0.95" />
+        <rect x="8" y="8" width="84" height="124" rx="6" fill="none" stroke="var(--poker-card-border)" strokeWidth="0.9" opacity="0.55" />
+
+        {/* Guilloché rosette. */}
+        <g transform="translate(50 70)">
+          {Array.from({ length: rosetteCount }).map((_, i) => (
+            <ellipse
+              key={`o${i}`}
+              rx={rRx}
+              ry={rRy}
+              transform={`rotate(${(360 / rosetteCount) * i})`}
+              fill="none"
+              stroke="var(--poker-card-line)"
+              strokeWidth={compact ? 0.5 : 0.6}
+              opacity={compact ? 0.4 : 0.6}
+            />
+          ))}
+          {Array.from({ length: innerCount }).map((_, i) => (
+            <ellipse
+              key={`i${i}`}
+              rx={16}
+              ry={37}
+              transform={`rotate(${(360 / innerCount) * i + 5})`}
+              fill="none"
+              stroke="var(--poker-card-line)"
+              strokeWidth={0.5}
+              opacity={0.55}
+            />
+          ))}
+          {!compact && (
+            <>
+              <circle r="33" fill="none" stroke="var(--poker-card-line)" strokeWidth="0.6" opacity="0.32" />
+              <circle r="25" fill="none" stroke="var(--poker-card-line)" strokeWidth="0.5" opacity="0.32" />
+            </>
+          )}
+        </g>
+
+        {/* Medallion + V monogram. */}
+        <circle cx="50" cy="70" r={medR + (compact ? 3 : 4)} fill="none" stroke="var(--poker-card-border)" strokeWidth="0.8" opacity="0.6" />
+        <circle cx="50" cy="70" r={medR} fill="var(--poker-card-medallion)" stroke="var(--poker-card-border)" strokeWidth="1.1" />
+        {!compact && (
+          <path d="M45 54 L48 59 L50 52 L52 59 L55 54 L54 61 L46 61 Z" fill="var(--poker-card-border)" opacity="0.7" />
+        )}
+        <text
+          x="50"
+          y={compact ? 71 : 72}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="var(--poker-card-text)"
+          fontSize={vSize}
+          fontWeight="700"
+          fontFamily="Georgia, 'Times New Roman', serif"
+        >
+          V
+        </text>
+      </svg>
     </div>
   );
 }
@@ -172,15 +259,16 @@ export function TrackerVisualStyles() {
           0% { transform: translate(-50%, -50%) scale(.94); opacity: .7; }
           100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
         }
+        /* Subtle breathing — depth via a soft drop shadow, NOT a neon outer glow. */
         @keyframes tracker-pot-pulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 18px rgba(251, 191, 36, .22); }
-          50% { transform: scale(1.045); box-shadow: 0 0 34px rgba(251, 191, 36, .36); }
+          0%, 100% { transform: scale(1); box-shadow: 0 1px 6px rgba(0, 0, 0, .4); }
+          50% { transform: scale(1.03); box-shadow: 0 2px 12px rgba(0, 0, 0, .5); }
         }
         /* One-shot chip pulse when a seat commits chips this street (Live Action Engine, cosmetic). */
         @keyframes tracker-bet-pulse {
-          0% { transform: scale(.6); opacity: 0; }
-          45% { transform: scale(1.18); opacity: 1; box-shadow: 0 0 14px rgba(251, 191, 36, .5); }
-          100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+          0% { transform: scale(.7); opacity: 0; }
+          50% { transform: scale(1.12); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
         }
         @keyframes tracker-glow-sweep {
           from { transform: translateX(-110%) skewX(-18deg); opacity: .12; }

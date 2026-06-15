@@ -30,7 +30,7 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
           )}
         </div>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-base sm:text-lg leading-tight truncate">{title}</h1>
+          <h1 className="tracker-display font-bold text-base sm:text-xl leading-tight truncate">{title}</h1>
           {subtitle ? (
             <div className="text-xs text-muted-foreground truncate">{subtitle}</div>
           ) : clubName && clubId ? (
@@ -48,7 +48,8 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
       <Button
         size="sm"
         onClick={onShare}
-        className="bg-warning hover:bg-warning/90 text-warning-foreground font-bold shrink-0"
+        className="tracker-display shrink-0 font-bold text-white shadow-sm hover:opacity-90"
+        style={{ background: "hsl(var(--poker-accent))" }}
       >
         <Share2 className="w-3.5 h-3.5 mr-1.5" /> Chia sẻ
       </Button>
