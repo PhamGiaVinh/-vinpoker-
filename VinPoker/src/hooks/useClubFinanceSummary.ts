@@ -15,7 +15,15 @@ import {
 // so the dashboard works at every step with zero regression.
 
 export interface ClubFinanceSummary {
-  revenue: { stakingFees: number; payoutFees: number; rake: number; total: number };
+  revenue: {
+    // staking stream (kept separate from tournament rake)
+    stakingFees: number; stakingFixed: number; stakingPercent: number; stakingArchive: number;
+    payoutFees: number;
+    // tournament rake stream — `rake` mirrors `rakeActual` (real money collected)
+    rake: number; rakeActual: number; rakeExpected: number; rakeVariance: number;
+    rakeOnline: number; rakeOffline: number; rakeReentry: number;
+    total: number;
+  };
   cost: { payrollNet: number; payrollGross: number; adjustments: number };
   net: number;
   statusTotals: Record<PayrollStatusKey, number>;
@@ -36,8 +44,39 @@ const emptyStatusTotals = (): Record<PayrollStatusKey, number> => ({
 });
 const emptyAging = (): Record<AgingBucketKey, number> => ({ d0_30: 0, d31_60: 0, d61_90: 0, d90p: 0 });
 
+const emptyRevenue = (): ClubFinanceSummary["revenue"] => ({
+  stakingFees: 0, stakingFixed: 0, stakingPercent: 0, stakingArchive: 0, payoutFees: 0,
+  rake: 0, rakeActual: 0, rakeExpected: 0, rakeVariance: 0,
+  rakeOnline: 0, rakeOffline: 0, rakeReentry: 0, total: 0,
+});
+
+// Normalize a server `revenue` object, defaulting fields the OLD (pre-v2) RPC body
+// does not return — so the dashboard degrades gracefully until v2 is applied live:
+// rakeActual/Expected fall back to the legacy estimate `rake`, splits to 0, staking
+// sub-fees collapse into the lumped `stakingFees`.
+const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
+  const r = rev ?? {};
+  const rake = Number(r.rake ?? 0);
+  const stakingFees = Number(r.stakingFees ?? 0);
+  return {
+    stakingFees,
+    stakingFixed: Number(r.stakingFixed ?? stakingFees),
+    stakingPercent: Number(r.stakingPercent ?? 0),
+    stakingArchive: Number(r.stakingArchive ?? 0),
+    payoutFees: Number(r.payoutFees ?? 0),
+    rake: Number(r.rakeActual ?? rake),
+    rakeActual: Number(r.rakeActual ?? rake),
+    rakeExpected: Number(r.rakeExpected ?? rake),
+    rakeVariance: Number(r.rakeVariance ?? 0),
+    rakeOnline: Number(r.rakeOnline ?? 0),
+    rakeOffline: Number(r.rakeOffline ?? 0),
+    rakeReentry: Number(r.rakeReentry ?? 0),
+    total: Number(r.total ?? 0),
+  };
+};
+
 const emptySummary = (): ClubFinanceSummary => ({
-  revenue: { stakingFees: 0, payoutFees: 0, rake: 0, total: 0 },
+  revenue: emptyRevenue(),
   cost: { payrollNet: 0, payrollGross: 0, adjustments: 0 },
   net: 0,
   statusTotals: emptyStatusTotals(),
@@ -79,7 +118,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       if (!rpcErr && d && typeof d === "object" && d.revenue && d.cost) {
         setClubs(Array.isArray(d.clubs) ? d.clubs : []);
         setSummary({
-          revenue: d.revenue,
+          revenue: normRevenue(d.revenue),
           cost: d.cost,
           net: Number(d.net ?? 0),
           statusTotals: { ...emptyStatusTotals(), ...(d.statusTotals ?? {}) },
@@ -134,7 +173,8 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         revMonth.set(mk, (revMonth.get(mk) ?? 0) + v);
       };
 
-      let stakingFees = 0, payoutFees = 0, rake = 0;
+      let stakingFees = 0, stakingFixed = 0, stakingPercent = 0, stakingArchive = 0, payoutFees = 0;
+      let rake = 0, rakeExpected = 0, rakeActual = 0, rakeOnline = 0, rakeOffline = 0, rakeReentry = 0;
 
       // ===== Revenue 1 — staking platform fees (fixed + percent on check-in, archive on completed) =====
       {
@@ -154,6 +194,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
           const percent = checkedIn && percentFee > 0 ? percentFee : 0;
           const prize = Number(d.result_prize_vnd ?? 0);
           const archive = d.status === "completed" && prize > 0 ? Math.min(archiveFee, prize) : 0;
+          stakingFixed += entry; stakingPercent += percent; stakingArchive += archive;
           const v = entry + percent + archive;
           if (v > 0) { stakingFees += v; addRev(d.club_id!, v, monthKey(d.created_at)); }
         });
@@ -181,7 +222,11 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         });
       }
 
-      // ===== Revenue 3 — tournament rake (rake_amount × paying confirmed entries) =====
+      // ===== Revenue 3 — tournament rake =====
+      //   rakeExpected = rake_amount × paying confirmed entries (legacy count-based estimate)
+      //   rakeActual   = Σ GREATEST(0, total_pay − buy_in) per confirmed registration (real money;
+      //                  correct for online where platform_fixed_fee=0). Split by reference_code prefix:
+      //                  REENTRY-=re-entry, CASH-=offline, else=online. Totals/trend use ACTUAL.
       {
         let tq = supabase.from("tournaments")
           .select("id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at")
@@ -190,24 +235,37 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         const { data: tours, error: te } = await tq;
         if (te) throw te;
         const scopedTours = (tours ?? []).filter((t) => inScope(t.club_id));
+        const tourById = new Map(scopedTours.map((t) => [t.id, t]));
         const tourIds = scopedTours.map((t) => t.id);
         const confirmedByTour = new Map<string, number>();
         for (let i = 0; i < tourIds.length; i += CHUNK) {
           const chunk = tourIds.slice(i, i + CHUNK);
           if (!chunk.length) break;
           const { data: regs } = await supabase.from("tournament_registrations")
-            .select("tournament_id, status").in("tournament_id", chunk).eq("status", "confirmed");
-          (regs ?? []).forEach((r) =>
-            confirmedByTour.set(r.tournament_id, (confirmedByTour.get(r.tournament_id) ?? 0) + 1));
+            .select("tournament_id, reference_code, total_pay, buy_in")
+            .in("tournament_id", chunk).eq("status", "confirmed");
+          (regs ?? []).forEach((r) => {
+            const t = tourById.get(r.tournament_id);
+            if (!t) return;
+            confirmedByTour.set(r.tournament_id, (confirmedByTour.get(r.tournament_id) ?? 0) + 1);
+            const actual = Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0));
+            if (actual <= 0) return;
+            rakeActual += actual;
+            const ref = String((r as any).reference_code ?? "");
+            if (ref.startsWith("REENTRY-")) rakeReentry += actual;
+            else if (ref.startsWith("CASH-")) rakeOffline += actual;
+            else rakeOnline += actual;
+            addRev(t.club_id, actual, monthKey(t.created_at ?? toTs));
+          });
         }
         scopedTours.forEach((t) => {
           const confirmed = confirmedByTour.get(t.id) ?? 0;
           const free = t.free_rake_enabled ? Number(t.free_rake_used ?? 0) : 0;
           const paying = Math.max(0, confirmed - free);
-          const v = Number(t.rake_amount ?? 0) * paying;
-          if (v > 0) { rake += v; addRev(t.club_id, v, monthKey(t.created_at ?? toTs)); }
+          rakeExpected += Number(t.rake_amount ?? 0) * paying;
         });
       }
+      rake = rakeActual; // headline = actual collected (real money in)
 
       // ===== Cost — SAVED dealer payroll (no recompute) + status/aging =====
       const statusTotals = emptyStatusTotals();
@@ -262,7 +320,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       }
 
       // ===== assemble =====
-      const revenueTotal = stakingFees + payoutFees + rake;
+      const revenueTotal = stakingFees + payoutFees + rakeActual;
       const months = Array.from(new Set([...revMonth.keys(), ...costMonth.keys()])).sort();
       const trend = months.map((mk) => ({
         key: `${mk.slice(5, 7)}/${mk.slice(2, 4)}`,
@@ -277,7 +335,11 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       perPeriod.sort((a, b) => (a.periodKey < b.periodKey ? 1 : -1));
 
       setSummary({
-        revenue: { stakingFees, payoutFees, rake, total: revenueTotal },
+        revenue: {
+          stakingFees, stakingFixed, stakingPercent, stakingArchive, payoutFees,
+          rake: rakeActual, rakeActual, rakeExpected, rakeVariance: rakeActual - rakeExpected,
+          rakeOnline, rakeOffline, rakeReentry, total: revenueTotal,
+        },
         cost: { payrollNet, payrollGross, adjustments },
         net: revenueTotal - payrollNet,
         statusTotals, unpaidTotal, reconciledTotal, aging, trend, perPeriod, perClub,
