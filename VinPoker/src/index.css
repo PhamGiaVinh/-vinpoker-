@@ -54,6 +54,15 @@
        Used for featured/active cues in the hub chrome; cyan stays reserved for live data. */
     --poker-accent: 14 62% 57%;
 
+    /* Royal Guilloché card-back palette (dark). Brighter set lives in claude-warm. */
+    --poker-card-bg: #5b0f22;
+    --poker-card-bg-deep: #310812;
+    --poker-card-bg-soft: #7b1a31;
+    --poker-card-border: #d8b66f;
+    --poker-card-line: #d5ad60;
+    --poker-card-medallion: #3b0b17;
+    --poker-card-text: #f4d58a;
+
     --radius: 0.875rem;
 
     --gradient-neon: linear-gradient(135deg, hsl(152 100% 50%), hsl(152 100% 40%));
@@ -136,6 +145,15 @@
     --poker-stack: 190 77% 32%;
     /* Warm-editorial accent — richer terracotta for contrast on cream chrome. */
     --poker-accent: 14 70% 46%;
+
+    /* Royal Guilloché card-back palette (warm) — brighter/softer, same identity. */
+    --poker-card-bg: #8b5a52;
+    --poker-card-bg-deep: #6a3f3a;
+    --poker-card-bg-soft: #a86f61;
+    --poker-card-border: #e8cb96;
+    --poker-card-line: #e0c086;
+    --poker-card-medallion: #74483f;
+    --poker-card-text: #ffe2ae;
 
     --gradient-neon: linear-gradient(135deg, hsl(16 53% 54%), hsl(16 53% 46%));
     --gradient-felt: linear-gradient(180deg, hsl(43 44% 95%), hsl(41 40% 92%));
