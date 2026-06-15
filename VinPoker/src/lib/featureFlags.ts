@@ -148,4 +148,14 @@ export const FEATURES = {
    * + archives before any release. Kill-switch: set false to hide the button.
    */
   dealerSwingCloseTourArchive: true,
+  /**
+   * P4b-2 Insurance Participation Layer admin UI at /club/admin/insurance — manage each
+   * dealer's insurance_mode (NONE/STATUTORY/SERIES_ONLY), region, salary base + include
+   * flags; read the region rate table. Default **OFF** (dark). While false the route and
+   * the ClubAdmin entry card are hidden. Flip to true ONLY after the P4b Phase 1 tables
+   * (`dealer_insurance_profiles`, `insurance_policy_rates`, migration 20260910000000) are
+   * applied live. Until then the screen shows a "chưa áp dụng" notice and Save is disabled.
+   * Read/write only the two config tables — NEVER touches calculate_dealer_payroll.
+   */
+  insuranceProfiles: false,
 } as const;
