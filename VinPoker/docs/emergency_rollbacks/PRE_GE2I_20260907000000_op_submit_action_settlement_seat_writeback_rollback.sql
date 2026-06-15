@@ -1,7 +1,7 @@
 -- ============================================================================
--- PRE_GE2I_20260906000000_op_submit_action_settlement_seat_writeback_rollback.sql
+-- PRE_GE2I_20260907000000_op_submit_action_settlement_seat_writeback_rollback.sql
 --
--- ROLLBACK for 20260906000000_op_submit_action_settlement_seat_writeback.sql.
+-- ROLLBACK for 20260907000000_op_submit_action_settlement_seat_writeback.sql.
 --
 -- Restores op_submit_action to its PRE-GE-2I definition — i.e. the
 -- 20260820000002 (N2 chip-conservation filter) body, WITHOUT the settlement seat
@@ -163,6 +163,6 @@ REVOKE EXECUTE ON FUNCTION public.op_submit_action(uuid, uuid, jsonb, jsonb, jso
 GRANT  EXECUTE ON FUNCTION public.op_submit_action(uuid, uuid, jsonb, jsonb, jsonb, jsonb, int, timestamptz, text) TO service_role;
 
 -- Optional, only if a GE-2I version row was recorded at apply time:
--- DELETE FROM supabase_migrations.schema_migrations WHERE version = '20260906000000';
+-- DELETE FROM supabase_migrations.schema_migrations WHERE version = '20260907000000';
 
 COMMIT;

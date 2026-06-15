@@ -175,7 +175,7 @@ const ClubFinanceDashboard = () => {
         <>
           {/* KPI row */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <Kpi icon={<Coins className="w-3.5 h-3.5" />} label="Doanh thu thật" value={formatVND(summary.revenue.total)} hint="rake thực + phí staking" accent="text-primary" />
+            <Kpi icon={<Coins className="w-3.5 h-3.5" />} label="Doanh thu thật" value={formatVND(summary.revenue.total)} hint="rake giải + phí staking" accent="text-primary" />
             <Kpi icon={<Users className="w-3.5 h-3.5" />} label="Chi phí lương" value={formatVND(summary.cost.payrollNet)} hint="đã lưu" accent="text-[#f0997b]" />
             <Kpi icon={<TrendingUp className="w-3.5 h-3.5" />} label="Lãi ròng" value={formatVND(summary.net)} hint={`biên ${formatPct(margin(summary.net, summary.revenue.total))}`} accent="text-primary" highlight />
             <Kpi icon={<Clock className="w-3.5 h-3.5" />} label="Lương chưa trả" value={formatVND(summary.unpaidTotal)} hint="chờ chi trả" accent="text-warning" />
@@ -184,7 +184,7 @@ const ClubFinanceDashboard = () => {
 
           {/* Net formula note */}
           <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
-            <span className="text-foreground/80">Net = Rake thực thu + Phí staking + Phí chi trả staking − Lương đã lưu</span>
+            <span className="text-foreground/80">Net = Rake giải đấu + Phí staking + Phí chi trả staking − Lương đã lưu</span>
             <span>·</span>
             <span>buy-in, vốn staking, tiền mặt cashier &amp; F&amp;B KHÔNG tính vào Net</span>
           </div>
@@ -197,11 +197,11 @@ const ClubFinanceDashboard = () => {
             </div>
             {/* top-level: tournament rake vs staking fees (kept separate) */}
             <div className="flex h-3.5 rounded-full overflow-hidden bg-muted">
-              <div style={{ width: `${seg(summary.revenue.rakeActual)}%`, background: REV_COLORS.rake }} />
+              <div style={{ width: `${seg(summary.revenue.rake)}%`, background: REV_COLORS.rake }} />
               <div style={{ width: `${seg(summary.revenue.stakingFees + summary.revenue.payoutFees)}%`, background: REV_COLORS.staking }} />
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-              <LegendDot color={REV_COLORS.rake} label="Giải đấu (rake)" value={formatVND(summary.revenue.rakeActual)} />
+              <LegendDot color={REV_COLORS.rake} label="Giải đấu (rake)" value={formatVND(summary.revenue.rake)} />
               <LegendDot color={REV_COLORS.staking} label="Staking (phí)" value={formatVND(summary.revenue.stakingFees + summary.revenue.payoutFees)} />
               <span className="flex items-center gap-1 text-muted-foreground/70">
                 <span className="inline-block w-2 h-2 rounded-[2px] border border-dashed border-muted-foreground/60" />
@@ -215,17 +215,17 @@ const ClubFinanceDashboard = () => {
                 <div className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5" style={{ color: REV_COLORS.rake }} /> Giải đấu
                 </div>
-                <Line label="Rake thực thu" value={formatVND(summary.revenue.rakeActual)} strong />
-                <Line label="Rake dự kiến" value={formatVND(summary.revenue.rakeExpected)} muted />
+                <Line label="Rake giải đấu" value={formatVND(summary.revenue.rake)} strong />
+                <Line label="• Online" value={formatVND(summary.revenue.rakeOnline)} sub />
+                <Line label="• Offline" value={formatVND(summary.revenue.rakeOffline)} sub />
+                <Line label="• Re-entry" value={formatVND(summary.revenue.rakeReentry)} sub />
+                <div className="h-px bg-border/50 my-1" />
+                <Line label="Thực thu (đối chiếu)" value={formatVND(summary.revenue.rakeActual)} muted />
                 <Line
                   label="Chênh lệch"
                   value={`${summary.revenue.rakeVariance >= 0 ? "+" : ""}${formatVND(summary.revenue.rakeVariance)}`}
                   tone={summary.revenue.rakeVariance < 0 ? "#f0997b" : "#00ff88"}
                 />
-                <div className="h-px bg-border/50 my-1" />
-                <Line label="• Online" value={formatVND(summary.revenue.rakeOnline)} sub />
-                <Line label="• Offline" value={formatVND(summary.revenue.rakeOffline)} sub />
-                <Line label="• Re-entry" value={formatVND(summary.revenue.rakeReentry)} sub />
               </div>
               {/* STAKING */}
               <div className="rounded-lg border border-border/60 bg-card/40 p-3 space-y-1.5">
@@ -240,7 +240,7 @@ const ClubFinanceDashboard = () => {
             </div>
 
             <div className="text-[10px] text-muted-foreground/80 pt-0.5">
-              Rake = phí thực thu (online + offline + re-entry); buy-in là tiền giải, không tính. Phí staking tách riêng, không gộp vào rake.
+              Rake = rake_amount × số người (online + offline + re-entry theo cấu hình giải); buy-in là tiền giải, không tính. Phí staking tách riêng, không gộp vào rake.
             </div>
           </Card>
 

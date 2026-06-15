@@ -9,13 +9,15 @@ staking / payroll.** This doc shows the exact taxonomy and how to verify before/
 
 ```
 TOURNAMENT  (one stream — kept separate from staking)
-  rake (= rakeActual, headline)  = Σ GREATEST(0, tournament_registrations.total_pay − buy_in)
-                                   WHERE status='confirmed'     ← ACTUAL collected, all sources
-    ├─ rakeOnline   reference_code 'VINReg…' (not CASH-/REENTRY-)
-    ├─ rakeOffline  reference_code 'CASH-%'
-    └─ rakeReentry  reference_code 'REENTRY-%'
-  rakeExpected  = Σ rake_amount × GREATEST(0, confirmed − free_rake_used)   ← legacy estimate
-  rakeVariance  = rakeActual − rakeExpected
+  rake (= rakeExpected, HEADLINE)  = Σ rake_amount × paying confirmed entries
+                                     per tour, split by source (reference_code prefix):
+    ├─ rakeOnline   rake_amount × GREATEST(0, n_online − free_rake_used)
+    ├─ rakeOffline  rake_amount × n_offline
+    └─ rakeReentry  rake_amount × n_reentry
+    (rake_amount is a single configured price per tour, same for online & offline)
+  rakeActual    = Σ GREATEST(0, tournament_registrations.total_pay − buy_in)
+                  WHERE status='confirmed'   ← RECONCILIATION only (real money in)
+  rakeVariance  = rakeActual − rake (configured)
 
 STAKING  (separate stream — never mixed into rake)
   stakingFees   = stakingFixed + stakingPercent + stakingArchive
@@ -24,13 +26,19 @@ STAKING  (separate stream — never mixed into rake)
     └─ stakingArchive  staking_deals.platform_archive_fee (completed w/ prize, capped at prize)
   payoutFees    = payout_recipients.platform_fee_vnd  (payout / ITM / cash-out)
 
-total = rakeActual + stakingFees + payoutFees
+total = rake (configured) + stakingFees + payoutFees
 net   = total − SAVED dealer payroll (never recomputed)
 EXCLUDED: tournament buy-in (prize-pool pass-through), staking capital/escrow, cashier cash,
           bankroll_entries.rake, F&B.
 ```
 
-### Why `total_pay − buy_in` and NOT `platform_fixed_fee`
+### Why configured rake_amount × count is the headline
+Tournament rake is a **single fixed price per tour** set at setup (`tournaments.rake_amount`),
+identical for online and offline entries. The owner's intended revenue is `rake_amount × paying
+confirmed entries`. `rakeActual` (Σ total_pay − buy_in) is carried for reconciliation only — it
+surfaces any gap between what was charged and the configured price.
+
+### Why `total_pay − buy_in` and NOT `platform_fixed_fee` for rakeActual
 The online register edge function (`supabase/functions/tournament-register/index.ts`) stores
 `platform_fixed_fee = 0` and folds the rake into `total_pay` (`total_pay = buy_in + rake`).
 Offline buy-in / re-entry store the fee in `platform_fixed_fee`, but for them `total_pay − buy_in`
@@ -42,17 +50,17 @@ online entry** — see the example below.
 
 **Tournament "Friday NLH"** — `rake_amount = 200,000`, free-rake disabled, 10 confirmed entries:
 
-| Source | Count | Per-entry rake (total_pay − buy_in) | platform_fixed_fee | Actual rake |
+| Source | Count | Configured rake (rake_amount × n) | Per-entry actual (total_pay − buy_in) | platform_fixed_fee |
 |---|---:|---:|---:|---:|
-| Online (`VINReg…`)  | 7 | 200,000 | **0** | 1,400,000 |
-| Offline (`CASH-%`)  | 2 | 250,000 | 250,000 | 500,000 |
+| Online (`VINReg…`)  | 7 | 1,400,000 | 200,000 | **0** |
+| Offline (`CASH-%`)  | 2 |   400,000 | 250,000 | 250,000 |
 | Re-entry (`REENTRY-%`) | 1 | 200,000 | 200,000 | 200,000 |
-| **Total** | 10 | | | **2,100,000** |
+| **Total** | 10 | **2,000,000** | | |
 
-- `rakeExpected` (old estimate) = 200,000 × 10 = **2,000,000**
-- `rakeActual` (new) = **2,100,000**  → `rakeVariance` = **+100,000** (offline fees ran above the configured rake_amount)
-- split: `rakeOnline` 1,400,000 · `rakeOffline` 500,000 · `rakeReentry` 200,000
-- ❌ naive `Σ platform_fixed_fee` = 0×7 + 250k×2 + 200k = **700,000** — undercounts online to 0 (this is the bug we avoid)
+- `rake` (headline, configured) = 200,000 × 10 = **2,000,000**
+- split: `rakeOnline` 1,400,000 · `rakeOffline` 400,000 · `rakeReentry` 200,000
+- `rakeActual` (reconciliation) = 7×200k + 2×250k + 1×200k = **2,100,000**  → `rakeVariance` = **+100,000** (offline charged above rake_amount)
+- ❌ naive `Σ platform_fixed_fee` = 0×7 + 250k×2 + 200k = **700,000** — undercounts online to 0 (this is why we don't use it)
 
 **Staking (same period)** — 5 checked-in deals (fixed 50k, percent 20k each), 2 completed-with-prize (archive 199k), payouts 80k:
 
@@ -131,9 +139,9 @@ select get_club_finance_summary('2026-06-01'::timestamptz, '2026-06-30'::timesta
   original entry source, so an entry's `source` can be 'online' even for a re-entry. The
   `reference_code` prefix is the reliable re-entry signal. (Source column remains correct for the
   *original* entry; it's just not the re-entry discriminator.)
-- **Headline change**: `revenue.rake`, `revenue.total` and `net` now reflect **actual collected**
-  rake, not the count×rake_amount estimate. For tournaments where the configured `rake_amount`
-  matches the real per-entry fee, the numbers are nearly identical; `rakeVariance` surfaces any gap.
+- **Headline**: `revenue.rake`, `revenue.total` and `net` use `rake_amount × paying entries`
+  (configured), which matches what the owner set at tour creation. `rakeActual` (Σ total_pay − buy_in)
+  and `rakeVariance` are reconciliation fields — they surface any gap between charged and configured.
 - **Time attribution** unchanged: rake is attributed to the **tournament's** `created_at` month
   (consistent with the prior estimate), not the registration's `committed_at`.
 - **Voided / cancelled registrations** (`status<>'confirmed'`) are excluded — consistent with the

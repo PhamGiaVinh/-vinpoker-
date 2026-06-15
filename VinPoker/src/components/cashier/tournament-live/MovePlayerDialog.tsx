@@ -154,13 +154,24 @@ export function MovePlayerDialog({
     return m;
   }, [occupied, targetTableId]);
 
-  // When the target table changes, default the seat to the first free one there.
+  // Seats the operator may pick on the chosen table: free seats, plus the player's
+  // OWN current seat (a no-op move). Occupied seats are skipped entirely so the
+  // stepper never lands on one (owner 2026-06-16: hide occupied seats, don't warn).
+  const selectableSeats = useMemo(() => {
+    if (!targetTable) return [] as number[];
+    const ownHere = targetTable.id === currentTournamentTableId;
+    const list: number[] = [];
+    for (let n = 1; n <= targetTable.maxSeats; n++) {
+      if (!occupantBySeat.has(n) || (ownHere && n === currentSeatNumber)) list.push(n);
+    }
+    return list;
+  }, [targetTable, occupantBySeat, currentTournamentTableId, currentSeatNumber]);
+
+  // When the target table changes, default the seat to the first selectable (free) one.
+  // null = the table is full (no selectable seat) → "Tiếp tục" stays disabled.
   useEffect(() => {
     if (!targetTable) return;
-    const taken = new Set((occupied[targetTable.id] ?? []).map((o) => o.seat_number));
-    let firstFree: number | null = null;
-    for (let n = 1; n <= targetTable.maxSeats; n++) if (!taken.has(n)) { firstFree = n; break; }
-    setTargetSeat(firstFree ?? 1);
+    setTargetSeat(selectableSeats[0] ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTableId, tables]);
 
@@ -171,10 +182,12 @@ export function MovePlayerDialog({
     setTargetTableId(tables[next].id);
   };
   const cycleSeat = (dir: number) => {
-    if (!targetTable) return;
-    const max = targetTable.maxSeats;
-    const cur = targetSeat ?? 1;
-    setTargetSeat(((cur - 1 + dir + max) % max) + 1);
+    if (selectableSeats.length === 0) return;
+    const cur = targetSeat ?? selectableSeats[0];
+    const i = selectableSeats.indexOf(cur);
+    const base = i === -1 ? 0 : i;
+    const next = (base + dir + selectableSeats.length) % selectableSeats.length;
+    setTargetSeat(selectableSeats[next]);
   };
   // Occupant on the chosen seat that is NOT the player being moved (their own
   // current seat is fine = no-op move). Blocks "Tiếp tục" + warns.
@@ -265,16 +278,23 @@ export function MovePlayerDialog({
                     </div>
                     <div className="text-center">
                       <Label className="text-xs text-muted-foreground">Ghế</Label>
-                      <Button type="button" variant="outline" aria-label="Ghế kế" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(1)}>
+                      <Button type="button" variant="outline" aria-label="Ghế kế" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(1)} disabled={selectableSeats.length < 2}>
                         <ChevronUp className="mx-auto h-5 w-5" />
                       </Button>
                       <div className={`py-1 text-3xl font-bold tabular-nums leading-tight ${seatBlocked ? "text-destructive" : "text-primary"}`}>{targetSeat ?? "—"}</div>
-                      <div className="text-[11px] text-muted-foreground">{isOwnSeat ? "ghế hiện tại" : seatBlocked ? "đã có người" : "trống"}</div>
-                      <Button type="button" variant="outline" aria-label="Ghế trước" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(-1)}>
+                      <div className="text-[11px] text-muted-foreground">{targetSeat == null ? "hết ghế" : isOwnSeat ? "ghế hiện tại" : seatBlocked ? "đã có người" : "trống"}</div>
+                      <Button type="button" variant="outline" aria-label="Ghế trước" className="mt-1 block h-10 w-16" onClick={() => cycleSeat(-1)} disabled={selectableSeats.length < 2}>
                         <ChevronDown className="mx-auto h-5 w-5" />
                       </Button>
                     </div>
                   </div>
+                  {targetSeat == null && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                      {targetTable?.tableName ?? "Bàn"} đã đầy — chọn bàn khác.
+                    </div>
+                  )}
+                  {/* Race fallback only: occupied seats are skipped, but if occupancy changed
+                      after load the chosen seat can still be taken — keep the guard + warning. */}
                   {seatBlocked && (
                     <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                       Ghế {targetSeat} đã có {seatOccupant?.player_name || "người chơi khác"} — chọn ghế khác.

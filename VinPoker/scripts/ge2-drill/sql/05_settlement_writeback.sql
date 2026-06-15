@@ -1,5 +1,5 @@
 -- 05_settlement_writeback.sql  — PHASE D ONLY (service-role, READ-ONLY assertion).
--- Proves GE-2I (20260906000000) settlement seat writeback. Run AFTER a hand on the
+-- Proves GE-2I (20260907000000) settlement seat writeback. Run AFTER a hand on the
 -- disposable table 'GE2-DRILL-DISPOSABLE' has been played to completion (status='complete')
 -- — e.g. step 2 of the GE-2H alpha acceptance plan. NO mutation; safe to re-run.
 --

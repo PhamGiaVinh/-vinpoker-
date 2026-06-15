@@ -118,7 +118,7 @@ export function ReentryPanel({ clubIds }: { clubIds: string[] }) {
   const pickPlayer = (b: Busted) => {
     setTarget(b);
     setBuyIn(Number((selected as any)?.buy_in) || 0);
-    setFee(0);
+    setFee(Number((selected as any)?.rake_amount) || 0);
   };
 
   const total = (Number(buyIn) || 0) + (Number(fee) || 0);
