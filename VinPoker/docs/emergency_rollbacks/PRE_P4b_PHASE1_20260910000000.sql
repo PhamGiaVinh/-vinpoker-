@@ -1,0 +1,22 @@
+-- Rollback for migration 20260910000000_payroll_p4b_insurance_layer_phase1.sql
+-- (Payroll P4b Phase 1 — additive config tables insurance_policy_rates +
+--  dealer_insurance_profiles. NO function/payroll change in Phase 1.)
+--
+-- Pre-apply state: neither table exists yet. Phase 1 is purely additive and is NOT
+-- read by calculate_dealer_payroll (P0/P2/P3 live, md5 ce2d4c7…), so creating OR
+-- dropping these tables changes ZERO payroll numbers.
+--
+-- VERIFY BEFORE APPLY (read-only):
+--   select count(*) from pg_tables where schemaname='public'
+--     and tablename in ('insurance_policy_rates','dealer_insurance_profiles');
+--   -- expect 0 before apply, 2 after apply.
+--
+-- ROLLBACK (drop the two new tables; CASCADE removes their policies/triggers/indexes).
+-- Safe because nothing references them yet:
+--
+--   DROP TABLE IF EXISTS public.dealer_insurance_profiles CASCADE;
+--   DROP TABLE IF EXISTS public.insurance_policy_rates CASCADE;
+--
+-- After rollback verify: the count above is 0 again, and
+--   md5(pg_get_functiondef('public.calculate_dealer_payroll(uuid,date,date,integer)'::regprocedure))
+-- is unchanged (Phase 1 never touched the function).
