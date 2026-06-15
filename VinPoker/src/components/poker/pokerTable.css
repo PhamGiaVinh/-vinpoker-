@@ -1,0 +1,27 @@
+/* src/components/poker/pokerTable.css
+   GE-2E — minimal, SAFE online-poker table animations. transform/opacity (+ box-
+   shadow for the pulse) only; GPU-friendly; fully disabled under reduced-motion.
+   Scope is namespaced `op-` so nothing else in the app is affected. No chip-to-pot
+   or winner glow yet (deferred to a later PR). */
+
+@keyframes op-card-reveal {
+  0%   { transform: perspective(600px) rotateY(85deg); opacity: 0; }
+  55%  { opacity: 1; }
+  100% { transform: perspective(600px) rotateY(0deg); opacity: 1; }
+}
+
+@keyframes op-to-act-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px #00e07a, 0 0 12px rgba(0, 224, 122, 0.35); }
+  50%      { box-shadow: 0 0 0 2px #00e07a, 0 0 24px rgba(0, 224, 122, 0.75); }
+}
+
+/* one-shot flip-in when a face-up card mounts (deal / showdown reveal) */
+.op-card-reveal { animation: op-card-reveal 0.42s ease-out both; transform-origin: center; }
+
+/* gentle ring pulse on the seat that is to act */
+.op-to-act-pulse { animation: op-to-act-pulse 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .op-card-reveal,
+  .op-to-act-pulse { animation: none !important; }
+}
