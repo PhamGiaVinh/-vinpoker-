@@ -1,8 +1,12 @@
 # Payroll P0 — BHXH base fix: golden-period before/after diff plan
 
 **Patch:** `supabase/migrations/20260829000000_payroll_p0_bhxh_base_contract_salary.sql`
-**Change:** social-insurance base `LEAST(v_gross_pay_vnd, cap)` → `LEAST(monthly_salary_vnd-when-worked, cap)`.
+**Change:** social-insurance base `LEAST(v_gross_pay_vnd, cap)` → `LEAST(v_base_salary_vnd, cap)` — i.e. the FT base salary (already prorated by attendance), which **excludes OT, bonus and tips** but keeps proration.
 **Run this BEFORE any live apply.** Source-only until the golden diff is reviewed + owner approves the controlled apply (Management-API only; NO `db push`, NO `deploy_db`).
+
+> **GOLDEN-DIFF RESULT (2026-06-15, dryrun-twin, 31 FT dealers, June 2026, zero writes):**
+> - First attempt used **full unprorated `monthly_salary_vnd`** as the base → **FAIL**: net pay went **NEGATIVE** for partial-month / low-shift dealers (1 shift, gross 346k, but BHXH on 9M = 945k → net −598,847). Regression worse than the bug. Owner chose the prorated-base fix.
+> - Final formula **`v_base_salary_vnd`** → **PASS**: `net_negative=0`, `invariant_violated=0`, 21/31 dealers (those with OT) get a lower insurance base (OT removed) → insurance down → net up; 10/31 (no OT) **unchanged**. gross/base/OT byte-identical for all. PIT unchanged (sample all below the 11M threshold).
 
 ## Cascade to be aware of
 Insurance feeds taxable income → PIT → net. So the patch changes **three** outputs:
@@ -51,18 +55,18 @@ ROLLBACK;
 
 ### Acceptance
 - `gross_changed`, `ot_changed`, `base_changed` = **false** for ALL rows (pay calc untouched).
-- Dealers **with OT** (`ot_hours > 0`): `new_ins_base < old_ins_base` (OT removed) → `new_insurance < old_insurance` → `new_net ≥ old_net`.
-- Dealers **no OT, full month**: `new_ins_base = monthly_salary = old_ins_base` (≈ unchanged) → insurance ~unchanged.
-- Dealers **partial month** (prorated gross < monthly_salary): `new_ins_base = monthly_salary > old_ins_base` → insurance **up** (now on contractual base, per policy) — confirm this matches owner intent.
-- Dealers **0 shifts**: `new_ins_base = 0` → insurance 0 (no over-deduction).
+- Dealers **with OT** (`ot_hours > 0`): `new_ins_base = base_salary < old_ins_base` (OT removed) → `new_insurance < old_insurance` → `new_net ≥ old_net`.
+- Dealers **no OT** (any attendance, incl. partial month): `new_ins_base = base_salary = gross = old_ins_base` → insurance + net **unchanged** (because with no OT, base_salary == gross).
+- Dealers **0 shifts**: `new_ins_base = base_salary = 0` → insurance 0 (no over-deduction, no negative net).
+- **No dealer may have `new_net < 0`** (the rule that killed the full-monthly_salary variant).
 
 ## Required unit/golden cases
 | Case | Setup | Expect (new) |
 |---|---|---|
-| A | FT, monthly 20M, OT 5M (gross 25M) | ins_base = **20M** (not 25M); insurance = 10.5% × 20M = 2,100,000 |
-| B | FT, monthly 20M, partial month (gross 12M, no OT) | ins_base = **20M** (contractual, not 12M) |
-| C | FT, monthly 20M, bonus 3M + tips 1M | ins_base = **20M** (bonus/tips never in base) |
-| D | FT, monthly 60M (> cap) | ins_base = **46,800,000** (capped) |
-| E | FT, 0 shifts in period | ins_base = **0**, insurance = 0 |
+| A | FT, monthly 20M, full month, OT 5M (gross 25M) | ins_base = **base_salary 20M** (OT 5M excluded); insurance = 10.5% × 20M = 2,100,000 |
+| B | FT, monthly 20M, partial month (e.g. 15/26 shifts, no OT, base ≈ 11.5M) | ins_base = **base_salary ≈ 11.5M** (= gross when no OT); **NOT** 20M — full salary would push low-shift dealers to negative net |
+| C | FT, monthly 20M, full month, bonus 3M + tips 1M | ins_base = **base_salary 20M** (bonus/tips never in base) |
+| D | FT, monthly 60M (> cap), full month | ins_base = **46,800,000** (base 60M capped) |
+| E | FT, 0 shifts in period | ins_base = **base_salary 0**, insurance = 0 |
 
 After apply: re-run the read-only comparison vs the captured pre-apply snapshot (or vs a saved golden period), confirm the acceptance rules, then keep policies/data unchanged. **schema_migrations** recording optional (the function is the only object). Rollback if any invariant (`gross/ot/base`) changed.

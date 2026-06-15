@@ -8,17 +8,21 @@
 -- BUG (finding #1): the insurance contribution base used `LEAST(v_gross_pay_vnd, cap)`.
 --   `v_gross_pay_vnd` (FT) = base_salary (prorated by shift count) + OT pay, so the
 --   base wrongly INCLUDED overtime (over-deducting BHXH/BHYT/BHTN for FT dealers with
---   OT) and was prorated DOWN for partial-attendance months. Per VN BHXH rules, tiền
---   làm thêm giờ (OT) — and bonus/tips — are NOT part of the contribution base.
+--   OT). Per VN BHXH rules, tiền làm thêm giờ (OT) — and bonus/tips — are NOT part of
+--   the contribution base.
 --
--- FIX (this patch, ONE concern only): base the social-insurance deductions on the
---   CONTRACTUAL monthly salary `dealers.monthly_salary_vnd` (the registered salary the
---   function already uses for FT base salary), capped at the BHXH ceiling. Zero-shift
---   periods → base 0 (dealer did not work that period → no deduction).
+-- FIX (this patch, ONE concern only): base the social-insurance deductions on
+--   `v_base_salary_vnd` — the FT base salary the function already computes
+--   (= monthly_salary × LEAST(shifts, standard)/standard), which EXCLUDES OT, bonus
+--   and tips but KEEPS attendance proration — capped at the BHXH ceiling.
 --
--- Schema note: there is no separate `social_insurance_salary` / contract table today,
---   so we use the existing `dealers.monthly_salary_vnd`. A dedicated insurance-salary
---   field can be added later in a Payroll-Config phase (then this COALESCE chain extends).
+--   Why prorated base, NOT the full unprorated monthly_salary: the golden diff
+--   (2026-06-15) proved that charging the full contractual salary makes net pay go
+--   NEGATIVE for partial-month / low-shift FT dealers (e.g. 1 shift, gross 346k, but
+--   BHXH on 9M = 945k → net −598k) — a regression worse than the original bug.
+--   `v_base_salary_vnd` removes ONLY the OT inflation (the real bug) and leaves
+--   proration intact: no-OT dealers are unchanged, OT dealers' base drops to their
+--   regular (non-OT) pay. Zero-shift periods → v_base_salary_vnd = 0 → no deduction.
 --
 -- EXPLICITLY OUT OF SCOPE (do NOT touch here — separate patches):
 --   * BHTN cap (still uses the BHXH ceiling — finding #5, P-later)
@@ -236,10 +240,11 @@ BEGIN
   v_tips_amount_vnd := 0;
 
   IF v_dealer.employment_type = 'full_time' THEN
-    -- P0 FIX: social-insurance base = CONTRACTUAL monthly salary, not computed gross.
-    -- (Old: LEAST(v_gross_pay_vnd, cap) wrongly included OT and was prorated down.)
-    -- Zero-shift period => 0 (dealer did not work → no contribution this period).
-    v_insurance_base := CASE WHEN v_total_shifts > 0 THEN COALESCE(v_dealer.monthly_salary_vnd, 0) ELSE 0 END;
+    -- P0 FIX: social-insurance base = prorated BASE salary (excludes OT/bonus/tips,
+    -- keeps attendance proration). Old: LEAST(v_gross_pay_vnd, cap) wrongly added OT.
+    -- Using full unprorated monthly_salary made net negative for partial-month dealers
+    -- (golden diff 2026-06-15), so we use v_base_salary_vnd (0 when zero shifts).
+    v_insurance_base := v_base_salary_vnd;
     v_bhxh_base := LEAST(v_insurance_base, v_bhxh_cap);
     v_bhxh_deduction_vnd := FLOOR((v_bhxh_base * 8) / 100)::BIGINT;
     v_bhyt_deduction_vnd := FLOOR((v_bhxh_base * 15) / 1000)::BIGINT;
