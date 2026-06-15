@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import i18n from "@/i18n";
 import { LiveTablesStrip } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesStrip";
 import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
 import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-hub/OrientationToggle";
@@ -81,5 +82,26 @@ describe("LiveStatsBar", () => {
   it("renders nothing when there is no data at all", () => {
     const html = renderToStaticMarkup(<LiveStatsBar prizePool={0} playersRemaining={null} chipLeader={null} />);
     expect(html).toBe("");
+  });
+});
+
+describe("viewer-hub i18n wiring", () => {
+  afterAll(async () => {
+    await i18n.changeLanguage("vi"); // restore the deterministic test language
+  });
+
+  it("renders English strings when the language is switched to en", async () => {
+    await i18n.changeLanguage("en");
+    const stats = renderToStaticMarkup(
+      <LiveStatsBar prizePool={1000} playersRemaining={9} chipLeader={{ playerName: "Al", seatNumber: 3, chipCount: 5000 }} />
+    );
+    expect(stats).toContain("Prize pool");
+    expect(stats).toContain("Remaining");
+    expect(stats).toContain("Chip Leader");
+    expect(stats).toContain("Seat 3"); // interpolated, localized
+
+    const strip = renderToStaticMarkup(<LiveTablesStrip tables={tables} activeTableId="tA" />);
+    expect(strip).toContain("Live tables");
+    expect(strip).toContain("8 players");
   });
 });
