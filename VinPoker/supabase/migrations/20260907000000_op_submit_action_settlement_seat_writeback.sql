@@ -1,5 +1,5 @@
 -- ============================================================================
--- 20260906000000_op_submit_action_settlement_seat_writeback.sql
+-- 20260907000000_op_submit_action_settlement_seat_writeback.sql
 --
 -- GE-2I settlement seat writeback. Follow-up to
 --   20260820000000_online_poker_runtime_rpcs.sql  (original op_submit_action)
@@ -54,9 +54,11 @@
 -- never executed in production yet, so this carries no behavioural risk. Pure additive
 -- correctness hardening, applied (later, owner-gated) before any closed-alpha enablement.
 --
--- Slot note: latest source slot on origin/main is 20260905000000; next free is
--- 20260906000000 (verified free in source; live schema_migrations max is 20260820000002,
--- so this is unapplied like every slot after it). NOT applied by this PR.
+-- Slot note: originally authored at 20260906000000 (#210), but a parallel payroll session
+-- (PR #213, 20260906000000_payroll_p2_open_shift_standard.sql) landed on the SAME slot,
+-- creating a duplicate-version collision on main. This engine migration is moved to the
+-- next free slot 20260907000000 to de-collide (the payroll slot is left untouched).
+-- Neither is applied (live schema_migrations max is 20260820000002). NOT applied by this PR.
 -- ============================================================================
 
 BEGIN;
