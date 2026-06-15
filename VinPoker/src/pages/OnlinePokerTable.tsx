@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FEATURES } from '@/lib/featureFlags';
 import { RUNTIME_LIVE } from '@/lib/onlinePoker/types';
-import { findMockTable } from '@/lib/onlinePoker/mockData';
+import { findMockTable, mockLegalActions } from '@/lib/onlinePoker/mockData';
 import { useTableHand } from '@/lib/onlinePoker/useOnlinePoker';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
@@ -70,7 +70,7 @@ export default function OnlinePokerTable() {
 
       {/* the felt */}
       <Card className="overflow-hidden bg-black/20 p-4">
-        <SeatRing hand={hand} />
+        <SeatRing hand={hand} bb={table.bb} />
       </Card>
 
       {/* seat controls (inert in the shell) */}
@@ -83,7 +83,7 @@ export default function OnlinePokerTable() {
         </Button>
       </div>
 
-      <ActionBar hand={hand} />
+      <ActionBar hand={hand} legal={mockLegalActions(hand)} bb={table.bb} />
       <HandStateViewer hand={hand} />
     </div>
   );
