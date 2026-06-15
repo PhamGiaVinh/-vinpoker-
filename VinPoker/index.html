@@ -6,8 +6,12 @@
     <!-- Apply saved theme before paint to avoid a flash (default = existing dark theme) -->
     <script>
       try {
-        if (localStorage.getItem('vinpoker.theme') === 'claude-warm') {
-          document.documentElement.setAttribute('data-theme', 'claude-warm');
+        var savedTheme = localStorage.getItem('vinpoker.theme');
+        if (savedTheme === 'vinpoker-warm' || savedTheme === 'claude-warm') {
+          document.documentElement.setAttribute('data-theme', 'vinpoker-warm');
+          if (savedTheme === 'claude-warm') {
+            localStorage.setItem('vinpoker.theme', 'vinpoker-warm');
+          }
         }
       } catch (e) {}
     </script>

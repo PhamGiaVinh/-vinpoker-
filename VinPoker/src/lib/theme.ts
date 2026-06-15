@@ -1,20 +1,25 @@
 // Lightweight, additive theme switcher.
 // Default ("default") keeps VinPoker's existing dark theme untouched.
-// "claude-warm" applies the optional ivory/terracotta editorial theme via the
-// [data-theme="claude-warm"] CSS block in index.css.
+// "vinpoker-warm" applies the optional deep-parchment/terracotta light theme via
+// the [data-theme="vinpoker-warm"] CSS block in index.css.
 //
 // Persistence mirrors the i18n pattern (localStorage key "vinpoker.lang") so the
 // choice survives reloads. The same key is read by the early-apply inline script
 // in index.html to avoid a theme flash before React mounts.
+//
+// Backward-compat: the theme was previously stored as "claude-warm". Older saved
+// values are accepted and normalized to "vinpoker-warm" so existing light-mode
+// users keep their theme without a broken first paint.
 
-export type AppTheme = "default" | "claude-warm";
+export type AppTheme = "default" | "vinpoker-warm";
 
 export const THEME_KEY = "vinpoker.theme";
 
 export function getStoredTheme(): AppTheme {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    if (v === "claude-warm") return v;
+    if (v === "vinpoker-warm") return v;
+    if (v === "claude-warm") return "vinpoker-warm"; // legacy value migration
   } catch {
     /* localStorage unavailable (private mode / SSR) — fall back to default */
   }
@@ -23,8 +28,8 @@ export function getStoredTheme(): AppTheme {
 
 export function applyTheme(theme: AppTheme): void {
   const el = document.documentElement;
-  if (theme === "claude-warm") {
-    el.setAttribute("data-theme", "claude-warm");
+  if (theme === "vinpoker-warm") {
+    el.setAttribute("data-theme", "vinpoker-warm");
   } else {
     // No attribute → :root (existing dark theme) applies. Default preserved.
     el.removeAttribute("data-theme");

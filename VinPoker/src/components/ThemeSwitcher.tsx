@@ -22,10 +22,10 @@ export const ThemeSwitcher = ({ variant = "compact" }: Props) => {
     setTheme(getStoredTheme());
   }, []);
 
-  const isLight = theme === "claude-warm";
+  const isLight = theme === "vinpoker-warm";
 
   const toggle = () => {
-    const next: AppTheme = isLight ? "default" : "claude-warm";
+    const next: AppTheme = isLight ? "default" : "vinpoker-warm";
     setTheme(next);
     applyTheme(next);
   };
