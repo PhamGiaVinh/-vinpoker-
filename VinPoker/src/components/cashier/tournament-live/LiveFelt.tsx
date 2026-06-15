@@ -69,31 +69,32 @@ type Pt = { l: number; t: number };
 // Tuned 9-max seat maps. Bottom seats (4–7) sit LOW on the rim; side seats (3,8)
 // stay far out — so none of them overlap the centre safe-zone (board + pot).
 const PORTRAIT_SEATS: Record<number, Pt> = {
-  1: { l: 50, t: 7 },
-  2: { l: 80, t: 18 },
-  3: { l: 91, t: 40 },
-  4: { l: 83, t: 67 },
-  5: { l: 62, t: 81 },
-  6: { l: 38, t: 81 },
-  7: { l: 17, t: 67 },
-  8: { l: 9, t: 40 },
-  9: { l: 20, t: 18 },
+  1: { l: 50, t: 6 },
+  2: { l: 82, t: 17 },
+  3: { l: 92, t: 40 },
+  4: { l: 84, t: 70 },
+  5: { l: 63, t: 84 },
+  6: { l: 37, t: 84 },
+  7: { l: 16, t: 70 },
+  8: { l: 8, t: 40 },
+  9: { l: 18, t: 17 },
 };
 const LANDSCAPE_SEATS: Record<number, Pt> = {
-  1: { l: 50, t: 8 },
-  2: { l: 74, t: 18 },
-  3: { l: 90, t: 45 },
-  4: { l: 80, t: 80 },
-  5: { l: 62, t: 90 },
-  6: { l: 38, t: 90 },
-  7: { l: 20, t: 80 },
-  8: { l: 10, t: 45 },
-  9: { l: 26, t: 18 },
+  1: { l: 50, t: 6 },
+  2: { l: 75, t: 16 },
+  3: { l: 91, t: 44 },
+  4: { l: 82, t: 80 },
+  5: { l: 63, t: 89 },
+  6: { l: 37, t: 89 },
+  7: { l: 18, t: 80 },
+  8: { l: 9, t: 44 },
+  9: { l: 25, t: 16 },
 };
 
+// Taller ovals (not flat) so 9 seats + a centred board never vertically collide.
 const GEO = {
-  portrait: { aspect: "10 / 13", seats: PORTRAIT_SEATS, centerTop: "46%", centerW: "60%", vSize: "clamp(30px,11vw,44px)" },
-  landscape: { aspect: "13 / 10", seats: LANDSCAPE_SEATS, centerTop: "47%", centerW: "54%", vSize: "clamp(30px,8vw,46px)" },
+  portrait: { aspect: "5 / 6", seats: PORTRAIT_SEATS, centerTop: "45%", centerW: "60%", vSize: "clamp(28px,10vw,42px)" },
+  landscape: { aspect: "7 / 6", seats: LANDSCAPE_SEATS, centerTop: "46%", centerW: "46%", vSize: "clamp(28px,6vw,44px)" },
 };
 
 export interface LiveFeltProps {
@@ -131,7 +132,7 @@ export function LiveFelt({
   portrait = false,
 }: LiveFeltProps) {
   const geo = portrait ? GEO.portrait : GEO.landscape;
-  const boardCardCls = "h-[50px] w-[36px] sm:h-[58px] sm:w-[42px]";
+  const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
 
   return (
     <div className="w-full">
@@ -247,7 +248,7 @@ export function LiveFelt({
 
           return (
             <div key={seat.player_id} className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}`} style={posStyle}>
-              <div className="relative flex w-[66px] flex-col items-center text-center sm:w-[78px]">
+              <div className="relative flex w-[58px] flex-col items-center text-center sm:w-[70px]">
                 {isToAct && (
                   <div
                     className="tracker-display absolute -top-2 z-20 rounded-full px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wide whitespace-nowrap text-white shadow"
@@ -258,7 +259,7 @@ export function LiveFelt({
                 )}
                 <div className="relative">
                   <div
-                    className={`grid h-9 w-9 place-items-center overflow-hidden rounded-full border-2 text-[10px] font-bold sm:h-10 sm:w-10 sm:text-xs ${avatarBorder} ${avatarRing}`}
+                    className={`grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:h-9 sm:w-9 sm:text-[11px] ${avatarBorder} ${avatarRing}`}
                     style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))" }}
                   >
                     {seat.avatar_url ? (
