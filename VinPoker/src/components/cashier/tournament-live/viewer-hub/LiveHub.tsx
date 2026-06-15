@@ -9,6 +9,7 @@
 // all-tables strip, and the "Cập nhật • Trực tiếp" feed from loaded actions.
 
 import { cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { LiveHubHeader } from "./LiveHubHeader";
 import { LiveStatsBar } from "./LiveStatsBar";
 import { FeaturedTableCard } from "./FeaturedTableCard";
@@ -39,6 +40,7 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
   // Isolated hub data (count / all-tables strip / feed / chip leader). Does NOT
   // touch TournamentLiveView — the featured felt below still renders the real viewer.
   const { liveTableCount, tables, feed, chipLeader } = useLiveTrackerData(tournamentId);
+  const { t } = useTranslation();
 
   // Orientation: default to the device (portrait on phones, landscape on desktop),
   // but let the viewer flip Ngang/Dọc on EITHER device via the header toggle.
@@ -69,7 +71,7 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
       />
       <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
       <FeaturedTableCard
-        badge="TRỰC TIẾP • BÀN ĐANG DIỄN RA"
+        badge={t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
         headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
       >
         {viewer}

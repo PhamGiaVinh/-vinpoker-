@@ -2611,5 +2611,67 @@
     "saving": "保存中...",
     "update": "更新",
     "create": "作成"
+  },
+  "liveHub": {
+    "seat": "席{{n}}",
+    "header": {
+      "live": "ライブ",
+      "tables": "{{count}}卓",
+      "share": "共有"
+    },
+    "featured": {
+      "badge": "ライブ • 進行中のテーブル"
+    },
+    "orientation": {
+      "landscape": "横",
+      "portrait": "縦"
+    },
+    "tables": {
+      "title": "ライブテーブル",
+      "players": "{{count}}人"
+    },
+    "stats": {
+      "prize": "賞金総額",
+      "remaining": "残り",
+      "remainingUnit": "人",
+      "chipLeader": "チップリーダー"
+    },
+    "feed": {
+      "title": "更新 • ライブ",
+      "empty": "現在のハンドにはまだアクションがありません",
+      "badge": {
+        "allin": "オールイン",
+        "raise": "レイズ",
+        "bet": "ベット",
+        "call": "コール",
+        "check": "チェック",
+        "fold": "フォールド",
+        "post": "ブラインド",
+        "action": "•"
+      },
+      "verb": {
+        "all_in": "オールイン {{amount}}",
+        "raise": "レイズ {{amount}}",
+        "bet": "ベット {{amount}}",
+        "call": "コール {{amount}}",
+        "check": "チェック",
+        "fold": "フォールド",
+        "post_sb": "SB {{amount}}",
+        "post_bb": "BB {{amount}}",
+        "post_ante": "アンティ {{amount}}"
+      }
+    },
+    "felt": {
+      "pot": "ポット",
+      "main": "メイン",
+      "side": "サイド{{i}}",
+      "toAct": "手番",
+      "bet": "ベット {{amount}}",
+      "allIn": "オールイン",
+      "folded": "フォールド",
+      "action": "アクション",
+      "multiTable": "この大会には複数のテーブルがあります — 上でテーブルを選んでライブ観戦してください。",
+      "waiting": "ディーラーがハンドを開始するのを待っています..."
+    }
   }
 }

@@ -3,8 +3,9 @@
 // kind icon + player line + action label + kind tag. Theme-aware via semantic
 // tokens (works in dark + claude-warm). No invented data (no fake timestamps).
 
+import { useTranslation } from "react-i18next";
 import { Flame, TrendingUp, Coins, ArrowRightLeft, Minus, X, Circle, type LucideIcon } from "lucide-react";
-import type { HubFeedItem, HubFeedKind } from "./hubDerive";
+import { fmtCompact, type HubFeedItem, type HubFeedKind } from "./hubDerive";
 
 export interface LiveUpdatesFeedProps {
   feed: HubFeedItem[];
@@ -22,21 +23,27 @@ const KIND_META: Record<HubFeedKind, { text: string; cls: string; Icon: LucideIc
 };
 
 export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1.5">
       <div className="tracker-display flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-        Cập nhật • Trực tiếp
+        {t("liveHub.feed.title", "Cập nhật • Trực tiếp")}
       </div>
       <div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/30 overflow-hidden shadow-[0_0_18px_rgba(0,0,0,0.25)]">
         {feed.length === 0 ? (
           <div className="px-3 py-5 text-xs text-muted-foreground text-center italic">
-            Chưa có hành động nào trong ván hiện tại
+            {t("liveHub.feed.empty", "Chưa có hành động nào trong ván hiện tại")}
           </div>
         ) : (
           feed.map((item) => {
             const meta = KIND_META[item.kind] || KIND_META.action;
             const Icon = meta.Icon;
+            // Localized verb label (falls back to the pre-built vi label); badge text.
+            const label = t(`liveHub.feed.verb.${item.actionType}`, item.label, {
+              amount: fmtCompact(item.amount ?? 0),
+            });
+            const badge = t(`liveHub.feed.badge.${item.kind}`, meta.text);
             return (
               <div
                 key={item.id}
@@ -47,13 +54,13 @@ export function LiveUpdatesFeed({ feed }: LiveUpdatesFeedProps) {
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-xs">
-                    <span className="shrink-0 text-[10px] text-muted-foreground">Ghế {item.seatNumber}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: item.seatNumber })}</span>
                     <span className="truncate font-semibold text-foreground">{item.playerName}</span>
                   </div>
-                  <div className="tracker-num truncate text-[11px] text-warning">{item.label}</div>
+                  <div className="tracker-num truncate text-[11px] text-warning">{label}</div>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${meta.cls}`}>
-                  {meta.text}
+                  {badge}
                 </span>
               </div>
             );
