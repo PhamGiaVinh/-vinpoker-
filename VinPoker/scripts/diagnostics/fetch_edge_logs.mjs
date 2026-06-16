@@ -1,29 +1,48 @@
 #!/usr/bin/env node
-// Read-only fetch of tournament-register Edge logs to find the registration failure.
-// NOTHING is written. Secrets masked. No creds → exit 0.
-const log = (...a) => console.log("[edge-logs]", ...a);
+// Read-only diagnosis of the tournament-register 500: inspect tournament_registrations schema
+// (NOT-NULL-without-default columns the insert may omit) + triggers that could throw. SELECT only.
+const log = (...a) => console.log("[reg-500]", ...a);
 const mask = (s) => String(s).replace(/sbp_[A-Za-z0-9]+/g, "sbp_****").replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1****");
 
 const ref = process.env.SUPABASE_PROJECT_REF, token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!ref || !token) { log("no credentials — exiting safely."); process.exit(0); }
 
-const end = new Date();
-const start = new Date(end.getTime() - 24 * 60 * 60 * 1000); // last 24h
-const range = `&iso_timestamp_start=${encodeURIComponent(start.toISOString())}&iso_timestamp_end=${encodeURIComponent(end.toISOString())}`;
-
-async function q(label, sql) {
-  const url = `https://api.supabase.com/v1/projects/${ref}/analytics/endpoints/logs.all?sql=${encodeURIComponent(sql)}${range}`;
+async function sql(label, q) {
   let res;
-  try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); }
-  catch (e) { log(`${label}: network ${mask(e.message)}`); return; }
+  try {
+    res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+  } catch (e) { log(`${label}: network ${mask(e.message)}`); return; }
   const text = await res.text();
   if (!res.ok) { log(`${label}: HTTP ${res.status} ${mask(text).slice(0, 500)}`); return; }
-  let j; try { j = JSON.parse(text); } catch { log(`${label}: ${mask(text).slice(0,300)}`); return; }
-  const rows = j.result ?? j.data ?? [];
-  log(`── ${label} (${rows.length} rows) ──`);
-  for (const r of rows) console.log(mask(`${r.timestamp ?? ""} | ${r.event_message ?? JSON.stringify(r)}`).slice(0, 700));
+  log(`── ${label} ──`); console.log(mask(text).slice(0, 5000));
 }
 
-await q("edge: tournament-register", `select id, timestamp, event_message from function_edge_logs where event_message like '%tournament-register%' order by timestamp desc limit 30`);
-await q("deno: register errors", `select id, timestamp, event_message from function_logs where event_message like '%tournament-register%' or event_message like '%Tournament not found%' or event_message like '%tài khoản%' order by timestamp desc limit 30`);
+// The edge fn inserts ONLY these columns:
+//   tournament_id, player_id, club_id, buy_in, platform_fixed_fee, total_pay, reference_code, status, used_free_rake
+// 1) Any NOT NULL column without a default that the insert does NOT provide → guaranteed 500.
+await sql("NOT-NULL cols w/o default NOT in the insert", `
+select column_name, data_type
+from information_schema.columns
+where table_schema='public' and table_name='tournament_registrations'
+  and is_nullable='NO' and column_default is null
+  and column_name not in ('tournament_id','player_id','club_id','buy_in','platform_fixed_fee','total_pay','reference_code','status','used_free_rake','id')
+order by ordinal_position;`);
+
+// 2) All columns (for context: defaults + nullability).
+await sql("all columns (nullable/default)", `
+select column_name, data_type, is_nullable, column_default
+from information_schema.columns
+where table_schema='public' and table_name='tournament_registrations'
+order by ordinal_position;`);
+
+// 3) Triggers that fire on INSERT (a failing trigger throws → 500).
+await sql("triggers on tournament_registrations", `
+select t.tgname, t.tgenabled, pg_get_triggerdef(t.oid) as def
+from pg_trigger t
+where t.tgrelid = 'public.tournament_registrations'::regclass and not t.tgisinternal
+order by t.tgname;`);
+
 log("done (read-only).");
