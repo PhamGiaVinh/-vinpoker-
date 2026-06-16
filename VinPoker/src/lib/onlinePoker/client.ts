@@ -144,23 +144,33 @@ function rails() {
   };
 }
 
-/** Live lobby: open/paused tables with seat counts. Gated by RUNTIME_LIVE. */
+/** Live lobby: open/paused tables with real seat counts. Gated by RUNTIME_LIVE. */
 export async function listTablesLive(): Promise<LobbyTableSummary[]> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
-  const { data, error } = await rails()
-    .from('online_poker_tables')
-    .select('id, name, sb, bb, max_seats, status')
-    .neq('status', 'closed')
-    .order('created_at', { ascending: true });
-  if (error) throw new OnlinePokerError('tables_load_failed', error.message);
-  return (data ?? []).map(
+  const [tablesRes, seatsRes] = await Promise.all([
+    rails()
+      .from('online_poker_tables')
+      .select('id, name, sb, bb, max_seats, status')
+      .neq('status', 'closed')
+      .order('name', { ascending: true }),
+    rails()
+      .from('online_poker_seats')
+      .select('table_id')
+      .eq('status', 'sitting'),
+  ]);
+  if (tablesRes.error) throw new OnlinePokerError('tables_load_failed', tablesRes.error.message);
+  const counts: Record<string, number> = {};
+  for (const s of (seatsRes.data ?? []) as Array<{ table_id: string }>) {
+    counts[String(s.table_id)] = (counts[String(s.table_id)] ?? 0) + 1;
+  }
+  return (tablesRes.data ?? []).map(
     (t: Record<string, unknown>): LobbyTableSummary => ({
       id: String(t.id),
       name: String(t.name ?? ''),
       sb: String(t.sb),
       bb: String(t.bb),
       maxSeats: Number(t.max_seats),
-      seatedCount: 0, // joined separately from online_poker_seats when wired live
+      seatedCount: counts[String(t.id)] ?? 0,
       status: t.status as LobbyTableSummary['status'],
     }),
   );
