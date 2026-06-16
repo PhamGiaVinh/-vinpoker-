@@ -2616,6 +2616,9 @@
     "create": "作成"
   },
   "liveHub": {
+    "map": {
+      "title": "観戦するテーブルを選択"
+    },
     "story": {
       "bubble": "バブル — 残り{{count}}人",
       "itm": "インマネ — 残り{{count}}人",

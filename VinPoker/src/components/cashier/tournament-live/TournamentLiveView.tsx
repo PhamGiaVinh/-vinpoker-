@@ -64,6 +64,7 @@ export function TournamentLiveView({
   tournamentId,
   orientationOverride = null,
   spectator = false,
+  selectedTableIdOverride = null,
 }: {
   tournamentId: string;
   /** Presentational only: force the felt orientation (set by the viewer hub's
@@ -75,6 +76,10 @@ export function TournamentLiveView({
       the right action-timeline + table-stats sidebar). Operator callers omit it
       → false → all chrome shown, unchanged. No data-path change. */
   spectator?: boolean;
+  /** Presentational only: the table the viewer hub's table-map picked (public
+      view). When set + valid it wins over the internal selector so the featured
+      felt shows that table. Operator callers omit it → null → existing behaviour. */
+  selectedTableIdOverride?: string | null;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
@@ -575,13 +580,15 @@ export function TournamentLiveView({
     [seats]
   );
 
-  // Operator selection wins, then the live hand's table, then the single table.
+  // Hub table-map pick (public) wins, then the operator's internal selection,
+  // then the live hand's table, then the single table.
   const effectiveTableId = useMemo(() => {
+    if (selectedTableIdOverride && tableIds.includes(selectedTableIdOverride)) return selectedTableIdOverride;
     if (selectedTableId && tableIds.includes(selectedTableId)) return selectedTableId;
     if (handTableId && tableIds.includes(handTableId)) return handTableId;
     if (tableIds.length === 1) return tableIds[0];
     return null;
-  }, [selectedTableId, handTableId, tableIds]);
+  }, [selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
 
   const multiTableUnresolved = tableIds.length > 1 && !effectiveTableId;
 
@@ -820,7 +827,9 @@ export function TournamentLiveView({
         </div>
       </div>
 
-      {tableIds.length > 1 && (
+      {/* Operator-only inline table picker. Hidden for spectators — the viewer
+          hub provides the table-map picker (which drives selectedTableIdOverride). */}
+      {!spectator && tableIds.length > 1 && (
         <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-card border border-emerald-500/20 rounded-lg text-xs">
           <span className="text-muted-foreground">
             Giải có nhiều bàn — chọn bàn để xem live:

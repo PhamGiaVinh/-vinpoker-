@@ -2862,6 +2862,9 @@
     "create": "Create"
   },
   "liveHub": {
+    "map": {
+      "title": "Pick a table to watch"
+    },
     "story": {
       "bubble": "On the bubble — {{count}} left",
       "itm": "In the money — {{count}} left",

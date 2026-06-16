@@ -36,6 +36,8 @@ export interface LiveTrackerHubData {
   chipLeader: HubChipLeader | null;
   /** Tournament-wide story (eliminations / milestones / final table), newest-first. */
   storyFeed: HubStoryItem[];
+  /** table_id of the latest live hand — the table TournamentLiveView features by default. */
+  activeHandTableId: string | null;
   loading: boolean;
 }
 
@@ -51,6 +53,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
     feed: [],
     chipLeader: null,
     storyFeed: [],
+    activeHandTableId: null,
     loading: true,
   });
   const seqRef = useRef(0);
@@ -175,6 +178,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         feed: deriveFeed(actions, nameByPlayer, seatByPlayer),
         chipLeader: deriveChipLeader(seats),
         storyFeed: storyRef.current,
+        activeHandTableId: hands && hands.length > 0 ? ((hands[0] as { table_id?: string | null }).table_id ?? null) : null,
         loading: false,
       });
     };

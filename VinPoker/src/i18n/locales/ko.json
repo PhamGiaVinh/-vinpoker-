@@ -2612,6 +2612,9 @@
     "create": "생성"
   },
   "liveHub": {
+    "map": {
+      "title": "관전할 테이블 선택"
+    },
     "story": {
       "bubble": "버블 — {{count}}명 남음",
       "itm": "인더머니 — {{count}}명 남음",
