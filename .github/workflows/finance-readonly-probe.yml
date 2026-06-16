@@ -1,0 +1,27 @@
+name: Finance read-only probe — test tour buy-in/rake (one-shot)
+
+# Manual trigger only — never runs on push. Pure read-only SELECTs.
+# No write, no apply, no schema_migrations, no deploy_db. Delete after use.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run read-only finance probe
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/diagnostics/finance_readonly_probe.mjs
