@@ -1,0 +1,30 @@
+-- Rollback for migration 20260915000000_sync_tournament_itm_places.sql
+-- (Additive trigger that syncs tournaments.itm_places ← MAX(tournament_prizes.position).
+--  No payroll/finance impact; itm_places feeds only leaderboard is_itm + tracker bubble/ITM.)
+--
+-- PRE-APPLY STATE (read-only checks):
+--   -- trigger absent before apply (expect 0), present after (expect 1):
+--   SELECT count(*) FROM pg_trigger
+--   WHERE tgrelid = 'public.tournament_prizes'::regclass
+--     AND tgname = 'trg_sync_tournament_itm_places' AND NOT tgisinternal;
+--   -- function absent before / present after:
+--   SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--   WHERE n.nspname = 'public' AND p.proname = 'sync_tournament_itm_places';
+--   -- nothing currently writes itm_places, so its values are the manual/default ones.
+--
+-- ROLLBACK (drop the trigger + function). Safe — purely structural; existing
+-- itm_places values remain (they are non-destructive and recomputable from
+-- tournament_prizes at any time):
+--
+--   DROP TRIGGER IF EXISTS trg_sync_tournament_itm_places ON public.tournament_prizes;
+--   DROP FUNCTION IF EXISTS public.sync_tournament_itm_places();
+--
+-- NOTE: the separate guarded BACKFILL (docs/tournament/ITM_SYNC_ROLLOUT.md) wrote
+-- itm_places for existing tournaments. To revert those specific values to the prior
+-- snapshot, restore from the pre-backfill snapshot captured in the apply plan
+-- (SELECT id, itm_places FROM tournaments WHERE id IN (...)). The trigger/function drop
+-- above does NOT touch data.
+--
+-- After rollback verify: the two counts above are 0 again, and
+--   md5(pg_get_functiondef('public.get_tournament_leaderboard(uuid)'::regprocedure))
+-- is unchanged (this change never touched the leaderboard RPC).
