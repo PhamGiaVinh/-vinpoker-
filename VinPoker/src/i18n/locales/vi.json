@@ -117,6 +117,11 @@
       "notePlaceholder": "Ví dụ: bận việc gia đình…",
       "submit": "Gửi yêu cầu"
     },
+    "pool": {
+      "pendingToast": "Đã check-in. Vào pool lúc {{time}}.",
+      "pendingBadge": "⏳ Đã có mặt · vào pool lúc {{time}}",
+      "inPool": "🟢 Đang trong pool xoay dealer"
+    },
     "exitToMain": "Về app chính"
   },
   "tv": {

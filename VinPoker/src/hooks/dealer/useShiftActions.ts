@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { dealerKeys } from "@/lib/dealerApp/queryKeys";
 import { dealerDataSource } from "@/lib/dealerApp/dataSource";
+import { formatHm } from "@/lib/dealerApp/selectors";
 import type { DealerShiftView } from "@/types/dealerApp";
 import type { ShiftStatus } from "@/types/shiftPlanner";
 
@@ -94,7 +95,17 @@ export function useShiftActions() {
         return data;
       }
 
-      toast.success(successToast(action, !!(data as any)?.late, t));
+      // Scheduled-pool bridge: an early check-in records arrival but enters the
+      // pool at the scheduled start — reflect that instead of a generic success.
+      if (action === "checkIn" && (data as any)?.pending_pool) {
+        toast.success(
+          t("dealer.pool.pendingToast", "Đã check-in. Vào pool lúc {{time}}.", {
+            time: formatHm((data as any).pool_entry_at),
+          })
+        );
+      } else {
+        toast.success(successToast(action, !!(data as any)?.late, t));
+      }
       await qc.invalidateQueries({ queryKey: dealerKeys.all });
       return data;
     },

@@ -33,6 +33,22 @@ export function shiftTimeLabel(s: TimeRange): string {
   return `${hhmm(s.scheduledStartAt)} – ${hhmm(s.scheduledEndAt)}`;
 }
 
+/**
+ * Scheduled-pool display (FEATURES.dealerPoolBridge only). Once a dealer is checked
+ * in, they join the rotation pool at `greatest(scheduledStart, arrival)` — early
+ * arrival is "pending" (đã có mặt, chờ vào ca) until the scheduled start. Mirrors the
+ * server rule in `_dealer_record_checkin`. Pure; `nowIso` injectable for tests.
+ */
+export function poolEntryInfo(
+  s: Pick<DealerShiftView, "scheduledStartAt" | "checkedInAt" | "status">,
+  nowIso: string
+): { poolEntryAt: string; pending: boolean } {
+  const arrival = s.checkedInAt ?? nowIso;
+  const poolEntryAt = Date.parse(arrival) > Date.parse(s.scheduledStartAt) ? arrival : s.scheduledStartAt;
+  const pending = s.status === "checked_in" && Date.parse(nowIso) < Date.parse(poolEntryAt);
+  return { poolEntryAt, pending };
+}
+
 export function shiftHours(s: TimeRange): number {
   return Math.round(shiftDurationHours(s.scheduledStartAt, s.scheduledEndAt) * 10) / 10;
 }

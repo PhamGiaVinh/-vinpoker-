@@ -528,6 +528,72 @@ async function handleUnlink(
   await sendDM(botToken, chatId, `✅ Đã hủy liên kết với "${dealer.full_name}".\nDùng /setup <Tên> để liên kết lại.`);
 }
 
+// Format an ISO timestamp as HH:MM in club-local (Vietnam) time for replies.
+function fmtHm(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleTimeString("vi-VN", {
+      hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh",
+    });
+  } catch {
+    return "";
+  }
+}
+
+// ── /checkin (scheduled-pool path) — canonical RPC, no direct insert ───────────
+// Routes through dealer_self_checkin_by_telegram so app + Telegram share ONE rule:
+// arrival is recorded, but pool entry (and payroll clock) starts at the scheduled
+// shift time. Early arrival → pending (cron enters at scheduled start); on-time/late
+// → entered now. The RPC NEVER lets the bot insert dealer_attendance directly.
+async function handleCheckinScheduled(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; club_id: string; full_name: string },
+  telegramUserId: number,
+) {
+  const { data, error } = await admin.rpc("dealer_self_checkin_by_telegram", {
+    p_telegram_user_id: telegramUserId,
+  });
+  if (error) {
+    console.error("[telegram-bot] scheduled checkin rpc error:", error.message);
+    await sendDM(botToken, chatId, "❌ Check-in thất bại. Vui lòng thử lại hoặc báo DC.");
+    return;
+  }
+  const outcome = (data as any)?.outcome as string | undefined;
+  if (outcome === "no_assignment") {
+    await sendDM(botToken, chatId, `ℹ️ *${dealer.full_name}* chưa có lịch hôm nay.\nVui lòng báo DC xếp lịch trước khi check-in.`);
+    return;
+  }
+  if (outcome === "no_dealer" || outcome === "not_authorized") {
+    await sendDM(botToken, chatId, "❌ Không xác định được tài khoản dealer. Báo DC kiểm tra liên kết.");
+    return;
+  }
+  if (outcome === "too_early") {
+    await sendDM(botToken, chatId, `⏳ Chưa tới giờ check-in. Cửa sổ mở lúc *${fmtHm((data as any).window_opens_at)}*.`);
+    return;
+  }
+  if (outcome === "invalid_state") {
+    await sendDM(botToken, chatId, "ℹ️ Trạng thái ca đã thay đổi. Báo DC nếu cần.");
+    return;
+  }
+  if (outcome !== "checked_in") {
+    await sendDM(botToken, chatId, "❌ Không tìm thấy ca. Vui lòng báo DC.");
+    return;
+  }
+  if ((data as any).pending_pool) {
+    await sendDM(botToken, chatId,
+      `✅ *${dealer.full_name}* — đã ghi nhận có mặt.\n⏳ Bạn sẽ *vào pool* lúc *${fmtHm((data as any).pool_entry_at)}* (đúng giờ ca). DC sẽ phân bàn từ lúc đó.`);
+  } else if ((data as any).entered_pool) {
+    await sendDM(botToken, chatId,
+      `✅ *${dealer.full_name}* đã check-in và *đã vào pool* xoay dealer — DC sẽ phân bàn cho bạn.`);
+  } else if ((data as any).pool_entry_reason === "already_in_pool") {
+    await sendDM(botToken, chatId, `✅ *${dealer.full_name}* đã có trong pool, không tạo check-in trùng.`);
+  } else {
+    await sendDM(botToken, chatId, `✅ *${dealer.full_name}* đã check-in.`);
+  }
+}
+
 // ── /checkin — real check-in → into the available pool ─────────────────────
 // Mirrors doCheckin in DealerSwingTab.tsx: INSERT a fresh dealer_attendance row
 // (status='checked_in', current_state='available'). Idempotent: if the dealer
@@ -537,7 +603,21 @@ async function handleCheckin(
   botToken: string,
   chatId: number,
   dealer: { id: string; club_id: string; full_name: string },
+  telegramUserId: number,
 ) {
+  // Server-side kill-switch: when scheduled-pool is enabled, all self check-in
+  // channels share the canonical RPC (arrival ≠ pool entry; pool/payroll starts at
+  // the scheduled shift time). While disabled, keep the legacy immediate behavior.
+  const { data: cfg } = await admin
+    .from("dealer_selfcheckin_config")
+    .select("scheduled_pool_enabled")
+    .maybeSingle();
+  if (cfg?.scheduled_pool_enabled) {
+    await handleCheckinScheduled(admin, botToken, chatId, dealer, telegramUserId);
+    return;
+  }
+
+  // ── Legacy path (unchanged): immediate direct insert into the available pool ──
   // Today's shift_date (UTC date), matching DealerSwingTab.doCheckin so the bot
   // and operator UI share the same idempotency key + unique-index scope. A stale
   // checked_in row from a PREVIOUS day must NOT short-circuit today's check-in.
@@ -858,7 +938,7 @@ async function handleCommand(
   }
 
   if (normalizedText === "/checkin" || normalizedText === "checkin") {
-    await handleCheckin(admin, botToken, chatId, dealer);
+    await handleCheckin(admin, botToken, chatId, dealer, userId);
     return;
   }
 
