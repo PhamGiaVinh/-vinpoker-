@@ -117,7 +117,7 @@ const QUERIES = [
       order by tt.created_at desc;`,
   },
   {
-    label: "4) per-registration rows for 'test' tours (total_pay − buy_in each)",
+    label: "4) per-registration AGGREGATE for 'test' tours (distinct buy_in/total_pay, counts) — no PII",
     sql: `
       with tt as (
         select t.id
@@ -127,14 +127,15 @@ const QUERIES = [
         limit 30
       )
       select r.tournament_id,
-             r.reference_code,
              r.status,
              (r.buy_in)::numeric    as buy_in,
              (r.total_pay)::numeric as total_pay,
-             greatest(0,(r.total_pay)::numeric-(r.buy_in)::numeric) as actual_fee
+             greatest(0,(r.total_pay)::numeric-(r.buy_in)::numeric) as actual_fee_per_entry,
+             count(*) as n
       from tournament_registrations r
       where r.tournament_id in (select id from tt)
-      order by r.tournament_id, r.created_at
+      group by r.tournament_id, r.status, r.buy_in, r.total_pay
+      order by r.tournament_id, buy_in
       limit 200;`,
   },
 ];
