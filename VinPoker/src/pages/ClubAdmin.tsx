@@ -383,12 +383,12 @@ const ClubAdmin = () => {
 
 const NewTournamentDialog = ({ clubId, onCreated }: { clubId: string; onCreated: () => void }) => {
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
+  const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
   const submit = async () => {
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     const { error } = await supabase.from("tournaments").insert({
       club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
-      buy_in: Number(f.buy_in), starting_stack: Number(f.starting_stack),
+      buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0, starting_stack: Number(f.starting_stack),
       location: f.location, description: f.description, game_type: f.game_type,
       minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
     });
@@ -411,11 +411,16 @@ const NewTournamentDialog = ({ clubId, onCreated }: { clubId: string; onCreated:
           </Select>
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Buy-in (VND)</Label><Input type="number" value={f.buy_in} onChange={e => setF({ ...f, buy_in: +e.target.value })} /></div>
+            <div><Label>Rake / phí giải (VND)</Label><Input type="number" value={f.rake_amount} onChange={e => setF({ ...f, rake_amount: +e.target.value })} /></div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0))}</span> <span className="opacity-70">(buy-in + rake)</span></p>
+          <div className="grid grid-cols-2 gap-2">
             <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
+            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
             <div><Label>Late reg close at level</Label><Input type="number" value={f.late_reg_close_level} onChange={e => setF({ ...f, late_reg_close_level: +e.target.value })} /></div>
+            <div />
           </div>
           <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
           <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} />
@@ -437,6 +442,7 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
     name: tournament.name,
     start_time: toLocalInput(tournament.start_time),
     buy_in: tournament.buy_in,
+    rake_amount: tournament.rake_amount ?? 0,
     starting_stack: tournament.starting_stack,
     location: tournament.location ?? "",
     description: tournament.description ?? "",
@@ -452,6 +458,7 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
       name: f.name,
       start_time: new Date(f.start_time).toISOString(),
       buy_in: Number(f.buy_in),
+      rake_amount: Number(f.rake_amount) || 0,
       starting_stack: Number(f.starting_stack),
       location: f.location,
       description: f.description,
@@ -481,11 +488,16 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
           </Select>
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Buy-in (VND)</Label><Input type="number" value={f.buy_in} onChange={e => setF({ ...f, buy_in: +e.target.value })} /></div>
+            <div><Label>Rake / phí giải (VND)</Label><Input type="number" value={f.rake_amount} onChange={e => setF({ ...f, rake_amount: +e.target.value })} /></div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0))}</span> <span className="opacity-70">(buy-in + rake)</span></p>
+          <div className="grid grid-cols-2 gap-2">
             <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
+            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
             <div><Label>Late reg close at level</Label><Input type="number" value={f.late_reg_close_level} onChange={e => setF({ ...f, late_reg_close_level: +e.target.value })} /></div>
+            <div />
           </div>
           <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
           <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={2} />
