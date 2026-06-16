@@ -135,7 +135,7 @@ BEGIN
         jsonb_build_object('v', 1, 'receipt_code', v_receipt_code, 'entry_id', v_entry_id,
           'tournament_id', p_tournament_id, 'player_id', v_player_id,
           'table_number', v_tt.table_number, 'seat_number', p_seat_number, 'source', 'floor'),
-        'manual', 'issued', v_actor
+        'initial', 'issued', v_actor
       ) RETURNING id INTO v_receipt_id;
       EXIT;
     EXCEPTION WHEN unique_violation THEN
@@ -151,7 +151,7 @@ BEGIN
   ) VALUES (
     p_tournament_id, v_entry_id, v_player_id,
     v_tt.table_id, v_tt.table_number, p_seat_number,
-    'floor_seat_add', 'manual', v_actor,
+    'floor_seat_add', 'initial', v_actor,
     jsonb_build_object('source', 'floor', 'money', false, 'tournament_table_id', v_tt.id)
   );
 
