@@ -11,7 +11,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatVND, formatDateTime } from "@/lib/format";
 import { exportToExcel, formatExcelDate } from "@/lib/exportExcel";
-import { Loader2, Download, Wallet, TrendingUp, TrendingDown, PiggyBank, FileSpreadsheet } from "lucide-react";
+import { Loader2, Download, Wallet, TrendingUp, TrendingDown, PiggyBank, FileSpreadsheet, Trophy, Coins } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -27,11 +27,16 @@ export default function RevenueReportTab({ clubIds, clubs }: Props) {
   const [clubFilter, setClubFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [rawDeals, setRawDeals] = useState<any[] | null>(null);
+  // Tournament rake + service fee actually collected (confirmed registrations in range).
+  const [tourFees, setTourFees] = useState<{ rakeCollected: number; serviceCollected: number; entries: number } | null>(null);
   const [detailTab, setDetailTab] = useState("earlybird");
 
   const load = useCallback(async () => {
     setLoading(true);
     setRawDeals(null);
+    setTourFees(null);
+
+    const ids = clubFilter ? [clubFilter] : clubIds;
 
     let q = supabase
       .from("staking_deals")
@@ -46,12 +51,47 @@ export default function RevenueReportTab({ clubIds, clubs }: Props) {
       .order("created_at", { ascending: false })
       .limit(2000);
 
-    const ids = clubFilter ? [clubFilter] : clubIds;
     if (ids.length) q = q.in("club_id", ids);
 
     const { data, error } = await q;
     if (error) { toast.error(error.message); setRawDeals([]); setLoading(false); return; }
     setRawDeals(data ?? []);
+
+    // Tournament rake + service fee actually collected: confirmed registrations in range, decomposed
+    // into rake vs service using the tour's configured service_fee_amount (matches Owner Finance).
+    try {
+      let tq = supabase.from("tournaments").select("id, rake_amount, service_fee_amount");
+      if (ids.length) tq = tq.in("club_id", ids);
+      const { data: tours } = await tq;
+      const tourMap = new Map((tours ?? []).map((t: any) => [t.id, t]));
+      const tourIds = (tours ?? []).map((t: any) => t.id);
+      let rakeCollected = 0, serviceCollected = 0, entries = 0;
+      for (let i = 0; i < tourIds.length; i += 200) {
+        const chunk = tourIds.slice(i, i + 200);
+        if (!chunk.length) break;
+        const { data: regs } = await supabase
+          .from("tournament_registrations")
+          .select("tournament_id, total_pay, buy_in")
+          .in("tournament_id", chunk)
+          .eq("status", "confirmed")
+          .gte("created_at", from + "T00:00:00")
+          .lte("created_at", to + "T23:59:59");
+        (regs ?? []).forEach((r: any) => {
+          const t: any = tourMap.get(r.tournament_id);
+          if (!t) return;
+          const svc = Number(t.service_fee_amount ?? 0);
+          const fee = Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0));
+          const servicePart = Math.min(svc, fee);
+          rakeCollected += fee - servicePart;
+          serviceCollected += servicePart;
+          entries += 1;
+        });
+      }
+      setTourFees({ rakeCollected, serviceCollected, entries });
+    } catch {
+      setTourFees({ rakeCollected: 0, serviceCollected: 0, entries: 0 });
+    }
+
     setLoading(false);
   }, [from, to, clubFilter, clubIds]);
 
@@ -147,9 +187,22 @@ export default function RevenueReportTab({ clubIds, clubs }: Props) {
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
           <Card className="p-4 border-primary/30">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Wallet className="w-4 h-4 text-primary" /> Tổng doanh thu phí
+              <Wallet className="w-4 h-4 text-primary" /> Phí staking đã thu
             </div>
             <div className="mt-1 text-lg font-bold font-mono">{formatVND(kpi.totalRevenue)}</div>
+          </Card>
+          <Card className="p-4 border-primary/30">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Trophy className="w-4 h-4 text-primary" /> Rake giải đã thu
+            </div>
+            <div className="mt-1 text-lg font-bold font-mono">{formatVND(tourFees?.rakeCollected ?? 0)}</div>
+            <div className="text-[10px] text-muted-foreground/70 mt-0.5">{tourFees?.entries ?? 0} lượt đăng ký</div>
+          </Card>
+          <Card className="p-4 border-warning/30">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Coins className="w-4 h-4 text-warning" /> Phí dịch vụ đã thu
+            </div>
+            <div className="mt-1 text-lg font-bold font-mono">{formatVND(tourFees?.serviceCollected ?? 0)}</div>
           </Card>
           <Card className="p-4 border-[hsl(var(--ds-active)_/_0.3)]">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
