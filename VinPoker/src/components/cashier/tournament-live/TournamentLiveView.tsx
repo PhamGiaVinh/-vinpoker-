@@ -851,8 +851,8 @@ export function TournamentLiveView({
         </div>
       )}
 
-      {/* Live / Replay mode toggle — operator-only, hidden in the public spectator view */}
-      {!spectator && (
+      {/* Live / Replay mode toggle — available to spectators too, so the public
+          viewer can replay past hands (watch what happened). */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
           <button
@@ -884,7 +884,6 @@ export function TournamentLiveView({
           />
         )}
       </div>
-      )}
 
       <div className={spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
         <div>
