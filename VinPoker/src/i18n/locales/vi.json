@@ -84,7 +84,18 @@
     },
     "notLinked": { "title": "Tài khoản chưa liên kết dealer", "body": "Tài khoản của bạn chưa được liên kết với hồ sơ dealer. Bạn vẫn có thể xem cơ hội tuyển dụng và ứng tuyển.", "cta": "Xem tuyển dụng" },
     "comingSoon": { "title": "Dealer App đang hoàn thiện", "body": "Cổng dealer sẽ sớm ra mắt. Vui lòng quay lại sau." },
-    "toast": { "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai" },
+    "toast": {
+      "previewOnly": "Bản xem trước — thao tác sẽ bật khi triển khai",
+      "confirmed": "Đã xác nhận ca",
+      "checkedIn": "Đã check-in. Chúc ca làm việc suôn sẻ!",
+      "checkedInLate": "Đã check-in (muộn)",
+      "checkedOut": "Đã check-out. Kết thúc ca.",
+      "tooEarly": "Chưa tới giờ check-in (mở 30 phút trước ca).",
+      "invalidState": "Trạng thái ca đã thay đổi. Đã làm mới.",
+      "failed": "Thao tác không thành công. Vui lòng thử lại.",
+      "availabilitySaved": "Đã lưu lịch rảnh.",
+      "leaveRequested": "Đã gửi yêu cầu nghỉ."
+    },
     "login": {
       "title": "Đăng nhập dealer",
       "account": "Tài khoản",
@@ -95,6 +106,16 @@
       "missing": "Nhập tài khoản và mật khẩu.",
       "failed": "Sai tài khoản hoặc mật khẩu.",
       "ok": "Đăng nhập thành công."
+    },
+    "leave": {
+      "title": "Xin nghỉ / báo bận",
+      "subtitle": "Gửi cho quản lý CLB để xếp lịch.",
+      "dateLabel": "Ngày",
+      "kindLeave": "Xin nghỉ",
+      "kindUnavailable": "Báo bận",
+      "noteLabel": "Lý do (tuỳ chọn)",
+      "notePlaceholder": "Ví dụ: bận việc gia đình…",
+      "submit": "Gửi yêu cầu"
     },
     "exitToMain": "Về app chính"
   },
