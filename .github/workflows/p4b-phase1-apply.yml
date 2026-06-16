@@ -1,0 +1,48 @@
+name: Payroll P4b Phase 1 — apply insurance tables (one-shot, owner-gated)
+
+# Manual trigger only — never runs on push.
+# Runs the allowlisted controlled-op runner against the live DB using GitHub Secrets.
+# Safety gates (inside the runner):
+#   • safety scan: refuses payroll-fn/DML/seed/CREATE FUNCTION/ALTER non-P4b/DROP TABLE
+#   • preflight: read-only checks (slot, tables absent, md5 capture)
+#   • dry-run: BEGIN…migration…ROLLBACK (nothing persisted)
+#   • apply: BEGIN…migration…COMMIT (additive DDL only; post-verify runs automatically)
+# No supabase db push. No deploy_db. No schema_migrations write. No seed.
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-p4b-phase1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preflight — read-only checks
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --preflight
+
+      - name: Dry-run — BEGIN…ROLLBACK (nothing persisted)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --dry-run
+
+      - name: Apply — BEGIN…COMMIT additive DDL only (post-verify auto-runs)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_P4B_PHASE1: APPLY_P4B_PHASE1_INSURANCE_TABLES
+        run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --apply
