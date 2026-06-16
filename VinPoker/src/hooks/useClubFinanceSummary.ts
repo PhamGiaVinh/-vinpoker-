@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   normalizeStatus, isUnpaid, agingBucket, daysBetween, monthKey,
   type PayrollStatusKey, type AgingBucketKey,
@@ -23,6 +24,8 @@ export interface ClubFinanceSummary {
     // (Σ total_pay − buy_in) is reconciliation only; splits are configured per source.
     rake: number; rakeActual: number; rakeExpected: number; rakeVariance: number;
     rakeOnline: number; rakeOffline: number; rakeReentry: number;
+    // service fee stream (phí dịch vụ) — CONFIGURED (service_fee_amount × paying entries), separate from rake
+    serviceFee: number;
     total: number;
   };
   cost: { payrollNet: number; payrollGross: number; adjustments: number };
@@ -48,7 +51,7 @@ const emptyAging = (): Record<AgingBucketKey, number> => ({ d0_30: 0, d31_60: 0,
 const emptyRevenue = (): ClubFinanceSummary["revenue"] => ({
   stakingFees: 0, stakingFixed: 0, stakingPercent: 0, stakingArchive: 0, payoutFees: 0,
   rake: 0, rakeActual: 0, rakeExpected: 0, rakeVariance: 0,
-  rakeOnline: 0, rakeOffline: 0, rakeReentry: 0, total: 0,
+  rakeOnline: 0, rakeOffline: 0, rakeReentry: 0, serviceFee: 0, total: 0,
 });
 
 // Normalize a server `revenue` object, defaulting fields the OLD (pre-v2) RPC body
@@ -74,6 +77,7 @@ const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
     rakeOnline: Number(r.rakeOnline ?? 0),
     rakeOffline: Number(r.rakeOffline ?? 0),
     rakeReentry: Number(r.rakeReentry ?? 0),
+    serviceFee: Number(r.serviceFee ?? 0),
     total: Number(r.total ?? 0),
   };
 };
@@ -177,7 +181,8 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       };
 
       let stakingFees = 0, stakingFixed = 0, stakingPercent = 0, stakingArchive = 0, payoutFees = 0;
-      let rake = 0, rakeExpected = 0, rakeActual = 0, rakeOnline = 0, rakeOffline = 0, rakeReentry = 0;
+      let rake = 0, rakeExpected = 0, rakeActual = 0, rakeOnline = 0, rakeOffline = 0, rakeReentry = 0, serviceFee = 0;
+      const svcOn = FEATURES.tournamentServiceFee;
 
       // ===== Revenue 1 — staking platform fees (fixed + percent on check-in, archive on completed) =====
       {
@@ -233,7 +238,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       //   (uses total_pay − buy_in, not platform_fixed_fee, which is 0 for online entries).
       {
         let tq = supabase.from("tournaments")
-          .select("id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at")
+          .select(`id, club_id, rake_amount, free_rake_enabled, free_rake_used, created_at${svcOn ? ", service_fee_amount" : ""}`)
           .gte("created_at", fromTs).lte("created_at", toTs).limit(5000);
         if (restrictIds) tq = tq.in("club_id", restrictIds);
         const { data: tours, error: te } = await tq;
@@ -255,13 +260,16 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
             .select("tournament_id, reference_code, total_pay, buy_in")
             .in("tournament_id", chunk).eq("status", "confirmed");
           (regs ?? []).forEach((r) => {
-            if (!tourById.has(r.tournament_id)) return;
+            const tour = tourById.get(r.tournament_id);
+            if (!tour) return;
             const a = bump(r.tournament_id);
             const ref = String((r as any).reference_code ?? "");
             if (ref.startsWith("REENTRY-")) a.nReentry += 1;
             else if (ref.startsWith("CASH-")) a.nOffline += 1;
             else a.nOnline += 1;
-            a.actual += Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0));
+            // rakeActual is RAKE-ONLY: subtract the per-tour service fee (folded into total_pay) when live.
+            const svc = svcOn ? Number((tour as any).service_fee_amount ?? 0) : 0;
+            a.actual += Math.max(0, Number(r.total_pay ?? 0) - Number(r.buy_in ?? 0) - svc);
           });
         }
         scopedTours.forEach((t) => {
@@ -273,7 +281,11 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
           const cfgReentry = rakeAmt * a.nReentry;
           rakeOnline += cfgOnline; rakeOffline += cfgOffline; rakeReentry += cfgReentry;
           rakeActual += a.actual;
-          const cfgTotal = cfgOnline + cfgOffline + cfgReentry;
+          // service fee = configured amount × every paying entry (free-rake never waives the service fee)
+          const svcAmt = svcOn ? Number((t as any).service_fee_amount ?? 0) : 0;
+          const cfgService = svcAmt * (a.nOnline + a.nOffline + a.nReentry);
+          serviceFee += cfgService;
+          const cfgTotal = cfgOnline + cfgOffline + cfgReentry + cfgService;
           if (cfgTotal > 0) addRev(t.club_id, cfgTotal, monthKey(t.created_at ?? toTs));
         });
       }
@@ -333,7 +345,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
       }
 
       // ===== assemble =====
-      const revenueTotal = stakingFees + payoutFees + rake; // configured rake (matches addRev feed)
+      const revenueTotal = stakingFees + payoutFees + rake + serviceFee; // configured rake + service fee (matches addRev feed)
       const months = Array.from(new Set([...revMonth.keys(), ...costMonth.keys()])).sort();
       const trend = months.map((mk) => ({
         key: `${mk.slice(5, 7)}/${mk.slice(2, 4)}`,
@@ -351,7 +363,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         revenue: {
           stakingFees, stakingFixed, stakingPercent, stakingArchive, payoutFees,
           rake, rakeActual, rakeExpected, rakeVariance: rakeActual - rake,
-          rakeOnline, rakeOffline, rakeReentry, total: revenueTotal,
+          rakeOnline, rakeOffline, rakeReentry, serviceFee, total: revenueTotal,
         },
         cost: { payrollNet, payrollGross, adjustments },
         net: revenueTotal - payrollNet,

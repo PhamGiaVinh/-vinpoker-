@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { formatBuyInShort, formatShortDate, formatTime, formatStack } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
+import { FEATURES } from "@/lib/featureFlags";
 import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { LivestreamSection } from "@/components/LivestreamSection";
@@ -30,6 +31,7 @@ interface Tournament {
   start_time: string;
   buy_in: number;
   rake_amount?: number;
+  service_fee_amount?: number;
   free_rake_enabled?: boolean;
   free_rake_slots?: number;
   free_rake_used?: number;
@@ -91,7 +93,7 @@ const Tournaments = () => {
       const [{ data: t }, { data: bs }, { data: vb }, { data: sr }, { data: cs }] = await Promise.all([
         supabase
           .from("tournaments")
-          .select("id,name,start_time,buy_in,rake_amount,free_rake_enabled,free_rake_slots,free_rake_used,starting_stack,current_players,current_blinds,live_status,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)")
+          .select(`id,name,start_time,buy_in,rake_amount${FEATURES.tournamentServiceFee ? ",service_fee_amount" : ""},free_rake_enabled,free_rake_slots,free_rake_used,starting_stack,current_players,current_blinds,live_status,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)`)
           .order("buy_in", { ascending: false }),
         supabase.from("app_settings").select("value").eq("key", "banners").maybeSingle(),
         supabase.from("app_settings").select("value").eq("key", "vip_banner").maybeSingle(),

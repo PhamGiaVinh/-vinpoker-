@@ -119,10 +119,23 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Per-tour SERVICE FEE (phí dịch vụ) — a SECOND configured charge, separate from rake, charged on
+    // EVERY entry (free-rake waives the rake only). Read with a GUARDED separate select so this fn is
+    // safe to deploy whether or not the `service_fee_amount` column has been applied yet (absent → 0).
+    let serviceFee = 0;
+    {
+      const { data: sf, error: sfErr } = await admin
+        .from("tournaments")
+        .select("service_fee_amount")
+        .eq("id", tour.id)
+        .maybeSingle();
+      if (!sfErr && sf) serviceFee = Number((sf as { service_fee_amount?: number }).service_fee_amount ?? 0);
+    }
+
     // Tournament buy-in does NOT include platform fee
-    // If free_rake applied, player only pays buy_in (rake waived)
+    // If free_rake applied, player only pays buy_in + service fee (rake waived; service fee still applies)
     const fixedFee = 0;
-    const totalPay = freeRakeApplied ? Number(tour.buy_in) : Number(tour.buy_in) + rakeAmount;
+    const totalPay = (freeRakeApplied ? Number(tour.buy_in) : Number(tour.buy_in) + rakeAmount) + serviceFee;
 
     const refCode = "VINReg" +
       String(tour.id).replace(/-/g, "").slice(0, 4).toUpperCase() +

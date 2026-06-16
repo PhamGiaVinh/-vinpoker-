@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation, Trans } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { FEATURES } from "@/lib/featureFlags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +27,7 @@ interface TournamentOpt {
   start_time: string;
   buy_in: number;
   rake_amount?: number;
+  service_fee_amount?: number;
   free_rake_enabled?: boolean;
   free_rake_slots?: number;
   free_rake_used?: number;
@@ -112,7 +114,7 @@ const StakingNew = () => {
       const [{ data: tData }, { data: cData }] = await Promise.all([
         supabase
           .from("tournaments")
-          .select("id, name, start_time, buy_in, rake_amount, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level")
+          .select(`id, name, start_time, buy_in, rake_amount${FEATURES.tournamentServiceFee ? ", service_fee_amount" : ""}, free_rake_enabled, free_rake_slots, free_rake_used, club_id, minutes_per_level, late_reg_close_level`)
           .gt("start_time", new Date().toISOString())
           .order("start_time", { ascending: true })
           .limit(80),
