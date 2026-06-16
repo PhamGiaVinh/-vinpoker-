@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { LogIn, LogOut, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { LogIn, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { computeCheckInState } from "@/lib/dealerApp/checkInWindow";
@@ -9,15 +9,16 @@ import { FEATURES } from "@/lib/featureFlags";
 import type { DealerShiftView } from "@/types/dealerApp";
 
 /**
- * State-aware confirm / check-in / check-out button shared by the home card and
- * the day check-in timeline. Inc 4: wired to the dealer self-service RPCs via
- * useShiftActions — MOCK advances locally (flag OFF preview), LIVE calls the
- * planner-only SECURITY-DEFINER RPC. Roster-only; never the live swing system.
+ * State-aware confirm / check-in button shared by the home card and the day
+ * check-in timeline. Wired to the dealer self-service RPCs via useShiftActions.
+ * Dealers can CONFIRM + CHECK-IN only — self CHECK-OUT is disabled (owner rule:
+ * only dealer-control / floor may check a dealer out, via the Dealer Swing panel,
+ * which also DMs the dealer). Roster-only; never the live swing system.
  */
 export function ShiftActionButton({ shift, className }: { shift: DealerShiftView; className?: string }) {
   const { t } = useTranslation();
   const s = computeCheckInState(shift.status, shift.scheduledStartAt);
-  const { confirm, checkIn, checkOut, isPending } = useShiftActions();
+  const { confirm, checkIn, isPending } = useShiftActions();
 
   const cta = (() => {
     if (s.canConfirm)
@@ -37,8 +38,14 @@ export function ShiftActionButton({ shift, className }: { shift: DealerShiftView
         action: null,
       };
     }
+    // Checked in → dealers do NOT self check-out; floor/DC handles it.
     if (s.canCheckOut)
-      return { label: t("dealer.action.checkOut", "Check-out"), Icon: LogOut, disabled: false, action: "checkOut" as ShiftAction };
+      return {
+        label: t("dealer.checkin.inShiftDcCheckout", "Đang trong ca — DC sẽ check-out"),
+        Icon: CheckCircle2,
+        disabled: true,
+        action: null,
+      };
     return { label: t("dealer.shift.status.closed", "Đã kết thúc"), Icon: CheckCircle2, disabled: true, action: null };
   })();
 
@@ -46,7 +53,6 @@ export function ShiftActionButton({ shift, className }: { shift: DealerShiftView
     if (!cta.action || isPending) return;
     if (cta.action === "confirm") void confirm(shift);
     else if (cta.action === "checkIn") void checkIn(shift);
-    else void checkOut(shift);
   };
 
   // Scheduled-pool note (flag-gated): after check-in, show "pending until HH:MM"

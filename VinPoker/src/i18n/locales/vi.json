@@ -26,6 +26,7 @@
     "checkin": {
       "opensAt": "Check-in mở lúc {{time}}",
       "late": "Check-in muộn",
+      "inShiftDcCheckout": "Đang trong ca — DC sẽ check-out",
       "step0": "Chưa check-in",
       "step1": "Đã check-in",
       "step2": "Đang làm",

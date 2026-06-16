@@ -252,6 +252,19 @@ async function processOneCheckout(
       }
     } catch { /* non-critical */ }
 
+    // 4b. Private DM to the dealer (owner rule: notify the dealer on check-out).
+    if (dealer?.telegram_user_id) {
+      try {
+        const ci = checkInTime ? fmtTime(new Date(checkInTime)) : "?";
+        const co = fmtTime(new Date(nowISO));
+        const dm =
+          `✅ Bạn đã được *check-out* lúc ${co}.\n` +
+          `🕒 Thời gian làm việc: ${ci}–${co} (${totalHours} tiếng).\n` +
+          `Cảm ơn ca làm việc của bạn!`;
+        await sendTelegramNotification(botToken, String(dealer.telegram_user_id), dm).catch(() => {});
+      } catch { /* non-critical */ }
+    }
+
     // If pre_assigned → also send alerts (existing behavior)
     if (releasedPreAssigned) {
       const { data: cs } = (await admin

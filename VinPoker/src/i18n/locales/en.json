@@ -26,6 +26,7 @@
     "checkin": {
       "opensAt": "Check-in opens at {{time}}",
       "late": "Late check-in",
+      "inShiftDcCheckout": "In shift — the floor will check you out",
       "step0": "Not checked in",
       "step1": "Checked in",
       "step2": "Working",
