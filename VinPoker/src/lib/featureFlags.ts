@@ -124,15 +124,19 @@ export const FEATURES = {
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
-   * Default **OFF**: while false the app shows <DealerComingSoon/> to everyone
-   * except super_admin / club owners (so the owner can UAT). Live data ALSO
-   * requires `dealerShiftPlanner` ON + its additive migration applied; otherwise
-   * the app runs entirely on in-memory mock. NEVER touches the live Dealer Swing
-   * / attendance / payroll tables. Self-service write RPCs (confirm/check-in) are
-   * a separate owner-gated migration; until applied the action buttons are
-   * preview-only. Flip to true after owner UAT.
+   * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible
+   * to all users and runs on LIVE data (source = "live" since `dealerShiftPlanner`
+   * is also ON + its additive migration `20260827000000` is applied). Un-logged-in
+   * visitors to /dealer now see <DealerLogin/> (account code + password the Telegram
+   * bot issues, or the one-tap magic link) instead of the shared email login. Reads
+   * only `dealer_shift_assignments` / `dealers` / `profiles`; NEVER touches the live
+   * Dealer Swing / attendance / payroll tables. Self-service write RPCs
+   * (confirm/check-in, Migration A) + careers tables (Migration B) are NOT applied
+   * live yet, so the action buttons stay preview-only (toast) and careers tabs run
+   * on mock — no missing-table crashes. Kill-switch: set false to re-hide the app
+   * (back to <DealerComingSoon/> for non-admins).
    */
-  dealerMobileApp: false,
+  dealerMobileApp: true,
   /**
    * Dealer Swing "Đóng tour" — Archive & Close Tour. Floor closes a whole tour:
    * the server archives the full swing snapshot (tour, tables, assignments,
