@@ -14,8 +14,11 @@
 
 /** Hard in-shell gate. While false the table is mock-only and EVERY action is
  *  disabled. Flips true only when the GE-2C runtime (migration 20260820000000 +
- *  online_poker_config.enabled) is live AND the client is wired to it. */
-export const RUNTIME_LIVE = false;
+ *  online_poker_config.enabled) is live AND the client is wired to it.
+ *  ON (closed alpha 2026-06-17): runtime migrations live, edge deployed.
+ *  online_poker_config.enabled=true is set via separate controlled DB op before
+ *  gameplay; while still false the edge returns disabled gracefully. */
+export const RUNTIME_LIVE = true;
 
 export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'complete';
 export type SeatStatus = 'empty' | 'sitting_out' | 'active' | 'allin' | 'folded';
