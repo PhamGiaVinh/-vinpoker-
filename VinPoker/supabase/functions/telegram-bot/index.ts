@@ -36,9 +36,13 @@ async function sendDM(botToken: string, chatId: number, text: string, parseMode:
   });
 }
 
-// Dealer web app base URL (magic-link redirect target). Owner must allowlist
-// `${APP_BASE_URL}/dealer` in Supabase Auth → URL configuration.
-const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") ?? "https://vinpoker.live").replace(/\/+$/, "");
+// Dealer web app base URL (magic-link redirect target). Default is the live
+// Vercel deployment (vinpoker.live is not yet connected — apex DNS pending).
+// When the custom domain is live, set the `APP_BASE_URL` edge secret to
+// `https://vinpoker.live` — no code change. Owner must also allowlist
+// `${APP_BASE_URL}/dealer` in Supabase Auth → URL configuration (for the
+// one-tap magic link; the account-code + password login needs no allowlist).
+const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") ?? "https://vinpoker.vercel.app").replace(/\/+$/, "");
 const DEALER_APP_URL = `${APP_BASE_URL}/dealer`;
 
 // Cryptographically-random temporary password (ambiguity-free printable alphabet).
