@@ -142,14 +142,16 @@ export const FEATURES = {
    * of the server flag `dealer_selfcheckin_config.scheduled_pool_enabled`. When ON,
    * the dealer app shows the pool-entry note ("đã có mặt · vào pool lúc HH:MM" while
    * early, "đang trong pool" once the scheduled start is reached) and the check-in
-   * toast reflects pending vs entered. Default **OFF**: while false the app shows no
-   * pool note and behaves as before; the rule is enforced server-side regardless of
-   * this flag (it only governs UI affordances). Flip to true together with the server
-   * config row AFTER the bridge migration `20260915000000` is applied live + the
-   * telegram-bot is redeployed (Phase C). See plan: dealer self check-in → scheduled
+   * toast reflects pending vs entered. **ON** (2026-06-16, Phase C): migration
+   * `20260915000000` is applied live, the telegram-bot is redeployed, and the server
+   * flag `dealer_selfcheckin_config.scheduled_pool_enabled` is set true. This flag is
+   * UI-only — the rule is enforced server-side regardless of it; it just shows the
+   * pool note. Kill-switch: the authoritative off-switch is the SERVER flag
+   * (`UPDATE dealer_selfcheckin_config SET scheduled_pool_enabled=false`); set this
+   * false too to also hide the UI note. See plan: dealer self check-in → scheduled
    * pool entry.
    */
-  dealerPoolBridge: false,
+  dealerPoolBridge: true,
   /**
    * Dealer Swing "Đóng tour" — Archive & Close Tour. Floor closes a whole tour:
    * the server archives the full swing snapshot (tour, tables, assignments,
