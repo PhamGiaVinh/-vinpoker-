@@ -162,4 +162,16 @@ export const FEATURES = {
    * Read/write only the two config tables — NEVER touches calculate_dealer_payroll.
    */
   insuranceProfiles: false,
+  /**
+   * Floor Table Ops (Phase A1) — "Mở bàn" (open/reopen table), "Thêm người" (pure
+   * seat placement, NO money), and "Đóng bàn" (broken-table redraw → fill empty
+   * seats, shortest-table-first) on the floor table-detail sheet / map. Default
+   * **OFF**: the action buttons stay disabled "Cần bật RPC" and never call a
+   * missing RPC. Flip to true ONLY after the three source-only RPCs
+   * (`open_tournament_table` 20260912000000, `floor_assign_player_to_seat`
+   * 20260913000000, `close_tournament_table` 20260914000000) are applied live in a
+   * controlled DB session. Floor seat moves only — never touches cashier money flow,
+   * payroll, or dealer swing. (Scheduled/tournament redraw is a later Phase A2.)
+   */
+  floorTableOps: false,
 } as const;

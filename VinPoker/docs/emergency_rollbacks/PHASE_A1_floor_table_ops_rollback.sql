@@ -1,0 +1,35 @@
+-- ============================================================================
+-- ROLLBACK — Floor Table Ops Phase A1 RPCs
+-- ============================================================================
+-- These three functions are BRAND NEW (no prior live body to restore), so the
+-- rollback is simply DROP FUNCTION. They are SOURCE-ONLY as of this PR — NOT yet
+-- applied to any live DB. Use this only AFTER a controlled apply, if rollback is
+-- needed.
+--
+-- Migrations (apply order):
+--   20260912000000_open_tournament_table.sql
+--   20260913000000_floor_assign_player_to_seat.sql
+--   20260914000000_close_tournament_table.sql
+--
+-- The functions are pure additive objects. Dropping them removes the floor
+-- open/assign/close capability and leaves all data untouched (no rows are
+-- migrated or deleted by creating them). They also have NO effect until the UI
+-- flag `floorTableOps` is flipped on, so a rollback can be just flipping the flag
+-- back to false (no DB change needed) in most cases.
+--
+-- CONTROLLED APPLY (owner-gated, later — NOT done in this PR):
+--   1. Preflight: confirm each function is ABSENT
+--        SELECT proname FROM pg_proc WHERE proname IN
+--          ('open_tournament_table','floor_assign_player_to_seat','close_tournament_table');
+--   2. Compile-preflight (optional): BEGIN; <CREATE OR REPLACE …>; ROLLBACK;
+--   3. Apply the three migration bodies via Management API CREATE OR REPLACE.
+--   4. Verify: prosecdef=true (SECURITY DEFINER), proconfig=search_path=public,
+--      EXECUTE granted to authenticated only (anon/PUBLIC revoked).
+--   5. Idempotency rerun (apply twice → same body).
+--   NO `supabase db push`, NO deploy_db=true, NO schema_migrations edit, 0 data writes.
+--
+-- ROLLBACK STATEMENTS:
+DROP FUNCTION IF EXISTS public.close_tournament_table(uuid, text, text);
+DROP FUNCTION IF EXISTS public.floor_assign_player_to_seat(uuid, text, uuid, integer);
+DROP FUNCTION IF EXISTS public.open_tournament_table(uuid, integer, integer);
+-- ============================================================================
