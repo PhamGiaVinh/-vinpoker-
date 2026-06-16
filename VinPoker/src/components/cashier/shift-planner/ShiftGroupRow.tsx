@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus } from "lucide-react";
+import { UserPlus, X } from "lucide-react";
 import type { SchedulerDealer } from "@/types/shiftPlanner";
 import {
   shiftWindowLabel,
@@ -13,9 +13,11 @@ import {
 interface Props {
   group: ShiftGroup;
   dealersById: Map<string, SchedulerDealer>;
+  /** When provided, each assigned dealer row gets a remove (✕) control. */
+  onRemove?: (templateId: string, dealerId: string) => void;
 }
 
-export default function ShiftGroupRow({ group, dealersById }: Props) {
+export default function ShiftGroupRow({ group, dealersById, onRemove }: Props) {
   const { template, assignments } = group;
   const short = assignments.length < template.needCount;
   const initials = (name: string) => name.trim().slice(0, 1).toUpperCase();
@@ -91,6 +93,17 @@ export default function ShiftGroupRow({ group, dealersById }: Props) {
               <Badge variant="outline" className={cn("text-[10px]", st.className)}>
                 {st.label}
               </Badge>
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(a.templateId, a.dealerId)}
+                  title={`Xoá ${a.dealerName} khỏi ca ${template.label}`}
+                  aria-label={`Xoá ${a.dealerName}`}
+                  className="grid place-items-center w-6 h-6 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         );

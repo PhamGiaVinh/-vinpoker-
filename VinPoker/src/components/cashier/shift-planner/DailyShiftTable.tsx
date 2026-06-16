@@ -6,10 +6,12 @@ interface Props {
   templates: ShiftTemplate[];
   assignments: DraftAssignment[];
   dealers: SchedulerDealer[];
+  /** When provided, each assigned dealer row gets a remove (✕) control. */
+  onRemove?: (templateId: string, dealerId: string) => void;
 }
 
 /** "Danh sách ca hôm nay" — grouped by shift start time. */
-export default function DailyShiftTable({ templates, assignments, dealers }: Props) {
+export default function DailyShiftTable({ templates, assignments, dealers, onRemove }: Props) {
   const groups = buildShiftGroups(templates, assignments);
   const dealersById = new Map(dealers.map((d) => [d.id, d]));
 
@@ -26,7 +28,7 @@ export default function DailyShiftTable({ templates, assignments, dealers }: Pro
         <span className="text-right">Điểm · Trạng thái</span>
       </div>
       {groups.map((group) => (
-        <ShiftGroupRow key={group.template.id} group={group} dealersById={dealersById} />
+        <ShiftGroupRow key={group.template.id} group={group} dealersById={dealersById} onRemove={onRemove} />
       ))}
     </div>
   );
