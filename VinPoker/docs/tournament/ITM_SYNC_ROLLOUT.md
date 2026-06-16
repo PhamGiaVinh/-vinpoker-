@@ -68,6 +68,10 @@ select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname='public' and p.proname='sync_tournament_itm_places';        -- V2 expect 1
 select md5(pg_get_functiondef('public.get_tournament_leaderboard(uuid)'::regprocedure));
                                                                               -- V3 == P3 (unchanged)
+-- V4 hardening: the SECURITY DEFINER function is NOT directly executable by anon/authenticated
+select has_function_privilege('anon','public.sync_tournament_itm_places()','EXECUTE') as anon_exec,
+       has_function_privilege('authenticated','public.sync_tournament_itm_places()','EXECUTE') as auth_exec;
+                                                                              -- V4 expect false, false
 ```
 Optional functional smoke (on a TEST tournament): re-save its prize structure → confirm
 `tournaments.itm_places` becomes `MAX(position)`; delete all prizes → becomes 0.

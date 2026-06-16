@@ -66,6 +66,13 @@ $$;
 COMMENT ON FUNCTION public.sync_tournament_itm_places() IS
   'Keeps tournaments.itm_places = MAX(tournament_prizes.position) for the affected tournament. Source of truth for "places paid" (leaderboard is_itm, TV, tracker bubble/ITM). No payroll/finance impact.';
 
+-- ── Hardening: this is a trigger function (RETURNS trigger) — it can never be called
+--    directly via SQL. Revoke the default PUBLIC EXECUTE grant anyway so this
+--    SECURITY DEFINER function is not directly invokable by anon/authenticated. The
+--    trigger still fires (it runs in the function-owner context via the trigger
+--    mechanism, NOT via the caller's EXECUTE privilege).
+REVOKE ALL ON FUNCTION public.sync_tournament_itm_places() FROM PUBLIC;
+
 -- ── Trigger: fire on every write path to the prize structure ─────────────────────────
 DROP TRIGGER IF EXISTS trg_sync_tournament_itm_places ON public.tournament_prizes;
 CREATE TRIGGER trg_sync_tournament_itm_places
