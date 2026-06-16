@@ -2611,6 +2611,8 @@
   },
   "liveHub": {
     "story": {
+      "bubble": "버블 — {{count}}명 남음",
+      "itm": "인더머니 — {{count}}명 남음",
       "title": "토너먼트 소식",
       "eliminated": "{{name}} 탈락 — {{count}}명 남음",
       "eliminatedNoCount": "{{name}} 탈락",

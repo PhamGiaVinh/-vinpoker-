@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   activeSeats,
+  deriveBubbleItm,
   deriveChipLeader,
   deriveEliminations,
   deriveFeed,
@@ -59,6 +60,7 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
   // poll-pauses-when-hidden gap (we re-confirm by stable id, not adjacent diff).
   const seenElimRef = useRef<Set<string>>(new Set());
   const seenMilestoneRef = useRef<Set<string>>(new Set());
+  const seenBubbleItmRef = useRef<Set<string>>(new Set());
   const storyRef = useRef<HubStoryItem[]>([]);
 
   useEffect(() => {
@@ -68,10 +70,11 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
     tableNamesRef.current = {};
     seenElimRef.current = new Set();
     seenMilestoneRef.current = new Set();
+    seenBubbleItmRef.current = new Set();
     storyRef.current = [];
 
     const load = async () => {
-      const [{ data: seatRows }, { data: hands }, { data: handPlayerRows }, { data: tourMeta }] = await Promise.all([
+      const [{ data: seatRows }, { data: hands }, { data: handPlayerRows }, { data: tourMeta }, { data: prizeRows }] = await Promise.all([
         supabase
           .from("tournament_seats")
           .select("player_id, seat_number, player_name, table_id, is_active, chip_count")
@@ -93,9 +96,17 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
         // Tournament meta for milestones / final table (read-only single row).
         supabase
           .from("tournaments")
-          .select("players_remaining, status")
+          .select("players_remaining, status, itm_places")
           .eq("id", tournamentId)
           .maybeSingle(),
+        // Floor-Ops prize structure: the highest paid POSITION = ITM places
+        // (robust to non-contiguous positions). 1 row, position only.
+        supabase
+          .from("tournament_prizes")
+          .select("position")
+          .eq("tournament_id", tournamentId)
+          .order("position", { ascending: false })
+          .limit(1),
       ]);
       if (cancelled || seq !== seqRef.current) return;
 
@@ -136,16 +147,24 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
       const nameByPlayerAll = new Map(
         allSeatRows.filter((s) => !!s.player_id).map((s) => [s.player_id, s.player_name || s.player_id.slice(0, 6)])
       );
-      const playersRemaining = (tourMeta as { players_remaining?: number | null } | null)?.players_remaining ?? null;
-      const status = (tourMeta as { status?: string | null } | null)?.status ?? null;
+      const meta = (tourMeta as { players_remaining?: number | null; status?: string | null; itm_places?: number | null } | null);
+      const playersRemaining = meta?.players_remaining ?? null;
+      const status = meta?.status ?? null;
+
+      // ITM places = highest paid prize POSITION (Floor-Ops prize structure, robust
+      // to gaps), else the tournaments.itm_places column, else null → no bubble/ITM.
+      const prizeMaxPosition = (prizeRows as { position?: number | null }[] | null)?.[0]?.position ?? 0;
+      const itmFromColumn = meta?.itm_places ?? 0;
+      const itmPlaces = prizeMaxPosition > 0 ? prizeMaxPosition : itmFromColumn > 0 ? itmFromColumn : null;
 
       // Tournament-wide story: new eliminations (deduped by stable id) + milestone /
-      // final-table crossings (deduped via the persistent sets). Newest items first.
+      // final-table crossings + bubble/ITM (deduped via the persistent sets). Newest first.
       const freshElim = deriveEliminations((handPlayerRows as RawHandPlayer[]) || [], nameByPlayerAll, playersRemaining)
         .filter((e) => !seenElimRef.current.has(e.id));
       freshElim.forEach((e) => seenElimRef.current.add(e.id));
       const freshMilestones = deriveMilestones(playersRemaining, tables.length, status, seenMilestoneRef.current);
-      const fresh = [...freshMilestones, ...freshElim];
+      const freshBubbleItm = deriveBubbleItm(playersRemaining, itmPlaces, seenBubbleItmRef.current);
+      const fresh = [...freshBubbleItm, ...freshMilestones, ...freshElim];
       if (fresh.length) {
         storyRef.current = [...fresh, ...storyRef.current].slice(0, STORY_LIMIT);
       }

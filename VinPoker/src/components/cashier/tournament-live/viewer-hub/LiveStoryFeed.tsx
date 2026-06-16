@@ -5,7 +5,7 @@
 // tokens; localized via i18n with vi inline defaults. Collapses to nothing when empty.
 
 import { useTranslation } from "react-i18next";
-import { UserMinus, Users, Trophy, type LucideIcon } from "lucide-react";
+import { UserMinus, Users, Trophy, Target, Banknote, type LucideIcon } from "lucide-react";
 import type { HubStoryItem, HubStoryKind } from "./hubDerive";
 
 export interface LiveStoryFeedProps {
@@ -16,6 +16,8 @@ const KIND_META: Record<HubStoryKind, { cls: string; Icon: LucideIcon }> = {
   elimination: { cls: "bg-destructive/15 text-destructive border-destructive/40", Icon: UserMinus },
   milestone: { cls: "bg-warning/15 text-warning border-warning/40", Icon: Users },
   final_table: { cls: "bg-success/15 text-success border-success/40", Icon: Trophy },
+  bubble: { cls: "bg-warning/15 text-warning border-warning/40", Icon: Target },
+  itm: { cls: "bg-success/15 text-success border-success/40", Icon: Banknote },
 };
 
 export function LiveStoryFeed({ items }: LiveStoryFeedProps) {
@@ -32,6 +34,12 @@ export function LiveStoryFeed({ items }: LiveStoryFeedProps) {
       return it.count != null
         ? t("liveHub.story.finalTable", "Final table — còn {{count}} người", { count: it.count })
         : t("liveHub.story.finalTableNoCount", "Final table");
+    }
+    if (it.kind === "bubble") {
+      return t("liveHub.story.bubble", "Đang ở bubble — còn {{count}} người", { count: it.count });
+    }
+    if (it.kind === "itm") {
+      return t("liveHub.story.itm", "Đã vào tiền — còn {{count}} người", { count: it.count });
     }
     return t("liveHub.story.remaining", "Còn {{count}} người", { count: it.count }); // milestone
   };

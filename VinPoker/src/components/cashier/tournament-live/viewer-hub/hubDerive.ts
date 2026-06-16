@@ -134,7 +134,7 @@ export function feedLabel(actionType: string, amount: number): string {
 // MVP = only events that are CERTAIN from the data. We never name a killer or a
 // "winner" (the DB stores neither) and never infer level-ups.
 
-export type HubStoryKind = "elimination" | "milestone" | "final_table";
+export type HubStoryKind = "elimination" | "milestone" | "final_table" | "bubble" | "itm";
 
 export interface HubStoryItem {
   id: string;
@@ -224,6 +224,35 @@ export function deriveMilestones(
     if (crossed != null) {
       out.push({ id: `story:ms:${crossed}`, kind: "milestone", count: n, label: `Còn ${n} người` });
     }
+  }
+  return out;
+}
+
+/**
+ * BUBBLE + ITM events, from the Floor-Ops prize structure's paid places.
+ * `itmPlaces` should be MAX(tournament_prizes.position) (robust to non-contiguous
+ * positions), falling back to tournaments.itm_places. Each event fires ONCE via
+ * the persistent `seen` set. Returns nothing when payouts aren't configured
+ * (`itmPlaces` null/≤0) — no false events. Bubble is the EXACT one-off-the-money
+ * moment; ITM fires the first time the field is at/below the paid places, so a
+ * multi-bust hand that skips the exact bubble still announces ITM.
+ */
+export function deriveBubbleItm(
+  playersRemaining: number | null,
+  itmPlaces: number | null,
+  seen: Set<string>,
+): HubStoryItem[] {
+  const out: HubStoryItem[] = [];
+  const n = playersRemaining;
+  if (n == null || itmPlaces == null || itmPlaces <= 0) return out;
+
+  if (n === itmPlaces + 1 && !seen.has("bubble")) {
+    seen.add("bubble");
+    out.push({ id: "story:bubble", kind: "bubble", count: n, label: `Đang ở bubble — còn ${n} người` });
+  }
+  if (n <= itmPlaces && !seen.has("itm")) {
+    seen.add("itm");
+    out.push({ id: "story:itm", kind: "itm", count: n, label: `Đã vào tiền — còn ${n} người` });
   }
   return out;
 }

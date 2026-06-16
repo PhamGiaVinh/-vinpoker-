@@ -2834,6 +2834,8 @@
   },
   "liveHub": {
     "story": {
+      "bubble": "On the bubble — {{count}} left",
+      "itm": "In the money — {{count}} left",
       "title": "Tournament feed",
       "eliminated": "{{name}} eliminated — {{count}} left",
       "eliminatedNoCount": "{{name}} eliminated",

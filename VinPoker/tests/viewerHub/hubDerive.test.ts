@@ -3,6 +3,7 @@ import {
   deriveTables,
   deriveFeed,
   deriveChipLeader,
+  deriveBubbleItm,
   deriveEliminations,
   deriveMilestones,
   feedKind,
@@ -165,5 +166,38 @@ describe("hubDerive — deriveMilestones", () => {
 
   it("emits nothing when players_remaining is null and not final table", () => {
     expect(deriveMilestones(null, 3, null, new Set())).toEqual([]);
+  });
+});
+
+describe("hubDerive — deriveBubbleItm", () => {
+  it("emits bubble exactly at itmPlaces + 1", () => {
+    const out = deriveBubbleItm(10, 9, new Set()); // 9 paid, 10 left → bubble
+    expect(out).toEqual([{ id: "story:bubble", kind: "bubble", count: 10, label: "Đang ở bubble — còn 10 người" }]);
+    expect(out[0].label).not.toMatch(/thắng/);
+  });
+
+  it("emits ITM when the field reaches the paid places", () => {
+    const out = deriveBubbleItm(9, 9, new Set()); // 9 left = 9 paid → in the money
+    expect(out).toEqual([{ id: "story:itm", kind: "itm", count: 9, label: "Đã vào tiền — còn 9 người" }]);
+  });
+
+  it("still fires ITM when a multi-bust skips the exact bubble", () => {
+    // jumps from 11 → 8 (never equals itmPlaces+1=10) → no bubble, but ITM fires.
+    const out = deriveBubbleItm(8, 9, new Set());
+    expect(out.map((x) => x.kind)).toEqual(["itm"]);
+  });
+
+  it("fires each event only once given a persistent seen set", () => {
+    const seen = new Set<string>();
+    expect(deriveBubbleItm(10, 9, seen).map((x) => x.kind)).toEqual(["bubble"]);
+    expect(deriveBubbleItm(10, 9, seen)).toEqual([]); // same → nothing
+    expect(deriveBubbleItm(9, 9, seen).map((x) => x.kind)).toEqual(["itm"]);
+    expect(deriveBubbleItm(9, 9, seen)).toEqual([]);
+  });
+
+  it("emits nothing when payouts are not configured (itmPlaces null or <=0)", () => {
+    expect(deriveBubbleItm(10, null, new Set())).toEqual([]);
+    expect(deriveBubbleItm(10, 0, new Set())).toEqual([]);
+    expect(deriveBubbleItm(null, 9, new Set())).toEqual([]);
   });
 });

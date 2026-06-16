@@ -2615,6 +2615,8 @@
   },
   "liveHub": {
     "story": {
+      "bubble": "バブル — 残り{{count}}人",
+      "itm": "インマネ — 残り{{count}}人",
       "title": "大会の動き",
       "eliminated": "{{name}} が敗退 — 残り{{count}}人",
       "eliminatedNoCount": "{{name}} が敗退",
