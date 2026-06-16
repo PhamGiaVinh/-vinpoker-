@@ -1,0 +1,70 @@
+#!/usr/bin/env node
+// Allowlisted controlled-op runner: fix the online-registration 500 by adding the missing
+// tournament_registrations.used_free_rake column (schema drift the deployed edge fn expects).
+//   node scripts/finance/apply_used_free_rake.mjs --preflight
+//   node scripts/finance/apply_used_free_rake.mjs --apply   (needs CONFIRM_APPLY_USED_FREE_RAKE=APPLY_USED_FREE_RAKE)
+// Allowlist HARDCODED to the one migration. Safety-scanned: only ALTER TABLE
+// tournament_registrations ADD COLUMN used_free_rake (+ COMMENT). Refuses DML/DROP/CREATE
+// FUNCTION/other tables/schema_migrations. NO db push. No creds → prints env names, exits 0.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, "..", "..");
+const MIG = "supabase/migrations/20260917000000_treg_used_free_rake.sql";
+const CONFIRM_ENV = "CONFIRM_APPLY_USED_FREE_RAKE", CONFIRM_VAL = "APPLY_USED_FREE_RAKE";
+
+const log = (...a) => console.log("[ufr]", ...a);
+const fail = (...a) => { console.error("[ufr] ✗", ...a); process.exit(1); };
+const mask = (s) => String(s).replace(/sbp_[A-Za-z0-9]+/g, "sbp_****").replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1****");
+
+function strip(sql) {
+  return sql.replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, "''").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ").replace(/'(?:''|[^'])*'/g, "''");
+}
+function scan(sql) {
+  const c = strip(sql), v = [];
+  if (/\bINSERT\s+INTO\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b/i.test(c)) v.push("contains DML");
+  if (/\bDROP\b/i.test(c)) v.push("contains DROP");
+  if (/\bCREATE\s+(OR\s+REPLACE\s+)?FUNCTION\b/i.test(c)) v.push("creates a function");
+  if (/schema_migrations/i.test(c)) v.push("touches schema_migrations");
+  for (const m of c.matchAll(/\bALTER\s+TABLE\s+(?:ONLY\s+)?(?:public\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi))
+    if (m[1].toLowerCase() !== "tournament_registrations") v.push(`ALTER on non-target table: ${m[1]}`);
+  if (!/\bADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+used_free_rake\b/i.test(c)) v.push("must ADD COLUMN IF NOT EXISTS used_free_rake");
+  return v;
+}
+
+const sql0 = (() => { try { return readFileSync(resolve(REPO_ROOT, MIG), "utf8"); } catch { fail(`migration not found: ${MIG}`); } })();
+const viol = scan(sql0);
+if (viol.length) { console.error("[ufr] ✗ REFUSING:"); viol.forEach((x) => console.error("  - " + x)); process.exit(1); }
+log("allowlisted migration:", MIG);
+log("safety scan PASS (ADD COLUMN used_free_rake on tournament_registrations only).");
+
+const mode = process.argv[2] || "";
+if (!["--preflight", "--apply"].includes(mode)) { log("modes: --preflight | --apply"); log(`--apply needs ${CONFIRM_ENV}=${CONFIRM_VAL}`); process.exit(0); }
+
+const ref = process.env.SUPABASE_PROJECT_REF, token = process.env.SUPABASE_ACCESS_TOKEN;
+if (!ref || !token) { log("no credentials — set SUPABASE_PROJECT_REF + SUPABASE_ACCESS_TOKEN. Exiting safely."); process.exit(0); }
+
+async function mgmt(q) {
+  let res;
+  try { res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ query: q }) }); }
+  catch (e) { fail("network:", mask(e.message)); }
+  if (!res.ok) fail(`Management API ${res.status}:`, mask(await res.text()));
+  return res.json();
+}
+const COL_SQL = `select count(*) c, max(is_nullable) nullable, max(column_default) deflt from information_schema.columns where table_schema='public' and table_name='tournament_registrations' and column_name='used_free_rake'`;
+
+const pre = (await mgmt(COL_SQL))[0];
+log(`preflight: used_free_rake present = ${pre.c} (expect 0 before apply)`);
+if (mode === "--preflight") { log("preflight done (read-only)."); process.exit(0); }
+
+if (process.env[CONFIRM_ENV] !== CONFIRM_VAL) fail(`APPLY blocked. Set ${CONFIRM_ENV}=${CONFIRM_VAL}`);
+log("applying (BEGIN…COMMIT) …");
+await mgmt(`BEGIN;\n${sql0}\nCOMMIT;`);
+log("reloading PostgREST schema cache (NOTIFY pgrst) so the edge fn sees the column …");
+await mgmt(`notify pgrst, 'reload schema';`);
+const post = (await mgmt(COL_SQL))[0];
+log(`post-verify: used_free_rake present = ${post.c} (expect 1), nullable=${post.nullable}, default=${post.deflt}`);
+if (Number(post.c) !== 1) fail("column not present after apply.");
+log("apply PASS — online registration insert should now succeed.");
