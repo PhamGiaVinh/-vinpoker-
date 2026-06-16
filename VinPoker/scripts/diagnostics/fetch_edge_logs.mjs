@@ -51,8 +51,4 @@ select count(*) as col_present, max(column_default) as col_default
 from information_schema.columns
 where table_schema='public' and table_name='tournaments' and column_name='service_fee_amount';`);
 
-// 4) Reload PostgREST schema cache (safe, idempotent) — in case the edge fn's PostgREST client
-//    has a stale schema after the raw-SQL column add. This is a NOTIFY, not a data write.
-await sql("reload PostgREST schema cache (NOTIFY)", `notify pgrst, 'reload schema';`);
-
-log("done (read-only + 1 schema-reload NOTIFY).");
+log("done (read-only).");
