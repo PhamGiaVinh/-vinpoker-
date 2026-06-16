@@ -499,7 +499,8 @@
     "filtersActive": "{{count}} đang dùng",
     "news": "TIN TỨC",
     "packages": "GÓI GIẢI ĐẤU",
-    "livetracker": "Live Tracker"
+    "livetracker": "Live Tracker",
+    "more": "Khác"
   },
   "clubsPage": {
     "title": "Câu lạc bộ",

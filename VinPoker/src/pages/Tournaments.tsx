@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { formatBuyInShort, formatShortDate, formatTime, formatStack } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye } from "lucide-react";
@@ -181,71 +182,99 @@ const Tournaments = () => {
     return n;
   }, [buyInRange, gameTypes, statusUpcoming, statusLateReg]);
 
+  // Compact view selector: 3 primary tabs always visible, the rest under "Khác".
+  type ViewKey = typeof view;
+  const PRIMARY_VIEWS: ViewKey[] = ["daily", "weekly", "livetracker"];
+  const MORE_VIEWS: ViewKey[] = ["news", "series", "livestream", "packages"];
+  const viewLabel = (v: ViewKey) =>
+    v === "daily" ? tr("tournamentsPage.daily")
+      : v === "weekly" ? tr("tournamentsPage.weekly")
+      : v === "series" ? tr("tournamentsPage.series")
+      : v === "livestream" ? tr("tournamentsPage.livestream")
+      : v === "livetracker" ? tr("tournamentsPage.livetracker")
+      : v === "packages" ? tr("tournamentsPage.packages")
+      : tr("tournamentsPage.news");
+  const viewIcon = (v: ViewKey) =>
+    v === "livestream" ? <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />
+      : v === "livetracker" ? <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-success shrink-0" />
+      : v === "news" ? <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+      : v === "packages" ? <span className="material-symbols-outlined text-sm sm:text-base shrink-0">redeem</span>
+      : null;
+  const selectFromMore = MORE_VIEWS.includes(view);
+
   return (
     <div className="space-y-8">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-background px-6 py-12 md:px-10 md:py-16">
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-background px-5 py-6 md:px-8 md:py-8">
         {/* Decorative glow effects */}
         <div className="pointer-events-none absolute -top-20 -right-20 w-72 h-72 rounded-full bg-primary/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full bg-primary/10 blur-[120px]" />
 
         {/* Content */}
         <div className="relative z-10">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 backdrop-blur-sm w-fit mb-4">
-            <Trophy className="w-3.5 h-3.5 text-primary" />
-            <span className="text-[10px] font-bold tracking-[0.28em] uppercase text-primary">{tr("tournamentsPage.title")}</span>
+          {/* Compact title row (badge + title merged) */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <Trophy className="w-4 h-4 text-primary shrink-0" />
+            <h1 className="font-display text-xl md:text-3xl tracking-[0.03em] text-primary leading-tight drop-shadow-[0_0_18px_hsl(var(--primary)/0.3)]">
+              {tr("tournamentsPage.title")}
+            </h1>
           </div>
 
-          {/* Title */}
-          <h1 className="font-display text-3xl md:text-5xl lg:text-6xl tracking-[0.04em] text-primary leading-[0.9] drop-shadow-[0_0_24px_hsl(var(--primary)/0.35)] mb-4">
-            {tr("tournamentsPage.title")}
-          </h1>
-
           {/* Subtitle */}
-          <p className="text-sm md:text-base text-muted-foreground leading-relaxed max-w-2xl mb-4">
+          <p className="text-xs md:text-sm text-muted-foreground leading-relaxed max-w-2xl mb-4">
             {tr("tournamentsPage.subtitle")}
           </p>
 
-          {/* Soft divider (rounded, no sharp diamond) */}
-          <div className="flex items-center gap-2 pt-2 max-w-md mb-6">
-            <div className="flex-1 h-px rounded-full bg-gradient-to-r from-transparent to-primary/50" />
-            <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 shadow-[0_0_8px_hsl(var(--primary))]" />
-            <div className="flex-1 h-px rounded-full bg-gradient-to-l from-transparent to-primary/30" />
-          </div>
-
-          {/* View selector — segmented pill control */}
-          <div className="flex flex-wrap gap-1.5 w-full sm:w-auto rounded-2xl bg-card/40 border border-border/30 p-1.5 backdrop-blur-sm">
-          {(["weekly", "daily", "livetracker", "news", "series", "livestream", "packages"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => { setView(v); setPage(1); }}
-              className={cn(
-                "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
-                view === v
-                  ? v === "livestream"
-                    ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
-                    : v === "livetracker"
-                    ? "bg-success/20 text-success shadow-[0_0_12px_rgba(16,185,129,0.25)]"
-                    : "gradient-neon text-primary-foreground shadow-neon"
-                  : "text-muted-foreground hover:text-foreground hover:bg-card/70"
-              )}
-            >
-              {v === "livestream" && <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#ff1900] shrink-0" />}
-              {v === "livetracker" && <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-success shrink-0" />}
-              {v === "news" && <Newspaper className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
-              {v === "packages" && <span className="material-symbols-outlined text-sm sm:text-base shrink-0">redeem</span>}
-              <span className="truncate">
-                {v === "daily" ? tr("tournamentsPage.daily")
-                  : v === "weekly" ? tr("tournamentsPage.weekly")
-                  : v === "series" ? tr("tournamentsPage.series")
-                  : v === "livestream" ? tr("tournamentsPage.livestream")
-                  : v === "livetracker" ? tr("tournamentsPage.livetracker")
-                  : v === "packages" ? tr("tournamentsPage.packages")
-                  : tr("tournamentsPage.news")}
-              </span>
-            </button>
-          ))}
+          {/* View selector — 3 primary tabs + "Khác" dropdown */}
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto rounded-2xl bg-card/40 border border-border/30 p-1.5 backdrop-blur-sm">
+            {PRIMARY_VIEWS.map((v) => (
+              <button
+                key={v}
+                onClick={() => { setView(v); setPage(1); }}
+                className={cn(
+                  "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center",
+                  view === v
+                    ? v === "livetracker"
+                      ? "bg-success/20 text-success shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                      : "gradient-neon text-primary-foreground shadow-neon"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card/70"
+                )}
+              >
+                {viewIcon(v)}
+                <span className="truncate">{viewLabel(v)}</span>
+              </button>
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={cn(
+                    "px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight",
+                    selectFromMore
+                      ? view === "livestream"
+                        ? "bg-[#ff1900]/15 text-[#ff5b3f] shadow-[0_0_12px_rgba(255,25,0,0.25)]"
+                        : "gradient-neon text-primary-foreground shadow-neon"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/70"
+                  )}
+                >
+                  {selectFromMore
+                    ? <><span className="inline-flex shrink-0">{viewIcon(view)}</span><span className="truncate">{viewLabel(view)}</span></>
+                    : tr("tournamentsPage.more")}
+                  <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-44">
+                {MORE_VIEWS.map((v) => (
+                  <DropdownMenuItem
+                    key={v}
+                    onClick={() => { setView(v); setPage(1); }}
+                    className={cn("gap-2 cursor-pointer text-xs font-bold tracking-wider uppercase", view === v && "text-primary")}
+                  >
+                    <span className="inline-flex w-4 justify-center shrink-0">{viewIcon(v)}</span>
+                    {viewLabel(v)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

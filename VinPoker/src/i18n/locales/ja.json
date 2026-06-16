@@ -402,7 +402,8 @@
     "filtersActive": "{{count}} が使用中",
     "news": "ニュース",
     "packages": "パッケージ",
-    "livetracker": "Live Tracker"
+    "livetracker": "Live Tracker",
+    "more": "その他"
   },
   "clubsPage": {
     "title": "クラブ",

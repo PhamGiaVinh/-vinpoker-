@@ -499,7 +499,8 @@
     "filtersActive": "{{count}} active",
     "news": "NEWS",
     "packages": "PACKAGES",
-    "livetracker": "Live Tracker"
+    "livetracker": "Live Tracker",
+    "more": "More"
   },
   "clubsPage": {
     "title": "Clubs",

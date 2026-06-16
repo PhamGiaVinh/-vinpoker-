@@ -377,7 +377,8 @@
     "filtersActive": "필터 {{count}}개 활성",
     "news": "뉴스",
     "packages": "토너먼트 패키지",
-    "livetracker": "Live Tracker"
+    "livetracker": "Live Tracker",
+    "more": "더보기"
   },
   "backingProfile": {
     "title": "백킹 프로필",
