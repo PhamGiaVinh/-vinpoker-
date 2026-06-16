@@ -86,79 +86,169 @@ Errors: `unauthorized`, `actor_not_allowed`, `tournament_not_open`, `table_numbe
 
 ---
 
-## 2. Feature — Thêm người (add a walk-in to a seat)
+## 2. Feature — Thêm người (seat a walk-in — PURE seat placement, NO money)
 
-**Goal:** a walk-in pays cash → floor seats them at **this** table (a chosen empty seat), prints a receipt.
-This is offline buy-in **targeted to a specific seat** instead of auto-draw.
+**Goal:** the floor seats a player into a **specific empty seat** and prints a seat ticket. **No money
+is taken here.**
 
-**Recommendation:** add a **sibling RPC** rather than changing the live offline RPC's signature.
+**Owner-locked (2026-06-16): floor action ≠ cashier money flow.** "Thêm người" is a **new floor RPC**,
+NOT an extension of the cashier offline buy-in. It does **pure seat placement** — no buy-in, no fee, no
+revenue impact. If the walk-in actually pays cash, the **cashier** "Buy-in tại quầy"
+(`create_offline_buyin_and_seat`) handles money + seating separately. The two flows stay disjoint.
 
-### RPC `add_offline_player_to_seat`
+### RPC `floor_assign_player_to_seat`
 ```
-add_offline_player_to_seat(
+floor_assign_player_to_seat(
   p_tournament_id         uuid,
   p_player_name           text,
-  p_buy_in                bigint,
-  p_fee                   bigint,
   p_tournament_table_id   uuid,
   p_seat_number           int
 ) returns jsonb
 ```
-Behavior (mirrors `create_offline_buyin_and_seat`, minus the draw):
-1. Auth + tournament-open + input validation (`name>=2`, `buy_in>0`, `fee>=0`, seat in `1..max_seats`).
+Behavior (seat only — never touches money):
+1. Auth (`auth.uid()` = owner/cashier of the tournament's club) + tournament-open + validation
+   (`name>=2`, seat in `1..max_seats`).
 2. Synthetic `player_id = gen_random_uuid()`, `entry_no=1`.
-3. Insert `tournament_registrations` (`confirmed`, `buy_in`, `platform_fixed_fee=p_fee`,
-   `total_pay=buy_in+fee`, `reference_code` `CASH-…`, `confirmed_by=auth.uid()`).
-4. Insert `tournament_entries` (`source='offline'`, `status='seated'`, table/seat set).
-5. **Claim the seat**: insert `tournament_seats` (`player_name=p_player_name`, `is_active=true`).
-   The partial unique index is the guard — `unique_violation` → whole RPC rolls back, return
-   `seat_occupied` (UI: "Ghế vừa bị lấy — chọn ghế khác").
-6. Insert `seat_draw_receipts` + `seat_assignment_history` (`reason='walk_in_add'`, `draw_type='manual'`).
-7. Return `{ ok, table_number, seat_number, receipt_code, display_name, starting_stack }` — same shape
-   the cashier panels already render via `SeatReceiptDialog`.
+3. Create the entry/seat anchor with **zero money** — `buy_in=0`, `platform_fixed_fee=0`, `total_pay=0`,
+   `reference_code` `FLOOR-…`. **Must NOT count as a paying confirmed registration** → zero revenue /
+   rake impact (stays out of `rake_amount × paying confirmed entries`). Exact anchoring (a non-counting
+   registration status vs. entry-only) = Phase-A detail; the invariant is **finance-neutral**.
+4. **Claim the seat**: insert `tournament_seats` (`player_name=p_player_name`, `is_active=true`). The
+   partial unique index guards — `unique_violation` → roll back, return `seat_occupied`
+   (UI: "Ghế vừa bị lấy — chọn ghế khác").
+5. Insert `seat_draw_receipts` (seat ticket, **no amounts**) + `seat_assignment_history`
+   (`reason='floor_seat_add'`, `draw_type='manual'`).
+6. Return `{ ok, table_number, seat_number, receipt_code, display_name }`.
 
 ### UI
-- "Thêm người" in the detail sheet → form: name (required), buy-in (default `tournament.buy_in`),
-  **fee default = `tournament.rake_amount`** (matches `OfflineBuyInPanel`/`ReentryPanel`), seat picker.
-- **Seat picker MUST hide occupied seats** — reuse the same "selectable seats" logic just shipped in
+- "Thêm người" in the detail sheet → form: **name (required)** + seat picker. **No money fields.**
+- **Seat picker MUST hide occupied seats** — reuse the "selectable seats" logic shipped in
   `MovePlayerDialog` (free seats only; occupied seats never shown). Owner rule 2026-06-16.
-- Confirm (restate amount+name) → RPC → `SeatReceiptDialog`.
+- Confirm (restate name + table/seat) → RPC → `SeatReceiptDialog` (seat ticket, no amount).
 
 ---
 
-## 3. Feature — Đóng bàn (close / break a table)
+## 3. Feature — Đóng bàn (close / break a table) + REDRAW + fill empty seats
 
-**Goal:** standard table break — relocate this table's seated players to other open tables, then close it.
+**Goal:** standard tournament table break — when a table is closed, its players are **re-drawn** and
+used to **fill the empty seats** at the remaining tables, keeping the room balanced.
+
+**Owner-locked decisions (2026-06-16):**
+- **Redraw scope = broken-table players ONLY.** Players already seated at other tables do not move;
+  only the closed table's players are re-drawn. (Least disruptive, TDA-standard.)
+- **Fill style = random, shortest-table-first.** The closed table's players are assigned to empty seats
+  in **random** order (fairness) while filling the **currently shortest** table first (balance) — so no
+  remaining table is left short.
+- **No auto-open.** If there aren't enough empty seats, the break is **blocked** and the operator is told
+  to open a table first — never auto-open (owner policy).
 
 ### RPC `close_tournament_table`
 ```
 close_tournament_table(
   p_tournament_table_id  uuid,
-  p_draw_mode            text default 'random_balanced',  -- or 'fill_lowest_table'
+  p_draw_mode            text default 'redraw_balanced',  -- 'redraw_balanced' | 'fill_lowest_table'
   p_reason               text default 'table_break'
 ) returns jsonb
 ```
-Behavior:
-1. Auth + tournament-open. Lock tournament `FOR UPDATE`.
-2. Load this table's **active** seats (the players to relocate).
-3. **Empty table** → just set `status='closed'`, history `reason='close_empty_table'`, return `{ok, moved:[], closed:true}`.
-4. **Capacity precheck**: free seats across **other active tables** must be ≥ players to move; else
-   fail atomically with `insufficient_capacity` (open another table first). This keeps the break
-   all-or-nothing — no half-broken table.
-5. For each seated entry: draw a destination at another open table (per `p_draw_mode`), claim it via
-   the partial unique index (mirror `move_player_seat`), supersede old receipt → new receipt, append
-   history `reason='table_break'`. `unique_violation` on a race → reload + retry that one seat; if it
-   still can't place after retry, **roll back the whole break**.
-6. Set the source table `status='closed'`.
-7. Return `{ ok, table_number, closed:true, moved:[{player_name, from_seat, to_table_number, to_seat_number, receipt_code}] }`.
+`redraw_balanced` = the owner-locked default (random order, shortest-table-first).
+`fill_lowest_table` = deterministic alternative (gom người vào bàn số nhỏ trước, no shuffle).
+
+**Behavior (one atomic transaction — all-or-nothing):**
+1. **Auth + lock.** actor = `auth.uid()` = owner/cashier of the tournament's club; tournament open;
+   `SELECT … FOR UPDATE` on the tournament (serialize concurrent floor actions).
+2. **Movers** = active `tournament_seats` at `p_tournament_table_id` → (entry_id, player_name, from_seat).
+3. **Empty closed table** (no movers) → just `status='closed'`, history `reason='close_empty_table'`,
+   return `{ok, closed:true, moved:[]}`.
+4. **Holes** = every empty seat at OTHER active tables (`table_id` linked, `status='active'`,
+   `id <> p_tournament_table_id`): for each, `seat_number ∈ 1..max_seats` with no `is_active` seat.
+   Each hole carries its table's current occupancy.
+5. **Capacity precheck:** `count(holes) ≥ count(movers)`? If NOT → **ROLLBACK**, return
+   `insufficient_capacity {need, have}`. (No auto-open.)
+6. **Redraw (`redraw_balanced`):**
+   - Shuffle `movers` (random order → fairness).
+   - Repeatedly pick the hole whose table currently has the **fewest** players (ties broken randomly);
+     after each assignment, increment that table's running occupancy so the next pick re-balances.
+     → players land on the shortest tables first, randomly ordered.
+   - (`fill_lowest_table`: order holes by `table_number ASC, seat ASC`, no shuffle.)
+7. **Apply each move** (mirror `move_player_seat`): claim the destination seat via the **partial unique
+   index** `(table_id, seat_number) WHERE is_active=true`. On `unique_violation` (a concurrent grab) →
+   re-pick another still-free hole; if none remain → **roll back the whole break**. Per move: flip the
+   old seat inactive, insert the new active seat, **supersede old receipt → new receipt**
+   (`draw_type='table_break'`), append `seat_assignment_history` (`reason='table_break_redraw'`,
+   records from/to).
+8. **Close source table:** `status='closed'`.
+9. **Return** `{ ok, closed:true, table_number, moved:[{player_name, from_seat, to_table_number,
+   to_seat_number, receipt_code}] }` — UI reprints each moved player's new receipt.
 
 Errors: `unauthorized`, `actor_not_allowed`, `tournament_not_open`, `table_not_found`,
-`insufficient_capacity`.
+`insufficient_capacity`, `race_lost` (rollback after retry exhausted).
+
+### "Cân bàn" (assisted) — auto-pick the shortest table
+Optional companion: a room-level **"Cân bàn"** button computes the **shortest active table** and proposes
+closing it (same RPC, **operator confirms** — no silent auto-close). This is "fill vào những ghế trống"
+generalized: break the most-empty table to fill the scattered holes left by busts.
 
 ### UI (danger-styled, like `SeatDrawDialog`)
-- "Đóng bàn" → confirmation: "Bàn N có K người — sẽ chuyển sang các bàn khác rồi đóng bàn." + draw-mode select.
-- Progressive reveal of each move (reuse the `SeatDrawDialog` result-row pattern).
-- On `insufficient_capacity`: block with "Không đủ ghế trống — mở thêm bàn trước khi đóng."
+- **"Đóng bàn"** (per-table) → confirm: *"Bàn N có K người — sẽ bốc ngẫu nhiên sang ghế trống ở các
+  bàn khác rồi đóng bàn."* + draw-mode toggle (mặc định: redraw cân bàn).
+- **Progressive reveal** of each redraw move (reuse the `SeatDrawDialog` result-row pattern):
+  "Nguyễn A → Bàn 3 · Ghế 5".
+- On `insufficient_capacity`: block — *"Không đủ ghế trống (cần K, có M) — mở thêm bàn trước khi đóng"* —
+  with a shortcut to **"+ Mở bàn"**.
+- After success: list of moved players + **"In lại phiếu"** per player (new table/seat).
+
+---
+
+## 3B. Scheduled / Tournament Redraw (SEPARATE from close-table)
+
+**Why separate:** the §3 broken-table redraw fires when *closing a table* and re-draws **only that
+table's players**. A tournament also needs **scheduled** redraws driven by tournament rules, which may
+re-seat a **wider eligible set**. These are a **distinct RPC** — never mixed into `close_tournament_table`.
+
+### Redraw modes
+| Mode | Eligible set | Buildable on current schema? |
+|---|---|---|
+| `broken_table` | the closed table's players only (= §3) | ✅ handled by `close_tournament_table` |
+| `final_table` | all remaining active players when the **final table** is reached → consolidate onto 1 table | ✅ `final_table` status + `players_remaining` |
+| `table_count_threshold` | all remaining active players when active table count ≤ a **configured** N → consolidate | ✅ count active `tournament_tables` |
+| `itm` | players who are **ITM** (`is_itm` from `itm_places` + eliminations/leaderboard view) | ✅ ITM is derivable |
+| `day2_itm` | players qualified to **Day 2** (multi-day) | ⛔ **schema-gated (deferred)** — no day/flight columns |
+| `manual_custom` | a **TD-selected** entry/player set | ✅ no schema dependency |
+
+**`table_count_threshold` is configurable** per tournament/series (not hardcoded). UI presets **3** and
+**4**; **default 3** when unconfigured. **Day 2 is deferred** — needs a flight/day/bag/qualified schema
+(`tournaments.day_number`, `tournament_seats.day`, …); spec the design, do **not** build in Phase A.
+
+### RPC `redraw_tournament` (Phase A2 — not built in A1)
+```
+redraw_tournament(
+  p_tournament_id        uuid,
+  p_mode                 text,            -- final_table | table_count_threshold | itm | manual_custom | day2_itm(future)
+  p_eligible_entry_ids   uuid[] default null,  -- required for manual_custom; ignored otherwise
+  p_target_table_count   int  default null,    -- consolidation target (threshold / final_table)
+  p_draw_mode            text default 'redraw_balanced',  -- random, shortest-table-first (reuse §3)
+  p_dry_run              boolean default true  -- true → PREVIEW only, NO writes
+) returns jsonb
+  -- dry-run → { ok, mode, preview:true,   moves:[{player_name, from_table, from_seat, to_table, to_seat}] }
+  -- commit  → { ok, mode, committed:true, moves:[{…, receipt_code}] }  |  { ok:false, blocked:{reason} }
+```
+
+### Rules (every scheduled redraw)
+- **Never auto-run.** TD/Floor must confirm. `Cân bàn` / threshold may *suggest*, never execute silently.
+- **Preview first** = `p_dry_run=true` returns the full assignment (ai → bàn nào · ghế nào) with **no
+  writes**; operator reviews → commits with `p_dry_run=false`.
+- **Atomic:** any mid-way error rolls back the whole redraw.
+- **Receipts:** cancel old receipts, issue new ones for everyone moved.
+- **Audit:** `seat_assignment_history` records the redraw type —
+  `table_break_redraw | final_table_redraw | threshold_redraw | day2_itm_redraw | manual_redraw`.
+- **Lock during redraw:** advisory lock / status flag on the tournament so concurrent hand-input /
+  move-seat can't race the redraw.
+- **Insufficient valid seats → block** with a clear reason (never auto-open a table).
+- **No cashier money flow** — redraw moves seats only.
+
+### Reuse
+The §3 `redraw_balanced` fill (random order, shortest-table-first), the partial-unique seat claim,
+receipt supersede, and `seat_assignment_history` machinery. `auth.uid()` actor + owner/cashier gate.
 
 ---
 
@@ -171,34 +261,60 @@ Errors: `unauthorized`, `actor_not_allowed`, `tournament_not_open`, `table_not_f
   verify grants/SECURITY DEFINER/search_path → idempotency rerun → rollback note). No `supabase db push`,
   no `deploy_db=true`, no `schema_migrations` edit.
 - **Untouched:** payroll, dealer swing, game engine, tracker runtime, online registration behavior.
-- **Revenue:** the fee (rake) on "Thêm người" reconciles through `tournament_registrations` exactly like
-  offline buy-in — do not double-count vs online. Buy-in stays prize-pool pass-through.
+- **Revenue:** "Thêm người" is **finance-neutral** (pure seat placement, zero amounts) — money only
+  enters via the cashier offline buy-in, which stays prize-pool pass-through (buy-in) + rake reconciled
+  through `tournament_registrations` (unchanged). Redraws never touch money.
 - **Types:** new RPCs aren't in generated Supabase types until applied → narrow local cast at the call
   site only (`(supabase.rpc as any)(...)` with a `// TODO: remove after DB apply + types regen`).
 
-## 5. Open questions for the owner (decide before build)
+## 5. Decisions
 
-1. **game_tables link on open-table:** create a `game_tables` row + link, or reuse the existing
-   table-creation path (`tournament-live-draw` edge fn)? (Confirm the current "how does a table get
-   created today" path — `TableDrawPanel` was removed in #174.)
-2. **Add-player RPC:** new sibling `add_offline_player_to_seat` (recommended, keeps the live offline RPC
-   untouched) vs. extend `create_offline_buyin_and_seat` with optional seat params?
-3. **Close-table when room is full:** hard-fail `insufficient_capacity` (recommended) vs. allow a partial
-   relocation + leave the rest?
-4. **Default `max_seats`** for a newly opened table: fixed 9, or read a tournament-level table-size?
-5. **"Mở bàn" scope:** room-level "+ Mở bàn" (new table) + per-table "re-open closed table" — confirm both.
+### Resolved (owner-locked 2026-06-16)
+**Close-table redraw**
+- Redraw scope: broken-table players **only** (others don't move).
+- Fill style: **random, shortest-table-first** (`redraw_balanced`).
+- Insufficient seats: **block** + prompt "+ Mở bàn" — **never auto-open**.
+- "Cân bàn" helper: auto-picks the shortest table, **operator confirms** (no silent auto-close).
 
-## 6. Build order (one branch, when approved)
+**Scheduled / tournament redraw**
+- A **separate RPC** (`redraw_tournament`), Phase **A2** — never mixed into close-table.
+- `table_count_threshold`: **configurable** per tournament/series; UI presets 3 & 4; **default 3**.
+- **Day 2 / multi-day: deferred** (needs flight/day schema) — design only, not Phase A.
 
-1. Source-only migrations: `open_tournament_table`, `add_offline_player_to_seat`, `close_tournament_table`.
-2. UI: `OpenTableDialog`, `AddPlayerDialog` (reuse offline-buyin + hidden-occupied seat picker),
-   `CloseTableDialog`; wire the three buttons in `FloorTableDetailSheet` (+ room-level "+ Mở bàn").
+**Mở bàn / Thêm người**
+- Mở bàn always **manual**; supports **both** creating a new table **and** reopening a closed one. The
+  existing `add_table` edge-fn path is bulk-save/no-audit → build a dedicated `open_tournament_table` RPC.
+- `max_seats` = read tournament/series config if present, **fallback 9** (or mode of existing tables).
+- "Thêm người" = **pure seat placement, NO money** — a **new floor RPC** (`floor_assign_player_to_seat`),
+  separate from the cashier offline buy-in; **finance-neutral**.
+
+### Still open (Phase-A implementation detail)
+- Floor add-player anchoring: a non-counting registration status vs. entry-only — pick whichever keeps it
+  **finance-neutral** (zero rake/revenue) while remaining move-eligible + receiptable.
+
+## 6. Build order (when approved)
+
+**Phase A1 — core table ops (source-only draft PR):**
+1. Migrations (new RPCs only): `open_tournament_table` (create new + reopen closed),
+   `close_tournament_table` (broken-table `redraw_balanced` + capacity precheck),
+   `floor_assign_player_to_seat` (pure seat placement, no money).
+2. UI: `OpenTableDialog`, `AddPlayerDialog` (name + hidden-occupied seat picker, **no money fields**),
+   `CloseTableDialog` (danger confirm + progressive redraw reveal + reprint receipts); wire the three
+   buttons in `FloorTableDetailSheet` + room-level "+ Mở bàn" / "Cân bàn".
 3. `featureFlags`: `floorTableOps=false`; buttons "Cần bật RPC".
-4. `npx tsc --noEmit` + `npm run build`; diff + forbidden-path proof; draft PR (mixed FE + source-only
+4. `npx tsc --noEmit` + `npm run build`; diff + forbidden-path proof; draft PR (FE + source-only
    migrations → flag to Coordinator; nothing applied by merge).
-5. Owner-gated: controlled apply of the three migrations → flip `floorTableOps=true` → floor UAT
-   (open a table, walk-in add to a chosen empty seat with receipt, break a table and verify all players
-   relocated + table closed).
+
+**Phase A2 — scheduled redraw (separate, larger):**
+5. Migration: `redraw_tournament` (modes `final_table` / `table_count_threshold` / `itm` /
+   `manual_custom`; `day2_itm` deferred) + dry-run preview + redraw lock + audit reasons.
+6. UI: redraw launcher with **preview → confirm** flow.
+
+**Controlled apply (owner-gated, separate):**
+7. Apply A1 migrations → flip `floorTableOps=true` → floor UAT: open/reopen a table; seat a walk-in
+   (no money) with a seat ticket; **break a table and verify players are randomly re-drawn into the
+   shortest tables first, all get new receipts, room stays balanced**; `insufficient_capacity` blocks
+   (no auto-open). Then apply A2 → UAT each redraw mode via dry-run **preview before commit**.
 
 ## 7. Risks
 
