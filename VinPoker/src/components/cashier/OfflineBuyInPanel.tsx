@@ -73,7 +73,9 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     setSelected(t);
     setPlayerName("");
     setBuyIn(Number((t as any).buy_in) || 0);
-    setFee(Number((t as any).rake_amount) || 0);
+    // Default fee = rake (+ service fee when the feature is live). Player pays buy_in + rake + service.
+    const svc = FEATURES.tournamentServiceFee ? (Number((t as any).service_fee_amount) || 0) : 0;
+    setFee((Number((t as any).rake_amount) || 0) + svc);
   };
 
   const total = (Number(buyIn) || 0) + (Number(fee) || 0);

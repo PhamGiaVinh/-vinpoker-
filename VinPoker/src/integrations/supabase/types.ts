@@ -6859,6 +6859,7 @@ export type Database = {
           players_remaining: number | null
           prize_pool: number | null
           rake_amount: number
+          service_fee_amount: number
           start_time: string | null
           starting_stack: number
           status: string
@@ -6895,6 +6896,7 @@ export type Database = {
           players_remaining?: number | null
           prize_pool?: number | null
           rake_amount?: number
+          service_fee_amount?: number
           start_time?: string | null
           starting_stack?: number
           status?: string
@@ -6931,6 +6933,7 @@ export type Database = {
           players_remaining?: number | null
           prize_pool?: number | null
           rake_amount?: number
+          service_fee_amount?: number
           start_time?: string | null
           starting_stack?: number
           status?: string

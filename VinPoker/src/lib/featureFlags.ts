@@ -174,4 +174,15 @@ export const FEATURES = {
    * payroll, or dealer swing. (Scheduled/tournament redraw is a later Phase A2.)
    */
   floorTableOps: false,
+  /**
+   * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
+   * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
+   * false: the ClubAdmin tournament create/edit "Phí dịch vụ" input is hidden, the cashier offline/
+   * re-entry fee default stays = rake only, and the Owner Finance "Phí dịch vụ" line is suppressed.
+   * Flip to true ONLY after BOTH owner-gated migrations are applied live: `20260915000000`
+   * (tournaments.service_fee_amount column) AND `20260916000000` (get_club_finance_summary v3 with the
+   * serviceFee stream), and the tournament-register edge fn is redeployed. The column defaults to 0, so
+   * every existing tour is unaffected until an owner sets a service fee > 0.
+   */
+  tournamentServiceFee: false,
 } as const;

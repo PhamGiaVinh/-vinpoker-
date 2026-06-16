@@ -219,6 +219,9 @@ const ClubFinanceDashboard = () => {
                 <Line label="• Online" value={formatVND(summary.revenue.rakeOnline)} sub />
                 <Line label="• Offline" value={formatVND(summary.revenue.rakeOffline)} sub />
                 <Line label="• Re-entry" value={formatVND(summary.revenue.rakeReentry)} sub />
+                {(summary.revenue.serviceFee ?? 0) > 0 && (
+                  <Line label="Phí dịch vụ" value={formatVND(summary.revenue.serviceFee)} strong />
+                )}
                 <div className="h-px bg-border/50 my-1" />
                 <Line label="Thực thu (đối chiếu)" value={formatVND(summary.revenue.rakeActual)} muted />
                 <Line

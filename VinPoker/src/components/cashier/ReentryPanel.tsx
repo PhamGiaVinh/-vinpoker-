@@ -118,7 +118,9 @@ export function ReentryPanel({ clubIds }: { clubIds: string[] }) {
   const pickPlayer = (b: Busted) => {
     setTarget(b);
     setBuyIn(Number((selected as any)?.buy_in) || 0);
-    setFee(Number((selected as any)?.rake_amount) || 0);
+    // Default fee = rake (+ service fee when the feature is live). Player pays buy_in + rake + service.
+    const svc = FEATURES.tournamentServiceFee ? (Number((selected as any)?.service_fee_amount) || 0) : 0;
+    setFee((Number((selected as any)?.rake_amount) || 0) + svc);
   };
 
   const total = (Number(buyIn) || 0) + (Number(fee) || 0);
