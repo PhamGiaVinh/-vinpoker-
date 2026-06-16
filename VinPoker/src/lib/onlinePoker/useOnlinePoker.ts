@@ -15,9 +15,11 @@ import { MOCK_TABLES, MOCK_WALLET, mockHand } from './mockData';
 import {
   listTablesLive,
   loadHandStateLive,
+  loadTableMetaLive,
   onlinePokerClient,
   wirePublicToView,
   RuntimeNotLiveError,
+  type LiveTableMeta,
 } from './client';
 import { isHoleCardsOk, type RpcOutcome } from './wire';
 
@@ -144,4 +146,28 @@ export function useTableHand(tableId: string): TableHandState {
   };
 
   return { hand, loading, error, refresh, actions };
+}
+
+// ── table metadata ─────────────────────────────────────────────────────────
+
+/** Table header data (name, sb, bb). Dark = mock lookup; live = DB fetch. */
+export function useTableMeta(tableId: string): LiveTableMeta | null {
+  const mockRow = MOCK_TABLES.find((t) => t.id === tableId);
+  const mockMeta: LiveTableMeta | null = mockRow
+    ? { id: mockRow.id, name: mockRow.name, sb: mockRow.sb, bb: mockRow.bb, maxSeats: mockRow.maxSeats, status: mockRow.status }
+    : null;
+
+  const [meta, setMeta] = useState<LiveTableMeta | null>(RUNTIME_LIVE ? null : mockMeta);
+
+  useEffect(() => {
+    if (!RUNTIME_LIVE) { setMeta(mockMeta); return; }
+    let cancelled = false;
+    loadTableMetaLive(tableId)
+      .then((m) => { if (!cancelled) setMeta(m); })
+      .catch(() => { if (!cancelled) setMeta(null); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
+
+  return meta;
 }
