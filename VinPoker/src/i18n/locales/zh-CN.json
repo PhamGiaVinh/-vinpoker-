@@ -2424,6 +2424,8 @@
     "cancelled": "已取消报名。",
     "freeRakeBanner": "🎉 您获得免费俱乐部服务（节省 {{savings}}）。请在 5 分钟内付款以保留优惠。",
     "feeLabel": "培训费",
+    "clubFee": "俱乐部费",
+    "serviceFeeLabel": "服务费",
     "freeClubService": "免费俱乐部服务",
     "totalPay": "应付总额",
     "transferInfo": "转账信息",

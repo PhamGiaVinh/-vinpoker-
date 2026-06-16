@@ -2424,6 +2424,8 @@
     "cancelled": "登録をキャンセルしました。",
     "freeRakeBanner": "🎉 クラブサービスが無料です（{{savings}} お得）。特典を保持するには 5 分以内にお支払いください。",
     "feeLabel": "トレーニング料金",
+    "clubFee": "クラブ料金",
+    "serviceFeeLabel": "サービス料",
     "freeClubService": "無料クラブサービス",
     "totalPay": "お支払い総額",
     "transferInfo": "振込情報",

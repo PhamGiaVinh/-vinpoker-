@@ -2420,6 +2420,8 @@
     "cancelled": "등록이 취소되었습니다.",
     "freeRakeBanner": "🎉 클럽 서비스가 무료입니다 ({{savings}} 절약). 혜택을 유지하려면 5분 이내에 결제해 주세요.",
     "feeLabel": "트레이닝 비용",
+    "clubFee": "클럽 수수료",
+    "serviceFeeLabel": "서비스 수수료",
     "freeClubService": "무료 클럽 서비스",
     "totalPay": "총 결제 금액",
     "transferInfo": "이체 정보",
