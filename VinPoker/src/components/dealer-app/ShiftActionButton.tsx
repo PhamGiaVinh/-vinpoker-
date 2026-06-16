@@ -3,8 +3,9 @@ import { LogIn, LogOut, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { computeCheckInState } from "@/lib/dealerApp/checkInWindow";
-import { formatHm } from "@/lib/dealerApp/selectors";
+import { formatHm, poolEntryInfo } from "@/lib/dealerApp/selectors";
 import { useShiftActions, type ShiftAction } from "@/hooks/dealer/useShiftActions";
+import { FEATURES } from "@/lib/featureFlags";
 import type { DealerShiftView } from "@/types/dealerApp";
 
 /**
@@ -48,18 +49,33 @@ export function ShiftActionButton({ shift, className }: { shift: DealerShiftView
     else void checkOut(shift);
   };
 
+  // Scheduled-pool note (flag-gated): after check-in, show "pending until HH:MM"
+  // (early arrival) or "in pool" (scheduled start reached). Computed from the
+  // assignment alone — no dealer_attendance read in the dealer app.
+  const pool = FEATURES.dealerPoolBridge && shift.status === "checked_in"
+    ? poolEntryInfo(shift, new Date().toISOString())
+    : null;
+
   return (
-    <Button
-      disabled={cta.disabled || isPending}
-      onClick={onClick}
-      className={cn(
-        "w-full border-0 font-bold",
-        cta.disabled ? "bg-muted text-muted-foreground hover:bg-muted" : "gradient-neon text-primary-foreground",
-        className
+    <div className={cn("space-y-1.5", className)}>
+      <Button
+        disabled={cta.disabled || isPending}
+        onClick={onClick}
+        className={cn(
+          "w-full border-0 font-bold",
+          cta.disabled ? "bg-muted text-muted-foreground hover:bg-muted" : "gradient-neon text-primary-foreground"
+        )}
+      >
+        {isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <cta.Icon className="w-4 h-4 mr-1.5" />}
+        {cta.label}
+      </Button>
+      {pool && (
+        <p className="text-[12px] text-center text-muted-foreground">
+          {pool.pending
+            ? t("dealer.pool.pendingBadge", "⏳ Đã có mặt · vào pool lúc {{time}}", { time: formatHm(pool.poolEntryAt) })
+            : t("dealer.pool.inPool", "🟢 Đang trong pool xoay dealer")}
+        </p>
       )}
-    >
-      {isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <cta.Icon className="w-4 h-4 mr-1.5" />}
-      {cta.label}
-    </Button>
+    </div>
   );
 }

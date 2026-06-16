@@ -117,6 +117,11 @@
       "notePlaceholder": "e.g. family matters…",
       "submit": "Send request"
     },
+    "pool": {
+      "pendingToast": "Checked in. You join the pool at {{time}}.",
+      "pendingBadge": "⏳ Present · join pool at {{time}}",
+      "inPool": "🟢 In the dealer rotation pool"
+    },
     "exitToMain": "Main app"
   },
   "tv": {
