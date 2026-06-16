@@ -1,0 +1,25 @@
+name: Diag — tournament-register edge logs (read-only, one-shot)
+
+# Manual trigger only. Read-only fetch of recent Edge Function logs to diagnose the
+# registration "non-2xx" error. No DB writes. Delete after use.
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Fetch edge logs
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/diagnostics/fetch_edge_logs.mjs
