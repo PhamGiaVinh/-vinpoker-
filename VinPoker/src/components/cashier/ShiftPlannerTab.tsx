@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal, Save, Loader2, MessageCircle } from "lucide-react";
+import { CalendarRange, Sparkles, Send, Info, ListChecks, SlidersHorizontal, Save, Loader2, MessageCircle, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { buildSaveRunPayload, buildSchedulePng } from "@/lib/shiftPlanner";
 import { buildShiftGroups } from "./shift-planner/ShiftPlanner.utils";
+import { AddShiftDialog } from "./shift-planner/AddShiftDialog";
+import type { DraftAssignment } from "@/types/shiftPlanner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +37,12 @@ export default function ShiftPlannerTab({
 }) {
   const [workDate, setWorkDate] = useState<string>(todayInVN());
   const [editorOpen, setEditorOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [savedRunId, setSavedRunId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Manual edits layered over the auto-draft (null = use the auto-draft as-is).
+  // Cleared on date change / regenerate so the AI draft is the fresh baseline.
+  const [overrides, setOverrides] = useState<DraftAssignment[] | null>(null);
   // mode="mock" runs the in-memory demo; mode="live" reads the dealer_shift_* tables
   // (Phase 2, after the migration is applied live).
   const { data, loading, source, regenerate, refetch } = useShiftPlanner({ clubIds, workDate, mode });
@@ -46,12 +52,28 @@ export default function ShiftPlannerTab({
     rpc: (fn: string, args: object) => Promise<{ data: any; error: { message?: string } | null }>;
   };
 
-  const changeDate = (d: string) => { setWorkDate(d || todayInVN()); setSavedRunId(null); };
+  // The draft actually shown / saved = auto-draft + manual edits (add/remove).
+  const effectiveDraft = useMemo(
+    () => (data ? (overrides ? { ...data.draft, assignments: overrides } : data.draft) : null),
+    [data, overrides]
+  );
+  const effAssignments = effectiveDraft?.assignments ?? [];
+  const assignedDealerIds = useMemo(() => new Set(effAssignments.map((a) => a.dealerId)), [effAssignments]);
 
-  // Persist the current draft via save_shift_run (returns the new run id).
+  const changeDate = (d: string) => { setWorkDate(d || todayInVN()); setSavedRunId(null); setOverrides(null); };
+  const handleRegenerate = () => { setOverrides(null); regenerate(); toast.success("Đã tạo lại bản nháp"); };
+
+  const handleAddAssignment = (a: DraftAssignment) =>
+    setOverrides((prev) => [...(prev ?? data?.draft.assignments ?? []), a]);
+  const handleRemoveAssignment = (templateId: string, dealerId: string) =>
+    setOverrides((prev) =>
+      (prev ?? data?.draft.assignments ?? []).filter((x) => !(x.templateId === templateId && x.dealerId === dealerId))
+    );
+
+  // Persist the current (edited) draft via save_shift_run (returns the new run id).
   const persistDraft = async (): Promise<string | null> => {
-    if (!data || clubIds.length === 0) return null;
-    const { data: res, error } = await rpc.rpc("save_shift_run", buildSaveRunPayload(clubIds[0], workDate, data.draft));
+    if (!data || !effectiveDraft || clubIds.length === 0) return null;
+    const { data: res, error } = await rpc.rpc("save_shift_run", buildSaveRunPayload(clubIds[0], workDate, effectiveDraft));
     if (error) {
       if (String(error.message ?? "").includes("published_schedule_exists")) {
         toast.error("Lịch ngày này đã được publish — không thể ghi đè.");
@@ -69,7 +91,7 @@ export default function ShiftPlannerTab({
     setBusy(true);
     try {
       const runId = await persistDraft();
-      if (runId) toast.success(`Đã lưu nháp (${data?.draft.assignments.length ?? 0} ca)`);
+      if (runId) toast.success(`Đã lưu nháp (${effAssignments.length} ca)`);
     } finally { setBusy(false); }
   };
 
@@ -101,11 +123,11 @@ export default function ShiftPlannerTab({
   // via the send-shift-schedule Edge Function (which holds the bot token).
   const handleSendTelegram = async () => {
     if (!data || clubIds.length === 0) return;
-    if (data.draft.assignments.length === 0) { toast.error("Chưa có ca nào để gửi"); return; }
+    if (effAssignments.length === 0) { toast.error("Chưa có ca nào để gửi"); return; }
     setBusy(true);
     try {
       const dealersById = new Map(data.dealers.map((d) => [d.id, d]));
-      const groups = buildShiftGroups(data.templates, data.draft.assignments).map((g) => ({
+      const groups = buildShiftGroups(data.templates, effAssignments).map((g) => ({
         label: g.template.label,
         window: `${g.template.startAt.slice(11, 16)} – ${g.template.endAt.slice(11, 16)}`,
         need: g.template.needCount,
@@ -117,10 +139,10 @@ export default function ShiftPlannerTab({
       }));
       const png = await buildSchedulePng({
         title: `Lịch dealer · ${dateLabel}`,
-        subtitle: `${data.draft.assignments.length} ca`,
+        subtitle: `${effAssignments.length} ca`,
         groups,
       });
-      const recipients = data.draft.assignments.map((a) => ({
+      const recipients = effAssignments.map((a) => ({
         dealer_id: a.dealerId,
         shift_label: `${a.templateLabel} (${a.scheduledStartAt.slice(11, 16)}–${a.scheduledEndAt.slice(11, 16)})`,
       }));
@@ -166,8 +188,16 @@ export default function ShiftPlannerTab({
             onChange={(e) => changeDate(e.target.value)}
             className="h-9 w-[150px]"
           />
-          <Button variant="outline" size="sm" className="h-9" onClick={() => { regenerate(); toast.success("Đã tạo lại bản nháp"); }}>
+          <Button variant="outline" size="sm" className="h-9" onClick={handleRegenerate}>
             <Sparkles className="w-4 h-4 mr-1.5" /> Tạo nháp AI
+          </Button>
+          <Button
+            variant="outline" size="sm" className="h-9"
+            onClick={() => setAddOpen(true)}
+            disabled={!data}
+            title="Gán thủ công 1 dealer vào 1 khung ca"
+          >
+            <UserPlus className="w-4 h-4 mr-1.5" /> Thêm ca
           </Button>
           {source === "live" && (
             <Button variant="outline" size="sm" className="h-9" onClick={() => setEditorOpen(true)}>
@@ -179,14 +209,14 @@ export default function ShiftPlannerTab({
               <Button
                 variant="outline" size="sm" className="h-9"
                 onClick={handleSave}
-                disabled={busy || !data || data.draft.assignments.length === 0}
+                disabled={busy || !data || effAssignments.length === 0}
               >
                 {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />} Lưu nháp
               </Button>
               <Button
                 size="sm" className="h-9"
                 onClick={handlePublish}
-                disabled={busy || !data || data.draft.assignments.length === 0}
+                disabled={busy || !data || effAssignments.length === 0}
                 title="Lưu + khoá lịch ngày này; phát sự kiện cho chấm công"
               >
                 {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />} Publish lịch
@@ -194,7 +224,7 @@ export default function ShiftPlannerTab({
               <Button
                 variant="outline" size="sm" className="h-9"
                 onClick={handleSendTelegram}
-                disabled={busy || !data || data.draft.assignments.length === 0}
+                disabled={busy || !data || effAssignments.length === 0}
                 title="Gửi ảnh lịch lên nhóm floor + DM từng dealer"
               >
                 {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <MessageCircle className="w-4 h-4 mr-1.5" />} Gửi Telegram
@@ -215,7 +245,7 @@ export default function ShiftPlannerTab({
         <>
           <div className="text-xs text-muted-foreground -mt-1">{dateLabel}</div>
 
-          <ShiftSummaryCards templates={data.templates} availability={data.availability} draft={data.draft} />
+          <ShiftSummaryCards templates={data.templates} availability={data.availability} draft={effectiveDraft ?? data.draft} />
 
           <Tabs defaultValue="daily">
             <TabsList>
@@ -240,8 +270,9 @@ export default function ShiftPlannerTab({
                     <div className="p-3">
                       <DailyShiftTable
                         templates={data.templates}
-                        assignments={data.draft.assignments}
+                        assignments={effAssignments}
                         dealers={data.dealers}
+                        onRemove={handleRemoveAssignment}
                       />
                     </div>
                   </Card>
@@ -274,7 +305,7 @@ export default function ShiftPlannerTab({
                 <WeeklyShiftMatrix
                   workDate={workDate}
                   dealers={data.dealers}
-                  assignments={data.draft.assignments}
+                  assignments={effAssignments}
                   availability={data.availability}
                 />
               </Card>
@@ -306,6 +337,19 @@ export default function ShiftPlannerTab({
           clubId={clubIds[0]}
           refDate={workDate}
           onChanged={refetch}
+        />
+      )}
+
+      {data && (
+        <AddShiftDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          dealers={data.dealers}
+          templates={data.templates}
+          workDate={workDate}
+          tzOffsetMinutes={data.config.tzOffsetMinutes}
+          assignedDealerIds={assignedDealerIds}
+          onAdd={handleAddAssignment}
         />
       )}
     </div>
