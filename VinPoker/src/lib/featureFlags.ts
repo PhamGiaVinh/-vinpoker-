@@ -72,16 +72,15 @@ export const FEATURES = {
    */
   tdAiRemote: true,
   /**
-   * Online Poker (play-money, closed alpha) UI under /poker/*. Default **OFF** —
-   * the dark switch for the GE-2D shell. While false, /poker and /poker/table/:id
-   * render <PokerComingSoon/> (a "đang phát triển" notice); real users never see
-   * the mock shell. Flip to true ONLY after: (a) the GE-2C runtime migration
-   * 20260820000000 is applied live, (b) online_poker_config.enabled is true, and
-   * (c) the client is wired to the online-poker-action Edge function. The shell's
-   * own RUNTIME_LIVE constant (src/lib/onlinePoker/types.ts) is a second gate that
-   * keeps action buttons disabled until the runtime is actually reachable.
+   * Online Poker (play-money, closed alpha) UI under /poker/*. **ON** (closed alpha
+   * 2026-06-17): GE-2C runtime migrations applied live, edges deployed, crons active.
+   * Precondition (b) online_poker_config.enabled is set true via a separate controlled
+   * DB op before gameplay starts — while still false the backend returns "disabled" and
+   * the lobby is visible but actions are rejected gracefully. The shell's own
+   * RUNTIME_LIVE constant (src/lib/onlinePoker/types.ts) is a second gate that keeps
+   * action buttons hot. Kill-switch: set false to restore <PokerComingSoon/> for all.
    */
-  onlinePoker: false,
+  onlinePoker: true,
   /**
    * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
    * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never
