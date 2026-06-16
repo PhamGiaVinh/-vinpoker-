@@ -107,6 +107,12 @@ BEGIN
     WHEN 'manual_custom'         THEN 'manual_redraw'
   END;
 
+  -- Drop temp tables left by a prior call in the SAME transaction (ON COMMIT DROP only
+  -- fires at commit, so a second call in one txn — e.g. preview then commit — would hit
+  -- "relation already exists"). In production each RPC call is its own txn, but this keeps
+  -- the function robust to multiple calls per transaction.
+  DROP TABLE IF EXISTS _elig, _targets, _holes, _plan;
+
   -- 3. ELIGIBLE = active, entry-backed seats. manual_custom restricts to the given
   --    entry ids; the consolidation modes take ALL seated players.
   CREATE TEMP TABLE _elig ON COMMIT DROP AS
@@ -183,12 +189,12 @@ BEGIN
 
   -- 7. PLAN: assign each eligible player (random order) to a hole. redraw_balanced =
   --    shortest-table-first + random; fill_lowest_table = deterministic low table/seat.
-  CREATE TEMP TABLE _plan ON COMMIT DROP (
+  CREATE TEMP TABLE _plan (
     entry_id uuid, player_id uuid, entry_no int, registration_id uuid,
     player_name text, chip_count int,
     from_seat_id uuid, from_game_id uuid, from_table_number int, from_seat_number int,
     to_tt_id uuid, to_game_id uuid, to_table_number int, to_seat_number int
-  );
+  ) ON COMMIT DROP;
 
   FOR v_p IN SELECT * FROM _elig ORDER BY random() LOOP
     IF p_draw_mode = 'fill_lowest_table' THEN
