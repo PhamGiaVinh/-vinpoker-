@@ -6,7 +6,7 @@
 `tournaments.itm_places` is the "places paid" value read by `get_tournament_leaderboard` (`is_itm`), the TV ITM display, and the tracker bubble/ITM story events (#245). Today **nothing writes it** — it defaults to `0`/NULL and is never synced from the Floor-Ops prize structure (`tournament_prizes`), so ITM is unreliable everywhere. This makes the prize structure the single source of truth: `itm_places = MAX(position)` (robust to non-contiguous positions, e.g. `1,2,4,5 → 5`).
 
 ## Two independently-verifiable parts
-1. **Structural (migration `20260915000000`)** — an additive `AFTER INSERT/UPDATE/DELETE` trigger on `tournament_prizes`. Applying it **changes no existing row**; it only corrects `itm_places` on FUTURE prize edits.
+1. **Structural (migration `20260917000000`)** — an additive `AFTER INSERT/UPDATE/DELETE` trigger on `tournament_prizes`. Applying it **changes no existing row**; it only corrects `itm_places` on FUTURE prize edits.
 2. **Data (guarded backfill, below)** — a one-time `UPDATE` that corrects existing tournaments, gated behind a **leaderboard golden diff**.
 
 ## Scope guard
@@ -23,13 +23,13 @@ Target ref:      <owner SUPABASE_PROJECT_REF>
 Read/write:      WRITE (additive trigger DDL; backfill = data UPDATE on itm_places only)
 Won't do:        supabase db push · deploy_db=true · edit schema_migrations · touch
                  get_tournament_leaderboard / payroll / prize amounts
-Rollback:        docs/emergency_rollbacks/PRE_ITM_SYNC_20260915000000.sql
+Rollback:        docs/emergency_rollbacks/PRE_ITM_SYNC_20260917000000.sql
 ```
 
 ### STEP 1 — Preflight (read-only)
 ```sql
 -- P1 slot unregistered (controlled op does NOT touch schema_migrations)
-select count(*) from supabase_migrations.schema_migrations where version='20260915000000'; -- 0
+select count(*) from supabase_migrations.schema_migrations where version='20260917000000'; -- 0
 -- P2 trigger + function ABSENT (expect 0 each)
 select count(*) from pg_trigger where tgrelid='public.tournament_prizes'::regclass
   and tgname='trg_sync_tournament_itm_places' and not tgisinternal;
@@ -48,14 +48,14 @@ order by t.id;
 ### STEP 2 — Dry-run the trigger migration (validate, persist nothing)
 ```sql
 BEGIN;
-\i supabase/migrations/20260915000000_sync_tournament_itm_places.sql
+\i supabase/migrations/20260917000000_sync_tournament_itm_places.sql
 ROLLBACK;   -- expect: no errors
 ```
 
 ### STEP 3 — Apply the trigger (single txn; NOT db push)
 ```sql
 BEGIN;
-\i supabase/migrations/20260915000000_sync_tournament_itm_places.sql
+\i supabase/migrations/20260917000000_sync_tournament_itm_places.sql
 COMMIT;
 ```
 Do NOT insert into `schema_migrations` (keeps it unchanged per the controlled-op model).

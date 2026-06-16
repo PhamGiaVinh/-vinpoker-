@@ -27,7 +27,7 @@
 -- DOES NOT TOUCH: calculate_dealer_payroll, payroll, Dealer Swing, Cashier, Online Poker,
 -- Finance, GTO, prize amounts/percentages, or any tournament_prizes row.
 --
--- ROLLBACK: docs/emergency_rollbacks/PRE_ITM_SYNC_20260915000000.sql (drop the trigger +
+-- ROLLBACK: docs/emergency_rollbacks/PRE_ITM_SYNC_20260917000000.sql (drop the trigger +
 -- function; the backfilled itm_places values are non-destructive and recomputable).
 -- ════════════════════════════════════════════════════════════════════════════
 

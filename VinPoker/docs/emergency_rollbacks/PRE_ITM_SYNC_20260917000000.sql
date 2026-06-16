@@ -1,4 +1,4 @@
--- Rollback for migration 20260915000000_sync_tournament_itm_places.sql
+-- Rollback for migration 20260917000000_sync_tournament_itm_places.sql
 -- (Additive trigger that syncs tournaments.itm_places ← MAX(tournament_prizes.position).
 --  No payroll/finance impact; itm_places feeds only leaderboard is_itm + tracker bubble/ITM.)
 --
