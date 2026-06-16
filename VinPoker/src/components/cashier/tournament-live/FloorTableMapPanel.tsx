@@ -328,6 +328,10 @@ export function FloorTableMapPanel({
         table={detailTable}
         seats={detailTable ? (seatsByTable[detailTable.table_id] ?? []) : []}
         onSeatTap={(s) => setSelected(s)}
+        tournamentId={tid}
+        tournamentName={tournament.name}
+        tournamentDate={(tournament as Tournament & { start_time?: string | null }).start_time ?? null}
+        onChanged={load}
       />
 
       <PlayerActionSheet
