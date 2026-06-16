@@ -101,7 +101,7 @@ BEGIN
       AND table_id IN (v_close.id, v_close.table_id);
     UPDATE public.tournament_tables SET status = 'closed' WHERE id = v_close.id;
     IF v_close.table_id IS NOT NULL THEN
-      UPDATE public.game_tables SET status = 'closed' WHERE id = v_close.table_id;
+      UPDATE public.game_tables SET status = 'inactive' WHERE id = v_close.table_id;
     END IF;
     RETURN jsonb_build_object('ok', true, 'closed', true,
       'table_number', v_close.table_number, 'moved', '[]'::jsonb);
@@ -187,7 +187,7 @@ BEGIN
           jsonb_build_object('v', 1, 'receipt_code', v_receipt_code, 'entry_id', v_m.entry_id,
             'tournament_id', v_close.tournament_id, 'player_id', v_m.player_id,
             'table_number', v_h.table_number, 'seat_number', v_h.seat_number, 'reason', 'table_break'),
-          'table_break', 'issued', v_actor
+          'manual_move', 'issued', v_actor
         ) RETURNING id INTO v_receipt_id;
         EXIT;
       EXCEPTION WHEN unique_violation THEN
@@ -204,7 +204,7 @@ BEGIN
       v_close.tournament_id, v_m.entry_id, v_m.player_id,
       v_close.table_id, v_close.table_number, v_m.from_seat_number,
       v_h.game_id, v_h.table_number, v_h.seat_number,
-      'table_break_redraw', 'table_break', v_actor,
+      'table_break_redraw', 'manual_move', v_actor,
       jsonb_build_object('from_tournament_table_id', v_close.id, 'to_tournament_table_id', v_h.tt_id,
         'chip_count_at_move', v_m.chip_count, 'draw_mode', p_draw_mode, 'close_reason', p_reason)
     );
@@ -230,7 +230,7 @@ BEGIN
   -- 9. Close the table (tournament_tables + linked game_tables).
   UPDATE public.tournament_tables SET status = 'closed' WHERE id = v_close.id;
   IF v_close.table_id IS NOT NULL THEN
-    UPDATE public.game_tables SET status = 'closed' WHERE id = v_close.table_id;
+    UPDATE public.game_tables SET status = 'inactive' WHERE id = v_close.table_id;
   END IF;
 
   RETURN jsonb_build_object(

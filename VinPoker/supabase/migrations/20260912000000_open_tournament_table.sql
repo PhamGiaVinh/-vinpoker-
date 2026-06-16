@@ -122,8 +122,10 @@ BEGIN
     VALUES (v_tour.club_id, 'Bàn ' || v_number::text, 'tournament', 'active',
             COALESCE(v_tour.current_level, 1))
     RETURNING id INTO v_game_id;
-    INSERT INTO public.tournament_tables (tournament_id, table_id, table_number, max_seats, status)
-    VALUES (p_tournament_id, v_game_id, v_number, v_seats, 'active')
+    -- table_name is UNIQUE per tournament (tournament_tables_unique_name); the create
+    -- path always uses a fresh number, so 'Bàn N' is unique.
+    INSERT INTO public.tournament_tables (tournament_id, table_id, table_number, max_seats, status, table_name)
+    VALUES (p_tournament_id, v_game_id, v_number, v_seats, 'active', 'Bàn ' || v_number::text)
     RETURNING id INTO v_tt_id;
   END IF;
 
