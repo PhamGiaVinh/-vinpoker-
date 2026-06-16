@@ -1,54 +1,30 @@
 #!/usr/bin/env node
-// Read-only diagnosis of the tournament-register "non-2xx" error. Replicates the edge fn's
-// gating checks via SELECT-only queries (Management SQL API). NOTHING is written. Secrets masked.
-const log = (...a) => console.log("[reg-diag]", ...a);
+// Read-only fetch of recent Edge logs (event_message) to find the tournament-register failure.
+// NOTHING is written. Secrets masked. No creds → exit 0.
+const log = (...a) => console.log("[edge-logs]", ...a);
 const mask = (s) => String(s).replace(/sbp_[A-Za-z0-9]+/g, "sbp_****").replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1****");
 
 const ref = process.env.SUPABASE_PROJECT_REF, token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!ref || !token) { log("no credentials — exiting safely."); process.exit(0); }
 
-async function sql(label, q) {
+const end = new Date();
+const start = new Date(end.getTime() - 12 * 60 * 60 * 1000); // last 12h
+const range = `&iso_timestamp_start=${encodeURIComponent(start.toISOString())}&iso_timestamp_end=${encodeURIComponent(end.toISOString())}`;
+
+async function q(label, src) {
+  const sql = `select id, timestamp, event_message from ${src} order by timestamp desc limit 50`;
+  const url = `https://api.supabase.com/v1/projects/${ref}/analytics/endpoints/logs.all?sql=${encodeURIComponent(sql)}${range}`;
   let res;
-  try {
-    res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query: q }),
-    });
-  } catch (e) { log(`${label}: network error ${mask(e.message)}`); return; }
+  try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); }
+  catch (e) { log(`${label}: network ${mask(e.message)}`); return; }
   const text = await res.text();
   if (!res.ok) { log(`${label}: HTTP ${res.status} ${mask(text).slice(0, 400)}`); return; }
-  log(`── ${label} ──`);
-  console.log(mask(text).slice(0, 5000));
+  let j; try { j = JSON.parse(text); } catch { log(`${label}: ${mask(text).slice(0,300)}`); return; }
+  const rows = j.result ?? j.data ?? [];
+  log(`── ${label} (${rows.length} rows) ──`);
+  for (const r of rows) console.log(mask(`${r.timestamp ?? ""} | ${r.event_message ?? JSON.stringify(r)}`).slice(0, 600));
 }
 
-// 1) Recent tournaments + the edge-fn gates: started? (start_time < now-1h), club, prices.
-await sql("recent tournaments (+ started?/prices)", `
-select t.id, t.name, t.club_id, t.status,
-       t.start_time,
-       (t.start_time is not null and t.start_time < now() - interval '1 hour') as started_block,
-       t.buy_in, t.rake_amount, t.service_fee_amount,
-       t.created_at
-from public.tournaments t
-order by t.created_at desc
-limit 10;`);
-
-// 2) Bank-account check (the most common 400: "CLB chưa cấu hình tài khoản nhận tiền").
-//    The fn needs a club-active bank OR a platform-wide active bank (club_id is null).
-await sql("active bank accounts: per recent club + platform-wide fallback", `
-with recent as (select distinct club_id from public.tournaments order by 1 desc),
-     clubbanks as (
-       select club_id, count(*) as active_banks
-       from public.platform_bank_accounts where is_active and club_id is not null
-       group by club_id)
-select
-  (select count(*) from public.platform_bank_accounts where is_active and club_id is null) as platform_wide_active_banks,
-  (select coalesce(jsonb_agg(jsonb_build_object('club_id', cb.club_id, 'active_banks', cb.active_banks)), '[]')
-     from clubbanks cb) as per_club_active_banks;`);
-
-// 3) Sanity: is service_fee_amount actually on the table (post-apply)?
-await sql("service_fee_amount column present?", `
-select count(*) as col_present, max(column_default) as col_default
-from information_schema.columns
-where table_schema='public' and table_name='tournaments' and column_name='service_fee_amount';`);
-
+await q("function_edge_logs", "function_edge_logs");
+await q("function_logs (deno console)", "function_logs");
 log("done (read-only).");
