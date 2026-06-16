@@ -6,6 +6,7 @@ import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub
 import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-hub/OrientationToggle";
 import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/LiveStatsBar";
 import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
+import { LiveTablesMap } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesMap";
 import type { HubFeedItem, HubStoryItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
 
 const storyItems: HubStoryItem[] = [
@@ -31,6 +32,21 @@ describe("LiveTablesStrip", () => {
   it("renders nothing for a single table", () => {
     const html = renderToStaticMarkup(<LiveTablesStrip tables={[tables[0]]} />);
     expect(html).toBe("");
+  });
+});
+
+describe("LiveTablesMap (spectator table picker)", () => {
+  it("renders a table-logo tile per table (>1) with name, count, picker title + active highlight", () => {
+    const html = renderToStaticMarkup(<LiveTablesMap tables={tables} activeTableId="tA" onSelect={() => {}} />);
+    expect(html).toContain("Chọn bàn"); // picker title (vi)
+    expect(html).toContain("Bàn 1");
+    expect(html).toContain("Bàn 2");
+    expect(html).toContain("8 người chơi");
+    expect(html).toContain("<svg"); // the table-logo icon
+    expect(html).toContain('aria-pressed="true"'); // tA is the active/featured tile
+  });
+  it("renders nothing for a single table (no picker needed)", () => {
+    expect(renderToStaticMarkup(<LiveTablesMap tables={[tables[0]]} onSelect={() => {}} />)).toBe("");
   });
 });
 

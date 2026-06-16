@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { LiveHubHeader } from "./LiveHubHeader";
 import { LiveStatsBar } from "./LiveStatsBar";
 import { FeaturedTableCard } from "./FeaturedTableCard";
-import { LiveTablesStrip } from "./LiveTablesStrip";
+import { LiveTablesMap } from "./LiveTablesMap";
 import { LiveStoryFeed } from "./LiveStoryFeed";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
 import { OrientationToggle } from "./OrientationToggle";
@@ -40,8 +40,13 @@ export interface LiveHubProps {
 export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, onShare, children }: LiveHubProps) {
   // Isolated hub data (count / all-tables strip / feed / chip leader). Does NOT
   // touch TournamentLiveView — the featured felt below still renders the real viewer.
-  const { liveTableCount, tables, feed, chipLeader, storyFeed } = useLiveTrackerData(tournamentId);
+  const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId);
   const { t } = useTranslation();
+
+  // Public table-map picker: which table the viewer chose to feature. Falls back
+  // to the live-hand's table (the one TournamentLiveView features by default).
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const featuredTableId = selectedTableId ?? activeHandTableId;
 
   // Orientation: default to the device (portrait on phones, landscape on desktop),
   // but let the viewer flip Ngang/Dọc on EITHER device via the header toggle.
@@ -56,9 +61,10 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
   // so the props can't leak onto a <div> and trigger a React warning.
   const viewer =
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation; spectator?: boolean }>, {
+      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null }>, {
           orientationOverride: effectiveOrientation,
           spectator: true,
+          selectedTableIdOverride: selectedTableId,
         })
       : children;
 
@@ -73,13 +79,13 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
         onShare={onShare}
       />
       <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
+      <LiveTablesMap tables={tables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
       <FeaturedTableCard
         badge={t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
         headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
       >
         {viewer}
       </FeaturedTableCard>
-      <LiveTablesStrip tables={tables} />
       <LiveStoryFeed items={storyFeed} />
       <LiveUpdatesFeed feed={feed} />
     </div>

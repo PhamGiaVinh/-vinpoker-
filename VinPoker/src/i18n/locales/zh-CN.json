@@ -2616,6 +2616,9 @@
     "create": "创建"
   },
   "liveHub": {
+    "map": {
+      "title": "选择牌桌观看"
+    },
     "story": {
       "bubble": "泡沫圈 — 剩 {{count}} 人",
       "itm": "进入奖金圈 — 剩 {{count}} 人",

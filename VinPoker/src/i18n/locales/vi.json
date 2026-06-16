@@ -2862,6 +2862,9 @@
     "create": "Tạo"
   },
   "liveHub": {
+    "map": {
+      "title": "Chọn bàn xem trực tiếp"
+    },
     "story": {
       "bubble": "Đang ở bubble — còn {{count}} người",
       "itm": "Đã vào tiền — còn {{count}} người",
