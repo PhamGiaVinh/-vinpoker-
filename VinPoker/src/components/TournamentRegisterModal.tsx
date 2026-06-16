@@ -13,7 +13,7 @@ interface RegInfo {
   registration_id: string;
   reference_code: string;
   total_pay: number;
-  breakdown: { buy_in: number; platform_fee: number };
+  breakdown: { buy_in: number; club_fee?: number; service_fee?: number; platform_fee?: number };
   bank_name: string;
   account_number: string;
   account_holder: string;
@@ -181,6 +181,12 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
             {/* Breakdown */}
             <div className="rounded-xl border border-border bg-card/40 p-3 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">{t("tournamentRegister.feeLabel")}</span><span className="font-mono">{formatVND(info.breakdown.buy_in)}</span></div>
+              {(info.breakdown.club_fee ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("tournamentRegister.clubFee")}</span><span className="font-mono">{formatVND(info.breakdown.club_fee ?? 0)}</span></div>
+              )}
+              {(info.breakdown.service_fee ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("tournamentRegister.serviceFeeLabel")}</span><span className="font-mono">{formatVND(info.breakdown.service_fee ?? 0)}</span></div>
+              )}
               {info.savings && info.savings > 0 && (
                 <div className="flex justify-between text-success">
                   <span className="text-xs">{t("tournamentRegister.freeClubService")}</span>

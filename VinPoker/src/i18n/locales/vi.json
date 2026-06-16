@@ -2669,6 +2669,8 @@
     "cancelled": "Đã huỷ đăng ký.",
     "freeRakeBanner": "🎉 Bạn được miễn phí dịch vụ CLB (tiết kiệm {{savings}}). Vui lòng thanh toán trong 5 phút để giữ ưu đãi.",
     "feeLabel": "Lệ phí tập huấn",
+    "clubFee": "Phí câu lạc bộ",
+    "serviceFeeLabel": "Phí dịch vụ",
     "freeClubService": "Miễn phí dịch vụ CLB",
     "totalPay": "Tổng thanh toán",
     "transferInfo": "Thông tin chuyển khoản",

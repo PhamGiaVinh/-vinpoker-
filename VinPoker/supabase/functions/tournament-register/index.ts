@@ -105,6 +105,9 @@ Deno.serve(async (req) => {
         total_pay: Number(existing.total_pay),
         breakdown: {
           buy_in: Number(existing.buy_in),
+          // club_fee (rake, shown as "Phí câu lạc bộ") = everything collected above the buy-in.
+          club_fee: Math.max(0, Number(existing.total_pay) - Number(existing.buy_in)),
+          service_fee: 0,
           platform_fee: Number(existing.platform_fixed_fee),
         },
         bank_name: bank.bank_name,
@@ -176,7 +179,13 @@ Deno.serve(async (req) => {
       status: "pending",
       reference_code: refCode,
       total_pay: totalPay,
-      breakdown: { buy_in: Number(tour.buy_in), platform_fee: fixedFee },
+      breakdown: {
+        buy_in: Number(tour.buy_in),
+        // club_fee = rake (shown as "Phí câu lạc bộ" for VN legal wording); waived when free-rake applied.
+        club_fee: freeRakeApplied ? 0 : rakeAmount,
+        service_fee: serviceFee,
+        platform_fee: fixedFee,
+      },
       bank_name: bank.bank_name,
       account_number: bank.account_number,
       account_holder: bank.account_holder,

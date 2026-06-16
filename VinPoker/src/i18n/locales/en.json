@@ -2669,6 +2669,8 @@
     "cancelled": "Registration cancelled.",
     "freeRakeBanner": "🎉 You get free club service (saving {{savings}}). Please pay within 5 minutes to keep the offer.",
     "feeLabel": "Training fee",
+    "clubFee": "Club fee",
+    "serviceFeeLabel": "Service fee",
     "freeClubService": "Free club service",
     "totalPay": "Total payment",
     "transferInfo": "Transfer information",
