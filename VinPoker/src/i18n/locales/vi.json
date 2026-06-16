@@ -2834,6 +2834,8 @@
   },
   "liveHub": {
     "story": {
+      "bubble": "Đang ở bubble — còn {{count}} người",
+      "itm": "Đã vào tiền — còn {{count}} người",
       "title": "Diễn biến giải",
       "eliminated": "{{name}} bị loại — còn {{count}} người",
       "eliminatedNoCount": "{{name}} bị loại",

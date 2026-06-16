@@ -12,6 +12,8 @@ const storyItems: HubStoryItem[] = [
   { id: "elim:h1:p1", kind: "elimination", name: "An", count: 18, label: "An bị loại — còn 18 người" },
   { id: "story:ms:18", kind: "milestone", count: 18, label: "Còn 18 người" },
   { id: "story:final_table", kind: "final_table", count: 9, label: "Final table — còn 9 người" },
+  { id: "story:bubble", kind: "bubble", count: 10, label: "Đang ở bubble — còn 10 người" },
+  { id: "story:itm", kind: "itm", count: 9, label: "Đã vào tiền — còn 9 người" },
 ];
 
 const tables: HubTableSummary[] = [
@@ -93,12 +95,14 @@ describe("LiveStatsBar", () => {
 });
 
 describe("LiveStoryFeed", () => {
-  it("renders the three story kinds with safe localized (vi) copy", () => {
+  it("renders every story kind with safe localized (vi) copy", () => {
     const html = renderToStaticMarkup(<LiveStoryFeed items={storyItems} />);
     expect(html).toContain("Diễn biến giải"); // section title
     expect(html).toContain("An bị loại — còn 18 người"); // elimination
     expect(html).toContain("Còn 18 người"); // milestone
     expect(html).toContain("Final table — còn 9 người"); // final table
+    expect(html).toContain("Đang ở bubble — còn 10 người"); // bubble
+    expect(html).toContain("Đã vào tiền — còn 9 người"); // ITM
     expect(html).not.toMatch(/loại B|thắng/); // never a killer/winner
   });
   it("renders nothing when there are no story items", () => {
@@ -129,5 +133,7 @@ describe("viewer-hub i18n wiring", () => {
     expect(story).toContain("Tournament feed"); // localized section title
     expect(story).toContain("An eliminated — 18 left"); // localized elimination, interpolated
     expect(story).toContain("Final table — 9 left");
+    expect(story).toContain("On the bubble — 10 left"); // localized bubble
+    expect(story).toContain("In the money — 9 left"); // localized ITM
   });
 });
