@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FEATURES } from '@/lib/featureFlags';
 import { RUNTIME_LIVE } from '@/lib/onlinePoker/types';
-import { findMockTable, mockLegalActions } from '@/lib/onlinePoker/mockData';
-import { useTableHand } from '@/lib/onlinePoker/useOnlinePoker';
+import { mockLegalActions } from '@/lib/onlinePoker/mockData';
+import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
 import { HandStateViewer } from '@/components/poker/HandStateViewer';
@@ -26,19 +26,21 @@ const fmtChips = (s: string): string => {
 
 export default function OnlinePokerTable() {
   const { tableId = '' } = useParams();
-  // Hooks first (rules-of-hooks): mock hand while dark, live hand+overlay when live.
+  // All hooks before any early return (rules-of-hooks).
   const { hand, loading } = useTableHand(tableId);
+  // Dark: looks up mock table; Live: fetches real row from online_poker_tables.
+  const table = useTableMeta(tableId);
 
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
-  // Table header metadata (name/blinds). While dark this is the mock row; live table
-  // metadata (online_poker_tables row) is wired at enablement alongside listTablesLive.
-  const table = findMockTable(tableId);
+  // table=null while loading live meta or if the id doesn't exist.
   if (!table) {
     return (
       <div className="container mx-auto max-w-2xl p-4">
         <Card className="p-6 text-center space-y-3">
-          <p className="text-muted-foreground">Không tìm thấy bàn này.</p>
+          <p className="text-muted-foreground">
+            {loading ? 'Đang tải bàn…' : 'Không tìm thấy bàn này.'}
+          </p>
           <Button asChild variant="outline"><Link to="/poker">Về sảnh</Link></Button>
         </Card>
       </div>

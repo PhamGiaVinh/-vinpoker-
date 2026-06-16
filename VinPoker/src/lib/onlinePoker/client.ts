@@ -166,6 +166,27 @@ export async function listTablesLive(): Promise<LobbyTableSummary[]> {
   );
 }
 
+export interface LiveTableMeta { id: string; name: string; sb: string; bb: string; maxSeats: number; status: string; }
+
+/** Single table row by id — for the table page header when RUNTIME_LIVE. */
+export async function loadTableMetaLive(tableId: string): Promise<LiveTableMeta | null> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  const { data, error } = await rails()
+    .from('online_poker_tables')
+    .select('id, name, sb, bb, max_seats, status')
+    .eq('id', tableId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: String(data.id),
+    name: String(data.name ?? ''),
+    sb: String(data.sb),
+    bb: String(data.bb),
+    maxSeats: Number(data.max_seats),
+    status: String(data.status),
+  };
+}
+
 /** Live public hand state for a table's current hand (no secrets). Gated. */
 export async function loadHandStateLive(tableId: string): Promise<WirePublicHandState | null> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
