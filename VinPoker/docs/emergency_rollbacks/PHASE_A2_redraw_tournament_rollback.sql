@@ -1,0 +1,23 @@
+-- ============================================================================
+-- ROLLBACK — Floor Table Ops Phase A2 RPC (redraw_tournament)
+-- ============================================================================
+-- Brand-new object (no prior live body), so rollback = DROP FUNCTION. SOURCE-ONLY
+-- as of this PR — NOT applied to any live DB. Creating it migrates no data.
+--
+-- Migration: 20260918000000_redraw_tournament.sql
+--
+-- CONTROLLED APPLY (owner-gated, later — same shape as the A1 apply):
+--   1. Preflight: confirm ABSENT by signature.
+--   2. Pre-apply dry-run: temp CREATE OR REPLACE the body inside BEGIN…ROLLBACK, set
+--      up a fixture (open tables + floor-assign players via the LIVE A1 RPCs), run
+--      redraw_tournament(dry_run=true) then (dry_run=false), ROLLBACK; verify absent +
+--      zero persistence.
+--   3. Apply via Management API CREATE OR REPLACE.
+--   4. Verify: prosecdef=true, search_path=public, EXECUTE = authenticated only
+--      (anon/PUBLIC revoked via has_function_privilege).
+--   5. Post-apply LIVE dry-run on the applied RPC inside BEGIN…ROLLBACK.
+--   NO supabase db push, NO deploy_db, NO schema_migrations edit, 0 persisted rows.
+--
+-- ROLLBACK STATEMENT:
+DROP FUNCTION IF EXISTS public.redraw_tournament(uuid, text, uuid[], integer, text, boolean);
+-- ============================================================================
