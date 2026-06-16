@@ -24,6 +24,7 @@ import { InstallPWAButton } from "@/components/InstallPWAButton";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
+import { FEATURES } from "@/lib/featureFlags";
 import appLogo from "@/assets/app-logo.png";
 
 const tabsData = [
@@ -285,6 +286,22 @@ export const Layout = () => {
                   MEDIA
                 </NavLink>
               )}
+              {FEATURES.onlinePoker && (
+                <NavLink
+                  to="/poker"
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold tracking-wider transition-colors",
+                      isActive
+                        ? "bg-primary/15 border-primary/50 text-primary"
+                        : "border-primary/30 text-primary hover:bg-primary/10"
+                    )
+                  }
+                >
+                  <Spade className="w-3.5 h-3.5" />
+                  Poker
+                </NavLink>
+              )}
               {user && (
                 <Button
                   onClick={() => setQrOpen(true)}
@@ -359,7 +376,7 @@ export const Layout = () => {
               if (user) setQrOpen(true);
               else nav("/auth");
             }}
-            onPoker={() => nav("/")}
+            onPoker={() => nav("/poker")}
           />
           {mobileTabsData.slice(2).map((tab) => (
             <NavLink
