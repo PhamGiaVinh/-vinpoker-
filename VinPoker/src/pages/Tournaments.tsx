@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { formatBuyInShort, formatShortDate, formatTime, formatStack } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
-import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { LivestreamSection } from "@/components/LivestreamSection";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -244,6 +244,13 @@ const Tournaments = () => {
                 <span className="truncate">{viewLabel(v)}</span>
               </button>
             ))}
+            <Link
+              to="/documents"
+              className="px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold tracking-wider uppercase rounded-full transition-all inline-flex items-center justify-center gap-1 sm:gap-1.5 leading-tight text-center text-muted-foreground hover:text-foreground hover:bg-card/70"
+            >
+              <BookOpen className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+              <span className="truncate">{tr("nav.documents")}</span>
+            </Link>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
