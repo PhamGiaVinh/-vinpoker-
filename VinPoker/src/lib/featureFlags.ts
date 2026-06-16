@@ -183,6 +183,8 @@ export const FEATURES = {
    * (tournaments.service_fee_amount column) AND `20260916000000` (get_club_finance_summary v3 with the
    * serviceFee stream), and the tournament-register edge fn is redeployed. The column defaults to 0, so
    * every existing tour is unaffected until an owner sets a service fee > 0.
+   * **ON** (2026-06-17): both migrations applied live + golden-diff verified (output identical
+   * except serviceFee=0), edge fn deployed. Kill-switch: set false to hide the UI again.
    */
-  tournamentServiceFee: false,
+  tournamentServiceFee: true,
 } as const;
