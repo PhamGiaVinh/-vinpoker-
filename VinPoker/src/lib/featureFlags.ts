@@ -98,7 +98,7 @@ export const FEATURES = {
    * NEVER calls the RPC, so it can't silently fail or wipe the live structure.
    * Flip to true ONLY after the RPC is applied live in a controlled DB session.
    */
-  blindEditorSave: false,
+  blindEditorSave: true,
   /**
    * Reusable blind-structure templates ("thư viện cấu trúc blind"). Default **OFF**
    * because it needs both the `update_blind_structure` RPC (20260825000000) AND the
@@ -108,7 +108,7 @@ export const FEATURES = {
    * missing table. Flip to true ONLY after both objects are applied in a controlled
    * DB session (the editor full-replace path also requires blindEditorSave=true).
    */
-  blindTemplates: false,
+  blindTemplates: true,
   /**
    * Dealer Shift Planner V2.1 — "Xếp lịch dealer" tab in DealerSwingDashboard
    * (staff scheduling: schedule dealers per day/week with flexible check-in times,
