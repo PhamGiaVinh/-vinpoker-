@@ -28,6 +28,7 @@ import {
 } from "./LiveFelt";
 import { ReplayScrubber } from "./ReplayScrubber";
 import { HandSelector } from "./HandSelector";
+import { HandBreakdown } from "./viewer-hub/HandBreakdown";
 import {
   detectBigBlind,
   type ReplayHand,
@@ -679,6 +680,10 @@ export function TournamentLiveView({
   }
 
   const isReplay = mode === "replay";
+  // The live current hand belongs to one table; only show its breakdown when the
+  // viewer is looking at that table (else the felt shows a different table).
+  const liveHandOnView =
+    handNumber != null && (handTableId == null || handTableId === effectiveTableId);
   // The felt renders either live state or the current replay frame — same props.
   const feltProps = isReplay
     ? replayFrame
@@ -893,6 +898,31 @@ export function TournamentLiveView({
           />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
+          )}
+
+          {/* Public spectator-only broadcast action breakdown. Spectator-gated →
+              the operator render path emits nothing new. */}
+          {spectator && isReplay && replayHand && (
+            <HandBreakdown
+              actions={replayHand.actions}
+              players={replayHand.players}
+              buttonSeat={replayHand.button_seat}
+              bigBlind={replayBigBlind}
+              highlightActionOrder={replayFrame?.latestAction?.action_order}
+            />
+          )}
+          {spectator && !isReplay && liveHandOnView && actions.length > 0 && (
+            <HandBreakdown
+              actions={actions}
+              players={activeSeatsToRender.map((s) => ({
+                player_id: s.player_id,
+                seat_number: s.seat_number,
+                display_name: s.display_name,
+                avatar_url: s.avatar_url,
+              }))}
+              buttonSeat={buttonSeat}
+              bigBlind={bigBlind}
+            />
           )}
         </div>
 

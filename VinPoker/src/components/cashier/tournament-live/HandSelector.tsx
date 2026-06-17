@@ -77,7 +77,7 @@ export function HandSelector({
             .order("action_order"),
           supabase
             .from("hand_players")
-            .select("player_id, seat_number, starting_stack, hole_cards")
+            .select("player_id, seat_number, starting_stack, ending_stack, hole_cards")
             .eq("hand_id", row.id),
         ]);
 
@@ -105,6 +105,7 @@ export function HandSelector({
             seat_number: p.seat_number,
             display_name: nameMap.get(p.player_id) || p.player_id.slice(0, 6),
             starting_stack: p.starting_stack ?? 0,
+            ending_stack: p.ending_stack ?? null,
             avatar_url: avatarMap.get(p.player_id) ?? null,
             hole_cards:
               p.hole_cards && (p.hole_cards as string[]).length > 0
