@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card as UiCard } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { replayActions, deriveResumeStreet, nextActionOrderFrom, type ResumeActi
 import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { nextToAct, actorView } from "@/lib/tracker-poker/handFlow";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
+import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
 import { formatStack } from "./handinput/format";
 import { friendlyValidationError, isValidationCode } from "./handinput/validationMessages";
@@ -34,6 +36,7 @@ interface PlayerState {
   total_bet: number;
   is_folded: boolean;
   is_all_in: boolean;
+  avatar_url?: string | null;
 }
 
 interface ActionRecord {
@@ -73,7 +76,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [tableId, setTableId] = useState("");
   const [tableName, setTableName] = useState("");
   const [handNumber, setHandNumber] = useState<number | "">("");
-  const [availableTables, setAvailableTables] = useState<{ id: string; name: string }[]>([]);
+  const [availableTables, setAvailableTables] = useState<InputTableSummary[]>([]);
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [currentStreet, setCurrentStreet] = useState<Street>("preflop");
   const [actions, setActions] = useState<ActionRecord[]>([]);
@@ -101,24 +104,67 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   // Streets whose community cards were already sent — used to confirm overwrites.
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
 
+  // Resume-on-return: the selected table lives in the URL (?hiTable=<id>). The
+  // in-progress hand itself is resumed by the existing orphan-detection flow, so
+  // this only needs to remember which table the operator was on.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resumedHiTableRef = useRef<string | null>(null);
+  const setHiTable = useCallback(
+    (id: string | null) => {
+      const next = new URLSearchParams(searchParams);
+      if (id) next.set("hiTable", id);
+      else next.delete("hiTable");
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 
   useEffect(() => {
     if (!tournamentId) return;
+    let cancelled = false;
     const loadTables = async () => {
       const { data } = await supabase
         .rpc("get_tournament_tables", { p_tournament_id: tournamentId });
-      if (data) {
-        const tables = (Array.isArray(data) ? data : []).map((t: any) => ({
-          id: t.table_id,
-          name: t.table_name || t.table_id.slice(0, 8),
-        }));
-        setAvailableTables(tables);
-      }
+      const base = (Array.isArray(data) ? data : []).map((t: any) => ({
+        id: t.table_id,
+        name: t.table_name || t.table_id.slice(0, 8),
+      }));
+      // Read-only enrichment for the table map: active player count per table and
+      // which tables have an in-progress hand. No writes, no new RPC.
+      const [{ data: seatRows }, { data: liveHands }] = await Promise.all([
+        supabase
+          .from("tournament_seats")
+          .select("table_id, player_id")
+          .eq("tournament_id", tournamentId)
+          .eq("is_active", true),
+        supabase
+          .from("tournament_hands")
+          .select("table_id")
+          .eq("tournament_id", tournamentId)
+          .eq("status", "in_progress"),
+      ]);
+      if (cancelled) return;
+      const countByTable = new Map<string, number>();
+      (seatRows ?? []).forEach((s: any) => {
+        if (s.player_id) countByTable.set(s.table_id, (countByTable.get(s.table_id) || 0) + 1);
+      });
+      const liveSet = new Set<string>((liveHands ?? []).map((h: any) => h.table_id));
+      setAvailableTables(
+        base.map((t) => ({
+          ...t,
+          playerCount: countByTable.get(t.id) || 0,
+          hasLiveHand: liveSet.has(t.id),
+        }))
+      );
     };
     loadTables();
+    return () => {
+      cancelled = true;
+    };
   }, [tournamentId]);
 
   useEffect(() => {
@@ -189,7 +235,19 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       is_folded: false,
       is_all_in: false,
     }));
-    setPlayers(newPlayers);
+    // Attach player avatars for the seat rail. Same mapping the live felt uses:
+    // tournament_seats.player_id → profiles.user_id → avatar_url. Read-only;
+    // missing rows fall back to initials in SeatRail (never a broken image).
+    const seatPlayerIds = [...new Set(newPlayers.map((p) => p.player_id))];
+    const avatarByUser = new Map<string, string | null>();
+    if (seatPlayerIds.length) {
+      const { data: seatProfiles } = await supabase
+        .from("profiles")
+        .select("user_id, avatar_url")
+        .in("user_id", seatPlayerIds);
+      (seatProfiles ?? []).forEach((p: any) => avatarByUser.set(p.user_id, p.avatar_url ?? null));
+    }
+    setPlayers(newPlayers.map((p) => ({ ...p, avatar_url: avatarByUser.get(p.player_id) ?? null })));
     resetHand();
 
     const activeNums = loadedSeats
@@ -228,6 +286,39 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       .maybeSingle();
     if (orphan) setOrphanHand(orphan);
   };
+
+  // Pick a table from the map: remember it in the URL, then load it.
+  const handlePickTable = (id: string) => {
+    setHiTable(id);
+    void handleTableChange(id);
+  };
+
+  // "Đổi bàn": clear the current table to bring the map back (only offered when
+  // no hand has started, so there is no live hand state to lose).
+  const backToTableMap = () => {
+    setTableId("");
+    setTableName("");
+    setPlayers([]);
+    setOrphanHand(null);
+    resumedHiTableRef.current = null;
+    setHiTable(null);
+  };
+
+  // Resume the table from the URL once, when the table list is ready and nothing
+  // is selected yet. Guarded so it never loops or re-toasts; a stale id is
+  // silently dropped.
+  useEffect(() => {
+    const hiTable = searchParams.get("hiTable");
+    if (!hiTable || tableId || availableTables.length === 0) return;
+    if (resumedHiTableRef.current === hiTable) return;
+    resumedHiTableRef.current = hiTable;
+    if (!availableTables.some((t) => t.id === hiTable)) {
+      setHiTable(null);
+      return;
+    }
+    void handleTableChange(hiTable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableTables, searchParams, tableId]);
 
   const potSize = useMemo(() => {
     return actions.reduce((sum, a) => {
@@ -804,6 +895,11 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
           <h3 className="text-base font-medium text-amber-400">
             {tableId ? `Hand #${handNumber} · ${tableName}` : "Select Table to Start"}
           </h3>
+          {tableId && !handStarted && (
+            <Button size="sm" variant="ghost" onClick={backToTableMap} className="h-7 px-2 text-xs text-muted-foreground hover:text-amber-400">
+              ← Đổi bàn
+            </Button>
+          )}
           {tableId && !isSummary && (
             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border ${handStarted ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/20" : "bg-amber-500/20 text-amber-400 border-amber-500/20"}`}>
               {handStarted ? <><span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" /> Live</> : STREET_LABELS[currentStreet]}
@@ -830,23 +926,11 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         </div>
       )}
 
-      {/* SETUP: Table selector */}
+      {/* SETUP: visual table map (replaces the old dropdown). Tap a table to load
+          it; the hand number auto-fills on select and can be overridden below. */}
       {!tableId && (
-        <UiCard className="p-6 text-center space-y-4 border-dashed">
-          <div className="text-muted-foreground">Chọn bàn để bắt đầu ghi nhận hand</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md mx-auto">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Chọn Bàn</label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={tableId} onChange={(e) => handleTableChange(e.target.value)}>
-                <option value="">-- Chọn Bàn --</option>
-                {availableTables.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
-              <Input placeholder="Auto" type="number" value={handNumber} onChange={(e) => setHandNumber(e.target.value === "" ? "" : Number(e.target.value))} />
-            </div>
-          </div>
+        <UiCard className="p-4 space-y-3 border-dashed">
+          <InputTableMap tables={availableTables} activeTableId={null} onSelect={handlePickTable} />
         </UiCard>
       )}
 

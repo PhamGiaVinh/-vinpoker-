@@ -117,6 +117,8 @@ export interface LiveFeltProps {
   formatBB: (n: number) => string | null;
   /** Narrow-phone vertical layout (tall oval + portrait seat map). */
   portrait?: boolean;
+  /** Seat number on the dealer button → renders a "D" puck. Omit/undefined → no puck (felt unchanged). */
+  buttonSeat?: number | null;
 }
 
 export function LiveFelt({
@@ -131,6 +133,7 @@ export function LiveFelt({
   latestAction,
   formatBB,
   portrait = false,
+  buttonSeat = null,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
@@ -231,6 +234,12 @@ export function LiveFelt({
           const isLastActor = !seat.is_folded && lastActorId === seat.player_id;
           const isToAct = !seat.is_folded && !seat.is_all_in && toActId === seat.player_id;
           const initials = seat.display_name.slice(0, 2).toUpperCase();
+          // Dealer "D" puck: exact seat when buttonSeat is supplied, else fall
+          // back to the BTN position label so the puck shows on every felt path.
+          const isButtonSeat =
+            buttonSeat != null
+              ? seat.seat_number === buttonSeat
+              : seat.position === "BTN" || seat.position === "BTN/SB";
 
           const avatarBorder = seat.is_folded
             ? "border-border/30"
@@ -282,6 +291,15 @@ export function LiveFelt({
                       }
                     >
                       {seat.position}
+                    </span>
+                  )}
+                  {isButtonSeat && (
+                    <span
+                      aria-label="Dealer"
+                      className="tracker-display absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full text-[7px] font-black leading-none text-black shadow ring-1 ring-black/40"
+                      style={{ background: "hsl(var(--poker-gold))" }}
+                    >
+                      D
                     </span>
                   )}
                 </div>
