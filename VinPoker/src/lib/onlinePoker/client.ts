@@ -73,6 +73,19 @@ export const bodyStandUp = (tableId: string, idempotencyKey: string) =>
 export const bodyStartHand = (tableId: string, idempotencyKey: string) =>
   ({ op: 'start_hand' as const, tableId, idempotencyKey });
 
+// Friends-practice (open tables, wallet-free, host succession)
+export const bodyCreateOpenTable = (name: string, sb: ChipString, bb: ChipString, buyin: ChipString, maxSeats: number) =>
+  ({ op: 'create_open_table' as const, name, sb, bb, buyin, maxSeats });
+
+export const bodySitOpen = (tableId: string, seat: number, buyin: ChipString, idempotencyKey: string) =>
+  ({ op: 'sit_open' as const, tableId, seat, buyin, idempotencyKey });
+
+export const bodyTransferHost = (tableId: string, toUserId: string) =>
+  ({ op: 'transfer_host' as const, tableId, toUserId });
+
+export const bodyLeaveOpenTable = (tableId: string) =>
+  ({ op: 'leave_open_table' as const, tableId });
+
 export function bodySubmitAction(req: ActionRequest) {
   // bet/raise must carry a canonical chip amount; reject malformed before the wire.
   if ((req.type === 'bet' || req.type === 'raise') && !isChipString(req.amount)) {
@@ -130,6 +143,21 @@ export const onlinePokerClient = {
 
   /** Start a new hand at a table (≥2 seated; server deals + assigns the button). */
   startHand: (tableId: string) => invokeEdge<RpcOutcome>(bodyStartHand(tableId, newIdemKey())),
+
+  /** Create an open practice table (caller becomes host, seated at seat 1). */
+  createOpenTable: (name: string, sb: ChipString, bb: ChipString, buyin: ChipString, maxSeats = 9) =>
+    invokeEdge<RpcOutcome>(bodyCreateOpenTable(name, sb, bb, buyin, maxSeats)),
+
+  /** Sit directly at an open seat with a self-chosen stack (no wallet). */
+  sitOpen: (tableId: string, seat: number, buyin: ChipString) =>
+    invokeEdge<RpcOutcome>(bodySitOpen(tableId, seat, buyin, newIdemKey())),
+
+  /** Hand the host role to another seated player (host only). */
+  transferHost: (tableId: string, toUserId: string) =>
+    invokeEdge<RpcOutcome>(bodyTransferHost(tableId, toUserId)),
+
+  /** Leave an open table (wallet-free; auto-reassigns host if you were host). */
+  leaveOpenTable: (tableId: string) => invokeEdge<RpcOutcome>(bodyLeaveOpenTable(tableId)),
 
   /** Submit an action intent; the server re-validates with the engine. */
   submitAction: (req: Omit<ActionRequest, 'idempotencyKey'> & { idempotencyKey?: string }) =>
@@ -194,6 +222,8 @@ export interface LiveTableMeta {
   minBuyin: string;
   maxBuyin: string;
   startingStack: string;
+  /** current host (transferable; null if table has no seated players) */
+  hostUserId: string | null;
 }
 
 /** Single table row by id — for the table page header when RUNTIME_LIVE. */
@@ -201,7 +231,7 @@ export async function loadTableMetaLive(tableId: string): Promise<LiveTableMeta 
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
   const { data, error } = await rails()
     .from('online_poker_tables')
-    .select('id, name, sb, bb, max_seats, status, min_buyin, max_buyin, starting_stack_default')
+    .select('id, name, sb, bb, max_seats, status, min_buyin, max_buyin, starting_stack_default, host_user_id')
     .eq('id', tableId)
     .maybeSingle();
   if (error || !data) return null;
@@ -215,7 +245,19 @@ export async function loadTableMetaLive(tableId: string): Promise<LiveTableMeta 
     minBuyin: String(data.min_buyin ?? '0'),
     maxBuyin: String(data.max_buyin ?? '0'),
     startingStack: String(data.starting_stack_default ?? data.min_buyin ?? '0'),
+    hostUserId: data.host_user_id ? String(data.host_user_id) : null,
   };
+}
+
+/** Current host of a table (reactive — re-read on realtime ticks). Gated. */
+export async function loadTableHostLive(tableId: string): Promise<string | null> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  const { data } = await rails()
+    .from('online_poker_tables')
+    .select('host_user_id')
+    .eq('id', tableId)
+    .maybeSingle();
+  return data?.host_user_id ? String(data.host_user_id) : null;
 }
 
 /** The caller's play-chip wallet balance (RLS: own row only). Gated by RUNTIME_LIVE. */
