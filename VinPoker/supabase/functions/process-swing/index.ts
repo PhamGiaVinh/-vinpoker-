@@ -86,27 +86,35 @@ const MAX_SWING_RETRIES = 3;
 // automatic behavior.
 const FORCE_RELEASE_ENABLED = false;
 const AUTO_OPEN_EMPTY_TABLES_ENABLED = false;
-// ── Step 1 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
+// ── Step 1 auto-staff (default ON for all clubs) ──────────────────────────────
 // Auto-STAFF an empty ACTIVE table (never opens/activates a new table) with a
 // genuinely-FREE (current_state='available') dealer ONLY + a direct DM.
-// Source = Edge ENV/SECRET `AUTO_STAFF_EMPTY_TABLES_CLUB_IDS` (comma/space-
-// separated club UUIDs, case-insensitive). UNSET/empty = OFF for every club.
-// Enable a club = set the secret (no code change, no committed UUID).
-function parseClubIdEnv(name: string): Set<string> {
+// Default: ON for every club (no config needed — new clubs work automatically).
+// To EXCLUDE specific clubs, set env `AUTO_STAFF_EXCLUDE_CLUB_IDS` = comma/space-
+// separated club UUIDs. Leave unset or empty = all clubs enabled.
+// To disable entirely, set `AUTO_STAFF_EMPTY_TABLES_CLUB_IDS=disabled`.
+function parseClubIdEnv(name: string): Set<string> | "*" {
+  const raw = (Deno.env.get(name) ?? "").trim();
+  if (!raw || raw === "*" || raw === "ALL") return "*"; // unset = all clubs ON
+  if (raw === "disabled" || raw === "none") return new Set(); // explicit disable all
   return new Set(
-    (Deno.env.get(name) ?? "")
+    raw
       .split(/[\s,]+/)
       .map((s) => s.trim().toLowerCase())
       .filter((s) => s.length > 0),
   );
 }
+function clubEnabled(gate: Set<string> | "*", clubId: string): boolean {
+  if (gate === "*") return true;
+  return gate.has(String(clubId).toLowerCase());
+}
 const AUTO_STAFF_EMPTY_TABLES_CLUB_IDS = parseClubIdEnv("AUTO_STAFF_EMPTY_TABLES_CLUB_IDS");
-// ── Step 2 per-club opt-in (owner policy 2026-06-15) ─────────────────────────
+// ── Step 2 auto-preassign (default ON for all clubs) ──────────────────────────
 // Predictive PRE-ASSIGN: when an empty active table has no available dealer to
 // fill now, reserve the soonest-free ON_BREAK dealer + countdown Telegram, and
 // execute (promote reserved→assigned) when their break ends + 13-min rest gate.
-// Source = Edge ENV `AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS`. UNSET/empty = OFF.
-// Independent of Step 1's flag so each can be enabled per-club separately.
+// Default: ON for every club (same pattern as Step 1, no manual setup needed).
+// To EXCLUDE specific clubs, set env `AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS` to UUIDs.
 const AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS = parseClubIdEnv("AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS");
 // Automatic swing requires a PLANNED replacement (pre_assigned_attendance_id).
 // The Pass 3 escalation tier picker (Tier 0 normal-rest + tiers 1–3 relaxed)
@@ -1282,7 +1290,7 @@ Deno.serve(async (req: Request) => {
         // Per-club path runs with availableOnly=true: only genuinely-free
         // dealers (no on_break), rest guard preserved, never opens a new table,
         // + a direct DM to the chosen dealer.
-        const autoStaffThisClub = AUTO_STAFF_EMPTY_TABLES_CLUB_IDS.has(String(cid).toLowerCase());
+        const autoStaffThisClub = clubEnabled(AUTO_STAFF_EMPTY_TABLES_CLUB_IDS, String(cid));
         if (!dryRun && (AUTO_OPEN_EMPTY_TABLES_ENABLED || autoStaffThisClub)) {
           fillResult = await fillEmptyTables(
             admin, cid, shiftId, botToken ?? "", cycleExcludedIds, batchSwingDueAt,
@@ -1314,7 +1322,7 @@ Deno.serve(async (req: Request) => {
         // countdown Telegram, and executes reservations whose dealer's break has
         // ended (13-min rest gate). All via the reservation RPCs — never raw
         // updates. NEVER opens a new table; never pulls a dealer off break early.
-        if (!dryRun && AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS.has(String(cid).toLowerCase())) {
+        if (!dryRun && clubEnabled(AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS, String(cid))) {
           try {
             const s2 = await runEmptyTablePreAssign(admin, cid, {
               botToken: botToken ?? undefined,
