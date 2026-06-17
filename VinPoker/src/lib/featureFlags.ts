@@ -100,6 +100,16 @@ export const FEATURES = {
    */
   blindEditorSave: false,
   /**
+   * Reusable blind-structure templates ("thư viện cấu trúc blind"). Default **OFF**
+   * because it needs both the `update_blind_structure` RPC (20260825000000) AND the
+   * `blind_structure_templates` table (20260920000000) applied live first. While
+   * false: no template UI renders ("Lưu thành mẫu" / "Tải mẫu" in the blind editor
+   * and the "Cấu trúc blind" picker in Tạo giải are hidden) so nothing queries the
+   * missing table. Flip to true ONLY after both objects are applied in a controlled
+   * DB session (the editor full-replace path also requires blindEditorSave=true).
+   */
+  blindTemplates: false,
+  /**
    * Dealer Shift Planner V2.1 — "Xếp lịch dealer" tab in DealerSwingDashboard
    * (staff scheduling: schedule dealers per day/week with flexible check-in times,
    * SEPARATE from the live Dealer Swing rotation system). **ON** (2026-06-14, post-UAT):

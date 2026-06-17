@@ -7,13 +7,14 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { formatDateTime, formatVND } from "@/lib/format";
+import { BLIND_PRESETS, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
 
 const GAME_TYPES = [
   { v: "nlh", l: "No Limit Hold'em" },
@@ -146,19 +147,55 @@ const NewTournamentDialog = ({
   const [open, setOpen] = useState(false);
   const [clubId, setClubId] = useState(defaultClubId);
   const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
+  const [blindChoice, setBlindChoice] = useState("none");
+  const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   useEffect(() => { setClubId(defaultClubId); }, [defaultClubId]);
+  // Load this club's saved blind structures for the picker (gated).
+  useEffect(() => {
+    if (!FEATURES.blindTemplates || !open || !clubId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("blind_structure_templates")
+        .select("id, club_id, name, levels")
+        .eq("club_id", clubId)
+        .order("name");
+      if (!cancelled) setClubTemplates((data ?? []) as BlindTemplate[]);
+    })();
+    return () => { cancelled = true; };
+  }, [open, clubId]);
+
+  const resolveLevels = (choice: string): BlindLevel[] => {
+    if (choice.startsWith("preset:")) return BLIND_PRESETS.find((p) => p.key === choice.slice(7))?.levels ?? [];
+    if (choice.startsWith("tpl:")) return (clubTemplates.find((t) => t.id === choice.slice(4))?.levels ?? []) as BlindLevel[];
+    return [];
+  };
+
   const submit = async () => {
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     if (!clubId) return toast.error("Chọn câu lạc bộ");
-    const { error } = await supabase.from("tournaments").insert({
+    const { data: created, error } = await supabase.from("tournaments").insert({
       club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
       buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
       ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
       starting_stack: Number(f.starting_stack),
       location: f.location, description: f.description, game_type: f.game_type,
       minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
-    });
-    if (error) toast.error(error.message); else { toast.success("Tournament created"); setOpen(false); onCreated(); }
+    }).select("id").single();
+    if (error) { toast.error(error.message); return; }
+    // Seed the blind structure from a chosen preset / club template (gated).
+    if (FEATURES.blindTemplates && blindChoice !== "none" && created?.id) {
+      const levels = resolveLevels(blindChoice);
+      if (levels.length) {
+        const { error: lvlErr } = await (supabase as any)
+          .from("tournament_levels")
+          .insert(levels.map((l) => ({ tournament_id: created.id, ...l })));
+        if (lvlErr) toast.error("Tạo giải OK nhưng nạp cấu trúc blind lỗi: " + lvlErr.message);
+      }
+    }
+    toast.success("Tournament created");
+    setOpen(false);
+    onCreated();
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -204,6 +241,28 @@ const NewTournamentDialog = ({
           </div>
           <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
           <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} />
+          {FEATURES.blindTemplates && (
+            <>
+              <Label>Cấu trúc blind</Label>
+              <Select value={blindChoice} onValueChange={setBlindChoice}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Để trống (đặt sau ở tab Blind)</SelectItem>
+                  {clubTemplates.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Mẫu CLB</SelectLabel>
+                      {clubTemplates.map((t) => <SelectItem key={t.id} value={`tpl:${t.id}`}>{t.name}</SelectItem>)}
+                    </SelectGroup>
+                  )}
+                  <SelectGroup>
+                    <SelectLabel>Mẫu chuẩn</SelectLabel>
+                    {BLIND_PRESETS.map((p) => <SelectItem key={p.key} value={`preset:${p.key}`}>{p.name}</SelectItem>)}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground -mt-1">Chọn cấu trúc có sẵn để giải chạy được ngay (đồng hồ/tracker đọc theo cấu trúc này).</p>
+            </>
+          )}
           <Button onClick={submit} className="w-full gradient-neon text-primary-foreground border-0">Create</Button>
         </div>
       </DialogContent>
