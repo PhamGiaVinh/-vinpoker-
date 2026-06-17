@@ -72,14 +72,15 @@ export const FEATURES = {
    */
   tdAiRemote: true,
   /**
-   * Online Poker UI under /poker/*. **OFF** (2026-06-17): hidden while the model is
-   * reworked from the buggy free-daily-chips / preset-table flow to a friends-practice
-   * model (open tables, players self-set chips, first-sitter = host, host transfer +
-   * auto-reassign, no wallet). While false, /poker renders <PokerComingSoon/>. Backend
-   * (online_poker_config.enabled) + crons stay as-is; no real users reach the seeded
-   * tables. Flip back to true after the open-table rework ships + UAT.
+   * Online Poker UI under /poker/* — friends-practice model. **ON** (2026-06-17):
+   * the open-table rework (#293) is live — migration 20260921000000 applied (host_user_id
+   * + op_create_open_table/op_sit_open/op_transfer_host/op_leave_open_table), edge deployed,
+   * online_poker_config.enabled=true, crons active. 2-disposable-account E2E passed
+   * (create→host · sit_open · auto-deal · play · transfer_host · leave→reassign). Players
+   * create open tables, self-set their own chips (no wallet), first sitter is the host
+   * (transferable + auto-reassign). Kill-switch: set false to restore <PokerComingSoon/>.
    */
-  onlinePoker: false,
+  onlinePoker: true,
   /**
    * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
    * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never
