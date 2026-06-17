@@ -16,13 +16,14 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { RUNTIME_LIVE } from './types';
-import type { ActionType, LobbyTableSummary, PublicHandView, PublicSeatView } from './types';
+import type { ActionType, LobbyTableSummary, PublicHandView, PublicSeatView, WalletView } from './types';
 import {
   isChipString,
   type ActionRequest,
   type ChipString,
   type RpcOutcome,
   type SubmitActionResult,
+  type WireLegalActions,
   type WirePublicHandState,
   type WirePrivateHandState,
 } from './wire';
@@ -60,6 +61,8 @@ export function newIdemKey(): string {
 export const bodyClaimDaily = () => ({ op: 'claim_daily_chips' as const });
 
 export const bodyGetHole = (handId: string) => ({ op: 'get_my_hole_cards' as const, handId });
+
+export const bodyLegalActions = (handId: string) => ({ op: 'legal_actions' as const, handId });
 
 export const bodySitDown = (tableId: string, seat: number, buyin: ChipString, idempotencyKey: string) =>
   ({ op: 'sit_down' as const, tableId, seat, buyin, idempotencyKey });
@@ -113,6 +116,10 @@ export const onlinePokerClient = {
 
   /** The caller's OWN hole cards for a hand (deny-all secrets, auth.uid()-scoped). */
   getMyHoleCards: (handId: string) => invokeEdge<RpcOutcome>(bodyGetHole(handId)),
+
+  /** Server-authoritative legal-action menu for the caller's own seat (engine decides). */
+  legalActions: (handId: string) =>
+    invokeEdge<{ ok: boolean; legal: WireLegalActions | null; mySeat: number | null }>(bodyLegalActions(handId)),
 
   /** Take a seat with a play-chip buy-in. */
   sitDown: (tableId: string, seat: number, buyin: ChipString) =>
@@ -176,14 +183,25 @@ export async function listTablesLive(): Promise<LobbyTableSummary[]> {
   );
 }
 
-export interface LiveTableMeta { id: string; name: string; sb: string; bb: string; maxSeats: number; status: string; }
+export interface LiveTableMeta {
+  id: string;
+  name: string;
+  sb: string;
+  bb: string;
+  maxSeats: number;
+  status: string;
+  /** chip strings — buy-in bounds + default sit amount */
+  minBuyin: string;
+  maxBuyin: string;
+  startingStack: string;
+}
 
 /** Single table row by id — for the table page header when RUNTIME_LIVE. */
 export async function loadTableMetaLive(tableId: string): Promise<LiveTableMeta | null> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
   const { data, error } = await rails()
     .from('online_poker_tables')
-    .select('id, name, sb, bb, max_seats, status')
+    .select('id, name, sb, bb, max_seats, status, min_buyin, max_buyin, starting_stack_default')
     .eq('id', tableId)
     .maybeSingle();
   if (error || !data) return null;
@@ -194,7 +212,79 @@ export async function loadTableMetaLive(tableId: string): Promise<LiveTableMeta 
     bb: String(data.bb),
     maxSeats: Number(data.max_seats),
     status: String(data.status),
+    minBuyin: String(data.min_buyin ?? '0'),
+    maxBuyin: String(data.max_buyin ?? '0'),
+    startingStack: String(data.starting_stack_default ?? data.min_buyin ?? '0'),
   };
+}
+
+/** The caller's play-chip wallet balance (RLS: own row only). Gated by RUNTIME_LIVE. */
+export async function loadWalletLive(): Promise<WalletView> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u?.user?.id;
+  if (!uid) return { balance: '0' };
+  const { data } = await rails()
+    .from('online_poker_player_accounts')
+    .select('balance')
+    .eq('user_id', uid)
+    .maybeSingle();
+  return { balance: data ? String(data.balance) : '0' };
+}
+
+/** A seated player at a table (exists with or WITHOUT an active hand). */
+export interface LiveSeat {
+  seatNo: number;
+  userId: string;
+  displayName?: string;
+  /** chip string */
+  stack: string;
+  /** sitting | sitting_out | active | folded | allin */
+  status: string;
+}
+
+/**
+ * Live table seats from online_poker_seats (NOT the hand state) so a player can see
+ * who is seated and pick an empty seat even when no hand is in progress. Gated.
+ */
+export async function loadSeatsLive(tableId: string): Promise<LiveSeat[]> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  const { data, error } = await rails()
+    .from('online_poker_seats')
+    .select('seat_no, user_id, stack, status')
+    .eq('table_id', tableId)
+    .in('status', ['sitting', 'sitting_out', 'active', 'folded', 'allin']);
+  if (error || !data) return [];
+  const rows = data as Array<{ seat_no: number; user_id: string | null; stack: number | string; status: string }>;
+  const occupied = rows.filter((r) => r.user_id);
+
+  // Best-effort display names; falls back to the seat number when unavailable.
+  const ids = [...new Set(occupied.map((r) => r.user_id as string))];
+  const names: Record<string, string> = {};
+  if (ids.length) {
+    const { data: profs } = await rails().from('profiles').select('id, display_name').in('id', ids);
+    for (const p of (profs ?? []) as Array<{ id: string; display_name: string | null }>) {
+      if (p.display_name) names[p.id] = p.display_name;
+    }
+  }
+  return occupied.map((r) => ({
+    seatNo: Number(r.seat_no),
+    userId: r.user_id as string,
+    displayName: names[r.user_id as string],
+    stack: String(r.stack),
+    status: r.status,
+  }));
+}
+
+/** Server-authoritative legal-action menu for the caller's seat, or null if not in the hand. */
+export async function loadLegalActionsLive(handId: string): Promise<WireLegalActions | null> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  try {
+    const res = await onlinePokerClient.legalActions(handId);
+    return res?.legal ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Live public hand state for a table's current hand (no secrets). Gated. */

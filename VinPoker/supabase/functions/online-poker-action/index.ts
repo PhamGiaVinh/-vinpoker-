@@ -22,7 +22,7 @@ import { parseBody, z } from "../_shared/validate.ts";
 import { corsHeaders, handleOptions, jsonResp } from "../_shared/cors.ts";
 import {
   applyAction, createHand, shuffledDeck, cryptoRng32,
-  actionFromRequest, classifyActionError,
+  actionFromRequest, classifyActionError, toWireLegalActions,
 } from "../_shared/pokerEngine/index.ts";
 import {
   serializeAuthoritative, deserializeAuthoritative,
@@ -38,6 +38,7 @@ const IdemKey = z.string().min(8).max(200);
 const Body = z.discriminatedUnion("op", [
   z.object({ op: z.literal("claim_daily_chips") }),
   z.object({ op: z.literal("get_my_hole_cards"), handId: z.string().uuid() }),
+  z.object({ op: z.literal("legal_actions"), handId: z.string().uuid() }),
   z.object({ op: z.literal("sit_down"), tableId: z.string().uuid(), seat: z.number().int().min(1).max(10), buyin: z.string().regex(/^[1-9][0-9]*$/), idempotencyKey: IdemKey }),
   z.object({ op: z.literal("stand_up"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
   z.object({ op: z.literal("start_hand"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
@@ -86,6 +87,7 @@ Deno.serve(async (req) => {
     switch (body.op) {
       case "claim_daily_chips": return await rpcPassthrough(userClient, "op_claim_daily_chips", {}, json);
       case "get_my_hole_cards": return await rpcPassthrough(userClient, "op_get_my_hole_cards", { p_hand_id: body.handId }, json);
+      case "legal_actions":     return await handleLegal(admin, uid, body, json);
       case "sit_down":          return await rpcPassthrough(userClient, "op_sit_down", { p_table_id: body.tableId, p_seat_no: body.seat, p_buyin: body.buyin, p_idempotency_key: body.idempotencyKey }, json);
       case "stand_up":          return await rpcPassthrough(userClient, "op_stand_up", { p_table_id: body.tableId, p_idempotency_key: body.idempotencyKey }, json);
       case "start_hand":        return await handleStart(admin, uid, body, json);
@@ -242,6 +244,38 @@ async function handleSubmit(
     return json({ ok: true, handId: body.handId, stateVersion: sub.state_version, view: privateView(next, body.seat) }, 200);
   }
   return json({ ok: false, code: "race_lost" }, 409);
+}
+
+/**
+ * legal_actions — server-authoritative action menu for the CALLER's own seat in the
+ * given hand. The engine (not the client) decides legality; this just exposes the menu
+ * the client renders. Returns {ok:true, legal, mySeat} (legal carries empty `types`
+ * when it is not the caller's turn) or {ok:true, legal:null, mySeat:null} when the
+ * caller is not in the hand. No secret data ever crosses this path (G1).
+ */
+async function handleLegal(
+  admin: SupabaseClient, uid: string,
+  body: Extract<BodyT, { op: "legal_actions" }>,
+  json: (d: unknown, s?: number) => Response,
+): Promise<Response> {
+  const { data: ctx, error: lErr } = await admin.rpc("op_load_action_context", { p_hand_id: body.handId });
+  if (lErr) return json({ ok: false, code: "load_failed" }, 200);
+  if (!ctx || ctx.outcome !== "ok") return json({ ok: false, code: ctx?.outcome ?? "load_failed" }, 200);
+
+  let state;
+  try {
+    state = deserializeAuthoritative(ctx.state, ctx.live_deck ?? [], ctx.holes ?? []);
+  } catch (_e) {
+    return json({ ok: false, code: "state_error" }, 200); // G1: no invariant message
+  }
+
+  // Identify the caller's seat from the authoritative state (NEVER from the body).
+  const mine = state.seats.find((s) => s.playerId === uid);
+  if (!mine) return json({ ok: true, legal: null, mySeat: null }, 200);
+
+  // toWireLegalActions returns an empty-types menu unless it is genuinely this seat's turn.
+  const legal = toWireLegalActions(state, mine.seat);
+  return json({ ok: true, legal, mySeat: mine.seat }, 200);
 }
 
 /** Next button seat clockwise after the previous button among seated seats. */

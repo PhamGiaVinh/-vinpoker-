@@ -54,12 +54,24 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
-function SeatChip({ seat, isMe, hole, bb, isWinner }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean }) {
+function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void }) {
   const empty = seat.status === 'empty';
   const folded = seat.status === 'folded';
   const sittingOut = seat.status === 'sitting_out';
 
   if (empty) {
+    if (onSit) {
+      return (
+        <button
+          type="button"
+          onClick={onSit}
+          className="group w-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-center text-[10px] font-medium text-primary/80 transition-colors hover:border-primary hover:bg-primary/15 hover:text-primary sm:w-20 sm:text-[11px]"
+        >
+          <span className="block leading-tight">Ghế {seat.seat}</span>
+          <span className="block text-[8px] uppercase tracking-wide opacity-70 group-hover:opacity-100 sm:text-[9px]">+ Ngồi</span>
+        </button>
+      );
+    }
     return (
       <div className="w-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-white/15 bg-black/30 py-2.5 text-center text-[10px] text-white/35 sm:w-20 sm:text-[11px]">
         Ghế {seat.seat}
@@ -71,9 +83,11 @@ function SeatChip({ seat, isMe, hole, bb, isWinner }: { seat: PublicSeatView; is
     ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />)
     : folded
       ? <span className="px-2 py-1 text-[11px] text-white/50">đã bỏ</span>
-      : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
-        : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
+      : sittingOut
+        ? <span className="px-2 py-1 text-[11px] text-white/45">chờ ván</span>
+        : seat.revealedCards?.length
+          ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
+          : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
 
   return (
     <div className={cn(
@@ -122,6 +136,7 @@ export function SeatRing({
   bb,
   winnerSeats,
   collecting = false,
+  onEmptySeatClick,
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -129,6 +144,8 @@ export function SeatRing({
   winnerSeats?: number[];
   /** when true, committed bets ease toward the pot (end-of-street collection) */
   collecting?: boolean;
+  /** when set, empty seats become "+ Ngồi" buttons that call this with the seat number */
+  onEmptySeatClick?: (seatNo: number) => void;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
 
@@ -190,7 +207,14 @@ export function SeatRing({
       {/* seats */}
       {hand.seats.map((s) => (
         <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
-          <SeatChip seat={s} isMe={s.seat === hand.mySeat} hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined} bb={bb} isWinner={winnerSeats?.includes(s.seat)} />
+          <SeatChip
+            seat={s}
+            isMe={s.seat === hand.mySeat}
+            hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined}
+            bb={bb}
+            isWinner={winnerSeats?.includes(s.seat)}
+            onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
+          />
         </div>
       ))}
     </div>
