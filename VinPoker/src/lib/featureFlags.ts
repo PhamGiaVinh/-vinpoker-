@@ -72,15 +72,14 @@ export const FEATURES = {
    */
   tdAiRemote: true,
   /**
-   * Online Poker (play-money, closed alpha) UI under /poker/*. **ON** (closed alpha
-   * 2026-06-17): GE-2C runtime migrations applied live, edges deployed, crons active.
-   * Precondition (b) online_poker_config.enabled is set true via a separate controlled
-   * DB op before gameplay starts — while still false the backend returns "disabled" and
-   * the lobby is visible but actions are rejected gracefully. The shell's own
-   * RUNTIME_LIVE constant (src/lib/onlinePoker/types.ts) is a second gate that keeps
-   * action buttons hot. Kill-switch: set false to restore <PokerComingSoon/> for all.
+   * Online Poker UI under /poker/*. **OFF** (2026-06-17): hidden while the model is
+   * reworked from the buggy free-daily-chips / preset-table flow to a friends-practice
+   * model (open tables, players self-set chips, first-sitter = host, host transfer +
+   * auto-reassign, no wallet). While false, /poker renders <PokerComingSoon/>. Backend
+   * (online_poker_config.enabled) + crons stay as-is; no real users reach the seeded
+   * tables. Flip back to true after the open-table rework ships + UAT.
    */
-  onlinePoker: true,
+  onlinePoker: false,
   /**
    * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
    * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never

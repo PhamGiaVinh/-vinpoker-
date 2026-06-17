@@ -42,6 +42,11 @@ const Body = z.discriminatedUnion("op", [
   z.object({ op: z.literal("sit_down"), tableId: z.string().uuid(), seat: z.number().int().min(1).max(10), buyin: z.string().regex(/^[1-9][0-9]*$/), idempotencyKey: IdemKey }),
   z.object({ op: z.literal("stand_up"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
   z.object({ op: z.literal("start_hand"), tableId: z.string().uuid(), idempotencyKey: IdemKey }),
+  // Friends-practice (open tables, wallet-free, host succession)
+  z.object({ op: z.literal("create_open_table"), name: z.string().max(40).optional(), sb: z.string().regex(/^[1-9][0-9]*$/), bb: z.string().regex(/^[1-9][0-9]*$/), buyin: z.string().regex(/^[1-9][0-9]*$/), maxSeats: z.number().int().min(2).max(10).optional() }),
+  z.object({ op: z.literal("sit_open"), tableId: z.string().uuid(), seat: z.number().int().min(1).max(10), buyin: z.string().regex(/^[1-9][0-9]*$/), idempotencyKey: IdemKey }),
+  z.object({ op: z.literal("transfer_host"), tableId: z.string().uuid(), toUserId: z.string().uuid() }),
+  z.object({ op: z.literal("leave_open_table"), tableId: z.string().uuid() }),
   z.object({
     op: z.literal("submit_action"), handId: z.string().uuid(),
     seat: z.number().int().min(1).max(10),
@@ -92,6 +97,10 @@ Deno.serve(async (req) => {
       case "stand_up":          return await rpcPassthrough(userClient, "op_stand_up", { p_table_id: body.tableId, p_idempotency_key: body.idempotencyKey }, json);
       case "start_hand":        return await handleStart(admin, uid, body, json);
       case "submit_action":     return await handleSubmit(admin, uid, body, json);
+      case "create_open_table": return await rpcPassthrough(userClient, "op_create_open_table", { p_name: body.name ?? null, p_sb: body.sb, p_bb: body.bb, p_buyin: body.buyin, p_max_seats: body.maxSeats ?? 9 }, json);
+      case "sit_open":          return await rpcPassthrough(userClient, "op_sit_open", { p_table_id: body.tableId, p_seat_no: body.seat, p_buyin: body.buyin, p_idempotency_key: body.idempotencyKey }, json);
+      case "transfer_host":     return await rpcPassthrough(userClient, "op_transfer_host", { p_table_id: body.tableId, p_to_user_id: body.toUserId }, json);
+      case "leave_open_table":  return await rpcPassthrough(userClient, "op_leave_open_table", { p_table_id: body.tableId }, json);
     }
   } catch (_e) {
     // G1: never surface internal error text (it may carry engine internals).

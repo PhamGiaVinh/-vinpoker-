@@ -1,10 +1,8 @@
 // src/pages/OnlinePokerTable.tsx
-// GE-2 closed alpha — a single online-poker TABLE you can actually play at.
-// Server-authoritative: the client sends intent (sit / stand / claim / fold-check-
-// call-bet-raise) through the online-poker-action Edge fn; the engine decides cards,
-// legality, winner and chips. This page shows ALL seats (occupied + empty) whether or
-// not a hand is in progress, lets you pick an empty seat + buy-in to sit, and renders
-// the live action bar driven by the server's legal-action menu. Chips are STRINGS.
+// Friends-practice TABLE: open seating (no approval, no wallet), with a transferable
+// host. Click an empty seat → choose your chips → sit. The first sitter is the host;
+// the host can hand the role to another seated player, and it auto-reassigns when the
+// host leaves. Server-authoritative: the engine decides cards, legality, winner, chips.
 
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -23,25 +21,28 @@ import { SeatRing } from '@/components/poker/SeatRing';
 import { HandStateViewer } from '@/components/poker/HandStateViewer';
 import { ActionBar } from '@/components/poker/ActionBar';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
-import { ChevronLeft, Coins, LogIn } from 'lucide-react';
+import { ChevronLeft, Crown, LogIn } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
   const n = Number(s);
   return Number.isFinite(n) ? n.toLocaleString('en-US') : s;
 };
 
-/** Map common RPC/edge outcome codes to a friendly Vietnamese message. */
+/** Map RPC/edge outcome codes to a friendly Vietnamese message. */
 const OUTCOME_VN: Record<string, string> = {
-  insufficient_funds: 'Không đủ chip trong quỹ.',
-  no_wallet: 'Chưa có quỹ chip — hãy nhận chip trước.',
+  bad_buyin: 'Số chip không hợp lệ.',
+  bad_blinds: 'Blind không hợp lệ.',
   seat_taken: 'Ghế vừa có người ngồi, chọn ghế khác nhé.',
   already_seated: 'Bạn đã ngồi ở bàn này rồi.',
-  buyin_out_of_range: 'Số chip mang vào ngoài giới hạn của bàn.',
   bad_seat: 'Ghế không hợp lệ.',
   disabled: 'Poker đang tạm đóng.',
   unauthenticated: 'Bạn cần đăng nhập.',
   table_not_found: 'Không tìm thấy bàn.',
-  in_active_hand: 'Đang trong ván — không thể đứng dậy lúc này.',
+  table_not_open: 'Bàn đang đóng.',
+  not_seated: 'Bạn chưa ngồi ở bàn này.',
+  not_host: 'Chỉ chủ bàn mới làm được việc này.',
+  target_not_seated: 'Người này chưa ngồi ở bàn.',
+  in_active_hand: 'Đang trong ván — không thể rời lúc này.',
   not_your_turn: 'Chưa tới lượt bạn.',
   not_in_betting: 'Ván chưa tới vòng cược.',
   seat_cannot_act: 'Ghế này không thể hành động.',
@@ -52,14 +53,8 @@ const OUTCOME_VN: Record<string, string> = {
 };
 const vn = (code?: string) => (code && OUTCOME_VN[code]) || 'Có lỗi xảy ra, thử lại.';
 
-/**
- * Merge the active hand (if any) with the live seats table into a full maxSeats ring:
- * in-hand seats keep their hand data; seated-but-not-in-hand players show as waiting;
- * the rest are empty (clickable to sit).
- */
-function buildRingView(
-  meta: LiveTableMeta, hand: PublicHandView | null, seats: LiveSeat[], mySeatNo: number | null,
-): PublicHandView {
+/** Merge the active hand (if any) with the live seats into a full maxSeats ring. */
+function buildRingView(meta: LiveTableMeta, hand: PublicHandView | null, seats: LiveSeat[], mySeatNo: number | null): PublicHandView {
   const handByNo = new Map<number, PublicSeatView>();
   if (hand) for (const s of hand.seats) handByNo.set(s.seat, s);
   const liveByNo = new Map<number, LiveSeat>();
@@ -71,10 +66,7 @@ function buildRingView(
     if (hs) { ringSeats.push(hs); continue; }
     const ls = liveByNo.get(n);
     if (ls) {
-      ringSeats.push({
-        seat: n, playerId: ls.userId, displayName: ls.displayName,
-        stack: ls.stack, committed: '0', status: 'sitting_out',
-      });
+      ringSeats.push({ seat: n, playerId: ls.userId, displayName: ls.displayName, stack: ls.stack, committed: '0', status: 'sitting_out' });
     } else {
       ringSeats.push({ seat: n, playerId: null, stack: '0', committed: '0', status: 'empty' });
     }
@@ -99,7 +91,7 @@ function buildRingView(
 export default function OnlinePokerTable() {
   const { tableId = '' } = useParams();
   const { user } = useAuth();
-  const { hand, seats, mySeatNo, wallet, legal, loading, refresh, actions } = useTableHand(tableId);
+  const { hand, seats, mySeatNo, myUserId, hostUserId, amIHost, legal, loading, refresh, actions } = useTableHand(tableId);
   const table = useTableMeta(tableId);
 
   const [sitSeat, setSitSeat] = useState<number | null>(null);
@@ -117,7 +109,6 @@ export default function OnlinePokerTable() {
     );
   }
 
-  // Login is required to act (the Edge needs a user JWT).
   if (RUNTIME_LIVE && !user) {
     return (
       <div className="container mx-auto max-w-2xl p-4">
@@ -134,6 +125,7 @@ export default function OnlinePokerTable() {
   const ringView = buildRingView(table, hand, seats, mySeatNo);
   const seated = mySeatNo != null;
   const inActiveHand = !!hand && (hand.status === 'dealing' || hand.status === 'betting');
+  const seatedPlayers = [...seats].sort((a, b) => a.seatNo - b.seatNo);
 
   const openSit = (seatNo: number) => {
     if (seated) { toast.info('Bạn đã ngồi ở bàn này rồi.'); return; }
@@ -143,99 +135,95 @@ export default function OnlinePokerTable() {
   const confirmSit = async (buyin: string) => {
     if (sitSeat == null) return;
     try {
-      const res = (await actions.sitDown(sitSeat, buyin)) as RpcOutcome;
-      if (res?.outcome === 'ok') {
-        toast.success(`Đã ngồi vào ghế ${sitSeat}`);
-        setSitSeat(null);
-        refresh();
-      } else {
-        toast.error(vn(res?.outcome));
-      }
-    } catch {
-      toast.error('Không ngồi được, thử lại.');
-    }
+      const res = (await actions.sitOpen(sitSeat, buyin)) as RpcOutcome;
+      if (res?.outcome === 'ok') { toast.success(`Đã ngồi vào ghế ${sitSeat}`); setSitSeat(null); refresh(); }
+      else toast.error(vn(res?.outcome));
+    } catch { toast.error('Không ngồi được, thử lại.'); }
   };
 
-  const claimChips = async () => {
+  const leave = async () => {
     try {
-      const res = (await actions.claimDaily()) as RpcOutcome;
-      if (res?.outcome === 'ok') toast.success('Đã nhận 1.000.000 chip.');
-      else if (res?.outcome === 'already_claimed') toast.info('Hôm nay bạn đã nhận chip rồi.');
+      const res = (await actions.leaveTable()) as RpcOutcome;
+      if (res?.outcome === 'ok') { toast.success('Đã rời bàn.'); refresh(); }
       else toast.error(vn(res?.outcome));
-      refresh();
-    } catch { toast.error('Không nhận được chip, thử lại.'); }
+    } catch { toast.error('Không rời được, thử lại.'); }
   };
 
-  const standUp = async () => {
+  const transfer = async (toUserId: string, name: string) => {
     try {
-      const res = (await actions.standUp()) as RpcOutcome;
-      if (res?.outcome === 'ok') { toast.success('Đã đứng dậy.'); refresh(); }
+      const res = (await actions.transferHost(toUserId)) as RpcOutcome;
+      if (res?.outcome === 'ok') { toast.success(`Đã trao quyền chủ bàn cho ${name}`); refresh(); }
       else toast.error(vn(res?.outcome));
-    } catch { toast.error('Không đứng dậy được, thử lại.'); }
+    } catch { toast.error('Không trao quyền được, thử lại.'); }
   };
 
   const submit = async (a: { type: ActionType; amount?: string }) => {
     if (!hand || mySeatNo == null) return;
     try {
-      const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as
-        { ok: boolean; code?: string };
+      const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as { ok: boolean; code?: string };
       if (res && res.ok === false) toast.error(vn(res.code));
       else refresh();
     } catch { toast.error('Gửi hành động thất bại, thử lại.'); }
   };
 
+  const nameFor = (s: LiveSeat) => (s.userId === myUserId ? 'Bạn' : s.displayName || `Ghế ${s.seatNo}`);
+
   return (
     <div className="container mx-auto max-w-4xl space-y-3 p-3 sm:p-4">
       <header className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="sm">
-          <Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link>
-        </Button>
+        <Button asChild variant="ghost" size="sm"><Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link></Button>
         <h1 className="truncate text-lg font-bold">{table.name}</h1>
         <Badge variant="outline" className="tabular-nums">{fmtChips(table.sb)}/{fmtChips(table.bb)}</Badge>
-        <div className="ml-auto flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1">
-          <Coins className="h-3.5 w-3.5 text-primary" />
-          <span className="text-xs font-semibold tabular-nums text-primary">{fmtChips(wallet.balance)}</span>
-        </div>
+        {amIHost && <Badge className="ml-auto gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
       {/* the felt — all seats; empty ones are tap-to-sit when you're not seated */}
       <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
-        <SeatRing
-          hand={ringView}
-          bb={table.bb}
-          onEmptySeatClick={!seated ? openSit : undefined}
-        />
+        <SeatRing hand={ringView} bb={table.bb} onEmptySeatClick={!seated ? openSit : undefined} />
       </Card>
 
       {/* seat controls */}
       <div className="flex flex-wrap items-center justify-center gap-2">
         {!seated ? (
-          <>
-            <span className="text-sm text-muted-foreground">Chạm một ghế trống để vào chơi.</span>
-            {Number(wallet.balance) < Number(table.minBuyin) && (
-              <Button size="sm" variant="outline" onClick={claimChips}>Nhận chip miễn phí</Button>
-            )}
-          </>
+          <span className="text-sm text-muted-foreground">Chạm một ghế trống để vào chơi.</span>
         ) : (
           <>
             <Badge variant="secondary">Bạn đang ngồi ghế {mySeatNo}</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={standUp}
-              disabled={inActiveHand}
-              title={inActiveHand ? 'Không thể đứng dậy khi đang trong ván' : undefined}
-            >
-              Đứng dậy
+            <Button size="sm" variant="outline" onClick={leave} disabled={inActiveHand} title={inActiveHand ? 'Không thể rời khi đang trong ván' : undefined}>
+              Đứng dậy / rời bàn
             </Button>
           </>
         )}
       </div>
 
-      {/* action bar — only meaningful during an active hand */}
-      {inActiveHand && (
-        <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} onAction={submit} />
+      {/* players + host controls ("danh sách chủ trên bàn") */}
+      {seatedPlayers.length > 0 && (
+        <Card className="p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người chơi tại bàn</div>
+          <div className="space-y-1.5">
+            {seatedPlayers.map((s) => {
+              const isHost = s.userId === hostUserId;
+              const isMe = s.userId === myUserId;
+              return (
+                <div key={s.seatNo} className="flex items-center gap-2 text-sm">
+                  <span className="w-7 text-center text-xs text-muted-foreground tabular-nums">#{s.seatNo}</span>
+                  <span className={`truncate ${isMe ? 'font-semibold' : ''}`}>{nameFor(s)}</span>
+                  {isHost && <Badge variant="outline" className="gap-1 border-primary/40 text-primary"><Crown className="h-3 w-3" /> Chủ</Badge>}
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtChips(s.stack)}</span>
+                  {amIHost && !isHost && (
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => transfer(s.userId, nameFor(s))}>
+                      Trao quyền
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
       )}
+
+      {/* action bar — only meaningful during an active hand */}
+      {inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} onAction={submit} />}
 
       {/* waiting hint when seated but no hand yet */}
       {seated && !inActiveHand && (
@@ -251,13 +239,10 @@ export default function OnlinePokerTable() {
         onOpenChange={(v) => { if (!v) setSitSeat(null); }}
         seatNo={sitSeat}
         tableName={table.name}
+        sb={table.sb}
         bb={table.bb}
-        minBuyin={table.minBuyin}
-        maxBuyin={table.maxBuyin}
-        startingStack={table.startingStack}
-        walletBalance={wallet.balance}
+        defaultStack={table.startingStack}
         onConfirm={confirmSit}
-        onClaim={claimChips}
       />
     </div>
   );
