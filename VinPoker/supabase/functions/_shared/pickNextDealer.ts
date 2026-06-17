@@ -163,6 +163,7 @@ interface BusyAssignmentRow {
   dealer_id: string;
   table_id: string | null;
   status: string | null;
+  attendance_id: string | null;
 }
 
 interface PreAssignedRefRow {
@@ -502,7 +503,7 @@ export async function buildDealerCandidates(
   if (dealerIds.length > 0) {
     let busyAssignmentsQuery = admin
       .from("dealer_assignments")
-      .select("dealer_id, table_id, status")
+      .select("dealer_id, table_id, status, attendance_id")
       .in("dealer_id", dealerIds)
       // 'reserved' = Step-2 empty-table reservation: the dealer is held for an
       // empty table, so they must NOT be picked for another table.
@@ -520,13 +521,41 @@ export async function buildDealerCandidates(
 
     const { data: busyAssignments } = (await busyAssignmentsQuery) as unknown as { data: BusyAssignmentRow[] | null };
 
-    for (const ba of busyAssignments ?? []) {
-      busyDealerIds.add(ba.dealer_id);
+    // Shared "busy" predicate: an active assignment only marks a dealer BUSY if
+    // its linked attendance is still CHECKED IN. An assignment tied to a
+    // checked-out attendance is an ORPHAN (the dealer left) — counting it as busy
+    // is exactly what froze club 22222222 (Step 5b matches by dealer_id, so an old
+    // checked-out attendance's orphan poisoned the dealer's NEW pool entry).
+    // Only SKIP rows we can POSITIVELY confirm are orphaned (attendance
+    // check_out_time IS NOT NULL); unknown/null attendance keeps the B6 defense.
+    const busyAttIds = [
+      ...new Set((busyAssignments ?? []).map((b) => b.attendance_id).filter(Boolean) as string[]),
+    ];
+    const checkedOutAttIds = new Set<string>();
+    if (busyAttIds.length > 0) {
+      const { data: goneAtt } = (await admin
+        .from("dealer_attendance")
+        .select("id")
+        .in("id", busyAttIds)
+        .not("check_out_time", "is", null)) as unknown as { data: { id: string }[] | null };
+      for (const a of goneAtt ?? []) checkedOutAttIds.add(a.id);
     }
 
-    if (busyAssignments && busyAssignments.length > 0) {
+    let step5bBusy = 0;
+    let step5bOrphansSkipped = 0;
+    for (const ba of busyAssignments ?? []) {
+      if (ba.attendance_id && checkedOutAttIds.has(ba.attendance_id)) {
+        step5bOrphansSkipped++; // checked-out orphan — do NOT exclude the dealer
+        continue;
+      }
+      busyDealerIds.add(ba.dealer_id);
+      step5bBusy++;
+    }
+
+    if (step5bBusy > 0 || step5bOrphansSkipped > 0) {
       console.log(
-        `[pickNextDealer] Club ${clubId}: ${busyAssignments.length} dealers excluded by assignment cross-check (Step 5b)` +
+        `[pickNextDealer] Club ${clubId}: ${step5bBusy} dealers excluded by assignment cross-check (Step 5b)` +
+        (step5bOrphansSkipped > 0 ? `, ${step5bOrphansSkipped} checked-out orphan row(s) skipped` : "") +
         (currentTableId ? ` [table-aware: excluding table ${currentTableId}]` : " [no table-aware filter]")
       );
     }

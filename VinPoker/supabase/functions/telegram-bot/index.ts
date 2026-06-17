@@ -844,18 +844,16 @@ async function handleCheckout(
   // counted as "occupied" by fillEmptyTables. needs_replacement lets the
   // scheduler prioritise refilling it. (available dealers normally have none.)
   try {
-    const { data: activeAss } = await admin
+    // Release ALL active assignments (assigned/on_break/pre_assigned), not just
+    // 'assigned' and not just the first row — an unreleased on_break/pre_assigned
+    // row orphans the dealer and can freeze rotation (pickNextDealer Step 5b
+    // matches by dealer_id). Mirror of checkout-dealer step 5.
+    await admin
       .from("dealer_assignments")
-      .select("id")
+      .update({ released_at: nowISO, status: "completed", needs_replacement: true })
       .eq("attendance_id", att.id)
-      .eq("status", "assigned")
+      .in("status", ["assigned", "on_break", "pre_assigned"])
       .is("released_at", null);
-    if (activeAss && activeAss.length > 0) {
-      await admin
-        .from("dealer_assignments")
-        .update({ released_at: nowISO, status: "completed", needs_replacement: true })
-        .eq("id", activeAss[0].id);
-    }
   } catch { /* non-critical */ }
 
   // Best-effort audit (never block the checkout reply).
