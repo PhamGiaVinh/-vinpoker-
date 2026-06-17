@@ -1,0 +1,34 @@
+name: Diag — dealer pool probe (read-only, one-shot)
+
+# Manual trigger only. Read-only SELECT queries via Management API.
+# Diagnoses why a dealer is stuck in the pool without getting assigned.
+# No DB writes. No schema_migrations. No deploy_db. Delete after use.
+on:
+  workflow_dispatch:
+    inputs:
+      dealer_name:
+        description: "Partial dealer name to search (default: pgv)"
+        required: false
+        default: "pgv"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run dealer pool probe (read-only)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          DEALER_NAME_FILTER: ${{ github.event.inputs.dealer_name }}
+        run: node scripts/diagnostics/dealer_pool_probe.mjs
