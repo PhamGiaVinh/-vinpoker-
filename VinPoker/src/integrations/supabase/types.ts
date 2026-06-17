@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -11,6 +12,31 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -256,6 +282,51 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      blind_structure_templates: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          levels: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          levels?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          levels?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blind_structure_templates_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blind_structure_templates_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       booking_chats: {
         Row: {
@@ -586,6 +657,296 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_intel_audit_log: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by: string | null
+          club_id: string | null
+          id: string
+          new_values: Json | null
+          old_values: Json | null
+          reason: string | null
+          record_id: string | null
+          table_name: string
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          changed_by?: string | null
+          club_id?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          reason?: string | null
+          record_id?: string | null
+          table_name: string
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by?: string | null
+          club_id?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          reason?: string | null
+          record_id?: string | null
+          table_name?: string
+        }
+        Relationships: []
+      }
+      club_intel_config: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_intel_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_intel_datasets: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          period_end: string | null
+          period_start: string | null
+          provenance: string | null
+          readiness_json: Json | null
+          row_count: number
+          schema_version: string
+          source: Database["public"]["Enums"]["ci_dataset_source"]
+          status: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          provenance?: string | null
+          readiness_json?: Json | null
+          row_count?: number
+          schema_version?: string
+          source: Database["public"]["Enums"]["ci_dataset_source"]
+          status?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          provenance?: string | null
+          readiness_json?: Json | null
+          row_count?: number
+          schema_version?: string
+          source?: Database["public"]["Enums"]["ci_dataset_source"]
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_intel_datasets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_datasets_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_intel_import_rows: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          dataset_id: string
+          id: string
+          parse_errors: Json
+          promoted: boolean
+          raw_json: Json
+          row_index: number
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          dataset_id: string
+          id?: string
+          parse_errors?: Json
+          promoted?: boolean
+          raw_json: Json
+          row_index: number
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          dataset_id?: string
+          id?: string
+          parse_errors?: Json
+          promoted?: boolean
+          raw_json?: Json
+          row_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_intel_import_rows_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_import_rows_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_import_rows_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "club_intel_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_intel_observations: {
+        Row: {
+          buy_in: number | null
+          club_id: string
+          created_at: string
+          created_by: string | null
+          dataset_id: string
+          event_name: string | null
+          final_entries: number | null
+          free_rake_cap: number | null
+          game_type: string | null
+          id: string
+          label: Database["public"]["Enums"]["ci_label_tier"]
+          level1_entries: number | null
+          native_tournament_id: string | null
+          occurred_on: string | null
+          prize_component: number | null
+          provenance: string | null
+          rake_component: number | null
+          rake_yield_pct: number | null
+          slot_time: string | null
+          source: Database["public"]["Enums"]["ci_dataset_source"]
+        }
+        Insert: {
+          buy_in?: number | null
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          dataset_id: string
+          event_name?: string | null
+          final_entries?: number | null
+          free_rake_cap?: number | null
+          game_type?: string | null
+          id?: string
+          label?: Database["public"]["Enums"]["ci_label_tier"]
+          level1_entries?: number | null
+          native_tournament_id?: string | null
+          occurred_on?: string | null
+          prize_component?: number | null
+          provenance?: string | null
+          rake_component?: number | null
+          rake_yield_pct?: number | null
+          slot_time?: string | null
+          source: Database["public"]["Enums"]["ci_dataset_source"]
+        }
+        Update: {
+          buy_in?: number | null
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          dataset_id?: string
+          event_name?: string | null
+          final_entries?: number | null
+          free_rake_cap?: number | null
+          game_type?: string | null
+          id?: string
+          label?: Database["public"]["Enums"]["ci_label_tier"]
+          level1_entries?: number | null
+          native_tournament_id?: string | null
+          occurred_on?: string | null
+          prize_component?: number | null
+          provenance?: string | null
+          rake_component?: number | null
+          rake_yield_pct?: number | null
+          slot_time?: string | null
+          source?: Database["public"]["Enums"]["ci_dataset_source"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_intel_observations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_observations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_intel_observations_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "club_intel_datasets"
             referencedColumns: ["id"]
           },
         ]
@@ -1613,6 +1974,74 @@ export type Database = {
           },
         ]
       }
+      dealer_availability_requests: {
+        Row: {
+          club_id: string
+          created_at: string
+          dealer_id: string
+          id: string
+          kind: string
+          note: string | null
+          status: string
+          template_id: string | null
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          kind: string
+          note?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_availability_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_availability_requests_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_availability_requests_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_availability_requests_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_breaks: {
         Row: {
           assignment_id: string | null
@@ -1743,6 +2172,85 @@ export type Database = {
             columns: ["table_id"]
             isOneToOne: false
             referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_insurance_profiles: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          dealer_id: string
+          effective_from: string
+          effective_to: string | null
+          id: string
+          include_bhtn: boolean
+          include_bhxh: boolean
+          include_bhyt: boolean
+          insurance_mode: string
+          insurance_salary_vnd: number | null
+          notes: string | null
+          region_code: string | null
+          series_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          dealer_id: string
+          effective_from: string
+          effective_to?: string | null
+          id?: string
+          include_bhtn?: boolean
+          include_bhxh?: boolean
+          include_bhyt?: boolean
+          insurance_mode?: string
+          insurance_salary_vnd?: number | null
+          notes?: string | null
+          region_code?: string | null
+          series_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          include_bhtn?: boolean
+          include_bhxh?: boolean
+          include_bhyt?: boolean
+          insurance_mode?: string
+          insurance_salary_vnd?: number | null
+          notes?: string | null
+          region_code?: string | null
+          series_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_insurance_profiles_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_insurance_profiles_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_insurance_profiles_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
             referencedColumns: ["id"]
           },
         ]
@@ -2296,6 +2804,60 @@ export type Database = {
           },
         ]
       }
+      dealer_schedule_runs: {
+        Row: {
+          club_id: string
+          created_at: string
+          generated_by: string | null
+          id: string
+          params: Json
+          published_at: string | null
+          solver_version: string
+          status: string
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          generated_by?: string | null
+          id?: string
+          params?: Json
+          published_at?: string | null
+          solver_version: string
+          status?: string
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          generated_by?: string | null
+          id?: string
+          params?: Json
+          published_at?: string | null
+          solver_version?: string
+          status?: string
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_schedule_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_schedule_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_score_overrides: {
         Row: {
           created_at: string
@@ -2328,8 +2890,298 @@ export type Database = {
           },
         ]
       }
+      dealer_selfcheckin_config: {
+        Row: {
+          id: boolean
+          scheduled_pool_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          scheduled_pool_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          scheduled_pool_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      dealer_shift_assignments: {
+        Row: {
+          checked_in_at: string | null
+          checked_out_at: string | null
+          club_id: string
+          created_at: string
+          dealer_id: string
+          id: string
+          reason: Json
+          role: string
+          run_id: string | null
+          scheduled_end_at: string
+          scheduled_start_at: string
+          score: number | null
+          status: string
+          template_id: string | null
+          updated_at: string
+          work_date: string
+        }
+        Insert: {
+          checked_in_at?: string | null
+          checked_out_at?: string | null
+          club_id: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          reason?: Json
+          role?: string
+          run_id?: string | null
+          scheduled_end_at: string
+          scheduled_start_at: string
+          score?: number | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          work_date: string
+        }
+        Update: {
+          checked_in_at?: string | null
+          checked_out_at?: string | null
+          club_id?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          reason?: Json
+          role?: string
+          run_id?: string | null
+          scheduled_end_at?: string
+          scheduled_start_at?: string
+          score?: number | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_shift_assignments_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_assignments_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_assignments_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_assignments_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_schedule_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_assignments_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_shift_audit_logs: {
+        Row: {
+          action: string
+          actor: string | null
+          after: Json | null
+          assignment_id: string | null
+          before: Json | null
+          club_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          after?: Json | null
+          assignment_id?: string | null
+          before?: Json | null
+          club_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          after?: Json | null
+          assignment_id?: string | null
+          before?: Json | null
+          club_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_shift_audit_logs_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_audit_logs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_audit_logs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_shift_events: {
+        Row: {
+          assignment_id: string | null
+          club_id: string
+          consumed_at: string | null
+          created_at: string
+          dealer_id: string | null
+          event_type: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          assignment_id?: string | null
+          club_id: string
+          consumed_at?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          event_type: string
+          id?: string
+          payload?: Json
+        }
+        Update: {
+          assignment_id?: string | null
+          club_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_shift_events_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_events_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_shift_templates: {
+        Row: {
+          active: boolean
+          club_id: string
+          created_at: string
+          default_hours: number
+          id: string
+          label: string
+          need_count: number
+          needs_lead: boolean
+          required_skills: string[]
+          scheduled_end_at: string
+          scheduled_start_at: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          club_id: string
+          created_at?: string
+          default_hours?: number
+          id?: string
+          label: string
+          need_count?: number
+          needs_lead?: boolean
+          required_skills?: string[]
+          scheduled_end_at: string
+          scheduled_start_at: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          club_id?: string
+          created_at?: string
+          default_hours?: number
+          id?: string
+          label?: string
+          need_count?: number
+          needs_lead?: boolean
+          required_skills?: string[]
+          scheduled_end_at?: string
+          scheduled_start_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_shift_templates_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_shift_templates_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealer_shifts: {
         Row: {
+          archived_at: string | null
+          closed_at: string | null
           club_id: string
           created_at: string
           end_time: string
@@ -2339,6 +3191,8 @@ export type Database = {
           tour_tier: string | null
         }
         Insert: {
+          archived_at?: string | null
+          closed_at?: string | null
           club_id: string
           created_at?: string
           end_time: string
@@ -2348,6 +3202,8 @@ export type Database = {
           tour_tier?: string | null
         }
         Update: {
+          archived_at?: string | null
+          closed_at?: string | null
           club_id?: string
           created_at?: string
           end_time?: string
@@ -2453,6 +3309,39 @@ export type Database = {
             referencedColumns: ["attendance_id"]
           },
         ]
+      }
+      dealer_swing_archives: {
+        Row: {
+          actor_id: string | null
+          archive_filename: string | null
+          club_id: string
+          created_at: string
+          id: string
+          snapshot: Json
+          tour_id: string
+          tour_name: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          archive_filename?: string | null
+          club_id: string
+          created_at?: string
+          id?: string
+          snapshot: Json
+          tour_id: string
+          tour_name?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          archive_filename?: string | null
+          club_id?: string
+          created_at?: string
+          id?: string
+          snapshot?: Json
+          tour_id?: string
+          tour_name?: string | null
+        }
+        Relationships: []
       }
       dealers: {
         Row: {
@@ -3141,6 +4030,66 @@ export type Database = {
           },
         ]
       }
+      insurance_policy_rates: {
+        Row: {
+          bhtn_cap_vnd: number
+          bhxh_cap_vnd: number
+          bhyt_cap_vnd: number
+          created_at: string
+          effective_from: string
+          effective_to: string | null
+          employee_bhtn_rate: number
+          employee_bhxh_rate: number
+          employee_bhyt_rate: number
+          employer_bhtn_rate: number
+          employer_bhxh_rate: number
+          employer_bhyt_rate: number
+          id: string
+          region_code: string
+          regional_min_wage_vnd: number
+          source_note: string | null
+          updated_at: string
+        }
+        Insert: {
+          bhtn_cap_vnd: number
+          bhxh_cap_vnd: number
+          bhyt_cap_vnd: number
+          created_at?: string
+          effective_from: string
+          effective_to?: string | null
+          employee_bhtn_rate: number
+          employee_bhxh_rate: number
+          employee_bhyt_rate: number
+          employer_bhtn_rate?: number
+          employer_bhxh_rate?: number
+          employer_bhyt_rate?: number
+          id?: string
+          region_code: string
+          regional_min_wage_vnd: number
+          source_note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bhtn_cap_vnd?: number
+          bhxh_cap_vnd?: number
+          bhyt_cap_vnd?: number
+          created_at?: string
+          effective_from?: string
+          effective_to?: string | null
+          employee_bhtn_rate?: number
+          employee_bhxh_rate?: number
+          employee_bhyt_rate?: number
+          employer_bhtn_rate?: number
+          employer_bhxh_rate?: number
+          employer_bhyt_rate?: number
+          id?: string
+          region_code?: string
+          regional_min_wage_vnd?: number
+          source_note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       international_events: {
         Row: {
           buy_in_usd: number | null
@@ -3786,6 +4735,7 @@ export type Database = {
           club_id: string | null
           created_at: string
           created_by: string | null
+          host_user_id: string | null
           id: string
           max_buyin: number
           max_seats: number
@@ -3801,6 +4751,7 @@ export type Database = {
           club_id?: string | null
           created_at?: string
           created_by?: string | null
+          host_user_id?: string | null
           id?: string
           max_buyin: number
           max_seats?: number
@@ -3816,6 +4767,7 @@ export type Database = {
           club_id?: string | null
           created_at?: string
           created_by?: string | null
+          host_user_id?: string | null
           id?: string
           max_buyin?: number
           max_seats?: number
@@ -6500,6 +7452,7 @@ export type Database = {
           transfer_proof_image_url: string | null
           transfer_proof_submitted: boolean
           updated_at: string
+          used_free_rake: boolean
         }
         Insert: {
           buy_in: number
@@ -6521,6 +7474,7 @@ export type Database = {
           transfer_proof_image_url?: string | null
           transfer_proof_submitted?: boolean
           updated_at?: string
+          used_free_rake?: boolean
         }
         Update: {
           buy_in?: number
@@ -6542,6 +7496,7 @@ export type Database = {
           transfer_proof_image_url?: string | null
           transfer_proof_submitted?: boolean
           updated_at?: string
+          used_free_rake?: boolean
         }
         Relationships: []
       }
@@ -7582,6 +8537,24 @@ export type Database = {
       }
     }
     Functions: {
+      _dealer_owns_assignment: {
+        Args: { p_assignment_id: string }
+        Returns: boolean
+      }
+      _dealer_record_checkin: {
+        Args: { p_assignment_id: string; p_source: string }
+        Returns: Json
+      }
+      _dealer_scheduled_pool_enabled: { Args: never; Returns: boolean }
+      _dealer_user_owns: { Args: { p_dealer_id: string }; Returns: boolean }
+      _enter_dealer_pool: {
+        Args: {
+          p_check_in_time: string
+          p_club_id: string
+          p_dealer_id: string
+        }
+        Returns: boolean
+      }
       accept_group_invite: { Args: { _token: string }; Returns: string }
       add_player_with_reentry:
         | {
@@ -7613,6 +8586,10 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_and_close_dealer_tour: {
+        Args: { p_club_id: string; p_tour_id: string }
+        Returns: Json
+      }
       assign_dealer_to_table: {
         Args: {
           p_assigned_at?: string
@@ -7640,6 +8617,7 @@ export type Database = {
         }[]
       }
       auto_soft_delete_old_tournaments: { Args: never; Returns: number }
+      bridge_shift_checkins_to_pool: { Args: never; Returns: number }
       bulk_update_stacks: {
         Args: { p_tournament_id: string; p_updates: Json }
         Returns: Json
@@ -7663,16 +8641,33 @@ export type Database = {
       }
       calculate_pit_vn: { Args: { p_taxable_income: number }; Returns: number }
       canary_health_check: { Args: { p_club_id: string }; Returns: Json }
+      cancel_empty_table_reservation: {
+        Args: { p_reason?: string; p_reservation_id: string }
+        Returns: Json
+      }
       cancel_rotation_slot: {
         Args: { p_reason: string; p_schedule_id: string }
         Returns: Json
       }
       cashier_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      ci_dataset_readiness: { Args: { _dataset_id: string }; Returns: Json }
       cleanup_expired_club_locks: { Args: never; Returns: undefined }
       cleanup_old_diagnostic_logs: { Args: never; Returns: undefined }
       cleanup_orphan_hands: { Args: { p_older_than?: string }; Returns: Json }
       cleanup_stale_attendance: {
         Args: { p_club_id?: string; p_stale_threshold_hours?: number }
+        Returns: Json
+      }
+      close_shift_assignment: {
+        Args: { p_assignment_id: string; p_outcome: string }
+        Returns: Json
+      }
+      close_tournament_table: {
+        Args: {
+          p_draw_mode?: string
+          p_reason?: string
+          p_tournament_table_id: string
+        }
         Returns: Json
       }
       club_local_date: { Args: { p_club_id: string }; Returns: string }
@@ -7715,20 +8710,33 @@ export type Database = {
         }
         Returns: Json
       }
-      reenter_tournament_player: {
+      dealer_check_in: { Args: { p_assignment_id: string }; Returns: Json }
+      dealer_check_out: { Args: { p_assignment_id: string }; Returns: Json }
+      dealer_confirm_shift: { Args: { p_assignment_id: string }; Returns: Json }
+      dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      dealer_request_leave_or_swap: {
         Args: {
-          p_buy_in: number
-          p_draw_mode?: string
-          p_entry_id: string
-          p_fee: number
+          p_dealer_id: string
+          p_kind?: string
+          p_note?: string
+          p_work_date: string
         }
         Returns: Json
       }
-      void_registration: {
-        Args: { p_reason?: string; p_registration_id: string }
+      dealer_self_checkin_by_telegram: {
+        Args: { p_assignment_id?: string; p_telegram_user_id: number }
         Returns: Json
       }
-      dealer_control_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      dealer_submit_availability: {
+        Args: {
+          p_dealer_id: string
+          p_kind: string
+          p_note?: string
+          p_template_id?: string
+          p_work_date: string
+        }
+        Returns: Json
+      }
       delete_last_action: {
         Args: { p_hand_id: string; p_user_id?: string }
         Returns: Json
@@ -7765,6 +8773,10 @@ export type Database = {
           expected_duration_minutes: number
         }[]
       }
+      execute_empty_table_reservation: {
+        Args: { p_reservation_id: string; p_swing_due_at: string }
+        Returns: Json
+      }
       execute_pre_assigned_swing: {
         Args: {
           p_break_duration_minutes: number
@@ -7795,6 +8807,15 @@ export type Database = {
         }
         Returns: Json
       }
+      floor_assign_player_to_seat: {
+        Args: {
+          p_player_name: string
+          p_seat_number: number
+          p_tournament_id: string
+          p_tournament_table_id: string
+        }
+        Returns: Json
+      }
       fn_compute_staking_payouts: {
         Args: { _markup: number; _percentage: number; _prize_vnd: number }
         Returns: Json
@@ -7810,6 +8831,10 @@ export type Database = {
         Returns: {
           id: string
         }[]
+      }
+      get_club_finance_summary: {
+        Args: { p_club_id?: string; p_from: string; p_to: string }
+        Returns: Json
       }
       get_deal_purchase_breakdown: {
         Args: { _deal_ids: string[] }
@@ -7965,6 +8990,7 @@ export type Database = {
         Args: { p_csv_data: string; p_tournament_id: string }
         Returns: Json
       }
+      is_ci_enabled: { Args: { _club_id: string }; Returns: boolean }
       is_club_admin: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
@@ -7977,6 +9003,7 @@ export type Database = {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
+      is_club_member_or_owner: { Args: { _club_id: string }; Returns: boolean }
       is_club_owner: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
@@ -8024,10 +9051,33 @@ export type Database = {
       }
       notify_expiring_commits: { Args: never; Returns: number }
       op_claim_daily_chips: { Args: never; Returns: Json }
+      op_create_open_table: {
+        Args: {
+          p_bb: number
+          p_buyin: number
+          p_max_seats?: number
+          p_name: string
+          p_sb: number
+        }
+        Returns: Json
+      }
       op_get_my_hole_cards: { Args: { p_hand_id: string }; Returns: Json }
       op_is_enabled: { Args: never; Returns: boolean }
+      op_leave_open_table: { Args: { p_table_id: string }; Returns: Json }
       op_load_action_context: { Args: { p_hand_id: string }; Returns: Json }
+      op_run_due_table_ticks: { Args: { p_limit?: number }; Returns: Json }
+      op_run_table_runner: { Args: never; Returns: number }
+      op_run_timeout_sweep: { Args: never; Returns: number }
       op_sit_down: {
+        Args: {
+          p_buyin: number
+          p_idempotency_key: string
+          p_seat_no: number
+          p_table_id: string
+        }
+        Returns: Json
+      }
+      op_sit_open: {
         Args: {
           p_buyin: number
           p_idempotency_key: string
@@ -8067,7 +9117,20 @@ export type Database = {
         }
         Returns: Json
       }
+      op_table_runner_diag: { Args: { p_limit?: number }; Returns: Json }
       op_timeout_sweep: { Args: never; Returns: Json }
+      op_transfer_host: {
+        Args: { p_table_id: string; p_to_user_id: string }
+        Returns: Json
+      }
+      open_tournament_table: {
+        Args: {
+          p_max_seats?: number
+          p_table_number?: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       perform_swing:
         | {
             Args: {
@@ -8143,6 +9206,7 @@ export type Database = {
         }
         Returns: string
       }
+      publish_shift_run: { Args: { p_run_id: string }; Returns: Json }
       re_enter_tournament: {
         Args: {
           p_new_chip_count?: number
@@ -8225,11 +9289,31 @@ export type Database = {
             }
             Returns: Json
           }
+      redraw_tournament: {
+        Args: {
+          p_draw_mode?: string
+          p_dry_run?: boolean
+          p_eligible_entry_ids?: string[]
+          p_mode: string
+          p_target_table_count?: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       refresh_dealer_pool_summary: { Args: never; Returns: undefined }
       release_club_lock: { Args: { p_club_id: string }; Returns: undefined }
       release_cron_lock: { Args: { p_lock_name: string }; Returns: undefined }
       release_dealer_from_table: {
         Args: { p_released_by?: string; p_table_id: string }
+        Returns: Json
+      }
+      reserve_empty_table_for_dealer: {
+        Args: {
+          p_attendance_id: string
+          p_club_id: string
+          p_predicted_arrival: string
+          p_table_id: string
+        }
         Returns: Json
       }
       save_payroll_period: {
@@ -8243,6 +9327,16 @@ export type Database = {
           p_year: number
         }
         Returns: string
+      }
+      save_shift_run: {
+        Args: {
+          p_assignments: Json
+          p_club_id: string
+          p_params: Json
+          p_solver_version: string
+          p_work_date: string
+        }
+        Returns: Json
       }
       seed_swing_test_data: { Args: never; Returns: Json }
       select_dealer_for_update: {
@@ -8330,6 +9424,10 @@ export type Database = {
       tv_pair_begin: { Args: never; Returns: Json }
       tv_revoke_display: { Args: { p_display_id: string }; Returns: Json }
       undo_last_action: { Args: { p_hand_id: string }; Returns: Json }
+      update_blind_structure: {
+        Args: { p_levels: Json; p_tournament_id: string }
+        Returns: Json
+      }
       update_community_cards: {
         Args: { p_community_cards: Json; p_hand_id: string; p_user_id?: string }
         Returns: Json
@@ -8380,6 +9478,13 @@ export type Database = {
         | "tracker"
       backing_interest_status: "pending" | "contacted" | "declined"
       backing_review_status: "off" | "pending" | "approved" | "rejected"
+      ci_dataset_source: "native" | "csv" | "shadow"
+      ci_label_tier:
+        | "known_rule"
+        | "observed_pattern"
+        | "hypothesis"
+        | "tested_finding"
+        | "model_estimate"
       club_status: "pending" | "approved" | "rejected"
       escrow_tx_type:
         | "fund_lock"
@@ -8581,6 +9686,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: [
@@ -8595,6 +9703,14 @@ export const Constants = {
       ],
       backing_interest_status: ["pending", "contacted", "declined"],
       backing_review_status: ["off", "pending", "approved", "rejected"],
+      ci_dataset_source: ["native", "csv", "shadow"],
+      ci_label_tier: [
+        "known_rule",
+        "observed_pattern",
+        "hypothesis",
+        "tested_finding",
+        "model_estimate",
+      ],
       club_status: ["pending", "approved", "rejected"],
       escrow_tx_type: [
         "fund_lock",
@@ -8679,3 +9795,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.106.0 (currently installed v2.101.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
