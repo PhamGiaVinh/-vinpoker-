@@ -3,10 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, Plus, Trash2, Coffee, Lock } from "lucide-react";
+import { Save, Plus, Trash2, Coffee, Lock, BookMarked } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
+import { BLIND_PRESETS, normalizeLevels, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
 
 interface LevelRow {
   small_blind: number;
@@ -35,6 +41,7 @@ export function BlindEditorPanel({
 }) {
   const [rows, setRows] = useState<LevelRow[]>([]);
   const [currentLevel, setCurrentLevel] = useState<number | null>(null);
+  const [clubId, setClubId] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +54,7 @@ export function BlindEditorPanel({
           .select("level_number, small_blind, big_blind, ante, duration_minutes, is_break")
           .eq("tournament_id", tournamentId)
           .order("level_number"),
-        supabase.from("tournaments").select("current_level").eq("id", tournamentId).single(),
+        supabase.from("tournaments").select("current_level, club_id").eq("id", tournamentId).single(),
       ]);
       if (levelsRes.error) { toast.error("Không tải được cấu trúc blind: " + levelsRes.error.message); return; }
       setRows((levelsRes.data ?? []).map((r: any) => ({
@@ -58,10 +65,17 @@ export function BlindEditorPanel({
         is_break: !!r.is_break,
       })));
       setCurrentLevel((tourRes.data as any)?.current_level ?? null);
+      setClubId((tourRes.data as any)?.club_id ?? null);
     } finally {
       setInitialLoading(false);
     }
   }, [tournamentId]);
+
+  const loadLevels = (levels: BlindLevel[]) =>
+    setRows(levels.map((l) => ({
+      small_blind: l.small_blind, big_blind: l.big_blind, ante: l.ante,
+      duration_minutes: l.duration_minutes, is_break: l.is_break,
+    })));
 
   useEffect(() => { load(); }, [load]);
 
@@ -142,6 +156,10 @@ export function BlindEditorPanel({
         </div>
       </div>
 
+      {FEATURES.blindTemplates && clubId && (
+        <BlindTemplateBar clubId={clubId} currentRows={rows} onLoad={loadLevels} />
+      )}
+
       {!SAVE_LIVE && (
         <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
           Chế độ xem/nháp: RPC <code>update_blind_structure</code> chưa được bật trên production —
@@ -189,6 +207,98 @@ export function BlindEditorPanel({
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * Reusable blind-structure templates ("thư viện cấu trúc blind"). Load a built-in
+ * preset or a saved club template into the editor, or save the current levels as a
+ * named club template. Gated by FEATURES.blindTemplates — only mounted when the
+ * blind_structure_templates table is live.
+ */
+function BlindTemplateBar({
+  clubId, currentRows, onLoad,
+}: {
+  clubId: string;
+  currentRows: LevelRow[];
+  onLoad: (levels: BlindLevel[]) => void;
+}) {
+  const [templates, setTemplates] = useState<BlindTemplate[]>([]);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loadTemplates = useCallback(async () => {
+    const { data } = await (supabase as any)
+      .from("blind_structure_templates")
+      .select("id, club_id, name, levels")
+      .eq("club_id", clubId)
+      .order("name");
+    setTemplates((data ?? []) as BlindTemplate[]);
+  }, [clubId]);
+
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const applyChoice = (val: string) => {
+    if (val.startsWith("preset:")) {
+      const p = BLIND_PRESETS.find((x) => x.key === val.slice(7));
+      if (p) { onLoad(p.levels); toast.success(`Đã tải mẫu chuẩn "${p.name}"`); }
+    } else if (val.startsWith("tpl:")) {
+      const tpl = templates.find((x) => x.id === val.slice(4));
+      if (tpl) { onLoad((tpl.levels ?? []) as BlindLevel[]); toast.success(`Đã tải mẫu "${tpl.name}"`); }
+    }
+  };
+
+  const saveTemplate = async () => {
+    const nm = name.trim();
+    if (!nm) { toast.error("Đặt tên cho mẫu"); return; }
+    if (currentRows.length === 0) { toast.error("Chưa có level nào để lưu"); return; }
+    setBusy(true);
+    try {
+      const { error } = await (supabase as any).from("blind_structure_templates").insert({
+        club_id: clubId, name: nm, levels: normalizeLevels(currentRows),
+      });
+      if (error) { toast.error(error.message); return; }
+      toast.success(`Đã lưu mẫu "${nm}"`);
+      setSaveOpen(false); setName(""); loadTemplates();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap rounded-md border border-border/60 bg-muted/30 px-2 py-2">
+      <span className="text-xs text-muted-foreground">Mẫu cấu trúc:</span>
+      <Select onValueChange={applyChoice}>
+        <SelectTrigger className="h-8 w-[210px] text-xs"><SelectValue placeholder="Tải cấu trúc có sẵn…" /></SelectTrigger>
+        <SelectContent>
+          {templates.length > 0 && (
+            <SelectGroup>
+              <SelectLabel>Mẫu CLB</SelectLabel>
+              {templates.map((t) => <SelectItem key={t.id} value={`tpl:${t.id}`}>{t.name}</SelectItem>)}
+            </SelectGroup>
+          )}
+          <SelectGroup>
+            <SelectLabel>Mẫu chuẩn</SelectLabel>
+            {BLIND_PRESETS.map((p) => <SelectItem key={p.key} value={`preset:${p.key}`}>{p.name}</SelectItem>)}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogTrigger asChild>
+          <Button size="sm" variant="outline" className="h-8"><BookMarked className="w-3.5 h-3.5 mr-1" />Lưu thành mẫu</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Lưu cấu trúc blind thành mẫu</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <Label>Tên mẫu</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Tour A, Turbo 15'…" />
+            <p className="text-xs text-muted-foreground">Lưu {currentRows.length} level hiện tại để tái dùng khi tạo giải.</p>
+            <Button onClick={saveTemplate} disabled={busy} className="w-full">{busy ? "Đang lưu…" : "Lưu mẫu"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
