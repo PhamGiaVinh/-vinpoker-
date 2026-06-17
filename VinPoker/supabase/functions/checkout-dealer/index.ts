@@ -294,15 +294,24 @@ async function processOneCheckout(
   // so the table is no longer considered "occupied" by fillEmptyTables.
   // Set needs_replacement=true so process-swing prioritizes refilling it.
   let needsReplacementTableId: string | null = null;
+  // Release ALL active dealer_assignments for this attendance — not just
+  // status='assigned'. A dealer can hold an on_break / pre_assigned row that, if
+  // left with released_at IS NULL, becomes an orphan poisoning pickNextDealer
+  // Step 5b (matched by dealer_id) and can freeze the club rotation (the pgv
+  // incident). Only an actively 'assigned' table needs a replacement.
+  // (Canonical teardown is release_dealer_assignments(); kept inline here to stay
+  // deploy-safe — this edge fn auto-deploys on push while that RPC applies under
+  // owner-gated control. Route through the RPC once it is live.)
       const { data: activeAss } = (await admin
         .from("dealer_assignments")
-        .select("id, table_id")
+        .select("id, table_id, status")
         .eq("attendance_id", attendanceId)
-        .eq("status", "assigned")
-        .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null }> | null };
+        .in("status", ["assigned", "on_break", "pre_assigned"])
+        .is("released_at", null)) as unknown as { data: Array<{ id: string; table_id: string | null; status: string }> | null };
 
   if (activeAss && activeAss.length > 0) {
-    needsReplacementTableId = activeAss[0].table_id;
+    const activeTable = activeAss.find((a) => a.status === "assigned");
+    needsReplacementTableId = activeTable?.table_id ?? null;
     await admin
       .from("dealer_assignments")
       .update({
@@ -310,7 +319,9 @@ async function processOneCheckout(
         status: "completed",
         needs_replacement: true,
       })
-      .eq("id", activeAss[0].id);
+      .eq("attendance_id", attendanceId)
+      .in("status", ["assigned", "on_break", "pre_assigned"])
+      .is("released_at", null);
   }
 
   // 6. BUG 3: Best-effort auto-replacement for the affected table.
