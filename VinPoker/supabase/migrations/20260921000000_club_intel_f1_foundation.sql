@@ -302,11 +302,13 @@ $$;
 -- 8. Grants — least privilege. No anon, no PUBLIC. SELECT-only on tables;
 --    writes only via SECURITY DEFINER paths (later). EXECUTE -> authenticated.
 -- ---------------------------------------------------------------------------
-REVOKE ALL ON public.club_intel_config       FROM PUBLIC, anon;
-REVOKE ALL ON public.club_intel_datasets     FROM PUBLIC, anon;
-REVOKE ALL ON public.club_intel_import_rows  FROM PUBLIC, anon;
-REVOKE ALL ON public.club_intel_observations FROM PUBLIC, anon;
-REVOKE ALL ON public.club_intel_audit_log    FROM PUBLIC, anon;
+-- Supabase auto-grants ALL to `authenticated` on new public tables via default privileges.
+-- Explicitly revoke then re-grant SELECT-only so this migration is self-contained on any run.
+REVOKE ALL ON public.club_intel_config       FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.club_intel_datasets     FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.club_intel_import_rows  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.club_intel_observations FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.club_intel_audit_log    FROM PUBLIC, anon, authenticated;
 
 GRANT SELECT ON public.club_intel_config       TO authenticated;
 GRANT SELECT ON public.club_intel_datasets     TO authenticated;
