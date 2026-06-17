@@ -2616,6 +2616,12 @@
     "create": "创建"
   },
   "liveHub": {
+    "breakdown": {
+      "title": "牌局分析",
+      "pot": "底池",
+      "potHint": "至本轮累计底池",
+      "player": "玩家"
+    },
     "map": {
       "title": "选择牌桌观看"
     },

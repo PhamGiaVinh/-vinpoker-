@@ -1,0 +1,200 @@
+// Public viewer "Hand Breakdown" — a broadcast-style street-by-street action
+// table (PREFLOP / FLOP / TURN / RIVER / SHOWDOWN, present streets only). Each
+// column shows the CUMULATIVE pot through that street and the actions on it
+// (position badge + avatar/name + action label + amount in big blinds). A
+// per-hand positive-net WIN INDICATOR (+chips (xBB)) is shown only for completed
+// hands (where ending_stack is known) — never a negative number for losers.
+//
+// Presentational only — no data fetching, no logic beyond pure derivation. Pure
+// grouping lives in lib/tracker-poker/handBreakdown.ts. Spectator-only: the
+// parent mounts it solely when `spectator === true`, so the operator path is
+// unchanged. Theme-aware via semantic tokens (works in dark + vinpoker-warm).
+
+import { useTranslation } from "react-i18next";
+import { Trophy } from "lucide-react";
+import { deriveHandBreakdown, type BreakdownAction } from "@/lib/tracker-poker/handBreakdown";
+import { getSeatPositions } from "@/lib/tournament/button";
+import { fmtCompact } from "./hubDerive";
+
+export interface HandBreakdownPlayer {
+  player_id: string;
+  seat_number: number;
+  display_name: string;
+  avatar_url?: string | null;
+  /** Present on completed (replay) hands only → enables the win indicator. */
+  starting_stack?: number;
+  ending_stack?: number | null;
+}
+
+export interface HandBreakdownProps {
+  actions: BreakdownAction[];
+  players: HandBreakdownPlayer[];
+  buttonSeat: number;
+  /** 0 → BB columns/suffixes are hidden (chips only). */
+  bigBlind: number;
+  /** Replay: action_order of the frame's current action → row is highlighted. */
+  highlightActionOrder?: number;
+}
+
+const STREET_LABELS: Record<string, string> = {
+  preflop: "Preflop",
+  flop: "Flop",
+  turn: "Turn",
+  river: "River",
+  showdown: "Showdown",
+};
+
+function actionClass(type: string): string {
+  switch (type) {
+    case "all_in":
+      return "text-rose-400";
+    case "raise":
+    case "bet":
+      return "text-amber-300";
+    case "call":
+      return "text-sky-300";
+    default:
+      return "text-muted-foreground"; // fold / check / posts
+  }
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function trimBB(n: number): string {
+  return n.toFixed(1).replace(/\.0$/, "");
+}
+
+export function HandBreakdown({
+  actions,
+  players,
+  buttonSeat,
+  bigBlind,
+  highlightActionOrder,
+}: HandBreakdownProps) {
+  const { t } = useTranslation();
+  const streets = deriveHandBreakdown(actions, bigBlind);
+  if (streets.length === 0) return null;
+
+  const playerById = new Map(players.map((p) => [p.player_id, p]));
+  const posBySeat = getSeatPositions(
+    players.map((p) => p.seat_number),
+    buttonSeat,
+  );
+
+  // Positive-net winners only (completed hand → ending_stack known). Split pots
+  // → several positive nets, each shown. Losers (net ≤ 0) are never shown.
+  const winners = players
+    .map((p) => {
+      if (p.ending_stack == null) return null;
+      const net = p.ending_stack - (p.starting_stack ?? 0);
+      return net > 0 ? { player: p, net } : null;
+    })
+    .filter((w): w is { player: HandBreakdownPlayer; net: number } => w !== null)
+    .sort((a, b) => b.net - a.net);
+
+  const fallbackName = t("liveHub.breakdown.player", "Player");
+  const potHint = t("liveHub.breakdown.potHint", "Pot đến street này");
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="tracker-display flex items-center gap-1.5 px-0.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        {t("liveHub.breakdown.title", "Phân tích ván")}
+      </div>
+
+      {winners.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {winners.map(({ player, net }) => (
+            <span
+              key={player.player_id}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-success/40 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+            >
+              <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="max-w-[120px] truncate text-foreground">
+                {player.display_name || fallbackName}
+              </span>
+              <span className="tracker-num">
+                +{fmtCompact(net)}
+                {bigBlind > 0 ? ` (${trimBB(net / bigBlind)} BB)` : ""}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {streets.map((col) => (
+          <div
+            key={col.street}
+            className="overflow-hidden rounded-xl border border-border/50 bg-card/50 shadow-[0_0_18px_rgba(0,0,0,0.18)]"
+          >
+            <div className="flex items-center justify-between gap-1 border-b border-border/40 bg-secondary/30 px-2.5 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                {STREET_LABELS[col.street] ?? col.street}
+              </span>
+              <span className="tracker-num text-[10px] text-muted-foreground" title={potHint}>
+                {t("liveHub.breakdown.pot", "Pot")} {fmtCompact(col.potChips)}
+                {col.potBB != null ? ` · ${trimBB(col.potBB)} BB` : ""}
+              </span>
+            </div>
+
+            <div className="divide-y divide-border/20">
+              {col.rows.map((r) => {
+                const p = playerById.get(r.player_id);
+                const name = p?.display_name || fallbackName;
+                const pos = p ? posBySeat.get(p.seat_number) : undefined;
+                const highlighted =
+                  highlightActionOrder != null && r.action_order === highlightActionOrder;
+                return (
+                  <div
+                    key={r.action_order}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 ${
+                      highlighted ? "bg-amber-500/15" : ""
+                    }`}
+                  >
+                    {p?.avatar_url ? (
+                      <img
+                        src={p.avatar_url}
+                        alt=""
+                        className="h-5 w-5 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-secondary text-[8px] font-bold text-muted-foreground">
+                        {initials(name)}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        {pos && (
+                          <span className="shrink-0 rounded bg-secondary/70 px-1 text-[8px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {pos}
+                          </span>
+                        )}
+                        <span className="truncate text-[11px] font-medium text-foreground">{name}</span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className={`text-[11px] font-semibold ${actionClass(r.action_type)}`}>
+                          {r.label}
+                        </span>
+                        {r.amountBB != null && (
+                          <span className="tracker-num text-[9px] text-muted-foreground">
+                            {trimBB(r.amountBB)} BB
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

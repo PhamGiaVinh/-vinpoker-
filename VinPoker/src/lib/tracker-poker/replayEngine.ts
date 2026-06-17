@@ -24,6 +24,8 @@ export interface ReplayHandPlayer {
   seat_number: number;
   display_name: string;
   starting_stack: number;
+  /** Stack after the hand settled — completed hands only; enables net-win display. */
+  ending_stack?: number | null;
   avatar_url?: string | null;
   hole_cards?: string[];
 }

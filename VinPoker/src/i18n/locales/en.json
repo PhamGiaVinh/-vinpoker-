@@ -2862,6 +2862,12 @@
     "create": "Create"
   },
   "liveHub": {
+    "breakdown": {
+      "title": "Hand breakdown",
+      "pot": "Pot",
+      "potHint": "Pot through this street",
+      "player": "Player"
+    },
     "map": {
       "title": "Pick a table to watch"
     },

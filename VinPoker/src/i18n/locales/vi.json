@@ -2862,6 +2862,12 @@
     "create": "Tạo"
   },
   "liveHub": {
+    "breakdown": {
+      "title": "Phân tích ván",
+      "pot": "Pot",
+      "potHint": "Pot đến street này",
+      "player": "Người chơi"
+    },
     "map": {
       "title": "Chọn bàn xem trực tiếp"
     },

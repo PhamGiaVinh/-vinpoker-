@@ -7,7 +7,21 @@ import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-h
 import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/LiveStatsBar";
 import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
 import { LiveTablesMap } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesMap";
+import { HandBreakdown } from "@/components/cashier/tournament-live/viewer-hub/HandBreakdown";
 import type { HubFeedItem, HubStoryItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
+import type { BreakdownAction } from "@/lib/tracker-poker/handBreakdown";
+
+const breakdownActions: BreakdownAction[] = [
+  { player_id: "p1", street: "preflop", action_type: "raise", action_amount: 150, action_order: 1 },
+  { player_id: "p2", street: "preflop", action_type: "call", action_amount: 100, action_order: 2 },
+  { player_id: "p1", street: "flop", action_type: "bet", action_amount: 200, action_order: 3 },
+  { player_id: "p2", street: "flop", action_type: "fold", action_amount: null, action_order: 4 },
+];
+// p1 nets +2000 (winner, shown); p2 nets -2000 (loser, never shown).
+const breakdownPlayers = [
+  { player_id: "p1", seat_number: 1, display_name: "An", starting_stack: 10000, ending_stack: 12000 },
+  { player_id: "p2", seat_number: 2, display_name: "Binh", starting_stack: 10000, ending_stack: 8000 },
+];
 
 const storyItems: HubStoryItem[] = [
   { id: "elim:h1:p1", kind: "elimination", name: "An", count: 18, label: "An bị loại — còn 18 người" },
@@ -126,6 +140,40 @@ describe("LiveStoryFeed", () => {
   });
 });
 
+describe("HandBreakdown (spectator action breakdown)", () => {
+  it("renders street columns, positions, action + cumulative pot, and a POSITIVE win indicator only", () => {
+    const html = renderToStaticMarkup(
+      <HandBreakdown
+        actions={breakdownActions}
+        players={breakdownPlayers}
+        buttonSeat={1}
+        bigBlind={50}
+      />
+    );
+    expect(html).toContain("Phân tích ván"); // title (vi)
+    expect(html).toContain("Preflop");
+    expect(html).toContain("Flop");
+    expect(html).toContain("Pot"); // cumulative pot label
+    expect(html).toContain("BB"); // heads-up position badge / BB units
+    expect(html).toContain("Bet 200"); // sample action label
+    // Winner net = +2000 → "+2k (40 BB)". Loser net is NEGATIVE → never rendered.
+    expect(html).toContain("+2k");
+    expect(html).toContain("40 BB");
+    // Win indicators are the ONLY "(… BB)" strings → exactly one (the winner),
+    // proving the loser gets no (negative) indicator.
+    expect((html.match(/BB\)/g) || []).length).toBe(1);
+    expect(html).not.toContain("+-"); // never a negative net after the "+" prefix
+  });
+
+  it("renders nothing when there are no actions", () => {
+    expect(
+      renderToStaticMarkup(
+        <HandBreakdown actions={[]} players={[]} buttonSeat={1} bigBlind={50} />
+      )
+    ).toBe("");
+  });
+});
+
 describe("viewer-hub i18n wiring", () => {
   afterAll(async () => {
     await i18n.changeLanguage("vi"); // restore the deterministic test language
@@ -151,5 +199,12 @@ describe("viewer-hub i18n wiring", () => {
     expect(story).toContain("Final table — 9 left");
     expect(story).toContain("On the bubble — 10 left"); // localized bubble
     expect(story).toContain("In the money — 9 left"); // localized ITM
+
+    const breakdown = renderToStaticMarkup(
+      <HandBreakdown actions={breakdownActions} players={breakdownPlayers} buttonSeat={1} bigBlind={50} />
+    );
+    expect(breakdown).toContain("Hand breakdown"); // localized title (en)
+    expect(breakdown).toContain("+2k"); // positive winner net, BB-annotated
+    expect(breakdown).toContain("40 BB");
   });
 });

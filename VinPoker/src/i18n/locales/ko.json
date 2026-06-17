@@ -2612,6 +2612,12 @@
     "create": "생성"
   },
   "liveHub": {
+    "breakdown": {
+      "title": "핸드 분석",
+      "pot": "팟",
+      "potHint": "이 스트리트까지의 팟",
+      "player": "플레이어"
+    },
     "map": {
       "title": "관전할 테이블 선택"
     },

@@ -2616,6 +2616,12 @@
     "create": "作成"
   },
   "liveHub": {
+    "breakdown": {
+      "title": "ハンド分析",
+      "pot": "ポット",
+      "potHint": "このストリートまでのポット",
+      "player": "プレイヤー"
+    },
     "map": {
       "title": "観戦するテーブルを選択"
     },
