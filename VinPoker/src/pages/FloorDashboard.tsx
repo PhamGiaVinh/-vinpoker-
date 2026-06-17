@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, LayoutGrid } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
+import { TournamentManagerPanel } from "@/components/floor/TournamentManagerPanel";
 
 /**
  * Floor — room management (table draw, prize structure, seating).
@@ -31,7 +32,9 @@ export default function FloorDashboard() {
   if (clubs === null) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
-  if (dealerClubIds.length === 0 && !isAdmin) {
+  // Floor access = assigned floor operators (dealerClubIds), club owners/cashiers
+  // (clubIds, so owners keep tournament control after it moved off Club Admin), or admins.
+  if (dealerClubIds.length === 0 && clubIds.length === 0 && !isAdmin) {
     return (
       <div className="container mx-auto p-6">
         <Card className="p-8 text-center space-y-3">
@@ -58,6 +61,7 @@ export default function FloorDashboard() {
           {clubs.length === 0 ? "Toàn quyền (Admin)" : clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
         </div>
       </div>
+      <TournamentManagerPanel clubIds={scopedIds} clubs={clubs} />
       <TournamentLivePanel mode="floor" clubIds={scopedIds} clubs={clubs} />
     </div>
   );

@@ -7,23 +7,21 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Pencil, Save, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
-import { formatDateTime, formatVND } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { ClubBotConfig } from "@/components/ClubBotConfig";
 import { ClubBankAccountManager } from "@/components/ClubBankAccountManager";
 import { StreamLinkManager } from "@/components/admin/StreamLinkManager";
 
 const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
-const GAME_TYPES = [{v:"nlh",l:"No Limit Hold'em"},{v:"plo",l:"Pot Limit Omaha"},{v:"mixed",l:"Mixed Games"}];
 
 const ClubAdmin = () => {
   const { t } = useTranslation();
@@ -128,18 +126,6 @@ const ClubAdmin = () => {
     const { error } = await supabase.from("stack_registrations").update(patch).eq("id", id);
     if (error) toast.error(error.message); else { toast.success(t("clubAdmin.tournamentSaved")); loadClubData(activeClub.id); }
   };
-
-  const deleteTour = async (id: string) => {
-    if (!confirm(t("clubAdmin.deleteConfirm"))) return;
-    const { error } = await supabase.from("tournaments").delete().eq("id", id);
-    if (error) toast.error(error.message); else { toast.success(t("clubAdmin.tournamentDeleted")); loadClubData(activeClub.id); }
-  };
-
-  const setTourStatus = async (id: string, status: "scheduled" | "live" | "finished" | "cancelled") => {
-    const { error } = await supabase.from("tournaments").update({ status }).eq("id", id);
-    if (error) toast.error(error.message); else { toast.success(t("clubAdmin.statusUpdated")); loadClubData(activeClub.id); }
-  };
-
 
   return (
     <div className="space-y-4">
@@ -296,40 +282,7 @@ const ClubAdmin = () => {
             ))}
           </section>
 
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-display text-primary">{t("clubAdmin.tournaments")}</h3>
-              {activeClub && <NewTournamentDialog clubId={activeClub.id} onCreated={() => loadClubData(activeClub.id)} />}
-            </div>
-            {tours.length === 0 ? <p className="text-sm text-muted-foreground">{t("clubAdmin.noTournaments")}</p> : tours.map(t2 => (
-              <Card key={t2.id} className="p-3 mb-2 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold truncate">{t2.name}</div>
-                    <div className="text-xs text-muted-foreground">{formatDateTime(t2.start_time)}</div>
-                    <div className="mt-0.5"><FomoPrice tournament={t2} /></div>
-                    <div className="text-[11px] text-muted-foreground">{t("clubAdmin.stack")}: {t2.starting_stack?.toLocaleString?.() ?? t2.starting_stack}{t2.location ? ` · 📍 ${t2.location}` : ""}</div>
-                  </div>
-                  <div className="flex gap-1">
-                    <EditTournamentDialog tournament={t2} onSaved={() => loadClubData(activeClub.id)} />
-                    <Button variant="ghost" size="icon" onClick={() => deleteTour(t2.id)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-                <Select value={t2.status} onValueChange={(v) => setTourStatus(t2.id, v as any)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="scheduled">{t("clubAdmin.scheduled")}</SelectItem>
-                    <SelectItem value="live">{t("clubAdmin.live")}</SelectItem>
-                    <SelectItem value="finished">{t("clubAdmin.finished")}</SelectItem>
-                    <SelectItem value="cancelled">{t("clubAdmin.cancelled")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <LiveStateEditor tournament={t2} onSaved={() => loadClubData(activeClub.id)} />
-              </Card>
-            ))}
-          </section>
+          {/* Tournament create/list management moved to Floor (FloorDashboard → TournamentManagerPanel). */}
 
           <section>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -378,145 +331,6 @@ const ClubAdmin = () => {
         </>
       )}
     </div>
-  );
-};
-
-const NewTournamentDialog = ({ clubId, onCreated }: { clubId: string; onCreated: () => void }) => {
-  const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
-  const submit = async () => {
-    if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
-    const { error } = await supabase.from("tournaments").insert({
-      club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
-      buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
-      ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
-      starting_stack: Number(f.starting_stack),
-      location: f.location, description: f.description, game_type: f.game_type,
-      minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
-    });
-    if (error) toast.error(error.message); else { toast.success("Tournament created"); setOpen(false); onCreated(); }
-  };
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm" variant="outline" className="border-primary/50 text-primary"><Plus className="w-4 h-4" />New</Button></DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Create Tournament</DialogTitle></DialogHeader>
-        <div className="space-y-2">
-          <Label>Name</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          <Label>Start time</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
-          <Label>Game type</Label>
-          <Select value={f.game_type} onValueChange={v => setF({ ...f, game_type: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {GAME_TYPES.map(g => <SelectItem key={g.v} value={g.v}>{g.l}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Buy-in (VND)</Label><Input type="number" value={f.buy_in} onChange={e => setF({ ...f, buy_in: +e.target.value })} /></div>
-            <div><Label>Rake / phí giải (VND)</Label><Input type="number" value={f.rake_amount} onChange={e => setF({ ...f, rake_amount: +e.target.value })} /></div>
-          </div>
-          {FEATURES.tournamentServiceFee && (
-            <div><Label>Phí dịch vụ (VND)</Label><Input type="number" value={f.service_fee_amount} onChange={e => setF({ ...f, service_fee_amount: +e.target.value })} /></div>
-          )}
-          <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0) + (FEATURES.tournamentServiceFee ? (Number(f.service_fee_amount) || 0) : 0))}</span> <span className="opacity-70">(buy-in + rake{FEATURES.tournamentServiceFee ? " + phí dịch vụ" : ""})</span></p>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
-            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Late reg close at level</Label><Input type="number" value={f.late_reg_close_level} onChange={e => setF({ ...f, late_reg_close_level: +e.target.value })} /></div>
-            <div />
-          </div>
-          <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
-          <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} />
-          <Button onClick={submit} className="w-full gradient-neon text-primary-foreground border-0">Create</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSaved: () => void }) => {
-  const [open, setOpen] = useState(false);
-  const toLocalInput = (iso: string) => {
-    const d = new Date(iso);
-    const off = d.getTimezoneOffset();
-    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
-  };
-  const [f, setF] = useState({
-    name: tournament.name,
-    start_time: toLocalInput(tournament.start_time),
-    buy_in: tournament.buy_in,
-    rake_amount: tournament.rake_amount ?? 0,
-    service_fee_amount: tournament.service_fee_amount ?? 0,
-    starting_stack: tournament.starting_stack,
-    location: tournament.location ?? "",
-    description: tournament.description ?? "",
-    game_type: tournament.game_type ?? "nlh",
-    minutes_per_level: tournament.minutes_per_level ?? 20,
-    late_reg_close_level: tournament.late_reg_close_level ?? 6,
-  });
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
-    setSaving(true);
-    const { error } = await supabase.from("tournaments").update({
-      name: f.name,
-      start_time: new Date(f.start_time).toISOString(),
-      buy_in: Number(f.buy_in),
-      rake_amount: Number(f.rake_amount) || 0,
-      ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
-      starting_stack: Number(f.starting_stack),
-      location: f.location,
-      description: f.description,
-      game_type: f.game_type,
-      minutes_per_level: Number(f.minutes_per_level),
-      late_reg_close_level: Number(f.late_reg_close_level),
-    }).eq("id", tournament.id);
-    setSaving(false);
-    if (error) toast.error(error.message); else { toast.success("Saved"); setOpen(false); onSaved(); }
-  };
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon"><Pencil className="w-4 h-4 text-primary" /></Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Edit Tournament</DialogTitle></DialogHeader>
-        <div className="space-y-2">
-          <Label>Name</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          <Label>Start time</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
-          <Label>Game type</Label>
-          <Select value={f.game_type} onValueChange={v => setF({ ...f, game_type: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {GAME_TYPES.map(g => <SelectItem key={g.v} value={g.v}>{g.l}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Buy-in (VND)</Label><Input type="number" value={f.buy_in} onChange={e => setF({ ...f, buy_in: +e.target.value })} /></div>
-            <div><Label>Rake / phí giải (VND)</Label><Input type="number" value={f.rake_amount} onChange={e => setF({ ...f, rake_amount: +e.target.value })} /></div>
-          </div>
-          {FEATURES.tournamentServiceFee && (
-            <div><Label>Phí dịch vụ (VND)</Label><Input type="number" value={f.service_fee_amount} onChange={e => setF({ ...f, service_fee_amount: +e.target.value })} /></div>
-          )}
-          <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0) + (FEATURES.tournamentServiceFee ? (Number(f.service_fee_amount) || 0) : 0))}</span> <span className="opacity-70">(buy-in + rake{FEATURES.tournamentServiceFee ? " + phí dịch vụ" : ""})</span></p>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
-            <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Label>Late reg close at level</Label><Input type="number" value={f.late_reg_close_level} onChange={e => setF({ ...f, late_reg_close_level: +e.target.value })} /></div>
-            <div />
-          </div>
-          <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
-          <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={2} />
-          <Button onClick={save} disabled={saving} className="w-full gradient-neon text-primary-foreground border-0">
-            <Save className="w-4 h-4 mr-1" />{saving ? "Saving..." : "Save Changes"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 };
 
