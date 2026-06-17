@@ -698,6 +698,7 @@ export function TournamentLiveView({
           handNumber: replayHand?.hand_number ?? null,
           latestAction: replayFrame.latestAction,
           formatBB: replayFormatBB,
+          buttonSeat: replayHand?.button_seat ?? null,
         }
       : {
           seats: [] as SeatInfo[],
@@ -710,6 +711,7 @@ export function TournamentLiveView({
           handNumber: null,
           latestAction: null as ActionLog | null,
           formatBB: replayFormatBB,
+          buttonSeat: null,
         }
     : {
         seats: activeSeatsToRender,
@@ -722,6 +724,7 @@ export function TournamentLiveView({
         handNumber,
         latestAction,
         formatBB,
+        buttonSeat,
       };
 
   return (

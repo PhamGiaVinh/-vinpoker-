@@ -13,6 +13,7 @@ export interface RailSeat {
   current_bet: number;
   is_folded?: boolean;
   is_all_in?: boolean;
+  avatar_url?: string | null;
 }
 
 interface SeatRailProps {
@@ -35,6 +36,34 @@ function positionBadge(pos: string, isButton: boolean) {
       : "bg-secondary text-muted-foreground";
   return (
     <span className={`text-[9px] leading-none font-bold px-1.5 py-0.5 rounded-full ${cls}`}>{pos}</span>
+  );
+}
+
+/** The dealer "D" puck — a small cream disc overlaid on the button seat avatar. */
+function DealerPuck() {
+  return (
+    <span
+      aria-label="Dealer"
+      className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-amber-300 text-[8px] font-black leading-none text-black shadow ring-1 ring-black/40"
+    >
+      D
+    </span>
+  );
+}
+
+/** Round seat avatar: player photo when available, initials fallback otherwise. */
+function SeatAvatar({ seat }: { seat: RailSeat }) {
+  const initials = seat.display_name.slice(0, 2).toUpperCase();
+  return (
+    <div
+      className="grid h-7 w-7 place-items-center overflow-hidden rounded-full border border-border bg-secondary text-[9px] font-bold text-muted-foreground"
+    >
+      {seat.avatar_url ? (
+        <img src={seat.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        initials
+      )}
+    </div>
   );
 }
 
@@ -89,6 +118,10 @@ export function SeatRail({
               <div className="flex items-center justify-center gap-1 mb-0.5">
                 <span className="text-[9px] font-mono text-muted-foreground">{s.seat_number}</span>
                 {positionBadge(pos, isButton)}
+              </div>
+              <div className="relative mx-auto mb-0.5 w-7">
+                <SeatAvatar seat={s} />
+                {isButton && <DealerPuck />}
               </div>
               <div className="text-[11px] font-medium text-foreground truncate">{s.display_name}</div>
               <div className="text-[11px] font-mono font-medium text-emerald-400">
