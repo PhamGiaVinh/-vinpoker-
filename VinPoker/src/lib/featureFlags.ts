@@ -177,17 +177,19 @@ export const FEATURES = {
    */
   insuranceProfiles: false,
   /**
-   * Floor Table Ops (Phase A1) — "Mở bàn" (open/reopen table), "Thêm người" (pure
-   * seat placement, NO money), and "Đóng bàn" (broken-table redraw → fill empty
-   * seats, shortest-table-first) on the floor table-detail sheet / map. Default
-   * **OFF**: the action buttons stay disabled "Cần bật RPC" and never call a
-   * missing RPC. Flip to true ONLY after the three source-only RPCs
-   * (`open_tournament_table` 20260912000000, `floor_assign_player_to_seat`
-   * 20260913000000, `close_tournament_table` 20260914000000) are applied live in a
-   * controlled DB session. Floor seat moves only — never touches cashier money flow,
-   * payroll, or dealer swing. (Scheduled/tournament redraw is a later Phase A2.)
+   * Floor Table Ops (Phase A1 + A2) — "Mở bàn" (open/reopen table), "Thêm người"
+   * (pure seat placement, NO money), "Đóng bàn" (broken-table redraw → fill empty
+   * seats, shortest-table-first), and "Bốc lại" (scheduled/tournament redraw:
+   * final_table / table_count_threshold / itm / manual_custom, preview→confirm) on
+   * the floor table-detail sheet / map. **ON for combined A1+A2 UAT.** All four RPCs
+   * are applied live & verified in controlled DB sessions: `open_tournament_table`
+   * 20260912000000, `floor_assign_player_to_seat` 20260913000000,
+   * `close_tournament_table` 20260914000000, `redraw_tournament` 20260918000000
+   * (SECURITY DEFINER, search_path=public, authenticated-only). Floor seat moves
+   * only — never touches cashier money flow, payroll, or dealer swing. Rollback:
+   * set back to false → redeploy (RPCs stay live but inert without this UI).
    */
-  floorTableOps: false,
+  floorTableOps: true,
   /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
