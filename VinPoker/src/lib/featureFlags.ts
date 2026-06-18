@@ -131,6 +131,20 @@ export const FEATURES = {
    */
   liveActionEngine: false,
   /**
+   * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
+   * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
+   * seeding), legal actions, "Bet to" (street-total) sizing, automatic
+   * betting-round close + local street progression, and fold-win / simple
+   * selected-winner settlement pre-fill — with manual tap-any-seat override kept
+   * (out-of-turn shows a warning, not a hard-block). Default **OFF**: while false
+   * the operator flow is the existing manual path (except the always-on pre-start
+   * guard requiring an explicit dealer-button selection). Frontend-only — no
+   * DB/RPC/Edge; settlement persists via the existing `record_hand` ending_stack
+   * payload and the live viewer reads street from community_cards / hand_actions
+   * as today. Phase 2 adds the hand evaluator + exact side-pot settlement.
+   */
+  trackerEngineMode: false,
+  /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
    * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible
