@@ -94,33 +94,31 @@ authorizes a read-only `supabase-ops` run or pastes results back. These freeze t
 Today it is **both, sequentially** (`pickNextDealer.ts:704-709` hard rest-gate when rest<25min,
 then `:843-846` a flat **−500** soft penalty). The −500 acts as a near-veto in practice.
 
-- **Option A — HARD safety gate (recommended).** A flagged dealer is excluded until rested ≥
-  threshold; emergency override (`skipPriorityBreakGuard`) is the only bypass and must log a reason.
-  Drop the −500 (redundant once it's a clean gate). Clearest to reason about; matches "rest is a
-  health/fairness guarantee."
-- **Option B — SOFT preference.** Remove the hard rest-gate; keep a *tunable* penalty (not a flat
-  −500 veto) so a flagged dealer can still be picked under shortage without an emergency flag.
-  More flexible, but blurs "must rest" vs "prefer not."
-
-A2 cannot start until this is locked.
+**✅ LOCKED — Option A: HARD safety gate.** A flagged dealer is excluded until rested ≥ threshold;
+the only bypass is the emergency `skipPriorityBreakGuard` (which must log a reason); the redundant
+−500 soft penalty is dropped once the gate is clean. Rationale: "rest is a health/fairness
+guarantee," clearest to reason about. A2 implements `priority_break_flag` as a tier-1 (safety/
+impossibility) hard filter in the lexicographic objective, NOT a soft score term.
 
 ## 4. Owner decision 2 — lease strategy (drives B2)
 
 The 120s table-lease (`try_acquire_club_lock`) is reclaimed by the next tick if a run overruns →
 two concurrent `process-swing` runners.
 
-- **Option A — heartbeat-extend with fencing (recommended).** The run periodically extends its
-  lease and carries an owner token/version; every state-changing pass acts ONLY while it is still
-  the valid owner; reclaim events are logged. Robust against long-but-healthy runs.
-- **Option B — hard-cap per-tick work.** Bound each tick so a run cannot exceed the lease; define
-  which pass may stop mid-way, the safe stop boundary, and the resume invariant. Simpler, but risks
-  starving late passes under load.
-
-B2 cannot start until this is locked.
+**✅ LOCKED — Option A: heartbeat-extend with fencing.** The run periodically extends its lease and
+carries an owner token/version; every state-changing pass acts ONLY while it is still the valid
+owner; reclaim events are logged/metered. Robust against long-but-healthy runs. B2 must add the
+owner-token/version column to `club_processing_locks`, a heartbeat-extend RPC, and an
+ownership-check guard at the top of every state-changing pass (source-only first, then controlled apply).
 
 ## 5. Stage-0 exit / next gate
 
-Stage 0 is closed when the owner (1) authorizes/returns the §2 baseline read, (2) picks Decision 1,
-(3) picks Decision 2. Then A0 proceeds as: outcome-replay KPIs (mode 1) + synthetic harness (mode 2)
-+ a thin forward decision-trace slice (mode 3, folded into C1/C3). No scorer code (A2) is touched
-until A0 baseline + Decision 1 are locked and C1 has shipped.
+- ✅ Decision 1 LOCKED (HARD), Decision 2 LOCKED (heartbeat-extend + fencing) — see §3, §4.
+- ⏳ Baseline read: owner chose "agent runs read-only." Realized SECURELY via a read-only probe
+  workflow using the GitHub Secret `SUPABASEACCESSTOKEN` (owner triggers from the Actions tab) —
+  **NOT** via a chat-pasted token. The `sbp_` value the owner pasted in chat + the plaintext repo
+  Variable `SUPABASEACCESTOKEN` must be **rotated** and the variable moved to a Secret.
+
+Next: A0 proceeds as outcome-replay KPIs (mode 1, after the baseline probe runs) + synthetic
+harness (mode 2) + a thin forward decision-trace slice (mode 3, folded into C1/C3). No scorer code
+(A2) is touched until the A0 baseline is captured, Decision 1 is locked (done), and C1 has shipped.
