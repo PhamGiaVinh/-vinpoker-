@@ -8836,6 +8836,23 @@ export type Database = {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
       }
+      get_club_series_events: {
+        Args: { p_club_id?: string; p_from?: string; p_to?: string }
+        Returns: {
+          buy_in: number
+          club_id: string
+          event_date: string
+          event_id: string
+          event_name: string
+          fee: number
+          gtd: number
+          prize_pool_actual: number
+          reentries: number
+          service_fee: number
+          total_entries: number
+          unique_entries: number
+        }[]
+      }
       get_deal_purchase_breakdown: {
         Args: { _deal_ids: string[] }
         Returns: {
