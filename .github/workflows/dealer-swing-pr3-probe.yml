@@ -1,0 +1,30 @@
+name: Dealer Swing PR3 — read-only live probe (one-shot)
+
+# Manual trigger only — never runs on push. Pure read-only pg_get_functiondef / SELECT.
+# Dumps LIVE bodies of perform_swing (all overloads), execute_pre_assigned_swing,
+# bridge_shift_checkins_to_pool, end_expired_breaks + the pool-bridge gating flag +
+# a future pool_entered_at check, to ground PR3-B/PR3-C authoring against live (not the
+# drifted migrations). No DB writes, no db push, no deploy_db. Delete after use.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run PR3 read-only probe
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/dealer-swing/probe_pr3_bodies.mjs
