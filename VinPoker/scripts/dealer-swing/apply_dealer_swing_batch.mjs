@@ -120,7 +120,9 @@ async function apply() {
   for (const mg of MIGRATIONS) {
     log(`\n──── applying ${mg.pr} ${mg.ver} ────`);
     let sql;
-    try { sql = readFileSync(`VinPoker/${mg.file}`, "utf8"); } catch (e) { fail(`cannot read VinPoker/${mg.file}: ${e.message}`); }
+    // Paths are relative to the workflow working-directory (./VinPoker), so mg.file
+    // ('supabase/migrations/...') is used as-is — do NOT prefix 'VinPoker/'.
+    try { sql = readFileSync(mg.file, "utf8"); } catch (e) { fail(`cannot read ${mg.file} (cwd must be ./VinPoker): ${e.message}`); }
     assertSafeMigration(mg.ver, sql);
     try { await run(sql); } catch (e) { fail(`${mg.pr} ${mg.ver} apply FAILED: ${mask(e.message)}\n→ STOP. Roll back applied migrations via the rollback files (reverse order).`); }
 
