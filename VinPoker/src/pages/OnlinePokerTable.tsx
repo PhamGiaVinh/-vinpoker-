@@ -23,6 +23,7 @@ import { ActionBar } from '@/components/poker/ActionBar';
 import { ShowdownResult } from '@/components/poker/ShowdownResult';
 import { AllInRunout } from '@/components/poker/AllInRunout';
 import { isAllInShowdown, ALLIN_CINEMATIC_TOTAL_MS } from '@/lib/onlinePoker/allinCinematic';
+import { occupiedCount, isTableLive, emptyStateLabel } from '@/lib/onlinePoker/tableDisplay';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
 import { ChevronLeft, Crown, LogIn } from 'lucide-react';
 
@@ -153,6 +154,7 @@ export default function OnlinePokerTable() {
 
   useEffect(() => {
     if (!table || !hand || hand.status !== 'complete' || !hand.result || !hand.handId) return;
+    if (!isTableLive(table.status, occupiedCount(seats))) return; // never capture a result for a closed/empty table
     if (dwellHandIdRef.current === hand.handId) return; // snapshot each completion once
     dwellHandIdRef.current = hand.handId;
     const ringView = buildRingView(table, hand, seats, mySeatNo);
@@ -177,6 +179,19 @@ export default function OnlinePokerTable() {
       setDwell(null);
     }
   }, [hand?.handId, hand?.toActSeat, hand?.status, mySeatNo, dwell]);
+
+  // PR C — switching tables must not carry a previous table's held result/cinematic. Use
+  // the effect CLEANUP (which fires only when tableId actually changes — and on unmount —
+  // never on first mount) so a freshly-snapshotted result isn't wiped on initial render.
+  useEffect(() => {
+    return () => { setDwell(null); dwellHandIdRef.current = null; };
+  }, [tableId]);
+
+  // PR C — a table that goes closed / empty (no players) must not keep showing a stale
+  // result. Clear the dwell so the felt falls back to the empty state.
+  useEffect(() => {
+    if (!isTableLive(table?.status, occupiedCount(seats))) setDwell(null);
+  }, [table?.status, seats]);
 
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
@@ -204,20 +219,24 @@ export default function OnlinePokerTable() {
     );
   }
 
-  const ringView = buildRingView(table, hand, seats, mySeatNo);
   const seated = mySeatNo != null;
   const inActiveHand = !!hand && (hand.status === 'dealing' || hand.status === 'betting');
   const seatedPlayers = [...seats].sort((a, b) => a.seatNo - b.seatNo);
+  const occupied = occupiedCount(seats);
+  const tableLive = isTableLive(table.status, occupied);
 
   // Keep the unmount-leave snapshot current every render.
   leaveRef.current = { seated, inActiveHand, leave: actions.leaveTable };
 
-  // The result panel + winner glow are driven solely by the ~8s dwell snapshot, so the
-  // display stays time-bounded. (loadHandStateLive now returns a completed hand during
-  // the 4s cooldown — the dwell effect snapshots it the moment it's first seen and holds
-  // it ~8s, bridging into the next deal; a live-`complete` fallback would instead linger
-  // for the whole inter-hand idle.)
-  const showing: DwellSnap | null = dwell;
+  // PR C — only show a held result on a LIVE table; never for a closed / empty one.
+  const showing: DwellSnap | null = tableLive ? dwell : null;
+  // Once the dwell ends a completed hand can still be the latest (no new deal yet), and a
+  // non-live table should show nothing — in both cases clear the felt (null hand → empty
+  // board) so a stale completed board never lingers. During an active hand or the dwell
+  // the real hand / snapshot is shown, so #329's cinematic is untouched.
+  const completedLingering = !showing && hand?.status === 'complete';
+  const feltHand = (!tableLive || completedLingering) ? null : hand;
+  const ringView = buildRingView(table, feltHand, seats, mySeatNo);
   const feltView = showing ? showing.ringView : ringView;
   const feltWinners = showing ? showing.winnerSeats : undefined;
   // An all-in showdown replays as a cinematic runout (its own felt + reveals + equity +
@@ -293,7 +312,9 @@ export default function OnlinePokerTable() {
             hand={feltView}
             bb={table.bb}
             winnerSeats={feltWinners}
-            onEmptySeatClick={!seated && !loading && !showing ? openSit : undefined}
+            // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
+            // it); only a closed table or an active result/cinematic blocks it.
+            onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
           />
         </Card>
       )}
@@ -354,11 +375,19 @@ export default function OnlinePokerTable() {
       {/* action bar — only during an active hand, and never over a result being shown */}
       {!showing && inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />}
 
-      {/* waiting hint when seated but no hand yet (suppressed while a result is shown) */}
-      {!showing && seated && !inActiveHand && (
-        <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
-          {seats.length < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
-        </div>
+      {/* status line — a closed/empty table shows "Bàn đã đóng / Bàn trống" (and never a
+          stale completed board, since feltHand is cleared above); a live table between
+          hands shows the waiting hint. Suppressed while a result/cinematic is shown. */}
+      {!showing && !inActiveHand && (
+        !tableLive ? (
+          <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
+            {emptyStateLabel(table.status, occupied)}
+          </div>
+        ) : seated ? (
+          <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
+            {occupied < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
+          </div>
+        ) : null
       )}
 
       {(showing || inActiveHand) && <HandStateViewer hand={showing ? showing.ringView : hand!} />}
