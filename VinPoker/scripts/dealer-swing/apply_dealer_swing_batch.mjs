@@ -49,7 +49,11 @@ const MIGRATIONS = [
     markers: [
       { label: "release_dealer_assignments() exists", sql: `select (count(*)>0) as ok from pg_proc where proname='release_dealer_assignments'` },
       { label: "reconcile Pass A (checked-out orphans)", sql: `select position('reconcile_checked_out_orphan' in ${RECONCILE})>0 as ok` },
-      { label: "reconcile success->ok fix", sql: `select (position($q$->>'ok'$q$ in ${RECONCILE})>0 and position($q$->>'success'$q$ in ${RECONCILE})=0) as ok` },
+      // NB: only check that the fixed code path uses ->>'ok'. Do NOT also assert the
+      // absence of ->>'success' — #299's explanatory COMMENT contains the literal
+      // ->>'success', which a naive text scan would match (false-negative). The old
+      // (unapplied) body has NO ->>'ok' anywhere, so this presence check is decisive.
+      { label: "reconcile success->ok fix", sql: `select (position($q$->>'ok'$q$ in ${RECONCILE})>0) as ok` },
       { label: "cleanup_stale releases on_break", sql: `select (position('on_break' in ${CLEANUP})>0) as ok` },
     ],
   },
@@ -147,7 +151,7 @@ async function apply() {
   if (cntAfter !== cntBefore) fail(`perform_swing overload count changed ${cntBefore}→${cntAfter} — a new overload was created! Investigate before trusting the apply.`);
   log(`  ✓ perform_swing overload count unchanged (${cntAfter}; no new overload)`);
   const smoke = [
-    { label: "reconcile success->ok fix live", sql: `select (position($q$->>'ok'$q$ in ${RECONCILE})>0 and position($q$->>'success'$q$ in ${RECONCILE})=0) as ok` },
+    { label: "reconcile success->ok fix live", sql: `select (position($q$->>'ok'$q$ in ${RECONCILE})>0) as ok` },
     { label: "perform_swing race-lost markers restored (v_prev_last_released + worked_minutes_since_last_break in rollback)", sql: `select (position('v_prev_last_released' in ${PS})>0 and position('v_prev_worked_since_break' in ${PS})>0) as ok` },
     { label: "perform_swing orphan-break DELETE path present", sql: `select (position('v_created_break_id' in ${PS})>0 and position('DELETE FROM dealer_breaks' in ${PS})>0) as ok` },
     { label: "cleanup_stale skips active dealer (guard present)", sql: `select position('COALESCE(fa.swing_due_at, fa.assigned_at)' in ${CLEANUP})>0 as ok` },
