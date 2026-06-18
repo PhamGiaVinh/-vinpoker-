@@ -26,13 +26,19 @@ const VIEW: ActorView = {
 };
 
 describe("Hand Input tablet components render without throwing", () => {
-  it("BetKeypad shows the bet-to value and keypad keys", () => {
-    const html = renderToStaticMarkup(
+  it("BetKeypad labels the value 'Thêm chip' in manual mode and 'Bet to' in engine mode", () => {
+    const manual = renderToStaticMarkup(
       createElement(BetKeypad, { value: "6000", onChange: noop, bigBlind: 600 })
     );
-    expect(html).toContain("Bet to");
-    expect(html).toContain("000"); // the thousands key
-    expect(html).toContain("6k"); // formatted value
+    expect(manual).toContain("Thêm chip"); // manual: value = chips added
+    expect(manual).not.toContain("Bet to");
+    expect(manual).toContain("000"); // the thousands key
+    expect(manual).toContain("6k"); // formatted value
+
+    const engine = renderToStaticMarkup(
+      createElement(BetKeypad, { value: "6000", onChange: noop, bigBlind: 600, betIsTotal: true })
+    );
+    expect(engine).toContain("Bet to"); // engine: value = street total
   });
 
   it("SeatRail shows seats, positions and the to-act marker", () => {

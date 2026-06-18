@@ -14,6 +14,16 @@ import { nextButton, getSeatPositions } from "@/lib/tournament/button";
 import { replayActions, deriveResumeStreet, nextActionOrderFrom, type ResumeActionRow } from "./handinput/resumeHand";
 import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { nextToAct, actorView } from "@/lib/tracker-poker/handFlow";
+import {
+  actorToAct,
+  isRoundComplete,
+  betToAdded,
+  foldWinner,
+  settleFoldWin,
+  settleSelectedWinners,
+  type EngineState,
+} from "@/lib/tracker-poker/trackerEngine";
+import { FEATURES } from "@/lib/featureFlags";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
 import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
@@ -83,6 +93,11 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [communityCards, setCommunityCards] = useState<(Card | null)[]>([null, null, null, null, null]);
   const [betAmount, setBetAmount] = useState("");
   const [buttonSeat, setButtonSeat] = useState<number>(1);
+  // Always-on guard: an explicit dealer-button choice is mandatory before
+  // start_hand (the operator taps a seat in the setup rail to confirm it).
+  const [buttonConfirmed, setButtonConfirmed] = useState(false);
+  // Engine mode showdown: operator-selected winner(s) for the simple pot split.
+  const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [handId, setHandId] = useState<string | null>(null);
   const [handStarted, setHandStarted] = useState(false);
@@ -206,6 +221,8 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const handleTableChange = async (newTableId: string) => {
     setTableId(newTableId);
+    // New table → require an explicit dealer-button choice again before start.
+    setButtonConfirmed(false);
     const tbl = availableTables.find((t) => t.id === newTableId);
     setTableName(tbl?.name || newTableId.slice(0, 8));
     if (!newTableId) { setPlayers([]); return; }
@@ -369,6 +386,35 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     [actions]
   );
 
+  // ----- Tracker Engine Mode (flag-gated) -----------------------------------
+  const engineMode = FEATURES.trackerEngineMode;
+  // Normalized snapshot for the pure engine (only consumed when engineMode).
+  const engineState = useMemo<EngineState>(
+    () => ({
+      seats: players.map((p) => ({
+        player_id: p.player_id,
+        seat_number: p.seat_number,
+        starting_stack: p.starting_stack,
+        stack: p.current_stack,
+        street_committed: p.current_bet,
+        total_committed: p.total_bet,
+        folded: p.is_folded,
+        all_in: p.is_all_in,
+      })),
+      buttonSeat,
+      street: currentStreet,
+      streetActions: actions
+        .filter((a) => a.street === currentStreet)
+        .map((a) => ({ player_id: a.player_id, seat_number: a.seat_number, action_type: a.action_type })),
+      bigBlind,
+    }),
+    [players, buttonSeat, currentStreet, actions, bigBlind]
+  );
+  const engineActor = useMemo(
+    () => (engineMode ? actorToAct(engineState) : null),
+    [engineMode, engineState]
+  );
+
   // Operator hand-flow: who is to act + which actions are legal (advisory only).
   const flowInput = useMemo(() => {
     const streetActions = actions.filter((a) => a.street === currentStreet);
@@ -396,7 +442,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     };
   }, [actions, currentStreet, players, buttonSeat, bigBlind]);
 
-  const toActId = useMemo(() => nextToAct(flowInput), [flowInput]);
+  // Engine mode derives the actor (correct heads-up / preflop seeding); manual
+  // mode keeps the existing advisory nextToAct.
+  const toActId = useMemo(
+    () => (engineMode ? engineActor?.player_id ?? null : nextToAct(flowInput)),
+    [engineMode, engineActor, flowInput]
+  );
 
   // Selected actor wins if still live, else fall back to the auto to-act player.
   const effectiveActorId = useMemo(() => {
@@ -418,10 +469,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const actorPos = actorPlayer ? positionsBySeat.get(actorPlayer.seat_number) || "" : "";
   const sbPosted = useMemo(() => actions.some((a) => a.action_type === "post_sb"), [actions]);
   const bbPosted = useMemo(() => actions.some((a) => a.action_type === "post_bb"), [actions]);
-  const needsPostSB =
-    currentStreet === "preflop" && !!actorPlayer && actorPos.includes("SB") && !sbPosted;
-  const needsPostBB =
-    currentStreet === "preflop" && !!actorPlayer && actorPos === "BB" && !bbPosted;
+  const needsPostSB = engineMode
+    ? engineActor?.needsPost === "post_sb"
+    : currentStreet === "preflop" && !!actorPlayer && actorPos.includes("SB") && !sbPosted;
+  const needsPostBB = engineMode
+    ? engineActor?.needsPost === "post_bb"
+    : currentStreet === "preflop" && !!actorPlayer && actorPos === "BB" && !bbPosted;
 
   const nextStreetLabel = useMemo(() => {
     const idx = STREET_ORDER.indexOf(currentStreet);
@@ -430,6 +483,10 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const handleStartHand = async () => {
     if (!tableId || !handNumber || !user?.id) return;
+    if (!buttonConfirmed) {
+      toast.error("Chọn ghế nút chia bài (BTN) trước khi bắt đầu hand");
+      return;
+    }
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
@@ -568,6 +625,24 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       }
       case "bet":
       case "raise": {
+        if (engineMode) {
+          // Engine mode: the keypad's "Bet to" is the street TOTAL → convert to
+          // chips ADDED; all-in only when it consumes the whole stack (fixes the
+          // raise-8 false all-in). action_amount stays = chips added below, so the
+          // persisted value's meaning is unchanged.
+          const betTo = parseInt(betAmount) || 0;
+          const { added, allIn } = betToAdded(betTo, player.current_bet, player.current_stack);
+          if (added <= 0) { toast.error("Mức cược phải lớn hơn cược hiện tại của ghế"); return; }
+          amount = added;
+          newPlayers[idx] = {
+            ...newPlayers[idx],
+            current_stack: player.current_stack - added,
+            current_bet: player.current_bet + added,
+            total_bet: player.total_bet + added,
+            is_all_in: allIn,
+          };
+          break;
+        }
         amount = parseInt(betAmount) || 0;
         if (amount <= 0) { toast.error("Nhập số chip"); return; }
         const actual = Math.min(amount, player.current_stack);
@@ -687,9 +762,15 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const handleSeatTap = (seat: RailSeat) => {
     if (!handStarted) {
       setButtonSeat(seat.seat_number);
+      setButtonConfirmed(true);
       return;
     }
     if (isReadOnly) return;
+    // Engine mode: tapping a seat that is not the actor is an OVERRIDE — warn,
+    // never hard-block (the operator must be able to fix a real-life mis-entry).
+    if (engineMode && engineActor && seat.player_id !== engineActor.player_id) {
+      toast.warning(`Ghế ${seat.seat_number} chưa tới lượt (đang chờ ghế ${engineActor.seat_number}) — vẫn chọn để chỉnh.`);
+    }
     setSelectedActorId(seat.player_id);
   };
 
@@ -870,6 +951,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setNextActionOrder(1);
     setUndoStack([]);
     setSelectedActorId(null);
+    setSelectedWinners([]);
     setSentCommunityStreets(new Set());
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
@@ -886,6 +968,33 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   };
 
   const isSummary = Object.keys(endingStacks).length > 0;
+
+  // Engine mode: auto-advance the street when the betting round closes, and
+  // pre-fill a fold-win settlement when only one player remains. LOCAL state
+  // only — the viewer-visible street still advances when the operator sends the
+  // board (update_community_cards) + records actions (record_action.street), and
+  // settlement persists via the existing record_hand ending_stack payload.
+  useEffect(() => {
+    if (!engineMode || !handStarted || isSummary || isReadOnly) return;
+    if (currentStreet === "showdown") return;
+    // Fold-win: everyone but one has folded → settle locally + open Review.
+    const winner = foldWinner(engineState.seats);
+    if (winner && actions.length > 0) {
+      const map: Record<string, number> = {};
+      settleFoldWin(engineState.seats).forEach((r) => { map[r.player_id] = r.ending_stack; });
+      setEndingStacks(map);
+      return;
+    }
+    // Betting round closed (after ≥1 voluntary action this street) → advance to
+    // the next street. The operator still enters + sends the board cards.
+    const streetActed = actions.some(
+      (a) => a.street === currentStreet && !["post_sb", "post_bb", "post_ante"].includes(a.action_type)
+    );
+    if (streetActed && isRoundComplete(engineState)) {
+      nextStreet();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineMode, handStarted, isSummary, isReadOnly, currentStreet, players, actions, engineState]);
 
   return (
     <div className="space-y-3">
@@ -964,9 +1073,14 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
                 setupMode
                 onTapSeat={handleSeatTap}
               />
+              {!buttonConfirmed && (
+                <div className="mt-2 text-[11px] text-amber-300">
+                  ⚠ Chạm vào ghế nút chia bài (BTN) để xác nhận trước khi bắt đầu hand.
+                </div>
+              )}
             </div>
           )}
-          <Button onClick={handleStartHand} disabled={submitting || !handNumber} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
+          <Button onClick={handleStartHand} disabled={submitting || !handNumber || !buttonConfirmed} className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20">
             <Play className="w-4 h-4 mr-2" /> Bắt đầu Hand
           </Button>
           {lastHandId && (
@@ -1149,6 +1263,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             onVoid={handleVoid}
             hasVoidTarget={!!(handId || lastHandId)}
             showActions={currentStreet !== "showdown"}
+            betIsTotal={engineMode}
             disabled={submitting || isReadOnly}
           />
 
@@ -1187,6 +1302,41 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             <div className="text-xs text-muted-foreground">Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong></div>
           </div>
           <div className="text-xs text-muted-foreground mb-2 bg-black/20 p-2 rounded">Community: {communityCards.filter(Boolean).map(displayCard).join(" ") || "—"}</div>
+          {engineMode && (
+            <div className="space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-950/10 p-2.5">
+              <div className="text-[11px] font-semibold text-emerald-300">Chọn người thắng — engine cộng pot vào stack</div>
+              <div className="flex flex-wrap gap-1.5">
+                {players.filter((p) => !p.is_folded).map((p) => {
+                  const on = selectedWinners.includes(p.player_id);
+                  return (
+                    <button
+                      key={p.player_id}
+                      type="button"
+                      onClick={() => setSelectedWinners((prev) => (on ? prev.filter((id) => id !== p.player_id) : [...prev, p.player_id]))}
+                      className={`px-2 py-1 rounded-full text-xs border transition-colors ${on ? "border-emerald-400 bg-emerald-500/20 text-emerald-200" : "border-border text-muted-foreground hover:border-emerald-400/50"}`}
+                    >
+                      S{p.seat_number} {p.display_name}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={selectedWinners.length === 0}
+                  onClick={() => {
+                    const map: Record<string, number> = {};
+                    settleSelectedWinners(engineState.seats, selectedWinners).forEach((r) => { map[r.player_id] = r.ending_stack; });
+                    setEndingStacks(map);
+                  }}
+                  className="text-xs font-semibold text-black bg-emerald-400 rounded-md px-3 py-1.5 disabled:opacity-40"
+                >
+                  Chia pot cho {selectedWinners.length > 1 ? `${selectedWinners.length} người (split)` : "người thắng"}
+                </button>
+                <span className="text-[10px] text-muted-foreground">Split đều; lẻ chip về ghế nhỏ nhất. Side-pot phức tạp = Phase 2.</span>
+              </div>
+            </div>
+          )}
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
             {players.map((player) => (
               <div key={player.player_id} className="flex items-center gap-3 border border-border/30 rounded p-2 bg-card/50">

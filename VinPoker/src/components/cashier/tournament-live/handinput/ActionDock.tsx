@@ -31,6 +31,8 @@ interface ActionDockProps {
   hasVoidTarget: boolean;
   /** Hide the keypad + action buttons (e.g. at showdown) — keep header + footer. */
   showActions?: boolean;
+  /** Engine mode: the keypad value is the street TOTAL ("Bet to"), not added chips. */
+  betIsTotal?: boolean;
   disabled?: boolean;
 }
 
@@ -88,17 +90,20 @@ export function ActionDock({
   onVoid,
   hasVoidTarget,
   showActions = true,
+  betIsTotal = false,
   disabled,
 }: ActionDockProps) {
   const betNum = parseInt(betAmount || "0", 10) || 0;
   const legal = view?.legal;
   const isPosting = needsPostSB || needsPostBB;
-  // Min-raise guard: betAmount is the chips ADDED. A real raise must reach
+  // Min-raise guard. In engine mode the keypad value is the street TOTAL
+  // ("Bet to"); in manual mode it is the chips ADDED. A real raise must reach
   // view.minRaiseTo (street total); shoving the whole stack for less is still
   // legal (use ALL-IN), so we only block a non-all-in below-min raise.
-  const raiseToTotal = actor ? actor.current_bet + betNum : betNum;
+  const addedChips = betIsTotal ? (actor ? Math.max(0, betNum - actor.current_bet) : betNum) : betNum;
+  const raiseToTotal = betIsTotal ? betNum : actor ? actor.current_bet + betNum : betNum;
   const minRaiseAdd = actor && view ? Math.max(0, view.minRaiseTo - actor.current_bet) : 0;
-  const isAllInRaise = !!actor && betNum >= actor.current_stack;
+  const isAllInRaise = !!actor && addedChips >= actor.current_stack && addedChips > 0;
   const belowMinRaise = !!view && view.minRaiseTo > 0 && raiseToTotal < view.minRaiseTo;
 
   return (
@@ -139,7 +144,7 @@ export function ActionDock({
       {showActions && (
       <div className="p-3.5 space-y-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <BetKeypad value={betAmount} onChange={onBetAmountChange} bigBlind={bigBlind} disabled={disabled || !actor} />
+        <BetKeypad value={betAmount} onChange={onBetAmountChange} bigBlind={bigBlind} betIsTotal={betIsTotal} disabled={disabled || !actor} />
 
         <div className="flex flex-col gap-2">
           {isPosting ? (
