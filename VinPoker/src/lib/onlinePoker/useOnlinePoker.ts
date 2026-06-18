@@ -229,6 +229,26 @@ export function useTableHand(tableId: string): TableHandState {
   const mySeatNo = hand?.mySeat ?? seats.find((s) => s.userId === uid)?.seatNo ?? null;
   const amIHost = !!uid && hostUserId === uid;
 
+  // Liveness heartbeat (live + seated): ping the server every ~10s so the stale-seat
+  // reaper can free this seat if the tab dies. Fires immediately on sitting and on
+  // return-from-background to keep last_seen_at fresh. Wrapped so it cleanly NO-OPS until
+  // op_heartbeat exists live (migration 20260923000000 is source-only) — degrades like
+  // any other gated feature; never throws into the UI.
+  useEffect(() => {
+    if (!RUNTIME_LIVE || mySeatNo == null) return;
+    const ping = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // op_heartbeat isn't in the generated DB types yet (source-only) — cast + swallow.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (supabase.rpc as any)('op_heartbeat', { p_table_id: tableId }).then(() => {}, () => {});
+    };
+    ping(); // immediate, so a freshly-claimed seat is marked live at once
+    const id = setInterval(ping, 10000);
+    const onVisible = () => { if (!document.hidden) ping(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, [tableId, mySeatNo]);
+
   const actions: TableHandActions = {
     sitOpen: (seat, buyin) => onlinePokerClient.sitOpen(tableId, seat, buyin),
     leaveTable: () => onlinePokerClient.leaveOpenTable(tableId),
