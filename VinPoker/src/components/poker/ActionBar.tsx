@@ -48,17 +48,21 @@ export function ActionBar({
   hand,
   legal,
   bb,
+  busy,
   onAction,
 }: {
   hand: PublicHandView;
   legal?: WireLegalActions;
   bb?: string;
+  /** True while a submitted action is in flight — locks every control so a double-tap
+   *  cannot fire a second attempt. */
+  busy?: boolean;
   onAction?: (a: { type: ActionType; amount?: string }) => void;
 }) {
   // Visual turn (drives what the bar SHOWS) vs interactive (drives whether it can act).
   const isMySeatToAct = hand.toActSeat != null && hand.toActSeat === hand.mySeat;
-  const interactive = RUNTIME_LIVE && isMySeatToAct;
-  const disabled = !interactive;
+  const interactive = RUNTIME_LIVE && isMySeatToAct; // drives the label (still my turn)
+  const disabled = !interactive || !!busy;           // drives clickability (locked while busy)
 
   const types = legal?.types ?? [];
   const canFold = types.includes('fold');
@@ -78,11 +82,13 @@ export function ActionBar({
   const [raiseTo, setRaiseTo] = useState<string>(legal?.minRaiseTo ?? '0');
   useEffect(() => { setRaiseTo(legal?.minRaiseTo ?? '0'); }, [legal?.minRaiseTo, legal?.maxRaiseTo]);
 
-  // Not the viewer's turn (or no menu): a slim placeholder so the surface is stable.
+  // Not the viewer's turn (or menu not yet loaded): a slim placeholder so the surface is
+  // stable. When it IS my turn but the legal menu hasn't arrived yet, say so explicitly so
+  // it never reads as a frozen "waiting" bar — the poll loop fills it within ~1 round-trip.
   if (!isMySeatToAct || !legal) {
     return (
       <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
-        Đang chờ lượt của bạn…
+        {isMySeatToAct ? 'Đang tải lựa chọn…' : 'Đang chờ lượt của bạn…'}
       </div>
     );
   }
@@ -103,7 +109,7 @@ export function ActionBar({
           interactive ? 'bg-primary/15 text-primary' : 'bg-white/10 text-muted-foreground',
         )}>
           <Clock className="h-3 w-3" />
-          {interactive ? 'Lượt của bạn' : 'Xem trước · đã khóa'}
+          {busy ? 'Đang gửi…' : interactive ? 'Lượt của bạn' : 'Xem trước · đã khóa'}
         </span>
         <span className="text-[11px] tabular-nums text-muted-foreground">
           {canCheck ? `Pot ${bbLabel(hand.pot, bb)}` : `Cược ${bbLabel(legal.toCall, bb)} · Pot ${bbLabel(hand.pot, bb)}`}

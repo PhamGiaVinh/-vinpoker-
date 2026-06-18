@@ -4,7 +4,7 @@
 // the host can hand the role to another seated player, and it auto-reassigns when the
 // host leaves. Server-authoritative: the engine decides cards, legality, winner, chips.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -95,6 +95,27 @@ export default function OnlinePokerTable() {
   const table = useTableMeta(tableId);
 
   const [sitSeat, setSitSeat] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Best-effort auto-leave when the player exits the table (SPA route unmount / tab close).
+  // A ref carries the latest seated / in-hand state into the unmount cleanup. This is
+  // ADVISORY only — an async leave fired during unload may not complete; the reliable
+  // cleanup is the server-side stale-seat reaper (PR-B). Never leave mid-hand (the server
+  // forbids it, and the timeout-sweep force-folds an absent actor on their turn).
+  const leaveRef = useRef<{ seated: boolean; inActiveHand: boolean; leave: () => Promise<unknown> } | null>(null);
+  useEffect(() => {
+    const fireLeave = () => {
+      const r = leaveRef.current;
+      if (r && r.seated && !r.inActiveHand) void r.leave().catch(() => {});
+    };
+    // pagehide with persisted=false = a real unload (not bfcache/background) → leave.
+    const onPageHide = (e: PageTransitionEvent) => { if (!e.persisted) fireLeave(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      fireLeave(); // SPA route unmount
+    };
+  }, []);
 
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
@@ -127,7 +148,13 @@ export default function OnlinePokerTable() {
   const inActiveHand = !!hand && (hand.status === 'dealing' || hand.status === 'betting');
   const seatedPlayers = [...seats].sort((a, b) => a.seatNo - b.seatNo);
 
+  // Keep the unmount-leave snapshot current every render.
+  leaveRef.current = { seated, inActiveHand, leave: actions.leaveTable };
+
   const openSit = (seatNo: number) => {
+    // Don't offer to sit until the first load settles — a reload could otherwise briefly
+    // open the dialog for a seat the player already occupies (server would then reject).
+    if (loading) return;
     if (seated) { toast.info('Bạn đã ngồi ở bàn này rồi.'); return; }
     setSitSeat(seatNo);
   };
@@ -158,12 +185,14 @@ export default function OnlinePokerTable() {
   };
 
   const submit = async (a: { type: ActionType; amount?: string }) => {
-    if (!hand || mySeatNo == null) return;
+    if (!hand || mySeatNo == null || submitting) return; // ignore re-taps while a submit is in flight
+    setSubmitting(true);
     try {
       const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as { ok: boolean; code?: string };
       if (res && res.ok === false) toast.error(vn(res.code));
       else refresh();
     } catch { toast.error('Gửi hành động thất bại, thử lại.'); }
+    finally { setSubmitting(false); }
   };
 
   const nameFor = (s: LiveSeat) => (s.userId === myUserId ? 'Bạn' : s.displayName || `Ghế ${s.seatNo}`);
@@ -179,7 +208,7 @@ export default function OnlinePokerTable() {
 
       {/* the felt — all seats; empty ones are tap-to-sit when you're not seated */}
       <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
-        <SeatRing hand={ringView} bb={table.bb} onEmptySeatClick={!seated ? openSit : undefined} />
+        <SeatRing hand={ringView} bb={table.bb} onEmptySeatClick={!seated && !loading ? openSit : undefined} />
       </Card>
 
       {/* seat controls */}
@@ -223,7 +252,7 @@ export default function OnlinePokerTable() {
       )}
 
       {/* action bar — only meaningful during an active hand */}
-      {inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} onAction={submit} />}
+      {inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />}
 
       {/* waiting hint when seated but no hand yet */}
       {seated && !inActiveHand && (
