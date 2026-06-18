@@ -13,7 +13,7 @@
 //  • The action ticker lives in a rail BELOW the felt, not on top of it.
 //  • Seats are avatar + name + stack only (no name boxes); position badge is small.
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
@@ -119,6 +119,21 @@ export interface LiveFeltProps {
   portrait?: boolean;
   /** Seat number on the dealer button → renders a "D" puck. Omit/undefined → no puck (felt unchanged). */
   buttonSeat?: number | null;
+  /**
+   * Operator-console tap-to-select. ADDITIVE: when omitted the seat stays a plain
+   * `<div>` (no role/tabIndex/handlers) so the public viewer + replay render is
+   * byte-identical. When supplied, each seat becomes a keyboard-operable button
+   * that reports its seat number.
+   */
+  onSeatClick?: (seatNumber: number) => void;
+  /**
+   * The seat the operator is currently entering an action for. ADDITIVE: null/
+   * undefined → no frame (default render unchanged). A matching seat gets an
+   * emerald OUTER frame — deliberately distinct from the engine to-act accent
+   * ring (poker-accent on the avatar) so "whose turn" and "which seat I'm editing"
+   * never read as the same highlight.
+   */
+  selectedSeat?: number | null;
 }
 
 export function LiveFelt({
@@ -134,6 +149,8 @@ export function LiveFelt({
   formatBB,
   portrait = false,
   buttonSeat = null,
+  onSeatClick,
+  selectedSeat = null,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
@@ -257,8 +274,37 @@ export function LiveFelt({
               : "";
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
 
+          // ADDITIVE operator-console hooks. Both fragments are "" and the spread
+          // is {} when the props are absent, so the default (viewer/replay) render
+          // is byte-identical. The selection frame sits on the OUTER wrapper and
+          // is emerald — distinct from the to-act accent ring on the avatar.
+          const isSelected = selectedSeat != null && seat.seat_number === selectedSeat;
+          const interactiveCls = onSeatClick ? " cursor-pointer" : "";
+          const selectedCls = isSelected
+            ? " rounded-2xl ring-2 ring-emerald-400 ring-offset-2 ring-offset-[hsl(var(--poker-felt-dark))] shadow-[0_0_16px_rgba(16,185,129,0.55)]"
+            : "";
+          const interactiveProps = onSeatClick
+            ? {
+                role: "button" as const,
+                tabIndex: 0,
+                "aria-pressed": isSelected,
+                onClick: () => onSeatClick(seat.seat_number),
+                onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSeatClick(seat.seat_number);
+                  }
+                },
+              }
+            : {};
+
           return (
-            <div key={seat.player_id} className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}`} style={posStyle}>
+            <div
+              key={seat.player_id}
+              className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}${interactiveCls}${selectedCls}`}
+              style={posStyle}
+              {...interactiveProps}
+            >
               <div className="relative flex w-[58px] flex-col items-center text-center sm:w-[70px]">
                 {isToAct && (
                   <div

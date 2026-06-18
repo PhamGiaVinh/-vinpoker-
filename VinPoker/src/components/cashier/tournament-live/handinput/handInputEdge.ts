@@ -1,0 +1,184 @@
+// Centralized builders for the 7 `tournament-live-update` Edge payloads.
+//
+// WHY THIS EXISTS: the standalone operator console (`/tracker/hand-input`) reuses
+// the EXACT same write-path as the embedded HandInputPanel. To make "write-path
+// unchanged" provable — not just asserted — every Edge body the console sends is
+// built here, byte-for-byte identical to the literals in HandInputPanel.tsx. A
+// parity test (`tests/handinput/handInputEdge.parity.test.ts`) pins these against
+// the panel's shapes, so any future drift in either path fails the build.
+//
+// These are PURE functions: no Supabase, no Date, no React. `hand_time` is passed
+// in by the caller (the panel uses `new Date().toISOString()` at call time) so the
+// builders stay deterministic and testable.
+//
+// Action values (unchanged contract): start_hand · record_action ·
+// update_community_cards · show_hole_cards · record_hand · void_hand ·
+// delete_last_action. `action_amount` is always chips ADDED (never "bet to").
+
+import type { PotLayer } from "@/lib/tracker-poker/potEngine";
+
+/** Local player shape (subset of HandInputPanel's PlayerState the payloads read). */
+export interface EdgePlayer {
+  player_id: string;
+  entry_number: number;
+  seat_number: number;
+  starting_stack: number;
+  current_stack: number;
+}
+
+/** Local action-log row (subset of HandInputPanel's ActionRecord). */
+export interface EdgeAction {
+  player_id: string;
+  action_type: string;
+  /** Chips ADDED this action (HandInputPanel `ActionRecord.amount`). */
+  amount: number;
+  action_order: number;
+  street: string;
+}
+
+/** One revealed hand for show_hole_cards. */
+export interface HoleCardEntry {
+  player_id: string;
+  entry_number: number;
+  hole_cards: string[];
+}
+
+// --- start_hand (HandInputPanel.tsx:621-630) -------------------------------
+export function buildStartHandBody(p: {
+  tournamentId: string;
+  tableId: string;
+  handNumber: number | string;
+  handTime: string;
+  buttonSeat: number;
+}) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "start_hand",
+    table_id: p.tableId,
+    hand_number: Number(p.handNumber),
+    hand_time: p.handTime,
+    button_seat: p.buttonSeat,
+  };
+}
+
+// --- record_action (HandInputPanel.tsx:843-849) ----------------------------
+export function buildRecordActionBody(p: {
+  tournamentId: string;
+  handId: string;
+  playerId: string;
+  entryNumber: number;
+  street: string;
+  actionType: string;
+  /** Chips ADDED (NOT "bet to" total) — converted via betToAdded before this call. */
+  actionAmount: number;
+  actionOrder: number;
+}) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "record_action",
+    hand_id: p.handId,
+    player_id: p.playerId,
+    entry_number: p.entryNumber,
+    street: p.street,
+    action_type: p.actionType,
+    action_amount: p.actionAmount,
+    action_order: p.actionOrder,
+  };
+}
+
+// --- update_community_cards (HandInputPanel.tsx:992-994) --------------------
+export function buildUpdateCommunityCardsBody(p: {
+  tournamentId: string;
+  handId: string;
+  /** Already filtered to non-null cards by the caller. */
+  communityCards: string[];
+}) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "update_community_cards",
+    hand_id: p.handId,
+    community_cards: p.communityCards,
+  };
+}
+
+// --- show_hole_cards (HandInputPanel.tsx:1023-1025) ------------------------
+export function buildShowHoleCardsBody(p: {
+  tournamentId: string;
+  handId: string;
+  playerHoleCards: HoleCardEntry[];
+}) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "show_hole_cards",
+    hand_id: p.handId,
+    player_hole_cards: p.playerHoleCards,
+  };
+}
+
+// --- record_hand (HandInputPanel.tsx:1097-1109) ----------------------------
+// finalPlayers (1091-1096) + the actions map (1104-1106, entry_number looked up
+// from `players`, NOT from the action row) reproduced exactly.
+export function buildRecordHandBody(p: {
+  tournamentId: string;
+  tableId: string;
+  handNumber: number | string;
+  handTime: string;
+  /** Already filtered to non-null. */
+  communityCards: string[];
+  potSize: number;
+  players: EdgePlayer[];
+  endingStacks: Record<string, number>;
+  playerHoleCards: Record<string, (string | null)[]>;
+  /** Result of toSidePotsJson(potBreakdown). */
+  sidePots: PotLayer[];
+  actions: EdgeAction[];
+}) {
+  const finalPlayers = p.players.map((pl) => ({
+    player_id: pl.player_id,
+    entry_number: pl.entry_number,
+    seat_number: pl.seat_number,
+    starting_stack: pl.starting_stack,
+    ending_stack: p.endingStacks[pl.player_id] ?? pl.current_stack,
+    is_eliminated: (p.endingStacks[pl.player_id] ?? pl.current_stack) === 0,
+    hole_cards: p.playerHoleCards[pl.player_id]
+      ? p.playerHoleCards[pl.player_id].filter((c): c is string => c !== null)
+      : [],
+  }));
+  return {
+    tournament_id: p.tournamentId,
+    action: "record_hand",
+    table_id: p.tableId,
+    hand_number: Number(p.handNumber),
+    hand_time: p.handTime,
+    community_cards: p.communityCards,
+    pot_size: p.potSize,
+    players: finalPlayers,
+    side_pots: p.sidePots,
+    actions: p.actions.map((a) => ({
+      player_id: a.player_id,
+      entry_number: p.players.find((pl) => pl.player_id === a.player_id)?.entry_number || 1,
+      action_type: a.action_type,
+      action_amount: a.amount,
+      action_order: a.action_order,
+      street: a.street,
+    })),
+  };
+}
+
+// --- void_hand (HandInputPanel.tsx:724-726 / 1142-1144) --------------------
+export function buildVoidHandBody(p: { tournamentId: string; handId: string }) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "void_hand",
+    hand_id: p.handId,
+  };
+}
+
+// --- delete_last_action (HandInputPanel.tsx:961-963) -----------------------
+export function buildDeleteLastActionBody(p: { tournamentId: string; handId: string }) {
+  return {
+    tournament_id: p.tournamentId,
+    action: "delete_last_action",
+    hand_id: p.handId,
+  };
+}
