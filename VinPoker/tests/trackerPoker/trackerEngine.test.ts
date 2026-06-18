@@ -12,6 +12,7 @@ import {
   isRunout,
   eligibleActorCount,
   firstPreflopActor,
+  firstPostflopActor,
   snapshotBlindLevel,
   hasLevelChangedDuringHand,
   type EngineSeat,
@@ -343,6 +344,21 @@ describe("blind setup — firstPreflopActor (UTG) for the setup panel", () => {
   it("heads-up, button 6 → button=SB acts first preflop", () => {
     expect(blindSeats([2, 6], 6)).toEqual({ sbSeat: 6, bbSeat: 2 });
     expect(firstPreflopActor([2, 6], 6)).toBe(6); // button/SB
+  });
+});
+
+// =============================================================================
+describe("firstPostflopActor — first to act after the flop/turn/river", () => {
+  it("3+ handed → first active seat clockwise after the button", () => {
+    expect(firstPostflopActor([1, 2, 3, 4, 5, 6], 1)).toBe(2); // SB acts first postflop
+    expect(firstPostflopActor([1, 2, 3], 3)).toBe(1);
+  });
+  it("skips empty seats clockwise after the button", () => {
+    // button 6, seat 7 empty (not dealt in) → first active after 6 = 8
+    expect(firstPostflopActor([1, 2, 6, 8], 6)).toBe(8);
+  });
+  it("heads-up → BB/non-button acts first postflop", () => {
+    expect(firstPostflopActor([2, 6], 6)).toBe(2); // non-button
   });
 });
 
