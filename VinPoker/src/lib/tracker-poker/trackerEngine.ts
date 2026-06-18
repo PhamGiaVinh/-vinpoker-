@@ -125,6 +125,20 @@ export function firstPreflopActor(activeSeatNums: number[], buttonSeat: number):
   return ringAfter(seats, bbSeat)[0] ?? null;
 }
 
+/**
+ * First POSTFLOP actor = the first ACTIVE seat clockwise-left of the BUTTON
+ * (empty seats skipped). Heads-up → the BB/non-button (the seat after the
+ * button). Returns null for < 2 seats.
+ */
+export function firstPostflopActor(activeSeatNums: number[], buttonSeat: number): number | null {
+  const seats = [...new Set(activeSeatNums)]
+    .filter((s) => Number.isInteger(s) && s > 0)
+    .sort((a, b) => a - b);
+  if (seats.length === 0) return null;
+  if (seats.length === 1) return seats[0];
+  return ringAfter(seats, buttonSeat)[0] ?? null;
+}
+
 // ---------- money / street state ----------
 
 export function currentBet(seats: EngineSeat[]): number {

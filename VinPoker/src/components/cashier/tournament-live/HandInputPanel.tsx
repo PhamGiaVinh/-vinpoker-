@@ -25,11 +25,14 @@ import {
   firstPreflopActor,
   snapshotBlindLevel,
   hasLevelChangedDuringHand,
+  isRunout,
   type EngineState,
   type BlindLevelSnapshot,
 } from "@/lib/tracker-poker/trackerEngine";
+import { deriveEnginePhase, isBoardEntryPhase, boardEntryStreet } from "./handinput/enginePhase";
 import { FEATURES } from "@/lib/featureFlags";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
+import { BoardEntryPanel } from "./handinput/BoardEntryPanel";
 import { BlindSetupPanel } from "./handinput/BlindSetupPanel";
 import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
@@ -524,10 +527,6 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   // Blinds are confirmed once SB+BB exist in the persisted actions (refresh-safe)
   // OR the operator pressed "Xác nhận blind" locally (UX acceleration).
   const blindsConfirmed = blindsConfirmedLocal || (sbPosted && bbPosted);
-  // The dedicated blind-setup phase replaces the ActionDock while a preflop hand
-  // still owes its blinds (engine mode only).
-  const showBlindSetup =
-    engineMode && handStarted && currentStreet === "preflop" && !blindsConfirmed && players.length >= 2;
   const isHeadsUp = players.length === 2;
   const blindLevelMissing = !blindLevelSnapshot || blindLevelSnapshot.level_number == null;
   const blindLevelChanged = hasLevelChangedDuringHand(blindLevelSnapshot, { level_number: liveLevelNumber });
@@ -1053,6 +1052,23 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const isSummary = Object.keys(endingStacks).length > 0;
 
+  // Street Gate / Board Entry: engine-mode UI phase. action_* for a postflop
+  // street is reached only after its board is persisted (sentCommunityStreets),
+  // so the ActionDock can't show before the cards are saved.
+  const enginePhase = engineMode
+    ? deriveEnginePhase({
+        handStarted,
+        blindsConfirmed,
+        currentStreet,
+        boardSent: sentCommunityStreets.has(currentStreet),
+        isSummary,
+      })
+    : "action_preflop"; // not used in manual mode
+  const showBlindSetup = engineMode && enginePhase === "blind_setup" && players.length >= 2;
+  const showBoardEntry = engineMode && isBoardEntryPhase(enginePhase);
+  const boardEntryStreetNow = boardEntryStreet(enginePhase);
+  const allInRunout = engineMode && isRunout(engineState.seats);
+
   // Engine mode: auto-advance the street when the betting round closes, and
   // pre-fill a fold-win settlement when only one player remains. LOCAL state
   // only — the viewer-visible street still advances when the operator sends the
@@ -1069,16 +1085,22 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       setEndingStacks(map);
       return;
     }
-    // Betting round closed (after ≥1 voluntary action this street) → advance to
-    // the next street. The operator still enters + sends the board cards.
+    // Advance to the next street ONLY when the current street's board is ready
+    // (preflop: blinds confirmed; postflop: this street's cards are persisted) —
+    // so we never skip a board-entry gate — AND its round is closed. Normally
+    // requires ≥1 voluntary action; an all-in run-out has no actor, so it may
+    // advance with none (operator still enters each board in the gate).
+    const boardReady = currentStreet === "preflop"
+      ? blindsConfirmed
+      : sentCommunityStreets.has(currentStreet);
     const streetActed = actions.some(
       (a) => a.street === currentStreet && !["post_sb", "post_bb", "post_ante"].includes(a.action_type)
     );
-    if (streetActed && isRoundComplete(engineState)) {
+    if (boardReady && isRoundComplete(engineState) && (streetActed || isRunout(engineState.seats))) {
       nextStreet();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineMode, handStarted, isSummary, isReadOnly, currentStreet, players, actions, engineState]);
+  }, [engineMode, handStarted, isSummary, isReadOnly, currentStreet, players, actions, engineState, blindsConfirmed, sentCommunityStreets]);
 
   return (
     <div className="space-y-3">
@@ -1180,11 +1202,13 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       {/* ACTIVE: Hand tracking */}
       {tableId && handStarted && !isSummary && (
         <>
-          {/* COMMUNITY CARDS with CardSlotPicker */}
-          <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 border border-emerald-700/30 shadow-inner">
-            {communityCards.map((card, i) => {
-              const isEditable = cardSlotsForStreet(currentStreet).includes(i) || (currentStreet === "showdown" && !handStarted);
-              return (
+          {/* COMMUNITY CARDS — MANUAL mode keeps the inline picker + Gửi button.
+              Engine mode enters the board via the BoardEntryPanel gate instead,
+              and shows a READ-ONLY strip during action (no accidental edits to an
+              already-sent board). */}
+          {!engineMode && (
+            <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 border border-emerald-700/30 shadow-inner">
+              {communityCards.map((card, i) => (
                 <CardSlotPicker
                   key={i}
                   value={card}
@@ -1195,26 +1219,35 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
                     setCommunityCards(newCards);
                   }}
                 />
-              );
-            })}
-            {(currentStreet === "flop" || currentStreet === "turn" || currentStreet === "river") && (
-              <Button size="sm" onClick={handleUpdateCommunityCards} disabled={submitting || communityCards.filter(Boolean).length === 0} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-500/20 ml-2">
-                <Radio className="w-3.5 h-3.5 mr-1" /> Gửi {STREET_LABELS[currentStreet]}
-              </Button>
-            )}
-          </div>
+              ))}
+              {(currentStreet === "flop" || currentStreet === "turn" || currentStreet === "river") && (
+                <Button size="sm" onClick={handleUpdateCommunityCards} disabled={submitting || communityCards.filter(Boolean).length === 0} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-500/20 ml-2">
+                  <Radio className="w-3.5 h-3.5 mr-1" /> Gửi {STREET_LABELS[currentStreet]}
+                </Button>
+              )}
+            </div>
+          )}
+          {engineMode && !showBoardEntry && communityCards.some(Boolean) && (
+            <div className="flex items-center justify-center gap-3 rounded-lg border border-emerald-700/30 bg-emerald-950/30 px-3 py-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Board</span>
+              <span className="font-mono text-sm tracking-wide text-foreground">{communityCards.filter((c): c is Card => c !== null).map((c) => displayCard(c)).join("   ")}</span>
+            </div>
+          )}
 
-          {/* STREET TABS */}
-          <div className="flex gap-1 p-1.5 bg-card border border-border/30 rounded-lg overflow-x-auto shadow-sm">
-            {STREET_ORDER.map((street) => (
-              <button key={street} className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${currentStreet === street ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm" : "text-muted-foreground hover:text-amber-400 border border-transparent hover:bg-secondary/50"}`} onClick={() => setCurrentStreet(street)}>
-                {STREET_LABELS[street]}
+          {/* STREET TABS — MANUAL mode only. Engine mode drives streets via the
+              gate (no manual jump / "Next" shortcut that would bypass board entry). */}
+          {!engineMode && (
+            <div className="flex gap-1 p-1.5 bg-card border border-border/30 rounded-lg overflow-x-auto shadow-sm">
+              {STREET_ORDER.map((street) => (
+                <button key={street} className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all ${currentStreet === street ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm" : "text-muted-foreground hover:text-amber-400 border border-transparent hover:bg-secondary/50"}`} onClick={() => setCurrentStreet(street)}>
+                  {STREET_LABELS[street]}
+                </button>
+              ))}
+              <button className="ml-auto px-3 py-1.5 rounded text-xs font-medium text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" onClick={nextStreet} disabled={currentStreet === "showdown"}>
+                Next <ChevronRight className="w-3 h-3 inline" />
               </button>
-            ))}
-            <button className="ml-auto px-3 py-1.5 rounded text-xs font-medium text-blue-400 border border-blue-500/30 hover:bg-blue-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" onClick={nextStreet} disabled={currentStreet === "showdown"}>
-              Next <ChevronRight className="w-3 h-3 inline" />
-            </button>
-          </div>
+            </div>
+          )}
 
           {/* INFO STRIP — Vietnamese operator context (street · actor/next · cần theo · pot · last action) */}
           {currentStreet !== "showdown" && (
@@ -1355,6 +1388,18 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               onPost={handlePostBlind}
               onConfirm={handleConfirmBlinds}
               disabled={submitting || isReadOnly}
+            />
+          ) : showBoardEntry && boardEntryStreetNow ? (
+            /* BOARD ENTRY GATE — must enter + send this street's cards (persisted)
+               before the street's action begins. ActionDock stays hidden here. */
+            <BoardEntryPanel
+              street={boardEntryStreetNow}
+              communityCards={communityCards}
+              usedCards={usedCards}
+              onCardChange={(i, c) => setCommunityCards((prev) => { const n = [...prev]; n[i] = c; return n; })}
+              onSubmit={handleUpdateCommunityCards}
+              submitting={submitting || isReadOnly}
+              allInRunout={allInRunout}
             />
           ) : (
             /* ACTION DOCK — to-act player + keypad + GTO action buttons */
