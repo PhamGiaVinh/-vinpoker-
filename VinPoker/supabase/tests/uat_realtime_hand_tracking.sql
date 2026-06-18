@@ -161,7 +161,9 @@ SELECT public.record_action(
 -- Expected: {"status": "success"}
 */
 
--- 4b. Record duplicate action_order (should silently succeed due to ON CONFLICT DO NOTHING)
+-- 4b. Re-using an action_order WITHOUT an idempotency_key now returns a STRUCTURED
+--     conflict (migration 20260928000000 — no longer a raw 500; there was never an
+--     ON CONFLICT DO NOTHING here, the old comment was inaccurate).
 /*
 SELECT public.record_action(
   p_hand_id := '<hand_id>'::uuid,
@@ -172,7 +174,7 @@ SELECT public.record_action(
   p_action_amount := 500,
   p_action_order := 1
 );
--- Expected: {"status": "success"} (idempotent)
+-- Expected: {"error":"action_order_conflict","reason":"Another action already exists at this action_order","trace_id":null}
 */
 
 -- 4c. Record action for player not in hand (should fail)
@@ -186,7 +188,7 @@ SELECT public.record_action(
   p_action_amount := 0,
   p_action_order := 2
 );
--- Expected: {"error": "Player not found in this hand"}
+-- Expected: {"error": "Player not found in this hand", "trace_id": null}
 */
 
 -- 4d. Record action on completed hand (should fail)
@@ -200,7 +202,52 @@ SELECT public.record_action(
   p_action_amount := 0,
   p_action_order := 99
 );
--- Expected: {"error": "Hand is not in progress"}
+-- Expected: {"error": "Hand is not in progress", "trace_id": null}
+*/
+
+-- 4e. Idempotent retry — SAME idempotency_key + SAME payload returns the cached
+--     result without inserting a 2nd row (network retry / double-tap safety).
+/*
+-- First call inserts:
+SELECT public.record_action(
+  p_hand_id := '<hand_id>'::uuid, p_player_id := '<player1_id>'::uuid,
+  p_action_type := 'call', p_action_order := 5, p_entry_number := 1,
+  p_street := 'flop', p_action_amount := 300,
+  p_idempotency_key := 'op-abc-5', p_trace_id := 'trace-1', p_user_id := '<user_id>'::uuid
+);
+-- Expected: {"status":"success","trace_id":"trace-1"}
+-- Retry with the SAME key + SAME payload:
+SELECT public.record_action(
+  p_hand_id := '<hand_id>'::uuid, p_player_id := '<player1_id>'::uuid,
+  p_action_type := 'call', p_action_order := 5, p_entry_number := 1,
+  p_street := 'flop', p_action_amount := 300,
+  p_idempotency_key := 'op-abc-5', p_trace_id := 'trace-1', p_user_id := '<user_id>'::uuid
+);
+-- Expected: {"status":"success","duplicate":true,"trace_id":"trace-1"}  (no 2nd row)
+*/
+
+-- 4f. Idempotency conflict — SAME key, DIFFERENT payload → clear error.
+/*
+SELECT public.record_action(
+  p_hand_id := '<hand_id>'::uuid, p_player_id := '<player1_id>'::uuid,
+  p_action_type := 'raise', p_action_order := 6, p_entry_number := 1,
+  p_street := 'flop', p_action_amount := 900,
+  p_idempotency_key := 'op-abc-5', p_trace_id := 'trace-2', p_user_id := '<user_id>'::uuid
+);
+-- Expected: {"error":"idempotency_key_conflict","trace_id":"trace-2"}
+*/
+
+-- 4g. Single-operator lock (activated) — a different user acting on a hand a fresh
+--     operator holds is blocked. (op A's action/heartbeat claimed locked_by_user_id;
+--     op B within the 5-min TTL is rejected; after >5 min op B can take over.)
+/*
+SELECT public.record_action(
+  p_hand_id := '<hand_held_by_user_A>'::uuid, p_player_id := '<player1_id>'::uuid,
+  p_action_type := 'bet', p_action_order := 7, p_entry_number := 1,
+  p_street := 'turn', p_action_amount := 1000,
+  p_idempotency_key := 'op-B-7', p_trace_id := 'trace-3', p_user_id := '<user_B_id>'::uuid
+);
+-- Expected: {"error":"Hand is locked by another tracker","locked_by":"<user_A_id>","trace_id":"trace-3"}
 */
 
 -- ====================
