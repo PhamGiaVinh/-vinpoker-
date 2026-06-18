@@ -62,20 +62,15 @@ const QUERIES = [
       from s group by 1,2 order by 1 desc, 2 limit 200;`,
   },
   {
-    label: "2) Swing volume + manual-override mix (swing_audit_logs, last 30d, by day/club)",
+    label: "2) Audit-log volume + manual vs auto by triggered_by (swing_audit_logs, last 30d, by day/club)",
+    // NOTE: swing_audit_logs is SPARSE vs dealer_assignments completions — use it only for the
+    // manual/auto split, NOT for swing volume. (Manual = operator UUIDs; auto = system/system_trigger.)
     sql: `
       select (created_at at time zone 'Asia/Ho_Chi_Minh')::date as day,
              club_id,
-             count(*) as total_actions,
-             count(*) filter (where action = 'swing_success')   as swing_success,
-             count(*) filter (where action = 'swing_no_dealer')  as swing_no_dealer,
-             count(*) filter (
-               where triggered_by is not null
-                 and triggered_by not ilike '%process-swing%'
-                 and triggered_by not ilike '%cron%'
-                 and triggered_by not ilike '%system%'
-                 and triggered_by not ilike '%scheduler%'
-             ) as manual_actions
+             count(*) as logged_actions,
+             count(*) filter (where triggered_by ~ '^[0-9a-f-]{36}$') as manual_actions,
+             count(*) filter (where triggered_by !~ '^[0-9a-f-]{36}$' or triggered_by is null) as auto_actions
       from swing_audit_logs
       where created_at >= now() - ${WINDOW}
       group by 1,2 order by 1 desc, 2 limit 200;`,
@@ -89,15 +84,27 @@ const QUERIES = [
       group by 1 order by 2 desc limit 50;`,
   },
   {
-    label: "3) Fairness spread — per-dealer assigned minutes per day, stddev across roster (last 30d)",
+    label: "2c) Distinct action labels in swing_audit_logs (learn the real labels, last 30d)",
+    sql: `
+      select action, count(*) as n
+      from swing_audit_logs
+      where created_at >= now() - ${WINDOW}
+      group by 1 order by 2 desc limit 50;`,
+  },
+  {
+    label: "3) Fairness spread — per-dealer COMPLETED-session minutes per day, stddev across roster (last 30d)",
+    // released_at IS NOT NULL only — excludes never-released/orphaned rows that otherwise count to
+    // now() and produce impossible ~40,000-min sessions. Cap at 600min as a sanity guard.
     sql: `
       with sessions as (
         select att.dealer_id,
                (da.assigned_at at time zone 'Asia/Ho_Chi_Minh')::date as day,
-               extract(epoch from (coalesce(da.released_at, now()) - da.assigned_at))/60.0 as minutes
+               least(600, extract(epoch from (da.released_at - da.assigned_at))/60.0) as minutes
         from dealer_assignments da
         join dealer_attendance att on att.id = da.attendance_id
         where da.assigned_at >= now() - ${WINDOW}
+          and da.released_at is not null
+          and da.released_at >= da.assigned_at
       ),
       per_dealer as (
         select day, dealer_id, count(*) as sessions, sum(minutes) as total_min
@@ -112,14 +119,21 @@ const QUERIES = [
       from per_dealer group by 1 order by 1 desc limit 60;`,
   },
   {
-    label: "4) Pre-announce reliability (pre_announce_jobs by status, last 30d)",
+    label: "4a) pre_announce_jobs columns (learn the timestamp column; prior run returned [])",
+    sql: `
+      select column_name, data_type
+      from information_schema.columns
+      where table_schema='public' and table_name='pre_announce_jobs'
+      order by ordinal_position;`,
+  },
+  {
+    label: "4b) Pre-announce reliability — status counts (ALL rows, no time filter)",
     sql: `
       select (to_jsonb(j.*)->>'status') as status,
              count(*) as n,
              round(avg((to_jsonb(j.*)->>'attempts')::numeric), 2) as avg_attempts,
              max((to_jsonb(j.*)->>'attempts')::int) as max_attempts
       from pre_announce_jobs j
-      where (to_jsonb(j.*)->>'created_at')::timestamptz >= now() - ${WINDOW}
       group by 1 order by 2 desc;`,
   },
   {
