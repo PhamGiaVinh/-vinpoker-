@@ -94,9 +94,32 @@ export interface DealerCandidate {
   score_breakdown?: ScoreBreakdown;
 }
 
+/** Per-pick exclusion counters — why dealers were dropped from the candidate pool.
+ *  Computed today for logging; surfaced (C1) so the floor sees "why not chosen". */
+export interface PickDiagnostics {
+  total_rows: number;
+  duplicate_dealer_rows: number;
+  busy_excluded: number;
+  exclude_set_excluded: number;
+  tier_excluded: number;
+  fatigue_excluded: number;
+  priority_break_excluded: number;
+  break_pool_guard_excluded: number;
+  min_rest_excluded: number;
+  on_break_excluded: number;
+  inter_swing_cooldown_excluded: number;
+  game_type_excluded: number;
+  meal_break_excluded: number;
+  step5b_pre_assigned_refs: number;
+  step5c_pre_assigned: number;
+  candidates_count: number;
+}
+
 export interface BuildCandidatesResult {
   candidates: DealerCandidate[];
   avgBreakRatio: number | null;
+  /** Present on the normal path; omitted on the early no-dealer/error returns. */
+  diag?: PickDiagnostics;
 }
 
 export type SupabaseAdmin = any;
@@ -474,7 +497,7 @@ export async function buildDealerCandidates(
     }
   }
 
-  const diag = {
+  const diag: PickDiagnostics = {
     total_rows: rows.length,
     duplicate_dealer_rows: duplicateDealerRows,
     busy_excluded: 0,
@@ -988,7 +1011,7 @@ export async function buildDealerCandidates(
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return { candidates, avgBreakRatio };
+  return { candidates, avgBreakRatio, diag };
 }
 
 // ─── pickNextDealer ───────────────────────────────────────────────────────────
@@ -1012,6 +1035,20 @@ export async function pickTopDealers(
 ): Promise<DealerCandidate[]> {
   const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates.slice(0, topN);
+}
+
+// ─── pickTopDealersWithDiagnostics ──────────────────────────────────────────
+// Same as pickTopDealers but also returns the exclusion `diag` so callers (the
+// assign-suggestions path) can surface "why other dealers were not chosen".
+// Additive — existing pickTopDealers callers are unaffected.
+export async function pickTopDealersWithDiagnostics(
+  admin: SupabaseAdmin,
+  clubId: string,
+  topN: number,
+  options: Omit<PickDealerOptions, "returnTopN"> = {}
+): Promise<{ candidates: DealerCandidate[]; diag?: PickDiagnostics; avgBreakRatio: number | null }> {
+  const { candidates, avgBreakRatio, diag } = await buildDealerCandidates(admin, clubId, options);
+  return { candidates: candidates.slice(0, topN), diag, avgBreakRatio };
 }
 
 // ─── buildRotationSupply (Forward Rotation Scheduler) ─────────────────────────

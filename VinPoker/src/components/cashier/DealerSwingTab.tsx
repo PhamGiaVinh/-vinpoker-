@@ -147,6 +147,43 @@ function resolveTableSwingTiming(
 /* ==============================================================
    SWING PANEL — Main 3-Column Layout
    ============================================================== */
+
+// C1 — explainability labels for the assign modal.
+// Maps the real ScoreBreakdown fields (from pickNextDealer) to Vietnamese labels
+// so the per-candidate score popover shows WHY a dealer scored as it did.
+const SCORE_LABELS: Record<string, string> = {
+  rest_bonus: "Nghỉ ngơi",
+  tier_bonus: "Xếp hạng",
+  skill_bonus: "Kỹ năng",
+  mixed_bonus: "Mixed",
+  priority_swing_bonus: "Bàn ưu tiên",
+  consecutive_penalty: "Liên tục",
+  heavy_worker_penalty: "Làm nhiều ca",
+  consecutive_high_penalty: "Nhiều bàn HIGH",
+  tier_back_to_back_penalty: "Bàn cũ (tier)",
+  back_to_back_penalty: "Bàn cũ",
+  break_equity_penalty: "Công bằng nghỉ",
+  priority_break_penalty: "Cần nghỉ ưu tiên",
+  fatigue_penalty: "Quá tải",
+};
+
+// Maps PickDiagnostics exclusion counters → "why this dealer was NOT chosen".
+const DIAG_LABELS: Record<string, string> = {
+  busy_excluded: "đang bận bàn khác",
+  on_break_excluded: "đang nghỉ chưa đủ",
+  break_pool_guard_excluded: "vừa swing (cooldown)",
+  min_rest_excluded: "chưa nghỉ đủ giữa ca",
+  inter_swing_cooldown_excluded: "cooldown giữa swing",
+  fatigue_excluded: "quá tải (4+ ca liên tục)",
+  priority_break_excluded: "cần nghỉ ưu tiên",
+  tier_excluded: "tier C không hợp bàn HIGH",
+  game_type_excluded: "không đúng loại game",
+  meal_break_excluded: "đang nghỉ ăn",
+  exclude_set_excluded: "đã xét cho bàn khác cùng lượt",
+  step5b_pre_assigned_refs: "đã pre-assign bàn khác",
+  step5c_pre_assigned: "đã pre-assign bàn khác",
+};
+
 export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = useMemo(() => {
@@ -233,6 +270,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
   const [roomReconcileOpen, setRoomReconcileOpen] = useState(false);
   const [manualDealerId, setManualDealerId] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[] | null>(null);
+  // C1: exclusion counters from the suggestions endpoint — "why other dealers
+  // were not chosen". Read-only display; does not affect assignment.
+  const [assignDiag, setAssignDiag] = useState<Record<string, number> | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [checkinDealerIds, setCheckinDealerIds] = useState<string[]>([]);
@@ -645,12 +685,14 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setModalTable(tableId);
     setManualDealerId("");
     setSuggestions(null);
+    setAssignDiag(null);
     try {
       const { data, error } = await supabase.functions.invoke("assign-dealer", {
         body: { table_id: tableId, requested_by: user?.id, return_suggestions_only: true, shift_id: selectedTour ?? undefined },
       });
       if (error) { toast.error(`Lỗi gợi ý: ${error.message}`); return; }
       setSuggestions((data as any)?.suggestions ?? []);
+      setAssignDiag((data as any)?.diagnostics ?? null);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -1844,13 +1886,16 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                           {bd && (
                             <PopoverContent side="top" align="end" className="w-auto min-w-[160px] p-2 rounded-none bg-popover border-border shadow-lg">
                               <div className="text-[10px] text-muted-foreground space-y-0.5">
-                                <div className="flex justify-between"><span>Xếp hạng</span><span className={bd.tier_match >= 0 ? "text-success" : "text-destructive"}>{bd.tier_match > 0 ? `+${bd.tier_match}` : bd.tier_match}</span></div>
-                                <div className="flex justify-between"><span>Công bằng</span><span className={bd.fairness >= 0 ? "text-success" : "text-destructive"}>{bd.fairness}</span></div>
-                                {bd.no_back_to_back !== 0 && <div className="flex justify-between"><span>Tránh bàn cũ</span><span className="text-destructive">{bd.no_back_to_back}</span></div>}
-                                {bd.skill_bonus !== 0 && <div className="flex justify-between"><span>Kỹ năng</span><span className="text-success">+{bd.skill_bonus}</span></div>}
-                                {bd.heavy_worker_penalty !== 0 && <div className="flex justify-between"><span>Làm nhiều ca</span><span className="text-destructive">{bd.heavy_worker_penalty}</span></div>}
-                                {bd.consecutive_high_penalty !== 0 && <div className="flex justify-between"><span>Nhiều bàn HIGH</span><span className="text-destructive">{bd.consecutive_high_penalty}</span></div>}
-                                {bd.tier_back_to_back_penalty !== 0 && <div className="flex justify-between"><span>Bàn cũ (tier)</span><span className="text-destructive">{bd.tier_back_to_back_penalty}</span></div>}
+                                {Object.entries(SCORE_LABELS)
+                                  .filter(([key]) => typeof bd[key] === "number" && bd[key] !== 0)
+                                  .map(([key, label]) => (
+                                    <div key={key} className="flex justify-between gap-3">
+                                      <span>{label}</span>
+                                      <span className={bd[key] > 0 ? "text-success" : "text-destructive"}>
+                                        {bd[key] > 0 ? `+${bd[key]}` : bd[key]}
+                                      </span>
+                                    </div>
+                                  ))}
                                 <div className="border-t border-border pt-0.5 mt-0.5 flex justify-between font-semibold">
                                   <span>Tổng</span><span className="text-primary">{s.score}</span>
                                 </div>
@@ -1866,6 +1911,25 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                   );
                 })}
               </>
+            )}
+            {assignDiag && Object.keys(DIAG_LABELS).some((k) => (assignDiag[k] ?? 0) > 0) && (
+              <div className="border border-border/60 bg-muted/10 rounded-none p-2 mt-1">
+                <div className="text-[11px] font-semibold text-muted-foreground mb-1">
+                  Vì sao dealer khác không được chọn
+                  {typeof assignDiag.total_rows === "number" && (
+                    <span className="font-normal"> · xét {assignDiag.total_rows} trong pool → {assignDiag.candidates_count ?? 0} đủ điều kiện</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(DIAG_LABELS)
+                    .filter(([k]) => (assignDiag[k] ?? 0) > 0)
+                    .map(([k, label]) => (
+                      <span key={k} className="text-[10px] px-1.5 py-0.5 border border-border bg-background/40 text-muted-foreground">
+                        {assignDiag[k]} {label}
+                      </span>
+                    ))}
+                </div>
+              </div>
             )}
             <div className="border-t border-border pt-3 mt-3">
               <Label className="text-xs">Gán thủ công:</Label>
