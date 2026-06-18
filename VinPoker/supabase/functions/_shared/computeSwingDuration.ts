@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export function computeNextSwingAt(
 
   if (syncConfig?.sync_swings) {
     // Round up to the next sync boundary
-    const windowMs = (syncConfig.sync_window_minutes ?? 5) * 60_000;
+    const windowMs = (syncConfig.sync_window_minutes ?? SWING_POLICY.defaults.syncWindowMinutes) * 60_000;
     const nextBoundary = Math.ceil(now / windowMs) * windowMs;
     const durationMs = durationMinutes * 60_000;
 

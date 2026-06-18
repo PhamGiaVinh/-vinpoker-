@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer, type DealerCandidate } from "./pickNextDealer.ts";
+import { SWING_POLICY } from "./swingPolicy.ts";
 import { OPEN_TABLE_GRACE_MINUTES } from "./openTableGrace.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ export async function fillEmptyTables(
       const dealer: DealerCandidate | null = await pickNextDealer(admin, clubId, {
         currentTableId: table.id,
         excludeAttendanceIds: excludeSet,
-        minInterSwingRestMinutes: minInterSwingRestMinutes ?? 10,
+        minInterSwingRestMinutes: minInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes,
         availableOnly,
       });
 

@@ -9,6 +9,7 @@
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
 import { sendPreAssignTelegramWithFallback } from "../../_shared/preAssignTelegram.ts";
+import { SWING_POLICY } from "../../_shared/swingPolicy.ts";
 
 interface Pass2Result {
   pre_assigned_count: number;
@@ -67,7 +68,7 @@ export async function pass2PreAssignNext(
 
   // Emergency OT pre-announce window: 3 minutes instead of normal 6 min.
   // Tables in overtime get notified sooner so dealers can prepare.
-  const EMERGENCY_OT_PRE_ANNOUNCE_MINUTES = 3;
+  const EMERGENCY_OT_PRE_ANNOUNCE_MINUTES = SWING_POLICY.preAssignWindow.emergencyOtPreAnnounceMinutes;
 
   try {
     // ════════════════════════════════════════════════════════
@@ -85,18 +86,18 @@ export async function pass2PreAssignNext(
     // ════════════════════════════════════════════════════════
 
     const normalWindowStart = new Date(
-      Date.now() + (manualWindowMinutes ? 0 : Math.max(0, preAnnounceMinutes - 2) * 60_000)
+      Date.now() + (manualWindowMinutes ? 0 : Math.max(0, preAnnounceMinutes - SWING_POLICY.preAssignWindow.halfWidthMinutes) * 60_000)
     ).toISOString();
     const normalWindowEnd = new Date(
-      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + 2)) * 60_000
+      Date.now() + (manualWindowMinutes ?? (preAnnounceMinutes + SWING_POLICY.preAssignWindow.halfWidthMinutes)) * 60_000
     ).toISOString();
 
     // Emergency OT window: shorter notification window
     const otWindowStart = new Date(
-      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES - 2) * 60_000
+      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES - SWING_POLICY.preAssignWindow.halfWidthMinutes) * 60_000
     ).toISOString();
     const otWindowEnd = new Date(
-      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES + 2) * 60_000
+      Date.now() + (EMERGENCY_OT_PRE_ANNOUNCE_MINUTES + SWING_POLICY.preAssignWindow.halfWidthMinutes) * 60_000
     ).toISOString();
 
     // For manual trigger, use single wide window
