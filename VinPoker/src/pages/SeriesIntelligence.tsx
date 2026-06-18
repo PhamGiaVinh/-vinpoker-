@@ -1,11 +1,12 @@
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, FileSpreadsheet, Info } from "lucide-react";
+import { ArrowLeft, Sparkles, FileSpreadsheet, Info, Database } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { SERIES_INTEL } from "@/lib/seriesIntelligence";
+import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
 
 /**
  * Club Admin → Series Intelligence (frontend-only demo shell).
@@ -80,6 +81,9 @@ export default function SeriesIntelligence() {
         </p>
       </Card>
 
+      {/* native data source inventory (read-only) */}
+      <DataSourceSection />
+
       {/* demo note */}
       <Card className="p-4 border-primary/30">
         <ul className="space-y-1 text-xs text-muted-foreground">
@@ -97,5 +101,57 @@ export default function SeriesIntelligence() {
         <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
       </Button>
     </div>
+  );
+}
+
+/**
+ * Phase 1 — read-only native data inventory. Probes the club owner's own
+ * tournaments (existing RLS, no new RPC, no writes) and reports how far VinPoker
+ * data already covers the Series Intelligence event shape. Does NOT compute
+ * economics yet.
+ */
+function DataSourceSection() {
+  const native = useNativeSeriesEvents();
+
+  return (
+    <section className="space-y-2">
+      <h3 className="font-display text-base flex items-center gap-2">
+        <Database className="w-4 h-4 text-primary" /> Nguồn dữ liệu
+      </h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card className="p-4 gradient-card border-primary/40 space-y-2">
+          <div className="text-sm font-medium">Dữ liệu VinPoker</div>
+          {native.status === "loading" && (
+            <p className="text-xs text-muted-foreground">Đang kiểm tra dữ liệu có sẵn trong VinPoker.</p>
+          )}
+          {native.status === "unavailable" && (
+            <p className="text-xs text-muted-foreground">
+              Cần RPC đọc dữ liệu owner-scoped ở bước tiếp theo.
+              {native.reason ? <span className="text-muted-foreground/70"> ({native.reason})</span> : null}
+            </p>
+          )}
+          {native.status === "ready" && native.summary && (
+            <ul className="space-y-0.5 text-xs text-muted-foreground tabular-nums">
+              <li>{native.summary.total} giải tìm thấy</li>
+              <li>{native.summary.withBuyIn} giải có buy-in</li>
+              <li>{native.summary.withFee} giải có fee (rake)</li>
+              <li>{native.summary.withPrizePool} giải có prize pool</li>
+              <li>{native.summary.missingGtd} giải thiếu GTD</li>
+              <li>{native.summary.missingEntries} giải thiếu số entry</li>
+            </ul>
+          )}
+          <p className="text-[11px] text-muted-foreground/80">
+            Chỉ đọc, không ghi. GTD chưa có trong dữ liệu; số entry cần bước đọc tiếp theo.
+          </p>
+        </Card>
+
+        <Card className="p-4 border-primary/30 space-y-2">
+          <div className="text-sm font-medium">CSV fallback</div>
+          <p className="text-xs text-muted-foreground">
+            Tải CSV thủ công — phương án dự phòng, sẽ được kết nối sau.
+          </p>
+        </Card>
+      </div>
+    </section>
   );
 }
