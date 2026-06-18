@@ -29,10 +29,18 @@ import {
   type EngineState,
   type BlindLevelSnapshot,
 } from "@/lib/tracker-poker/trackerEngine";
-import { deriveEnginePhase, isBoardEntryPhase, boardEntryStreet } from "./handinput/enginePhase";
+import {
+  deriveTrackerWorkflowState,
+  isActionState,
+  isBoardEntryState,
+  boardEntryStreet,
+  REQUIRED_BOARD_COUNT,
+} from "./handinput/trackerWorkflow";
 import { FEATURES } from "@/lib/featureFlags";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
 import { BoardEntryPanel } from "./handinput/BoardEntryPanel";
+import { ShowdownInputPanel } from "./handinput/ShowdownInputPanel";
+import { ReviewHandPanel } from "./handinput/ReviewHandPanel";
 import { BlindSetupPanel } from "./handinput/BlindSetupPanel";
 import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
@@ -135,6 +143,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   >([]);
   // Streets whose community cards were already sent — used to confirm overwrites.
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
+  // Workflow v2 source of truth for board progress: the PERSISTED community-card
+  // count (set on update_community_cards success + orphan-resume). Refresh-safe.
+  const [persistedBoardCount, setPersistedBoardCount] = useState(0);
 
   // Resume-on-return: the selected table lives in the URL (?hiTable=<id>). The
   // in-progress hand itself is resumed by the existing orphan-detection flow, so
@@ -530,6 +541,38 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const isHeadsUp = players.length === 2;
   const blindLevelMissing = !blindLevelSnapshot || blindLevelSnapshot.level_number == null;
   const blindLevelChanged = hasLevelChangedDuringHand(blindLevelSnapshot, { level_number: liveLevelNumber });
+
+  // ----- Workflow v2: single source of truth (engine mode). Computed BEFORE the
+  // handlers so the action/board/submit hard-gates can reference it. -----
+  const isReview = Object.keys(endingStacks).length > 0;
+  const conservationOk = useMemo(() => {
+    const start = players.reduce((s, p) => s + p.starting_stack, 0);
+    const end = players.reduce((s, p) => s + (endingStacks[p.player_id] ?? p.current_stack), 0);
+    return start === end;
+  }, [players, endingStacks]);
+  const winnerDetermined = useMemo(
+    () => players.some((p) => (endingStacks[p.player_id] ?? p.current_stack) > p.current_stack),
+    [players, endingStacks]
+  );
+  const reviewValid = isReview && conservationOk && winnerDetermined;
+  const workflowState = engineMode
+    ? deriveTrackerWorkflowState({
+        handStarted,
+        blindsConfirmed,
+        currentStreet,
+        persistedBoardCount,
+        isReview,
+        reviewValid,
+        submitted: false,
+      })
+    : "setup_hand"; // not used in manual mode
+  const showBlindSetup = engineMode && workflowState === "setup_blinds" && players.length >= 2;
+  const showBoardEntry = engineMode && isBoardEntryState(workflowState);
+  const boardEntryStreetNow = boardEntryStreet(workflowState);
+  const showShowdownInput = engineMode && workflowState === "showdown_input";
+  const showReviewPanel = engineMode && (workflowState === "review_hand" || workflowState === "submit_ready");
+  const allInRunout = engineMode && isRunout(engineState.seats);
+
   const needsPostSB = engineMode
     ? engineActor?.needsPost === "post_sb"
     : currentStreet === "preflop" && !!actorPlayer && actorPos.includes("SB") && !sbPosted;
@@ -633,6 +676,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       // The next action continues the sequence — NEVER restart at 1.
       setNextActionOrder(nextActionOrderFrom(rows));
       setSentCommunityStreets(sent);
+      setPersistedBoardCount(communityCount); // refresh-safe board source of truth
       setUndoStack([]);
       setSelectedActorId(null);
       setHandId(orphanHand.id);
@@ -667,6 +711,13 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     const player = players.find((p) => p.player_id === playerId);
     if (!player) return;
     if (isReadOnly) { toast.error("Phiên làm việc đã hết hạn"); return; }
+    // Workflow v2 HARD-GATE (engine mode): blind posts only during setup_blinds;
+    // betting actions only during an action state. Never bypass the state machine.
+    if (engineMode) {
+      const isPost = actionType.startsWith("post_");
+      if (isPost && workflowState !== "setup_blinds") { toast.error("Chưa tới bước đặt blind"); return; }
+      if (!isPost && !isActionState(workflowState)) { toast.error("Chưa tới bước hành động của vòng này"); return; }
+    }
 
     // Guard 3: amountOverride is honoured ONLY for blind/ante posts (the blind
     // setup panel passes the level amount). It must never reach bet/raise sizing.
@@ -888,6 +939,15 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const handleUpdateCommunityCards = async () => {
     if (!handId || isReadOnly) return;
     const cards = communityCards.filter((c): c is Card => c !== null);
+    // Workflow v2 HARD-GATE (engine mode): only in the matching enter_* state, the
+    // required count must be COMPLETE (3/1/1), no duplicate, street must match.
+    if (engineMode) {
+      if (!isBoardEntryState(workflowState)) { toast.error("Chưa tới bước nhập bài board"); return; }
+      const need = currentStreet === "flop" || currentStreet === "turn" || currentStreet === "river"
+        ? REQUIRED_BOARD_COUNT[currentStreet] : 0;
+      if (cards.length < need) { toast.error(`Cần nhập đủ ${need} lá ${STREET_LABELS[currentStreet]}`); return; }
+      if (new Set(cards).size !== cards.length) { toast.error("Có lá bài trùng nhau"); return; }
+    }
     if (cards.length === 0) return;
     // High-risk: confirm before overwriting community cards already sent for this street.
     if (sentCommunityStreets.has(currentStreet) &&
@@ -898,10 +958,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         body: { tournament_id: tournamentId, action: "update_community_cards", hand_id: handId, community_cards: cards },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
+      // Persisted board count is the workflow source of truth — set on SUCCESS only.
       setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
-      toast.success(`Community cards updated (${cards.length} cards)`);
+      setPersistedBoardCount(cards.length);
+      toast.success(`Đã gửi ${STREET_LABELS[currentStreet]} lên viewer (${cards.length} lá)`);
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(`Lỗi gửi bài, thử lại: ${e.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -940,6 +1002,29 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     }
   };
 
+  // Showdown step (engine mode): pick winner(s), reveal hole cards, then apply the
+  // simple settlement and open Review.
+  const handleToggleWinner = (playerId: string) => {
+    setSelectedWinners((prev) => (prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]));
+  };
+  const handleHoleCardChange = (playerId: string, ci: number, card: Card | null) => {
+    setPlayerHoleCards((prev) => {
+      const cur = prev[playerId] || [null, null];
+      const upd = [...cur] as (Card | null)[];
+      upd[ci] = card;
+      return { ...prev, [playerId]: upd };
+    });
+  };
+  const handleConfirmShowdownResult = () => {
+    if (selectedWinners.length === 0) { toast.error("Chọn người thắng trước"); return; }
+    const map: Record<string, number> = {};
+    settleSelectedWinners(engineState.seats, selectedWinners).forEach((r) => { map[r.player_id] = r.ending_stack; });
+    setEndingStacks(map); // opens Review (workflow → review_hand / submit_ready)
+  };
+  const handleEndingStackChange = (playerId: string, value: number) => {
+    setEndingStacks((prev) => ({ ...prev, [playerId]: value }));
+  };
+
   const completeHand = () => {
     const stacks: Record<string, number> = {};
     players.forEach((p) => { stacks[p.player_id] = p.current_stack; });
@@ -948,6 +1033,12 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const handleSubmitHand = async () => {
     if (!tableId || !handNumber) return;
+    // Workflow v2 HARD-GATE (engine mode): only submit from submit_ready (chips
+    // conserved + winner determined). Never submit mid-hand.
+    if (engineMode && workflowState !== "submit_ready") {
+      toast.error("Chưa thể gửi hand — cần hoàn tất đúng quy trình trước.");
+      return;
+    }
     // High-risk: confirm when ending stacks were manually corrected away from the
     // tracked values before committing them to the record.
     const stacksEdited = players.some(
@@ -1036,6 +1127,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
     setSentCommunityStreets(new Set());
+    setPersistedBoardCount(0);
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
         if (data) setHandNumber(data);
@@ -1052,22 +1144,6 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   const isSummary = Object.keys(endingStacks).length > 0;
 
-  // Street Gate / Board Entry: engine-mode UI phase. action_* for a postflop
-  // street is reached only after its board is persisted (sentCommunityStreets),
-  // so the ActionDock can't show before the cards are saved.
-  const enginePhase = engineMode
-    ? deriveEnginePhase({
-        handStarted,
-        blindsConfirmed,
-        currentStreet,
-        boardSent: sentCommunityStreets.has(currentStreet),
-        isSummary,
-      })
-    : "action_preflop"; // not used in manual mode
-  const showBlindSetup = engineMode && enginePhase === "blind_setup" && players.length >= 2;
-  const showBoardEntry = engineMode && isBoardEntryPhase(enginePhase);
-  const boardEntryStreetNow = boardEntryStreet(enginePhase);
-  const allInRunout = engineMode && isRunout(engineState.seats);
 
   // Engine mode: auto-advance the street when the betting round closes, and
   // pre-fill a fold-win settlement when only one player remains. LOCAL state
@@ -1316,8 +1392,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
 
-          {/* SHOWDOWN: Hole cards input */}
-          {currentStreet === "showdown" && (
+          {/* SHOWDOWN: Hole cards input (MANUAL mode only — engine mode uses the
+              ShowdownInputPanel via the workflow orchestrator below). */}
+          {!engineMode && currentStreet === "showdown" && (
             <div className="space-y-3 p-3 bg-card border border-purple-500/30 rounded-lg">
               <div className="text-xs font-semibold text-purple-400 uppercase tracking-wider">Hole Cards (Lật bài)</div>
               {players.filter((p) => !p.is_folded).map((player) => (
@@ -1401,6 +1478,20 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               submitting={submitting || isReadOnly}
               allInRunout={allInRunout}
             />
+          ) : showShowdownInput ? (
+            /* SHOWDOWN — reveal hole cards + pick winner (manual), then → Review. */
+            <ShowdownInputPanel
+              players={players}
+              board={communityCards}
+              holeCards={playerHoleCards}
+              usedCards={usedCards}
+              onHoleCardChange={handleHoleCardChange}
+              onReveal={handleShowHoleCards}
+              selectedWinners={selectedWinners}
+              onToggleWinner={handleToggleWinner}
+              onConfirmResult={handleConfirmShowdownResult}
+              submitting={submitting || isReadOnly}
+            />
           ) : (
             /* ACTION DOCK — to-act player + keypad + GTO action buttons */
             <ActionDock
@@ -1425,6 +1516,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               hasVoidTarget={!!(handId || lastHandId)}
               showActions={currentStreet !== "showdown"}
               betIsTotal={engineMode}
+              workflowMode={engineMode}
               disabled={submitting || isReadOnly}
             />
           )}
@@ -1457,7 +1549,25 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       )}
 
       {/* SUMMARY: Review ending stacks */}
-      {isSummary && (
+      {/* ENGINE MODE — Review + Submit (chip-conservation gated; Submit only in
+          submit_ready). Replaces the free-form manual Review below. */}
+      {engineMode && isSummary && (
+        <ReviewHandPanel
+          players={players}
+          board={communityCards}
+          endingStacks={endingStacks}
+          onEndingStackChange={handleEndingStackChange}
+          potSize={potSize}
+          conservationOk={conservationOk}
+          winnerDetermined={winnerDetermined}
+          canSubmit={reviewValid}
+          onSubmit={handleSubmitHand}
+          onBack={() => setEndingStacks({})}
+          submitting={submitting}
+        />
+      )}
+
+      {!engineMode && isSummary && (
         <UiCard className="p-4 space-y-4 border-blue-500/30 bg-blue-950/10">
           <div className="flex items-center justify-between">
             <div className="text-sm font-bold text-blue-400 uppercase tracking-wide">Review Ending Stacks</div>

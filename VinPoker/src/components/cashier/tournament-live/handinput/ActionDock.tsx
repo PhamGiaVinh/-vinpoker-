@@ -33,6 +33,9 @@ interface ActionDockProps {
   showActions?: boolean;
   /** Engine mode: the keypad value is the street TOTAL ("Bet to"), not added chips. */
   betIsTotal?: boolean;
+  /** Workflow v2: hide the street-jump ("Sang …") + "Hoàn tất" bypass controls;
+      streets + review are driven by the workflow state machine, not the dock. */
+  workflowMode?: boolean;
   disabled?: boolean;
 }
 
@@ -91,6 +94,7 @@ export function ActionDock({
   hasVoidTarget,
   showActions = true,
   betIsTotal = false,
+  workflowMode = false,
   disabled,
 }: ActionDockProps) {
   const betNum = parseInt(betAmount || "0", 10) || 0;
@@ -209,16 +213,18 @@ export function ActionDock({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {nextStreetLabel && (
-            <button type="button" onClick={onNextStreet} disabled={disabled} className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-lg px-4 py-2 hover:border-amber-400/60 transition disabled:opacity-40">
-              Sang {nextStreetLabel} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+        {!workflowMode && (
+          <div className="flex items-center gap-2">
+            {nextStreetLabel && (
+              <button type="button" onClick={onNextStreet} disabled={disabled} className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-lg px-4 py-2 hover:border-amber-400/60 transition disabled:opacity-40">
+                Sang {nextStreetLabel} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            )}
+            <button type="button" onClick={onComplete} disabled={disabled || !canComplete} className="inline-flex items-center gap-1.5 text-sm font-medium text-black bg-primary rounded-lg px-4 py-2 transition active:scale-[0.98] disabled:opacity-40">
+              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Hoàn tất
             </button>
-          )}
-          <button type="button" onClick={onComplete} disabled={disabled || !canComplete} className="inline-flex items-center gap-1.5 text-sm font-medium text-black bg-primary rounded-lg px-4 py-2 transition active:scale-[0.98] disabled:opacity-40">
-            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> Hoàn tất
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
