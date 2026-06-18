@@ -2695,5 +2695,111 @@
       "multiTable": "この大会には複数のテーブルがあります — 上でテーブルを選んでライブ観戦してください。",
       "waiting": "ディーラーがハンドを開始するのを待っています..."
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "あなたのポーカー・ジャーニー",
+      "title": "Poker IQ Drill",
+      "subtitle": "20スポット · 約5分 · 非公開の結果",
+      "start": "20ハンド開始",
+      "note": "大会の記録がなくても、ドリルがすぐに暫定プロフィールを表示します。",
+      "back": "戻る"
+    },
+    "play": {
+      "progress": "ハンド {{n}}/{{total}}",
+      "villain": "相手",
+      "stack": "スタック",
+      "confidenceQ": "どのくらい自信がありますか？",
+      "next": "次へ",
+      "finish": "結果を見る",
+      "choosePrompt": "どうしますか？"
+    },
+    "result": {
+      "kicker": "あなたのポーカー・ジャーニー",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "暫定",
+      "private": "非公開",
+      "privateLong": "非公開 · 弱点と練習プランはあなただけが見られます",
+      "profileLabel": "あなたの暫定プロフィール",
+      "scoreLabel": "Poker IQ",
+      "confidence": "信頼度：{{level}}",
+      "interpretation": "規律ある基礎があり、中規模ディープスタックに向いています。",
+      "nextHook": "A-に近づくには：アグレッシブな相手への対応を改善しましょう。",
+      "whyTitle": "システムがそう判断する理由",
+      "weakest": "最も弱い：{{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "強み",
+      "weaknessesTitle": "改善点",
+      "trainingKicker": "練習プラン",
+      "trainingGoal": "次の目標：A-",
+      "step1": "{{drill}} ドリルを完了",
+      "step2": "中規模ディープスタックを2回プレイ",
+      "step3": "認証プロフィールを解除",
+      "cta": "{{drill}} を練習して A- を解除",
+      "ctaSub": "この分野が最もスコアを下げています。",
+      "eventsTitle": "あなたに合う大会",
+      "eventAvoidPrefix": "当面は避ける",
+      "outlookTitle": "4 / 8 / 12 大会の見通し — ロック中",
+      "outlookIntro": "VinPoker で実戦を数回プレイして解除：",
+      "outlookItm": "ITM 見通し",
+      "outlookFt": "ファイナルテーブル見通し",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "認証プロフィール",
+      "disclaimer": "これは過去/ドリルのデータに基づくシミュレーションであり、結果を保証するものではありません。ポーカーは変動が大きいです。バンクロールの範囲内でプレイしてください。",
+      "draftRibbon": "下書きコンテンツ — 未レビュー",
+      "retake": "ドリルをやり直す"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "BTN/CO がタイトすぎ",
+      "overfold_vs_aggro": "アグロに過剰フォールド",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "不利な位置でのコール過多",
+      "spew_vs_nit": "ニットに無理打ち"
+    },
+    "strength": {
+      "preflop_discipline": "プリフロップの規律",
+      "read_nit": "ニットを読む力",
+      "low_spew": "ミスが少ない",
+      "position_aware": "ポジション活用",
+      "icm_aware": "ICM 感覚"
+    },
+    "event": {
+      "deepstack_mid_field": "Deepstack, mid field",
+      "deepstack_small_field": "Deepstack, small field",
+      "slow_structure": "Slow structure",
+      "turbo_short_stack": "Turbo short-stack"
+    },
+    "eventReason": {
+      "fit": "あなたの {{style}} スタイルとリスク管理に合っています。",
+      "avoid": "resteal 15–25BB のスポット練習が必要です。"
+    },
+    "insight": {
+      "preflop_discipline": "不利な位置でややワイドに参加しています。",
+      "position_steal": "レイトポジションでスティールを逃しがちです。",
+      "vs_aggro": "プレッシャー下でフォールドがやや多いです。",
+      "vs_nit_passive": "タイト/パッシブな相手を活かしきれていません。",
+      "tournament_pressure": "ICM/ショートスタックのスポットがまだ最適化されていません。"
+    },
+    "confLevel": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
   }
 }

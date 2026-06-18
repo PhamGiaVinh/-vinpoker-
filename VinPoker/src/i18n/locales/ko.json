@@ -2691,5 +2691,111 @@
       "multiTable": "이 토너먼트에는 여러 테이블이 있습니다 — 위에서 테이블을 선택해 라이브로 시청하세요.",
       "waiting": "딜러가 핸드를 시작하기를 기다리는 중..."
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "당신의 포커 여정",
+      "title": "Poker IQ Drill",
+      "subtitle": "20개 상황 · 약 5분 · 비공개 결과",
+      "start": "20핸드 시작",
+      "note": "토너먼트 기록이 없어도 드릴이 즉시 잠정 프로필을 제공합니다.",
+      "back": "뒤로"
+    },
+    "play": {
+      "progress": "{{n}}/{{total}} 핸드",
+      "villain": "상대",
+      "stack": "스택",
+      "confidenceQ": "얼마나 확신하나요?",
+      "next": "다음",
+      "finish": "결과 보기",
+      "choosePrompt": "어떻게 하시겠어요?"
+    },
+    "result": {
+      "kicker": "당신의 포커 여정",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "잠정",
+      "private": "비공개",
+      "privateLong": "비공개 · 약점과 훈련 경로는 본인만 볼 수 있어요",
+      "profileLabel": "당신의 잠정 프로필",
+      "scoreLabel": "Poker IQ",
+      "confidence": "신뢰도: {{level}}",
+      "interpretation": "규율 있는 기본기를 갖췄고 중간 규모 딥스택에 잘 맞습니다.",
+      "nextHook": "A-에 가까워지려면: 공격적인 상대를 더 잘 다루세요.",
+      "whyTitle": "시스템이 그렇게 판단한 이유",
+      "weakest": "가장 약함: {{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "강점",
+      "weaknessesTitle": "개선 필요",
+      "trainingKicker": "훈련 경로",
+      "trainingGoal": "다음 목표: A-",
+      "step1": "{{drill}} 드릴 완료",
+      "step2": "중간 규모 딥스택 2개 플레이",
+      "step3": "검증 프로필 잠금 해제",
+      "cta": "{{drill}} 훈련으로 A- 잠금 해제",
+      "ctaSub": "이 영역이 점수를 가장 많이 깎고 있어요.",
+      "eventsTitle": "당신에게 맞는 대회",
+      "eventAvoidPrefix": "당분간 피하기",
+      "outlookTitle": "4 / 8 / 12개 대회 전망 — 잠김",
+      "outlookIntro": "VinPoker에서 실제 대회를 몇 번 플레이해 잠금 해제하세요:",
+      "outlookItm": "ITM 전망",
+      "outlookFt": "파이널 테이블 전망",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "검증 프로필",
+      "disclaimer": "이것은 과거/드릴 데이터 기반 시뮬레이션이며 결과를 보장하지 않습니다. 포커는 변동성이 큽니다; 뱅크롤 한도 내에서 플레이하세요.",
+      "draftRibbon": "초안 콘텐츠 — 미검토",
+      "retake": "드릴 다시 하기"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "BTN/CO 너무 타이트",
+      "overfold_vs_aggro": "공격에 과도한 폴드",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "불리한 자리 콜 과다",
+      "spew_vs_nit": "닛 상대 무리한 플레이"
+    },
+    "strength": {
+      "preflop_discipline": "프리플랍 규율",
+      "read_nit": "닛 리딩 우수",
+      "low_spew": "실수 적음",
+      "position_aware": "포지션 활용",
+      "icm_aware": "ICM 감각"
+    },
+    "event": {
+      "deepstack_mid_field": "Deepstack, mid field",
+      "deepstack_small_field": "Deepstack, small field",
+      "slow_structure": "Slow structure",
+      "turbo_short_stack": "Turbo short-stack"
+    },
+    "eventReason": {
+      "fit": "당신의 {{style}} 스타일과 리스크 관리에 잘 맞습니다.",
+      "avoid": "resteal 15–25BB 스팟 연습이 더 필요합니다."
+    },
+    "insight": {
+      "preflop_discipline": "불리한 자리에서 다소 넓게 참여합니다.",
+      "position_steal": "늦은 포지션에서 스틸 기회를 자주 놓칩니다.",
+      "vs_aggro": "압박을 받을 때 폴드가 다소 많습니다.",
+      "vs_nit_passive": "타이트/패시브 상대를 충분히 활용하지 못합니다.",
+      "tournament_pressure": "ICM/숏스택 스팟이 아직 최적화되지 않았습니다."
+    },
+    "confLevel": {
+      "low": "낮음",
+      "medium": "보통",
+      "high": "높음"
+    }
   }
 }

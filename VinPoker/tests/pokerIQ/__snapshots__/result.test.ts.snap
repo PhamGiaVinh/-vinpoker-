@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`computeDrillResult — canonical fixture > is deterministic (snapshot locked to scoringVersion) 1`] = `
+{
+  "answered": 20,
+  "archetype": "tight_solid",
+  "categoryScores": [
+    {
+      "category": "preflop_discipline",
+      "score": 82,
+    },
+    {
+      "category": "position_steal",
+      "score": 68,
+    },
+    {
+      "category": "vs_aggro",
+      "score": 60,
+    },
+    {
+      "category": "vs_nit_passive",
+      "score": 85,
+    },
+    {
+      "category": "tournament_pressure",
+      "score": 74,
+    },
+  ],
+  "confidence": "low",
+  "contentVersion": "v1",
+  "grade": "B+",
+  "isProvisional": true,
+  "leaks": [
+    "overfold_vs_aggro",
+    "tight_btn_co",
+    "resteal_15_25",
+  ],
+  "recommendedDrill": "vs_aggro",
+  "resultSchemaVersion": "v1",
+  "scoringVersion": "v1",
+  "strengths": [
+    "read_nit",
+    "preflop_discipline",
+    "low_spew",
+  ],
+  "suggestedEvent": {
+    "avoid": "turbo_short_stack",
+    "fit": "deepstack_mid_field",
+  },
+  "total": 20,
+  "totalScore": 74,
+  "weakestCategory": "vs_aggro",
+}
+`;

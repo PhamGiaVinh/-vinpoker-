@@ -2941,5 +2941,111 @@
       "multiTable": "This tournament has multiple tables — pick a table above to watch live.",
       "waiting": "Waiting for the dealer to start the hand..."
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "Your Poker Journey",
+      "title": "Poker IQ Drill",
+      "subtitle": "20 spots · ~5 min · your private result",
+      "start": "Start 20 hands",
+      "note": "The drill gives you a provisional profile right away, even with no tournament history.",
+      "back": "Back"
+    },
+    "play": {
+      "progress": "Hand {{n}}/{{total}}",
+      "villain": "Villain",
+      "stack": "Stack",
+      "confidenceQ": "How confident are you?",
+      "next": "Next",
+      "finish": "See result",
+      "choosePrompt": "What do you do?"
+    },
+    "result": {
+      "kicker": "Your Poker Journey",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "Provisional",
+      "private": "Private",
+      "privateLong": "Private · only you see your leaks and training path",
+      "profileLabel": "Your provisional profile",
+      "scoreLabel": "Poker IQ",
+      "confidence": "Confidence: {{level}}",
+      "interpretation": "You have a disciplined base and fit mid-field deepstacks well.",
+      "nextHook": "To get closer to A-: handle aggressive opponents better.",
+      "whyTitle": "Why the system says this",
+      "weakest": "Weakest: {{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "Strengths",
+      "weaknessesTitle": "To improve",
+      "trainingKicker": "Training path",
+      "trainingGoal": "Next goal: A-",
+      "step1": "Finish the {{drill}} drill",
+      "step2": "Play 2 mid-field deepstacks",
+      "step3": "Unlock your Verified Profile",
+      "cta": "Train {{drill}} to unlock A-",
+      "ctaSub": "This area is pulling your score down the most.",
+      "eventsTitle": "Events that fit you",
+      "eventAvoidPrefix": "Avoid for now",
+      "outlookTitle": "Outlook over 4 / 8 / 12 events — locked",
+      "outlookIntro": "Play a few real events at VinPoker to unlock:",
+      "outlookItm": "ITM outlook",
+      "outlookFt": "Final table outlook",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "Verified Profile",
+      "disclaimer": "This is a simulation based on historical/drill data, not a guarantee of results. Poker has high variance; play within your bankroll.",
+      "draftRibbon": "DRAFT CONTENT — not reviewed",
+      "retake": "Retake drill"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "Too tight BTN/CO",
+      "overfold_vs_aggro": "Over-folds vs aggro",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "Loose calls OOP",
+      "spew_vs_nit": "Spews vs nits"
+    },
+    "strength": {
+      "preflop_discipline": "Preflop discipline",
+      "read_nit": "Reads nits well",
+      "low_spew": "Low spew",
+      "position_aware": "Uses position",
+      "icm_aware": "ICM-aware"
+    },
+    "event": {
+      "deepstack_mid_field": "Deepstack, mid field",
+      "deepstack_small_field": "Deepstack, small field",
+      "slow_structure": "Slow structure",
+      "turbo_short_stack": "Turbo short-stack"
+    },
+    "eventReason": {
+      "fit": "Fits your {{style}} style and risk control.",
+      "avoid": "You need more reps on resteal 15–25BB spots."
+    },
+    "insight": {
+      "preflop_discipline": "you enter pots a bit too wide out of position.",
+      "position_steal": "you miss many steal spots in late position.",
+      "vs_aggro": "you fold a bit too much under pressure.",
+      "vs_nit_passive": "you under-exploit tight/passive players.",
+      "tournament_pressure": "you under-optimize ICM/short-stack spots."
+    },
+    "confLevel": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    }
   }
 }
