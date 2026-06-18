@@ -1,16 +1,18 @@
-// Series Intelligence — read-only native data probe (Phase 1).
-// Reads the club owner's own tournaments under EXISTING RLS (no new RPC), maps
-// them through the pure adapter, and returns an inventory summary. READ-ONLY:
-// only `.select` is used — no insert/update/delete/upsert/rpc, no writes.
+// Series Intelligence — native data probe (Phase 2).
+// Reads the club owner's own series events via the owner-scoped, STABLE
+// `get_club_series_events` RPC (the server enforces ownership — no client-side
+// club aggregation), maps each row through the pure adapter, and returns an
+// inventory summary. READ-ONLY: only `.rpc` is used for a STABLE read — no
+// insert/update/delete/upsert, no writes.
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  mapTournamentToEvent,
+  mapRpcRowToEvent,
   summarizeInventory,
+  type ClubSeriesEventRow,
   type InventorySummary,
-  type NativeTournamentRow,
   type SeriesEvent,
 } from "./nativeData";
 
@@ -23,7 +25,14 @@ export interface NativeSeriesData {
   reason: string | null;
 }
 
-export function useNativeSeriesEvents(): NativeSeriesData {
+/** Optional server-side filters. The RPC args are optional strings — never pass null. */
+export interface NativeSeriesQuery {
+  clubId?: string;
+  from?: string;
+  to?: string;
+}
+
+export function useNativeSeriesEvents(query?: NativeSeriesQuery): NativeSeriesData {
   const { user, loading: authLoading } = useAuth();
   const [state, setState] = useState<NativeSeriesData>({
     status: "loading",
@@ -31,6 +40,10 @@ export function useNativeSeriesEvents(): NativeSeriesData {
     summary: null,
     reason: null,
   });
+
+  const clubId = query?.clubId;
+  const from = query?.from;
+  const to = query?.to;
 
   useEffect(() => {
     if (authLoading) return;
@@ -43,31 +56,24 @@ export function useNativeSeriesEvents(): NativeSeriesData {
 
     (async () => {
       try {
-        // Owned clubs (existing pattern; RLS-scoped).
-        const { data: clubs, error: clubErr } = await supabase
-          .from("clubs")
-          .select("id")
-          .eq("owner_id", user.id);
-        if (clubErr) throw clubErr;
+        // Build args conditionally — the generated RPC args are optional strings
+        // (p_club_id?/p_from?/p_to?); do NOT pass explicit null.
+        const args: { p_club_id?: string; p_from?: string; p_to?: string } = {};
+        if (clubId) args.p_club_id = clubId;
+        if (from) args.p_from = from;
+        if (to) args.p_to = to;
 
-        const clubIds = (clubs ?? []).map((c) => c.id);
-        if (clubIds.length === 0) {
-          if (!cancelled)
-            setState({ status: "unavailable", events: [], summary: null, reason: "Tài khoản chưa sở hữu CLB nào." });
-          return;
-        }
+        // Owner-scoped, STABLE read RPC. Ownership is enforced server-side; we never
+        // merge across clubs on the client — each row keeps its own club_id.
+        const { data, error } = await supabase.rpc("get_club_series_events", args);
+        if (error) throw error;
 
-        // Read-only tournament probe, owner-scoped + RLS-scoped.
-        const { data: tours, error: tourErr } = await supabase
-          .from("tournaments")
-          .select("id,name,start_time,buy_in,rake_amount,service_fee_amount,prize_pool,club_id")
-          .in("club_id", clubIds)
-          .is("deleted_at", null);
-        if (tourErr) throw tourErr;
-
-        const events = (tours ?? []).map((t) => mapTournamentToEvent(t as unknown as NativeTournamentRow));
-        if (!cancelled) setState({ status: "ready", events, summary: summarizeInventory(events), reason: null });
+        const rows = (data ?? []) as ClubSeriesEventRow[];
+        const events = rows.map(mapRpcRowToEvent);
+        if (!cancelled)
+          setState({ status: "ready", events, summary: summarizeInventory(events), reason: null });
       } catch (e) {
+        // Only an actual RPC failure lands here → "unavailable" fallback in the UI.
         const reason = e instanceof Error ? e.message : "Không đọc được dữ liệu.";
         if (!cancelled) setState({ status: "unavailable", events: [], summary: null, reason });
       }
@@ -76,7 +82,7 @@ export function useNativeSeriesEvents(): NativeSeriesData {
     return () => {
       cancelled = true;
     };
-  }, [user, authLoading]);
+  }, [user, authLoading, clubId, from, to]);
 
   return state;
 }
