@@ -237,7 +237,7 @@ export const Layout = () => {
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>{t("layout.operations")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {(isTracker || isAdmin) && (
+                  {(isTracker || isAdmin || isClubOwner) && (
                     <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
                       <Radio className="w-4 h-4" />
                       Tracker
