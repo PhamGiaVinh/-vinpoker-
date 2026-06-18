@@ -32,9 +32,19 @@
    Pure left/top/opacity transition (no keyframe); the live runtime flips `collecting`. */
 .op-chip { transition: left 0.55s ease-out, top 0.55s ease-out, opacity 0.55s ease-out; }
 
+/* All-in cinematic — a soft pop+fade as each phase banner ("All-in!", "Flop", …) mounts
+   (the component remounts the element per phase via a key, re-triggering this). */
+@keyframes op-allin-banner {
+  0%   { transform: translateY(-4px) scale(0.96); opacity: 0; }
+  60%  { transform: translateY(0) scale(1.02); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.op-allin-banner { animation: op-allin-banner 0.36s ease-out both; }
+
 @media (prefers-reduced-motion: reduce) {
   .op-card-reveal,
   .op-to-act-pulse,
-  .op-winner-glow { animation: none !important; }
+  .op-winner-glow,
+  .op-allin-banner { animation: none !important; }
   .op-chip { transition: none !important; }
 }
