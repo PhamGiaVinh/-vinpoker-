@@ -6,7 +6,7 @@
 // No wallet: players self-set their chips. The first sitter is the host; the host is
 // transferable and auto-reassigns when it leaves (server-side, via op_* RPCs).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RUNTIME_LIVE } from './types';
 import type { ActionType, LobbyTableSummary, PublicHandView } from './types';
@@ -123,6 +123,9 @@ export function useTableHand(tableId: string): TableHandState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  // Cache of the caller's hole cards, keyed by handId, so the poll loop doesn't re-hit
+  // the edge for cards that never change within a hand.
+  const holesRef = useRef<{ handId: string; priv: { mySeat: number; myHoleCards: string[] } } | null>(null);
 
   // Resolve the caller's uid once (live only) — used to find my seat / host.
   useEffect(() => {
@@ -145,19 +148,32 @@ export function useTableHand(tableId: string): TableHandState {
     (async () => {
       const wire = await loadHandStateLive(tableId);
       if (!wire) { if (!cancelled) { setHand(null); setLegal(null); setError(null); } return; }
+      // Hole cards are fixed for the life of a hand — fetch once per handId and reuse it
+      // across polls so the 2.5s loop doesn't hit the edge for cards every tick.
       let priv: { mySeat: number; myHoleCards: string[] } | undefined;
-      try {
-        const hc = (await onlinePokerClient.getMyHoleCards(wire.config.handId)) as RpcOutcome;
-        if (isHoleCardsOk(hc)) priv = { mySeat: hc.seat, myHoleCards: hc.cards };
-      } catch { /* not seated / disabled — render public-only, no overlay */ }
+      if (holesRef.current && holesRef.current.handId === wire.config.handId) {
+        priv = holesRef.current.priv;
+      } else {
+        try {
+          const hc = (await onlinePokerClient.getMyHoleCards(wire.config.handId)) as RpcOutcome;
+          if (isHoleCardsOk(hc)) {
+            priv = { mySeat: hc.seat, myHoleCards: hc.cards };
+            holesRef.current = { handId: wire.config.handId, priv };
+          }
+        } catch { /* not seated / disabled — render public-only, no overlay */ }
+      }
       const view = wirePublicToView(wire, priv);
       if (cancelled) return;
       setHand(view);
       setError(null);
+      // Legal menu only when it is genuinely my turn. Keep the previous menu on a
+      // transient fetch failure so the action bar never flickers empty mid-turn.
       if (priv && view.status === 'betting' && view.toActSeat === priv.mySeat) {
-        const lm = await loadLegalActionsLive(wire.config.handId);
-        if (!cancelled) setLegal(lm);
-      } else {
+        try {
+          const lm = await loadLegalActionsLive(wire.config.handId);
+          if (!cancelled) setLegal(lm);
+        } catch { /* keep the previous menu */ }
+      } else if (!cancelled) {
         setLegal(null);
       }
     })()
@@ -191,11 +207,47 @@ export function useTableHand(tableId: string): TableHandState {
     return () => { supabase.removeChannel(channel); };
   }, [tableId]);
 
+  // Polling fallback (live only): realtime postgres_changes can drop or lag, which would
+  // freeze the opponent on stale state even though the engine already advanced the hand.
+  // A steady poll guarantees both clients converge to server truth. Paused while the tab
+  // is hidden; an immediate refresh fires when it returns. (~2.5s mirrors the Tracker
+  // Live Action Engine fast-poll.)
+  useEffect(() => {
+    if (!RUNTIME_LIVE) return;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setTick((n) => n + 1);
+    }, 2500);
+    const onVisible = () => { if (!document.hidden) setTick((n) => n + 1); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
+
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
   // My seat: prefer the in-hand seat; else the seats table by uid.
   const mySeatNo = hand?.mySeat ?? seats.find((s) => s.userId === uid)?.seatNo ?? null;
   const amIHost = !!uid && hostUserId === uid;
+
+  // Liveness heartbeat (live + seated): ping the server every ~10s so the stale-seat
+  // reaper can free this seat if the tab dies. Fires immediately on sitting and on
+  // return-from-background to keep last_seen_at fresh. Wrapped so it cleanly NO-OPS until
+  // op_heartbeat exists live (migration 20260923000000 is source-only) — degrades like
+  // any other gated feature; never throws into the UI.
+  useEffect(() => {
+    if (!RUNTIME_LIVE || mySeatNo == null) return;
+    const ping = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // op_heartbeat isn't in the generated DB types yet (source-only) — cast + swallow.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (supabase.rpc as any)('op_heartbeat', { p_table_id: tableId }).then(() => {}, () => {});
+    };
+    ping(); // immediate, so a freshly-claimed seat is marked live at once
+    const id = setInterval(ping, 10000);
+    const onVisible = () => { if (!document.hidden) ping(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, [tableId, mySeatNo]);
 
   const actions: TableHandActions = {
     sitOpen: (seat, buyin) => onlinePokerClient.sitOpen(tableId, seat, buyin),
