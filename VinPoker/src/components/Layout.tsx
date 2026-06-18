@@ -63,6 +63,13 @@ const mobileMenuData = MOBILE_MENU_ROUTES
   .map((to) => tabsData.find((t) => t.to === to))
   .filter((t): t is (typeof tabsData)[number] => Boolean(t));
 
+// Desktop top nav: trim News / International / Documents to free horizontal space so
+// Poker can sit as a first-class top-nav item (owner request, 2026-06-18). These three
+// stay reachable on mobile via the ☰ menu (mobileMenuData above) and remain valid
+// routes — they are just not pinned to the desktop bar.
+const DESKTOP_HIDDEN_ROUTES = new Set(["/news", "/international", "/documents"]);
+const desktopTabsData = tabsData.filter((t) => !DESKTOP_HIDDEN_ROUTES.has(t.to));
+
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
@@ -151,7 +158,7 @@ export const Layout = () => {
           </div>
 
           <nav className="hidden md:flex items-center gap-0.5">
-            {tabsData.map((m) => (
+            {desktopTabsData.map((m) => (
               <NavLink
                 key={m.to}
                 to={m.to}
@@ -168,6 +175,25 @@ export const Layout = () => {
                 {t(`nav.${m.labelKey}`, m.label)}
               </NavLink>
             ))}
+            {/* Poker — promoted to a first-class top-nav item (flag-gated). Primary
+                accent + spade so the flagship online-poker entry is always visible
+                instead of being pushed off-screen behind the far-right admin pills. */}
+            {FEATURES.onlinePoker && (
+              <NavLink
+                to="/poker"
+                className={({ isActive }) =>
+                  cn(
+                    "inline-flex items-center gap-1.5 text-xs font-bold tracking-[0.1em] uppercase rounded-full px-2.5 py-1.5 whitespace-nowrap transition-colors",
+                    isActive
+                      ? "text-primary bg-primary/10 shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
+                      : "text-primary/90 hover:text-primary hover:bg-primary/10"
+                  )
+                }
+              >
+                <Spade className="w-3.5 h-3.5" />
+                Poker
+              </NavLink>
+            )}
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -286,22 +312,7 @@ export const Layout = () => {
                   MEDIA
                 </NavLink>
               )}
-              {FEATURES.onlinePoker && (
-                <NavLink
-                  to="/poker"
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold tracking-wider transition-colors",
-                      isActive
-                        ? "bg-primary/15 border-primary/50 text-primary"
-                        : "border-primary/30 text-primary hover:bg-primary/10"
-                    )
-                  }
-                >
-                  <Spade className="w-3.5 h-3.5" />
-                  Poker
-                </NavLink>
-              )}
+              {/* Poker entry moved into the center top nav (above) as a first-class item. */}
               {user && (
                 <Button
                   onClick={() => setQrOpen(true)}
