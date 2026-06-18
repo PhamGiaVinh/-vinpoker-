@@ -3042,6 +3042,24 @@
       "vs_nit_passive": "bạn chưa khai thác hết người chơi chặt/thụ động.",
       "tournament_pressure": "bạn chưa tối ưu spot ICM/short-stack."
     },
+    "bestFit": {
+      "weekTitle": "Giải phù hợp tuần này",
+      "loading": "Đang tìm giải phù hợp...",
+      "empty": "Chưa có giải phù hợp trong ~3 tuần tới.",
+      "viewAll": "Xem toàn bộ lịch giải",
+      "avoidTag": "Tạm tránh",
+      "disclaimer": "Gợi ý dựa trên phong cách bài drill, không phải cam kết kết quả.",
+      "structure": {
+        "deep": "Deepstack",
+        "standard": "Tiêu chuẩn",
+        "turbo": "Turbo"
+      },
+      "reason": {
+        "fit": "Cấu trúc sâu, hợp phong cách {{style}}",
+        "standard": "Cấu trúc tiêu chuẩn, chấp nhận được",
+        "avoid": "bạn cần luyện thêm short-stack/resteal"
+      }
+    },
     "confLevel": {
       "low": "Thấp",
       "medium": "Trung bình",

@@ -2792,6 +2792,24 @@
       "vs_nit_passive": "타이트/패시브 상대를 충분히 활용하지 못합니다.",
       "tournament_pressure": "ICM/숏스택 스팟이 아직 최적화되지 않았습니다."
     },
+    "bestFit": {
+      "weekTitle": "이번 주 당신에게 맞는 대회",
+      "loading": "맞는 대회를 찾는 중...",
+      "empty": "향후 약 3주간 맞는 대회가 없습니다.",
+      "viewAll": "전체 일정 보기",
+      "avoidTag": "당분간 피하기",
+      "disclaimer": "드릴 스타일 기반 추천이며 결과를 보장하지 않습니다.",
+      "structure": {
+        "deep": "딥스택",
+        "standard": "스탠다드",
+        "turbo": "터보"
+      },
+      "reason": {
+        "fit": "느린 구조로 당신의 {{style}} 스타일에 잘 맞습니다",
+        "standard": "표준 구조, 무난합니다",
+        "avoid": "숏스택/리스틸 연습이 더 필요합니다"
+      }
+    },
     "confLevel": {
       "low": "낮음",
       "medium": "보통",

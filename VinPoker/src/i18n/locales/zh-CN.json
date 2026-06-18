@@ -2796,6 +2796,24 @@
       "vs_nit_passive": "你对紧/被动玩家利用不足。",
       "tournament_pressure": "你在 ICM/短筹码情境上还不够优化。"
     },
+    "bestFit": {
+      "weekTitle": "本周适合你的赛事",
+      "loading": "正在寻找适合你的赛事...",
+      "empty": "未来约3周内暂无适合的赛事。",
+      "viewAll": "查看完整赛程",
+      "avoidTag": "暂时避免",
+      "disclaimer": "建议基于你的训练风格，并非结果承诺。",
+      "structure": {
+        "deep": "深筹码",
+        "standard": "标准",
+        "turbo": "快速"
+      },
+      "reason": {
+        "fit": "结构较慢，契合你的 {{style}} 风格",
+        "standard": "标准结构，可以接受",
+        "avoid": "你需要更多短筹码/resteal 练习"
+      }
+    },
     "confLevel": {
       "low": "低",
       "medium": "中",

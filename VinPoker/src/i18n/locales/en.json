@@ -3042,6 +3042,24 @@
       "vs_nit_passive": "you under-exploit tight/passive players.",
       "tournament_pressure": "you under-optimize ICM/short-stack spots."
     },
+    "bestFit": {
+      "weekTitle": "Events that fit you this week",
+      "loading": "Finding events that fit you...",
+      "empty": "No matching events in the next ~3 weeks.",
+      "viewAll": "See the full schedule",
+      "avoidTag": "Avoid for now",
+      "disclaimer": "Suggestions based on your drill style, not a guarantee of results.",
+      "structure": {
+        "deep": "Deepstack",
+        "standard": "Standard",
+        "turbo": "Turbo"
+      },
+      "reason": {
+        "fit": "Deep structure, fits your {{style}} style",
+        "standard": "Standard structure, acceptable",
+        "avoid": "you need more short-stack/resteal reps"
+      }
+    },
     "confLevel": {
       "low": "Low",
       "medium": "Medium",
