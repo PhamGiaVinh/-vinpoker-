@@ -156,7 +156,7 @@ export const FEATURES = {
    * flow. Flip to true (after operator UAT on the preview branch) to let floor staff
    * open the new console. Kill-switch: set false to instantly hide it again.
    */
-  trackerHandInputConsole: false,
+  trackerHandInputConsole: true, // UAT PREVIEW ONLY — flag ON. DO NOT MERGE.
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
