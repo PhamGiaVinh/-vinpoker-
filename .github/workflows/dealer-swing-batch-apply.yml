@@ -1,0 +1,48 @@
+name: Dealer Swing DB batch — apply (one-shot, owner-gated)
+
+# Manual trigger only — never runs on push. Applies the FOUR merged source-only
+# Dealer Swing migrations in order (299 -> 312 -> 314 -> 317) via the allowlisted
+# runner, with read-only preflight + per-migration post-verify + final smoke.
+# Fails closed unless `confirm` matches exactly. No supabase db push, no deploy_db.
+# Uses the GitHub Actions SECRET (not a plaintext Variable). Delete after the apply
+# is verified.
+#
+# ⚠️ DO NOT RUN until the exposed Supabase token has been ROTATED and the new value
+#    stored as the Actions SECRET `SUPABASEACCESSTOKEN` (move it OFF the plaintext
+#    repo Variable `SUPABASEACCESTOKEN`).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type EXACTLY: APPLY_DEALER_SWING_DB_BATCH_299_312_314_317 to apply"
+        required: true
+        default: ""
+
+jobs:
+  apply-batch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preflight — READ-ONLY (baseline + already-applied markers)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/dealer-swing/apply_dealer_swing_batch.mjs --preflight
+
+      - name: Apply — 299 -> 312 -> 314 -> 317, post-verify each, final smoke (gated)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_DSWING_BATCH: ${{ github.event.inputs.confirm }}
+        run: node scripts/dealer-swing/apply_dealer_swing_batch.mjs --apply
