@@ -17,8 +17,12 @@ scheduled or applied.
   broad table reads; writes are owner-actioned and audited.
 - **Flag-gated + per-club.** Every shippable surface is behind a feature flag + per-club enable,
   default OFF.
-- **Tier-3 deferred.** No LEARNED-CAUSAL capability (cannibalization, pricing-response, profit,
-  forecast ranges) until pooled multi-club data exists — separate spec, post-F8.
+- **Predictive tier GATED (reopened); causal tier deferred.** The PREDICTIVE capability (learned
+  forecast ranges, pricing-response) is **reopened as a gated track** (Phase 5 below): a bounded,
+  labeled `Model Estimate` is allowed **only** after explicit readiness gates and a write-guard
+  update. The **causal** capability (cannibalization cause-effect, profit/risk causal models) stays
+  deferred (separate spec, post-F8) and `cannibalization` remains `Hypothesis`. Any pooled multi-club
+  data still requires an approved privacy spec.
 
 ## 2. Phases F1–F8
 
@@ -85,13 +89,13 @@ scheduled or applied.
 - **Owner-gate:** owner confirms the honesty boundary in output.
 
 ### F7 — Shadow Forecast discipline
-- **Goal:** productionize P7 (score human forecasts vs actual: bias/MAE/MAPE/hit-rate). The system
-  never forecasts.
+- **Goal:** productionize P7 (score forecasts vs actual: bias/MAE/MAPE/hit-rate). At F7 the system
+  does not forecast — a gated system `Model Estimate` is the **Phase-5** tier, not F7.
 - **Deliverables:** `club_intel_forecasts` write + discipline read RPC joining to observations for
-  actuals; forecast source labeled (human/imported).
+  actuals; forecast source labeled (human/imported; later also gated-system once Phase 5 ships).
 - **Dependencies:** F2 (actuals) + F5 (label discipline).
-- **Exit criteria:** discipline computed from human entries only; no system forecast appears.
-- **Owner-gate:** owner reviews that no system forecast is present.
+- **Exit criteria:** discipline computed from human entries only; no *ungated* system forecast appears.
+- **Owner-gate:** owner reviews that no ungated system forecast is present.
 
 ### F8 — Owner Command Center UX + RLS/audit hardening
 - **Goal:** productionize P8 dashboard in the VinPoker design system + a final security pass.
@@ -105,10 +109,13 @@ scheduled or applied.
 
 ## 3. What each phase explicitly does NOT do
 
-- No phase introduces AI/prediction, profit/P&L, a recommended schedule, or causal claims.
+- No F1–F8 phase ships an *ungated* AI/prediction; a gated, bounded `Model Estimate` is allowed only
+  once the Phase-5 readiness gates clear and the `ci_label_tier` write-guard is updated. No phase
+  introduces profit/P&L (without real cost data), a recommended/best schedule, or causal claims.
 - No phase runs `deploy_db` in CI or `supabase db push` from a normal push.
 - No phase touches payroll, finance, floor ops, the game engine, or unrelated migrations.
-- No phase opens the LEARNED-CAUSAL tier.
+- No phase opens the **causal** tier (`Tested Finding`); the **predictive** tier (`Model Estimate`)
+  is gated, not open (Phase 5).
 
 ## 4. Dependency graph
 
@@ -119,18 +126,26 @@ F1 ──> F2 ──┬──> F3 ──┐
 F1..F7 ───────────────────────────> F8 (UX + hardening)
 ```
 
-## 5. Tier-3 deferral (locked)
+## 5. Tier split — PREDICTIVE reopened (gated); CAUSAL deferred
 
-LEARNED-CAUSAL (pooled multi-club data; causal claims; `Tested Finding` / `Model Estimate` labels;
-cannibalization, pricing-response, profit/risk models, learned forecast models) is **post-F8** and
-requires its own spec. Until then, cannibalization remains `Hypothesis` and the last two labels stay
-reserved.
+The former single "Tier-3 deferred" block is split into two:
 
-> **Clarification (so the team does not read this as "no scenarios ever"):** what is deferred here
-> is the **learned/causal** tier — a model that estimates outcomes from pooled multi-club data. It is
-> **not** the same as the rules-based **Scenario Forecast Lite** in Phase 4 of the Native track below,
-> which is deterministic, single-club, transparent, and presents **ranges as hypotheses**, not a
-> learned point estimate. Phase 4 is allowed early; the learned tier stays post-F8.
+- **PREDICTIVE — GATED (reopened).** Learned/statistical forecast ranges and pricing-response are
+  **allowed** as a labeled `Model Estimate` (with uncertainty range + confidence + sample basis +
+  "không phải cam kết" disclaimer), but **only after the Phase-5 readiness gates** clear and the
+  `ci_label_tier` write-guard is updated (separate owner-gated DB phase). The `Model Estimate` label
+  is **un-reserved**; until the gates clear it still must not appear and the write-guard still blocks
+  it. This brings ML evaluation forward from "post-F8" while keeping shipped output honest.
+- **CAUSAL — DEFERRED.** Cause-and-effect claims (`Tested Finding`) — cannibalization, causal
+  pricing-response, profit/risk causal models — remain **post-F8**, require their own spec, and need
+  controlled tests / pooled causal evidence. `cannibalization` stays `Hypothesis`; `Tested Finding`
+  stays reserved. Any pooled multi-club data still requires an approved privacy spec.
+
+> **Clarification (so the team reads this correctly):** two honest forward surfaces are active —
+> the rules-based **Scenario Forecast Lite** (Phase 4: deterministic, single-club, ranges as
+> hypotheses) **and** the gated **ML Readiness & Evaluation** track (Phase 5: a fitted `Model
+> Estimate`, bounded and gated). What is still deferred is the **causal** tier — asserting *why*
+> outcomes change. Phase 4 is allowed early; Phase 5 prediction is gated; causation stays post-F8.
 
 ---
 
@@ -189,26 +204,62 @@ number; nothing here is a recommendation.
   events. The owner picks comparable events + adjustable assumptions (e.g. marketing push, calendar
   slot, guarantee level), and the tool shows **three transparent ranges**, not one number:
   **Conservative / Base / Upside (Boom)** — e.g. `80–110 / 110–150 / 150–220` entries.
+- **How the ranges are computed (deterministic, no ML):** from the entry counts of the selected
+  comparable events — **Conservative = p25 (or −1σ), Base = median, Upside = p75 (or +1σ)**. Comparable
+  events are filtered by **slot / event-type / day-of-week** (light seasonality only — *no* SARIMA / no
+  fitted model). Adjustable assumptions shift the band by a transparent, owner-set factor, never a
+  hidden coefficient.
+- **Confidence by sample size (explicit):** **High** ≥ 8 comparable events · **Medium** 4–7 ·
+  **Low / Noisy** < 4. The basis ("dựa trên N giải tương đương") is always shown; < 4 is labelled
+  Noisy and the band widened.
 - **Mandatory honesty on every scenario:** a **confidence** label, **missing-data** warnings, an
   **overlay risk** note, a **GTD risk** note, the **comparable-events basis** (which past events and how
   many), and a **"không phải cam kết / not a guarantee"** disclaimer.
 - **What it is NOT:** not machine learning, not causal, not a point estimate, not a definite predicted
   number, not a recommendation to run the event. It is a what-if **range** computed deterministically
   from data the owner can see and from assumptions the owner sets — a **hypothesis**, bounded and
-  labelled.
-- **Why it is allowed before the Tier-3 deferral:** see §5 clarification — rules-based single-club
-  ranges are not the deferred learned/causal capability.
+  labelled. (A *fitted-model* range is the separate, gated **Phase 5** `Model Estimate`.)
+- **Why it is allowed early:** see §5 — rules-based single-club ranges are the rules/descriptive
+  surface, not the gated predictive (Phase 5) or the deferred causal capability.
 
-### Phase 5 — Learned Forecast (post-pooled-data, = Tier-3)
-- **What:** a learned model that estimates ranges from **pooled multi-club** historical data. This is
-  the **same** capability the §5 Tier-3 deferral and F7 discipline gate cover.
-- **Status:** deferred until pooled multi-club data exists; requires its own spec; outputs must carry
-  confidence labels + explicit model-honesty wording. Not started, not scheduled.
+### Phase 5 — ML Readiness & Evaluation track (gated, brought forward — = the §5 PREDICTIVE tier)
+- **What:** a fitted forecast model that estimates **ranges** (not a point) for entries / revenue,
+  emitted as a labeled `Model Estimate`. A model may be **fit and backtested anytime** (research);
+  it may emit a **user-facing** estimate **only** after the entry gates below.
+- **Candidate model families (plan, not a build):** statistical time-series (Holt-Winters / SARIMA /
+  Prophet), tree ML (XGBoost / LightGBM), deep (LSTM — only with long continuous series). An
+  **ensemble** is allowed, with the Phase-4 rules baseline as the **fallback** if a model fails.
+- **Feature expansion:** day-of-week, season / Tết / holiday, event type (Deepstack / Turbo),
+  marketing push, guarantee level. (External signals such as weather only if such data exists.)
+- **Evaluation protocol:** **time-series cross-validation**; metrics **MAE / MAPE / sMAPE / hit-rate
+  within ±10%**; a **holdout club**; the model must **beat the Phase-4 rules baseline** by a stated
+  margin or it does not ship.
+- **Outputs:** **quantile / interval** predictions (e.g. p25 / median / p75) + a confidence label —
+  never a single definite number.
+- **Ops:** **drift monitoring** (alert if MAPE exceeds a threshold over consecutive periods) + a
+  defined **retrain cadence**.
+- **Entry gates (all required before any user-facing `Model Estimate`):**
+  1. **Data volume** — ≥ ~12 comparable historical events (single-club), or an approved pooled
+     multi-club dataset (cross-club).
+  2. **Validation** — backtest results recorded; beats the rules baseline.
+  3. **Privacy** — for pooled multi-club data, an approved anonymization / no-raw-PII spec
+     (SAFETY_BOUNDARY §3/§6).
+  4. **Honesty framing** — uncertainty range + confidence + sample basis + missing-data warnings +
+     "không phải cam kết" on every emission.
+  5. **Enforcement** — the `ci_label_tier` write-guard updated (separate owner-gated DB phase) to
+     permit `Model Estimate`; until then it stays blocked.
+- **Stack note (TBD, owner-gated):** none of these run in today's React/TS/Supabase stack; an ML
+  runtime (Python service / batch job) is a separate infra decision — **flagged here, not chosen**.
+- **Status:** reopened as a gated track (not "post-F8 deferred"). Research/backtesting may start under
+  the gates; shipping a user-facing estimate is owner-gated. The **causal** tier (`Tested Finding`)
+  is still deferred (§5).
 
 ### 6.1 Honesty language (locked for this track)
 
 - **Use:** Scenario · Range · Simulation · Hypothesis · Confidence · Missing data · Conservative ·
-  Base · Upside / Boom · comparable events · "không phải cam kết".
+  Base · Upside / Boom · comparable events · "không phải cam kết". For the **gated** Phase-5 tier,
+  also legal: **`Model Estimate`** · **uncertainty range / interval** · **backtest** — but only with
+  a confidence label and the disclaimer, never as certainty.
 - **Avoid (false-certainty wording — never ship these):** "guaranteed prediction" · "chắc chắn" ·
   "exact forecast" · "AI knows the result" · `dự đoán` used as certainty · profit / expected /
   forecast presented as a single definite number.
@@ -222,5 +273,6 @@ The Native track is the near-term, frontend-first path; F1–F8 is the deeper pr
 (`club_intel_*` tables, observations, rules engine, snapshots). They converge: the Phase 2 RPC is the
 practical first instance of the F2 "native → observation adapter" idea; Phase 4 Scenario Forecast Lite
 sits beside F6 (observed schedule draft) as an honesty-bounded what-if surface; Phase 5 is exactly the
-F7 / Tier-3 forecast tier. Wording discipline and the controlled-ops / flag-gated rules are identical
-across both tracks.
+now-**gated** PREDICTIVE tier (§5) that the F7 discipline gate scores — its `Model Estimate` outputs
+flow back through F7 as scored forecasts. The deferred **causal** tier is separate from both. Wording
+discipline and the controlled-ops / flag-gated rules are identical across both tracks.
