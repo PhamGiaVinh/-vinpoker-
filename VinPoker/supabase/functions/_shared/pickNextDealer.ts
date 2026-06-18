@@ -18,6 +18,7 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,14 +231,14 @@ export async function buildDealerCandidates(
     clubAvgBreakRatio,
     skipPriorityBreakGuard = false,
     skipFatigueHardCap = false,
-    clubBreakDurationMinutes = 20,
-    minRestMinutes = 10,
-    minInterSwingRestMinutes: rawMinInterSwingRestMinutes = 10,
+    clubBreakDurationMinutes = SWING_POLICY.fatigue.defaultClubBreakDurationMinutes,
+    minRestMinutes = SWING_POLICY.rest.minRestMinutes,
+    minInterSwingRestMinutes: rawMinInterSwingRestMinutes = SWING_POLICY.rest.minInterSwingRestMinutes,
     swingDueAt,
     reservationMode = false,
     availableOnly = false,
   } = options;
-  const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? 10);
+  const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes);
 
   // Step 1: Get active dealer IDs for this club
   const { data: clubDealers } = (await admin
@@ -269,7 +270,7 @@ export async function buildDealerCandidates(
   // Dealers on_break must rest the full configured break duration before
   // they can be pulled back for swing. This protects lunch breaks (e.g. 30min).
   // Available dealers always pass this guard since they're not on_break.
-  const minBreakMinutes = options.clubBreakDurationMinutes ?? 15;
+  const minBreakMinutes = options.clubBreakDurationMinutes ?? SWING_POLICY.fatigue.minBreakGuardFallbackMinutes;
 
   const { data: rawRows, error } = (await admin
     .from("dealer_attendance")
@@ -415,7 +416,7 @@ export async function buildDealerCandidates(
   // bypassed by the OR logic (passedMinutesSinceRest via swingDueAt) NOR
   // by escalation tiers — always enforces minimum 10 minutes of rest.
   const restGuardExcludedIds = new Set<string>();
-  const guardMinutes = Math.max(minInterSwingRestMinutes, 10);
+  const guardMinutes = Math.max(minInterSwingRestMinutes, SWING_POLICY.rest.hardRestFloorMinutes);
   if (!reservationMode && guardMinutes > 0) {
     const restCutoff = new Date(Date.now() - guardMinutes * 60_000).toISOString();
     const { data: restingDealers } = (await admin
@@ -443,7 +444,7 @@ export async function buildDealerCandidates(
   //   - execute_pre_assigned_swing release dealer
   //   - end_expired_breaks kết thúc break
   // NULL → dealer chưa từng release (new hire) → skip.
-  const poolCooldownMinutes = 1;
+  const poolCooldownMinutes = SWING_POLICY.rest.poolCooldownMinutes;
   if (poolCooldownMinutes > 0) {
     try {
       const poolCutoff = new Date(Date.now() - poolCooldownMinutes * 60_000).toISOString();
@@ -741,14 +742,14 @@ export async function buildDealerCandidates(
     // Uses restMin (computed from timestamps, never stale) instead of the
     // worked_minutes_since_last_break column. Excluded UNLESS skipFatigueHardCap
     // is set (Level 3 emergency only). When skipped, heavy score penalty applies.
-    const fatigueHardCap = consecutive >= 4 && restMin < 10;
+    const fatigueHardCap = consecutive >= SWING_POLICY.fatigue.fatigueHardCapConsecutive && restMin < SWING_POLICY.fatigue.fatigueHardCapRestMinutes;
     if (!skipFatigueHardCap && fatigueHardCap) { diag.fatigue_excluded++; continue; }
 
     // ── Priority break + rest guard ─────────────────────────────────────────
     // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
     // Rest threshold = break_duration_minutes + 5 buffer (default 20+5=25).
     // Dealer who rested ≥ threshold is "rested enough" to reassign.
-    const restThreshold = (clubBreakDurationMinutes ?? 20) + 5;
+    const restThreshold = (clubBreakDurationMinutes ?? SWING_POLICY.fatigue.defaultClubBreakDurationMinutes) + SWING_POLICY.fatigue.priorityBreakRestBufferMinutes;
     if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
     // ── Rest cooldown (OR logic) ────────────────────────────────────────────
@@ -765,14 +766,14 @@ export async function buildDealerCandidates(
       if (swingDueAt) {
         referenceTime = Math.min(
           new Date(swingDueAt).getTime(),
-          Date.now() + 15 * 60_000,
+          Date.now() + SWING_POLICY.rest.predictiveHorizonMinutes * 60_000,
         );
       }
       const releasedAt = (row as any).last_released_at;
       const minutesSinceRelease = releasedAt
         ? (referenceTime - new Date(releasedAt).getTime()) / 60_000
         : Infinity;
-      const EPSILON_SEC = 1 / 60; // 1-second grace for millisecond timing edge cases
+      const EPSILON_SEC = SWING_POLICY.rest.restEpsilonMinutes; // 1-second grace for millisecond timing edge cases
       const passedLastReleased = minutesSinceRelease >= minInterSwingRestMinutes - EPSILON_SEC;
 
       if (!passedMinutesSinceRest && !passedLastReleased) {
@@ -796,7 +797,7 @@ export async function buildDealerCandidates(
     // Issue 6: track high-consecutive dealers for admin review. Fire-and-forget
     // so the scoring loop isn't blocked by an insert. clubId is in scope from
     // buildDealerCandidates param (line 87). Warning only, no hard cap (P2).
-    if (consecutive >= 4) {
+    if (consecutive >= SWING_POLICY.fatigue.softCapWarningConsecutive) {
       void (admin as unknown as {
         from: (table: string) => {
           insert: (values: Record<string, unknown>) => Promise<unknown>;
@@ -839,7 +840,7 @@ export async function buildDealerCandidates(
     // ── On-break penalty ────────────────────────────────────────────────────────
     // Dealers on_break are eligible but deprioritized vs available dealers.
     // They've rested enough but are currently pulled out of rotation.
-    if (row.current_state === "on_break") { score -= 50; }
+    if (row.current_state === "on_break") { score += SWING_POLICY.scoring.onBreakPenalty; }
     const breakdown: ScoreBreakdown = {
       rest_bonus: 0, tier_bonus: 0,
       back_to_back_penalty: 0, consecutive_penalty: 0,
@@ -852,58 +853,58 @@ export async function buildDealerCandidates(
     };
 
     // Rest bonus — prefer well-rested dealers
-    if (restMin >= 20) { breakdown.rest_bonus = 200; score += 200; }
-    else if (restMin >= 10) { breakdown.rest_bonus = 100; score += 100; }
-    else if (restMin >= 5) { breakdown.rest_bonus = 50; score += 50; }
+    if (restMin >= SWING_POLICY.scoring.restBonusHighMinutes) { breakdown.rest_bonus = SWING_POLICY.scoring.restBonusHigh; score += SWING_POLICY.scoring.restBonusHigh; }
+    else if (restMin >= SWING_POLICY.scoring.restBonusMidMinutes) { breakdown.rest_bonus = SWING_POLICY.scoring.restBonusMid; score += SWING_POLICY.scoring.restBonusMid; }
+    else if (restMin >= SWING_POLICY.scoring.restBonusLowMinutes) { breakdown.rest_bonus = SWING_POLICY.scoring.restBonusLow; score += SWING_POLICY.scoring.restBonusLow; }
 
     // Tier bonus — prefer dealers whose tier matches the table
     if (tourTier === "HIGH") {
-      if (tier === "A") { breakdown.tier_bonus = 30; score += 30; }
-      else if (tier === "B") { breakdown.tier_bonus = 5; score += 5; }
+      if (tier === "A") { breakdown.tier_bonus = SWING_POLICY.scoring.tierBonusHighA; score += SWING_POLICY.scoring.tierBonusHighA; }
+      else if (tier === "B") { breakdown.tier_bonus = SWING_POLICY.scoring.tierBonusHighB; score += SWING_POLICY.scoring.tierBonusHighB; }
     } else if (tourTier === "MEDIUM") {
-      if (tier === "B") { breakdown.tier_bonus = 20; score += 20; }
+      if (tier === "B") { breakdown.tier_bonus = SWING_POLICY.scoring.tierBonusMediumB; score += SWING_POLICY.scoring.tierBonusMediumB; }
     } else {
-      if (tier === "C") { breakdown.tier_bonus = 20; score += 20; }
+      if (tier === "C") { breakdown.tier_bonus = SWING_POLICY.scoring.tierBonusLowC; score += SWING_POLICY.scoring.tierBonusLowC; }
     }
 
     // Consecutive penalty — heavy load is tiring
-    if (consecutive >= 3) {
-      breakdown.consecutive_penalty = -consecutive * 10;
+    if (consecutive >= SWING_POLICY.fatigue.consecutivePenaltyThreshold) {
+      breakdown.consecutive_penalty = consecutive * SWING_POLICY.scoring.consecutivePenaltyPerSwing;
       score += breakdown.consecutive_penalty;
     }
 
     // Mixed bonus
-    if (skills.includes("Mixed")) { breakdown.mixed_bonus = 2; score += 2; }
+    if (skills.includes("Mixed")) { breakdown.mixed_bonus = SWING_POLICY.scoring.mixedBonus; score += SWING_POLICY.scoring.mixedBonus; }
 
     // Skill bonus — +20 per matching game type
     if (requiredGameTypes) {
       for (const g of requiredGameTypes) {
-        if (skills.includes(g)) { breakdown.skill_bonus += 20; score += 20; }
+        if (skills.includes(g)) { breakdown.skill_bonus += SWING_POLICY.scoring.skillBonusPerMatch; score += SWING_POLICY.scoring.skillBonusPerMatch; }
       }
     }
 
     // Priority break penalty — deprioritize dealers who need a break
     if (priorityBreak) {
-      breakdown.priority_break_penalty = -500;
+      breakdown.priority_break_penalty = SWING_POLICY.scoring.priorityBreakPenalty;
       score += breakdown.priority_break_penalty;
     }
 
     // Heavy worker penalty — avoid repeatedly picking the same dealer
-    if (consecutive >= 3) {
-      breakdown.heavy_worker_penalty = -10 * (consecutive - 2);
+    if (consecutive >= SWING_POLICY.fatigue.consecutivePenaltyThreshold) {
+      breakdown.heavy_worker_penalty = SWING_POLICY.scoring.heavyWorkerPenaltyPerSwing * (consecutive - SWING_POLICY.scoring.heavyWorkerBaselineSwings);
       score += breakdown.heavy_worker_penalty;
     }
 
     // Consecutive HIGH penalty — rest after HIGH table assignments
     if (tourTier === "HIGH" && lastTourTier === "HIGH") {
-      breakdown.consecutive_high_penalty = -20;
+      breakdown.consecutive_high_penalty = SWING_POLICY.scoring.consecutiveHighPenalty;
       score += breakdown.consecutive_high_penalty;
     }
 
     // Tier-aware back-to-back penalty — reduced penalty if switching tiers
     if (lastTableId && lastTableId === currentTableId) {
       const sameTier = lastTourTier === tourTier;
-      breakdown.tier_back_to_back_penalty = sameTier ? -50 : -25;
+      breakdown.tier_back_to_back_penalty = sameTier ? SWING_POLICY.scoring.backToBackSameTierPenalty : SWING_POLICY.scoring.backToBackDiffTierPenalty;
       score += breakdown.tier_back_to_back_penalty;
     }
 
@@ -917,28 +918,28 @@ export async function buildDealerCandidates(
       const totalDealerTime = dealerBreak + dealerWorked;
       const dealerRatio = totalDealerTime > 0 ? dealerBreak / totalDealerTime : 0;
 
-      if (dealerRatio < avgBreakRatio * 0.7) {
+      if (dealerRatio < avgBreakRatio * SWING_POLICY.scoring.breakEquitySevereRatio) {
         // Significant break deficit: -80 penalty
-        breakdown.break_equity_penalty = -80;
+        breakdown.break_equity_penalty = SWING_POLICY.scoring.breakEquitySeverePenalty;
         score += breakdown.break_equity_penalty;
-      } else if (dealerRatio < avgBreakRatio * 0.9) {
+      } else if (dealerRatio < avgBreakRatio * SWING_POLICY.scoring.breakEquityModerateRatio) {
         // Moderate break deficit: -30 penalty (gentle nudge)
-        breakdown.break_equity_penalty = -30;
+        breakdown.break_equity_penalty = SWING_POLICY.scoring.breakEquityModeratePenalty;
         score += breakdown.break_equity_penalty;
       }
     }
 
     // Priority swing bonus — +300 ensures the priority table gets next available dealer
     if (isPrioritySwing) {
-      breakdown.priority_swing_bonus = 300;
-      score += 300;
+      breakdown.priority_swing_bonus = SWING_POLICY.scoring.prioritySwingBonus;
+      score += SWING_POLICY.scoring.prioritySwingBonus;
     }
 
     // ── Fatigue penalty (Level 3 emergency override) ────────────────────────
     // When skipFatigueHardCap is active, dealers who haven't rested enough
     // after 4+ consecutive assignments get a -300 score penalty.
     if (skipFatigueHardCap && fatigueHardCap) {
-      breakdown.fatigue_penalty = -300;
+      breakdown.fatigue_penalty = SWING_POLICY.scoring.fatiguePenalty;
       score += breakdown.fatigue_penalty;
     }
 

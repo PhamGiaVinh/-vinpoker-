@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SWING_POLICY } from "./swingPolicy.ts";
 
 export interface MealBreakResult {
   ok: boolean;
@@ -65,7 +66,7 @@ export async function startMealBreak(
     .maybeSingle();
 
   const baseConfig: DynamicBreakConfig = {
-    breakDurationMinutes: cfgRow?.break_duration_minutes ?? 15,
+    breakDurationMinutes: cfgRow?.break_duration_minutes ?? SWING_POLICY.defaults.breakDurationMinutes,
     targetRatio: (cfgRow?.target_ratio ?? 1.2) as number,
   };
 

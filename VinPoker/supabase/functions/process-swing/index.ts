@@ -44,6 +44,7 @@ import {
   derivePreAssignStatus,
   sortPass3Candidates,
 } from "../_shared/preAssignState.ts";
+import { SWING_POLICY } from "../_shared/swingPolicy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,12 +68,12 @@ const SWING_THRESHOLDS = {
   BULK_CLEAR_BASE_BACKOFF_MS: 200,
 } as const;
 
-const DEFAULT_PRE_ANNOUNCE_MINUTES = 6;
+const DEFAULT_PRE_ANNOUNCE_MINUTES = SWING_POLICY.defaults.preAnnounceMinutes;
 const DEFAULT_PRE_ASSIGN_WINDOW_MINUTES = 4;
 const DEFAULT_MAX_WORK_MINUTES = 120;
 const DEFAULT_MIN_WORK_MINUTES = 60;
-const DEFAULT_SWING_DURATION_MINUTES = 30;
-const DEFAULT_BREAK_DURATION_MINUTES = 15;
+const DEFAULT_SWING_DURATION_MINUTES = SWING_POLICY.defaults.swingDurationMinutes;
+const DEFAULT_BREAK_DURATION_MINUTES = SWING_POLICY.defaults.breakDurationMinutes;
 const SWING_WINDOW_BUFFER_MINUTES = 2;
 const MAX_SWING_RETRIES = 3;
 
@@ -263,7 +264,7 @@ async function fetchAllClubConfigs(
 
   for (const row of swingData ?? []) {
     configMap.set(row.club_id, {
-      swing_duration_minutes: Math.max(30, row.swing_duration_minutes ?? DEFAULT_SWING_DURATION_MINUTES),
+      swing_duration_minutes: Math.max(SWING_POLICY.defaults.swingDurationMinutes, row.swing_duration_minutes ?? DEFAULT_SWING_DURATION_MINUTES),
       break_duration_minutes: row.break_duration_minutes ?? DEFAULT_BREAK_DURATION_MINUTES,
       pre_announce_minutes: row.pre_announce_minutes ?? DEFAULT_PRE_ANNOUNCE_MINUTES,
       warn_at_minutes: row.warn_at_minutes ?? 5,
