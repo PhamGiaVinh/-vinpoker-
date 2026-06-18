@@ -172,12 +172,28 @@ uses a different timestamp column (or rows are deleted post-send), and locks are
 the probe instant). The empty `club_processing_locks` confirms **no reclaim history exists today →
 B2 must ADD reclaim observability**, it cannot be baselined from current data.
 
-### 6.3 Baseline status
+### 6.3 Baseline status — ✅ FROZEN (corrected re-run 2026-06-18)
 
-- **FROZEN (usable):** overdue exposure (EXACT, from `dealer_assignments`); post-fix stable-window
-  target = late>15min ≈ 0.26%, max overdue ≤25m. Manual-override proxy ≈19%.
-- **PENDING a corrected re-run (optional, non-blocking for A1):** real `action` labels; clean
-  fairness (released_at-filtered); pre_announce status (correct timestamp column). The probe queries
-  are corrected in the same PR as this freeze; a single owner-triggered re-run captures them.
-- A1 (canonical config consolidation, frontend/shared, no behavior change) does **not** depend on
-  the pending items and may proceed in parallel.
+The corrected probe re-ran clean. A0 baseline is now complete:
+
+- **Overdue exposure (EXACT, from `dealer_assignments`):** post-fix stable-window target =
+  late>15min ≈ **0.26%**, max overdue **≤25m** (06-16→06-18, 1158 swings).
+- **Real `swing_audit_logs` action labels (30d):** `late_checkin` 147, `swung` 145,
+  `swing_executed` 123, `table_closed` 99, `recalc_swing_due_at` 21, `tour_closed` 3. Only
+  `swung`+`swing_executed` (268) are swing events — **vs thousands of `dealer_assignments`
+  completions → audit log logs only a SUBSET of swing paths. Confirmed: use `dealer_assignments`
+  for swing volume.** Manual vs auto: `system`(415)+`system_trigger`(21) auto; two operator UUIDs
+  (102) manual ≈ **19%** of logged events.
+- **Fairness spread (clean, `released_at IS NOT NULL` + 600m cap):** recent days avg ~460–510
+  min/dealer, stddev ~195–233 → **CV ≈ 40–50%** (meaningful per-dealer daily-load spread → real
+  signal for A2/A3 fairness-debt). The orphan-era garbage (~40,000-min sessions) is gone.
+- **`pre_announce_jobs` = EMPTY all-time (0 rows).** Columns confirmed (created_at, status,
+  attempts, sent_at…) but no rows → the durable fallback queue is **not accumulating** (inline
+  pre-announce sends succeed; nothing stuck). Pre-announce reliability currently healthy; **C2
+  queue-backlog baseline = 0.**
+- **`club_processing_locks` = EMPTY at probe instant** (locks are transient; no persistent rows) →
+  **no reclaim history exists → B2 must ADD reclaim observability** (cannot be baselined from
+  current data).
+
+A0 is closed. The one-shot probe workflow + script can be deleted (served its purpose). Next: A1
+(canonical config consolidation, frontend/shared, no behavior change), then C1.
