@@ -143,7 +143,7 @@ export const FEATURES = {
    * payload and the live viewer reads street from community_cards / hand_actions
    * as today. Phase 2 adds the hand evaluator + exact side-pot settlement.
    */
-  trackerEngineMode: false,
+  trackerEngineMode: true,
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
