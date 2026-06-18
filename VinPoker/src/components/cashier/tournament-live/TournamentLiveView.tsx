@@ -29,6 +29,7 @@ import {
 import { ReplayScrubber } from "./ReplayScrubber";
 import { HandSelector } from "./HandSelector";
 import { HandBreakdown } from "./viewer-hub/HandBreakdown";
+import { ReplayLiveBanner } from "./ReplayLiveBanner";
 import {
   detectBigBlind,
   type ReplayHand,
@@ -132,6 +133,13 @@ export function TournamentLiveView({
   const [replayHandId, setReplayHandId] = useState<string | null>(null);
   const [replayHand, setReplayHand] = useState<ReplayHand | null>(null);
   const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
+  // Snapshot of the LIVE table the moment replay was entered. The live machinery
+  // keeps advancing in the background while the felt is frozen on the replay frame;
+  // comparing against this baseline tells us when to surface "live đã có diễn biến
+  // mới" so the spectator can jump back instead of silently falling behind.
+  const [liveBaseline, setLiveBaseline] = useState<
+    { handNumber: number | null; actionCount: number; boardCount: number } | null
+  >(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const requestSeqRef = useRef(0);
   const initialLoadedRef = useRef(false);
@@ -421,6 +429,7 @@ export function TournamentLiveView({
     setReplayHandId(null);
     setReplayHand(null);
     setReplayFrame(null);
+    setLiveBaseline(null);
     setLoading(true);
     loadAllData();
   }, [tournamentId, loadAllData]);
@@ -575,6 +584,18 @@ export function TournamentLiveView({
   const latestAction = actions.length > 0 ? actions[actions.length - 1] : null;
   const lastActorId = latestAction?.player_id ?? null;
 
+  // Entering replay freezes the felt; snapshot the live table so we can detect when
+  // it has moved on. Going live clears the baseline (and any "new activity" prompt).
+  const enterReplay = useCallback(() => {
+    setLiveBaseline({ handNumber, actionCount: actions.length, boardCount: communityCards.length });
+    setMode("replay");
+  }, [handNumber, actions, communityCards]);
+
+  const goLive = useCallback(() => {
+    setMode("live");
+    setLiveBaseline(null);
+  }, []);
+
   // ----- Multi-table resolution: never mix table_ids on one felt -----
   const tableIds = useMemo(
     () => [...new Set(seats.map((s) => s.table_id).filter((t): t is string => !!t))],
@@ -680,6 +701,18 @@ export function TournamentLiveView({
   }
 
   const isReplay = mode === "replay";
+  // Has the live table advanced since the spectator entered replay? Same-hand new
+  // actions get a count; a new hand (or board change) shows the generic prompt.
+  const sameLiveHand = liveBaseline != null && handNumber === liveBaseline.handNumber;
+  const newLiveActionCount = sameLiveHand
+    ? Math.max(0, actions.length - liveBaseline.actionCount)
+    : null;
+  const hasNewLiveActivity =
+    isReplay &&
+    liveBaseline != null &&
+    (handNumber !== liveBaseline.handNumber ||
+      actions.length !== liveBaseline.actionCount ||
+      communityCards.length !== liveBaseline.boardCount);
   // The live current hand belongs to one table; only show its breakdown when the
   // viewer is looking at that table (else the felt shows a different table).
   const liveHandOnView =
@@ -864,7 +897,7 @@ export function TournamentLiveView({
       <div className="flex items-center gap-3 flex-wrap">
         <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-bold">
           <button
-            onClick={() => setMode("live")}
+            onClick={goLive}
             className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
               !isReplay ? "bg-emerald-500/20 text-emerald-300" : "text-muted-foreground hover:text-emerald-300"
             }`}
@@ -872,7 +905,7 @@ export function TournamentLiveView({
             <Radio className="w-3.5 h-3.5" /> LIVE
           </button>
           <button
-            onClick={() => setMode("replay")}
+            onClick={enterReplay}
             className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border ${
               isReplay ? "bg-amber-500/20 text-amber-300" : "text-muted-foreground hover:text-amber-300"
             }`}
@@ -892,6 +925,16 @@ export function TournamentLiveView({
           />
         )}
       </div>
+
+      {/* Replay-mode awareness: paused-updates notice, and a jump-back-to-live
+          prompt when the live table has moved on while watching a past hand. */}
+      {isReplay && (
+        <ReplayLiveBanner
+          hasNewActivity={hasNewLiveActivity}
+          newActionCount={newLiveActionCount}
+          onGoLive={goLive}
+        />
+      )}
 
       <div className={spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
         <div>
