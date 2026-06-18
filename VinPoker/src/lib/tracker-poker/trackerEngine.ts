@@ -108,6 +108,23 @@ export function blindSeats(
   return { sbSeat: order[1], bbSeat: order[2] };
 }
 
+/**
+ * First voluntary preflop actor = the first ACTIVE seat clockwise-left of the BB
+ * (only dealt-in seats are passed, so empty seats are naturally skipped).
+ * Heads-up → the button/SB. Returns null for < 2 seats. (Display/UTG helper for
+ * the blind-setup panel; the full owing-aware actor stays `actorToAct`.)
+ */
+export function firstPreflopActor(activeSeatNums: number[], buttonSeat: number): number | null {
+  const seats = [...new Set(activeSeatNums)]
+    .filter((s) => Number.isInteger(s) && s > 0)
+    .sort((a, b) => a - b);
+  if (seats.length === 0) return null;
+  if (seats.length === 1) return seats[0];
+  const { bbSeat } = blindSeats(seats, buttonSeat);
+  if (bbSeat == null) return null;
+  return ringAfter(seats, bbSeat)[0] ?? null;
+}
+
 // ---------- money / street state ----------
 
 export function currentBet(seats: EngineSeat[]): number {
@@ -325,4 +342,46 @@ export function eligibleActorCount(seats: EngineSeat[]): number {
 export function isRunout(seats: EngineSeat[]): boolean {
   const live = seats.filter((s) => !s.folded);
   return live.length >= 2 && eligibleActorCount(seats) <= 1;
+}
+
+// ---------- blind level context (Floor clock snapshot) ----------
+
+/** A blind level snapshotted at hand start (from get_tournament_clock.current_level). */
+export interface BlindLevelSnapshot {
+  level_number: number | null;
+  small_blind: number;
+  big_blind: number;
+  ante: number;
+}
+
+/** Loose shape of get_tournament_clock's `current_level` (fields optional). */
+export interface ClockLevel {
+  level_number?: number | null;
+  small_blind?: number | null;
+  big_blind?: number | null;
+  ante?: number | null;
+}
+
+const lvl0 = (n: number | null | undefined) => Math.max(0, Math.floor(Number(n) || 0));
+
+/** Snapshot the Floor blind level for THIS hand. Snapshot once at hand start;
+ *  never mutate it mid-hand (live poker keeps a hand on the level it started). */
+export function snapshotBlindLevel(currentLevel: ClockLevel | null | undefined): BlindLevelSnapshot {
+  return {
+    level_number: currentLevel?.level_number ?? null,
+    small_blind: lvl0(currentLevel?.small_blind),
+    big_blind: lvl0(currentLevel?.big_blind),
+    ante: lvl0(currentLevel?.ante),
+  };
+}
+
+/** True when the Floor clock advanced to a DIFFERENT level after the hand started.
+ *  The current hand keeps its snapshot; the banner just informs the operator. */
+export function hasLevelChangedDuringHand(
+  snapshot: BlindLevelSnapshot | null | undefined,
+  currentLevel: ClockLevel | null | undefined
+): boolean {
+  if (!snapshot || snapshot.level_number == null) return false;
+  const now = currentLevel?.level_number ?? null;
+  return now != null && now !== snapshot.level_number;
 }

@@ -11,6 +11,9 @@ import {
   nextStreetAfter,
   isRunout,
   eligibleActorCount,
+  firstPreflopActor,
+  snapshotBlindLevel,
+  hasLevelChangedDuringHand,
   type EngineSeat,
   type EngineState,
   type EngineStreetAction,
@@ -319,5 +322,47 @@ describe("viewer path — settlement output matches record_hand payload shape", 
       expect(Number.isInteger(r.ending_stack)).toBe(true);
     }
     expect(out.map((r) => r.player_id).sort()).toEqual(["p1", "p2"]);
+  });
+});
+
+// =============================================================================
+describe("blind setup — firstPreflopActor (UTG) for the setup panel", () => {
+  it("9-handed, button seat 6 → SB 7, BB 8, UTG (first actor) = 9", () => {
+    const seats = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    expect(blindSeats(seats, 6)).toEqual({ sbSeat: 7, bbSeat: 8 });
+    expect(firstPreflopActor(seats, 6)).toBe(9);
+  });
+  it("9-handed, button 6 with seat 9 EMPTY → first active after BB(8) wraps to 1", () => {
+    const seats = [1, 2, 3, 4, 5, 6, 7, 8]; // seat 9 not dealt in
+    expect(blindSeats(seats, 6)).toEqual({ sbSeat: 7, bbSeat: 8 });
+    expect(firstPreflopActor(seats, 6)).toBe(1);
+  });
+  it("6-handed, button 1 → UTG = seat 4 (first active left of BB=3)", () => {
+    expect(firstPreflopActor([1, 2, 3, 4, 5, 6], 1)).toBe(4);
+  });
+  it("heads-up, button 6 → button=SB acts first preflop", () => {
+    expect(blindSeats([2, 6], 6)).toEqual({ sbSeat: 6, bbSeat: 2 });
+    expect(firstPreflopActor([2, 6], 6)).toBe(6); // button/SB
+  });
+});
+
+// =============================================================================
+describe("blind level snapshot (Floor clock context)", () => {
+  it("snapshots level/blinds from get_tournament_clock.current_level", () => {
+    expect(snapshotBlindLevel({ level_number: 3, small_blind: 100, big_blind: 200, ante: 25 })).toEqual({
+      level_number: 3,
+      small_blind: 100,
+      big_blind: 200,
+      ante: 25,
+    });
+  });
+  it("missing level → null number, zero blinds (manual fallback)", () => {
+    expect(snapshotBlindLevel(null)).toEqual({ level_number: null, small_blind: 0, big_blind: 0, ante: 0 });
+  });
+  it("hand started at Level 3 stays Level 3 if the clock moves to Level 4 mid-hand", () => {
+    const snap = snapshotBlindLevel({ level_number: 3, small_blind: 100, big_blind: 200, ante: 0 });
+    expect(hasLevelChangedDuringHand(snap, { level_number: 3 })).toBe(false);
+    expect(hasLevelChangedDuringHand(snap, { level_number: 4 })).toBe(true); // next hand uses L4
+    expect(hasLevelChangedDuringHand(null, { level_number: 4 })).toBe(false);
   });
 });
