@@ -227,4 +227,15 @@ export const FEATURES = {
    * except serviceFee=0), edge fn deployed. Kill-switch: set false to hide the UI again.
    */
   tournamentServiceFee: true,
+  /**
+   * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
+   * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
+   * (CSV → Data Readiness → Tournament Economics Mini Audit → Series Workflow),
+   * the required CSV columns and the safety boundary. No engine, no data, no
+   * backend, no DB/RPC/Edge. Default **OFF** (dark): while false the ClubAdmin
+   * entry card is hidden; the route still renders for club admins/owners who open
+   * it directly (preview) and shows a small "internal demo" note. Flip to true to
+   * surface the card for the series-owner demo.
+   */
+  clubSeriesIntelligence: false,
 } as const;
