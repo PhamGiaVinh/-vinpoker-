@@ -44,6 +44,14 @@ import { ReviewHandPanel } from "./handinput/ReviewHandPanel";
 import { BlindSetupPanel } from "./handinput/BlindSetupPanel";
 import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
+import { WorkflowProgressRail } from "./handinput/WorkflowProgressRail";
+import { SetupHandPanel } from "./handinput/SetupHandPanel";
+import { ActionStepPanel } from "./handinput/ActionStepPanel";
+import { HandControlsStrip } from "./handinput/HandControlsStrip";
+import { ViewerSyncStatus, type SyncPhase } from "./handinput/ViewerSyncStatus";
+import { TableStateSummary } from "./handinput/TableStateSummary";
+import { OperatorActionLog } from "./handinput/OperatorActionLog";
+import { HandGuideDrawer } from "./handinput/HandGuideDrawer";
 import { formatStack } from "./handinput/format";
 import { friendlyValidationError, isValidationCode } from "./handinput/validationMessages";
 import type { User } from "@supabase/supabase-js";
@@ -124,6 +132,11 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [bbAmount, setBbAmount] = useState(0);
   const [liveLevelNumber, setLiveLevelNumber] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Viewer-sync UI state (engine mode only). PURE UI: it never changes any persist
+  // payload, the order of optimistic-update vs. network-call vs. rollback, or
+  // action_amount — markSync() is a no-op outside engine mode.
+  const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
+  const [syncLabel, setSyncLabel] = useState<string | null>(null);
   const [handId, setHandId] = useState<string | null>(null);
   const [handStarted, setHandStarted] = useState(false);
   const [nextActionOrder, setNextActionOrder] = useState(1);
@@ -416,6 +429,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
   // ----- Tracker Engine Mode (flag-gated) -----------------------------------
   const engineMode = FEATURES.trackerEngineMode;
+  // Pure-UI viewer-sync marker. No-op outside engine mode so the manual path is
+  // byte-identical at runtime; never touches any persist payload or its ordering.
+  const markSync = useCallback(
+    (phase: SyncPhase, label?: string) => {
+      if (!FEATURES.trackerEngineMode) return;
+      setSyncPhase(phase);
+      if (label !== undefined) setSyncLabel(label);
+    },
+    []
+  );
   // Normalized snapshot for the pure engine (only consumed when engineMode).
   const engineState = useMemo<EngineState>(
     () => ({
@@ -570,7 +593,8 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const showBoardEntry = engineMode && isBoardEntryState(workflowState);
   const boardEntryStreetNow = boardEntryStreet(workflowState);
   const showShowdownInput = engineMode && workflowState === "showdown_input";
-  const showReviewPanel = engineMode && (workflowState === "review_hand" || workflowState === "submit_ready");
+  // Engine action states render the guided ActionStepPanel (manual keeps ActionDock).
+  const showActionStep = engineMode && isActionState(workflowState);
   const allInRunout = engineMode && isRunout(engineState.seats);
 
   const needsPostSB = engineMode
@@ -592,6 +616,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       return;
     }
     setSubmitting(true);
+    markSync("sending", `Bắt đầu Hand #${Number(handNumber)}`);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: {
@@ -609,8 +634,10 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       setHandStarted(true);
       setNextActionOrder(1);
       toast.success("Hand started");
+      markSync("sent", `Hand #${Number(handNumber)} đã bắt đầu`);
     } catch (e: any) {
       toast.error(e.message || "Failed to start hand");
+      markSync("error");
       if (orphanHand) setOrphanHand(null);
     } finally {
       setSubmitting(false);
@@ -812,6 +839,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setBetAmount("");
 
     if (handId) {
+      markSync("sending", `S${player.seat_number} ${actionType}`);
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: {
           tournament_id: tournamentId, action: "record_action", hand_id: handId,
@@ -852,12 +880,18 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         setBetAmount("");
         setSelectedActorId(null);
         toast.error(friendlyValidationError(rejCode, rejMsg), { description: `Mã lỗi: ${rejCode}` });
+        markSync("error");
       } else if (rejMsg) {
         toast.error(rejMsg);
-      } else if ((data as any)?.validation?.code) {
-        toast.warning(
-          `Cảnh báo luật: ${friendlyValidationError((data as any).validation.code, (data as any).validation.message)}`
-        );
+        markSync("error");
+      } else {
+        // Action was recorded (200) — possibly with an advisory warning in warn mode.
+        if ((data as any)?.validation?.code) {
+          toast.warning(
+            `Cảnh báo luật: ${friendlyValidationError((data as any).validation.code, (data as any).validation.message)}`
+          );
+        }
+        markSync("sent", `S${player.seat_number} ${formatActionLabel({ street: currentStreet, player_id: playerId, display_name: player.display_name, seat_number: player.seat_number, action_type: actionType, amount, action_order: currentOrder })}`);
       }
     }
   };
@@ -953,6 +987,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     if (sentCommunityStreets.has(currentStreet) &&
       !confirm(`Bài ${STREET_LABELS[currentStreet]} đã được gửi. Ghi đè lại?`)) return;
     setSubmitting(true);
+    markSync("sending", `Gửi ${STREET_LABELS[currentStreet]}`);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: { tournament_id: tournamentId, action: "update_community_cards", hand_id: handId, community_cards: cards },
@@ -962,8 +997,10 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
       setPersistedBoardCount(cards.length);
       toast.success(`Đã gửi ${STREET_LABELS[currentStreet]} lên viewer (${cards.length} lá)`);
+      markSync("sent", `${STREET_LABELS[currentStreet]} (${cards.length} lá)`);
     } catch (e: any) {
       toast.error(`Lỗi gửi bài, thử lại: ${e.message}`);
+      markSync("error");
     } finally {
       setSubmitting(false);
     }
@@ -981,14 +1018,17 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     }
     if (cardsPayload.length === 0) { toast.error("Chưa nhập bài lỗ cho ai"); return; }
     setSubmitting(true);
+    markSync("sending", "Lật bài");
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: { tournament_id: tournamentId, action: "show_hole_cards", hand_id: handId, player_hole_cards: cardsPayload },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
       toast.success("Hole cards revealed");
+      markSync("sent", `Đã lật ${cardsPayload.length} tay bài`);
     } catch (e: any) {
       toast.error(e.message);
+      markSync("error");
     } finally {
       setSubmitting(false);
     }
@@ -1046,6 +1086,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     );
     if (stacksEdited && !confirm("Bạn đã chỉnh sửa stack kết thúc thủ công. Xác nhận lưu các số đã chỉnh?")) return;
     setSubmitting(true);
+    markSync("sending", `Gửi Hand #${Number(handNumber)}`);
     try {
       const finalPlayers = players.map((p) => ({
         player_id: p.player_id, entry_number: p.entry_number, seat_number: p.seat_number,
@@ -1068,6 +1109,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       });
       if (error || data?.error) throw new Error(data?.error || error?.message);
       toast.success("Hand recorded successfully");
+      markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(data?.data?.hand_id ?? null);
       // Advance button to next active seat
       const { data: refreshedSeats } = await supabase
@@ -1085,6 +1127,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
       resetHand();
     } catch (e: any) {
       toast.error(e.message || "Failed to record hand");
+      markSync("error");
     } finally {
       setSubmitting(false);
     }
@@ -1128,6 +1171,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setBlindsConfirmedLocal(false);
     setSentCommunityStreets(new Set());
     setPersistedBoardCount(0);
+    if (engineMode) { setSyncPhase("idle"); setSyncLabel(null); }
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
         if (data) setHandNumber(data);
@@ -1239,6 +1283,22 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
 
       {/* START HAND BUTTON */}
       {tableId && !handStarted && !orphanHand && (
+        engineMode ? (
+          /* Engine mode: guided Setup step (presentation-only extraction). */
+          <SetupHandPanel
+            handNumber={handNumber}
+            onHandNumberChange={setHandNumber}
+            seats={players}
+            positions={positionsBySeat}
+            buttonSeat={buttonSeat}
+            buttonConfirmed={buttonConfirmed}
+            onTapSeat={handleSeatTap}
+            onStartHand={handleStartHand}
+            submitting={submitting}
+            lastHandId={lastHandId}
+            onVoid={handleVoid}
+          />
+        ) : (
         <UiCard className="p-6 text-center space-y-4 border-dashed">
           <div className="flex items-center gap-3 justify-center">
             <label className="text-xs font-medium text-muted-foreground">Hand Number</label>
@@ -1273,11 +1333,25 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
         </UiCard>
+        )
       )}
 
       {/* ACTIVE: Hand tracking */}
       {tableId && handStarted && !isSummary && (
         <>
+          {/* ENGINE WIZARD — TOP: read-only progress rail + help + viewer-sync.
+              Manual mode renders none of this (its own blocks are below). */}
+          {engineMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tiến trình ván bài</span>
+                <HandGuideDrawer />
+              </div>
+              <WorkflowProgressRail state={workflowState} allInRunout={allInRunout} />
+              <ViewerSyncStatus phase={syncPhase} lastLabel={syncLabel} />
+            </div>
+          )}
+
           {/* COMMUNITY CARDS — MANUAL mode keeps the inline picker + Gửi button.
               Engine mode enters the board via the BoardEntryPanel gate instead,
               and shows a READ-ONLY strip during action (no accidental edits to an
@@ -1310,6 +1384,20 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
 
+          {/* ENGINE — MIDDLE: compact "where is the hand" summary (replaces the
+              manual INFO STRIP below, which is gated to manual mode). */}
+          {engineMode && (
+            <TableStateSummary
+              streetLabel={STREET_LABELS[currentStreet]}
+              pot={potSize}
+              sidePotCount={potBreakdown.sidePots.length}
+              actorName={actorPlayer?.display_name ?? null}
+              actorSeat={actorPlayer?.seat_number ?? null}
+              actorStack={actorPlayer?.current_stack ?? null}
+              toCall={actorViewData?.toCall ?? 0}
+            />
+          )}
+
           {/* STREET TABS — MANUAL mode only. Engine mode drives streets via the
               gate (no manual jump / "Next" shortcut that would bypass board entry). */}
           {!engineMode && (
@@ -1325,8 +1413,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
 
-          {/* INFO STRIP — Vietnamese operator context (street · actor/next · cần theo · pot · last action) */}
-          {currentStreet !== "showdown" && (
+          {/* INFO STRIP — Vietnamese operator context (street · actor/next · cần theo · pot · last action).
+              MANUAL mode only — engine mode shows the TableStateSummary above. */}
+          {!engineMode && currentStreet !== "showdown" && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-card border border-border/30 rounded-lg text-[11px] shadow-sm">
               <span className="text-muted-foreground">Vòng <strong className="text-amber-300">{STREET_LABELS[currentStreet]}</strong></span>
               <span className="text-border">·</span>
@@ -1492,6 +1581,23 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               onConfirmResult={handleConfirmShowdownResult}
               submitting={submitting || isReadOnly}
             />
+          ) : showActionStep ? (
+            /* ENGINE ACTION — guided single-actor step (Undo/Reset/Void move to the
+               HandControlsStrip below). Manual mode never reaches here → it still
+               renders the ActionDock else arm unchanged. */
+            <ActionStepPanel
+              actor={actorPlayer}
+              actorPosition={actorPos}
+              view={actorViewData}
+              betAmount={betAmount}
+              onBetAmountChange={setBetAmount}
+              bigBlind={bigBlind}
+              onAction={handleDockAction}
+              needsPostSB={needsPostSB}
+              needsPostBB={needsPostBB}
+              betIsTotal={engineMode}
+              disabled={submitting || isReadOnly}
+            />
           ) : (
             /* ACTION DOCK — to-act player + keypad + GTO action buttons */
             <ActionDock
@@ -1521,7 +1627,26 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             />
           )}
 
-          {/* ACTION LOG */}
+          {/* ENGINE — persistent hand controls (Undo/Reset/Void), since the
+              ActionStepPanel has no footer and the bottom panel changes per state. */}
+          {engineMode && (
+            <HandControlsStrip
+              onUndo={handleUndo}
+              canUndo={undoStack.length > 0}
+              onReset={resetHand}
+              onVoid={handleVoid}
+              hasVoidTarget={!!(handId || lastHandId)}
+              disabled={submitting || isReadOnly}
+            />
+          )}
+
+          {/* ENGINE — operator log (extracted). Manual keeps its inline log below. */}
+          {engineMode && (
+            <OperatorActionLog actions={actions} communityCards={communityCards} />
+          )}
+
+          {/* ACTION LOG — MANUAL mode only (engine uses OperatorActionLog above). */}
+          {!engineMode && (
           <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm max-h-60 flex flex-col">
             <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 sticky top-0 bg-card pb-2 border-b border-border/20">Action Log</div>
             <div className="overflow-y-auto space-y-0.5 flex-1 pr-1">
@@ -1544,6 +1669,7 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
               ))}
             </div>
           </div>
+          )}
 
         </>
       )}
