@@ -31,6 +31,7 @@ const Auth = lazy(() => import("./pages/Auth"));
 const ClubAdmin = lazy(() => import("./pages/ClubAdmin"));
 const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
+const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
@@ -186,6 +187,7 @@ const App = () => (
                 <Route path="/club/admin" element={<ClubAdmin />} />
                 <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
+                <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
                 {/* GE-2D online-poker shell — pages self-gate on FEATURES.onlinePoker */}
                 <Route path="/poker" element={<OnlinePoker />} />
                 <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />

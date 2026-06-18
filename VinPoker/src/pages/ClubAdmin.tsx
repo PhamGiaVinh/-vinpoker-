@@ -185,6 +185,20 @@ const ClubAdmin = () => {
             </Card>
           )}
 
+          {activeClub && (isClubAdmin || isClubOwner) && FEATURES.clubSeriesIntelligence && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> Trí tuệ vận hành Series</h3>
+                <p className="text-xs text-muted-foreground">Kiểm tra dữ liệu, đọc số gộp từ CSV và theo dõi quy trình vận hành series.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/series-intelligence">
+                  <Sparkles className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
           {activeClub && (
             <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
               <div>
