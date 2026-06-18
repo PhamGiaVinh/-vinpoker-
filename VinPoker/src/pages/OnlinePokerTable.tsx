@@ -21,6 +21,8 @@ import { SeatRing } from '@/components/poker/SeatRing';
 import { HandStateViewer } from '@/components/poker/HandStateViewer';
 import { ActionBar } from '@/components/poker/ActionBar';
 import { ShowdownResult } from '@/components/poker/ShowdownResult';
+import { AllInRunout } from '@/components/poker/AllInRunout';
+import { isAllInShowdown, ALLIN_CINEMATIC_TOTAL_MS } from '@/lib/onlinePoker/allinCinematic';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
 import { ChevronLeft, Crown, LogIn } from 'lucide-react';
 
@@ -106,6 +108,8 @@ type DwellSnap = {
   result: PublicHandResult;
   handId: string;
   capturedAt: number;
+  /** how long to hold the snapshot — longer for the all-in cinematic runout. */
+  holdMs: number;
 };
 const RESULT_DWELL_MS = 8000;
 
@@ -153,15 +157,18 @@ export default function OnlinePokerTable() {
     dwellHandIdRef.current = hand.handId;
     const ringView = buildRingView(table, hand, seats, mySeatNo);
     const winnerSeats = Array.from(new Set(hand.result.potAwards.flatMap((a) => a.winners)));
-    setDwell({ ringView, winnerSeats, result: hand.result, handId: hand.handId, capturedAt: Date.now() });
+    // All-in showdowns play a longer cinematic runout; give the snapshot enough headroom
+    // (the AllInRunout's onDone clears it earlier; this is the safety fallback).
+    const holdMs = isAllInShowdown(ringView) ? ALLIN_CINEMATIC_TOTAL_MS + 2000 : RESULT_DWELL_MS;
+    setDwell({ ringView, winnerSeats, result: hand.result, handId: hand.handId, capturedAt: Date.now(), holdMs });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hand?.handId, hand?.status]);
 
   useEffect(() => {
     if (!dwell) return;
-    const id = setTimeout(() => setDwell(null), RESULT_DWELL_MS);
+    const id = setTimeout(() => setDwell(null), dwell.holdMs);
     return () => clearTimeout(id);
-  }, [dwell?.handId]);
+  }, [dwell]);
 
   // A NEW live hand that needs MY action drops the dwell at once (never block me).
   useEffect(() => {
@@ -213,6 +220,9 @@ export default function OnlinePokerTable() {
   const showing: DwellSnap | null = dwell;
   const feltView = showing ? showing.ringView : ringView;
   const feltWinners = showing ? showing.winnerSeats : undefined;
+  // An all-in showdown replays as a cinematic runout (its own felt + reveals + equity +
+  // result); other states use the plain felt + result panel below.
+  const cinematic = !!showing && isAllInShowdown(showing.ringView);
 
   const openSit = (seatNo: number) => {
     // Don't offer to sit until the first load settles — a reload could otherwise briefly
@@ -270,17 +280,23 @@ export default function OnlinePokerTable() {
         {amIHost && <Badge className="ml-auto gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
-      {/* the felt — during the result dwell it shows the COMPLETED hand (board runout +
-          revealed hands + winner glow); otherwise the live hand. Empty seats are
-          tap-to-sit when you're not seated and no result is being shown. */}
-      <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
-        <SeatRing
-          hand={feltView}
-          bb={table.bb}
-          winnerSeats={feltWinners}
-          onEmptySeatClick={!seated && !loading && !showing ? openSit : undefined}
-        />
-      </Card>
+      {/* All-in showdown → cinematic runout replay (staged reveals → flop → equity → turn
+          → equity → river → result). Otherwise the felt: the live hand, or the held
+          showdown snapshot. Empty seats are tap-to-sit when you're not seated / no result. */}
+      {cinematic && showing ? (
+        <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
+          <AllInRunout hand={showing.ringView} bb={table.bb} onDone={() => setDwell(null)} />
+        </Card>
+      ) : (
+        <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
+          <SeatRing
+            hand={feltView}
+            bb={table.bb}
+            winnerSeats={feltWinners}
+            onEmptySeatClick={!seated && !loading && !showing ? openSit : undefined}
+          />
+        </Card>
+      )}
 
       {/* seat controls */}
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -323,8 +339,9 @@ export default function OnlinePokerTable() {
       )}
 
       {/* showdown result — winner / pot / refund, held during the dwell so it's seen
-          before the next hand. Takes priority over the action bar + waiting hint. */}
-      {showing && (
+          before the next hand. Suppressed for an all-in cinematic (which shows its own
+          result at the end). Takes priority over the action bar + waiting hint. */}
+      {showing && !cinematic && (
         <ShowdownResult
           result={showing.result}
           handNo={showing.ringView.handNo}
