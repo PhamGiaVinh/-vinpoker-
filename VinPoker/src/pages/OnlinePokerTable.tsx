@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { FEATURES } from '@/lib/featureFlags';
-import { RUNTIME_LIVE, type ActionType, type PublicHandView, type PublicSeatView } from '@/lib/onlinePoker/types';
+import { RUNTIME_LIVE, type ActionType, type PublicHandResult, type PublicHandView, type PublicSeatView } from '@/lib/onlinePoker/types';
 import type { RpcOutcome } from '@/lib/onlinePoker/wire';
 import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import type { LiveSeat, LiveTableMeta } from '@/lib/onlinePoker/client';
@@ -20,6 +20,7 @@ import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
 import { HandStateViewer } from '@/components/poker/HandStateViewer';
 import { ActionBar } from '@/components/poker/ActionBar';
+import { ShowdownResult } from '@/components/poker/ShowdownResult';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
 import { ChevronLeft, Crown, LogIn } from 'lucide-react';
 
@@ -63,7 +64,14 @@ function buildRingView(meta: LiveTableMeta, hand: PublicHandView | null, seats: 
   const ringSeats: PublicSeatView[] = [];
   for (let n = 1; n <= meta.maxSeats; n++) {
     const hs = handByNo.get(n);
-    if (hs) { ringSeats.push(hs); continue; }
+    if (hs) {
+      // Keep the HAND seat intact (revealedCards / status / settled stack must NOT be
+      // lost at showdown); only borrow the live displayName so the felt + winner panel
+      // can name the player.
+      const ls = liveByNo.get(n);
+      ringSeats.push(ls?.displayName && !hs.displayName ? { ...hs, displayName: ls.displayName } : hs);
+      continue;
+    }
     const ls = liveByNo.get(n);
     if (ls) {
       ringSeats.push({ seat: n, playerId: ls.userId, displayName: ls.displayName, stack: ls.stack, committed: '0', status: 'sitting_out' });
@@ -83,10 +91,23 @@ function buildRingView(meta: LiveTableMeta, hand: PublicHandView | null, seats: 
     buttonSeat: hand?.buttonSeat ?? 0,
     status: hand?.status ?? 'complete',
     seats: ringSeats,
+    // Carry the server settlement so the felt can glow the winner + the result panel
+    // can announce the pot. Preserved through the merge (never recomputed client-side).
+    ...(hand?.result ? { result: hand.result } : {}),
     myHoleCards: hand?.myHoleCards,
     mySeat: hand?.mySeat ?? mySeatNo ?? undefined,
   };
 }
+
+/** A full snapshot of a just-completed hand, held on screen during the showdown dwell. */
+type DwellSnap = {
+  ringView: PublicHandView;
+  winnerSeats: number[];
+  result: PublicHandResult;
+  handId: string;
+  capturedAt: number;
+};
+const RESULT_DWELL_MS = 8000;
 
 export default function OnlinePokerTable() {
   const { tableId = '' } = useParams();
@@ -116,6 +137,39 @@ export default function OnlinePokerTable() {
       fireLeave(); // SPA route unmount
     };
   }, []);
+
+  // ── showdown result dwell ───────────────────────────────────────────────────
+  // When a hand completes with a settlement result, snapshot the WHOLE completed hand
+  // (felt + reveals + winner + result) and hold it ~8s. The server may auto-deal the
+  // next hand immediately; the snapshot keeps the board runout / revealed hands / winner
+  // visible so the result is never silently overwritten. Display-only — never blocks the
+  // server; cleared on timeout, when a NEW hand needs my action, or when I act.
+  const [dwell, setDwell] = useState<DwellSnap | null>(null);
+  const dwellHandIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!table || !hand || hand.status !== 'complete' || !hand.result || !hand.handId) return;
+    if (dwellHandIdRef.current === hand.handId) return; // snapshot each completion once
+    dwellHandIdRef.current = hand.handId;
+    const ringView = buildRingView(table, hand, seats, mySeatNo);
+    const winnerSeats = Array.from(new Set(hand.result.potAwards.flatMap((a) => a.winners)));
+    setDwell({ ringView, winnerSeats, result: hand.result, handId: hand.handId, capturedAt: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hand?.handId, hand?.status]);
+
+  useEffect(() => {
+    if (!dwell) return;
+    const id = setTimeout(() => setDwell(null), RESULT_DWELL_MS);
+    return () => clearTimeout(id);
+  }, [dwell?.handId]);
+
+  // A NEW live hand that needs MY action drops the dwell at once (never block me).
+  useEffect(() => {
+    if (!dwell || !hand) return;
+    if (hand.handId !== dwell.handId && hand.status === 'betting' && hand.toActSeat === mySeatNo) {
+      setDwell(null);
+    }
+  }, [hand?.handId, hand?.toActSeat, hand?.status, mySeatNo, dwell]);
 
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
@@ -150,6 +204,16 @@ export default function OnlinePokerTable() {
 
   // Keep the unmount-leave snapshot current every render.
   leaveRef.current = { seated, inActiveHand, leave: actions.leaveTable };
+
+  // The result to display: the dwell snapshot if held, else the current hand if it just
+  // completed. Felt + winner glow + result panel all read this one source so they agree.
+  const liveResult = hand && hand.status === 'complete' ? hand.result : undefined;
+  const showing: DwellSnap | null = dwell
+    ?? (liveResult && hand
+      ? { ringView, winnerSeats: Array.from(new Set(liveResult.potAwards.flatMap((a) => a.winners))), result: liveResult, handId: hand.handId, capturedAt: 0 }
+      : null);
+  const feltView = showing ? showing.ringView : ringView;
+  const feltWinners = showing ? showing.winnerSeats : undefined;
 
   const openSit = (seatNo: number) => {
     // Don't offer to sit until the first load settles — a reload could otherwise briefly
@@ -186,6 +250,7 @@ export default function OnlinePokerTable() {
 
   const submit = async (a: { type: ActionType; amount?: string }) => {
     if (!hand || mySeatNo == null || submitting) return; // ignore re-taps while a submit is in flight
+    setDwell(null); // acting on the new hand drops any lingering result view
     setSubmitting(true);
     try {
       const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as { ok: boolean; code?: string };
@@ -206,9 +271,16 @@ export default function OnlinePokerTable() {
         {amIHost && <Badge className="ml-auto gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
-      {/* the felt — all seats; empty ones are tap-to-sit when you're not seated */}
+      {/* the felt — during the result dwell it shows the COMPLETED hand (board runout +
+          revealed hands + winner glow); otherwise the live hand. Empty seats are
+          tap-to-sit when you're not seated and no result is being shown. */}
       <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
-        <SeatRing hand={ringView} bb={table.bb} onEmptySeatClick={!seated && !loading ? openSit : undefined} />
+        <SeatRing
+          hand={feltView}
+          bb={table.bb}
+          winnerSeats={feltWinners}
+          onEmptySeatClick={!seated && !loading && !showing ? openSit : undefined}
+        />
       </Card>
 
       {/* seat controls */}
@@ -251,17 +323,29 @@ export default function OnlinePokerTable() {
         </Card>
       )}
 
-      {/* action bar — only meaningful during an active hand */}
-      {inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />}
+      {/* showdown result — winner / pot / refund, held during the dwell so it's seen
+          before the next hand. Takes priority over the action bar + waiting hint. */}
+      {showing && (
+        <ShowdownResult
+          result={showing.result}
+          handNo={showing.ringView.handNo}
+          seats={showing.ringView.seats}
+          mySeat={showing.ringView.mySeat}
+          bb={table.bb}
+        />
+      )}
 
-      {/* waiting hint when seated but no hand yet */}
-      {seated && !inActiveHand && (
+      {/* action bar — only during an active hand, and never over a result being shown */}
+      {!showing && inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />}
+
+      {/* waiting hint when seated but no hand yet (suppressed while a result is shown) */}
+      {!showing && seated && !inActiveHand && (
         <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
           {seats.length < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
         </div>
       )}
 
-      {inActiveHand && <HandStateViewer hand={hand!} />}
+      {(showing || inActiveHand) && <HandStateViewer hand={showing ? showing.ringView : hand!} />}
 
       <SitDownDialog
         open={sitSeat != null}

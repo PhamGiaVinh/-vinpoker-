@@ -182,3 +182,61 @@ describe('wirePrivateToView — own cards from a private wire', () => {
     expect(v.myHoleCards).toEqual(['Qs', 'Jh']);
   });
 });
+
+// ── Bug B: a COMPLETED hand must carry the settlement result to the view ──────
+// Fixture mirrors a REAL settled all-in showdown observed in the live DB (hand #3):
+// seat 3 (6s Kh) beats seat 2 (6c 5h) on board 4d Ad 7d 7c 2s; pot 9700 -> seat 3;
+// uncalled 300 refunded to seat 2; chips conserved (9700 + 300 = 10000).
+function completedAllInWire(): WirePublicHandState {
+  return {
+    config: { handId: 'h3', tableId: 't3', handNo: 3, buttonSeat: 3, sb: '25', bb: '50', schemaVersion: 1 },
+    street: 'showdown',
+    board: ['4d', 'Ad', '7d', '7c', '2s'],
+    seats: [
+      { seat: 3, playerId: 'u3', startingStack: '4850', stack: '9700', committed: '0', totalCommitted: '4850', status: 'allin', hasActedThisRound: true, canRaise: true, revealedCards: ['6s', 'Kh'] },
+      { seat: 2, playerId: 'u2', startingStack: '5150', stack: '300', committed: '0', totalCommitted: '4850', status: 'allin', hasActedThisRound: true, canRaise: true, revealedCards: ['6c', '5h'] },
+    ],
+    buttonSeat: 3,
+    toAct: null,
+    currentBet: '0',
+    lastFullRaiseSize: '50',
+    aggressor: null,
+    pot: '0',
+    sidePots: [],
+    status: 'complete',
+    result: {
+      endedBy: 'showdown',
+      potTotal: '9700',
+      potAwards: [{ potIndex: 0, amount: '9700', winners: [3] }],
+      payouts: { 3: '9700' },
+      refund: { seat: 2, amount: '300' },
+    },
+  };
+}
+
+describe('wirePublicToView — completed hand carries the settlement result (Bug B)', () => {
+  it('preserves result (payouts / potAwards / refund), the 5-card board and showdown reveals', () => {
+    const v = wirePublicToView(completedAllInWire());
+    expect(v.status).toBe('complete');
+    expect(v.board).toHaveLength(5);
+    expect(v.result).toBeDefined();
+    expect(v.result!.endedBy).toBe('showdown');
+    expect(v.result!.potTotal).toBe('9700');
+    expect(v.result!.payouts[3]).toBe('9700');
+    expect(v.result!.refund).toEqual({ seat: 2, amount: '300' });
+    // both contesting seats reveal their hole cards at showdown:
+    expect(v.seats.find((s) => s.seat === 3)!.revealedCards).toEqual(['6s', 'Kh']);
+    expect(v.seats.find((s) => s.seat === 2)!.revealedCards).toEqual(['6c', '5h']);
+  });
+
+  it('derives winnerSeats from result.potAwards exactly as the table UI does', () => {
+    const v = wirePublicToView(completedAllInWire());
+    const winnerSeats = Array.from(new Set(v.result!.potAwards.flatMap((a) => a.winners)));
+    expect(winnerSeats).toEqual([3]);
+  });
+
+  it('omits result for a hand still in progress (no premature winner)', () => {
+    const v = wirePublicToView(publicWire());
+    expect(v.result).toBeUndefined();
+  });
+});
