@@ -329,14 +329,23 @@ export async function loadLegalActionsLive(handId: string): Promise<WireLegalAct
   }
 }
 
-/** Live public hand state for a table's current hand (no secrets). Gated. */
+/**
+ * Live public hand state for a table's most recent hand (no secrets). Gated.
+ *
+ * Includes 'complete' so the client can SHOW the showdown result (board runout +
+ * revealed hands + winner/pot) during the inter-hand cooldown — without it, a just-
+ * settled all-in is filtered out and the table jumps silently to the next hand. The
+ * completed hand stays the latest for the full cooldown (op_run_due_table_ticks =
+ * 4s) and the client polls every ~2.5s, so it is always observed at least once; the
+ * ~8s result dwell then holds it across the next deal. 'voided' stays excluded.
+ */
 export async function loadHandStateLive(tableId: string): Promise<WirePublicHandState | null> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
   const { data, error } = await rails()
     .from('online_poker_hands')
     .select('state')
     .eq('table_id', tableId)
-    .in('status', ['dealing', 'betting'])
+    .in('status', ['dealing', 'betting', 'complete'])
     .order('hand_no', { ascending: false })
     .limit(1)
     .maybeSingle();

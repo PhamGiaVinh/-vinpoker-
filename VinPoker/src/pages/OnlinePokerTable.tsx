@@ -205,13 +205,12 @@ export default function OnlinePokerTable() {
   // Keep the unmount-leave snapshot current every render.
   leaveRef.current = { seated, inActiveHand, leave: actions.leaveTable };
 
-  // The result to display: the dwell snapshot if held, else the current hand if it just
-  // completed. Felt + winner glow + result panel all read this one source so they agree.
-  const liveResult = hand && hand.status === 'complete' ? hand.result : undefined;
-  const showing: DwellSnap | null = dwell
-    ?? (liveResult && hand
-      ? { ringView, winnerSeats: Array.from(new Set(liveResult.potAwards.flatMap((a) => a.winners))), result: liveResult, handId: hand.handId, capturedAt: 0 }
-      : null);
+  // The result panel + winner glow are driven solely by the ~8s dwell snapshot, so the
+  // display stays time-bounded. (loadHandStateLive now returns a completed hand during
+  // the 4s cooldown — the dwell effect snapshots it the moment it's first seen and holds
+  // it ~8s, bridging into the next deal; a live-`complete` fallback would instead linger
+  // for the whole inter-hand idle.)
+  const showing: DwellSnap | null = dwell;
   const feltView = showing ? showing.ringView : ringView;
   const feltWinners = showing ? showing.winnerSeats : undefined;
 
