@@ -144,7 +144,7 @@ export function ActionDock({
       {showActions && (
       <div className="p-3.5 space-y-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <BetKeypad value={betAmount} onChange={onBetAmountChange} bigBlind={bigBlind} disabled={disabled || !actor} />
+        <BetKeypad value={betAmount} onChange={onBetAmountChange} bigBlind={bigBlind} betIsTotal={betIsTotal} disabled={disabled || !actor} />
 
         <div className="flex flex-col gap-2">
           {isPosting ? (

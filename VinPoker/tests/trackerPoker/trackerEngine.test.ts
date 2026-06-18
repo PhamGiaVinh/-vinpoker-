@@ -284,6 +284,29 @@ describe("chip conservation — fold-win and selected-winner split", () => {
 });
 
 // =============================================================================
+describe("all-in players: skipped for action but eligible for showdown/settlement", () => {
+  // p1 is all-in (stack 0, fully committed); p2 still has chips behind.
+  const allInSeats = () => [
+    seat(1, 0, { starting_stack: 100, all_in: true, total_committed: 100 }),
+    seat(2, 60, { starting_stack: 100, total_committed: 40 }),
+  ];
+
+  it("the all-in player is NEVER asked to act (skipped in the ring)", () => {
+    const state: EngineState = { seats: allInSeats(), buttonSeat: 1, street: "river", streetActions: [] };
+    expect(actorToAct(state)?.player_id).toBe("p2"); // p1 (all-in) skipped → p2 acts
+  });
+
+  it("the all-in player CAN be selected as the showdown winner and collects the pot", () => {
+    const seats = allInSeats();
+    const out = settleSelectedWinners(seats, ["p1"]);
+    const byId = Object.fromEntries(out.map((r) => [r.player_id, r.ending_stack]));
+    expect(byId.p1).toBe(0 + 140); // pot = 100 + 40 → all-in player wins it
+    expect(byId.p2).toBe(60);
+    expect(assertChipConservation(seats, out)).toBe(true); // 200 in, 200 out
+  });
+});
+
+// =============================================================================
 describe("viewer path — settlement output matches record_hand payload shape", () => {
   it("every result has {player_id, ending_stack} the existing write path consumes", () => {
     const seats = [

@@ -10,10 +10,13 @@ interface BetKeypadProps {
   value: string;
   onChange: (v: string) => void;
   bigBlind?: number;
+  /** Engine mode treats the value as the street TOTAL ("Bet to"); manual mode
+      treats it as chips ADDED, so the label reflects that to avoid confusion. */
+  betIsTotal?: boolean;
   disabled?: boolean;
 }
 
-export function BetKeypad({ value, onChange, bigBlind = 0, disabled }: BetKeypadProps) {
+export function BetKeypad({ value, onChange, bigBlind = 0, betIsTotal = false, disabled }: BetKeypadProps) {
   const press = (k: string) => {
     if (disabled) return;
     if (k === "back") {
@@ -32,7 +35,7 @@ export function BetKeypad({ value, onChange, bigBlind = 0, disabled }: BetKeypad
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between px-3 py-2 rounded-lg bg-secondary border border-primary/30">
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Bet to</span>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{betIsTotal ? "Bet to" : "Thêm chip"}</span>
         <span>
           <span className="text-2xl font-bold font-mono text-primary">{num ? formatStack(num) : "—"}</span>
           {bb !== null && num > 0 && (
