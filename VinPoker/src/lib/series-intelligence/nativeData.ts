@@ -91,6 +91,49 @@ export function mapTournamentToEvent(row: NativeTournamentRow, entryCounts?: Ent
   };
 }
 
+/** One row returned by the `get_club_series_events` RPC (Phase 2: server-derived, owner-scoped). */
+export interface ClubSeriesEventRow {
+  event_id: string;
+  event_name: string | null;
+  event_date: string | null;
+  buy_in: number | null;
+  fee: number | null; // = rake_amount (server-side)
+  service_fee: number | null; // separate service fee — reported, NOT summed into fee
+  gtd: number | null; // null until a native GTD column exists (later PR)
+  prize_pool_actual: number | null;
+  total_entries: number | null;
+  unique_entries: number | null;
+  reentries: number | null;
+  club_id: string;
+}
+
+/**
+ * Map one `get_club_series_events` RPC row → SeriesEvent by reusing the pure
+ * tournament adapter, so fee semantics (fee = rake_amount; serviceFeeAmount kept
+ * separate, never summed) and the gtd-missing rule stay identical. Entry counts are
+ * the SERVER-DERIVED values from the RPC; gtd stays null (no native GTD column yet,
+ * so readiness still reports it missing). No economics, no cross-club merge.
+ */
+export function mapRpcRowToEvent(row: ClubSeriesEventRow): SeriesEvent {
+  return mapTournamentToEvent(
+    {
+      id: row.event_id,
+      name: row.event_name,
+      start_time: row.event_date,
+      buy_in: row.buy_in,
+      rake_amount: row.fee,
+      service_fee_amount: row.service_fee,
+      prize_pool: row.prize_pool_actual,
+      club_id: row.club_id,
+    },
+    {
+      totalEntries: row.total_entries,
+      uniqueEntries: row.unique_entries,
+      reentries: row.reentries,
+    },
+  );
+}
+
 export interface InventorySummary {
   total: number;
   withBuyIn: number;

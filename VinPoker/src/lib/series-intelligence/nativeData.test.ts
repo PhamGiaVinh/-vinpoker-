@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { mapTournamentToEvent, summarizeInventory, type NativeTournamentRow } from './nativeData';
+import {
+  mapRpcRowToEvent,
+  mapTournamentToEvent,
+  summarizeInventory,
+  type ClubSeriesEventRow,
+  type NativeTournamentRow,
+} from './nativeData';
 
 function row(p: Partial<NativeTournamentRow>): NativeTournamentRow {
   return {
@@ -79,5 +85,71 @@ describe('summarizeInventory + cross-club safety', () => {
     expect(s.missingPrizePool).toBe(1);
     expect(s.missingGtd).toBe(3); // gtd missing for all native rows
     expect(s.missingEntries).toBe(3); // no counts provided
+  });
+});
+
+describe('mapRpcRowToEvent (get_club_series_events RPC → event shape)', () => {
+  function rpcRow(p: Partial<ClubSeriesEventRow>): ClubSeriesEventRow {
+    return {
+      event_id: 'e1',
+      event_name: 'Sunday Major',
+      event_date: '2026-05-03T10:00:00Z',
+      buy_in: 2_200_000,
+      fee: 200_000, // = rake_amount, server-side
+      service_fee: 50_000,
+      gtd: null,
+      prize_pool_actual: 80_000_000,
+      total_entries: 120,
+      unique_entries: 90,
+      reentries: 30,
+      club_id: 'club-A',
+      ...p,
+    };
+  }
+
+  it('maps an RPC row into the native event shape (source=native)', () => {
+    const e = mapRpcRowToEvent(rpcRow({}));
+    expect(e.event_id).toBe('e1');
+    expect(e.event_name).toBe('Sunday Major');
+    expect(e.event_date).toBe('2026-05-03T10:00:00Z');
+    expect(e.buy_in).toBe(2_200_000);
+    expect(e.prize_pool_actual).toBe(80_000_000);
+    expect(e.source).toBe('native');
+    expect(e.clubId).toBe('club-A');
+  });
+
+  it('uses the server-derived entry counts (total / unique / reentries)', () => {
+    const e = mapRpcRowToEvent(rpcRow({ total_entries: 120, unique_entries: 90, reentries: 30 }));
+    expect(e.total_entries).toBe(120);
+    expect(e.unique_entries).toBe(90);
+    expect(e.reentries).toBe(30);
+    expect(e.missingFields).not.toContain('total_entries');
+    expect(e.missingFields).not.toContain('unique_entries');
+    expect(e.missingFields).not.toContain('reentries');
+  });
+
+  it('treats 0 entries as a real server count, not missing', () => {
+    const e = mapRpcRowToEvent(rpcRow({ total_entries: 0, unique_entries: 0, reentries: 0 }));
+    expect(e.total_entries).toBe(0);
+    expect(e.missingFields).not.toContain('total_entries');
+  });
+
+  it('keeps fee (= RPC rake) and service_fee separate — never summed', () => {
+    const e = mapRpcRowToEvent(rpcRow({ fee: 200_000, service_fee: 50_000 }));
+    expect(e.fee).toBe(200_000);
+    expect(e.serviceFeeAmount).toBe(50_000);
+    expect(e.fee).not.toBe(250_000); // fee must not absorb the service fee
+  });
+
+  it('still reports gtd missing (no native GTD column yet) — RPC sends null', () => {
+    const e = mapRpcRowToEvent(rpcRow({ gtd: null }));
+    expect(e.gtd).toBeNull();
+    expect(e.missingFields).toContain('gtd');
+  });
+
+  it('reports a missing direct field (e.g. buy_in null) without inventing it', () => {
+    const e = mapRpcRowToEvent(rpcRow({ buy_in: null }));
+    expect(e.buy_in).toBeNull();
+    expect(e.missingFields).toContain('buy_in');
   });
 });
