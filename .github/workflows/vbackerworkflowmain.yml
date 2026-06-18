@@ -85,6 +85,22 @@ jobs:
             done
             return 1
           }
+          # JWT-verified variant: deploy WITHOUT --no-verify-jwt so the API gateway
+          # enforces the JWT. Required for functions that decode the JWT WITHOUT
+          # verifying its signature and then trust `sub` (e.g. checkout-dealer);
+          # deploying those with --no-verify-jwt would let a forged token pass.
+          deploy_func_verify() {
+            local name=$1
+            local attempt=1
+            while [ $attempt -le 3 ]; do
+              echo "=== Deploying $name (verify_jwt, attempt $attempt/3) ==="
+              supabase functions deploy "$name" && return 0
+              echo "=== $name attempt $attempt failed ==="
+              attempt=$((attempt + 1))
+              [ $attempt -le 3 ] && sleep 10
+            done
+            return 1
+          }
           deploy_func process-swing
           result1=$?
           deploy_func assign-dealer
@@ -105,7 +121,12 @@ jobs:
           result9=$?
           deploy_func online-poker-timeout-sweep
           result10=$?
-          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && [ $result6 -eq 0 ] && [ $result7 -eq 0 ] && [ $result8 -eq 0 ] && [ $result9 -eq 0 ] && [ $result10 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
+          # checkout-dealer was missing from this list, so PR #302's operator-panel
+          # checkout fix (release ALL active assignments, not just 'assigned') never
+          # auto-deployed. Added here — verify_jwt MUST stay on (see deploy_func_verify).
+          deploy_func_verify checkout-dealer
+          result11=$?
+          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && [ $result6 -eq 0 ] && [ $result7 -eq 0 ] && [ $result8 -eq 0 ] && [ $result9 -eq 0 ] && [ $result10 -eq 0 ] && [ $result11 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
           echo "=== Some functions failed ===" && exit 1
         working-directory: ./VinPoker
         env:
