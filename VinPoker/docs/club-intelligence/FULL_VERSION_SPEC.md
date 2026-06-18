@@ -30,8 +30,11 @@ Observed Schedule Draft → Owner Report → Shadow Forecast Lab, presented in a
 
 These are permanent product boundaries, not temporary limitations.
 
-- **(locked) NOT AI prediction.** The engine is deterministic and rules-based. There is no model
-  predicting future entries, revenue, or behaviour.
+- **(gated) AI/ML prediction — conditional, not forbidden.** The descriptive/rules engine stays
+  deterministic. AI/ML prediction is allowed **only** as a bounded, labeled `Model Estimate`
+  (uncertainty range + confidence + sample basis + "không phải cam kết" disclaimer) and **only**
+  after the Phase-5 readiness gates are met and owner-approved (see [`ROADMAP.md` §6 Phase 5](./ROADMAP.md#6-native-integration--scenario-forecast-track-ci-n-phases-15) and [`SAFETY_BOUNDARY.md` §1](./SAFETY_BOUNDARY.md)). Never a single definite number, guarantee, or recommendation; the `ci_label_tier`
+  write-guard still blocks it until a separate owner-gated DB phase updates it.
 - **(locked) NOT an automatic schedule optimizer.** It never produces a "best" or "recommended"
   schedule. It re-surfaces combinations the club has *already run*, organized by risk posture, for a
   human to decide.
@@ -51,10 +54,13 @@ Every capability belongs to exactly one tier; tiers never skip.
    correlations) `Hypothesis`.
 2. **DESCRIPTIVE** — the club's *own* observed history (entries, slots, price structure, liquidity).
    Always labeled `Observed Pattern`. **Never** claims causality.
-3. **LEARNED-CAUSAL — DEFERRED (locked).** Cross-club, causal, or estimated findings
-   (cannibalization, pricing-response, profit/risk models, forecast ranges) require **pooled
-   multi-club data** and a separate spec. Held until after F8. Labels `Tested Finding` /
-   `Model Estimate` are reserved for this tier and MUST NOT appear in F1–F8.
+3. **LEARNED / PREDICTIVE — GATED (reopened); CAUSAL — still deferred.** Estimated/predictive
+   findings (forecast ranges, pricing-response) are **allowed under the Phase-5 readiness gates** as
+   `Model Estimate` — un-reserved, but emit-able only once the gates clear and the `ci_label_tier`
+   write-guard is updated (separate owner-gated DB phase). **Causal** findings (cannibalization
+   cause-effect → `Tested Finding`) **remain deferred** until controlled tests / pooled causal
+   evidence exist. Any **pooled multi-club** data still requires an approved privacy spec. Labels:
+   `Model Estimate` = gated (see §4); `Tested Finding` = reserved.
 
 ## 4. The five output labels (locked)
 
@@ -66,7 +72,7 @@ Every insight the module renders carries **exactly one** label and a non-empty p
 | `Observed Pattern` | DESCRIPTIVE | A fact measured from the club's own uploaded/native data. Never causal. | Yes |
 | `Hypothesis` | RULES | A correlation worth a controlled test; explicitly "needs a test", never a conclusion. | Yes |
 | `Tested Finding` | LEARNED-CAUSAL | A hypothesis confirmed by controlled test / pooled evidence. | **No — reserved** |
-| `Model Estimate` | LEARNED-CAUSAL | A value from a fitted model with a stated uncertainty range. | **No — reserved** |
+| `Model Estimate` | LEARNED / PREDICTIVE | A value from a fitted model with a stated uncertainty range. | **Gated — under Phase-5 readiness gates** (write-guard still blocks until a DB phase updates it) |
 
 `cannibalization` is always `Hypothesis` until pooled data exists (locked).
 
@@ -134,7 +140,8 @@ warning". X+Y public pricing is industry-standard and is treated as neutral.
 Productionizes P8 (Owner Command Center) into the VinPoker design system (F8):
 
 - **Shell:** left sidebar section nav + header with a persistent trust strip
-  (Local/club-scoped · Rules-based · No AI prediction).
+  (Local/club-scoped · Rules-based · no *ungated* prediction — a labeled, bounded `Model Estimate`
+  appears only when the gated Phase-5 tier ships).
 - **Overview (Command Center):** metric cards (data readiness, tournaments, schedule posture,
   forecast discipline) + observed mini-bars + a 3-opportunity / 3-risk briefing preview —
   reusing already-computed numbers only, never new metrics.
@@ -170,9 +177,12 @@ owner/TD to review — not a decision made for the human."* Snapshots are immuta
 
 Productionizes P7: it reads **human-entered** forecasts and compares them to actuals (entered, or
 auto-matched from observed `final_entries`), computing **discipline** metrics (bias, MAE, MAPE,
-hit-rate within ±10%). **(locked) The system itself never forecasts and never recommends a future
-number.** It measures how accurate the human's past forecasts were. The forecast value is the only
-place an "expected" number may exist — because it is explicitly a *human claim being scored*.
+hit-rate within ±10%). **(gated) The system forecasts only as a bounded, labeled `Model Estimate`
+under the Phase-5 readiness gates, and never recommends an action.** Until those gates clear the Lab
+scores **human** forecasts only; once gated-system forecasts exist, the Lab scores both human and
+system forecasts vs actuals. A human `forecast_value` and a gated `Model Estimate` are the only
+places a forward number may exist — each explicitly labeled (human claim, or bounded model estimate)
+and scored.
 
 ## 14. Feature gating & per-club enablement
 

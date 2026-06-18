@@ -18,22 +18,33 @@ The module MUST NOT, in any surface, string, export, or RPC output:
 4. **No causality conclusion** — never assert cause-and-effect from observed data; correlations are
    `Hypothesis` only, with a "needs a controlled test" note. `cannibalization` is always
    `Hypothesis` until pooled multi-club data exists.
-5. **No AI prediction** — the engine is deterministic and rules-based; there is no AI model and no
-   prediction.
+5. **AI/ML prediction — GATED (conditional), not forbidden.** No *ungated* AI/ML prediction. A
+   prediction may appear **only** as a labeled `Model Estimate` that carries an explicit uncertainty
+   range, a confidence level, the comparable/sample basis, and a "không phải cam kết / not a
+   guarantee" disclaimer — and **only** after the Phase-5 readiness gates (data volume, validated
+   backtest, privacy spec for any pooled data; see [`ROADMAP.md` §6 Phase 5](./ROADMAP.md)) are met
+   and owner-approved. A prediction MUST NEVER be a single definite number, a guarantee, or a
+   recommendation to act. **Until those gates clear AND the `ci_label_tier` write-guard is updated in
+   a separate owner-gated DB phase, no `Model Estimate` may be emitted** — the write-guard still
+   blocks it today (this doc is the decision; enforcement changes separately).
 
-The single legal exception is `club_intel_forecasts.forecast_value`, which is an explicitly
-**human-entered** number being *scored* — never a system output (see [`DATA_MODEL.md` §8](./DATA_MODEL.md)).
+The single legal exception for **human** forecasts remains `club_intel_forecasts.forecast_value`, an
+explicitly **human-entered** number being *scored* (see [`DATA_MODEL.md` §8](./DATA_MODEL.md)); a
+gated **system** `Model Estimate` (item 5) is the only legal system prediction.
 
 A copy/automated check SHOULD flag the strings `expected`, `projected`, `forecast` (outside the
-shadow-input/disclaimer context), `optimal`, `best plan`, `recommend`, and `profit` in any rendered
-output during F8 review.
+shadow-input / disclaimer / gated-`Model Estimate` context), `optimal`, `best plan`, `recommend`, and
+`profit` in any rendered output during F8 review.
 
 ## 2. Label discipline
 
 - Every rendered insight carries **exactly one** label and a **non-empty provenance** string.
-- Only `Known Rule` / `Observed Pattern` / `Hypothesis` may be emitted in F1–F8.
-- `Tested Finding` and `Model Estimate` are reserved for the deferred LEARNED-CAUSAL tier and MUST
-  NOT appear; the `ci_label_tier` write-guard enforces this.
+- Only `Known Rule` / `Observed Pattern` / `Hypothesis` may be emitted today.
+- `Model Estimate` is **un-reserved** for the gated PREDICTIVE tier: it MAY be emitted once the
+  Phase-5 readiness gates are met **and** the `ci_label_tier` write-guard is updated (a separate
+  owner-gated DB phase). Until both hold it MUST NOT appear, and the existing write-guard still
+  blocks it. `Tested Finding` (causal-confirmed) **stays reserved** until controlled-test / pooled
+  causal evidence exists.
 - Hypotheses must state the next test and explicitly disclaim causality.
 
 ## 3. RLS model
@@ -82,7 +93,8 @@ output during F8 review.
 ## 7. Honesty boundaries restated
 
 - **Schedule Draft** re-orders only observed combos; it never invents a combo and never recommends.
-- **Shadow Forecast Lab** scores only human forecasts; the system never forecasts.
+- **Shadow Forecast Lab** scores forecasts vs actuals; the system forecasts **only** as a gated,
+  scored, labeled `Model Estimate` (§1 item 5) — the Lab scores both human and gated-system forecasts.
 - **Pricing/Rake** shows observed structure only; no profit without real cost data.
 - **Descriptive** states what happened, with sample sizes, never why.
 - **Owner Report** re-expresses engine output; it is a briefing to review, not a decision.
