@@ -266,8 +266,8 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`rounded-lg px-2 py-2 text-xs font-semibold transition ${
-              tab === key ? "bg-emerald-500/20 text-emerald-200" : "text-muted-foreground"
+            className={`flex min-h-[44px] items-center justify-center rounded-lg px-2 text-sm font-semibold transition ${
+              tab === key ? "bg-emerald-500/20 text-emerald-200" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {label}

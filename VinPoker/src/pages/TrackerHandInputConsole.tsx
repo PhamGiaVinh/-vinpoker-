@@ -51,17 +51,17 @@ export default function TrackerHandInputConsole() {
     );
   }
 
-  // Engine mode is the whole point of this console. While the flag is OFF (dark on
-  // main) we DON'T mount the hook — show a friendly notice instead.
-  if (!FEATURES.trackerEngineMode) {
+  // The console is gated by its OWN flag (decoupled from the embedded engine mode).
+  // While OFF (dark on main) we DON'T mount the controller hook — friendly notice only.
+  if (!FEATURES.trackerHandInputConsole) {
     return (
       <div className="container mx-auto p-6">
         <Card className="mx-auto max-w-lg space-y-3 p-8 text-center">
           <Construction className="mx-auto h-10 w-10 text-amber-400" />
-          <div className="text-lg font-bold">Bảng nhập hand đang được thử nghiệm</div>
+          <div className="text-lg font-bold">Bảng nhập hand toàn màn hình đang thử nghiệm</div>
           <p className="text-sm text-muted-foreground">
-            Màn hình nhập hand kiểu mới (Tracker Engine Mode) đang ở chế độ thử nghiệm và chưa được bật.
-            Bạn vẫn có thể nhập hand như bình thường trong trang Tracker.
+            Màn nhập hand kiểu mới chưa được bật. Bạn vẫn nhập hand như bình thường ở tab “Nhập hand”
+            trong trang Tracker.
           </p>
         </Card>
       </div>

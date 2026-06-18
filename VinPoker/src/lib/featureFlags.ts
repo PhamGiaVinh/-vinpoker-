@@ -145,6 +145,19 @@ export const FEATURES = {
    */
   trackerEngineMode: false,
   /**
+   * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
+   * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
+   * Decoupled from `trackerEngineMode`: this flag ONLY enables the standalone console
+   * (page mount + the "open console" entry button in the operator Nhập-hand tab); it
+   * does NOT change the embedded HandInputPanel. The console reuses the SAME engine
+   * write-path (7 Edge payload builders) as the embedded panel — no DB/RPC/Edge change.
+   * Default **OFF**: while false the route shows a friendly notice, never mounts the
+   * controller hook, and the entry button is hidden → zero change to the live operator
+   * flow. Flip to true (after operator UAT on the preview branch) to let floor staff
+   * open the new console. Kill-switch: set false to instantly hide it again.
+   */
+  trackerHandInputConsole: false,
+  /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
    * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible
