@@ -9,7 +9,7 @@ export const SERIES_INTEL = {
   cardLabel: 'Trí tuệ vận hành Series',
   cardDescription: 'Kiểm tra dữ liệu, đọc số gộp từ CSV và theo dõi quy trình vận hành series.',
   safetyBoundary:
-    'Các số liệu được tính trực tiếp từ CSV đã tải lên. Đây không phải dự báo, không tự giải thích vì sao các con số xảy ra, và không thay thế báo cáo kế toán.',
+    'Các số liệu được tính trực tiếp từ dữ liệu trong VinPoker hoặc CSV đã tải lên. Đây không phải dự báo, không tự giải thích vì sao các con số xảy ra, và không thay thế báo cáo kế toán.',
   previewNote: 'Bản demo nội bộ — chưa bật trong menu Club Admin.',
   steps: [
     { n: 1, label: 'Chuẩn bị file CSV', desc: 'Gom dữ liệu các sự kiện trong series theo đúng các cột bên dưới.' },
