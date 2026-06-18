@@ -21,10 +21,16 @@ import {
   foldWinner,
   settleFoldWin,
   settleSelectedWinners,
+  blindSeats,
+  firstPreflopActor,
+  snapshotBlindLevel,
+  hasLevelChangedDuringHand,
   type EngineState,
+  type BlindLevelSnapshot,
 } from "@/lib/tracker-poker/trackerEngine";
 import { FEATURES } from "@/lib/featureFlags";
 import { SeatRail, type RailSeat } from "./handinput/SeatRail";
+import { BlindSetupPanel } from "./handinput/BlindSetupPanel";
 import { InputTableMap, type InputTableSummary } from "./handinput/InputTableMap";
 import { ActionDock } from "./handinput/ActionDock";
 import { formatStack } from "./handinput/format";
@@ -98,6 +104,14 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const [buttonConfirmed, setButtonConfirmed] = useState(false);
   // Engine mode showdown: operator-selected winner(s) for the simple pot split.
   const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
+  // Engine mode blind setup (Layer 1): Floor blind-level snapshot taken at hand
+  // start (local only — never persisted, never mutated mid-hand), editable post
+  // amounts, a local confirm flag, and the live level for the change banner.
+  const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
+  const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
+  const [sbAmount, setSbAmount] = useState(0);
+  const [bbAmount, setBbAmount] = useState(0);
+  const [liveLevelNumber, setLiveLevelNumber] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [handId, setHandId] = useState<string | null>(null);
   const [handStarted, setHandStarted] = useState(false);
@@ -415,6 +429,44 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     [engineMode, engineState]
   );
 
+  // ----- Engine mode blind-setup phase (Layer 1) ----------------------------
+  // Snapshot the Floor blind level once per engine-mode hand (read-only RPC, the
+  // same get_tournament_clock the clock/viewer use). Local-only; never persisted.
+  useEffect(() => {
+    if (!engineMode || !handStarted || blindLevelSnapshot != null) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
+      if (cancelled) return;
+      const snap = snapshotBlindLevel((data as any)?.current_level ?? null);
+      setBlindLevelSnapshot(snap);
+      setLiveLevelNumber(snap.level_number);
+      setSbAmount(snap.small_blind);
+      setBbAmount(snap.big_blind);
+    })();
+    return () => { cancelled = true; };
+  }, [engineMode, handStarted, blindLevelSnapshot, tournamentId]);
+
+  // Light re-poll (25s) for the level-change banner only — never mutates the snapshot.
+  useEffect(() => {
+    if (!engineMode || !handStarted) return;
+    const id = setInterval(async () => {
+      const { data } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
+      setLiveLevelNumber((data as any)?.current_level?.level_number ?? null);
+    }, 25000);
+    return () => clearInterval(id);
+  }, [engineMode, handStarted, tournamentId]);
+
+  const activeSeatNums = useMemo(() => players.map((p) => p.seat_number), [players]);
+  const { sbSeat: blindSbSeat, bbSeat: blindBbSeat } = useMemo(
+    () => blindSeats(activeSeatNums, buttonSeat),
+    [activeSeatNums, buttonSeat]
+  );
+  const firstActorSeat = useMemo(
+    () => firstPreflopActor(activeSeatNums, buttonSeat),
+    [activeSeatNums, buttonSeat]
+  );
+
   // Operator hand-flow: who is to act + which actions are legal (advisory only).
   const flowInput = useMemo(() => {
     const streetActions = actions.filter((a) => a.street === currentStreet);
@@ -469,6 +521,16 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
   const actorPos = actorPlayer ? positionsBySeat.get(actorPlayer.seat_number) || "" : "";
   const sbPosted = useMemo(() => actions.some((a) => a.action_type === "post_sb"), [actions]);
   const bbPosted = useMemo(() => actions.some((a) => a.action_type === "post_bb"), [actions]);
+  // Blinds are confirmed once SB+BB exist in the persisted actions (refresh-safe)
+  // OR the operator pressed "Xác nhận blind" locally (UX acceleration).
+  const blindsConfirmed = blindsConfirmedLocal || (sbPosted && bbPosted);
+  // The dedicated blind-setup phase replaces the ActionDock while a preflop hand
+  // still owes its blinds (engine mode only).
+  const showBlindSetup =
+    engineMode && handStarted && currentStreet === "preflop" && !blindsConfirmed && players.length >= 2;
+  const isHeadsUp = players.length === 2;
+  const blindLevelMissing = !blindLevelSnapshot || blindLevelSnapshot.level_number == null;
+  const blindLevelChanged = hasLevelChangedDuringHand(blindLevelSnapshot, { level_number: liveLevelNumber });
   const needsPostSB = engineMode
     ? engineActor?.needsPost === "post_sb"
     : currentStreet === "preflop" && !!actorPlayer && actorPos.includes("SB") && !sbPosted;
@@ -602,10 +664,14 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     }
   };
 
-  const handleAction = async (playerId: string, actionType: string) => {
+  const handleAction = async (playerId: string, actionType: string, amountOverride?: number) => {
     const player = players.find((p) => p.player_id === playerId);
     if (!player) return;
     if (isReadOnly) { toast.error("Phiên làm việc đã hết hạn"); return; }
+
+    // Guard 3: amountOverride is honoured ONLY for blind/ante posts (the blind
+    // setup panel passes the level amount). It must never reach bet/raise sizing.
+    const postOverride = actionType.startsWith("post_") ? amountOverride : undefined;
 
     let amount = 0;
     const newPlayers = [...players];
@@ -660,18 +726,22 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
         break;
       }
       case "post_sb": {
-        amount = parseInt(betAmount) || 0;
+        amount = postOverride ?? (parseInt(betAmount) || 0);
         if (amount <= 0) { toast.error("Nhập SB"); return; }
         const actual = Math.min(amount, player.current_stack);
-        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual };
+        // Posting the whole stack as a blind makes the player all-in (skipped for
+        // later action, still eligible for showdown) — handled in the action phase.
+        const allIn = actual >= player.current_stack;
+        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual, is_all_in: allIn };
         amount = actual;
         break;
       }
       case "post_bb": {
-        amount = parseInt(betAmount) || 0;
+        amount = postOverride ?? (parseInt(betAmount) || 0);
         if (amount <= 0) { toast.error("Nhập BB"); return; }
         const actual = Math.min(amount, player.current_stack);
-        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual };
+        const allIn = actual >= player.current_stack;
+        newPlayers[idx] = { ...newPlayers[idx], current_stack: player.current_stack - actual, current_bet: actual, total_bet: player.total_bet + actual, is_all_in: allIn };
         amount = actual;
         break;
       }
@@ -756,6 +826,17 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     }
     handleAction(effectiveActorId, type);
     setSelectedActorId(null);
+  };
+
+  // Blind-setup phase: post a blind with the exact (level/edited) amount via the
+  // existing post path. amountOverride is post-only (Guard 3).
+  const handlePostBlind = (type: "post_sb" | "post_bb", playerId: string, amount: number) => {
+    if (isReadOnly) { toast.error("Phiên làm việc đã hết hạn"); return; }
+    void handleAction(playerId, type, amount);
+  };
+  const handleConfirmBlinds = () => {
+    if (!sbPosted || !bbPosted) { toast.error("Hãy post Small Blind và Big Blind trước khi xác nhận"); return; }
+    setBlindsConfirmedLocal(true);
   };
 
   // Tap a seat: set the button before the hand starts, else select the actor.
@@ -952,6 +1033,9 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
     setUndoStack([]);
     setSelectedActorId(null);
     setSelectedWinners([]);
+    // New hand → re-snapshot the Floor level and require blind confirmation again.
+    setBlindLevelSnapshot(null);
+    setBlindsConfirmedLocal(false);
     setSentCommunityStreets(new Set());
     if (tableId) {
       supabase.rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId }).then(({ data }) => {
@@ -1231,6 +1315,13 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
 
+          {/* Floor level changed mid-hand: this hand keeps its snapshot level. */}
+          {engineMode && blindLevelChanged && (
+            <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-300">
+              Level mới đã bắt đầu. Ván này vẫn dùng Level {blindLevelSnapshot?.level_number}; ván tiếp theo dùng Level {liveLevelNumber}.
+            </div>
+          )}
+
           {/* SEAT RAIL — tap to select the acting player */}
           <SeatRail
             seats={players}
@@ -1241,31 +1332,57 @@ export function HandInputPanel({ tournamentId }: { tournamentId: string }) {
             onTapSeat={handleSeatTap}
           />
 
-          {/* ACTION DOCK — to-act player + keypad + GTO action buttons */}
-          <ActionDock
-            actor={currentStreet === "showdown" ? null : actorPlayer}
-            actorPosition={actorPos}
-            view={actorViewData}
-            betAmount={betAmount}
-            onBetAmountChange={setBetAmount}
-            bigBlind={bigBlind}
-            onAction={handleDockAction}
-            needsPostSB={needsPostSB}
-            needsPostBB={needsPostBB}
-            streetLabel={STREET_LABELS[currentStreet]}
-            nextStreetLabel={nextStreetLabel}
-            onNextStreet={nextStreet}
-            onComplete={completeHand}
-            canComplete={actions.length > 0}
-            onUndo={handleUndo}
-            canUndo={undoStack.length > 0}
-            onReset={resetHand}
-            onVoid={handleVoid}
-            hasVoidTarget={!!(handId || lastHandId)}
-            showActions={currentStreet !== "showdown"}
-            betIsTotal={engineMode}
-            disabled={submitting || isReadOnly}
-          />
+          {/* Engine mode: a dedicated BLIND SETUP phase replaces the ActionDock
+              until SB+BB are posted and confirmed — so blind posting is never run
+              through the normal-action pipeline (which surfaced the all-in error). */}
+          {showBlindSetup ? (
+            <BlindSetupPanel
+              buttonSeat={buttonSeat}
+              sbSeat={blindSbSeat}
+              bbSeat={blindBbSeat}
+              firstActorSeat={firstActorSeat}
+              isHeadsUp={isHeadsUp}
+              players={players}
+              levelNumber={blindLevelSnapshot?.level_number ?? null}
+              ante={blindLevelSnapshot?.ante ?? 0}
+              levelMissing={blindLevelMissing}
+              sbAmount={sbAmount}
+              bbAmount={bbAmount}
+              onSbAmountChange={setSbAmount}
+              onBbAmountChange={setBbAmount}
+              sbPosted={sbPosted}
+              bbPosted={bbPosted}
+              onPost={handlePostBlind}
+              onConfirm={handleConfirmBlinds}
+              disabled={submitting || isReadOnly}
+            />
+          ) : (
+            /* ACTION DOCK — to-act player + keypad + GTO action buttons */
+            <ActionDock
+              actor={currentStreet === "showdown" ? null : actorPlayer}
+              actorPosition={actorPos}
+              view={actorViewData}
+              betAmount={betAmount}
+              onBetAmountChange={setBetAmount}
+              bigBlind={bigBlind}
+              onAction={handleDockAction}
+              needsPostSB={needsPostSB}
+              needsPostBB={needsPostBB}
+              streetLabel={STREET_LABELS[currentStreet]}
+              nextStreetLabel={nextStreetLabel}
+              onNextStreet={nextStreet}
+              onComplete={completeHand}
+              canComplete={actions.length > 0}
+              onUndo={handleUndo}
+              canUndo={undoStack.length > 0}
+              onReset={resetHand}
+              onVoid={handleVoid}
+              hasVoidTarget={!!(handId || lastHandId)}
+              showActions={currentStreet !== "showdown"}
+              betIsTotal={engineMode}
+              disabled={submitting || isReadOnly}
+            />
+          )}
 
           {/* ACTION LOG */}
           <div className="bg-card border border-border/30 rounded-lg p-2.5 shadow-sm max-h-60 flex flex-col">

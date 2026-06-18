@@ -1,0 +1,182 @@
+// Dedicated BLIND SETUP phase for Tracker Engine Mode (Phase 1, Layer 1).
+//
+// This is shown INSTEAD of the ActionDock while a preflop hand still owes its
+// blinds, so blind posting is never routed through the normal-action pipeline
+// (which is what surfaced "Người chơi đã all-in..." during setup). It reads the
+// Floor blind level (snapshotted by the parent) and lets the operator post
+// SB/BB and confirm. Presentational only — posting/confirm are parent callbacks.
+//
+// Ante is DISPLAY-ONLY in Layer 1: the client action path has no working
+// `post_ante` case yet, so we never post it here (deferred, not invented).
+
+import { Input } from "@/components/ui/input";
+import { formatStack } from "./format";
+
+export interface BlindSetupPlayer {
+  player_id: string;
+  seat_number: number;
+  display_name: string;
+  current_stack: number;
+}
+
+interface BlindSetupPanelProps {
+  buttonSeat: number;
+  sbSeat: number | null;
+  bbSeat: number | null;
+  /** First voluntary actor after blinds (UTG / heads-up button-SB) — display hint. */
+  firstActorSeat: number | null;
+  isHeadsUp: boolean;
+  players: BlindSetupPlayer[];
+  levelNumber: number | null;
+  ante: number;
+  /** No blind level from Floor → show a manual-override warning. */
+  levelMissing: boolean;
+  sbAmount: number;
+  bbAmount: number;
+  onSbAmountChange: (n: number) => void;
+  onBbAmountChange: (n: number) => void;
+  sbPosted: boolean;
+  bbPosted: boolean;
+  onPost: (type: "post_sb" | "post_bb", playerId: string, amount: number) => void;
+  onConfirm: () => void;
+  disabled?: boolean;
+}
+
+function seatLabel(players: BlindSetupPlayer[], seat: number | null): string {
+  if (seat == null) return "—";
+  const p = players.find((x) => x.seat_number === seat);
+  return p ? `Ghế ${seat} · ${p.display_name}` : `Ghế ${seat}`;
+}
+
+function BlindRow({
+  role,
+  seat,
+  player,
+  amount,
+  onAmountChange,
+  posted,
+  onPost,
+  disabled,
+}: {
+  role: "post_sb" | "post_bb";
+  seat: number | null;
+  player: BlindSetupPlayer | undefined;
+  amount: number;
+  onAmountChange: (n: number) => void;
+  posted: boolean;
+  onPost: (type: "post_sb" | "post_bb", playerId: string, amount: number) => void;
+  disabled?: boolean;
+}) {
+  const label = role === "post_sb" ? "Small Blind" : "Big Blind";
+  const isAllIn = !!player && amount >= player.current_stack && player.current_stack > 0;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/50 p-2">
+      <div className="w-24 shrink-0">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-300">{label}</div>
+        <div className="text-[11px] text-muted-foreground truncate">
+          {player ? `Ghế ${player.seat_number} · ${player.display_name}` : seat != null ? `Ghế ${seat}` : "—"}
+        </div>
+      </div>
+      <Input
+        type="number"
+        className="h-8 w-24 text-sm font-mono text-right"
+        value={amount}
+        disabled={disabled || posted}
+        onChange={(e) => onAmountChange(Number(e.target.value) || 0)}
+      />
+      <div className="flex-1 text-[10px] text-muted-foreground">
+        {player ? <>Stack {formatStack(player.current_stack)}</> : null}
+        {isAllIn && <span className="ml-1 font-bold text-red-400">(All-in)</span>}
+      </div>
+      {posted ? (
+        <span className="text-[11px] font-bold text-emerald-400">✓ Đã post</span>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled || !player || amount <= 0}
+          onClick={() => player && onPost(role, player.player_id, amount)}
+          className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-bold text-black transition active:scale-[0.98] disabled:opacity-40"
+        >
+          Post {role === "post_sb" ? "SB" : "BB"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function BlindSetupPanel({
+  buttonSeat,
+  sbSeat,
+  bbSeat,
+  firstActorSeat,
+  isHeadsUp,
+  players,
+  levelNumber,
+  ante,
+  levelMissing,
+  sbAmount,
+  bbAmount,
+  onSbAmountChange,
+  onBbAmountChange,
+  sbPosted,
+  bbPosted,
+  onPost,
+  onConfirm,
+  disabled,
+}: BlindSetupPanelProps) {
+  const sbPlayer = players.find((p) => p.seat_number === sbSeat);
+  const bbPlayer = players.find((p) => p.seat_number === bbSeat);
+  const canConfirm = sbPosted && bbPosted;
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-card p-3.5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-amber-300">Thiết lập blind</h3>
+        <div className="text-xs text-muted-foreground">
+          {levelNumber != null ? `Level ${levelNumber}` : "Manual"}
+          {ante > 0 && <span className="ml-2">· Ante {formatStack(ante)}</span>}
+        </div>
+      </div>
+
+      {levelMissing && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+          ⚠ Chưa có level/blind từ Floor — nhập tay tạm thời (manual override). Cần setup blind structure ở Floor để tự lấy SB/BB.
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <span>Button: <strong className="text-foreground">{seatLabel(players, buttonSeat)}</strong></span>
+        <span>SB: <strong className="text-emerald-300">{seatLabel(players, sbSeat)}</strong></span>
+        <span>BB: <strong className="text-emerald-300">{seatLabel(players, bbSeat)}</strong></span>
+      </div>
+
+      <div className="space-y-1.5">
+        <BlindRow role="post_sb" seat={sbSeat} player={sbPlayer} amount={sbAmount} onAmountChange={onSbAmountChange} posted={sbPosted} onPost={onPost} disabled={disabled} />
+        <BlindRow role="post_bb" seat={bbSeat} player={bbPlayer} amount={bbAmount} onAmountChange={onBbAmountChange} posted={bbPosted} onPost={onPost} disabled={disabled} />
+      </div>
+
+      {ante > 0 && (
+        <div className="text-[10px] text-muted-foreground">
+          Ante hiển thị theo level ({formatStack(ante)}); thao tác post ante sẽ bổ sung sau.
+        </div>
+      )}
+
+      <div className="text-[11px] text-emerald-300/90">
+        {isHeadsUp
+          ? "Heads-up: Button là Small Blind và hành động trước preflop."
+          : firstActorSeat != null
+            ? `Sau khi xác nhận: UTG (ghế ${firstActorSeat}) hành động trước.`
+            : "Sau khi xác nhận: UTG hành động trước."}
+      </div>
+
+      <button
+        type="button"
+        disabled={disabled || !canConfirm}
+        onClick={onConfirm}
+        className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-black transition active:scale-[0.99] disabled:opacity-40"
+      >
+        Xác nhận blind
+      </button>
+    </div>
+  );
+}
