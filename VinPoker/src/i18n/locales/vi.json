@@ -2941,5 +2941,111 @@
       "multiTable": "Giải có nhiều bàn — chọn bàn ở trên để xem live.",
       "waiting": "Chờ dealer bắt đầu hand..."
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "Hành trình Poker của bạn",
+      "title": "Poker IQ Drill",
+      "subtitle": "20 tình huống · ~5 phút · kết quả riêng tư của bạn",
+      "start": "Bắt đầu 20 hand",
+      "note": "Bài drill cho bạn hồ sơ tạm tính ngay, kể cả khi chưa có lịch sử giải.",
+      "back": "Quay lại"
+    },
+    "play": {
+      "progress": "Hand {{n}}/{{total}}",
+      "villain": "Đối thủ",
+      "stack": "Stack",
+      "confidenceQ": "Bạn tự tin mức nào?",
+      "next": "Tiếp theo",
+      "finish": "Xem kết quả",
+      "choosePrompt": "Bạn sẽ làm gì?"
+    },
+    "result": {
+      "kicker": "Hành trình Poker của bạn",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "Tạm tính",
+      "private": "Riêng tư",
+      "privateLong": "Riêng tư · chỉ bạn thấy điểm yếu và lộ trình luyện",
+      "profileLabel": "Hồ sơ tạm tính của bạn",
+      "scoreLabel": "Poker IQ",
+      "confidence": "Độ tin cậy: {{level}}",
+      "interpretation": "Bạn có nền tảng kỷ luật tốt và hợp với giải deepstack field vừa.",
+      "nextHook": "Điểm cần cải thiện để tiến gần A-: xử lý tốt hơn khi gặp đối thủ aggro.",
+      "whyTitle": "Vì sao hệ thống nói vậy",
+      "weakest": "Yếu nhất: {{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "Điểm mạnh",
+      "weaknessesTitle": "Cần cải thiện",
+      "trainingKicker": "Lộ trình luyện",
+      "trainingGoal": "Mục tiêu tiếp theo: A-",
+      "step1": "Hoàn thành Drill {{drill}}",
+      "step2": "Chơi 2 giải Deepstack field vừa",
+      "step3": "Mở khóa Verified Profile",
+      "cta": "Luyện {{drill}} để mở khóa A-",
+      "ctaSub": "Nhóm này đang kéo điểm của bạn xuống nhiều nhất.",
+      "eventsTitle": "Loại giải phù hợp",
+      "eventAvoidPrefix": "Tạm tránh",
+      "outlookTitle": "Viễn cảnh 4 / 8 / 12 giải — đang khóa",
+      "outlookIntro": "Chơi vài giải thật tại VinPoker để mở khóa:",
+      "outlookItm": "ITM outlook",
+      "outlookFt": "Final table outlook",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "Verified Profile",
+      "disclaimer": "Đây là mô phỏng dựa trên dữ liệu lịch sử/bài drill, không phải cam kết kết quả. Poker có biến động lớn; hãy chơi trong giới hạn bankroll của bạn.",
+      "draftRibbon": "NỘI DUNG NHÁP — chưa được duyệt",
+      "retake": "Làm lại drill"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "Quá tight BTN/CO",
+      "overfold_vs_aggro": "Over-fold trước aggro",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "Call rộng OOP",
+      "spew_vs_nit": "Spew trước nit"
+    },
+    "strength": {
+      "preflop_discipline": "Kỷ luật preflop",
+      "read_nit": "Đọc nit tốt",
+      "low_spew": "Ít spew",
+      "position_aware": "Tận dụng vị trí",
+      "icm_aware": "Nhạy ICM"
+    },
+    "event": {
+      "deepstack_mid_field": "Deepstack, field vừa",
+      "deepstack_small_field": "Deepstack, field nhỏ",
+      "slow_structure": "Cấu trúc chậm",
+      "turbo_short_stack": "Turbo short-stack"
+    },
+    "eventReason": {
+      "fit": "Hợp phong cách {{style}} và khả năng kiểm soát rủi ro.",
+      "avoid": "Bạn cần luyện thêm các spot resteal 15–25BB."
+    },
+    "insight": {
+      "preflop_discipline": "bạn vào pot hơi rộng ở thế bất lợi.",
+      "position_steal": "bạn bỏ lỡ nhiều spot steal ở vị trí muộn.",
+      "vs_aggro": "bạn đang fold hơi nhiều khi bị gây áp lực.",
+      "vs_nit_passive": "bạn chưa khai thác hết người chơi chặt/thụ động.",
+      "tournament_pressure": "bạn chưa tối ưu spot ICM/short-stack."
+    },
+    "confLevel": {
+      "low": "Thấp",
+      "medium": "Trung bình",
+      "high": "Cao"
+    }
   }
 }

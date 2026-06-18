@@ -2695,5 +2695,111 @@
       "multiTable": "本锦标赛有多张牌桌 — 请在上方选择一张牌桌观看直播。",
       "waiting": "等待荷官开始这手牌……"
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "你的扑克旅程",
+      "title": "Poker IQ Drill",
+      "subtitle": "20 个情境 · 约5分钟 · 你的私密结果",
+      "start": "开始 20 手",
+      "note": "即使没有比赛记录，测试也会立即给你一个临时档案。",
+      "back": "返回"
+    },
+    "play": {
+      "progress": "第 {{n}}/{{total}} 手",
+      "villain": "对手",
+      "stack": "筹码",
+      "confidenceQ": "你有多大把握？",
+      "next": "下一题",
+      "finish": "查看结果",
+      "choosePrompt": "你会怎么做？"
+    },
+    "result": {
+      "kicker": "你的扑克旅程",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "临时",
+      "private": "私密",
+      "privateLong": "私密 · 只有你能看到弱点和训练路径",
+      "profileLabel": "你的临时档案",
+      "scoreLabel": "Poker IQ",
+      "confidence": "可信度：{{level}}",
+      "interpretation": "你的基础纪律不错，适合中等规模的深筹码赛。",
+      "nextHook": "要更接近 A-：更好地应对激进对手。",
+      "whyTitle": "系统为何这样判断",
+      "weakest": "最弱：{{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "优势",
+      "weaknessesTitle": "待提升",
+      "trainingKicker": "训练路径",
+      "trainingGoal": "下一目标：A-",
+      "step1": "完成 {{drill}} 训练",
+      "step2": "打 2 场中等规模深筹码赛",
+      "step3": "解锁已验证档案",
+      "cta": "训练 {{drill}} 以解锁 A-",
+      "ctaSub": "这一项最拖累你的分数。",
+      "eventsTitle": "适合你的赛事",
+      "eventAvoidPrefix": "暂时避免",
+      "outlookTitle": "4 / 8 / 12 场赛事展望 — 已锁定",
+      "outlookIntro": "在 VinPoker 打几场真实赛事以解锁：",
+      "outlookItm": "ITM 展望",
+      "outlookFt": "决赛桌展望",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "已验证档案",
+      "disclaimer": "这是基于历史/训练数据的模拟，并非结果承诺。扑克波动很大；请在自己的资金范围内游戏。",
+      "draftRibbon": "草稿内容 — 未经审核",
+      "retake": "重新测试"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "BTN/CO 过紧",
+      "overfold_vs_aggro": "面对激进过度弃牌",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "不利位置跟注过宽",
+      "spew_vs_nit": "对紧手乱投"
+    },
+    "strength": {
+      "preflop_discipline": "翻前纪律",
+      "read_nit": "善读紧手",
+      "low_spew": "少失误",
+      "position_aware": "善用位置",
+      "icm_aware": "ICM 敏感"
+    },
+    "event": {
+      "deepstack_mid_field": "深筹码，中等规模",
+      "deepstack_small_field": "深筹码，小规模",
+      "slow_structure": "慢结构",
+      "turbo_short_stack": "快速短筹码"
+    },
+    "eventReason": {
+      "fit": "契合你的 {{style}} 风格与风险控制。",
+      "avoid": "你需要更多 resteal 15–25BB 的练习。"
+    },
+    "insight": {
+      "preflop_discipline": "你在不利位置入池略宽。",
+      "position_steal": "你在后位错过很多偷盲机会。",
+      "vs_aggro": "你在受压时弃牌偏多。",
+      "vs_nit_passive": "你对紧/被动玩家利用不足。",
+      "tournament_pressure": "你在 ICM/短筹码情境上还不够优化。"
+    },
+    "confLevel": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
   }
 }

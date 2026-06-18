@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { LogOut, User as UserIcon, Loader2, Shield, Building2, Users, Trophy, Download, BarChart3, RefreshCw, Activity, Database } from "lucide-react";
+import { LogOut, User as UserIcon, Loader2, Shield, Building2, Users, Trophy, Download, BarChart3, RefreshCw, Activity, Database, Sparkles, ChevronRight } from "lucide-react";
 import { checkForUpdateNow } from "@/lib/registerSW";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -362,6 +362,22 @@ const Account = () => {
         <div className="mt-4">
           <PlayerCheckInQR userId={user.id} displayName={profile?.display_name} />
         </div>
+
+        {/* Lightweight entry into the Poker IQ Drill (focused full-screen flow) */}
+        <button
+          type="button"
+          onClick={() => nav("/poker-iq")}
+          className="mt-4 flex w-full items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-left transition-colors hover:bg-primary/15"
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">{t("pokerDrill.intro.title")}</span>
+              <span className="block truncate text-xs text-muted-foreground">{t("pokerDrill.intro.subtitle")}</span>
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        </button>
 
         {isClubScope && (
           <div className="flex gap-2 mt-4">

@@ -2695,5 +2695,111 @@
       "multiTable": "ทัวร์นาเมนต์นี้มีหลายโต๊ะ — เลือกโต๊ะด้านบนเพื่อชมสด",
       "waiting": "กำลังรอดีลเลอร์เริ่มแจกไพ่..."
     }
+  },
+  "pokerDrill": {
+    "intro": {
+      "kicker": "เส้นทางโป๊กเกอร์ของคุณ",
+      "title": "Poker IQ Drill",
+      "subtitle": "20 สถานการณ์ · ~5 นาที · ผลลัพธ์ส่วนตัวของคุณ",
+      "start": "เริ่ม 20 มือ",
+      "note": "แบบฝึกให้โปรไฟล์ชั่วคราวทันที แม้ยังไม่มีประวัติการแข่งขัน",
+      "back": "กลับ"
+    },
+    "play": {
+      "progress": "มือ {{n}}/{{total}}",
+      "villain": "คู่ต่อสู้",
+      "stack": "สแต็ก",
+      "confidenceQ": "คุณมั่นใจแค่ไหน?",
+      "next": "ถัดไป",
+      "finish": "ดูผลลัพธ์",
+      "choosePrompt": "คุณจะทำอย่างไร?"
+    },
+    "result": {
+      "kicker": "เส้นทางโป๊กเกอร์ของคุณ",
+      "title": "Initial Poker IQ Snapshot",
+      "provisional": "ชั่วคราว",
+      "private": "ส่วนตัว",
+      "privateLong": "ส่วนตัว · มีเพียงคุณที่เห็นจุดอ่อนและเส้นทางฝึก",
+      "profileLabel": "โปรไฟล์ชั่วคราวของคุณ",
+      "scoreLabel": "Poker IQ",
+      "confidence": "ความเชื่อมั่น: {{level}}",
+      "interpretation": "คุณมีพื้นฐานที่มีวินัยและเหมาะกับดีพสแต็กสนามขนาดกลาง",
+      "nextHook": "เพื่อเข้าใกล้ A-: รับมือกับคู่ต่อสู้ที่ดุดันให้ดีขึ้น",
+      "whyTitle": "ทำไมระบบจึงบอกเช่นนี้",
+      "weakest": "อ่อนที่สุด: {{category}} {{score}} — {{insight}}",
+      "strengthsTitle": "จุดแข็ง",
+      "weaknessesTitle": "ควรพัฒนา",
+      "trainingKicker": "เส้นทางฝึก",
+      "trainingGoal": "เป้าหมายถัดไป: A-",
+      "step1": "ทำแบบฝึก {{drill}} ให้เสร็จ",
+      "step2": "เล่นดีพสแต็กสนามกลาง 2 รายการ",
+      "step3": "ปลดล็อกโปรไฟล์ที่ยืนยันแล้ว",
+      "cta": "ฝึก {{drill}} เพื่อปลดล็อก A-",
+      "ctaSub": "ด้านนี้กำลังดึงคะแนนของคุณลงมากที่สุด",
+      "eventsTitle": "รายการที่เหมาะกับคุณ",
+      "eventAvoidPrefix": "เลี่ยงไว้ก่อน",
+      "outlookTitle": "แนวโน้ม 4 / 8 / 12 รายการ — ล็อกอยู่",
+      "outlookIntro": "เล่นรายการจริงที่ VinPoker สักสองสามรายการเพื่อปลดล็อก:",
+      "outlookItm": "แนวโน้ม ITM",
+      "outlookFt": "แนวโน้มไฟนอลเทเบิล",
+      "outlookLadder": "Dream Ladder",
+      "outlookVerified": "โปรไฟล์ที่ยืนยันแล้ว",
+      "disclaimer": "นี่คือการจำลองจากข้อมูลย้อนหลัง/แบบฝึก ไม่ใช่การรับประกันผลลัพธ์ โป๊กเกอร์มีความผันผวนสูง โปรดเล่นภายในขีดจำกัดแบงก์โรลของคุณ",
+      "draftRibbon": "เนื้อหาฉบับร่าง — ยังไม่ตรวจ",
+      "retake": "ทำแบบฝึกอีกครั้ง"
+    },
+    "category": {
+      "preflop_discipline": "Preflop discipline",
+      "position_steal": "Position & steal",
+      "vs_aggro": "Vs aggro",
+      "vs_nit_passive": "Vs nit/passive",
+      "tournament_pressure": "Tournament pressure"
+    },
+    "archetype": {
+      "tight_solid": "Tight Solid",
+      "aggressive_builder": "Aggressive Builder",
+      "final_table_hunter": "Final Table Hunter",
+      "high_variance_attacker": "High Variance Attacker",
+      "passive_caller": "Passive Caller",
+      "bubble_survivor": "Bubble Survivor",
+      "rising_grinder": "Rising Grinder",
+      "short_stack_specialist": "Short-stack Specialist"
+    },
+    "leak": {
+      "tight_btn_co": "ตึงเกินไปที่ BTN/CO",
+      "overfold_vs_aggro": "พับมากเกินไปเมื่อเจอคนดุ",
+      "resteal_15_25": "Resteal 15–25BB",
+      "overcall_oop": "คอลกว้างนอกตำแหน่ง",
+      "spew_vs_nit": "ทุ่มเกินเหตุกับคนเล่นตึง"
+    },
+    "strength": {
+      "preflop_discipline": "วินัยพรีฟล็อป",
+      "read_nit": "อ่านคนเล่นตึงได้ดี",
+      "low_spew": "ผิดพลาดน้อย",
+      "position_aware": "ใช้ตำแหน่งเป็น",
+      "icm_aware": "เข้าใจ ICM"
+    },
+    "event": {
+      "deepstack_mid_field": "Deepstack, mid field",
+      "deepstack_small_field": "Deepstack, small field",
+      "slow_structure": "Slow structure",
+      "turbo_short_stack": "Turbo short-stack"
+    },
+    "eventReason": {
+      "fit": "เข้ากับสไตล์ {{style}} และการคุมความเสี่ยงของคุณ",
+      "avoid": "คุณต้องฝึกสปอต resteal 15–25BB เพิ่ม"
+    },
+    "insight": {
+      "preflop_discipline": "คุณเข้าพอตกว้างไปเล็กน้อยในตำแหน่งเสียเปรียบ",
+      "position_steal": "คุณพลาดสปอตขโมยบ่อยในตำแหน่งท้าย",
+      "vs_aggro": "คุณพับมากไปหน่อยเมื่อโดนกดดัน",
+      "vs_nit_passive": "คุณยังใช้ประโยชน์จากคนเล่นตึง/เฉื่อยไม่เต็มที่",
+      "tournament_pressure": "คุณยังไม่ปรับสปอต ICM/ชอร์ตสแต็กให้เหมาะ"
+    },
+    "confLevel": {
+      "low": "ต่ำ",
+      "medium": "ปานกลาง",
+      "high": "สูง"
+    }
   }
 }

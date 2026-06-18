@@ -85,6 +85,8 @@ const TournamentDisplay = lazy(() => import("./pages/TournamentDisplay"));
 // GE-2D online-poker shell (dark; gated by FEATURES.onlinePoker)
 const OnlinePoker = lazy(() => import("./pages/OnlinePoker"));
 const OnlinePokerTable = lazy(() => import("./pages/OnlinePokerTable"));
+// Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
+const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
 const DealerAppShell = lazy(() => import("./components/dealer-app/DealerAppShell"));
 const DealerHome = lazy(() => import("./pages/dealer/DealerHome"));
@@ -142,6 +144,8 @@ const App = () => (
               <Route path="/tv/pair" element={<TvPair />} />
               <Route path="/tv/:tournamentId" element={<TournamentTv />} />
               <Route path="/display/:displayToken" element={<TournamentDisplay />} />
+              {/* Poker IQ Drill — focused full-screen flow, hides global nav chrome */}
+              <Route path="/poker-iq" element={<PokerIQ />} />
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}
               <Route element={<DealerAppShell />}>
