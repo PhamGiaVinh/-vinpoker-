@@ -41,6 +41,31 @@ export interface PublicSeatView {
   isToAct?: boolean;
 }
 
+/** A single (main or side) pot award — mirrors the server wire `WirePotAward`. */
+export interface PublicPotAward {
+  potIndex: number;
+  /** chip string */
+  amount: string;
+  /** seat numbers that won this pot (split = more than one) */
+  winners: number[];
+}
+
+/**
+ * Settlement summary for a COMPLETED hand — the server-authoritative result the
+ * client renders (it never computes this). Mirrors the wire `WireHandResult`; the
+ * client only reads winner / pot / refund to announce the outcome.
+ */
+export interface PublicHandResult {
+  endedBy: 'fold' | 'showdown';
+  /** chip string — total chips awarded this hand */
+  potTotal: string;
+  potAwards: PublicPotAward[];
+  /** seat number (object key) -> chips won this hand */
+  payouts: Record<number, string>;
+  /** uncalled top returned to its owner before any award (absent if none) */
+  refund?: { seat: number; amount: string };
+}
+
 export interface PublicHandView {
   handId: string;
   tableId: string;
@@ -54,6 +79,8 @@ export interface PublicHandView {
   buttonSeat: number;
   status: HandStatus;
   seats: PublicSeatView[];
+  /** Server settlement summary — present once the hand is complete. */
+  result?: PublicHandResult;
   /** PRIVATE overlay: the caller's OWN hole cards. Never another seat's. */
   myHoleCards?: string[];
   mySeat?: number;

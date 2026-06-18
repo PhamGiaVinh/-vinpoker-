@@ -377,6 +377,10 @@ export function wirePublicToView(
     buttonSeat: wire.buttonSeat,
     status: wire.status,
     seats,
+    // Carry the server's settlement summary so the client can announce the
+    // winner / pot at showdown. The wire shape is structurally identical to
+    // PublicHandResult; the client never recomputes it.
+    ...(wire.result ? { result: wire.result } : {}),
     ...(priv ? { mySeat: priv.mySeat, myHoleCards: [...priv.myHoleCards] } : {}),
   };
 }
