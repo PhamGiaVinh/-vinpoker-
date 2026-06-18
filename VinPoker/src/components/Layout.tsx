@@ -267,6 +267,12 @@ export const Layout = () => {
                       {t("layout.finance")}
                     </DropdownMenuItem>
                   )}
+                  {(isClubAdmin || isClubOwner) && FEATURES.clubSeriesIntelligence && (
+                    <DropdownMenuItem onClick={() => nav("/club/admin/series-intelligence")} className="gap-2.5 cursor-pointer">
+                      <Sparkles className="w-4 h-4" />
+                      Trí tuệ vận hành Series
+                    </DropdownMenuItem>
+                  )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
                       admins/owners. Operator items above stay role-gated, so a pure
                       dealer sees only this one. */}

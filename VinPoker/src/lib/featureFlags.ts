@@ -237,5 +237,5 @@ export const FEATURES = {
    * it directly (preview) and shows a small "internal demo" note. Flip to true to
    * surface the card for the series-owner demo.
    */
-  clubSeriesIntelligence: false,
+  clubSeriesIntelligence: true,
 } as const;
