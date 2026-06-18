@@ -122,3 +122,62 @@ ownership-check guard at the top of every state-changing pass (source-only first
 Next: A0 proceeds as outcome-replay KPIs (mode 1, after the baseline probe runs) + synthetic
 harness (mode 2) + a thin forward decision-trace slice (mode 3, folded into C1/C3). No scorer code
 (A2) is touched until the A0 baseline is captured, Decision 1 is locked (done), and C1 has shipped.
+
+## 6. FROZEN BASELINE (probe run 2026-06-18) + fidelity corrections
+
+Baseline probe (`scripts/diagnostics/dealer_swing_baseline_probe.mjs`, PR #340) ran read-only over
+the last 30 days. Headline + the corrections it forced on A0a.
+
+### 6.1 Headline — the system is now in a HEALTHY regime
+
+Overdue exposure (club `22222222`, completed swings with `swing_due_at`):
+
+| Day | Completed swings | avg overdue when late | max overdue | late >5min | late >15min |
+|---|---|---|---|---|---|
+| 06-18 | 443 | 1.1m | 25.0m | 14 | 3 |
+| 06-17 | 272 | 0.8m | 6.0m | 3 | 0 |
+| 06-16 | 443 | 0.7m | 1.1m | 0 | 0 |
+| 06-15 | 684 | 2.3m | 66.1m | 64 | 18 |
+| 06-13 | 454 | 10.6m | 31.1m | 160 | 150 |
+| 06-09 | 629 | 23.3m | 31.0m | 89 | 74 |
+| 06-06 | 155 | 59.0m | 61.1m | 12 | 12 |
+| 06-05 | 195 | **3390m** | **8232m** | 167 | 160 |
+| 06-01..04 | — | 65–340m | 380–2013m | high | high |
+
+Recent stable window (06-16→06-18): 1158 swings, only **3 late >15min (0.26%)**, max overdue ≤25m.
+The chaotic tail (early June: avg-overdue in the hundreds–thousands of minutes, max 8232m) is the
+**pre-rotation-scheduler + orphan-freeze era** — exactly the class fixed by #299/#312/#314/#317 +
+the forward scheduler. **Baseline for A2 must be anchored on the post-fix stable window, not the
+pre-fix tail** (else any change looks like a massive improvement for the wrong reason).
+
+### 6.2 Three fidelity corrections (these change A0b/A2 plumbing)
+
+1. **`swing_audit_logs` is SPARSE and uses different `action` labels than assumed.** Logged
+   actions/day = 1–123 while `dealer_assignments` completed/day = 234–684 → the audit log captures
+   only a fraction of swings, and `action='swing_success'`/`'swing_no_dealer'` matched **0 rows**
+   (the real labels differ). → **Outcome-replay swing VOLUME must come from `dealer_assignments`
+   (the complete record), NOT `swing_audit_logs`.** The probe must be re-run with a `distinct
+   action` query to learn the real labels.
+2. **Manual-override rate IS classifiable** via `triggered_by`: auto = `system` (415) + `system_trigger`
+   (21) = 436; manual = two operator UUIDs `6c320d89…` (96, =vbacker) + `e7066175…` (6, =athena) =
+   102. Logged-event manual share ≈ **19%** (proxy only — audit log is sparse).
+3. **Fairness query was polluted by un-released rows.** `coalesce(released_at, now())` produced
+   impossible ~40,000-min "sessions" on orphan-era days (06-09→06-12) because never-released
+   assignments count to `now()`. Clean recent days: avg ~460–510 min/dealer, stddev ~195–233
+   (CV ~40%). → **Fairness reconstruction must filter `released_at IS NOT NULL` (completed sessions)
+   and/or cap session length.**
+
+Also: `pre_announce_jobs` and `club_processing_locks` queries returned `[]` — pre_announce likely
+uses a different timestamp column (or rows are deleted post-send), and locks are transient (empty at
+the probe instant). The empty `club_processing_locks` confirms **no reclaim history exists today →
+B2 must ADD reclaim observability**, it cannot be baselined from current data.
+
+### 6.3 Baseline status
+
+- **FROZEN (usable):** overdue exposure (EXACT, from `dealer_assignments`); post-fix stable-window
+  target = late>15min ≈ 0.26%, max overdue ≤25m. Manual-override proxy ≈19%.
+- **PENDING a corrected re-run (optional, non-blocking for A1):** real `action` labels; clean
+  fairness (released_at-filtered); pre_announce status (correct timestamp column). The probe queries
+  are corrected in the same PR as this freeze; a single owner-triggered re-run captures them.
+- A1 (canonical config consolidation, frontend/shared, no behavior change) does **not** depend on
+  the pending items and may proceed in parallel.
