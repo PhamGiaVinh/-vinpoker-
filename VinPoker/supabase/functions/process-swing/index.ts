@@ -498,6 +498,41 @@ async function bulkClearDealerPreAssignedFields(
   return success;
 }
 
+// ─── B2.2b lock fencing — ownership guard ───────────────────────────────────
+// Thrown when this run no longer holds the club lock (lease expired → reclaimed by
+// another runner). Caught per-club → graceful abort of remaining passes + release.
+class LockOwnershipLost extends Error {
+  constructor(clubId: string) {
+    super(`lock ownership lost for club ${clubId}`);
+    this.name = "LockOwnershipLost";
+  }
+}
+
+// Heartbeat-extend the club lease (B2.2b). Throws LockOwnershipLost if we no longer own
+// it (token mismatch / lease already expired = reclaimed). Transient RPC errors are logged
+// but NON-fatal (keep working with the lease we hold). lockToken null → no-op (legacy path).
+async function ensureLockOwnership(
+  admin: any,
+  clubId: string,
+  lockToken: string | null,
+  leaseSeconds: number,
+): Promise<void> {
+  if (!lockToken) return;
+  const { data, error } = await admin.rpc("extend_club_lock_lease", {
+    p_club_id: clubId,
+    p_lock_token: lockToken,
+    p_timeout_seconds: leaseSeconds,
+  });
+  if (error) {
+    console.warn(`[process-swing] extend_club_lock_lease error club=${clubId} (non-fatal):`, error.message);
+    return;
+  }
+  if (data !== true) {
+    console.warn(`[process-swing] \U0001F512 lock ownership LOST club=${clubId} — lease reclaimed; aborting remaining passes`);
+    throw new LockOwnershipLost(clubId);
+  }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -533,6 +568,8 @@ Deno.serve(async (req: Request) => {
     } = body;
 
     const startTime = Date.now();
+    // B2.2b: per-invocation owner id stamped on the fenced club lock (observability).
+    const runOwnerId = `process-swing:${crypto.randomUUID()}`;
     const allClubConfigs = await fetchAllClubConfigs(admin);
 
     let clubIds: string[] = [];
@@ -561,6 +598,7 @@ Deno.serve(async (req: Request) => {
     // ═══════════════════════════════════════════════════════════════════════════
     for (const cid of clubIds) {
       let lockAcquired = false;
+      let lockToken: string | null = null;  // B2.2b: fencing token from the fenced acquire
 
       // ── B2.1: scale the lock lease by active-table count ─────────
       // Worst-case runs (80–200s) can exceed the old hardcoded 120s lease, which the
@@ -583,9 +621,10 @@ Deno.serve(async (req: Request) => {
 
       // ── Acquire club processing lock ────────────────────────────
       try {
-        const { data: lockResult, error: lockErr } = await admin.rpc("try_acquire_club_lock", {
+        const { data: lockResult, error: lockErr } = await admin.rpc("try_acquire_club_lock_fenced", {
           p_club_id: cid,
           p_timeout_seconds: lockTimeoutSec,
+          p_owner_id: runOwnerId,
         });
 
         if (lockErr) {
@@ -607,6 +646,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
+        lockToken = (lockResult as { lock_token?: string | null }).lock_token ?? null;
         lockAcquired = true;
       } catch (err) {
         console.error(`[process-swing] \u274C Lock acquisition exception for ${cid}:`, err);
@@ -1300,6 +1340,8 @@ Deno.serve(async (req: Request) => {
           console.error("[Pass 0e] Meal break auto-end error:", pass0eErr instanceof Error ? pass0eErr.message : pass0eErr);
         }
 
+        // B2.2b: still hold the lock before mutating? (lease reclaimed → abort)
+        await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -1359,6 +1401,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);  // B2.2b ownership guard
         // ── PASS 1b — Three-tier circuit breaker for stale pre-assign cleanup ──
         // Tier 3 (critical): pre-assign overdue ≥4h → force-release + alert
         // Tier 1+2 (stale):   pre-assign overdue ≥60min + assignment past due → cleanup
@@ -1954,6 +1997,7 @@ if (tier2Count > 0) {
           requiredGameTypes: required_game_types,
         };
 
+        await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);  // B2.2b ownership guard
         // ── PASS R — Forward Rotation Scheduler ─────────────────────────
         // Reconcile/adopt → snapshot → honest OT marking → solve (R1-R6) →
         // persist schedule → CHỐT due slots + per-tournament Telegram batch.
@@ -2070,6 +2114,8 @@ if (tier2Count > 0) {
         });
         console.log(`[process-swing] Club ${cid} swing duration:`, swingDurResult.durationRationale);
 
+        // B2.2b: final + most important ownership gate before executing real swings.
+        await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);
         // ── PASS 3 — Execute swings at T-0 ────────────────────────────────
         const nowPlusBuf = new Date(Date.now() + SWING_WINDOW_BUFFER_MINUTES * 60 * 1000).toISOString();
         const now = new Date().toISOString();
@@ -3873,15 +3919,27 @@ if (tier2Count > 0) {
         clubsProcessed++; // Track successful club processing
 
       } catch (err) {
-        clubsSkippedError++;
-        console.error(
-          `[process-swing] \u274C Unhandled error for club ${cid}:`,
-          err instanceof Error ? err.stack ?? err.message : err
-        );
+        if (err instanceof LockOwnershipLost) {
+          // B2.2b: graceful abort \u2014 another runner reclaimed the lease. NOT an error.
+          console.warn(`[process-swing] club ${cid}: ${err.message} \u2014 remaining passes aborted, releasing.`);
+        } else {
+          clubsSkippedError++;
+          console.error(
+            `[process-swing] \u274C Unhandled error for club ${cid}:`,
+            err instanceof Error ? err.stack ?? err.message : err
+          );
+        }
       } finally {
         if (lockAcquired) {
           try {
-            await admin.rpc("release_club_lock", { p_club_id: cid });
+            // B2.2b: token-scoped release \u2014 only deletes OUR lock (fixes FM-2: an overran
+            // worker can no longer delete a successor's lock). Falls back to the legacy
+            // unconditional release only if somehow no token (defensive; should not happen).
+            if (lockToken) {
+              await admin.rpc("release_club_lock_if_owner", { p_club_id: cid, p_lock_token: lockToken });
+            } else {
+              await admin.rpc("release_club_lock", { p_club_id: cid });
+            }
           } catch (releaseErr) {
             console.error(`[process-swing] \u274C Lock release failed for ${cid}:`, releaseErr);
           }
