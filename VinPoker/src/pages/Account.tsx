@@ -21,6 +21,7 @@ import { NotificationPreferences } from "@/components/NotificationPreferences";
 import { EnableNotificationsCard } from "@/components/EnableNotificationsCard";
 import { PushDiagnostics } from "@/components/PushDiagnostics";
 import { ClubVerificationCard } from "@/components/ClubVerificationCard";
+import { SmartPlayerCard } from "@/components/player-intelligence/SmartPlayerCard";
 
 const Account = () => {
   const { t, i18n } = useTranslation();
@@ -406,6 +407,12 @@ const Account = () => {
           </div>
         )}
       </Card>
+
+      {scope === "personal" && (
+        <div className="mt-6">
+          <SmartPlayerCard />
+        </div>
+      )}
 
       {isClubScope && (
         <>
