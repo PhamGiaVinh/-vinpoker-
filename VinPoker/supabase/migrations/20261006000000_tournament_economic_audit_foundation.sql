@@ -17,6 +17,9 @@
 -- AUDITED ECONOMIC COLUMNS (only columns that actually exist on public.tournaments):
 --   guarantee_amount, buy_in, rake_amount, service_fee_amount, prize_pool,
 --   starting_stack, minutes_per_level.
+-- NOTE: auditing a `prize_pool` EDIT is NOT the same as "prize_pool real-time confirmed".
+--   This logs only when the column is UPDATED; it does not prove cashier/buy-in updates
+--   prize_pool live. Real-time prize-pool / live overlay remains a Phase 3c concern.
 -- Intentionally NOT audited because the column does not exist on tournaments:
 --   entry_fee/"fee" (the fee column IS rake_amount, which is audited),
 --   max_players / capacity (no such column). Document as future schema work if needed.
@@ -116,12 +119,13 @@ CREATE TRIGGER trg_tournament_economic_audit
 -- ---------------------------------------------------------------------------
 -- 3. RLS — club-scoped SELECT only. NO client INSERT/UPDATE/DELETE policy
 --    (default deny). The trigger writes via SECURITY DEFINER, which bypasses RLS.
---    Self-contained predicate (core helpers only; no dependency on F1's
---    is_club_member_or_owner, which may not be applied live):
---      super_admin, OR club owner, OR a club_members membership row.
---    (If floor/cashier staff in `club_cashiers` also need read access, widen in
---     review once that table's column is confirmed — kept conservative for a
---     sensitive audit log.)
+--    Economic audit history is SENSITIVE — read is restricted to club OWNER +
+--    super_admin only, via core helpers (has_role + is_club_owner; no dependency on
+--    F1's is_club_member_or_owner). `club_members` is intentionally NOT granted read: it may
+--    include ordinary players/members, which would leak the full economic-edit
+--    history. TODO: Floor/cashier audit read access is intentionally deferred until
+--    the exact role table/helper (e.g. `club_cashiers`) is confirmed — add it in
+--    Phase 3b-D / an audit viewer, NOT by guessing a column here.
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.tournament_economic_audit_log ENABLE ROW LEVEL SECURITY;
 
@@ -132,11 +136,6 @@ CREATE POLICY tea_audit_select ON public.tournament_economic_audit_log
     club_id IS NOT NULL AND (
       public.has_role(auth.uid(), 'super_admin'::public.app_role)
       OR public.is_club_owner(auth.uid(), club_id)
-      OR EXISTS (
-        SELECT 1 FROM public.club_members cm
-        WHERE cm.club_id = tournament_economic_audit_log.club_id
-          AND cm.player_user_id = auth.uid()
-      )
     )
   );
 
