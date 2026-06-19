@@ -43,6 +43,10 @@ set search_path = public
 as $$
 declare
   v_role     text := auth.role();
+  -- Service-role detection via the Supabase JWT role (auth.role()) — the repo's available
+  -- pattern; NULL-safe (a missing/unknown role is treated as NON-service). session_user is
+  -- deliberately not used: under PostgREST it stays 'authenticator' and would mis-detect.
+  v_is_service boolean := (v_role is not distinct from 'service_role');
   v_caller   uuid := auth.uid();
   v_player   uuid := p_player_id;
 
@@ -78,7 +82,9 @@ begin
   -- ── Deny-by-default scope ────────────────────────────────────────────────
   -- A normal authenticated user may only read their OWN intelligence (auth.uid()).
   -- service_role may read any player for diagnostics. anon/PUBLIC execute is revoked below.
-  if v_role is distinct from 'service_role' then
+  -- auth.uid() being null (the service_role case) must NOT block diagnostics: the entire scope
+  -- block is skipped for service_role, so an explicit p_player_id is honoured.
+  if not v_is_service then
     if v_caller is null then
       v_player := null;                       -- unauthenticated → safe empty digest
     elsif v_player is null then
@@ -90,6 +96,11 @@ begin
   end if;
 
   if v_player is not null then
+    -- Denominator basis (all entry-based & internally consistent):
+    --   verifiedSample.totalEntries = the player's FINISHED entries = one row per
+    --     tournament_eliminations record (exact position; includes re-entries).
+    --   uniqueEvents = count(distinct tournament_id); reentries = totalEntries - uniqueEvents.
+    --   Rates (itm/ft/top3) use totalEntries as the denominator.
     with base as (
       select
         te.tournament_id,
@@ -99,6 +110,11 @@ begin
         t.minutes_per_level,
         t.starting_stack,
         t.start_time,
+        -- field_size = count(*) of CONFIRMED registrations = total ENTRIES (entry-based,
+        -- incl. re-entries) per the repo canon (get_club_series_events), NOT count(distinct
+        -- player_id) — so it matches the entry-based `position`. Fallback = current_players
+        -- snapshot. Offline entrants absent from confirmed registrations may undercount the
+        -- field, so nf is clamped to [0,1]; the basis used is labelled in sourceQuality.fieldSize.
         nullif(rc.cnt, 0)                                  as confirmed_cnt,
         coalesce(nullif(rc.cnt, 0), t.current_players)     as field_size
       from public.tournament_eliminations te
@@ -195,8 +211,9 @@ begin
   v_sq_struct := case when coalesce(v_struct_any, false) then 'configured' else 'unknown' end;
 
   -- Online (auth-joinable) vs offline walk-in (synthetic player_id, not in profiles).
-  -- A normal caller is always their own auth.uid() (online); this matters for service_role diagnostics.
-  if v_player is not null
+  -- A NORMAL user only ever reads their own auth.uid() (always 'online_authenticated');
+  -- an 'offline_ephemeral' identity is reachable ONLY via service_role diagnostics.
+  if v_is_service and v_player is not null
      and not exists (select 1 from public.profiles p where p.user_id = v_player) then
     v_sq_identity := 'offline_ephemeral';
   end if;
@@ -228,7 +245,9 @@ begin
                 end;
 
   -- Scenario/outlook windows — real numbers only when unlocked. NOT a prediction.
-  --   expectedItm        = N * itmRate
+  -- itmRate here is the RAW OBSERVED rate — NO shrinkage / Bayesian adjustment is implemented
+  -- in this RPC (surfaced as scenarioOutlook.basedOn.rateMethod = 'raw_observed').
+  --   expectedItm         = N * itmRate
   --   chanceAtLeastOneItm = 1 - (1 - itmRate)^N
   v_windows := jsonb_build_array(
     jsonb_build_object('tournaments', 4,
@@ -277,6 +296,7 @@ begin
       'basedOn', jsonb_build_object(
         'verifiedEntries', v_total,
         'itmRate',         round(v_itm_rate, 4),
+        'rateMethod',      'raw_observed',
         'confidence',      v_confidence
       ),
       'windows', v_windows
