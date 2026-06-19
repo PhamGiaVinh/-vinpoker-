@@ -79,7 +79,7 @@ const PREFLIGHT = [
 const VERIFY = [
   ...PREFLIGHT,
   {
-    label: "V4 — NEW funcs grant posture (service_role/authenticated/anon) — must MATCH legacy P4 (no expansion); service_role=true expected",
+    label: "V4 — NEW funcs grant posture — EXPECT service_role=true, authenticated=FALSE, anon=FALSE (PUBLIC REVOKEd, B2.2a P0). Legacy P4 may still show true (separate hardening B).",
     sql: `select p.proname,
                  has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role,
                  has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,

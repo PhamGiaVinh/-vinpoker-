@@ -135,9 +135,20 @@ $$;
 -- the legacy acquire+release until B2.2b; the old unconditional release_club_lock will be
 -- removed/retired only AFTER B2.2b switches process-swing to the tokened functions.
 
--- 5. Grants (match the legacy lock functions: service_role only; no anon/public).
+-- 5. Grants — service_role ONLY. REVOKE the default PUBLIC EXECUTE FIRST (B2.2a P0):
+--    these are SECURITY DEFINER lock primitives; if PUBLIC / anon / authenticated could
+--    call them, any client could acquire a club lock (DoS process-swing) or probe ownership.
+--    Revoking in the SAME transaction as the CREATE means the functions are NEVER committed
+--    with a PUBLIC grant (no exposure window). Done in the same migration before COMMIT.
+--    NOTE: legacy try_acquire_club_lock/release_club_lock/cleanup_expired_club_locks are NOT
+--    revoked here — that is a separate, owner-gated hardening (B) after confirming no
+--    non-service-role caller; this migration only hardens the NEW fenced functions (A).
+REVOKE ALL ON FUNCTION public.try_acquire_club_lock_fenced(uuid, integer, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.extend_club_lock_lease(uuid, uuid, integer)        FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.release_club_lock_if_owner(uuid, uuid)             FROM PUBLIC, anon, authenticated;
+
 GRANT EXECUTE ON FUNCTION public.try_acquire_club_lock_fenced(uuid, integer, text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.extend_club_lock_lease(uuid, uuid, integer) TO service_role;
-GRANT EXECUTE ON FUNCTION public.release_club_lock_if_owner(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.extend_club_lock_lease(uuid, uuid, integer)        TO service_role;
+GRANT EXECUTE ON FUNCTION public.release_club_lock_if_owner(uuid, uuid)             TO service_role;
 
 COMMIT;
