@@ -32,7 +32,7 @@ type ClubRow = { id: string; name: string };
  * the rake / service-fee fields the create/edit dialogs already wrote in Club Admin.
  * Scoped to the operator's clubs; multi-club picks the target club on create.
  */
-export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
+export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { clubIds: string[]; clubs: ClubRow[]; embedded?: boolean }) {
   const { t } = useTranslation();
   const [tours, setTours] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -85,27 +85,34 @@ export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; 
   };
 
   return (
-    <Card className="mb-4 border-primary/20">
-      <div className="flex items-center justify-between gap-2 p-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-2 min-w-0 text-left"
-        >
-          {expanded
-            ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
-            : <ChevronRight className="w-4 h-4 text-primary shrink-0" />}
-          <CalendarPlus className="w-4 h-4 text-primary shrink-0" />
-          <span className="font-display text-primary truncate">Quản lý giải đấu</span>
-          <span className="text-xs text-muted-foreground">({tours.length})</span>
-        </button>
-        {clubIds.length > 0 && (
-          <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
-        )}
-      </div>
+    <Card className={embedded ? "border-0 bg-transparent shadow-none" : "mb-4 border-primary/20"}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-2 p-3">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-2 min-w-0 text-left"
+          >
+            {expanded
+              ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
+              : <ChevronRight className="w-4 h-4 text-primary shrink-0" />}
+            <CalendarPlus className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-display text-primary truncate">Quản lý giải đấu</span>
+            <span className="text-xs text-muted-foreground">({tours.length})</span>
+          </button>
+          {clubIds.length > 0 && (
+            <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
+          )}
+        </div>
+      )}
 
-      {expanded && (
-        <div className="px-3 pb-3">
+      {(embedded || expanded) && (
+        <div className={embedded ? "" : "px-3 pb-3"}>
+          {embedded && clubIds.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
+            </div>
+          )}
           {loading ? (
             <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
           ) : tours.length === 0 ? (

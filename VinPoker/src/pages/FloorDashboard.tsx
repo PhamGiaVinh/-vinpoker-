@@ -8,7 +8,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, LayoutGrid } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 import TournamentLivePanel from "@/components/cashier/TournamentLivePanel";
-import { TournamentManagerPanel } from "@/components/floor/TournamentManagerPanel";
 
 /**
  * Floor — room management (table draw, prize structure, seating).
@@ -61,7 +60,6 @@ export default function FloorDashboard() {
           {clubs.length === 0 ? "Toàn quyền (Admin)" : clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
         </div>
       </div>
-      <TournamentManagerPanel clubIds={scopedIds} clubs={clubs} />
       <TournamentLivePanel mode="floor" clubIds={scopedIds} clubs={clubs} />
     </div>
   );
