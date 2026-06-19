@@ -143,7 +143,7 @@ export const FEATURES = {
    * payload and the live viewer reads street from community_cards / hand_actions
    * as today. Phase 2 adds the hand evaluator + exact side-pot settlement.
    */
-  trackerEngineMode: false,
+  trackerEngineMode: true,
   /**
    * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
    * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
