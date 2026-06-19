@@ -5,11 +5,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { RefreshCw, Search, LayoutGrid, LayoutList, Shuffle } from "lucide-react";
+import { RefreshCw, Search, LayoutGrid, LayoutList, Shuffle, Plus } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import type { Tournament } from "@/types/tournament";
 import { FloorTableDetailSheet, type MapSeat, type MapTable } from "./FloorTableDetailSheet";
 import { RedrawLauncherDialog } from "./RedrawLauncherDialog";
+import { OpenTableDialog } from "./OpenTableDialog";
 import { PlayerActionSheet, type ActionSeat } from "./PlayerActionSheet";
 import { MovePlayerDialog } from "./MovePlayerDialog";
 import { EditChipsDialog } from "./EditChipsDialog";
@@ -83,6 +84,7 @@ export function FloorTableMapPanel({
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
   const [busting, setBusting] = useState(false);
   const [redrawOpen, setRedrawOpen] = useState(false);
+  const [openTableOpen, setOpenTableOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -241,6 +243,11 @@ export function FloorTableMapPanel({
           <div className="font-semibold flex items-center gap-2"><LayoutGrid className="h-4 w-4" /> Sơ đồ bàn</div>
           <div className="flex items-center gap-1.5">
             {FEATURES.floorTableOps && canMove && (
+              <Button size="sm" className="h-9" onClick={() => setOpenTableOpen(true)} title="Tạo thêm bàn mới">
+                <Plus className="h-4 w-4 mr-1" /> Tạo thêm bàn
+              </Button>
+            )}
+            {FEATURES.floorTableOps && canMove && (
               <Button size="sm" variant="outline" className="h-9" onClick={() => setRedrawOpen(true)} title="Bốc lại bàn (redraw)">
                 <Shuffle className="h-4 w-4 mr-1" /> Bốc lại
               </Button>
@@ -341,6 +348,16 @@ export function FloorTableMapPanel({
         tournamentDate={(tournament as Tournament & { start_time?: string | null }).start_time ?? null}
         onChanged={load}
       />
+
+      {FEATURES.floorTableOps && (
+        <OpenTableDialog
+          open={openTableOpen}
+          onOpenChange={setOpenTableOpen}
+          tournamentId={tid}
+          defaultMaxSeats={tables?.[0]?.max_seats ?? 9}
+          onDone={load}
+        />
+      )}
 
       {FEATURES.floorTableOps && (
         <RedrawLauncherDialog
