@@ -6,4 +6,14 @@
 .env.local
 .env.*.local
 .env.test
+.env.secret
 *.local
+
+# Claude Code local/runtime config (keep agents/, hooks/, commands/, settings.json trackable)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+.claude/*.local.md
+
+# Local-only backups (e.g. legacy CLAUDE.md snapshots) — never commit
+backups/
