@@ -75,7 +75,9 @@ export const SWING_POLICY = {
     mixedBonus: 2,                    // skills includes "Mixed"
     skillBonusPerMatch: 20,           // +20 per matching required game type
 
-    priorityBreakPenalty: -500,       // priority_break_flag set
+    // priorityBreakPenalty REMOVED in A2: priority_break_flag is now a tier-1 HARD
+    // gate in pickNextDealer PHASE 1 (excluded until rested ≥ threshold), not a soft
+    // score term. No residual penalty for a flagged dealer who passed the gate.
 
     heavyWorkerPenaltyPerSwing: -10,  // heavy_worker = -10 * (consecutive - 2) (consecutive >= 3)
     heavyWorkerBaselineSwings: 2,     // the "- 2" baseline in (consecutive - 2)

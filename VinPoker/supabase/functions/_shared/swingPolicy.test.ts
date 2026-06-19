@@ -50,7 +50,7 @@ Deno.test("scoring weights match original literals", () => {
   assertEquals(P.scoring.consecutivePenaltyPerSwing, -10);  // -consecutive * 10
   assertEquals(P.scoring.mixedBonus, 2);
   assertEquals(P.scoring.skillBonusPerMatch, 20);
-  assertEquals(P.scoring.priorityBreakPenalty, -500);
+  // priorityBreakPenalty removed in A2 (priority_break is now a hard gate, not a soft term).
   assertEquals(P.scoring.heavyWorkerPenaltyPerSwing, -10);  // -10 * (consecutive - 2)
   assertEquals(P.scoring.heavyWorkerBaselineSwings, 2);
   assertEquals(P.scoring.consecutiveHighPenalty, -20);
