@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Check, Gauge, Lock } from "lucide-react";
 import { DrillCategory, DrillResult } from "@/lib/pokerIQ";
 import { cn } from "@/lib/utils";
+import { BestFitEventsCard } from "./BestFitEventsCard";
 
 const Section = ({ className, children }: { className?: string; children: React.ReactNode }) => (
   <div className={cn("rounded-2xl border border-border bg-card p-4", className)}>{children}</div>
@@ -159,28 +160,8 @@ export function ResultCard({ result }: { result: DrillResult }) {
         </ol>
       </Section>
 
-      {/* Suggested event */}
-      <Section>
-        <div className="mb-2.5 text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
-          {t("pokerDrill.result.eventsTitle")}
-        </div>
-        <div className="mb-2.5 flex gap-2.5">
-          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-          <div>
-            <div className="text-[13.5px] font-medium text-foreground">{t(`pokerDrill.event.${result.suggestedEvent.fit}`)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{t("pokerDrill.eventReason.fit", { style: styleLabel })}</div>
-          </div>
-        </div>
-        <div className="flex gap-2.5">
-          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))]" />
-          <div>
-            <div className="text-[13.5px] font-medium text-[hsl(var(--warning))]">
-              {t("pokerDrill.result.eventAvoidPrefix")} {t(`pokerDrill.event.${result.suggestedEvent.avoid}`)}
-            </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{t("pokerDrill.eventReason.avoid")}</div>
-          </div>
-        </div>
-      </Section>
+      {/* Best Fit Events — real upcoming tournaments from the clubs' weekly schedule */}
+      <BestFitEventsCard result={result} />
 
       {/* Locked outlook teaser */}
       <Section className="border-dashed">
