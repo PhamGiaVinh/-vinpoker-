@@ -618,6 +618,18 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("Chọn ghế nút chia bài (BTN) trước khi bắt đầu hand");
       return;
     }
+    // Guard: a seated player with 0 chips makes start_hand seed starting_stack = 0,
+    // which breaks the server's blind/bet reconstruction (every Call shows "không có
+    // cược để call"). Block start with a clear message instead of a broken hand.
+    const noChips = players.filter((p) => p.is_active && p.current_stack <= 0);
+    if (noChips.length > 0) {
+      toast.error(
+        `Chưa nạp chip cho ${noChips.length} ghế (${noChips
+          .map((p) => `Ghế ${p.seat_number}`)
+          .join(", ")}). Hãy nạp chip cho người chơi trước khi bắt đầu hand.`
+      );
+      return;
+    }
     setSubmitting(true);
     markSync("sending", `Bắt đầu Hand #${Number(handNumber)}`);
     try {
