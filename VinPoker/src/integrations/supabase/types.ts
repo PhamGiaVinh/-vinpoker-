@@ -7031,6 +7031,60 @@ export type Database = {
           },
         ]
       }
+      tournament_economic_audit_log: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          changed_fields: Json
+          club_id: string
+          id: string
+          new_values: Json
+          old_values: Json
+          reason: string | null
+          source: string
+          tournament_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_fields: Json
+          club_id: string
+          id?: string
+          new_values: Json
+          old_values: Json
+          reason?: string | null
+          source?: string
+          tournament_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_fields?: Json
+          club_id?: string
+          id?: string
+          new_values?: Json
+          old_values?: Json
+          reason?: string | null
+          source?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_economic_audit_log_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_economic_audit_log_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_eliminations: {
         Row: {
           created_at: string
