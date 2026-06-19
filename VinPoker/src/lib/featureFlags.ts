@@ -88,8 +88,11 @@ export const FEATURES = {
    * Flip to true ONLY after migration 20260929000000 is applied live (E5B) and edge
    * deployed. The RPC server-dictates the amount (= table starting_stack_default) and is
    * busted-only, so it never lets the client set an arbitrary stack.
+   * E5B DONE 2026-06-19: op_rebuy_open applied live (Management-API, grants verified,
+   * schema_migrations untouched) + edge redeployed with rebuy_open. Enabled here for
+   * Preview UAT; merge to production only after owner confirms busted→rebuy→stack-returns.
    */
-  onlinePokerRebuy: false,
+  onlinePokerRebuy: true,
   /**
    * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
    * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never
