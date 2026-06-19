@@ -33,6 +33,9 @@ control). It is registered user-globally so it fires in every session and every 
   explicit dangerous-pattern match denies.
 - It does **not** block `supabase db query --linked` — that is the legitimate read/controlled-apply
   path, gated by runbook + owner phrase, not by the hook.
+- **Do not put blocked-command literals in shell commands** (commit messages, `echo`/`grep` tests):
+  the hook matches the literal substring and will deny the whole call. Use variables or paraphrase
+  when documenting or committing about blocked commands.
 
 Hook script (canonical, version-tracked): `.claude/hooks/vinpoker-safety-guard.ps1`.
 Runtime copy used by the global registration: `%USERPROFILE%\.claude\hooks\vinpoker-safety-guard.ps1`.
