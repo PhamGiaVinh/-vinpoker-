@@ -28,7 +28,9 @@ import { SitDownDialog } from '@/components/poker/SitDownDialog';
 import { BustoutDialog } from '@/components/poker/BustoutDialog';
 import { actionToSound } from '@/lib/onlinePoker/pokerSounds';
 import { playPokerLiveSound, markPokerSoundGesture, isPokerSoundMuted, setPokerSoundMuted } from '@/lib/pokerLiveSound';
-import { ChevronLeft, Crown, LogIn, Volume2, VolumeX } from 'lucide-react';
+import { readImmersivePref, writeImmersivePref, requestFullscreenBestEffort, exitFullscreenBestEffort } from '@/lib/onlinePoker/immersive';
+import { iAmInLiveHand as computeIAmInLiveHand } from '@/lib/onlinePoker/tableState';
+import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
   const n = Number(s);
@@ -122,7 +124,7 @@ const RESULT_DWELL_MS = 8000;
 export default function OnlinePokerTable() {
   const { tableId = '' } = useParams();
   const { user } = useAuth();
-  const { hand, seats, mySeatNo, myUserId, hostUserId, amIHost, legal, loading, refresh, actions } = useTableHand(tableId);
+  const { hand, seats, mySeatNo, myUserId, hostUserId, amIHost, legal, loading, dealSignal, dealSeats, refresh, actions } = useTableHand(tableId);
   const table = useTableMeta(tableId);
 
   const [sitSeat, setSitSeat] = useState<number | null>(null);
@@ -131,6 +133,22 @@ export default function OnlinePokerTable() {
   const bustHandledRef = useRef(false);
   const [muted, setMuted] = useState<boolean>(isPokerSoundMuted());
   const toggleMute = () => { const v = !muted; setPokerSoundMuted(v); setMuted(v); markPokerSoundGesture(); };
+
+  // Mobile immersive table mode (CSS-default; native fullscreen requested on the gesture).
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [immersive, setImmersive] = useState<boolean>(readImmersivePref);
+  const enterImmersive = () => { setImmersive(true); writeImmersivePref(true); markPokerSoundGesture(); requestFullscreenBestEffort(rootRef.current); };
+  const exitImmersive = () => { setImmersive(false); writeImmersivePref(false); exitFullscreenBestEffort(); };
+  // Lock body scroll + allow Escape to leave; restore + exit native fullscreen on unmount.
+  useEffect(() => {
+    if (!immersive) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setImmersive(false); writeImmersivePref(false); exitFullscreenBestEffort(); } };
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prevOverflow; document.removeEventListener('keydown', onKey); };
+  }, [immersive]);
+  useEffect(() => () => { exitFullscreenBestEffort(); }, []); // safety on page unmount
 
   // Best-effort auto-leave when the player exits the table (SPA route unmount / tab close).
   // A ref carries the latest seated / in-hand state into the unmount cleanup. This is
@@ -247,6 +265,10 @@ export default function OnlinePokerTable() {
 
   const seated = mySeatNo != null;
   const inActiveHand = !!hand && (hand.status === 'dealing' || hand.status === 'betting');
+  // I can leave any time UNLESS my own seat is genuinely contesting the live hand
+  // (active/allin) — the server blocks that to preserve chip conservation. Just being at
+  // the table while OTHERS play (sitting_out / joined after the deal) must NOT block leave.
+  const iAmInLiveHand = computeIAmInLiveHand(hand, mySeatNo);
   const seatedPlayers = [...seats].sort((a, b) => a.seatNo - b.seatNo);
   const occupied = occupiedCount(seats);
   const tableLive = isTableLive(table.status, occupied);
@@ -290,8 +312,19 @@ export default function OnlinePokerTable() {
   const leave = async () => {
     try {
       const res = (await actions.leaveTable()) as RpcOutcome;
-      if (res?.outcome === 'ok') { toast.success('Đã rời bàn.'); refresh(); }
-      else toast.error(vn(res?.outcome));
+      if (res?.outcome === 'ok') {
+        // Clear local seat-bound UI at once so I can immediately re-join (don't wait for
+        // the poll). mySeatNo is seats-authoritative, so refresh() drops `seated` too.
+        toast.success('Đã rời bàn.');
+        setSitSeat(null);
+        setBustOpen(false);
+        bustHandledRef.current = false;
+        refresh();
+      } else if (res?.outcome === 'in_active_hand') {
+        toast.error('Bạn đang trong ván, không thể rời ngay. Sẽ rời được sau khi xong ván.');
+      } else {
+        toast.error(vn(res?.outcome));
+      }
     } catch { toast.error('Không rời được, thử lại.'); }
   };
 
@@ -334,22 +367,40 @@ export default function OnlinePokerTable() {
   const nameFor = (s: LiveSeat) => (s.userId === myUserId ? 'Bạn' : s.displayName || `Ghế ${s.seatNo}`);
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-3 p-3 sm:p-4">
+    <div
+      ref={rootRef}
+      className={immersive
+        ? 'fixed inset-0 z-[60] mx-auto flex h-[100dvh] w-full max-w-4xl flex-col gap-2 overflow-y-auto bg-background p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'
+        : 'container mx-auto max-w-4xl space-y-3 p-3 sm:p-4'}
+    >
       <header className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="sm"><Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link></Button>
+        {immersive ? (
+          <Button variant="ghost" size="sm" onClick={exitImmersive}><Minimize2 className="h-4 w-4" /> Thoát</Button>
+        ) : (
+          <Button asChild variant="ghost" size="sm"><Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link></Button>
+        )}
         <h1 className="truncate text-lg font-bold">{table.name}</h1>
         <Badge variant="outline" className="tabular-nums">{fmtChips(table.sb)}/{fmtChips(table.bb)}</Badge>
         <Button
           variant="ghost"
           size="icon"
-          className={amIHost ? '' : 'ml-auto'}
+          className="ml-auto"
+          onClick={immersive ? exitImmersive : enterImmersive}
+          aria-label={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
+          title={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
+        >
+          {immersive ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={toggleMute}
           aria-label={muted ? 'Bật tiếng' : 'Tắt tiếng'}
           title={muted ? 'Bật tiếng' : 'Tắt tiếng'}
         >
           {muted ? <VolumeX className="h-4 w-4 text-muted-foreground" /> : <Volume2 className="h-4 w-4" />}
         </Button>
-        {amIHost && <Badge className="ml-auto gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
+        {amIHost && <Badge className="gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
       {/* All-in showdown → cinematic runout replay (staged reveals → flop → equity → turn
@@ -365,6 +416,8 @@ export default function OnlinePokerTable() {
             hand={feltView}
             bb={table.bb}
             winnerSeats={feltWinners}
+            dealSignal={dealSignal}
+            dealSeats={dealSeats}
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
@@ -379,8 +432,14 @@ export default function OnlinePokerTable() {
         ) : (
           <>
             <Badge variant="secondary">Bạn đang ngồi ghế {mySeatNo}</Badge>
-            <Button size="sm" variant="outline" onClick={leave} disabled={inActiveHand} title={inActiveHand ? 'Không thể rời khi đang trong ván' : undefined}>
-              Đứng dậy / rời bàn
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={leave}
+              disabled={iAmInLiveHand}
+              title={iAmInLiveHand ? 'Bạn đang trong ván — sẽ rời được sau khi xong ván' : undefined}
+            >
+              {iAmInLiveHand ? 'Rời sau ván' : 'Đứng dậy / rời bàn'}
             </Button>
           </>
         )}

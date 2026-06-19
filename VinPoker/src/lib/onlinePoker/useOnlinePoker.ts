@@ -25,6 +25,7 @@ import {
 } from './client';
 import { isHoleCardsOk, type RpcOutcome, type WireLegalActions } from './wire';
 import { derivePokerSounds } from './pokerSounds';
+import { deriveMySeatNo, shouldDealSignal, filterLobbyTables } from './tableState';
 import { playPokerLiveSound } from '@/lib/pokerLiveSound';
 
 // ── lobby ──────────────────────────────────────────────────────────────────
@@ -54,7 +55,11 @@ export function useLobby(): LobbyState {
     }
     setLoading(true);
     listTablesLive()
-      .then((t) => { if (!cancelled) { setTables(t); setError(null); } })
+      // Hide EMPTY tables from the lobby: an open table with 0 seated players is either a
+      // stale leftover (created before the auto-close trigger) or one whose last player
+      // just left — never something to join. A freshly created table keeps its host
+      // seated (seatedCount >= 1), so this never hides a real table. (No DB write.)
+      .then((t) => { if (!cancelled) { setTables(filterLobbyTables(t)); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'load_failed'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -114,6 +119,11 @@ export interface TableHandState {
   legal: WireLegalActions | null;
   loading: boolean;
   error: string | null;
+  /** Bumps once when a fresh hand is dealt (drives the deal animation, decoupled from the
+   *  result dwell). 0 = no deal observed yet. */
+  dealSignal: number;
+  /** Seats that received cards on the last dealt hand (the animation flies only to these). */
+  dealSeats: number[];
   refresh: () => void;
   actions: TableHandActions;
 }
@@ -127,6 +137,11 @@ export function useTableHand(tableId: string): TableHandState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  // Deal-animation trigger, driven off the LIVE hand (not the dwell-held felt). Increments
+  // exactly once when a fresh hand is first observed; dealSeats = the seats that got cards.
+  const [dealSignal, setDealSignal] = useState(0);
+  const [dealSeats, setDealSeats] = useState<number[]>([]);
+  const prevDealHandIdRef = useRef<string | null>(null);
   // Cache of the caller's hole cards, keyed by handId, so the poll loop doesn't re-hit
   // the edge for cards that never change within a hand.
   const holesRef = useRef<{ handId: string; priv: { mySeat: number; myHoleCards: string[] } } | null>(null);
@@ -176,6 +191,13 @@ export function useTableHand(tableId: string): TableHandState {
       // engine state, so it runs after the view is built and is fully guarded.
       try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach(playPokerLiveSound); } catch { /* never break the table on audio */ }
       prevSoundHandRef.current = view;
+      // Deal-animation trigger (live, NOT dwell): a KNOWN previous handId transitioning to
+      // a NEW hand whose board is still empty, with ≥2 players in the hand. Never fires on
+      // initial load (prev null) or a re-poll of the same hand. dealSeats = seats holding
+      // cards so the animation only flies to occupied seats.
+      const dealCheck = shouldDealSignal(prevDealHandIdRef.current, view);
+      if (dealCheck.fire) { setDealSeats(dealCheck.dealSeats); setDealSignal((n) => n + 1); }
+      if (view.handId) prevDealHandIdRef.current = view.handId;
       setHand(view);
       setError(null);
       // Legal menu only when it is genuinely my turn. Keep the previous menu on a
@@ -237,8 +259,11 @@ export function useTableHand(tableId: string): TableHandState {
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
-  // My seat: prefer the in-hand seat; else the seats table by uid.
-  const mySeatNo = hand?.mySeat ?? seats.find((s) => s.userId === uid)?.seatNo ?? null;
+  // My seat — AUTHORITATIVE from the live seats table (includes in-hand statuses via
+  // loadSeatsLive). Deliberately NOT `hand?.mySeat`: a stale completed-hand snapshot keeps
+  // mySeat set even after I've left, which used to make the client think I was still
+  // seated and block re-joining (P0). Once I leave, my seat row is vacated → mySeatNo null.
+  const mySeatNo = deriveMySeatNo(seats, uid);
   const amIHost = !!uid && hostUserId === uid;
 
   // Liveness heartbeat (live + seated): ping the server every ~10s so the stale-seat
@@ -269,7 +294,7 @@ export function useTableHand(tableId: string): TableHandState {
     rebuy: (amount) => onlinePokerClient.rebuyOpen(tableId, amount),
   };
 
-  return { hand, seats, mySeatNo, myUserId: uid, hostUserId, amIHost, legal, loading, error, refresh, actions };
+  return { hand, seats, mySeatNo, myUserId: uid, hostUserId, amIHost, legal, loading, error, dealSignal, dealSeats, refresh, actions };
 }
 
 // ── table metadata ─────────────────────────────────────────────────────────

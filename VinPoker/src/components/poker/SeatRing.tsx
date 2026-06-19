@@ -139,6 +139,8 @@ export function SeatRing({
   winnerSeats,
   collecting = false,
   onEmptySeatClick,
+  dealSignal = 0,
+  dealSeats,
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -148,6 +150,10 @@ export function SeatRing({
   collecting?: boolean;
   /** when set, empty seats become "+ Ngồi" buttons that call this with the seat number */
   onEmptySeatClick?: (seatNo: number) => void;
+  /** deal-animation trigger (from useTableHand); a bump plays one deal flourish. */
+  dealSignal?: number;
+  /** seats the deal animation flies to (occupied seats); falls back to seated players. */
+  dealSeats?: number[];
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
 
@@ -212,9 +218,13 @@ export function SeatRing({
         );
       })}
 
-      {/* deal flourish — transient cards fly from the centre deck to each seat on a new
-          hand (pure overlay, anti-replay guarded inside) */}
-      <DealAnimation hand={hand} pos={pos} />
+      {/* deal flourish — transient cards fly from the centre deck to the OCCUPIED seats on
+          a new hand (driven by the live dealSignal; never to empty chairs) */}
+      <DealAnimation
+        signal={dealSignal}
+        seats={dealSeats ?? hand.seats.filter((s) => s.playerId && s.status !== 'empty' && s.status !== 'sitting_out').map((s) => s.seat)}
+        pos={pos}
+      />
 
       {/* seats */}
       {hand.seats.map((s) => (
