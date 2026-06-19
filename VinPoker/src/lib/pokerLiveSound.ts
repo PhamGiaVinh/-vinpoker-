@@ -26,6 +26,24 @@ let userGestureSeen = false;
 let listenersAttached = false;
 const lastPlayedAt = new Map<PokerLiveSound, number>();
 
+// ── mute (player preference, persisted) ──────────────────────────────────────
+const MUTE_KEY = "vinpoker:poker:sound-muted";
+let muted = (() => {
+  try { return typeof localStorage !== "undefined" && localStorage.getItem(MUTE_KEY) === "1"; }
+  catch { return false; }
+})();
+
+/** Is poker sound currently muted by the player? */
+export function isPokerSoundMuted(): boolean {
+  return muted;
+}
+
+/** Mute / unmute poker sound (persisted to localStorage). */
+export function setPokerSoundMuted(v: boolean): void {
+  muted = v;
+  try { localStorage.setItem(MUTE_KEY, v ? "1" : "0"); } catch { /* ignore */ }
+}
+
 function ensureGestureListeners() {
   if (listenersAttached || typeof window === "undefined") return;
   listenersAttached = true;
@@ -43,6 +61,7 @@ function ensureGestureListeners() {
 }
 
 function canPlay(kind: PokerLiveSound) {
+  if (muted) return false;
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   ensureGestureListeners();
   const now = Date.now();
