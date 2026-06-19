@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
         break;
       }
       case "record_action": {
-        const { hand_id, player_id, entry_number, street, action_type, action_amount, action_order } = body;
+        const { hand_id, player_id, entry_number, street, action_type, action_amount, action_order, idempotency_key, trace_id } = body;
 
         if (VALIDATION_MODE !== "off") {
           const loaded = await loadHandForValidation(hand_id);
@@ -240,6 +240,12 @@ Deno.serve(async (req) => {
           p_action_type: action_type,
           p_action_amount: action_amount || 0,
           p_action_order: action_order,
+          // Lock-owner binding + idempotent retry + trace plumbing (Session A).
+          // NOTE: this Edge MUST be deployed only AFTER the record_action migration
+          // (20260928000000) is live — the old signature lacks these params.
+          p_user_id: user.id,
+          p_idempotency_key: idempotency_key ?? null,
+          p_trace_id: trace_id ?? null,
         });
         break;
       }
@@ -265,7 +271,9 @@ Deno.serve(async (req) => {
     }
 
     if (result.error) throw result.error;
-    return new Response(JSON.stringify({ status: "success", data: result.data, ...(validationNote ? { validation: validationNote } : {}) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Echo the caller's trace_id (when present) for end-to-end correlation. The RPC
+    // JSONB (in `data`) carries the authoritative verdict incl. duplicate/conflict/lock.
+    return new Response(JSON.stringify({ status: "success", data: result.data, ...(body.trace_id ? { trace_id: body.trace_id } : {}), ...(validationNote ? { validation: validationNote } : {}) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
