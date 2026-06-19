@@ -41,10 +41,34 @@
 }
 .op-allin-banner { animation: op-allin-banner 0.36s ease-out both; }
 
+/* GE-2G — card-back gloss sweep: a slow diagonal sheen that crosses the back so it
+   reads as a domed, glossy card. Opacity-only animation behind the V (GPU-cheap). */
+@keyframes op-card-sheen {
+  0%   { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
+  18%  { opacity: 0.5; }
+  40%  { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+  100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+}
+.op-card-sheen {
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.28) 50%, transparent 70%);
+  animation: op-card-sheen 5.5s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+/* GE-2G — the centre deck: a gentle idle "breathe" so the pre-flop pile feels alive. */
+@keyframes op-deck-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-1px) scale(1.012); }
+}
+.op-deck-stack { animation: op-deck-breathe 3.6s ease-in-out infinite; transform-origin: center bottom; }
+
 @media (prefers-reduced-motion: reduce) {
   .op-card-reveal,
   .op-to-act-pulse,
   .op-winner-glow,
-  .op-allin-banner { animation: none !important; }
+  .op-allin-banner,
+  .op-card-sheen,
+  .op-deck-stack { animation: none !important; }
+  .op-card-sheen { opacity: 0 !important; }
   .op-chip { transition: none !important; }
 }

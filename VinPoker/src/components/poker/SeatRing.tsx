@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
+import { DeckStack } from './DeckStack';
 import './pokerTable.css';
 import { Clock } from 'lucide-react';
 
@@ -176,9 +177,15 @@ export function SeatRing({
             <span className="text-xs font-bold tabular-nums text-white sm:text-sm">Pot {bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="ml-1.5 text-[10px] tabular-nums text-white/55">{fmtChips(hand.pot)}</span>}
           </div>
-          <div className="flex gap-1">
-            {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="md" reveal={!!hand.board[i]} />)}
-          </div>
+          {/* Pre-flop (no community card yet) → the 3D V deck at centre; once the flop
+              opens, the real board takes over. */}
+          {hand.board.some(Boolean) ? (
+            <div className="flex gap-1">
+              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="md" reveal={!!hand.board[i]} />)}
+            </div>
+          ) : (
+            <DeckStack size="lg" />
+          )}
           <div className="text-[9px] uppercase tracking-[0.2em] text-white/55 sm:text-[10px]">{hand.street}</div>
         </div>
       </div>
