@@ -72,6 +72,31 @@ export function getNextBestAction(pi: PlayerIntelligence): NextActionKey[] {
   return ["keep_playing_recorded"];
 }
 
+export interface MilestoneStep {
+  target: number;
+  key: "start" | "verified" | "outlook";
+  reached: boolean;
+}
+export interface ProfileMilestones {
+  current: number;
+  steps: MilestoneStep[];
+  next: MilestoneStep | null; // first not-yet-reached step
+  remaining: number | null; // events to the next step
+}
+
+/** The verified-profile journey (play 1 → 5 → 10 events) — drives the aspirational
+ *  ladder and the "còn X giải" progress that makes the card a goal to reach. */
+export function getProfileMilestones(pi: PlayerIntelligence): ProfileMilestones {
+  const current = pi.verifiedSample?.totalEntries ?? 0;
+  const steps: MilestoneStep[] = [
+    { target: 1, key: "start", reached: current >= 1 },
+    { target: 5, key: "verified", reached: current >= 5 },
+    { target: 10, key: "outlook", reached: current >= 10 },
+  ];
+  const next = steps.find((s) => !s.reached) ?? null;
+  return { current, steps, next, remaining: next ? Math.max(0, next.target - current) : null };
+}
+
 /** Whether the raw-observed disclaimer copy must be shown (no shrinkage applied). */
 export function isRawObservedRate(pi: PlayerIntelligence): boolean {
   return pi.scenarioOutlook?.basedOn?.rateMethod === "raw_observed";
