@@ -147,6 +147,9 @@ const App = () => (
               <Route path="/display/:displayToken" element={<TournamentDisplay />} />
               {/* Poker IQ Drill — focused full-screen flow, hides global nav chrome */}
               <Route path="/poker-iq" element={<PokerIQ />} />
+              {/* Online-poker TABLE — chrome-less full-viewport route (NO Layout nav), like
+                  /poker-iq. The lobby /poker stays inside <Layout> below (keeps its nav). */}
+              <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}
               <Route element={<DealerAppShell />}>
@@ -193,9 +196,9 @@ const App = () => (
                 <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
-                {/* GE-2D online-poker shell — pages self-gate on FEATURES.onlinePoker */}
+                {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
+                    chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />
-                <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />
                 <Route path="/cashier" element={<CashierDashboard />} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />

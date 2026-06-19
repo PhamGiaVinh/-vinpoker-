@@ -34,6 +34,18 @@ const allInDone = () => ({
   ],
   mySeat: 1, myHoleCards: ['8s', 'Tc'],
 });
+// A NON-cinematic completed hand (ended by fold, not an all-in showdown) → held as a plain
+// result panel, NOT the AllInRunout cinematic. Used to prove a fresh deal drops it.
+const foldDone = () => ({
+  handId: 'h1', tableId: 't1', handNo: 5, street: 'flop', board: ['2s', 'Qd', 'Ad'],
+  pot: '0', toActSeat: null, buttonSeat: 1, status: 'complete',
+  result: { endedBy: 'fold', potTotal: '300', potAwards: [{ potIndex: 0, amount: '300', winners: [1] }], payouts: { 1: '300' } },
+  seats: [
+    { seat: 1, playerId: 'u1', displayName: 'An', stack: '5300', committed: '0', status: 'active' },
+    { seat: 2, playerId: 'u2', displayName: 'Bình', stack: '4700', committed: '0', status: 'folded' },
+  ],
+  mySeat: 1, myHoleCards: ['8s', 'Tc'],
+});
 const betting = (toAct: number) => ({
   handId: 'h2', tableId: 't1', handNo: 6, street: 'preflop', board: [], pot: '75', toActSeat: toAct, buttonSeat: 1, status: 'betting',
   seats: [{ seat: 1, playerId: 'u1', stack: '5000', committed: '25', status: 'active' }, { seat: 2, playerId: 'u2', stack: '5000', committed: '50', status: 'active' }],
@@ -89,5 +101,32 @@ describe('OnlinePokerTable — PR C stale-table cleanup', () => {
     h.useTableHand.mockReturnValue(thState({ hand: betting(1), seats: [seat(1, 'u1'), seat(2, 'u2')], mySeatNo: 1 }));
     await act(async () => { rerender(<MemoryRouter><OnlinePokerTable /></MemoryRouter>); });
     expect(screen.queryByText('All-in!')).not.toBeInTheDocument();
+  });
+
+  // P0 deal-anim regression lock: a fresh new hand (board empty) must drop a NON-cinematic
+  // held result EVEN WHEN it is NOT my turn — the old rule only cleared on my-action, which
+  // left the felt showing the old hand while the deal signal fired, so the flourish was
+  // never seen. The render-time freshDeal gate fixes this.
+  it('a fresh new hand (not my turn) drops a non-cinematic held result', async () => {
+    h.useTableMeta.mockReturnValue(meta('open'));
+    h.useTableHand.mockReturnValue(thState({ hand: foldDone(), seats: [seat(1, 'u1'), seat(2, 'u2')], mySeatNo: 1 }));
+    const { rerender } = renderTable();
+    expect(await screen.findByText(/Kết quả ván/)).toBeInTheDocument();
+    // next hand dealt, toAct=2 (NOT me) → old "needs my action" rule would not fire.
+    h.useTableHand.mockReturnValue(thState({ hand: betting(2), seats: [seat(1, 'u1'), seat(2, 'u2')], mySeatNo: 1 }));
+    await act(async () => { rerender(<MemoryRouter><OnlinePokerTable /></MemoryRouter>); });
+    expect(screen.queryByText(/Kết quả ván/)).not.toBeInTheDocument();
+  });
+
+  // Amendment #3 lock: an all-in cinematic must NOT be cut short by a new hand merely
+  // ARRIVING (not my turn). It finishes via AllInRunout's own onDone.
+  it('an all-in cinematic is NOT cut short when a new hand arrives (not my turn)', async () => {
+    h.useTableMeta.mockReturnValue(meta('open'));
+    h.useTableHand.mockReturnValue(thState({ hand: allInDone(), seats: [seat(1, 'u1'), seat(2, 'u2')], mySeatNo: 1 }));
+    const { rerender } = renderTable();
+    expect(await screen.findByText('All-in!')).toBeInTheDocument();
+    h.useTableHand.mockReturnValue(thState({ hand: betting(2), seats: [seat(1, 'u1'), seat(2, 'u2')], mySeatNo: 1 }));
+    await act(async () => { rerender(<MemoryRouter><OnlinePokerTable /></MemoryRouter>); });
+    expect(screen.getByText('All-in!')).toBeInTheDocument();
   });
 });

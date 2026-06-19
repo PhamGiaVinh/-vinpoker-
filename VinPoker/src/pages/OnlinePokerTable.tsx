@@ -199,13 +199,20 @@ export default function OnlinePokerTable() {
     return () => clearTimeout(id);
   }, [dwell]);
 
-  // A NEW live hand that needs MY action drops the dwell at once (never block me).
+  // A genuinely NEW hand drops the held result so the felt yields to the live hand. The
+  // render-time `freshDeal` gate (below) already HIDES the dwell on the same render the deal
+  // signal bumps — this effect releases the dwell STATE + its timer and re-arms bustout. A
+  // fresh non-cinematic deal (board empty) OR a hand that now needs MY action both qualify.
+  // Never cut an all-in cinematic short — it finishes via AllInRunout's own onDone.
   useEffect(() => {
-    if (!dwell || !hand) return;
-    if (hand.handId !== dwell.handId && hand.status === 'betting' && hand.toActSeat === mySeatNo) {
-      setDwell(null);
-    }
-  }, [hand?.handId, hand?.toActSeat, hand?.status, mySeatNo, dwell]);
+    if (!dwell || !hand || hand.handId === dwell.handId) return;
+    const cinematicDwell = isAllInShowdown(dwell.ringView);
+    const fresh = hand.status !== 'complete' && (hand.board?.length ?? 0) === 0;
+    const needsMyAction = hand.status === 'betting' && hand.toActSeat === mySeatNo;
+    // Release the dwell STATE in lockstep with the render-time gate: a fresh non-cinematic
+    // deal, or a hand that needs MY action (drops even a cinematic so I'm never blocked).
+    if (needsMyAction || (fresh && !cinematicDwell)) setDwell(null);
+  }, [hand?.handId, hand?.toActSeat, hand?.status, hand?.board?.length, mySeatNo, dwell]);
 
   // PR C — switching tables must not carry a previous table's held result/cinematic. Use
   // the effect CLEANUP (which fires only when tableId actually changes — and on unmount —
@@ -277,7 +284,22 @@ export default function OnlinePokerTable() {
   leaveRef.current = { seated, inActiveHand, leave: actions.leaveTable };
 
   // PR C — only show a held result on a LIVE table; never for a closed / empty one.
-  const showing: DwellSnap | null = tableLive ? dwell : null;
+  // P0 deal-anim fix: when a genuinely NEW hand has been dealt (handId changed from the
+  // dwell's, board empty, not complete), drop the held result RIGHT HERE in render — NOT in
+  // an effect, which clears one commit too late and lets DealAnimation fire over the stale
+  // felt. This makes the felt the live new hand on the SAME render the deal signal bumps, so
+  // the cards fly over the correct empty felt to the correct seat positions. An all-in
+  // cinematic dwell is PRESERVED (excluded) so AllInRunout finishes via its own onDone.
+  const cinematicDwell = !!dwell && isAllInShowdown(dwell.ringView);
+  const newHand = !!hand && !!hand.handId && hand.handId !== dwell?.handId;
+  // freshDeal = a new hand just dealt (board empty) → drops a NON-cinematic held result so
+  // the deal flourish flies over the clean felt. needsMyAction drops the dwell even mid-
+  // cinematic (never block me). An all-in cinematic is otherwise PRESERVED until its own
+  // AllInRunout onDone — a new hand merely ARRIVING must not cut the runout short.
+  const freshDeal = newHand && hand?.status !== 'complete' && (hand?.board?.length ?? 0) === 0;
+  const needsMyAction = newHand && hand?.status === 'betting' && hand?.toActSeat === mySeatNo;
+  const dropDwell = needsMyAction || (freshDeal && !cinematicDwell);
+  const showing: DwellSnap | null = (tableLive && dwell && !dropDwell) ? dwell : null;
   // Once the dwell ends a completed hand can still be the latest (no new deal yet), and a
   // non-live table should show nothing — in both cases clear the felt (null hand → empty
   // board) so a stale completed board never lingers. During an active hand or the dwell
@@ -371,7 +393,9 @@ export default function OnlinePokerTable() {
       ref={rootRef}
       className={immersive
         ? 'fixed inset-0 z-[60] mx-auto flex h-[100dvh] w-full max-w-4xl flex-col gap-2 overflow-y-auto bg-background p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'
-        : 'container mx-auto max-w-4xl space-y-3 p-3 sm:p-4'}
+        // Chrome-less route (no Layout nav): own full-viewport shell + safe-area insets so
+        // the table fills the phone edge-to-edge; max-w-4xl keeps desktop centered.
+        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-3 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
     >
       <header className="flex items-center gap-2">
         {immersive ? (
