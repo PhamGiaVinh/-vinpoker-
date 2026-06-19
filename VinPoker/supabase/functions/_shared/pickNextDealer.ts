@@ -10,7 +10,8 @@
  *  - skill_bonus: +20 per matching game type skill
  *  - consecutive_penalty: heavy load penalty
  *  - back_to_back_penalty: avoid same table
- *  - priority_break_penalty: -500 when flagged for break
+ *  - priority_break_penalty: always 0 since A2 — priority_break_flag is a tier-1 HARD gate
+ *    (excluded until rested ≥ threshold), not a soft score term; field kept for C1 shape
  *  - heavy_worker_penalty: avoid repeatedly picking same dealer
  *  - break_equity_penalty: dealers with deficit break ratio are penalized
  *  - tier_back_to_back_penalty: returning to same table with same tier
@@ -1168,7 +1169,7 @@ export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): s
   if (scoreBreakdown.tier_back_to_back_penalty < 0) parts.push("Tránh bàn cũ");
   if (scoreBreakdown.heavy_worker_penalty < 0) parts.push("Đã làm nhiều swing");
   if (scoreBreakdown.consecutive_high_penalty < 0) parts.push("Nghỉ bàn HIGH");
-  if (scoreBreakdown.priority_break_penalty < 0) parts.push("Đến giờ nghỉ");
+  // priority_break removed from scoring in A2 (now a tier-1 HARD gate). No sign-keyed label.
   if (scoreBreakdown.break_equity_penalty < 0) parts.push("Cần cân bằng nghỉ");
   if (scoreBreakdown.priority_swing_bonus > 0) parts.push("Bàn ưu tiên");
   if (scoreBreakdown.fatigue_penalty < 0) parts.push("Khẩn cấp – mệt nhiều");
