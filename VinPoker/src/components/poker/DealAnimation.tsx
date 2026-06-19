@@ -1,17 +1,16 @@
 // src/components/poker/DealAnimation.tsx
-// PR C — the "deal" flourish: when a NEW hand starts, transient card backs fly from the
-// centre deck (50%,50%) out to each seated player, two rounds, staggered. It is a pure
-// visual overlay — it never touches engine state and disappears once the real hole cards
-// (PlayingCard's op-card-reveal) take over.
+// P0 repair — the "deal" flourish: when a NEW hand is dealt, transient card backs fly from
+// the centre deck (50%,50%) out to each seated player, two rounds, staggered. Pure visual
+// overlay — never touches engine state, disappears once the real hole cards reveal.
 //
-// Anti-replay (P0): only fires when a KNOWN previous handId changes to a brand-new hand
-// (board empty) with ≥2 players in the hand — so it never replays on initial page load,
-// reconnect mid-hand, a re-poll of the same hand, or a refresh. Disabled under
-// prefers-reduced-motion. Positions reuse SeatRing's `pos` (outer-container %).
+// Driven by `signal` from useTableHand (a counter that bumps ONCE per fresh live hand —
+// the data layer already enforces anti-replay: known previous handId → new handId, board
+// empty, ≥2 in-hand, never on initial load/poll/reconnect). The animation flies ONLY to
+// `seats` (occupied/in-hand seats) — never to empty chairs. Disabled under reduced-motion.
 
 import { useEffect, useRef, useState } from 'react';
 import { CardBack } from './CardBack';
-import type { PublicHandView } from '@/lib/onlinePoker/types';
+import { dealFlyCards } from '@/lib/onlinePoker/tableState';
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -19,51 +18,41 @@ const reducedMotion = () =>
 type FlyCard = { x: number; y: number; delay: number };
 
 export function DealAnimation({
-  hand,
+  signal,
+  seats,
   pos,
 }: {
-  hand: PublicHandView;
+  /** counter from useTableHand; a change (>0) triggers one deal animation. */
+  signal: number;
+  /** seat numbers that received cards — the ONLY seats cards fly to. */
+  seats: number[];
+  /** seat-centre positions (outer-container %), from SeatRing. */
   pos: Record<number, { x: number; y: number }>;
 }) {
-  const prevHandIdRef = useRef<string | null>(null);
   const idRef = useRef(0);
+  const firstRef = useRef(true);
   const [deal, setDeal] = useState<{ id: number; cards: FlyCard[] } | null>(null);
   const [flying, setFlying] = useState(false);
 
   useEffect(() => {
-    const prevId = prevHandIdRef.current;
-    prevHandIdRef.current = hand.handId;
+    // Skip the initial mount (signal starts at 0 / first observed value) — only react to a
+    // genuine bump. The data layer never bumps on initial load, but guard the mount anyway.
+    if (firstRef.current) { firstRef.current = false; return; }
+    if (signal <= 0 || reducedMotion()) return;
 
-    const inHand = hand.seats.filter((s) => s.playerId && (s.status === 'active' || s.status === 'allin'));
-    const fresh =
-      !!prevId && !!hand.handId && hand.handId !== prevId &&
-      (hand.board?.length ?? 0) === 0 && inHand.length >= 2;
-    if (!fresh || reducedMotion()) return;
-
-    // two rounds, one card per seated player each round, staggered clockwise.
-    const ordered = [...inHand].sort((a, b) => a.seat - b.seat);
-    const cards: FlyCard[] = [];
-    let k = 0;
-    for (let round = 0; round < 2; round++) {
-      for (const s of ordered) {
-        const p = pos[s.seat];
-        if (!p) continue;
-        cards.push({ x: p.x, y: p.y, delay: k * 75 });
-        k++;
-      }
-    }
-    if (!cards.length) return;
+    // only occupied/in-hand seats (never empty chairs), two rounds, staggered.
+    const cards: FlyCard[] = dealFlyCards(seats, pos);
+    if (cards.length < 2) return;
 
     const id = ++idRef.current;
     setFlying(false);
     setDeal({ id, cards });
-    // next frame: flip targets on so the CSS left/top transition fires.
     const raf = requestAnimationFrame(() => requestAnimationFrame(() => setFlying(true)));
     const totalMs = cards.length * 75 + 460;
     const clear = setTimeout(() => setDeal((d) => (d && d.id === id ? null : d)), totalMs);
     return () => { cancelAnimationFrame(raf); clearTimeout(clear); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hand.handId]);
+  }, [signal]);
 
   if (!deal) return null;
   return (
