@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -58,6 +58,24 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
   }, [clubIds]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-update the floor list when tournaments change anywhere (e.g. super-admin
+  // bulk-creates from a schedule image) — load() re-filters to this floor's clubs,
+  // so a new tournament for one of these clubs appears without a manual refresh.
+  // Keyed on the club-id string (not the array ref) to avoid resubscribe churn.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const clubKey = clubIds.join(",");
+  useEffect(() => {
+    if (!clubKey) return;
+    const channel = supabase
+      .channel(`floor-tour-mgr:${clubKey}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, () => {
+        loadRef.current();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [clubKey]);
 
   const deleteTour = async (id: string) => {
     if (!confirm(t("clubAdmin.deleteConfirm"))) return;
