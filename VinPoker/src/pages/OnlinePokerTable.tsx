@@ -395,16 +395,17 @@ export default function OnlinePokerTable() {
         ? 'fixed inset-0 z-[60] mx-auto flex h-[100dvh] w-full max-w-4xl flex-col gap-2 overflow-y-auto bg-background p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'
         // Chrome-less route (no Layout nav): own full-viewport shell + safe-area insets so
         // the table fills the phone edge-to-edge; max-w-4xl keeps desktop centered.
-        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-3 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
+        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
+      style={{ background: 'radial-gradient(130% 85% at 50% 26%, #0b1410 0%, #07090b 72%)' }}
     >
-      <header className="flex items-center gap-2">
+      <header className="flex items-center gap-2 rounded-xl bg-black/25 px-1.5 py-1">
         {immersive ? (
           <Button variant="ghost" size="sm" onClick={exitImmersive}><Minimize2 className="h-4 w-4" /> Thoát</Button>
         ) : (
           <Button asChild variant="ghost" size="sm"><Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link></Button>
         )}
-        <h1 className="truncate text-lg font-bold">{table.name}</h1>
-        <Badge variant="outline" className="tabular-nums">{fmtChips(table.sb)}/{fmtChips(table.bb)}</Badge>
+        <h1 className="truncate text-base font-semibold">{table.name}</h1>
+        <Badge variant="outline" className="tabular-nums text-[11px]">{fmtChips(table.sb)}/{fmtChips(table.bb)}</Badge>
         <Button
           variant="ghost"
           size="icon"
@@ -430,12 +431,12 @@ export default function OnlinePokerTable() {
       {/* All-in showdown → cinematic runout replay (staged reveals → flop → equity → turn
           → equity → river → result). Otherwise the felt: the live hand, or the held
           showdown snapshot. Empty seats are tap-to-sit when you're not seated / no result. */}
-      {cinematic && showing ? (
-        <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
+      {/* Felt is the page — the table floats in the dark void with no card chrome around
+          it, centered in the available height so it dominates the screen. */}
+      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+        {cinematic && showing ? (
           <AllInRunout hand={showing.ringView} bb={table.bb} onDone={() => setDwell(null)} />
-        </Card>
-      ) : (
-        <Card className="overflow-hidden bg-black/20 p-2 sm:p-3">
+        ) : (
           <SeatRing
             hand={feltView}
             bb={table.bb}
@@ -446,8 +447,8 @@ export default function OnlinePokerTable() {
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
           />
-        </Card>
-      )}
+        )}
+      </div>
 
       {/* seat controls */}
       <div className="flex flex-wrap items-center justify-center gap-2">
