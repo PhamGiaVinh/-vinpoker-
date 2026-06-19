@@ -18,6 +18,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
 import { ClockPanel } from "./tournament-live/ClockPanel";
 import { HandInputPanel } from "./tournament-live/HandInputPanel";
+import { OpenHandInputConsoleButton } from "./tournament-live/handinput/OpenHandInputConsoleButton";
 import { LeaderboardPanel } from "./tournament-live/LeaderboardPanel";
 import { PlayersGroupedPanel } from "./tournament-live/PlayersGroupedPanel";
 import { BlindEditorPanel } from "./tournament-live/BlindEditorPanel";
@@ -343,7 +344,12 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
                 refreshTrigger={refreshTrigger}
               />
             ) },
-            { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => <HandInputPanel tournamentId={selectedTournament.id} /> },
+            { value: "hand_input", icon: Hand, label: t("tournamentLive.tabs.input"), render: () => (
+              <>
+                <OpenHandInputConsoleButton tournamentId={selectedTournament.id} />
+                <HandInputPanel tournamentId={selectedTournament.id} />
+              </>
+            ) },
             { value: "hand_history", icon: History, label: t("tournamentLive.handHistory.title"), render: () => <HandHistoryPanel tournamentId={selectedTournament.id} /> },
             { value: "leaderboard", icon: Trophy, label: t("tournamentLive.leaderboard.title"), render: () => <LeaderboardPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
             { value: "players", icon: Users, label: "Người chơi", render: () => <PlayersGroupedPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
