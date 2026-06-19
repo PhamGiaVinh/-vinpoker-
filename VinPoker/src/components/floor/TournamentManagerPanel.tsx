@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -32,7 +32,7 @@ type ClubRow = { id: string; name: string };
  * the rake / service-fee fields the create/edit dialogs already wrote in Club Admin.
  * Scoped to the operator's clubs; multi-club picks the target club on create.
  */
-export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
+export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { clubIds: string[]; clubs: ClubRow[]; embedded?: boolean }) {
   const { t } = useTranslation();
   const [tours, setTours] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,28 +72,47 @@ export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; 
     else { toast.success(t("clubAdmin.statusUpdated")); load(); }
   };
 
-  return (
-    <Card className="mb-4 border-primary/20">
-      <div className="flex items-center justify-between gap-2 p-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-2 min-w-0 text-left"
-        >
-          {expanded
-            ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
-            : <ChevronRight className="w-4 h-4 text-primary shrink-0" />}
-          <CalendarPlus className="w-4 h-4 text-primary shrink-0" />
-          <span className="font-display text-primary truncate">Quản lý giải đấu</span>
-          <span className="text-xs text-muted-foreground">({tours.length})</span>
-        </button>
-        {clubIds.length > 0 && (
-          <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
-        )}
-      </div>
+  // "Bắt đầu giải" from the Floor — reuses the SAME canonical clock-start as the
+  // operator Clock tab (Edge tournament-live-clock "start": update_tournament_state
+  // status='live' + clock_started_at=now + current_level=1). One tap puts the
+  // tournament on the Live Tracker AND runs the clock so blinds display.
+  const startTournament = async (id: string) => {
+    const { data, error } = await supabase.functions.invoke("tournament-live-clock", {
+      body: { tournament_id: id, action: "start", current_level: 1 },
+    });
+    if (error || (data as any)?.error) toast.error((data as any)?.error || error?.message || "Không bắt đầu được giải");
+    else { toast.success("Đã bắt đầu giải — đồng hồ chạy, giải lên Live Tracker + hiện blinds"); load(); }
+  };
 
-      {expanded && (
-        <div className="px-3 pb-3">
+  return (
+    <Card className={embedded ? "border-0 bg-transparent shadow-none" : "mb-4 border-primary/20"}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-2 p-3">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-2 min-w-0 text-left"
+          >
+            {expanded
+              ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
+              : <ChevronRight className="w-4 h-4 text-primary shrink-0" />}
+            <CalendarPlus className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-display text-primary truncate">Quản lý giải đấu</span>
+            <span className="text-xs text-muted-foreground">({tours.length})</span>
+          </button>
+          {clubIds.length > 0 && (
+            <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
+          )}
+        </div>
+      )}
+
+      {(embedded || expanded) && (
+        <div className={embedded ? "" : "px-3 pb-3"}>
+          {embedded && clubIds.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <NewTournamentDialog clubs={clubs} defaultClubId={clubIds[0]} multiClub={multiClub} onCreated={load} />
+            </div>
+          )}
           {loading ? (
             <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
           ) : tours.length === 0 ? (
@@ -131,6 +150,16 @@ export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; 
                     </SelectContent>
                   </Select>
                   <LiveStateEditor tournament={t2} onSaved={load} />
+                  {t2.status !== "live" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-9 text-xs border-primary/50 text-primary hover:bg-primary/10"
+                      onClick={() => startTournament(t2.id)}
+                    >
+                      <Play className="w-3.5 h-3.5 mr-1" /> Bắt đầu giải (chạy đồng hồ + lên live)
+                    </Button>
+                  )}
                 </Card>
               ))}
             </div>
