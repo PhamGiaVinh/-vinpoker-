@@ -10,7 +10,8 @@
  *  - skill_bonus: +20 per matching game type skill
  *  - consecutive_penalty: heavy load penalty
  *  - back_to_back_penalty: avoid same table
- *  - priority_break_penalty: -500 when flagged for break
+ *  - priority_break_penalty: always 0 since A2 — priority_break_flag is a tier-1 HARD gate
+ *    (excluded until rested ≥ threshold), not a soft score term; field kept for C1 shape
  *  - heavy_worker_penalty: avoid repeatedly picking same dealer
  *  - break_equity_penalty: dealers with deficit break ratio are penalized
  *  - tier_back_to_back_penalty: returning to same table with same tier
@@ -689,6 +690,18 @@ export async function buildDealerCandidates(
 
   const candidates: DealerCandidate[] = [];
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Per-dealer evaluation runs in two EXPLICIT phases (A2):
+  //   PHASE 1 — HARD ELIGIBILITY FILTERS (tier-1: safety / impossibility).
+  //     A dealer who fails ANY hard filter is `continue`d out of the pool
+  //     entirely (recorded via a diag.*_excluded counter). priority_break_flag
+  //     is a HARD gate here (excluded until rested ≥ restThreshold), NOT a soft
+  //     score term — there is no residual score penalty for a flagged dealer
+  //     who passed the gate.
+  //   PHASE 2 — SOFT PREFERENCE SCORING (tiers 2–5: SLA / fatigue / fairness /
+  //     preference). A single weighted score that only REORDERS the dealers who
+  //     survived PHASE 1; soft terms never exclude.
+  // ════════════════════════════════════════════════════════════════════════
   for (const row of rows) {
     // ── Intra-cycle exclusion ────────────────────────────────────────────────
     // Accumulative exclusion: dealers picked in earlier phases (Fill, Pass 2)
@@ -768,10 +781,14 @@ export async function buildDealerCandidates(
     const fatigueHardCap = consecutive >= SWING_POLICY.fatigue.fatigueHardCapConsecutive && restMin < SWING_POLICY.fatigue.fatigueHardCapRestMinutes;
     if (!skipFatigueHardCap && fatigueHardCap) { diag.fatigue_excluded++; continue; }
 
-    // ── Priority break + rest guard ─────────────────────────────────────────
-    // Dealer flagged for break needs rest — skip unless skipPriorityBreakGuard.
+    // ── Priority break — TIER-1 HARD GATE (A2) ──────────────────────────────
+    // priority_break_flag is a HARD eligibility gate, NOT a soft score term.
+    // A flagged dealer is excluded until rested ≥ restThreshold. The emergency
+    // skipPriorityBreakGuard bypass (Tier-2/3 OT escalation) is the ONLY override
+    // and MUST stay — removing it would break emergency escalation under shortage.
+    // A2 removed the old -500 soft penalty (see PHASE 2): a flagged dealer who
+    // passes this gate is "rested enough" and competes on equal footing.
     // Rest threshold = break_duration_minutes + 5 buffer (default 20+5=25).
-    // Dealer who rested ≥ threshold is "rested enough" to reassign.
     const restThreshold = (clubBreakDurationMinutes ?? SWING_POLICY.fatigue.defaultClubBreakDurationMinutes) + SWING_POLICY.fatigue.priorityBreakRestBufferMinutes;
     if (!skipPriorityBreakGuard && priorityBreak && restMin < restThreshold) { diag.priority_break_excluded++; continue; }
 
@@ -857,7 +874,10 @@ export async function buildDealerCandidates(
       continue;
     }
 
-    // ── Scoring ─────────────────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    // PHASE 2 — SOFT PREFERENCE SCORING (tiers 2–5). Only dealers that survived
+    // every PHASE-1 hard filter reach here. These terms REORDER; never exclude.
+    // ════════════════════════════════════════════════════════════════════════
     let score = 0;
 
     // ── On-break penalty ────────────────────────────────────────────────────────
@@ -906,11 +926,10 @@ export async function buildDealerCandidates(
       }
     }
 
-    // Priority break penalty — deprioritize dealers who need a break
-    if (priorityBreak) {
-      breakdown.priority_break_penalty = SWING_POLICY.scoring.priorityBreakPenalty;
-      score += breakdown.priority_break_penalty;
-    }
+    // Priority break: handled as a TIER-1 HARD GATE in PHASE 1 (excluded until
+    // rested ≥ threshold). A2 removed the old -500 soft penalty — a flagged
+    // dealer who passed the gate competes normally. breakdown.priority_break_penalty
+    // stays 0 (field kept for C1 diagnostics shape).
 
     // Heavy worker penalty — avoid repeatedly picking the same dealer
     if (consecutive >= SWING_POLICY.fatigue.consecutivePenaltyThreshold) {
@@ -1150,7 +1169,7 @@ export function buildScoreLabel(tier: string, scoreBreakdown: ScoreBreakdown): s
   if (scoreBreakdown.tier_back_to_back_penalty < 0) parts.push("Tránh bàn cũ");
   if (scoreBreakdown.heavy_worker_penalty < 0) parts.push("Đã làm nhiều swing");
   if (scoreBreakdown.consecutive_high_penalty < 0) parts.push("Nghỉ bàn HIGH");
-  if (scoreBreakdown.priority_break_penalty < 0) parts.push("Đến giờ nghỉ");
+  // priority_break removed from scoring in A2 (now a tier-1 HARD gate). No sign-keyed label.
   if (scoreBreakdown.break_equity_penalty < 0) parts.push("Cần cân bằng nghỉ");
   if (scoreBreakdown.priority_swing_bonus > 0) parts.push("Bàn ưu tiên");
   if (scoreBreakdown.fatigue_penalty < 0) parts.push("Khẩn cấp – mệt nhiều");
