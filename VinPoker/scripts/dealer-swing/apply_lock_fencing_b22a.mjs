@@ -55,13 +55,35 @@ const PREFLIGHT = [
             and p.proname in ('try_acquire_club_lock','release_club_lock','cleanup_expired_club_locks')
           order by 1;`,
   },
+  {
+    label: "P4 — legacy grant posture (service_role/authenticated/anon) — baseline so new funcs do NOT expand it",
+    sql: `select p.proname,
+                 has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role,
+                 has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+                 has_function_privilege('anon', p.oid, 'EXECUTE') as anon
+          from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='public'
+            and p.proname in ('try_acquire_club_lock','release_club_lock','cleanup_expired_club_locks')
+          order by 1;`,
+  },
+  {
+    label: "P5 — overload guard: no pre-existing fenced/extend/release_if_owner overloads (expect 0 rows)",
+    sql: `select p.proname, count(*) as n
+          from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='public'
+            and p.proname in ('try_acquire_club_lock_fenced','extend_club_lock_lease','release_club_lock_if_owner')
+          group by 1;`,
+  },
 ];
 
 const VERIFY = [
   ...PREFLIGHT,
   {
-    label: "V4 — grants: service_role EXECUTE on the 3 new functions (expect true×3)",
-    sql: `select p.proname, has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_exec
+    label: "V4 — NEW funcs grant posture (service_role/authenticated/anon) — must MATCH legacy P4 (no expansion); service_role=true expected",
+    sql: `select p.proname,
+                 has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role,
+                 has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+                 has_function_privilege('anon', p.oid, 'EXECUTE') as anon
           from pg_proc p join pg_namespace n on n.oid=p.pronamespace
           where n.nspname='public'
             and p.proname in ('try_acquire_club_lock_fenced','extend_club_lock_lease','release_club_lock_if_owner')
@@ -72,6 +94,45 @@ const VERIFY = [
     sql: `select count(*)::int as n from supabase_migrations.schema_migrations where version='20261003000000';`,
   },
 ];
+
+// Functional token test — runs the fenced acquire/extend/release sequence on a real club
+// inside BEGIN…ROLLBACK so NOTHING persists (temp table ON COMMIT DROP + ROLLBACK; the lock
+// row inserted by acquire is rolled back). Calls are SEQUENTIAL in a DO block so ordering is
+// guaranteed (extend before release). NOT read-only (writes-then-rolls-back) → runs outside the
+// read-only guard. Expected: 1_acquired=true · 2_token_present=true · 3_extend_ok=true ·
+// 4_extend_bad=false · 5_release_bad=false · 6_release_ok=true.
+const FUNCTEST_SQL = `
+BEGIN;
+CREATE TEMP TABLE _b22a_functest(k text, v jsonb) ON COMMIT DROP;
+DO $fn$
+DECLARE
+  v_club uuid; v_acq jsonb; v_token uuid;
+  v_extend_ok boolean; v_extend_bad boolean; v_release_bad boolean; v_release_ok boolean;
+BEGIN
+  SELECT id INTO v_club FROM clubs LIMIT 1;
+  IF v_club IS NULL THEN
+    INSERT INTO _b22a_functest VALUES ('0_error', to_jsonb('no clubs to test with'::text));
+    RETURN;
+  END IF;
+  DELETE FROM club_processing_locks WHERE club_id = v_club;            -- clean slate (rolled back)
+  v_acq := public.try_acquire_club_lock_fenced(v_club, 120, 'b22a-functest');
+  v_token := (v_acq->>'lock_token')::uuid;
+  v_extend_ok   := public.extend_club_lock_lease(v_club, v_token, 120);
+  v_extend_bad  := public.extend_club_lock_lease(v_club, gen_random_uuid(), 120);
+  v_release_bad := public.release_club_lock_if_owner(v_club, gen_random_uuid());
+  v_release_ok  := public.release_club_lock_if_owner(v_club, v_token);
+  INSERT INTO _b22a_functest VALUES
+    ('1_acquired',      v_acq->'acquired'),
+    ('2_token_present', to_jsonb(v_token IS NOT NULL)),
+    ('3_extend_ok',     to_jsonb(v_extend_ok)),
+    ('4_extend_bad',    to_jsonb(v_extend_bad)),
+    ('5_release_bad',   to_jsonb(v_release_bad)),
+    ('6_release_ok',    to_jsonb(v_release_ok));
+END
+$fn$;
+SELECT k, v FROM _b22a_functest ORDER BY k;
+ROLLBACK;
+`;
 
 // Read-only guard for preflight/verify SELECTs (apply SQL bypasses this intentionally).
 function assertReadOnly(label, sql) {
@@ -128,6 +189,10 @@ async function main() {
 
   log("════════ POST-VERIFY ════════");
   await runSet(creds, VERIFY);
+
+  log("════════ FUNCTIONAL TOKEN TEST (BEGIN…ROLLBACK — no residue) ════════");
+  console.log(JSON.stringify(await mgmtQuery(creds, FUNCTEST_SQL), null, 2));
+  log("Expect: 1_acquired=true · 2_token_present=true · 3_extend_ok=true · 4_extend_bad=false · 5_release_bad=false · 6_release_ok=true");
 
   log("══════════════════════════════════════════════");
   log("APPLY COMPLETE. Confirm in the output above:");
