@@ -122,13 +122,26 @@ BEGIN
 
   -- 5. CREATE path (no reopen happened).
   IF v_tt_id IS NULL THEN
-    v_number := COALESCE(
-      p_table_number,
-      (SELECT COALESCE(MAX(table_number), 0) + 1
-         FROM public.tournament_tables WHERE tournament_id = p_tournament_id)
-    );
+    -- Number the table: explicit, else the smallest whose 'Bàn N' NAME is not yet
+    -- used by this tournament. Number by NAME (not MAX(table_number)+1) because some
+    -- tournament_tables rows carry a NULL table_number — those are skipped by MAX but
+    -- still occupy the name under tournament_tables_unique_name(tournament_id, table_name).
+    IF p_table_number IS NOT NULL THEN
+      v_number := p_table_number;
+    ELSE
+      SELECT MIN(n) INTO v_number
+      FROM generate_series(1, 1000) AS n
+      WHERE ('Bàn ' || n::text) NOT IN (
+        SELECT table_name FROM public.tournament_tables WHERE tournament_id = p_tournament_id
+      );
+    END IF;
+    IF v_number IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'no_table_slot');
+    END IF;
+    -- The name must be free (covers an explicit number whose 'Bàn N' already exists,
+    -- active or closed) — tournament_tables_unique_name forbids a duplicate name.
     IF EXISTS (SELECT 1 FROM public.tournament_tables
-               WHERE tournament_id = p_tournament_id AND table_number = v_number AND status = 'active') THEN
+               WHERE tournament_id = p_tournament_id AND table_name = 'Bàn ' || v_number::text) THEN
       RETURN jsonb_build_object('ok', false, 'error', 'table_number_taken', 'table_number', v_number);
     END IF;
     -- Reuse the club's pooled game_tables row (status → active), else create one.
