@@ -2942,6 +2942,83 @@
       "waiting": "Chờ dealer bắt đầu hand..."
     }
   },
+  "playerIntelligence": {
+    "header": {
+      "title": "Hồ sơ Poker của bạn",
+      "subtitle": "Dựa trên dữ liệu giải đấu đã ghi nhận trong VinPoker. Không phải cam kết kết quả."
+    },
+    "status": { "new": "Mới", "provisional": "Đang xây dựng", "verified": "Đã xác minh" },
+    "confidence": { "low": "Thấp", "medium": "Vừa", "high": "Cao" },
+    "confidenceLabel": "Độ tin cậy",
+    "sample": {
+      "title": "Giải đã ghi nhận",
+      "totalEntries": "Lượt tham gia",
+      "uniqueEvents": "Số giải",
+      "reentries": "Re-entry",
+      "lastPlayed": "Gần nhất",
+      "empty": "Chưa có dữ liệu giải đấu đã xác minh"
+    },
+    "results": {
+      "title": "Kết quả quan sát",
+      "subtitle": "Dựa trên kết quả đã ghi nhận",
+      "itm": "Tỷ lệ ITM",
+      "ft": "Tỷ lệ final table",
+      "top3": "Tỷ lệ top 3",
+      "avgFinish": "Vị trí trung bình"
+    },
+    "sourceQuality": {
+      "title": "Chất lượng dữ liệu",
+      "show": "Xem chi tiết",
+      "hide": "Ẩn",
+      "finishPosition": "Vị trí về đích",
+      "itm": "Nguồn ITM",
+      "fieldSize": "Quy mô giải",
+      "structure": "Cấu trúc",
+      "identity": "Định danh",
+      "rateMethod": "Cách tính tỷ lệ",
+      "rawObservedNote": "Tỷ lệ hiện tại dựa trên dữ liệu đã ghi nhận, chưa điều chỉnh theo mẫu lớn."
+    },
+    "sqValue": {
+      "exact_live": "Chính xác (live)",
+      "manual": "Nhập tay",
+      "missing": "Thiếu",
+      "leaderboard_view": "Bảng xếp hạng",
+      "itm_places": "Theo cơ cấu giải",
+      "prize": "Theo tiền thưởng",
+      "derived_position": "Suy ra từ vị trí",
+      "confirmed_entries": "Lượt đăng ký xác nhận",
+      "current_players_snapshot": "Ảnh chụp số người chơi",
+      "legacy_total_entries": "Dữ liệu cũ",
+      "configured": "Đã cấu hình",
+      "default_assumed": "Giả định mặc định",
+      "online_authenticated": "Tài khoản online",
+      "offline_ephemeral": "Khách tại sàn",
+      "raw_observed": "Quan sát thô",
+      "unknown": "Chưa rõ"
+    },
+    "outlook": {
+      "title": "Viễn cảnh giải đấu",
+      "lockedTitle": "đang khóa",
+      "expectedItm": "Kỳ vọng ITM",
+      "chanceItm": "Cơ hội có ít nhất 1 ITM",
+      "windowTitle": "Kịch bản {{n}} giải tương tự",
+      "softNote": "Kịch bản dữ liệu nếu bạn chơi các giải tương tự. Không phải cam kết kết quả.",
+      "basis": "Dựa trên tỷ lệ quan sát hiện tại, chưa điều chỉnh theo mẫu lớn.",
+      "reason": {
+        "not_enough_verified_entries": "Cần thêm kết quả giải đấu đã xác minh để mở kịch bản 4/8/12 giải.",
+        "low_source_quality": "Dữ liệu chưa đủ tốt để mở viễn cảnh. Chơi thêm giải để cải thiện."
+      }
+    },
+    "action": {
+      "title": "Bước tiếp theo",
+      "play_drill": "Chơi Poker IQ Drill",
+      "join_first_event": "Tham gia giải đầu tiên để bắt đầu hồ sơ xác minh",
+      "keep_playing_recorded": "Tiếp tục chơi các giải được ghi nhận",
+      "see_fit_events": "Xem giải phù hợp",
+      "track_progress": "Theo dõi tiến bộ sau mỗi giải"
+    },
+    "error": "Chưa tải được hồ sơ. Thử lại sau."
+  },
   "pokerDrill": {
     "intro": {
       "kicker": "Hành trình Poker của bạn",
