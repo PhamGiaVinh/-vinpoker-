@@ -273,6 +273,9 @@ export const FEATURES = {
    * dialogs never write the (absent) columns. Flip to true ONLY after both are applied +
    * types regenerated. The formula treats NULL as auto-compute, so applying the migrations
    * alone changes ZERO payroll numbers until the owner actually sets an override.
+   * **ON** (2026-06-19): both migrations applied live + golden-diff verified (net byte-identical
+   * for all 39 active dealers; overrides NULL = no-op). The dealer edit/create dialogs now show
+   * the "Khấu trừ thủ công" inputs. Kill-switch: set false to hide them again.
    */
-  manualPayrollDeductions: false,
+  manualPayrollDeductions: true,
 } as const;
