@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, Hand, Trophy, List, Settings, RefreshCw, Eye, History,
-  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3, Bot,
+  Users, Layers, AlertTriangle, ArrowLeft, ListOrdered, Tv, Grid3x3, Bot, CalendarPlus,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Tournament, TournamentLevel, TournamentLeaderboard } from "@/types/tournament";
@@ -29,6 +29,7 @@ import { HandHistoryPanel } from "./tournament-live/HandHistoryPanel";
 import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel";
 import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 import { TdAiTabPanel } from "@/components/td-ai/TdAiTabPanel";
+import { TournamentManagerPanel } from "@/components/floor/TournamentManagerPanel";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -82,7 +83,7 @@ const MODE_TABS: Record<string, string[]> = {
   tracker: ["live_view", "clock", "hand_input", "hand_history", "leaderboard"],
   // Owner 2026-06-16: Floor drops the live-tracking "Xem trực tiếp" view (that's the
   // Tracker's job) and surfaces the TD AI rules assistant as its own tab instead.
-  floor: ["table_map", "players", "queue", "prizes", "blinds", "tv_displays", "td_ai"],
+  floor: ["manage", "table_map", "players", "queue", "prizes", "blinds", "tv_displays", "td_ai"],
 };
 
 export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: { clubIds: string[]; clubs: { id: string; name: string }[]; mode?: "full" | "tracker" | "floor" }) {
@@ -333,6 +334,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
       {selectedTournament ? (
         (() => {
           const TAB_DEFS = [
+            { value: "manage", icon: CalendarPlus, label: "Quản lý giải", render: () => <TournamentManagerPanel clubIds={clubIds} clubs={clubs} embedded /> },
             { value: "table_map", icon: Grid3x3, label: "Sơ đồ bàn", render: () => <FloorTableMapPanel tournament={selectedTournament} refreshTrigger={refreshTrigger} /> },
             { value: "live_view", icon: Eye, label: t("tournamentLive.liveView.title"), render: () => <TournamentLiveView tournamentId={selectedTournament.id} /> },
             { value: "clock", icon: Clock, label: t("tournamentLive.clock.title"), render: () => <ClockPanel tournamentId={selectedTournament.id} refreshTrigger={refreshTrigger} /> },
