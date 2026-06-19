@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
-  pickTopDealers,
+  pickTopDealersWithDiagnostics,
   buildScoreLabel,
   computeSwingDuration,
   corsHeaders,
@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
       return json({ assignment: { id: assignmentId, status: "success" }, status: "success" });
     }
 
-    const topDealers = await pickTopDealers(admin, table.club_id, 3, {
+    const { candidates: topDealers, diag } = await pickTopDealersWithDiagnostics(admin, table.club_id, 3, {
       tourTier,
       currentTableId: table_id,
       includeScoreBreakdown: true,
@@ -273,15 +273,17 @@ Deno.serve(async (req) => {
         : "Sẵn sàng",
     }));
 
+    // diagnostics = exclusion counters (why other dealers were not chosen). Read-only
+    // explainability surface for the floor (C1); does not affect selection.
     if (return_suggestions_only) {
-      return json({ suggestions: formatted });
+      return json({ suggestions: formatted, diagnostics: diag ?? null });
     }
 
     if (!formatted.length) {
       return json({ error: "NO_DEALERS_AVAILABLE: No dealers checked in and available" });
     }
 
-    return json({ suggestions: formatted });
+    return json({ suggestions: formatted, diagnostics: diag ?? null });
   } catch (e) {
     return json({ error: `INTERNAL_ERROR: ${(e as Error).message}` }, 500);
   }

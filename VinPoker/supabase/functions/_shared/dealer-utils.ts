@@ -14,6 +14,7 @@
 export {
   pickNextDealer,
   pickTopDealers,
+  pickTopDealersWithDiagnostics,
   buildScoreLabel,
   buildDealerCandidates,
 } from "./pickNextDealer.ts";
@@ -41,6 +42,7 @@ export type {
   PickDealerOptions,
   DealerCandidate,
   BuildCandidatesResult,
+  PickDiagnostics,
 } from "./pickNextDealer.ts";
 
 export type {
