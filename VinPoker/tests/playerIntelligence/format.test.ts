@@ -7,10 +7,12 @@ import {
   formatExpected,
   formatPercent,
   formatSourceQuality,
+  formatScenarioWindow,
   getNextBestAction,
   getProfileMilestones,
   isRawObservedRate,
   isScenarioUnlocked,
+  simulateScenarioWindows,
 } from "@/lib/player-intelligence/format";
 import { parsePlayerIntelligence } from "@/lib/player-intelligence/types";
 import vi from "@/i18n/locales/vi.json";
@@ -109,6 +111,26 @@ describe("profile milestones (aspirational ladder)", () => {
     expect(ms.steps.every((s) => s.reached)).toBe(true);
     expect(ms.next).toBeNull();
     expect(ms.remaining).toBeNull();
+  });
+});
+
+describe("scenario simulator (Thử viễn cảnh)", () => {
+  it("25% ITM → canonical 68/90/97 chance and ~1/~2/~3 expected across 4/8/12", () => {
+    const w = simulateScenarioWindows(0.25);
+    expect(w.map((x) => x.tournaments)).toEqual([4, 8, 12]);
+    expect(w.map((x) => formatScenarioWindow(x).expectedText)).toEqual(["~1", "~2", "~3"]);
+    expect(w.map((x) => formatScenarioWindow(x).chanceText)).toEqual(["68%", "90%", "97%"]);
+  });
+
+  it("accepts a custom window list", () => {
+    expect(simulateScenarioWindows(0.2, [6]).map((x) => x.tournaments)).toEqual([6]);
+  });
+
+  it("clamps out-of-range / non-finite rates to [0,1]", () => {
+    expect(simulateScenarioWindows(1.5)[0].chanceAtLeastOneItm).toBe(1);
+    expect(simulateScenarioWindows(-0.2)[0].chanceAtLeastOneItm).toBe(0);
+    expect(simulateScenarioWindows(-0.2)[0].expectedItm).toBe(0);
+    expect(simulateScenarioWindows(Number.NaN)[0].chanceAtLeastOneItm).toBe(0);
   });
 });
 

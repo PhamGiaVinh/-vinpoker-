@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronDown, ChevronRight, Info, Lock, Play, Sparkles, Trophy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Info, Lock, Play, SlidersHorizontal, Sparkles, Trophy } from "lucide-react";
 import {
   formatConfidence,
   formatPercent,
@@ -13,6 +13,7 @@ import {
   isRawObservedRate,
   isScenarioUnlocked,
   NextActionKey,
+  simulateScenarioWindows,
   usePlayerIntelligence,
 } from "@/lib/player-intelligence";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,91 @@ import { cn } from "@/lib/utils";
 const Section = ({ className, children }: { className?: string; children: ReactNode }) => (
   <div className={cn("rounded-2xl border border-border bg-card p-4", className)}>{children}</div>
 );
+
+const SIM_PRESETS: { key: "new" | "good" | "strong"; pct: number }[] = [
+  { key: "new", pct: 15 },
+  { key: "good", pct: 25 },
+  { key: "strong", pct: 35 },
+];
+
+/** "Thử viễn cảnh" — interactive simulator so every player can SEE the 4/8/12
+ *  outlook from a hypothetical ITM rate they choose. Clearly a simulation, never
+ *  their real data: lets locked/new players experience the payoff honestly. */
+function ScenarioSimulator() {
+  const { t } = useTranslation();
+  const [pct, setPct] = useState(25);
+  const windows = simulateScenarioWindows(pct / 100);
+  return (
+    <Section>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
+          <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+          {t("playerIntelligence.simulator.title")}
+        </span>
+        <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+          {t("playerIntelligence.simulator.badge")}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{t("playerIntelligence.simulator.subtitle")}</p>
+
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-[12px]">
+          <span className="text-muted-foreground">{t("playerIntelligence.simulator.rateLabel")}</span>
+          <span className="font-medium text-primary">{pct}%</span>
+        </div>
+        <input
+          type="range"
+          min={5}
+          max={40}
+          step={1}
+          value={pct}
+          onChange={(e) => setPct(Number(e.target.value))}
+          aria-label={t("playerIntelligence.simulator.rateLabel")}
+          aria-valuetext={`${pct}%`}
+          className="mt-2 w-full"
+          style={{ accentColor: "hsl(var(--primary))" }}
+        />
+        <div className="mt-2 flex gap-2">
+          {SIM_PRESETS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setPct(p.pct)}
+              aria-pressed={pct === p.pct}
+              className={cn(
+                "min-h-[36px] flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
+                pct === p.pct ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted/40",
+              )}
+            >
+              {t(`playerIntelligence.simulator.preset.${p.key}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        {windows.map((w) => {
+          const v = formatScenarioWindow(w);
+          return (
+            <div key={w.tournaments} className="flex-1 rounded-xl border border-border bg-background/40 p-2.5 text-center">
+              <div className="text-[11px] text-muted-foreground">
+                {w.tournaments} {t("playerIntelligence.milestone.eventUnit")}
+              </div>
+              <div className="mt-1 text-[16px] font-medium text-primary">{v.chanceText ?? "—"}</div>
+              <div className="text-[10.5px] text-muted-foreground">{t("playerIntelligence.simulator.chanceItm")}</div>
+              <div className="mt-1 text-[11px] text-foreground">
+                {t("playerIntelligence.simulator.expectedItm")}: <b className="font-medium">{v.expectedText ?? "—"}</b>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-2.5 text-[11px] leading-snug text-muted-foreground">{t("playerIntelligence.simulator.note")}</p>
+      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{t("playerIntelligence.outlook.softNote")}</p>
+    </Section>
+  );
+}
 
 const ACTION_ROUTE: Record<NextActionKey, string> = {
   play_drill: "/poker-iq",
@@ -201,22 +287,8 @@ export function SmartPlayerCard() {
       <div className="flex flex-col gap-3">
         {Header}
         {Ladder}
-        {/* Teaser of the locked payoff */}
-        <Section className="border-dashed">
-          <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-            <Lock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            {t("playerIntelligence.empty.teaserTitle")}
-          </div>
-          <div className="mt-2.5 flex gap-2">
-            {[4, 8, 12].map((n) => (
-              <div key={n} className="flex-1 rounded-xl bg-muted/40 p-2.5 text-center">
-                <div className="text-[11px] text-muted-foreground">{n} {t("playerIntelligence.milestone.eventUnit")}</div>
-                <div className="mt-1 text-[15px] font-medium text-foreground/30">ITM ··</div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-2.5 text-[11px] leading-snug text-muted-foreground">{t("playerIntelligence.empty.teaserExample")}</p>
-        </Section>
+        {/* Interactive teaser of the locked payoff — play with a hypothetical rate */}
+        <ScenarioSimulator />
         {Actions}
       </div>
     );
@@ -324,6 +396,9 @@ export function SmartPlayerCard() {
           </p>
         )}
       </Section>
+
+      {/* While the real outlook is locked, let the player preview it with a hypothetical rate */}
+      {!unlocked && <ScenarioSimulator />}
 
       {Progress}
       {Actions}

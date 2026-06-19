@@ -3032,6 +3032,20 @@
       "teaserTitle": "Khi mở khoá, bạn sẽ thấy",
       "teaserExample": "Ví dụ minh hoạ: hồ sơ đã xác minh hiển thị 'nếu chơi 4 giải tương tự → kỳ vọng khoảng 1 ITM'. Đây là minh hoạ, không phải kết quả của bạn."
     },
+    "simulator": {
+      "title": "Thử viễn cảnh",
+      "badge": "Mô phỏng",
+      "subtitle": "Kéo thanh tỷ lệ ITM giả định để xem outlook 4 / 8 / 12 giải thay đổi thế nào.",
+      "rateLabel": "Tỷ lệ ITM giả định",
+      "chanceItm": "≥1 ITM",
+      "expectedItm": "Kỳ vọng ITM",
+      "preset": {
+        "new": "Người mới ~15%",
+        "good": "Khá ~25%",
+        "strong": "Tốt ~35%"
+      },
+      "note": "Đây là mô phỏng theo tỷ lệ bạn tự chọn, không phải kết quả thật của bạn."
+    },
     "error": "Chưa tải được hồ sơ. Thử lại sau."
   },
   "pokerDrill": {
