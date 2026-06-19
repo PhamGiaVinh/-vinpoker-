@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,8 @@ export function useAllDealers(clubIds: string[]): {
       const { data, error } = await supabase
         .from("dealers")
         .select(
-          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username"
+          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username" +
+          (FEATURES.manualPayrollDeductions ? ", manual_bhxh_vnd, manual_tax_vnd" : "")
         )
         .in("club_id", clubIds)
         .is("deleted_at", null)

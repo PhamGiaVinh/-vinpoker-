@@ -263,4 +263,16 @@ export const FEATURES = {
    * surface the card for the series-owner demo.
    */
   clubSeriesIntelligence: true,
+  /**
+   * Payroll per-dealer MANUAL BHXH + tax override. Adds two optional inputs to the dealer
+   * edit/create dialogs ("BHXH thủ công" + "Thuế TNCN thủ công"): để trống = tự động tính,
+   * nhập 0 = không thu, nhập số = dùng số đó. Default **OFF** (dark) because it needs the two
+   * owner-gated migrations applied live first: `20261001000000` (dealers.manual_bhxh_vnd /
+   * manual_tax_vnd columns) AND `20261001000001` (calculate_dealer_payroll override body,
+   * golden-diff verified no-op when NULL). While false the inputs are hidden and the
+   * dialogs never write the (absent) columns. Flip to true ONLY after both are applied +
+   * types regenerated. The formula treats NULL as auto-compute, so applying the migrations
+   * alone changes ZERO payroll numbers until the owner actually sets an override.
+   */
+  manualPayrollDeductions: false,
 } as const;
