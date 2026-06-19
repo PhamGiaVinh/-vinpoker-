@@ -2962,7 +2962,7 @@
       "title": "Kết quả quan sát",
       "subtitle": "Dựa trên kết quả đã ghi nhận",
       "itm": "Tỷ lệ ITM",
-      "ft": "Tỷ lệ final table",
+      "ft": "Tỷ lệ vào bàn chung kết",
       "top3": "Tỷ lệ top 3",
       "avgFinish": "Vị trí trung bình"
     },
@@ -3000,7 +3000,7 @@
       "title": "Viễn cảnh giải đấu",
       "lockedTitle": "đang khóa",
       "expectedItm": "Kỳ vọng ITM",
-      "chanceItm": "Cơ hội có ít nhất 1 ITM",
+      "chanceItm": "Xác suất mô phỏng ≥1 ITM",
       "windowTitle": "Kịch bản {{n}} giải tương tự",
       "softNote": "Kịch bản dữ liệu nếu bạn chơi các giải tương tự. Không phải cam kết kết quả.",
       "basis": "Dựa trên tỷ lệ quan sát hiện tại, chưa điều chỉnh theo mẫu lớn.",

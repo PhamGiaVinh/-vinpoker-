@@ -209,24 +209,33 @@ export function SmartPlayerCard() {
           {t("playerIntelligence.action.title")}
         </div>
         <div className="flex flex-col gap-2">
-          {actions.map((a, i) => (
-            <button
-              key={a}
-              type="button"
-              onClick={() => navigate(ACTION_ROUTE[a])}
-              className={cn(
-                "flex min-h-[44px] items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-colors",
-                i === 0 ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground hover:bg-muted/40",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                {a === "play_drill" && <Play className="h-4 w-4" aria-hidden="true" />}
-                {a === "see_fit_events" && <Sparkles className="h-4 w-4" aria-hidden="true" />}
+          {actions.map((a, i) =>
+            // track_progress has no dedicated route yet — render as an info line, not a
+            // clickable button, so it never dead-clicks.
+            a === "track_progress" ? (
+              <div key={a} className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 {t(`playerIntelligence.action.${a}`)}
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
-            </button>
-          ))}
+              </div>
+            ) : (
+              <button
+                key={a}
+                type="button"
+                onClick={() => navigate(ACTION_ROUTE[a])}
+                className={cn(
+                  "flex min-h-[44px] items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-colors",
+                  i === 0 ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground hover:bg-muted/40",
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  {a === "play_drill" && <Play className="h-4 w-4" aria-hidden="true" />}
+                  {a === "see_fit_events" && <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                  {t(`playerIntelligence.action.${a}`)}
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
+              </button>
+            ),
+          )}
         </div>
       </Section>
     </div>
