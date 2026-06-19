@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
+import { BlindEditorPanel } from "@/components/cashier/tournament-live/BlindEditorPanel";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { BLIND_PRESETS, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
 
@@ -114,6 +115,7 @@ export function TournamentManagerPanel({ clubIds, clubs }: { clubIds: string[]; 
                     </div>
                     <div className="flex gap-1">
                       <EditTournamentDialog tournament={t2} onSaved={load} />
+                      {FEATURES.blindTemplates && <BlindStructureDialog tournament={t2} />}
                       <Button variant="ghost" size="icon" onClick={() => deleteTour(t2.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
@@ -270,6 +272,26 @@ const NewTournamentDialog = ({
   );
 };
 
+// "Ấn vào để edit bảng blinds" — opens the full level-by-level blind editor
+// (BlindEditorPanel: load/save structure + Tải mẫu/Lưu thành mẫu) for this
+// tournament in a dialog. The panel is self-contained and production-safe.
+const BlindStructureDialog = ({ tournament }: { tournament: any }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" title="Sửa cấu trúc blind">
+          <ListOrdered className="w-4 h-4 text-primary" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Cấu trúc blind — {tournament.name}</DialogTitle></DialogHeader>
+        <BlindEditorPanel tournamentId={tournament.id} tournamentStatus={tournament.status} />
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSaved: () => void }) => {
   const [open, setOpen] = useState(false);
   const toLocalInput = (iso: string) => {
@@ -291,6 +313,27 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
     late_reg_close_level: tournament.late_reg_close_level ?? 6,
   });
   const [saving, setSaving] = useState(false);
+  // Part A — "chọn bảng blinds": pick a preset / club template to APPLY to this
+  // existing tournament. "none" = keep the current structure. Needs both the
+  // templates feature and the full-replace RPC (update_blind_structure).
+  const [blindChoice, setBlindChoice] = useState("none");
+  const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
+  const canPickBlinds = FEATURES.blindTemplates && FEATURES.blindEditorSave;
+  useEffect(() => {
+    if (!canPickBlinds || !open || !tournament.club_id) return;
+    let cancelled = false;
+    supabase
+      .from("blind_structure_templates")
+      .select("id, club_id, name, levels")
+      .eq("club_id", tournament.club_id)
+      .then(({ data }) => { if (!cancelled) setClubTemplates((data ?? []) as unknown as BlindTemplate[]); });
+    return () => { cancelled = true; };
+  }, [canPickBlinds, open, tournament.club_id]);
+  const resolveLevels = (choice: string): BlindLevel[] => {
+    if (choice.startsWith("preset:")) return BLIND_PRESETS.find((p) => p.key === choice.slice(7))?.levels ?? [];
+    if (choice.startsWith("tpl:")) return (clubTemplates.find((t) => t.id === choice.slice(4))?.levels ?? []) as BlindLevel[];
+    return [];
+  };
   const save = async () => {
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     setSaving(true);
@@ -307,8 +350,22 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
       minutes_per_level: Number(f.minutes_per_level),
       late_reg_close_level: Number(f.late_reg_close_level),
     }).eq("id", tournament.id);
+    if (error) { setSaving(false); toast.error(error.message); return; }
+    // Apply a chosen blind structure (full replace) to this tournament.
+    if (canPickBlinds && blindChoice !== "none") {
+      const levels = resolveLevels(blindChoice);
+      if (levels.length) {
+        const { error: blindErr } = await supabase.rpc("update_blind_structure", {
+          p_tournament_id: tournament.id,
+          p_levels: levels.map((l, i) => ({ level_number: i + 1, ...l })),
+        });
+        if (blindErr) { setSaving(false); toast.error("Lưu giải OK nhưng nạp cấu trúc blind lỗi: " + blindErr.message); return; }
+      }
+    }
     setSaving(false);
-    if (error) toast.error(error.message); else { toast.success("Saved"); setOpen(false); onSaved(); }
+    toast.success("Saved");
+    setOpen(false);
+    onSaved();
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -345,6 +402,31 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
           </div>
           <Label>Location</Label><Input value={f.location} onChange={e => setF({ ...f, location: e.target.value })} />
           <Label>Description</Label><Textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={2} />
+          {canPickBlinds && (
+            <>
+              <Label>Cấu trúc blind</Label>
+              <Select value={blindChoice} onValueChange={setBlindChoice}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Giữ cấu trúc hiện tại</SelectItem>
+                  {clubTemplates.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Mẫu CLB</SelectLabel>
+                      {clubTemplates.map((t) => <SelectItem key={t.id} value={`tpl:${t.id}`}>{t.name}</SelectItem>)}
+                    </SelectGroup>
+                  )}
+                  <SelectGroup>
+                    <SelectLabel>Mẫu chuẩn</SelectLabel>
+                    {BLIND_PRESETS.map((p) => <SelectItem key={p.key} value={`preset:${p.key}`}>{p.name}</SelectItem>)}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Chọn mẫu sẽ <span className="text-primary font-medium">THAY</span> toàn bộ cấu trúc blind hiện tại. Hoặc bấm nút{" "}
+                <ListOrdered className="inline w-3 h-3 align-text-bottom" /> ở danh sách giải để sửa từng level.
+              </p>
+            </>
+          )}
           <Button onClick={save} disabled={saving} className="w-full gradient-neon text-primary-foreground border-0">
             <Save className="w-4 h-4 mr-1" />{saving ? "Saving..." : "Save Changes"}
           </Button>
