@@ -21,6 +21,14 @@
 /* gentle ring pulse on the seat that is to act */
 .op-to-act-pulse { animation: op-to-act-pulse 2.2s ease-in-out infinite; }
 
+/* UI-1 — all-in seat accent: a gold rim + deep-red aura so an all-in player reads
+   clearly apart from active / folded seats (never the same green as "to act"). */
+@keyframes op-allin-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(245, 194, 96, 0.65), 0 0 10px rgba(153, 27, 27, 0.45); }
+  50%      { box-shadow: 0 0 0 2px rgba(245, 194, 96, 0.90), 0 0 18px rgba(153, 27, 27, 0.80); }
+}
+.op-allin-pulse { animation: op-allin-pulse 1.8s ease-in-out infinite; }
+
 /* GE-2F — soft gold "winner" glow (pot + winning seat), deliberately gentle */
 @keyframes op-winner-glow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(217, 194, 122, 0.45), 0 0 8px rgba(217, 194, 122, 0.22); }
@@ -70,6 +78,7 @@
 @media (prefers-reduced-motion: reduce) {
   .op-card-reveal,
   .op-to-act-pulse,
+  .op-allin-pulse,
   .op-winner-glow,
   .op-allin-banner,
   .op-card-sheen,
