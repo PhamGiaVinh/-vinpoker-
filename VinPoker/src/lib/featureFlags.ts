@@ -154,8 +154,14 @@ export const FEATURES = {
    * DB/RPC/Edge; settlement persists via the existing `record_hand` ending_stack
    * payload and the live viewer reads street from community_cards / hand_actions
    * as today. Phase 2 adds the hand evaluator + exact side-pot settlement.
+   *
+   * Restored to the documented OFF default 2026-06-19: PR #313 (a "[DO NOT MERGE]
+   * UAT preview" branch) was merged by accident and flipped this to true on main,
+   * shipping the un-UAT'd engine flow to ALL operators with no runtime toggle.
+   * Real Engine Mode UAT must run on a preview branch (flag ON) while main/prod
+   * stays OFF — never via main.
    */
-  trackerEngineMode: true,
+  trackerEngineMode: false,
   /**
    * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
    * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
