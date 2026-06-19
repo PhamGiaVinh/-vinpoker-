@@ -13,6 +13,7 @@ import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 import { DeckStack } from './DeckStack';
+import { DealAnimation } from './DealAnimation';
 import './pokerTable.css';
 import { Clock } from 'lucide-react';
 
@@ -210,6 +211,10 @@ export function SeatRing({
           </div>
         );
       })}
+
+      {/* deal flourish — transient cards fly from the centre deck to each seat on a new
+          hand (pure overlay, anti-replay guarded inside) */}
+      <DealAnimation hand={hand} pos={pos} />
 
       {/* seats */}
       {hand.seats.map((s) => (

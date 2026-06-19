@@ -24,6 +24,8 @@ import {
   type LiveSeat,
 } from './client';
 import { isHoleCardsOk, type RpcOutcome, type WireLegalActions } from './wire';
+import { derivePokerSounds } from './pokerSounds';
+import { playPokerLiveSound } from '@/lib/pokerLiveSound';
 
 // ── lobby ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +130,9 @@ export function useTableHand(tableId: string): TableHandState {
   // Cache of the caller's hole cards, keyed by handId, so the poll loop doesn't re-hit
   // the edge for cards that never change within a hand.
   const holesRef = useRef<{ handId: string; priv: { mySeat: number; myHoleCards: string[] } } | null>(null);
+  // Previous hand view, kept ONLY to derive opponent-action sound cues (PR C). Starts
+  // null so the first snapshot / mid-hand reconnect never plays a burst of history.
+  const prevSoundHandRef = useRef<PublicHandView | null>(null);
 
   // Resolve the caller's uid once (live only) — used to find my seat / host.
   useEffect(() => {
@@ -166,6 +171,11 @@ export function useTableHand(tableId: string): TableHandState {
       }
       const view = wirePublicToView(wire, priv);
       if (cancelled) return;
+      // PR C — opponent-action sound cues, derived purely from prev->next (skips my own
+      // seat, which sounds on submit; [] on the first snapshot). Sound must NEVER affect
+      // engine state, so it runs after the view is built and is fully guarded.
+      try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach(playPokerLiveSound); } catch { /* never break the table on audio */ }
+      prevSoundHandRef.current = view;
       setHand(view);
       setError(null);
       // Legal menu only when it is genuinely my turn. Keep the previous menu on a

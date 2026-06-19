@@ -26,7 +26,9 @@ import { isAllInShowdown, ALLIN_CINEMATIC_TOTAL_MS } from '@/lib/onlinePoker/all
 import { occupiedCount, isTableLive, emptyStateLabel } from '@/lib/onlinePoker/tableDisplay';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
 import { BustoutDialog } from '@/components/poker/BustoutDialog';
-import { ChevronLeft, Crown, LogIn } from 'lucide-react';
+import { actionToSound } from '@/lib/onlinePoker/pokerSounds';
+import { playPokerLiveSound, markPokerSoundGesture, isPokerSoundMuted, setPokerSoundMuted } from '@/lib/pokerLiveSound';
+import { ChevronLeft, Crown, LogIn, Volume2, VolumeX } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
   const n = Number(s);
@@ -127,6 +129,8 @@ export default function OnlinePokerTable() {
   const [submitting, setSubmitting] = useState(false);
   const [bustOpen, setBustOpen] = useState(false);
   const bustHandledRef = useRef(false);
+  const [muted, setMuted] = useState<boolean>(isPokerSoundMuted());
+  const toggleMute = () => { const v = !muted; setPokerSoundMuted(v); setMuted(v); markPokerSoundGesture(); };
 
   // Best-effort auto-leave when the player exits the table (SPA route unmount / tab close).
   // A ref carries the latest seated / in-hand state into the unmount cleanup. This is
@@ -275,6 +279,7 @@ export default function OnlinePokerTable() {
 
   const confirmSit = async (buyin: string) => {
     if (sitSeat == null) return;
+    markPokerSoundGesture(); // first deliberate table action → unlock audio
     try {
       const res = (await actions.sitOpen(sitSeat, buyin)) as RpcOutcome;
       if (res?.outcome === 'ok') { toast.success(`Đã ngồi vào ghế ${sitSeat}`); setSitSeat(null); refresh(); }
@@ -314,6 +319,10 @@ export default function OnlinePokerTable() {
     if (!hand || mySeatNo == null || submitting) return; // ignore re-taps while a submit is in flight
     setDwell(null); // acting on the new hand drops any lingering result view
     setSubmitting(true);
+    // Instant audio feedback for MY action (opponents' sounds are derived from polling in
+    // useTableHand, which skips my seat to avoid doubling up).
+    markPokerSoundGesture();
+    playPokerLiveSound(actionToSound(a.type));
     try {
       const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as { ok: boolean; code?: string };
       if (res && res.ok === false) toast.error(vn(res.code));
@@ -330,6 +339,16 @@ export default function OnlinePokerTable() {
         <Button asChild variant="ghost" size="sm"><Link to="/poker"><ChevronLeft className="h-4 w-4" /> Sảnh</Link></Button>
         <h1 className="truncate text-lg font-bold">{table.name}</h1>
         <Badge variant="outline" className="tabular-nums">{fmtChips(table.sb)}/{fmtChips(table.bb)}</Badge>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={amIHost ? '' : 'ml-auto'}
+          onClick={toggleMute}
+          aria-label={muted ? 'Bật tiếng' : 'Tắt tiếng'}
+          title={muted ? 'Bật tiếng' : 'Tắt tiếng'}
+        >
+          {muted ? <VolumeX className="h-4 w-4 text-muted-foreground" /> : <Volume2 className="h-4 w-4" />}
+        </Button>
         {amIHost && <Badge className="ml-auto gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
