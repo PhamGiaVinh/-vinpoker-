@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown } from "lucide-react";
+import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { SERIES_INTEL } from "@/lib/seriesIntelligence";
 import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerCommandCenter";
+import { SeriesHealthReport } from "@/components/series-intelligence/SeriesHealthReport";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
@@ -19,9 +21,18 @@ import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerComman
 export default function SeriesIntelligence() {
   const nav = useNavigate();
   const { isAdmin, isClubAdmin, isClubOwner, loading } = useAuth();
+  const [mode, setMode] = useState<"dashboard" | "report">("dashboard");
 
   if (loading) return null;
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
+
+  if (mode === "report") {
+    return (
+      <div className="container max-w-5xl mx-auto p-4 space-y-4">
+        <SeriesHealthReport onBack={() => setMode("dashboard")} />
+      </div>
+    );
+  }
 
   return (
     <div className="container max-w-5xl mx-auto p-4 space-y-4">
@@ -38,10 +49,15 @@ export default function SeriesIntelligence() {
         </div>
       </div>
 
-      {/* transparency badge — this is BI, not a guarantee */}
-      <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden />
-        {SERIES_INTEL.transparencyBadge}
+      {/* transparency badge + report entry */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden />
+          {SERIES_INTEL.transparencyBadge}
+        </div>
+        <Button variant="outline" size="sm" className="gap-2" onClick={() => setMode("report")}>
+          <FileText className="h-4 w-4" /> Xem báo cáo
+        </Button>
       </div>
 
       {!FEATURES.clubSeriesIntelligence && (
