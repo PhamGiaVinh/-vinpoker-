@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Info, Lock, Play, Sparkles, Trophy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Info, Lock, Play, Sparkles, Trophy } from "lucide-react";
 import {
   formatConfidence,
   formatPercent,
@@ -9,6 +9,7 @@ import {
   formatScenarioWindow,
   formatSourceQuality,
   getNextBestAction,
+  getProfileMilestones,
   isRawObservedRate,
   isScenarioUnlocked,
   NextActionKey,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/player-intelligence";
 import { cn } from "@/lib/utils";
 
-const Section = ({ className, children }: { className?: string; children: React.ReactNode }) => (
+const Section = ({ className, children }: { className?: string; children: ReactNode }) => (
   <div className={cn("rounded-2xl border border-border bg-card p-4", className)}>{children}</div>
 );
 
@@ -56,13 +57,14 @@ export function SmartPlayerCard() {
   const locale = i18n.language?.startsWith("en") ? "en-US" : i18n.language || "vi-VN";
   const fmtDate = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
-  const hasSample = pi.verifiedSample.totalEntries > 0;
   const r = pi.results;
   const hasResults = [r.itmRate, r.finalTableRate, r.top3Rate, r.avgNormalizedFinish].some((x) => x != null);
   const unlocked = isScenarioUnlocked(pi);
+  const isNew = pi.profileStatus === "new";
+  const ms = getProfileMilestones(pi);
   const actions = getNextBestAction(pi);
 
-  const Chip = ({ tone, children }: { tone: "neon" | "amber" | "muted"; children: React.ReactNode }) => (
+  const Chip = ({ tone, children }: { tone: "neon" | "amber" | "muted"; children: ReactNode }) => (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
@@ -82,50 +84,170 @@ export function SmartPlayerCard() {
     </div>
   );
 
-  return (
-    <div className="flex flex-col gap-3">
-      {/* A — Header */}
-      <Section className="border-t-2 border-t-primary">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span className="text-[15px] font-medium text-foreground">{t("playerIntelligence.header.title")}</span>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Chip tone={pi.profileStatus === "verified" ? "neon" : "amber"}>{t(formatProfileStatus(pi.profileStatus))}</Chip>
+  // Header (shared)
+  const Header = (
+    <Section className="border-t-2 border-t-primary">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-primary" aria-hidden="true" />
+          <span className="text-[15px] font-medium text-foreground">{t("playerIntelligence.header.title")}</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Chip tone={pi.profileStatus === "verified" ? "neon" : "amber"}>{t(formatProfileStatus(pi.profileStatus))}</Chip>
+          {!isNew && (
             <Chip tone="muted">
               {t("playerIntelligence.confidenceLabel")}: {t(formatConfidence(pi.confidence))}
             </Chip>
+          )}
+        </div>
+      </div>
+      {isNew ? (
+        <div className="mt-3 flex items-start gap-2.5">
+          <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+          <div>
+            <div className="text-[15px] font-medium text-foreground">{t("playerIntelligence.empty.heroTitle")}</div>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{t("playerIntelligence.empty.heroSubtitle")}</p>
           </div>
         </div>
+      ) : (
         <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">{t("playerIntelligence.header.subtitle")}</p>
-      </Section>
+      )}
+    </Section>
+  );
 
-      {/* B — Verified sample */}
+  // Milestone ladder (full, shown in the empty/aspirational state)
+  const Ladder = (
+    <Section>
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
+        {t("playerIntelligence.milestone.ladderTitle")}
+      </div>
+      {ms.steps.map((s) => {
+        const isNext = ms.next?.key === s.key;
+        return (
+          <div key={s.key} className="flex items-center gap-3 py-1.5">
+            <span
+              className={cn(
+                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+                s.reached ? "bg-primary/15 text-primary" : isNext ? "border border-primary text-primary" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {s.reached ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Lock className="h-3 w-3" aria-hidden="true" />}
+            </span>
+            <div className="flex-1 text-[13px] text-foreground">
+              <b className="font-medium">{s.target}</b> {t("playerIntelligence.milestone.eventUnit")} ·{" "}
+              <span className="text-muted-foreground">{t(`playerIntelligence.milestone.${s.key}`)}</span>
+            </div>
+            {isNext && <Chip tone="neon">{t("playerIntelligence.milestone.nextChip")}</Chip>}
+          </div>
+        );
+      })}
+    </Section>
+  );
+
+  // Compact "X events to go" progress (shown once the player has some data but the outlook is still locked)
+  const Progress = ms.next ? (
+    <Section>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{t("playerIntelligence.milestone.ladderTitle")}</span>
+        <span className="font-medium text-primary">{ms.current}/{ms.next.target}</span>
+      </div>
+      <div className="my-2 h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round((ms.current / ms.next.target) * 100))}%` }} />
+      </div>
+      <p className="text-[11.5px] text-muted-foreground">
+        {t("playerIntelligence.milestone.remaining", { n: ms.remaining, goal: t(`playerIntelligence.milestone.${ms.next.key}`) })}
+      </p>
+    </Section>
+  ) : null;
+
+  const Actions = (
+    <Section>
+      <div className="mb-2.5 text-[11px] font-medium uppercase tracking-[0.13em] text-primary">
+        {t("playerIntelligence.action.title")}
+      </div>
+      <div className="flex flex-col gap-2">
+        {actions.map((a, i) =>
+          a === "track_progress" ? (
+            <div key={a} className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+              <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {t(`playerIntelligence.action.${a}`)}
+            </div>
+          ) : (
+            <button
+              key={a}
+              type="button"
+              onClick={() => navigate(ACTION_ROUTE[a])}
+              className={cn(
+                "flex min-h-[44px] items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-colors",
+                i === 0 ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground hover:bg-muted/40",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {a === "play_drill" && <Play className="h-4 w-4" aria-hidden="true" />}
+                {a === "see_fit_events" && <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                {t(`playerIntelligence.action.${a}`)}
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
+            </button>
+          ),
+        )}
+      </div>
+    </Section>
+  );
+
+  // ── Aspirational empty state — make the player WANT to fill it ───────────────
+  if (isNew) {
+    return (
+      <div className="flex flex-col gap-3">
+        {Header}
+        {Ladder}
+        {/* Teaser of the locked payoff */}
+        <Section className="border-dashed">
+          <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+            <Lock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            {t("playerIntelligence.empty.teaserTitle")}
+          </div>
+          <div className="mt-2.5 flex gap-2">
+            {[4, 8, 12].map((n) => (
+              <div key={n} className="flex-1 rounded-xl bg-muted/40 p-2.5 text-center">
+                <div className="text-[11px] text-muted-foreground">{n} {t("playerIntelligence.milestone.eventUnit")}</div>
+                <div className="mt-1 text-[15px] font-medium text-foreground/30">ITM ··</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2.5 text-[11px] leading-snug text-muted-foreground">{t("playerIntelligence.empty.teaserExample")}</p>
+        </Section>
+        {Actions}
+      </div>
+    );
+  }
+
+  // ── Building / verified state ────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-3">
+      {Header}
+
+      {/* Verified sample */}
       <Section>
         <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
           {t("playerIntelligence.sample.title")}
         </div>
-        {hasSample ? (
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { l: "sample.totalEntries", v: String(pi.verifiedSample.totalEntries) },
-              { l: "sample.uniqueEvents", v: String(pi.verifiedSample.uniqueEvents) },
-              { l: "sample.reentries", v: String(pi.verifiedSample.reentries) },
-              { l: "sample.lastPlayed", v: fmtDate(pi.verifiedSample.lastPlayedAt) },
-            ].map((s) => (
-              <div key={s.l} className="rounded-lg bg-muted/40 p-2.5">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t(`playerIntelligence.${s.l}`)}</div>
-                <div className="mt-0.5 text-base font-medium text-foreground">{s.v}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-[13px] text-muted-foreground">{t("playerIntelligence.sample.empty")}</p>
-        )}
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { l: "sample.totalEntries", v: String(pi.verifiedSample.totalEntries) },
+            { l: "sample.uniqueEvents", v: String(pi.verifiedSample.uniqueEvents) },
+            { l: "sample.reentries", v: String(pi.verifiedSample.reentries) },
+            { l: "sample.lastPlayed", v: fmtDate(pi.verifiedSample.lastPlayedAt) },
+          ].map((s) => (
+            <div key={s.l} className="rounded-lg bg-muted/40 p-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t(`playerIntelligence.${s.l}`)}</div>
+              <div className="mt-0.5 text-base font-medium text-foreground">{s.v}</div>
+            </div>
+          ))}
+        </div>
       </Section>
 
-      {/* C — Observed results */}
+      {/* Observed results */}
       {hasResults && (
         <Section>
           <div className="text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
@@ -141,7 +263,7 @@ export function SmartPlayerCard() {
         </Section>
       )}
 
-      {/* D — Source quality (collapsible) */}
+      {/* Source quality (collapsible) */}
       <Section>
         <button
           type="button"
@@ -170,7 +292,7 @@ export function SmartPlayerCard() {
         )}
       </Section>
 
-      {/* E — Scenario outlook */}
+      {/* Scenario outlook */}
       <Section className={cn(!unlocked && "border-dashed")}>
         <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
           {!unlocked && <Lock className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -203,41 +325,8 @@ export function SmartPlayerCard() {
         )}
       </Section>
 
-      {/* F — Next action */}
-      <Section>
-        <div className="mb-2.5 text-[11px] font-medium uppercase tracking-[0.13em] text-primary">
-          {t("playerIntelligence.action.title")}
-        </div>
-        <div className="flex flex-col gap-2">
-          {actions.map((a, i) =>
-            // track_progress has no dedicated route yet — render as an info line, not a
-            // clickable button, so it never dead-clicks.
-            a === "track_progress" ? (
-              <div key={a} className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                {t(`playerIntelligence.action.${a}`)}
-              </div>
-            ) : (
-              <button
-                key={a}
-                type="button"
-                onClick={() => navigate(ACTION_ROUTE[a])}
-                className={cn(
-                  "flex min-h-[44px] items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-colors",
-                  i === 0 ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground hover:bg-muted/40",
-                )}
-              >
-                <span className="flex items-center gap-2">
-                  {a === "play_drill" && <Play className="h-4 w-4" aria-hidden="true" />}
-                  {a === "see_fit_events" && <Sparkles className="h-4 w-4" aria-hidden="true" />}
-                  {t(`playerIntelligence.action.${a}`)}
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
-              </button>
-            ),
-          )}
-        </div>
-      </Section>
+      {Progress}
+      {Actions}
     </div>
   );
 }

@@ -3017,6 +3017,21 @@
       "see_fit_events": "Xem giải phù hợp",
       "track_progress": "Theo dõi tiến bộ sau mỗi giải"
     },
+    "milestone": {
+      "ladderTitle": "Hành trình hồ sơ của bạn",
+      "eventUnit": "giải",
+      "start": "Bắt đầu hồ sơ",
+      "verified": "Hồ sơ đã xác minh",
+      "outlook": "Mở viễn cảnh 4/8/12 giải",
+      "nextChip": "Tiếp theo",
+      "remaining": "Còn {{n}} giải để {{goal}}"
+    },
+    "empty": {
+      "heroTitle": "Xây hồ sơ Poker đã xác minh của bạn",
+      "heroSubtitle": "Mỗi giải bạn chơi tại VinPoker được ghi nhận và biến thành hồ sơ thật — không phải tự khai. Bắt đầu hành trình của bạn.",
+      "teaserTitle": "Khi mở khoá, bạn sẽ thấy",
+      "teaserExample": "Ví dụ minh hoạ: hồ sơ đã xác minh hiển thị 'nếu chơi 4 giải tương tự → kỳ vọng khoảng 1 ITM'. Đây là minh hoạ, không phải kết quả của bạn."
+    },
     "error": "Chưa tải được hồ sơ. Thử lại sau."
   },
   "pokerDrill": {
