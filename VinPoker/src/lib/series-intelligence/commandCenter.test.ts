@@ -8,6 +8,11 @@ import {
   toEventEconomicsRow,
   type InsightLabel,
 } from "./commandCenter";
+import {
+  computeScenarioActions,
+  computeScenarioConfidence,
+  computeScenarioOutlook,
+} from "./scenarioOutlook";
 
 const ALLOWED_LABELS: InsightLabel[] = ["Known Rule", "Observed Pattern", "Hypothesis"];
 
@@ -181,5 +186,107 @@ describe("honesty contract — labels never escape the allowed set", () => {
     const serialized = JSON.stringify({ readiness, risks, actions });
     expect(serialized).not.toContain("Model Estimate");
     expect(serialized).not.toContain("Tested Finding");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario Outlook Lite (S2) — per-event rules-based scenarios, not prediction.
+// ---------------------------------------------------------------------------
+
+/** Build the inputs computeScenarioOutlook expects, from a set of events. */
+function outlookOf(events: SeriesEvent[]) {
+  const economics = computeEconomicsSummary(events);
+  const readiness = computeReadiness(events);
+  const risks = computeRiskFlags(events);
+  return computeScenarioOutlook(events, economics, readiness, risks);
+}
+
+/** N events with entries spread low→high so quantiles are non-degenerate. */
+function entrySpread(n: number): SeriesEvent[] {
+  return Array.from({ length: n }, (_, i) =>
+    ev({ id: `e${i}` }, { totalEntries: 10 + i * 10, uniqueEntries: 8 + i * 8, reentries: 2 + i * 2 }),
+  );
+}
+
+describe("computeScenarioOutlook", () => {
+  it("1. no events → unavailable, empty scenarios", () => {
+    const o = outlookOf([]);
+    expect(o.available).toBe(false);
+    expect(o.scenarios).toEqual([]);
+  });
+
+  it("2. GTD missing → every scenario gtdRisk null, no overlay; missing note mentions GTD", () => {
+    const o = outlookOf(entrySpread(8));
+    expect(o.available).toBe(true);
+    for (const s of o.scenarios) expect(s.gtdRisk).toBeNull();
+    expect(o.missingDataNotes.some((m) => m.includes("GTD"))).toBe(true);
+  });
+
+  it("3. low sample (<4) → confidence low", () => {
+    const o = outlookOf(entrySpread(3));
+    expect(o.confidence).toBe("low");
+  });
+
+  it("4. complete sample (≥8 full-field) → 3 scenarios, available", () => {
+    const o = outlookOf(entrySpread(8));
+    expect(o.scenarios.map((s) => s.kind)).toEqual(["conservative", "base", "upside"]);
+    expect(o.available).toBe(true);
+    expect(o.confidence).toBe("high"); // full fields → readiness 100, sample 8
+  });
+
+  it("5. deterministic — same input ⇒ identical output", () => {
+    const events = entrySpread(6);
+    expect(JSON.stringify(outlookOf(events))).toBe(JSON.stringify(outlookOf(events)));
+  });
+
+  it("6. entry ranges monotonic: conservative ≤ base ≤ upside (low & high)", () => {
+    const [c, b, u] = outlookOf(entrySpread(8)).scenarios;
+    expect(c.entryRange.low).toBeLessThanOrEqual(b.entryRange.low);
+    expect(b.entryRange.low).toBeLessThanOrEqual(u.entryRange.low);
+    expect(c.entryRange.high).toBeLessThanOrEqual(b.entryRange.high);
+    expect(b.entryRange.high).toBeLessThanOrEqual(u.entryRange.high);
+  });
+
+  it("7. missing buy_in/fee does not crash → those volume ranges are null", () => {
+    const events = Array.from({ length: 5 }, (_, i) =>
+      ev({ id: `e${i}`, buy_in: null, rake_amount: null }, { totalEntries: 20 + i * 10 }),
+    );
+    const o = outlookOf(events);
+    for (const s of o.scenarios) {
+      expect(s.buyInVolumeRange).toBeNull();
+      expect(s.feeVolumeRange).toBeNull();
+    }
+  });
+
+  it("8. output never contains Model Estimate / Tested Finding", () => {
+    const serialized = JSON.stringify(outlookOf(entrySpread(8)));
+    expect(serialized).not.toContain("Model Estimate");
+    expect(serialized).not.toContain("Tested Finding");
+  });
+
+  it("9. copy carries no positive certainty wording (negated disclaimer allowed)", () => {
+    const o = outlookOf(entrySpread(8));
+    for (const s of o.scenarios) {
+      expect(s.copy).not.toMatch(/đảm bảo|guarantee/i);
+      expect(s.copy).not.toContain("chắc chắn"); // copy uses "có thể", never certainty
+      expect(s.copy).not.toMatch(/\bsẽ\b/);
+    }
+    expect(o.disclaimer).toContain("không phải dự đoán chắc chắn"); // negated form is fine
+    // every scenario label stays in the allowed set
+    for (const s of o.scenarios) expect(ALLOWED_LABELS).toContain(s.insightLabel);
+  });
+
+  it("scenario confidence helper honors low-sample rule directly", () => {
+    const lowReadiness = computeReadiness(entrySpread(2));
+    expect(computeScenarioConfidence(entrySpread(2), lowReadiness)).toBe("low");
+  });
+
+  it("scenario actions are labeled and capped (≤5), never empty when scenarios exist", () => {
+    const events = entrySpread(8);
+    const o = outlookOf(events);
+    const actions = computeScenarioActions(o.scenarios, computeRiskFlags(events));
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.length).toBeLessThanOrEqual(5);
+    for (const a of actions) expect(ALLOWED_LABELS).toContain(a.label);
   });
 });
