@@ -3355,6 +3355,8 @@ export type Database = {
           hourly_rate_vnd: number | null
           id: string
           joined_date: string | null
+          manual_bhxh_vnd: number | null
+          manual_tax_vnd: number | null
           monthly_salary_vnd: number | null
           notes: string | null
           ot_multiplier: number | null
@@ -3380,6 +3382,8 @@ export type Database = {
           hourly_rate_vnd?: number | null
           id?: string
           joined_date?: string | null
+          manual_bhxh_vnd?: number | null
+          manual_tax_vnd?: number | null
           monthly_salary_vnd?: number | null
           notes?: string | null
           ot_multiplier?: number | null
@@ -3405,6 +3409,8 @@ export type Database = {
           hourly_rate_vnd?: number | null
           id?: string
           joined_date?: string | null
+          manual_bhxh_vnd?: number | null
+          manual_tax_vnd?: number | null
           monthly_salary_vnd?: number | null
           notes?: string | null
           ot_multiplier?: number | null
@@ -3927,8 +3933,10 @@ export type Database = {
           entry_number: number
           hand_id: string
           id: string
+          idempotency_key: string | null
           player_id: string
           street: string | null
+          trace_id: string | null
         }
         Insert: {
           action_amount?: number | null
@@ -3938,8 +3946,10 @@ export type Database = {
           entry_number?: number
           hand_id: string
           id?: string
+          idempotency_key?: string | null
           player_id: string
           street?: string | null
+          trace_id?: string | null
         }
         Update: {
           action_amount?: number | null
@@ -3949,8 +3959,10 @@ export type Database = {
           entry_number?: number
           hand_id?: string
           id?: string
+          idempotency_key?: string | null
           player_id?: string
           street?: string | null
+          trace_id?: string | null
         }
         Relationships: [
           {
@@ -4693,6 +4705,7 @@ export type Database = {
         Row: {
           id: string
           joined_at: string
+          last_seen_at: string
           seat_no: number
           stack: number
           status: string
@@ -4702,6 +4715,7 @@ export type Database = {
         Insert: {
           id?: string
           joined_at?: string
+          last_seen_at?: string
           seat_no: number
           stack?: number
           status?: string
@@ -4711,6 +4725,7 @@ export type Database = {
         Update: {
           id?: string
           joined_at?: string
+          last_seen_at?: string
           seat_no?: number
           stack?: number
           status?: string
@@ -8940,6 +8955,7 @@ export type Database = {
         Args: { p_table_id: string; p_tournament_id: string }
         Returns: number
       }
+      get_player_intelligence: { Args: { p_player_id?: string }; Returns: Json }
       get_rotation_board: { Args: { p_club_id: string }; Returns: Json }
       get_seats_for_draw: { Args: { p_tournament_id: string }; Returns: Json }
       get_shift_payroll_summary: {
@@ -9078,9 +9094,19 @@ export type Database = {
         Returns: Json
       }
       op_get_my_hole_cards: { Args: { p_hand_id: string }; Returns: Json }
+      op_heartbeat: { Args: { p_table_id: string }; Returns: Json }
       op_is_enabled: { Args: never; Returns: boolean }
       op_leave_open_table: { Args: { p_table_id: string }; Returns: Json }
       op_load_action_context: { Args: { p_hand_id: string }; Returns: Json }
+      op_reap_stale_seats: { Args: { p_stale_secs?: number }; Returns: Json }
+      op_rebuy_open: {
+        Args: {
+          p_amount: number
+          p_idempotency_key: string
+          p_table_id: string
+        }
+        Returns: Json
+      }
       op_run_due_table_ticks: { Args: { p_limit?: number }; Returns: Json }
       op_run_table_runner: { Args: never; Returns: number }
       op_run_timeout_sweep: { Args: never; Returns: number }
@@ -9267,13 +9293,16 @@ export type Database = {
       }
       record_action: {
         Args: {
-          p_action_amount: number
+          p_action_amount?: number
           p_action_order: number
           p_action_type: string
-          p_entry_number: number
+          p_entry_number?: number
           p_hand_id: string
+          p_idempotency_key?: string
           p_player_id: string
-          p_street: string
+          p_street?: string
+          p_trace_id?: string
+          p_user_id?: string
         }
         Returns: Json
       }
@@ -9319,6 +9348,15 @@ export type Database = {
       refresh_dealer_pool_summary: { Args: never; Returns: undefined }
       release_club_lock: { Args: { p_club_id: string }; Returns: undefined }
       release_cron_lock: { Args: { p_lock_name: string }; Returns: undefined }
+      release_dealer_assignments: {
+        Args: {
+          p_attendance_id?: string
+          p_dealer_id?: string
+          p_reason?: string
+          p_released_at?: string
+        }
+        Returns: Json
+      }
       release_dealer_from_table: {
         Args: { p_released_by?: string; p_table_id: string }
         Returns: Json
@@ -9403,6 +9441,11 @@ export type Database = {
         Returns: Json
       }
       tracker_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      tracker_lock_blocks: {
+        Args: { p_locked_at: string; p_locked_by: string; p_user_id: string }
+        Returns: boolean
+      }
+      tracker_lock_ttl: { Args: never; Returns: string }
       transition_dealer_state: {
         Args: {
           p_attendance_id: string
