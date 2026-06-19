@@ -2962,7 +2962,7 @@
       "title": "Kết quả quan sát",
       "subtitle": "Dựa trên kết quả đã ghi nhận",
       "itm": "Tỷ lệ ITM",
-      "ft": "Tỷ lệ final table",
+      "ft": "Tỷ lệ vào bàn chung kết",
       "top3": "Tỷ lệ top 3",
       "avgFinish": "Vị trí trung bình"
     },
@@ -3000,7 +3000,7 @@
       "title": "Viễn cảnh giải đấu",
       "lockedTitle": "đang khóa",
       "expectedItm": "Kỳ vọng ITM",
-      "chanceItm": "Cơ hội có ít nhất 1 ITM",
+      "chanceItm": "Xác suất mô phỏng ≥1 ITM",
       "windowTitle": "Kịch bản {{n}} giải tương tự",
       "softNote": "Kịch bản dữ liệu nếu bạn chơi các giải tương tự. Không phải cam kết kết quả.",
       "basis": "Dựa trên tỷ lệ quan sát hiện tại, chưa điều chỉnh theo mẫu lớn.",
@@ -3016,6 +3016,35 @@
       "keep_playing_recorded": "Tiếp tục chơi các giải được ghi nhận",
       "see_fit_events": "Xem giải phù hợp",
       "track_progress": "Theo dõi tiến bộ sau mỗi giải"
+    },
+    "milestone": {
+      "ladderTitle": "Hành trình hồ sơ của bạn",
+      "eventUnit": "giải",
+      "start": "Bắt đầu hồ sơ",
+      "verified": "Hồ sơ đã xác minh",
+      "outlook": "Mở viễn cảnh 4/8/12 giải",
+      "nextChip": "Tiếp theo",
+      "remaining": "Còn {{n}} giải để {{goal}}"
+    },
+    "empty": {
+      "heroTitle": "Xây hồ sơ Poker đã xác minh của bạn",
+      "heroSubtitle": "Mỗi giải bạn chơi tại VinPoker được ghi nhận và biến thành hồ sơ thật — không phải tự khai. Bắt đầu hành trình của bạn.",
+      "teaserTitle": "Khi mở khoá, bạn sẽ thấy",
+      "teaserExample": "Ví dụ minh hoạ: hồ sơ đã xác minh hiển thị 'nếu chơi 4 giải tương tự → kỳ vọng khoảng 1 ITM'. Đây là minh hoạ, không phải kết quả của bạn."
+    },
+    "simulator": {
+      "title": "Thử viễn cảnh",
+      "badge": "Mô phỏng",
+      "subtitle": "Kéo thanh tỷ lệ ITM giả định để xem outlook 4 / 8 / 12 giải thay đổi thế nào.",
+      "rateLabel": "Tỷ lệ ITM giả định",
+      "chanceItm": "≥1 ITM",
+      "expectedItm": "Kỳ vọng ITM",
+      "preset": {
+        "new": "Người mới ~15%",
+        "good": "Khá ~25%",
+        "strong": "Tốt ~35%"
+      },
+      "note": "Đây là mô phỏng theo tỷ lệ bạn tự chọn, không phải kết quả thật của bạn."
     },
     "error": "Chưa tải được hồ sơ. Thử lại sau."
   },
