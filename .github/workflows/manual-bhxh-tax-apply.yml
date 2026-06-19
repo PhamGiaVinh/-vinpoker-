@@ -1,0 +1,33 @@
+name: Payroll manual BHXH+tax — apply (one-shot, owner-gated)
+
+# Manual trigger only. Applies the two reviewed payroll migrations via the allowlisted runner
+# with a golden before/after diff of calculate_dealer_payroll (net must be identical when the
+# overrides are NULL). No supabase db push. No deploy_db. No schema_migrations write. Delete after use.
+on:
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Preflight
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/payroll/apply_manual_bhxh_tax.mjs --preflight
+      - name: Apply (golden BEFORE -> col + fn -> golden AFTER -> post-verify)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_MANUAL_BHXH_TAX: APPLY_MANUAL_BHXH_TAX
+        run: node scripts/payroll/apply_manual_bhxh_tax.mjs --apply
