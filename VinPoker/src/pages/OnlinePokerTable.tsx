@@ -55,6 +55,8 @@ const OUTCOME_VN: Record<string, string> = {
   amount_required: 'Cần nhập số tiền cược.',
   illegal_amount: 'Số tiền cược không hợp lệ.',
   race_lost: 'Trạng thái vừa thay đổi, thử lại.',
+  bad_amount: 'Số chip mua thêm không hợp lệ.',
+  has_chips: 'Bạn vẫn còn chip, không cần mua thêm.',
 };
 const vn = (code?: string) => (code && OUTCOME_VN[code]) || 'Có lỗi xảy ra, thử lại.';
 
@@ -288,6 +290,18 @@ export default function OnlinePokerTable() {
     } catch { toast.error('Không rời được, thử lại.'); }
   };
 
+  // Rebuy a fresh stack after busting. The amount is server-dictated (= the table's
+  // starting stack); the client just sends that value and the server re-validates it.
+  // On success the seat stack > 0, so the bustout effect closes the modal on next load.
+  const rebuy = async () => {
+    try {
+      const res = (await actions.rebuy(table.startingStack)) as RpcOutcome;
+      if (res?.outcome === 'ok') { toast.success('Đã mua thêm chip.'); setBustOpen(false); }
+      else if (res?.outcome !== 'has_chips') toast.error(vn(res?.outcome));
+      refresh();
+    } catch { toast.error('Không mua được chip, thử lại.'); }
+  };
+
   const transfer = async (toUserId: string, name: string) => {
     try {
       const res = (await actions.transferHost(toUserId)) as RpcOutcome;
@@ -427,6 +441,9 @@ export default function OnlinePokerTable() {
         open={bustOpen}
         onOpenChange={setBustOpen}
         onLeave={async () => { await leave(); setBustOpen(false); }}
+        rebuyEnabled={FEATURES.onlinePokerRebuy}
+        rebuyAmount={table.startingStack}
+        onRebuy={rebuy}
       />
     </div>
   );

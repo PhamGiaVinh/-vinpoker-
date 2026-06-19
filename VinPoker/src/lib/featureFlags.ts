@@ -82,6 +82,15 @@ export const FEATURES = {
    */
   onlinePoker: true,
   /**
+   * Online Poker REBUY — the "Mua thêm chip" button in the bustout dialog. Default
+   * **OFF**: while false the button stays disabled ("sẽ bổ sung sau"). This is a UI gate
+   * ONLY, NOT a security gate — the real gate is the `op_rebuy_open` RPC being unapplied.
+   * Flip to true ONLY after migration 20260929000000 is applied live (E5B) and edge
+   * deployed. The RPC server-dictates the amount (= table starting_stack_default) and is
+   * busted-only, so it never lets the client set an arbitrary stack.
+   */
+  onlinePokerRebuy: false,
+  /**
    * Club Admin → Owner Finance Dashboard at /club/admin/finance. Read-only money-flow
    * (staking fees + staking payout fees + tournament rake − SAVED dealer payroll; never
    * recomputes payroll). Default **OFF** (dark). While false the route + the ClubAdmin

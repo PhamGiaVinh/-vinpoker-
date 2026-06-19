@@ -86,6 +86,9 @@ export const bodyTransferHost = (tableId: string, toUserId: string) =>
 export const bodyLeaveOpenTable = (tableId: string) =>
   ({ op: 'leave_open_table' as const, tableId });
 
+export const bodyRebuyOpen = (tableId: string, amount: ChipString, idempotencyKey: string) =>
+  ({ op: 'rebuy_open' as const, tableId, amount, idempotencyKey });
+
 export function bodySubmitAction(req: ActionRequest) {
   // bet/raise must carry a canonical chip amount; reject malformed before the wire.
   if ((req.type === 'bet' || req.type === 'raise') && !isChipString(req.amount)) {
@@ -158,6 +161,11 @@ export const onlinePokerClient = {
 
   /** Leave an open table (wallet-free; auto-reassigns host if you were host). */
   leaveOpenTable: (tableId: string) => invokeEdge<RpcOutcome>(bodyLeaveOpenTable(tableId)),
+
+  /** Rebuy a fresh stack after busting (server-dictated amount = table starting stack;
+   *  busted-only, blocked mid-hand). The client never picks an arbitrary amount. */
+  rebuyOpen: (tableId: string, amount: ChipString) =>
+    invokeEdge<RpcOutcome>(bodyRebuyOpen(tableId, amount, newIdemKey())),
 
   /** Submit an action intent; the server re-validates with the engine. */
   submitAction: (req: Omit<ActionRequest, 'idempotencyKey'> & { idempotencyKey?: string }) =>

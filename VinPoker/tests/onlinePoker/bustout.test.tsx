@@ -9,11 +9,17 @@ import { render, screen, act, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 
 const h = vi.hoisted(() => ({ useTableHand: vi.fn(), useTableMeta: vi.fn(), useParams: vi.fn() }));
+// E5 — toggle FEATURES.onlinePokerRebuy per test (all other flags keep their real values).
+const ff = vi.hoisted(() => ({ rebuy: false }));
 
 vi.mock('@/lib/onlinePoker/useOnlinePoker', () => ({
   useTableHand: (id: string) => h.useTableHand(id),
   useTableMeta: (id: string) => h.useTableMeta(id),
 }));
+vi.mock('@/lib/featureFlags', async (orig) => {
+  const actual = await (orig() as Promise<{ FEATURES: Record<string, unknown> }>);
+  return { ...actual, FEATURES: { ...actual.FEATURES, get onlinePokerRebuy() { return ff.rebuy; } } };
+});
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 vi.mock('react-router-dom', async (orig) => {
   const actual = await (orig() as Promise<Record<string, unknown>>);
@@ -38,13 +44,14 @@ const thState = (over: any = {}) => ({
     leaveTable: vi.fn().mockResolvedValue({ outcome: 'ok' }),
     transferHost: vi.fn().mockResolvedValue({ outcome: 'ok' }),
     submitAction: vi.fn().mockResolvedValue({ ok: true }),
+    rebuy: vi.fn().mockResolvedValue({ outcome: 'ok' }),
   },
   ...over,
 });
 
 const renderTable = () => render(<MemoryRouter><OnlinePokerTable /></MemoryRouter>);
 
-beforeEach(() => { h.useParams.mockReturnValue({ tableId: 't1' }); h.useTableMeta.mockReturnValue(meta('open')); });
+beforeEach(() => { h.useParams.mockReturnValue({ tableId: 't1' }); h.useTableMeta.mockReturnValue(meta('open')); ff.rebuy = false; });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('OnlinePokerTable — E4 bustout modal', () => {
@@ -66,11 +73,26 @@ describe('OnlinePokerTable — E4 bustout modal', () => {
     expect(leaveTable).toHaveBeenCalledTimes(1);
   });
 
-  it('"Mua thêm chip" is disabled (no rebuy op yet)', async () => {
+  it('rebuy flag OFF → "Mua thêm chip" is disabled (no rebuy op live)', async () => {
     h.useTableHand.mockReturnValue(thState({ seats: [seat(1, 'u1', '0'), seat(2, 'u2', '5000')], mySeatNo: 1 }));
     renderTable();
     const rebuy = await screen.findByRole('button', { name: /Mua thêm chip/ });
     expect(rebuy).toBeDisabled();
+  });
+
+  it('rebuy flag ON → fixed-amount button calls rebuy(startingStack)', async () => {
+    ff.rebuy = true;
+    const rebuy = vi.fn().mockResolvedValue({ outcome: 'ok' });
+    h.useTableHand.mockReturnValue(thState({
+      seats: [seat(1, 'u1', '0'), seat(2, 'u2', '5000')], mySeatNo: 1,
+      actions: { sitOpen: vi.fn(), leaveTable: vi.fn().mockResolvedValue({ outcome: 'ok' }), transferHost: vi.fn(), submitAction: vi.fn(), rebuy },
+    }));
+    renderTable();
+    // Fixed amount = table startingStack '2000' → "Mua thêm 2,000 chip", enabled.
+    const btn = await screen.findByRole('button', { name: /Mua thêm 2,000 chip/ });
+    expect(btn).toBeEnabled();
+    await act(async () => { fireEvent.click(btn); });
+    expect(rebuy).toHaveBeenCalledWith('2000');
   });
 
   it('does NOT show while still in a live hand (all-in, stack 0 mid-hand)', () => {

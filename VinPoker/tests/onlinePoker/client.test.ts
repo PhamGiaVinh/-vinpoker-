@@ -24,6 +24,7 @@ import { RUNTIME_LIVE } from '@/lib/onlinePoker/types';
 import { isChipString, type WirePublicHandState, type WirePrivateHandState } from '@/lib/onlinePoker/wire';
 import {
   bodyClaimDaily, bodyGetHole, bodySitDown, bodyStandUp, bodyStartHand, bodySubmitAction,
+  bodyRebuyOpen,
   newIdemKey, onlinePokerClient, listTablesLive, loadHandStateLive,
   wirePublicToView, wirePrivateToView,
   RuntimeNotLiveError, OnlinePokerError,
@@ -58,6 +59,11 @@ describe('pure request-body builders match the edge Zod schema', () => {
   it('stand_up / start_hand carry tableId + idempotencyKey', () => {
     expect(bodyStandUp('t1', 'idem-key-1')).toEqual({ op: 'stand_up', tableId: 't1', idempotencyKey: 'idem-key-1' });
     expect(bodyStartHand('t1', 'idem-key-1')).toEqual({ op: 'start_hand', tableId: 't1', idempotencyKey: 'idem-key-1' });
+  });
+  it('rebuy_open carries tableId/amount/idempotencyKey', () => {
+    expect(bodyRebuyOpen('t1', '20000', 'idem-key-1')).toEqual({
+      op: 'rebuy_open', tableId: 't1', amount: '20000', idempotencyKey: 'idem-key-1',
+    });
   });
   it('submit_action omits amount for non-sizing actions', () => {
     expect(bodySubmitAction({ handId: 'h', seat: 2, type: 'call', idempotencyKey: 'idem-key-1' })).toEqual({
