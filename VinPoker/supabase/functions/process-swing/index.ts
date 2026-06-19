@@ -9,6 +9,7 @@ import {
   getTableIdsForClub,
 } from "../_shared/dealer-utils.ts";
 import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
+import { scaleLockTimeoutSeconds } from "../_shared/lockTimeout.ts";
 import {
   sendTelegramNotification,
   getClubTelegramChatId,
@@ -561,11 +562,30 @@ Deno.serve(async (req: Request) => {
     for (const cid of clubIds) {
       let lockAcquired = false;
 
+      // ── B2.1: scale the lock lease by active-table count ─────────
+      // Worst-case runs (80–200s) can exceed the old hardcoded 120s lease, which the
+      // 60s cron then reclaims → two concurrent runners (FM-1). Best-effort table
+      // count; on ANY error fall back to BASE (today's behavior), never shorter.
+      // NOTE: this only shrinks the FM-1 overrun window — it does NOT fix the
+      // unconditional release_club_lock (FM-2). Fencing/tokens = B2.2.
+      let lockTimeoutSec: number = SWING_THRESHOLDS.BASE_LOCK_TIMEOUT_SECONDS;
+      try {
+        const activeTableCount = (await getTableIdsForClub(admin, cid)).length;
+        lockTimeoutSec = scaleLockTimeoutSeconds(activeTableCount, {
+          baseSeconds: SWING_THRESHOLDS.BASE_LOCK_TIMEOUT_SECONDS,
+          perTableSeconds: SWING_THRESHOLDS.LOCK_TIMEOUT_PER_TABLE,
+          maxSeconds: SWING_THRESHOLDS.MAX_LOCK_TIMEOUT_SECONDS,
+        });
+        console.log(`[process-swing] lock_timeout_scaled club=${cid} active_table_count=${activeTableCount} timeout_seconds=${lockTimeoutSec}`);
+      } catch (err) {
+        console.warn(`[process-swing] lock_timeout_scaled: table count read failed for ${cid}, using base ${lockTimeoutSec}s:`, err);
+      }
+
       // ── Acquire club processing lock ────────────────────────────
       try {
         const { data: lockResult, error: lockErr } = await admin.rpc("try_acquire_club_lock", {
           p_club_id: cid,
-          p_timeout_seconds: SWING_THRESHOLDS.BASE_LOCK_TIMEOUT_SECONDS,
+          p_timeout_seconds: lockTimeoutSec,
         });
 
         if (lockErr) {
