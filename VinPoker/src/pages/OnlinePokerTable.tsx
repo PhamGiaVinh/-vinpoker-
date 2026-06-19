@@ -25,6 +25,7 @@ import { AllInRunout } from '@/components/poker/AllInRunout';
 import { isAllInShowdown, ALLIN_CINEMATIC_TOTAL_MS } from '@/lib/onlinePoker/allinCinematic';
 import { occupiedCount, isTableLive, emptyStateLabel } from '@/lib/onlinePoker/tableDisplay';
 import { SitDownDialog } from '@/components/poker/SitDownDialog';
+import { BustoutDialog } from '@/components/poker/BustoutDialog';
 import { ChevronLeft, Crown, LogIn } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
@@ -122,6 +123,8 @@ export default function OnlinePokerTable() {
 
   const [sitSeat, setSitSeat] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [bustOpen, setBustOpen] = useState(false);
+  const bustHandledRef = useRef(false);
 
   // Best-effort auto-leave when the player exits the table (SPA route unmount / tab close).
   // A ref carries the latest seated / in-hand state into the unmount cleanup. This is
@@ -192,6 +195,23 @@ export default function OnlinePokerTable() {
   useEffect(() => {
     if (!isTableLive(table?.status, occupiedCount(seats))) setDwell(null);
   }, [table?.status, seats]);
+
+  // E4 — bustout. After settlement the server writes the busted player's seat stack to 0
+  // (migration 20260907000000), so a seated player with 0 chips and no live hand has lost
+  // all their chips. Offer leave/rebuy ONCE per bust, and only after any result dwell has
+  // finished (so the outcome is seen first). Dismissable to keep spectating; re-armed only
+  // once the player is no longer busted (e.g. after leaving). Never decides chips client-side.
+  const myStackStr = seats.find((s) => s.userId === myUserId)?.stack;
+  const inLiveHand = !!hand && (hand.status === 'dealing' || hand.status === 'betting');
+  const isBusted = mySeatNo != null && myStackStr != null && Number(myStackStr) === 0 && !inLiveHand;
+  useEffect(() => {
+    if (isBusted && !dwell) {
+      if (!bustHandledRef.current) { bustHandledRef.current = true; setBustOpen(true); }
+    } else if (!isBusted) {
+      bustHandledRef.current = false;
+      setBustOpen(false);
+    }
+  }, [isBusted, dwell]);
 
   if (!FEATURES.onlinePoker) return <PokerComingSoon />;
 
@@ -401,6 +421,12 @@ export default function OnlinePokerTable() {
         bb={table.bb}
         defaultStack={table.startingStack}
         onConfirm={confirmSit}
+      />
+
+      <BustoutDialog
+        open={bustOpen}
+        onOpenChange={setBustOpen}
+        onLeave={async () => { await leave(); setBustOpen(false); }}
       />
     </div>
   );
