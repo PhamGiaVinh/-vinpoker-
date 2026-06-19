@@ -32,7 +32,7 @@ export interface SeriesEvent {
   buy_in: number | null;
   fee: number | null; // = rake_amount (the rake / club fee)
   serviceFeeAmount: number | null; // separate per-entry service fee (reported, not summed)
-  gtd: number | null; // MISSING in VinPoker schema — always null for native rows
+  gtd: number | null; // committed guarantee (tournaments.guarantee_amount); NULL → reported missing
   prize_pool_actual: number | null;
   total_entries: number | null;
   unique_entries: number | null;
@@ -46,7 +46,11 @@ export interface SeriesEvent {
  * Map one native tournament row → SeriesEvent. `entryCounts` is optional; when
  * absent, entries are reported missing (NOT derived/guessed here).
  */
-export function mapTournamentToEvent(row: NativeTournamentRow, entryCounts?: EntryCounts): SeriesEvent {
+export function mapTournamentToEvent(
+  row: NativeTournamentRow,
+  entryCounts?: EntryCounts,
+  gtdValue?: number | null,
+): SeriesEvent {
   const missingFields: string[] = [];
   const need = (field: string, value: unknown): void => {
     if (value === null || value === undefined) missingFields.push(field);
@@ -56,9 +60,10 @@ export function mapTournamentToEvent(row: NativeTournamentRow, entryCounts?: Ent
   const fee = row.rake_amount ?? null;
   const prize_pool_actual = row.prize_pool ?? null;
 
-  // GTD has no column in VinPoker `tournaments` → always missing for native rows.
-  const gtd: number | null = null;
-  missingFields.push('gtd');
+  // GTD comes from the server (committed `tournaments.guarantee_amount` via the RPC) when
+  // available; a NULL gtd is still reported "missing" — never faked/inferred from prize_pool.
+  const gtd: number | null = gtdValue ?? null;
+  if (gtd === null) missingFields.push('gtd');
 
   const total_entries = entryCounts?.totalEntries ?? null;
   const unique_entries = entryCounts?.uniqueEntries ?? null;
@@ -99,7 +104,7 @@ export interface ClubSeriesEventRow {
   buy_in: number | null;
   fee: number | null; // = rake_amount (server-side)
   service_fee: number | null; // separate service fee — reported, NOT summed into fee
-  gtd: number | null; // null until a native GTD column exists (later PR)
+  gtd: number | null; // server's committed guarantee_amount; NULL → still reported missing
   prize_pool_actual: number | null;
   total_entries: number | null;
   unique_entries: number | null;
@@ -111,8 +116,9 @@ export interface ClubSeriesEventRow {
  * Map one `get_club_series_events` RPC row → SeriesEvent by reusing the pure
  * tournament adapter, so fee semantics (fee = rake_amount; serviceFeeAmount kept
  * separate, never summed) and the gtd-missing rule stay identical. Entry counts are
- * the SERVER-DERIVED values from the RPC; gtd stays null (no native GTD column yet,
- * so readiness still reports it missing). No economics, no cross-club merge.
+ * the SERVER-DERIVED values from the RPC; gtd is the server's committed
+ * `tournaments.guarantee_amount` (NULL → still reported missing, never faked). No economics,
+ * no cross-club merge.
  */
 export function mapRpcRowToEvent(row: ClubSeriesEventRow): SeriesEvent {
   return mapTournamentToEvent(
@@ -131,6 +137,7 @@ export function mapRpcRowToEvent(row: ClubSeriesEventRow): SeriesEvent {
       uniqueEntries: row.unique_entries,
       reentries: row.reentries,
     },
+    row.gtd,
   );
 }
 

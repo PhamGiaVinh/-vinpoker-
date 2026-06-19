@@ -7817,6 +7817,7 @@ export type Database = {
           free_rake_slots: number | null
           free_rake_used: number | null
           game_type: string
+          guarantee_amount: number | null
           id: string
           itm_places: number | null
           late_reg_close_level: number | null
@@ -7854,6 +7855,7 @@ export type Database = {
           free_rake_slots?: number | null
           free_rake_used?: number | null
           game_type?: string
+          guarantee_amount?: number | null
           id?: string
           itm_places?: number | null
           late_reg_close_level?: number | null
@@ -7891,6 +7893,7 @@ export type Database = {
           free_rake_slots?: number | null
           free_rake_used?: number | null
           game_type?: string
+          guarantee_amount?: number | null
           id?: string
           itm_places?: number | null
           late_reg_close_level?: number | null
