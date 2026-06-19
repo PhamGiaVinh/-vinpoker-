@@ -16,7 +16,7 @@ import { LivestreamSection } from "@/components/LivestreamSection";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { getCurrentLevel, getLevelEndsIn, isLateRegClosed, formatCountdown } from "@/lib/tournamentLive";
+import { getCurrentLevel, getLevelEndsIn, isLateRegClosed, formatCountdown, getEffectiveStart } from "@/lib/tournamentLive";
 import { useTranslation } from "react-i18next";
 import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
 import News from "./News";
@@ -39,6 +39,7 @@ interface Tournament {
   current_players: number;
   current_blinds: string | null;
   live_status: string;
+  clock_started_at?: string | null;
   location: string | null;
   game_type: string;
   minutes_per_level: number | null;
@@ -91,9 +92,11 @@ const Tournaments = () => {
     (async () => {
       setLoading(true);
       const [{ data: t }, { data: bs }, { data: vb }, { data: sr }, { data: cs }] = await Promise.all([
-        supabase
+        // Cast to any: the dynamic (feature-flagged) select string overflows the
+        // generated-types union (TS2590); the result is narrowed to Tournament[] below.
+        (supabase as any)
           .from("tournaments")
-          .select(`id,name,start_time,buy_in,rake_amount${FEATURES.tournamentServiceFee ? ",service_fee_amount" : ""},free_rake_enabled,free_rake_slots,free_rake_used,starting_stack,current_players,current_blinds,live_status,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)`)
+          .select(`id,name,start_time,buy_in,rake_amount${FEATURES.tournamentServiceFee ? ",service_fee_amount" : ""},free_rake_enabled,free_rake_slots,free_rake_used,starting_stack,current_players,current_blinds,live_status,clock_started_at,location,game_type,minutes_per_level,late_reg_close_level, club:clubs(id,name,region)`)
           .order("buy_in", { ascending: false }),
         supabase.from("app_settings").select("value").eq("key", "banners").maybeSingle(),
         supabase.from("app_settings").select("value").eq("key", "vip_banner").maybeSingle(),
@@ -142,11 +145,17 @@ const Tournaments = () => {
       const ts = new Date(i.start_time).getTime();
       // Auto-hide once late reg is closed (buy-in window ended) or finished
       if (isLateRegClosed(i, now)) return false;
-      if (view === "daily") {
-        const sameDay = new Date(i.start_time).toDateString() === new Date().toDateString();
-        if (!sameDay && (ts < now || ts > now + 24 * 60 * 60 * 1000)) return false;
-      } else {
-        if (ts < now - 12 * 60 * 60 * 1000 || ts > now + weekMs) return false;
+      // A tournament whose clock has actually started (floor pressed "Bắt đầu giải")
+      // and whose late reg is still open must stay registerable even if its planned
+      // start_time is now stale — otherwise the date-window below would hide it.
+      const isLiveRunning = !!i.clock_started_at && i.live_status !== "finished";
+      if (!isLiveRunning) {
+        if (view === "daily") {
+          const sameDay = new Date(i.start_time).toDateString() === new Date().toDateString();
+          if (!sameDay && (ts < now || ts > now + 24 * 60 * 60 * 1000)) return false;
+        } else {
+          if (ts < now - 12 * 60 * 60 * 1000 || ts > now + weekMs) return false;
+        }
       }
       if (buyInRange !== "all") {
         const v = i.buy_in;
@@ -155,9 +164,11 @@ const Tournaments = () => {
         if (buyInRange === "high" && v < 10_000_000) return false;
       }
       if (!gameTypes[i.game_type ?? "nlh"]) return false;
-      // Upcoming = not yet started; Late Reg = started but buy-in still open
-      const isUp = ts > now;
-      const isLate = ts <= now && !isLateRegClosed(i, now);
+      // Upcoming = not yet started; Late Reg = started but buy-in still open.
+      // A running tournament is always "late reg" (never "upcoming") regardless of
+      // its planned start_time, so the Late Reg filter toggle controls it correctly.
+      const isUp = ts > now && !isLiveRunning;
+      const isLate = (ts <= now || isLiveRunning) && !isLateRegClosed(i, now);
       if (!statusUpcoming && isUp) return false;
       if (!statusLateReg && isLate) return false;
       if (!statusUpcoming && !statusLateReg) return false;
