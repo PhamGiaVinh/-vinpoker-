@@ -387,11 +387,11 @@ const Account = () => {
         )}
       </Card>
 
-      {scope === "personal" && (
-        <div className="mt-6">
-          <SmartPlayerCard />
-        </div>
-      )}
+      {/* Personal poker profile — every user has one, so it shows regardless of the
+          club/personal ops scope (club admins were otherwise stuck in club scope and never saw it). */}
+      <div className="mt-6">
+        <SmartPlayerCard />
+      </div>
 
       {isClubScope && (
         <>
