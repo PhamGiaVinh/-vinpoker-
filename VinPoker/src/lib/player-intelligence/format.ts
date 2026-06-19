@@ -64,6 +64,19 @@ export function isScenarioUnlocked(pi: PlayerIntelligence): boolean {
   return pi.scenarioOutlook?.unlocked === true;
 }
 
+/** Pure scenario simulation for the "Thử viễn cảnh" tool — the player picks a
+ *  HYPOTHETICAL ITM rate and previews the 4/8/12-event outlook. This is NOT the
+ *  player's real data; it uses the same honest math as the verified outlook
+ *  (expectedItm = N·rate, chance = 1 − (1 − rate)^N). Rate is clamped to [0,1]. */
+export function simulateScenarioWindows(itmRate: number, tournaments: number[] = [4, 8, 12]): ScenarioWindow[] {
+  const rate = Math.min(1, Math.max(0, isFinite(itmRate) ? itmRate : 0));
+  return tournaments.map((n) => ({
+    tournaments: n,
+    expectedItm: n * rate,
+    chanceAtLeastOneItm: 1 - Math.pow(1 - rate, n),
+  }));
+}
+
 /** Next-best actions by state. Drill for new players; keep playing to build verified
  *  data; fit-events + progress once the outlook is unlocked. */
 export function getNextBestAction(pi: PlayerIntelligence): NextActionKey[] {
