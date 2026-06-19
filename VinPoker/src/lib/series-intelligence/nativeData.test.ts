@@ -34,7 +34,7 @@ describe('mapTournamentToEvent', () => {
     expect(e.clubId).toBe('club-A');
   });
 
-  it('always reports gtd as missing (no VinPoker column) — never guessed', () => {
+  it('reports gtd missing when no GTD value is provided — never guessed', () => {
     const e = mapTournamentToEvent(row({}));
     expect(e.gtd).toBeNull();
     expect(e.missingFields).toContain('gtd');
@@ -141,10 +141,16 @@ describe('mapRpcRowToEvent (get_club_series_events RPC → event shape)', () => 
     expect(e.fee).not.toBe(250_000); // fee must not absorb the service fee
   });
 
-  it('still reports gtd missing (no native GTD column yet) — RPC sends null', () => {
+  it('reports gtd missing when the RPC sends null (no GTD set) — never faked', () => {
     const e = mapRpcRowToEvent(rpcRow({ gtd: null }));
     expect(e.gtd).toBeNull();
     expect(e.missingFields).toContain('gtd');
+  });
+
+  it('uses the real committed GTD from the RPC when present (not missing)', () => {
+    const e = mapRpcRowToEvent(rpcRow({ gtd: 300_000_000 }));
+    expect(e.gtd).toBe(300_000_000);
+    expect(e.missingFields).not.toContain('gtd');
   });
 
   it('reports a missing direct field (e.g. buy_in null) without inventing it', () => {
