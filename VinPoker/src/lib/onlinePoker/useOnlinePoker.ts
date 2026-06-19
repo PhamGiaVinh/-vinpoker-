@@ -92,6 +92,8 @@ export interface TableHandActions {
   /** Hand the host role to another seated player (host only). */
   transferHost: (toUserId: string) => Promise<RpcOutcome>;
   submitAction: (a: { handId: string; seat: number; type: ActionType; amount?: string }) => Promise<unknown>;
+  /** Rebuy a fresh stack after busting (server-dictated amount; busted-only). */
+  rebuy: (amount: string) => Promise<RpcOutcome>;
 }
 
 export interface TableHandState {
@@ -254,6 +256,7 @@ export function useTableHand(tableId: string): TableHandState {
     leaveTable: () => onlinePokerClient.leaveOpenTable(tableId),
     transferHost: (toUserId) => onlinePokerClient.transferHost(tableId, toUserId),
     submitAction: (a) => onlinePokerClient.submitAction(a),
+    rebuy: (amount) => onlinePokerClient.rebuyOpen(tableId, amount),
   };
 
   return { hand, seats, mySeatNo, myUserId: uid, hostUserId, amIHost, legal, loading, error, refresh, actions };
