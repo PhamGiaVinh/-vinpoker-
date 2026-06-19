@@ -1,18 +1,20 @@
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, FileSpreadsheet, Info, Database } from "lucide-react";
+import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { SERIES_INTEL } from "@/lib/seriesIntelligence";
-import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
+import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerCommandCenter";
 
 /**
- * Club Admin → Series Intelligence (frontend-only demo shell).
- * Role-guarded (club admin / club owner / super_admin). NOT blocked by the
- * feature flag so the owner can preview the direct route; when the flag is off
- * it shows a small "internal demo" note. No data, no backend, no calculation.
+ * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
+ * Role-guarded (club admin / club owner / super_admin). Reads the club's own
+ * live native series data (read-only) and renders a descriptive BI dashboard —
+ * "what happened / is happening", never prediction. The legacy CSV prototype is
+ * kept as a collapsed fallback. No backend / DB / write path here.
  */
 export default function SeriesIntelligence() {
   const nav = useNavigate();
@@ -22,18 +24,24 @@ export default function SeriesIntelligence() {
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
 
   return (
-    <div className="container max-w-3xl mx-auto p-4 space-y-4">
+    <div className="container max-w-5xl mx-auto p-4 space-y-4">
       {/* header */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" onClick={() => nav(-1)} aria-label="Quay lại">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-2xl text-primary flex items-center gap-2">
-            <Sparkles className="w-5 h-5" /> {SERIES_INTEL.title}
+            <Sparkles className="w-5 h-5 shrink-0" /> {SERIES_INTEL.title}
           </h1>
-          <p className="text-xs text-muted-foreground">{SERIES_INTEL.subtitle}</p>
+          <p className="text-xs text-muted-foreground">{SERIES_INTEL.commandCenterSubtitle}</p>
         </div>
+      </div>
+
+      {/* transparency badge — this is BI, not a guarantee */}
+      <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden />
+        {SERIES_INTEL.transparencyBadge}
       </div>
 
       {!FEATURES.clubSeriesIntelligence && (
@@ -48,110 +56,70 @@ export default function SeriesIntelligence() {
         <p className="text-sm text-muted-foreground">{SERIES_INTEL.safetyBoundary}</p>
       </Card>
 
-      {/* 4 steps */}
-      <div className="space-y-3">
-        {SERIES_INTEL.steps.map((s) => (
-          <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
-            <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
-              {s.n}
+      {/* Owner Command Center — live native BI dashboard */}
+      <OwnerCommandCenter />
+
+      {/* Legacy CSV prototype — demoted to a collapsed fallback */}
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.csvSectionLabel}
+            </span>
+            <ChevronDown className="w-4 h-4 opacity-60" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-3 pt-3">
+          {/* 4 steps */}
+          <div className="space-y-3">
+            {SERIES_INTEL.steps.map((s) => (
+              <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
+                <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
+                  {s.n}
+                </div>
+                <div>
+                  <h3 className="font-display text-base">{s.label}</h3>
+                  <p className="text-xs text-muted-foreground">{s.desc}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* CSV checklist */}
+          <Card className="p-4 gradient-card border-primary/40">
+            <h3 className="font-display text-base flex items-center gap-2 mb-2">
+              <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {SERIES_INTEL.requiredColumns.map((c) => (
+                <Badge key={c} variant="secondary" className="font-mono text-[11px]">
+                  {c}
+                </Badge>
+              ))}
             </div>
-            <div>
-              <h3 className="font-display text-base">{s.label}</h3>
-              <p className="text-xs text-muted-foreground">{s.desc}</p>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {/* CSV checklist */}
-      <Card className="p-4 gradient-card border-primary/40">
-        <h3 className="font-display text-base flex items-center gap-2 mb-2">
-          <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
-        </h3>
-        <div className="flex flex-wrap gap-1.5">
-          {SERIES_INTEL.requiredColumns.map((c) => (
-            <Badge key={c} variant="secondary" className="font-mono text-[11px]">
-              {c}
-            </Badge>
-          ))}
-        </div>
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{SERIES_INTEL.eventIdNote}</span>
-        </p>
-      </Card>
-
-      {/* native data source inventory (read-only) */}
-      <DataSourceSection />
-
-      {/* demo note */}
-      <Card className="p-4 border-primary/30">
-        <ul className="space-y-1 text-xs text-muted-foreground">
-          {SERIES_INTEL.demoNotes.map((n, i) => (
-            <li key={i} className="flex gap-2">
-              <span aria-hidden>•</span>
-              <span>{n}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {/* CTA — disabled until a public demo URL exists */}
-      <Button disabled variant="outline" className="w-full gap-2">
-        <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
-      </Button>
-    </div>
-  );
-}
-
-/**
- * Phase 1 — read-only native data inventory. Probes the club owner's own
- * tournaments (existing RLS, no new RPC, no writes) and reports how far VinPoker
- * data already covers the Series Intelligence event shape. Does NOT compute
- * economics yet.
- */
-function DataSourceSection() {
-  const native = useNativeSeriesEvents();
-
-  return (
-    <section className="space-y-2">
-      <h3 className="font-display text-base flex items-center gap-2">
-        <Database className="w-4 h-4 text-primary" /> Nguồn dữ liệu
-      </h3>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Card className="p-4 gradient-card border-primary/40 space-y-2">
-          <div className="text-sm font-medium">Dữ liệu VinPoker</div>
-          {native.status === "loading" && (
-            <p className="text-xs text-muted-foreground">Đang kiểm tra dữ liệu có sẵn trong VinPoker.</p>
-          )}
-          {native.status === "unavailable" && (
-            <p className="text-xs text-muted-foreground">
-              Cần RPC đọc dữ liệu owner-scoped ở bước tiếp theo.
-              {native.reason ? <span className="text-muted-foreground/70"> ({native.reason})</span> : null}
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{SERIES_INTEL.eventIdNote}</span>
             </p>
-          )}
-          {native.status === "ready" && native.summary && (
-            <ul className="space-y-0.5 text-xs text-muted-foreground tabular-nums">
-              <li>{native.summary.total} giải tìm thấy</li>
-              <li>{native.summary.withBuyIn} giải có buy-in</li>
-              <li>{native.summary.withFee} giải có fee (rake)</li>
-              <li>{native.summary.withPrizePool} giải có prize pool</li>
-              <li>{native.summary.missingGtd} giải thiếu GTD</li>
-              <li>{native.summary.missingEntries} giải thiếu số entry</li>
-            </ul>
-          )}
-          <p className="text-[11px] text-muted-foreground/80">
-            Chỉ đọc, không ghi. GTD chưa có trong dữ liệu; số entry cần bước đọc tiếp theo.
-          </p>
-        </Card>
+          </Card>
 
-        <Card className="p-4 border-primary/30 space-y-2">
-          <div className="text-sm font-medium">CSV fallback</div>
-          <p className="text-xs text-muted-foreground">
-            Tải CSV thủ công — phương án dự phòng, sẽ được kết nối sau.
-          </p>
-        </Card>
-      </div>
-    </section>
+          {/* demo notes */}
+          <Card className="p-4 border-primary/30">
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {SERIES_INTEL.demoNotes.map((n, i) => (
+                <li key={i} className="flex gap-2">
+                  <span aria-hidden>•</span>
+                  <span>{n}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Button disabled variant="outline" className="w-full gap-2">
+            <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
+          </Button>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }

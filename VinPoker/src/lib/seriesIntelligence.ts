@@ -38,4 +38,9 @@ export const SERIES_INTEL = {
     'Dữ liệu thật sẽ được đưa vào sau khi pilot xác nhận quy trình.',
   ],
   ctaDisabledLabel: 'Demo CSV sẽ được kết nối sau',
+  // Owner Command Center (Phase 9) — BI dashboard over live native data.
+  commandCenterTitle: 'Bảng điều khiển series',
+  commandCenterSubtitle: 'Tổng quan, kinh tế và rủi ro của chuỗi giải — từ dữ liệu VinPoker đang chạy.',
+  transparencyBadge: 'Dữ liệu: quy tắc + quan sát, không phải dự đoán',
+  csvSectionLabel: 'CSV thủ công (bản dự phòng)',
 } as const;
