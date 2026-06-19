@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { FEATURES } from "@/lib/featureFlags";
 
 interface AddDealerDialogProps {
   open: boolean;
@@ -41,6 +42,8 @@ export default function AddDealerDialog({
   const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [manualBhxh, setManualBhxh] = useState("");
+  const [manualTax, setManualTax] = useState("");
   const [saving, setSaving] = useState(false);
 
   const isPT = employmentType === "part_time";
@@ -55,6 +58,8 @@ export default function AddDealerDialog({
     setOtMultiplier("1.5");
     setPhone("");
     setNotes("");
+    setManualBhxh("");
+    setManualTax("");
   };
 
   const handleSave = async () => {
@@ -77,7 +82,7 @@ export default function AddDealerDialog({
         ? (hourlyRate ? parseInt(hourlyRate, 10) : null)
         : (monthlySalaryNum > 0 ? Math.round(monthlySalaryNum / 26 / standardHoursNum) : (hourlyRate ? parseInt(hourlyRate, 10) : null));
 
-      const { error } = await supabase.from("dealers").insert({
+      const insertPayload: Record<string, unknown> = {
         club_id: clubId,
         full_name: fullName.trim(),
         tier,
@@ -91,7 +96,14 @@ export default function AddDealerDialog({
         notes: notes.trim() || null,
         joined_date: new Date().toISOString().split("T")[0],
         status: "active",
-      });
+      };
+      // Manual BHXH/tax override (flag-gated; columns exist only after the owner-gated apply).
+      if (FEATURES.manualPayrollDeductions) {
+        insertPayload.manual_bhxh_vnd = manualBhxh.trim() === "" ? null : Math.max(0, parseInt(manualBhxh, 10) || 0);
+        insertPayload.manual_tax_vnd = manualTax.trim() === "" ? null : Math.max(0, parseInt(manualTax, 10) || 0);
+      }
+
+      const { error } = await (supabase.from("dealers") as any).insert(insertPayload);
       if (error) {
         toast.error(error.message);
         return;
@@ -238,6 +250,25 @@ export default function AddDealerDialog({
               className="bg-card border-border text-foreground"
             />
           </div>
+
+          {/* ── Khấu trừ thủ công (BHXH + thuế) ── */}
+          {FEATURES.manualPayrollDeductions && (
+            <div className="pt-2 border-t border-border space-y-2">
+              <div className="text-xs font-semibold text-warning">Khấu trừ thủ công (tùy chọn)</div>
+              <p className="text-[11px] text-muted-foreground -mt-1">Để trống = tự động tính · nhập <span className="font-mono">0</span> = không thu · nhập số = dùng số đó.</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>BHXH (VND)</Label>
+                  <Input type="number" value={manualBhxh} onChange={(e) => setManualBhxh(e.target.value)} placeholder="Tự động" className="bg-card border-border text-foreground" />
+                </div>
+                <div>
+                  <Label>Thuế TNCN (VND)</Label>
+                  <Input type="number" value={manualTax} onChange={(e) => setManualTax(e.target.value)} placeholder="Tự động" className="bg-card border-border text-foreground" />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 pt-2">
             <Button
               variant="outline"

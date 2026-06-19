@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ interface DealerData {
   standard_hours_per_shift: number | null;
   ot_multiplier: number | null;
   notes: string | null;
+  manual_bhxh_vnd?: number | null;
+  manual_tax_vnd?: number | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -46,6 +49,9 @@ export default function DealerAdjustDialog({
   const [standardHours, setStandardHours] = useState("8");
   const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [notes, setNotes] = useState("");
+  // Manual BHXH/tax override ("" = auto-compute, "0" = none, ">0" = exact). Gated by flag.
+  const [manualBhxh, setManualBhxh] = useState("");
+  const [manualTax, setManualTax] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Dealer scores
@@ -65,6 +71,8 @@ export default function DealerAdjustDialog({
     setStandardHours(String(dealer.standard_hours_per_shift ?? 8));
     setOtMultiplier(String(dealer.ot_multiplier ?? 1.5));
     setNotes(dealer.notes ?? "");
+    setManualBhxh(dealer.manual_bhxh_vnd == null ? "" : String(dealer.manual_bhxh_vnd));
+    setManualTax(dealer.manual_tax_vnd == null ? "" : String(dealer.manual_tax_vnd));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealer?.id]);
 
@@ -148,19 +156,24 @@ export default function DealerAdjustDialog({
       const standardHoursSave = parseFloat(standardHours) || 8;
       const otMultiplierSave = parseFloat(otMultiplier) || 1.5;
 
-      const { error: dealerErr } = await supabase
-        .from("dealers")
-        .update({
-          tier,
-          employment_type: employmentType,
-          hourly_rate_vnd: isPT ? hourlyRateNum : (monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26 / standardHoursSave) : hourlyRateNum),
-          base_rate_vnd: monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26) : null,
-          monthly_salary_vnd: isPT ? 0 : monthlySalarySave,
-          standard_hours_per_shift: standardHoursSave,
-          ot_multiplier: otMultiplierSave,
-          notes: notes || null,
-        })
-        .eq("id", dealer.id);
+      const payload: Record<string, unknown> = {
+        tier,
+        employment_type: employmentType,
+        hourly_rate_vnd: isPT ? hourlyRateNum : (monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26 / standardHoursSave) : hourlyRateNum),
+        base_rate_vnd: monthlySalarySave > 0 ? Math.round(monthlySalarySave / 26) : null,
+        monthly_salary_vnd: isPT ? 0 : monthlySalarySave,
+        standard_hours_per_shift: standardHoursSave,
+        ot_multiplier: otMultiplierSave,
+        notes: notes || null,
+      };
+      // Manual BHXH/tax override (flag-gated; columns only exist after the owner-gated apply).
+      // "" => NULL (auto-compute); a number (incl. 0) => fixed override.
+      if (FEATURES.manualPayrollDeductions) {
+        payload.manual_bhxh_vnd = manualBhxh.trim() === "" ? null : Math.max(0, parseInt(manualBhxh, 10) || 0);
+        payload.manual_tax_vnd = manualTax.trim() === "" ? null : Math.max(0, parseInt(manualTax, 10) || 0);
+      }
+
+      const { error: dealerErr } = await (supabase.from("dealers") as any).update(payload).eq("id", dealer.id);
 
       if (dealerErr) throw dealerErr;
 
@@ -351,6 +364,36 @@ export default function DealerAdjustDialog({
                 />
               </div>
             </div>
+
+            {/* ── Khấu trừ thủ công (BHXH + thuế) ── */}
+            {FEATURES.manualPayrollDeductions && (
+              <div className="pt-2 border-t border-border space-y-2">
+                <div className="text-xs font-semibold text-warning">Khấu trừ thủ công (tùy chọn)</div>
+                <p className="text-[11px] text-muted-foreground -mt-1">Để trống = tự động tính · nhập <span className="font-mono">0</span> = không thu · nhập số = dùng số đó.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">BHXH (VND)</Label>
+                    <Input
+                      type="number"
+                      value={manualBhxh}
+                      onChange={(e) => setManualBhxh(e.target.value)}
+                      placeholder="Tự động"
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Thuế TNCN (VND)</Label>
+                    <Input
+                      type="number"
+                      value={manualTax}
+                      onChange={(e) => setManualTax(e.target.value)}
+                      placeholder="Tự động"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Ghi chú */}
             <div>
