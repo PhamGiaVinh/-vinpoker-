@@ -43,6 +43,7 @@ import {
   type BlindLevelSnapshot,
 } from "@/lib/tracker-poker/trackerEngine";
 import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
+import { survivorsAfterHand } from "./postHand";
 import {
   deriveTrackerWorkflowState,
   isActionState,
@@ -1282,6 +1283,13 @@ export function useStandaloneHandInput(tournamentId: string) {
         .map((s) => s.seat_number)
         .sort((a, b) => a - b);
       setButtonSeat(nextButton(activeNums, buttonSeat));
+      // P2-4: drop busted (now-inactive) players from the felt + show survivors'
+      // new stacks immediately — no manual table reswitch. `endingStacks` is still
+      // the operator-confirmed map here (resetHand clears it just below). Guard on a
+      // successful re-query so a transient DB error never empties the felt.
+      if (refreshedSeats) {
+        setPlayers((prev) => survivorsAfterHand(prev, activeNums, endingStacks));
+      }
       setHandId(null);
       setHandStarted(false);
       resetHand();
