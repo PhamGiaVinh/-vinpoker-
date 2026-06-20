@@ -15,7 +15,6 @@ import {
   loadLibrary,
   saveLibrary,
   clearStoredLibrary,
-  isSafeKey,
   SERIES_LIBRARY_STORAGE_KEY,
   SERIES_LIBRARY_VERSION,
   MAX_LIBRARY_BYTES,
@@ -186,15 +185,6 @@ describe("size guard", () => {
   it("flags a serialized library over the cap", () => {
     expect(checkLibrarySize("x".repeat(MAX_LIBRARY_BYTES + 1)).ok).toBe(false);
     expect(checkLibrarySize("ok").ok).toBe(true);
-  });
-});
-
-describe("isSafeKey", () => {
-  it("rejects dangerous keys", () => {
-    expect(isSafeKey("__proto__")).toBe(false);
-    expect(isSafeKey("constructor")).toBe(false);
-    expect(isSafeKey("prototype")).toBe(false);
-    expect(isSafeKey("name")).toBe(true);
   });
 });
 

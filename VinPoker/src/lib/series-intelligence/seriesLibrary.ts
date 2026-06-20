@@ -5,6 +5,10 @@
 // the pure core: types, immutable reducers, and a localStorage layer with a STRICT rehydrate
 // validator. SAFETY: client-only, never touches the DB/server. The only untrusted surface is the
 // stored JSON on load — `loadLibrary` never throws and sanitizes everything (see validateEnvelope).
+//
+// NOTE (PATCH 2): event_id is SERIES-LOCAL (the parser emits `csv-<rowNo>`), so it COLLIDES across
+// series — every series has csv-1, csv-2, … A later patch that merges the whole library must key
+// events by content (event_name / buy-in tier), NEVER by event_id.
 
 import type { SeriesEvent } from "./nativeData";
 
@@ -113,11 +117,11 @@ export function setActive(lib: SeriesLibrary, id: string): SeriesLibrary {
 // ---------------------------------------------------------------------------
 // localStorage persistence + STRICT rehydrate validator (untrusted surface)
 // ---------------------------------------------------------------------------
-
-/** Reject dangerous property names — defensive primitive (the validator avoids key iteration entirely). */
-export function isSafeKey(key: string): boolean {
-  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
-}
+//
+// Prototype-pollution safety here is STRUCTURAL: the sanitizers below NEVER iterate the parsed
+// object's keys and NEVER spread/merge it — they read a fixed set of allow-listed fields into a
+// fresh literal. A `__proto__` / `constructor` key in the input is simply never read, so there is
+// nothing to "block" (hence no key-sanitization helper — that would guard a path that can't occur).
 
 const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -199,7 +203,8 @@ export function serializeLibrary(lib: SeriesLibrary): string {
 }
 
 export function checkLibrarySize(serialized: string): SizeGuardResult {
-  const bytes = serialized.length; // chars ≈ bytes for this JSON; cheap + deterministic
+  // Real UTF-8 byte length — multi-byte Vietnamese names (dấu) count correctly, not as 1 code unit.
+  const bytes = new TextEncoder().encode(serialized).length;
   if (bytes > MAX_LIBRARY_BYTES) {
     return { ok: false, bytes, message: `Thư viện quá lớn (${Math.round(bytes / 1000)}KB > ${MAX_LIBRARY_BYTES / 1000}KB). Xóa bớt series.` };
   }
