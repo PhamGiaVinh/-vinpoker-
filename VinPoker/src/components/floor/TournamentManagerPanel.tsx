@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play, History } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
 import { BlindEditorPanel } from "@/components/cashier/tournament-live/BlindEditorPanel";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { BLIND_PRESETS, type BlindLevel, type BlindTemplate } from "@/lib/blindPresets";
+import { useAuth } from "@/hooks/useAuth";
 
 const GAME_TYPES = [
   { v: "nlh", l: "No Limit Hold'em" },
@@ -152,6 +153,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
                     </div>
                     <div className="flex gap-1">
                       <EditTournamentDialog tournament={t2} onSaved={load} />
+                      <AuditHistoryDialog tournament={t2} />
                       {FEATURES.blindTemplates && <BlindStructureDialog tournament={t2} />}
                       <Button variant="ghost" size="icon" onClick={() => deleteTour(t2.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -195,6 +197,97 @@ const parseGtd = (v: string): number | null => {
   if (s === "") return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+// GTD Phase 3b-D3 — owner-only viewer of the tournament economic-fields audit trail
+// (table + RLS from 3b-B; RLS already restricts reads to owner/super_admin, the role
+// gate below just hides the button for floor staff). Read-only.
+type AuditLogRow = {
+  id: string;
+  changed_at: string;
+  changed_by: string | null;
+  changed_fields: string[];
+  old_values: Record<string, number | null>;
+  new_values: Record<string, number | null>;
+};
+
+const AUDIT_FIELD_LABELS: Record<string, string> = {
+  guarantee_amount: "GTD cam kết",
+  buy_in: "Buy-in",
+  rake_amount: "Rake / phí",
+  service_fee_amount: "Phí dịch vụ",
+  prize_pool: "Prize pool",
+  starting_stack: "Starting stack",
+  minutes_per_level: "Phút / level",
+};
+const AUDIT_MONEY_FIELDS = new Set(["guarantee_amount", "buy_in", "rake_amount", "service_fee_amount", "prize_pool"]);
+const fmtAuditVal = (field: string, v: number | null): string => {
+  if (v === null || v === undefined) return "—";
+  return AUDIT_MONEY_FIELDS.has(field) ? formatVND(v) : Number(v).toLocaleString("vi-VN");
+};
+
+const AuditHistoryDialog = ({ tournament }: { tournament: any }) => {
+  const { isClubOwner, isAdmin } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<AuditLogRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("tournament_economic_audit_log")
+        .select("id, changed_at, changed_by, changed_fields, old_values, new_values")
+        .eq("tournament_id", tournament.id)
+        .order("changed_at", { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      if (error) toast.error(error.message);
+      setRows(((data ?? []) as unknown) as AuditLogRow[]);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [open, tournament.id]);
+
+  // Owner / super_admin only — RLS also enforces this on the read.
+  if (!(isClubOwner || isAdmin)) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Lịch sử kinh tế"><History className="w-4 h-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Lịch sử sửa kinh tế</DialogTitle></DialogHeader>
+        <p className="text-xs text-muted-foreground">{tournament.name} · chỉ chủ CLB / super admin xem.</p>
+        {loading && <p className="text-xs text-muted-foreground">Đang tải…</p>}
+        {!loading && rows.length === 0 && (
+          <p className="text-sm text-muted-foreground">Chưa ghi nhận thay đổi kinh tế nào (chỉ ghi khi SỬA giải, không tính lúc tạo).</p>
+        )}
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <Card key={r.id} className="p-2.5 space-y-1 border-primary/30">
+              <div className="text-[11px] text-muted-foreground">
+                {formatDateTime(r.changed_at)}{r.changed_by ? ` · ${r.changed_by.slice(0, 8)}` : ""}
+              </div>
+              <ul className="space-y-0.5 text-xs">
+                {(r.changed_fields ?? []).map((field) => (
+                  <li key={field} className="tabular-nums">
+                    <span className="text-muted-foreground">{AUDIT_FIELD_LABELS[field] ?? field}:</span>{" "}
+                    {fmtAuditVal(field, r.old_values?.[field] ?? null)}{" "}
+                    <span className="text-muted-foreground">→</span>{" "}
+                    <span className="text-primary">{fmtAuditVal(field, r.new_values?.[field] ?? null)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 };
 
 const NewTournamentDialog = ({
