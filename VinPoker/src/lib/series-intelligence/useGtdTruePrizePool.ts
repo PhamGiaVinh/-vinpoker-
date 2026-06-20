@@ -4,11 +4,10 @@
 // that has a committed GTD, and returns a map keyed by event id. The server is the source of
 // truth — the client only reads these values; it never recomputes the true number.
 //
-// Gated by FEATURES.gtdTruePrizePool (default OFF). While OFF — or until the RPC is applied
-// live — this returns null and the UI stays on the #415 "ước tính" estimate.
+// Gated by FEATURES.gtdTruePrizePool. While OFF — or until the RPC is applied live — this
+// returns null and the UI stays on the #415 "ước tính" estimate.
 //
-// The RPC is source-only (not yet in generated types), so the call is intentionally untyped
-// here; types.ts gets the function in a separate step after the controlled apply.
+// The RPC is applied live and present in generated types, so the call is fully typed.
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,15 +35,11 @@ export function useGtdTruePrizePool(events: SeriesEvent[]): Map<string, TruePriz
     (async () => {
       const entries: Array<[string, TruePrizePool]> = [];
       for (const id of gtdIds) {
-        // RPC not in generated types yet (source-only) → untyped call by design.
-        const { data, error } = await (supabase.rpc as unknown as (
-          fn: string,
-          args: Record<string, unknown>,
-        ) => Promise<{ data: unknown; error: unknown }>)("get_tournament_prize_pool", {
+        const { data, error } = await supabase.rpc("get_tournament_prize_pool", {
           p_tournament_id: id,
         });
         if (error) continue;
-        const row = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : (data as Record<string, unknown> | null);
+        const row = data?.[0];
         if (row) {
           entries.push([
             id,

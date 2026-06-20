@@ -9054,6 +9054,14 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_tournament_prize_pool: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          confirmed_entry_count: number
+          prize_pool: number
+          tournament_id: string
+        }[]
+      }
       get_tournament_prizes: {
         Args: { p_tournament_id: string }
         Returns: Json
