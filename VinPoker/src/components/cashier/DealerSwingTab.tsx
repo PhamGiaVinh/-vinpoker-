@@ -50,6 +50,8 @@ import ChangePredictedDealerModal from "./ChangePredictedDealerModal";
 import CorrectWrongTableDealerModal from "./CorrectWrongTableDealerModal";
 import ReconcileRoomWizard from "./ReconcileRoomWizard";
 import DealerSwingSummaryStrip from "./dealer-swing/DealerSwingSummaryStrip";
+import DealerSwingInfraHealth from "./dealer-swing/DealerSwingInfraHealth";
+import { useDealerSwingHealth } from "@/hooks/useDealerSwingHealth";
 import SwingTableActions from "./dealer-swing/SwingTableActions";
 import StatusFilterChips, { type StatusFilterValue } from "./dealer-swing/StatusFilterChips";
 import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTableCard";
@@ -221,6 +223,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     return map;
   }, [assignments, tablesById, tournaments, swingConfigs, nowMs]);
   const { data: swingMetrics } = useSwingMetrics(filteredClubIds);
+  // C2 — read-only swing-engine infra health (lock/lease, pre-announce queue, cron liveness).
+  // Degrades gracefully: hidden until the get_dealer_swing_health RPC is applied live.
+  const { data: swingHealth, unavailable: swingHealthUnavailable } = useDealerSwingHealth(filteredClubIds);
   const breakPolicies = useBreakPolicies(filteredClubIds);
   const { data: specialDates, refetch: refetchSpecialDates } = useSpecialDates(filteredClubIds);
   const auditLogs = useAuditLogs(filteredClubIds, 15);
@@ -1646,6 +1651,13 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
           warnings={summaryCounts.warnings}
           stabilityPct={performanceKpis.stabilityPct}
           earliestShortageLabel={performanceKpis.earliestShortageLabel}
+          nowMs={nowMs}
+        />
+
+        <DealerSwingInfraHealth
+          health={swingHealth}
+          clubs={clubs}
+          unavailable={swingHealthUnavailable}
           nowMs={nowMs}
         />
 
