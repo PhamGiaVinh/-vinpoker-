@@ -2696,6 +2696,112 @@
       "waiting": "ディーラーがハンドを開始するのを待っています..."
     }
   },
+  "playerIntelligence": {
+    "header": {
+      "title": "あなたのポーカープロフィール",
+      "subtitle": "VinPoker に記録されたトーナメントデータに基づきます。結果を保証するものではありません。"
+    },
+    "status": { "new": "新規", "provisional": "構築中", "verified": "検証済み" },
+    "confidence": { "low": "低", "medium": "中", "high": "高" },
+    "confidenceLabel": "信頼度",
+    "sample": {
+      "title": "記録済みの大会",
+      "totalEntries": "参加回数",
+      "uniqueEvents": "大会数",
+      "reentries": "リエントリー",
+      "lastPlayed": "直近",
+      "empty": "検証済みのトーナメントデータはまだありません"
+    },
+    "results": {
+      "title": "観測された成績",
+      "subtitle": "記録された成績に基づく",
+      "itm": "ITM率",
+      "ft": "ファイナルテーブル率",
+      "top3": "トップ3率",
+      "avgFinish": "平均順位"
+    },
+    "sourceQuality": {
+      "title": "データ品質",
+      "show": "詳細",
+      "hide": "隠す",
+      "finishPosition": "最終順位",
+      "itm": "ITMの出典",
+      "fieldSize": "大会規模",
+      "structure": "ストラクチャー",
+      "identity": "本人確認",
+      "rateMethod": "割合の算出方法",
+      "rawObservedNote": "現在の割合は記録データに基づき、サンプル数に応じた調整はしていません。"
+    },
+    "sqValue": {
+      "exact_live": "正確（ライブ）",
+      "manual": "手動入力",
+      "missing": "なし",
+      "leaderboard_view": "リーダーボード",
+      "itm_places": "賞金構造による",
+      "prize": "賞金による",
+      "derived_position": "順位から推定",
+      "confirmed_entries": "確定した登録",
+      "current_players_snapshot": "人数スナップショット",
+      "legacy_total_entries": "旧データ",
+      "configured": "設定済み",
+      "default_assumed": "既定の想定",
+      "online_authenticated": "オンラインアカウント",
+      "offline_ephemeral": "会場のゲスト",
+      "raw_observed": "生の観測値",
+      "unknown": "不明"
+    },
+    "outlook": {
+      "title": "トーナメント見通し",
+      "lockedTitle": "ロック中",
+      "expectedItm": "期待ITM",
+      "chanceItm": "ITM1回以上のシミュレーション確率",
+      "windowTitle": "シナリオ：類似大会{{n}}回",
+      "softNote": "類似の大会に参加した場合のデータシナリオです。結果を保証するものではありません。",
+      "basis": "現在の観測割合に基づき、サンプル数に応じた調整はしていません。",
+      "reason": {
+        "not_enough_verified_entries": "4/8/12回のシナリオを解放するには、検証済みの成績がさらに必要です。",
+        "low_source_quality": "まだ見通しを解放するにはデータが不十分です。大会にもっと参加して改善しましょう。"
+      }
+    },
+    "action": {
+      "title": "次のステップ",
+      "play_drill": "Poker IQ Drill をやる",
+      "join_first_event": "最初の大会に参加して検証済みプロフィールを始める",
+      "keep_playing_recorded": "記録される大会に参加し続ける",
+      "see_fit_events": "合う大会を見る",
+      "track_progress": "大会ごとに成長を記録する"
+    },
+    "milestone": {
+      "ladderTitle": "あなたのプロフィールの旅",
+      "eventUnit": "回",
+      "start": "プロフィールを始める",
+      "verified": "検証済みプロフィール",
+      "outlook": "4/8/12の見通しを解放",
+      "nextChip": "次へ",
+      "remaining": "{{goal}}まであと{{n}}回"
+    },
+    "empty": {
+      "heroTitle": "検証済みのポーカープロフィールを作ろう",
+      "heroSubtitle": "VinPoker で参加する大会はすべて記録され、本物のプロフィールになります —— 自己申告は不要です。旅を始めましょう。",
+      "teaserTitle": "解放されると表示される内容",
+      "teaserExample": "例：検証済みプロフィールは「類似大会を4回プレイ → 約1回のITMを期待」と表示します。これは例であり、あなたの成績ではありません。"
+    },
+    "simulator": {
+      "title": "見通しを試す",
+      "badge": "シミュレーション",
+      "subtitle": "仮のITM率をドラッグして、4 / 8 / 12回の見通しがどう変わるか見てみましょう。",
+      "rateLabel": "仮のITM率",
+      "chanceItm": "≥1 ITM",
+      "expectedItm": "期待ITM",
+      "preset": {
+        "new": "初心者 ~15%",
+        "good": "まずまず ~25%",
+        "strong": "好調 ~35%"
+      },
+      "note": "これはあなたが選んだ割合に基づくシミュレーションであり、実際の成績ではありません。"
+    },
+    "error": "プロフィールを読み込めませんでした。後でもう一度お試しください。"
+  },
   "pokerDrill": {
     "intro": {
       "kicker": "あなたのポーカー・ジャーニー",

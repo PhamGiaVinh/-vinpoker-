@@ -2696,6 +2696,112 @@
       "waiting": "等待荷官开始这手牌……"
     }
   },
+  "playerIntelligence": {
+    "header": {
+      "title": "你的扑克档案",
+      "subtitle": "基于 VinPoker 中已记录的赛事数据。并非结果保证。"
+    },
+    "status": { "new": "新", "provisional": "建立中", "verified": "已验证" },
+    "confidence": { "low": "低", "medium": "中", "high": "高" },
+    "confidenceLabel": "可信度",
+    "sample": {
+      "title": "已记录赛事",
+      "totalEntries": "参赛次数",
+      "uniqueEvents": "赛事数",
+      "reentries": "重买",
+      "lastPlayed": "最近一次",
+      "empty": "暂无已验证的赛事数据"
+    },
+    "results": {
+      "title": "观察到的成绩",
+      "subtitle": "基于已记录的成绩",
+      "itm": "ITM 率",
+      "ft": "决赛桌率",
+      "top3": "前三率",
+      "avgFinish": "平均名次"
+    },
+    "sourceQuality": {
+      "title": "数据质量",
+      "show": "查看详情",
+      "hide": "隐藏",
+      "finishPosition": "完赛名次",
+      "itm": "ITM 来源",
+      "fieldSize": "赛事规模",
+      "structure": "结构",
+      "identity": "身份",
+      "rateMethod": "比率算法",
+      "rawObservedNote": "当前比率基于已记录数据，未按样本量调整。"
+    },
+    "sqValue": {
+      "exact_live": "精确（实时）",
+      "manual": "手动录入",
+      "missing": "缺失",
+      "leaderboard_view": "排行榜",
+      "itm_places": "按奖励结构",
+      "prize": "按奖金",
+      "derived_position": "由名次推算",
+      "confirmed_entries": "已确认报名",
+      "current_players_snapshot": "人数快照",
+      "legacy_total_entries": "旧数据",
+      "configured": "已配置",
+      "default_assumed": "默认假设",
+      "online_authenticated": "在线账户",
+      "offline_ephemeral": "现场访客",
+      "raw_observed": "原始观察",
+      "unknown": "未知"
+    },
+    "outlook": {
+      "title": "赛事前景",
+      "lockedTitle": "未解锁",
+      "expectedItm": "预期 ITM",
+      "chanceItm": "模拟 ≥1 次 ITM 的概率",
+      "windowTitle": "情景：{{n}} 场类似赛事",
+      "softNote": "若你参加类似赛事的数据情景。并非结果保证。",
+      "basis": "基于你当前观察到的比率，未按样本量调整。",
+      "reason": {
+        "not_enough_verified_entries": "需要更多已验证的赛事成绩才能解锁 4/8/12 场情景。",
+        "low_source_quality": "数据尚不足以解锁前景。多参加几场赛事来改善。"
+      }
+    },
+    "action": {
+      "title": "下一步",
+      "play_drill": "玩 Poker IQ Drill",
+      "join_first_event": "参加你的第一场赛事，开始建立已验证档案",
+      "keep_playing_recorded": "继续参加被记录的赛事",
+      "see_fit_events": "查看匹配的赛事",
+      "track_progress": "每场赛事后跟踪进步"
+    },
+    "milestone": {
+      "ladderTitle": "你的档案旅程",
+      "eventUnit": "场",
+      "start": "开始建立档案",
+      "verified": "已验证档案",
+      "outlook": "解锁 4/8/12 场前景",
+      "nextChip": "下一步",
+      "remaining": "还差 {{n}} 场达到{{goal}}"
+    },
+    "empty": {
+      "heroTitle": "建立你的已验证扑克档案",
+      "heroSubtitle": "你在 VinPoker 参加的每场赛事都会被记录并转化为真实档案——无需自行填报。开始你的旅程。",
+      "teaserTitle": "解锁后，你将看到",
+      "teaserExample": "示意示例：已验证档案会显示“若参加 4 场类似赛事 → 预期约 1 次 ITM”。这是示意，并非你的成绩。"
+    },
+    "simulator": {
+      "title": "试算前景",
+      "badge": "模拟",
+      "subtitle": "拖动假设的 ITM 率，查看 4 / 8 / 12 场前景如何变化。",
+      "rateLabel": "假设 ITM 率",
+      "chanceItm": "≥1 ITM",
+      "expectedItm": "预期 ITM",
+      "preset": {
+        "new": "新手 ~15%",
+        "good": "尚可 ~25%",
+        "strong": "出色 ~35%"
+      },
+      "note": "这是基于你所选比率的模拟，并非你的真实成绩。"
+    },
+    "error": "无法加载档案，请稍后再试。"
+  },
   "pokerDrill": {
     "intro": {
       "kicker": "你的扑克旅程",
