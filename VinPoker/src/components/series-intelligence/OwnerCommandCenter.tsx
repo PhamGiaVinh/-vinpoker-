@@ -15,11 +15,13 @@ import {
   computeScenarioActions,
   computeScenarioOutlook,
 } from "@/lib/series-intelligence/scenarioOutlook";
+import { computeGtdOverlay } from "@/lib/series-intelligence/gtdOverlay";
 import { OverviewCards } from "./OverviewCards";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
 import { RiskInsightCards } from "./RiskInsightCards";
 import { ScenarioOutlook } from "./ScenarioOutlook";
+import { GtdOverlayCard } from "./GtdOverlayCard";
 import { OwnerActionChecklist } from "./OwnerActionChecklist";
 
 /**
@@ -44,6 +46,7 @@ export function OwnerCommandCenter() {
       risks,
       scenarios,
       scenarioActions: computeScenarioActions(scenarios.scenarios, risks),
+      gtdOverlay: computeGtdOverlay(events),
       actions: computeOwnerActionChecklist(events, risks),
     };
   }, [events]);
@@ -54,7 +57,7 @@ export function OwnerCommandCenter() {
 
   return (
     <div className="space-y-4">
-      {/* BI pyramid: overview → data quality → economics → risk → scenario → actions */}
+      {/* BI pyramid: overview → data quality → economics → risk → scenario → GTD overlay → actions */}
       <section className="space-y-2">
         <h3 className="font-display text-base flex items-center gap-2">
           <Database className="h-4 w-4 text-primary" /> Tổng quan
@@ -69,6 +72,7 @@ export function OwnerCommandCenter() {
       <EconomicsTable rows={view.rows} />
       <RiskInsightCards risks={view.risks} />
       <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />
+      <GtdOverlayCard overlay={view.gtdOverlay} />
       <OwnerActionChecklist actions={view.actions} />
     </div>
   );
