@@ -96,7 +96,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
 
   return (
     <div className={cn(
-      'flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 sm:w-24 lg:w-28',
+      'flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out sm:w-24 lg:w-28',
       // Non-contesting seats drop contrast so the eye finds the live players first.
       folded && 'opacity-40',
       sittingOut && 'opacity-55',
@@ -135,7 +135,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
       </div>
 
       <div className={cn(
-        'w-full rounded-lg border px-1.5 py-0.5 text-center',
+        'w-full rounded-lg border px-1.5 py-0.5 text-center transition-colors duration-300',
         isWinner ? 'op-winner-glow border-amber-300/70 bg-amber-300/10'
           : seat.isToAct ? 'border-primary/60 bg-primary/15'
           : allin ? 'border-amber-300/50 bg-amber-300/[0.06]'
