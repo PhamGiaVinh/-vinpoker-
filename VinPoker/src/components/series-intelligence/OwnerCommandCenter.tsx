@@ -16,6 +16,7 @@ import {
   computeScenarioOutlook,
 } from "@/lib/series-intelligence/scenarioOutlook";
 import { computeGtdOverlay } from "@/lib/series-intelligence/gtdOverlay";
+import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePool";
 import { OverviewCards } from "./OverviewCards";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
@@ -32,6 +33,8 @@ import { OwnerActionChecklist } from "./OwnerActionChecklist";
 export function OwnerCommandCenter() {
   const native = useNativeSeriesEvents();
   const events = native.events;
+  // GTD #2 — server-authoritative true prize pool per GTD event (null unless the flag is on).
+  const truePrizeByEvent = useGtdTruePrizePool(events);
 
   const view = useMemo(() => {
     if (events.length === 0) return null;
@@ -72,7 +75,7 @@ export function OwnerCommandCenter() {
       <EconomicsTable rows={view.rows} />
       <RiskInsightCards risks={view.risks} />
       <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />
-      <GtdOverlayCard overlay={view.gtdOverlay} />
+      <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />
       <OwnerActionChecklist actions={view.actions} />
     </div>
   );

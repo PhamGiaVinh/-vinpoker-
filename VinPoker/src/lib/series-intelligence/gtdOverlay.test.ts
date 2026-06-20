@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { mapTournamentToEvent, type NativeTournamentRow, type SeriesEvent } from "./nativeData";
-import { computeGtdOverlay } from "./gtdOverlay";
+import {
+  computeGtdOverlay,
+  resolveOverlay,
+  ESTIMATE_LABEL,
+  TRUE_LABEL,
+  type GtdOverlayRow,
+} from "./gtdOverlay";
 
 /** Build a SeriesEvent with an explicit committed GTD (3rd adapter arg) + entry counts. */
 function ev(
@@ -80,5 +86,50 @@ describe("computeGtdOverlay", () => {
   it("deterministic — same input ⇒ identical output", () => {
     const events = [ev({ id: "a" }, { totalEntries: 120 }, 300_000_000)];
     expect(JSON.stringify(computeGtdOverlay(events))).toBe(JSON.stringify(computeGtdOverlay(events)));
+  });
+});
+
+describe("resolveOverlay (GTD #2 — two-state: true vs estimate)", () => {
+  function rowOf(gtd: number, entries: number, buyIn = 1_000_000): GtdOverlayRow {
+    return computeGtdOverlay([ev({ id: "a", buy_in: buyIn }, { totalEntries: entries }, gtd)]).rows[0];
+  }
+
+  it("uses the SERVER true prize pool (thực thu) when confirmed entries > 0", () => {
+    const row = rowOf(300_000_000, 100); // estimate = 100,000,000
+    const res = resolveOverlay(row, { prizePool: 250_000_000, confirmedEntryCount: 250 });
+    expect(res.source).toBe("true");
+    expect(res.label).toBe(TRUE_LABEL);
+    expect(res.prizeValue).toBe(250_000_000); // true, NOT the 100,000,000 estimate
+    expect(res.overlay).toBe(50_000_000); // 300M − 250M
+    expect(res.covered).toBe(false);
+  });
+
+  it("falls back to the estimate when truePrize is null (flag off / RPC unavailable)", () => {
+    const row = rowOf(300_000_000, 100);
+    const res = resolveOverlay(row, null);
+    expect(res.source).toBe("estimate");
+    expect(res.label).toBe(ESTIMATE_LABEL);
+    expect(res.prizeValue).toBe(100_000_000); // the estimate
+    expect(res.overlay).toBe(200_000_000);
+  });
+
+  it("falls back to the estimate when there are 0 confirmed entries", () => {
+    const row = rowOf(300_000_000, 100);
+    const res = resolveOverlay(row, { prizePool: 0, confirmedEntryCount: 0 });
+    expect(res.source).toBe("estimate");
+    expect(res.prizeValue).toBe(100_000_000);
+  });
+
+  it("true overlay clamps to 0 and covered=true when thực thu ≥ GTD", () => {
+    const row = rowOf(300_000_000, 100);
+    const res = resolveOverlay(row, { prizePool: 400_000_000, confirmedEntryCount: 400 });
+    expect(res.source).toBe("true");
+    expect(res.overlay).toBe(0);
+    expect(res.covered).toBe(true);
+  });
+
+  it("labels are honest: TRUE = 'thực thu', ESTIMATE = 'ước tính'", () => {
+    expect(TRUE_LABEL).toContain("thực thu");
+    expect(ESTIMATE_LABEL).toContain("ước tính");
   });
 });
