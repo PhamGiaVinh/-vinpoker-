@@ -1,33 +1,42 @@
 import { useRef, useState } from "react";
-import { FileSpreadsheet, Download, Upload, Info, X, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { FileSpreadsheet, Download, Upload, Info, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SERIES_INTEL } from "@/lib/seriesIntelligence";
-import {
-  parseSeriesCsv,
-  SAMPLE_CSV_TEXT,
-  type CsvParseResult,
-} from "@/lib/series-intelligence/csvImport";
+import { parseSeriesCsv, SAMPLE_CSV_TEXT, type CsvParseError } from "@/lib/series-intelligence/csvImport";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
+import { MAX_FILE_BYTES } from "@/lib/series-intelligence/seriesLibrary";
+
+type OutcomeStatus = "ok" | "empty" | "too-big" | "read-error" | "skipped-dup";
+
+interface FileOutcome {
+  filename: string;
+  status: OutcomeStatus;
+  events: number;
+  rows: number;
+  errors: CsvParseError[];
+}
 
 /**
- * CSV import (client-side test/what-if data). Lets the owner download a template, upload a CSV,
- * and feed it into the dashboard via `onLoaded`. NOTHING is written to the database — the parsed
- * events stay in the browser session (source: 'csv'). Honest: parse errors are shown, not hidden.
+ * CSV import (client-side test/what-if data) — MULTI-FILE. Each selected file = one series; repeated
+ * uploads accumulate into the Series Library (`onSeriesParsed` per file with events). NOTHING is
+ * written to the DB — parsed events live in the browser session (source: 'csv'). Honest: per-file
+ * outcomes + parse errors are shown, never hidden. A same-filename upload asks for confirmation.
  */
 export function CsvImportPanel({
-  onLoaded,
-  onClear,
-  isLoaded,
+  onSeriesParsed,
+  loadedCount,
+  existingFilenames,
+  lastSaveError,
 }: {
-  onLoaded: (events: SeriesEvent[]) => void;
-  onClear: () => void;
-  isLoaded: boolean;
+  onSeriesParsed: (filename: string, events: SeriesEvent[]) => void;
+  loadedCount: number;
+  existingFilenames: string[];
+  lastSaveError?: string | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [result, setResult] = useState<CsvParseResult | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<FileOutcome[] | null>(null);
 
   const downloadTemplate = (): void => {
     const blob = new Blob([SAMPLE_CSV_TEXT], { type: "text/csv;charset=utf-8" });
@@ -41,26 +50,55 @@ export function CsvImportPanel({
     URL.revokeObjectURL(url);
   };
 
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    const text = await file.text();
-    const parsed = parseSeriesCsv(text);
-    setResult(parsed);
-    if (parsed.events.length > 0) onLoaded(parsed.events);
-    // allow re-selecting the same file name to re-trigger change
-    if (fileRef.current) fileRef.current.value = "";
+  const onFiles = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    const batch: FileOutcome[] = [];
+    const seenThisBatch = new Set<string>();
+
+    for (const file of files) {
+      // size guard BEFORE reading (cheap + accurate)
+      if (file.size > MAX_FILE_BYTES) {
+        batch.push({ filename: file.name, status: "too-big", events: 0, rows: 0, errors: [] });
+        continue;
+      }
+      // dup soft-warning (P2-1): same filename already in the library or earlier in this batch
+      const isDup = existingFilenames.includes(file.name) || seenThisBatch.has(file.name);
+      if (isDup && !window.confirm(`"${file.name}" trùng tên một series đã nạp — vẫn thêm?`)) {
+        batch.push({ filename: file.name, status: "skipped-dup", events: 0, rows: 0, errors: [] });
+        continue;
+      }
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        batch.push({ filename: file.name, status: "read-error", events: 0, rows: 0, errors: [] });
+        continue;
+      }
+      const parsed = parseSeriesCsv(text);
+      seenThisBatch.add(file.name);
+      if (parsed.events.length > 0) {
+        onSeriesParsed(file.name, parsed.events);
+        batch.push({ filename: file.name, status: "ok", events: parsed.events.length, rows: parsed.totalRows, errors: parsed.errors });
+      } else {
+        batch.push({ filename: file.name, status: "empty", events: 0, rows: parsed.totalRows, errors: parsed.errors });
+      }
+    }
+
+    setOutcomes(batch);
+    if (fileRef.current) fileRef.current.value = ""; // allow re-selecting same files
   };
 
-  const clearAll = (): void => {
-    setResult(null);
-    setFileName(null);
-    onClear();
-  };
+  const okCount = outcomes?.filter((o) => o.status === "ok").length ?? 0;
+  const aggRowErrors = (outcomes ?? []).flatMap((o) => o.errors.filter((er) => er.row > 0).map((er) => ({ file: o.filename, er })));
 
-  const fileLevelError = result?.errors.find((er) => er.row === 0);
-  const rowErrors = result?.errors.filter((er) => er.row > 0) ?? [];
+  const statusLabel: Record<OutcomeStatus, string> = {
+    ok: "đã nạp",
+    empty: "không có sự kiện hợp lệ",
+    "too-big": "file quá lớn (> 1MB)",
+    "read-error": "không đọc được file",
+    "skipped-dup": "bỏ qua (trùng tên)",
+  };
 
   return (
     <div className="space-y-3">
@@ -68,8 +106,9 @@ export function CsvImportPanel({
       <Card className="p-3 border-primary/30 bg-primary/5 flex items-start gap-2 text-xs text-muted-foreground">
         <Info className="w-4 h-4 text-primary shrink-0" />
         <span>
-          Tải lên CSV để xem dashboard chạy thử với dữ liệu của bạn. Dữ liệu này{" "}
-          <strong>chỉ nằm trên trình duyệt</strong> — không lưu vào hệ thống, không ảnh hưởng dữ liệu thật.
+          Tải lên một hoặc nhiều CSV (mỗi file = 1 series) để xem dashboard chạy thử. Các series tích lũy thành
+          “Thư viện Series” và <strong>chỉ nằm trên trình duyệt này</strong> — không lưu vào hệ thống, không ảnh
+          hưởng dữ liệu thật. Tải lại trang vẫn còn.
         </span>
       </Card>
 
@@ -79,64 +118,74 @@ export function CsvImportPanel({
           <Download className="w-4 h-4" /> Tải mẫu CSV
         </Button>
         <Button size="sm" className="gap-2" onClick={() => fileRef.current?.click()}>
-          <Upload className="w-4 h-4" /> Tải lên CSV
+          <Upload className="w-4 h-4" /> Tải lên CSV {loadedCount > 0 ? "(thêm)" : ""}
         </Button>
-        {isLoaded && (
-          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground" onClick={clearAll}>
-            <X className="w-4 h-4" /> Về dữ liệu live
-          </Button>
-        )}
-        <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} />
+        <input ref={fileRef} type="file" accept=".csv,text/csv" multiple className="hidden" onChange={onFiles} />
       </div>
 
-      {/* parse feedback */}
-      {result && (
+      {/* save guard error (size / quota) */}
+      {lastSaveError && (
+        <Card className="p-3 border-warning/50 bg-warning/10 flex items-start gap-2 text-xs">
+          <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+          <span>{lastSaveError} (Thư viện vẫn dùng được trong phiên này, nhưng có thể không lưu được.)</span>
+        </Card>
+      )}
+
+      {/* per-file outcomes */}
+      {outcomes && (
         <Card className="p-3 gradient-card border-primary/40 space-y-2 text-xs">
-          <div className="flex items-center gap-2">
-            {result.events.length > 0 ? (
+          <div className="flex items-center gap-2 font-medium">
+            {okCount > 0 ? (
               <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
             ) : (
               <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
             )}
-            <span className="font-medium">
-              {fileName ? `${fileName}: ` : ""}
-              {result.events.length} sự kiện đọc được{" "}
-              <span className="text-muted-foreground">/ {result.totalRows} dòng dữ liệu</span>
+            <span>
+              Đã nạp {okCount}/{outcomes.length} file
             </span>
           </div>
 
-          {fileLevelError && (
-            <div className="flex items-start gap-1.5 text-warning">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{fileLevelError.message}</span>
-            </div>
-          )}
+          <ul className="space-y-0.5">
+            {outcomes.map((o, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                {o.status === "ok" ? (
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                ) : (
+                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                )}
+                <span className={o.status === "ok" ? "" : "text-warning"}>
+                  <span className="font-medium">{o.filename}</span> — {statusLabel[o.status]}
+                  {o.status === "ok" ? ` (${o.events} sự kiện / ${o.rows} dòng)` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
 
-          {rowErrors.length > 0 && (
+          {aggRowErrors.length > 0 && (
             <div className="space-y-1">
               <div className="text-muted-foreground">
-                {rowErrors.length} ô có vấn đề (đã để trống, không bịa số):
+                {aggRowErrors.length} ô có vấn đề (đã để trống, không bịa số):
               </div>
               <ul className="space-y-0.5">
-                {rowErrors.slice(0, 6).map((er, i) => (
+                {aggRowErrors.slice(0, 6).map(({ file, er }, i) => (
                   <li key={i} className="flex gap-1.5 text-warning">
                     <span aria-hidden>•</span>
                     <span>
-                      Dòng {er.row}
+                      {file} · dòng {er.row}
                       {er.column ? ` · ${er.column}` : ""}: {er.message}
                     </span>
                   </li>
                 ))}
-                {rowErrors.length > 6 && (
-                  <li className="text-muted-foreground">…và {rowErrors.length - 6} ô khác.</li>
+                {aggRowErrors.length > 6 && (
+                  <li className="text-muted-foreground">…và {aggRowErrors.length - 6} ô khác.</li>
                 )}
               </ul>
             </div>
           )}
 
-          {result.events.length > 0 && (
+          {okCount > 0 && (
             <p className="text-muted-foreground">
-              Dashboard phía trên đang hiển thị dữ liệu CSV này (có nhãn “dữ liệu test”). Bấm “Về dữ liệu live” để quay lại.
+              Chọn series trong “Thư viện Series” phía trên để xem; dashboard hiển thị series đang chọn (nhãn “dữ liệu test”).
             </p>
           )}
         </Card>

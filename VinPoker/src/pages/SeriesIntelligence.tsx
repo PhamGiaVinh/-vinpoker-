@@ -11,7 +11,8 @@ import { SERIES_INTEL } from "@/lib/seriesIntelligence";
 import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerCommandCenter";
 import { SeriesHealthReport } from "@/components/series-intelligence/SeriesHealthReport";
 import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel";
-import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
+import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
+import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
@@ -24,8 +25,8 @@ export default function SeriesIntelligence() {
   const nav = useNavigate();
   const { isAdmin, isClubAdmin, isClubOwner, loading } = useAuth();
   const [mode, setMode] = useState<"dashboard" | "report">("dashboard");
-  // CSV test data (browser-only). When set, the dashboard renders it instead of live native data.
-  const [csvEvents, setCsvEvents] = useState<SeriesEvent[] | null>(null);
+  // Series Library (browser-only). The dashboard renders the ACTIVE series, or live native when none.
+  const lib = useSeriesLibrary();
 
   if (loading) return null;
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
@@ -76,11 +77,23 @@ export default function SeriesIntelligence() {
         <p className="text-sm text-muted-foreground">{SERIES_INTEL.safetyBoundary}</p>
       </Card>
 
-      {/* Owner Command Center — live native BI dashboard (or CSV test data when loaded) */}
-      <OwnerCommandCenter csvEvents={csvEvents} />
+      {/* Owner Command Center — live native BI dashboard (or the ACTIVE CSV series when loaded) */}
+      <OwnerCommandCenter csvEvents={lib.activeEvents} />
+
+      {/* Series Library — loaded CSV series; pick the active one (browser-only) */}
+      {FEATURES.seriesIntelligenceCsvImport && (
+        <SeriesLibraryPanel
+          series={lib.series}
+          activeId={lib.activeId}
+          onSelect={lib.select}
+          onRename={lib.rename}
+          onRemove={lib.remove}
+          onClearAll={lib.clearAll}
+        />
+      )}
 
       {/* CSV import — test / what-if data, browser-only (collapsed) */}
-      <Collapsible defaultOpen={csvEvents != null}>
+      <Collapsible defaultOpen={lib.count > 0}>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between gap-2">
             <span className="flex items-center gap-2">
