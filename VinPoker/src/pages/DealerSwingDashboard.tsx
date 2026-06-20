@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
@@ -20,6 +20,7 @@ export default function DealerSwingDashboard() {
   const { user, loading, isAdmin, isClubAdmin, isClubOwner } = useAuth();
   const nav = useNavigate();
   const { clubs, clubIds, dealerClubIds } = useOperatorClubs();
+  const [tab, setTab] = useState("swing");  // controlled so SwingPanel can deep-link to "payroll" (D1)
 
   useEffect(() => {
     if (loading) return;
@@ -65,7 +66,7 @@ export default function DealerSwingDashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue="swing" className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className={`grid w-full ${showShiftPlanner ? "grid-cols-3" : "grid-cols-2"} h-auto`}>
           <TabsTrigger value="swing"><Table2 className="w-4 h-4 mr-1" /> Dealer Swing</TabsTrigger>
           <TabsTrigger value="payroll"><Calculator className="w-4 h-4 mr-1" /> Bảng lương</TabsTrigger>
@@ -74,7 +75,8 @@ export default function DealerSwingDashboard() {
           )}
         </TabsList>
         <TabsContent value="swing" className="mt-4">
-          <SwingPanel clubIds={scopedIds} clubs={clubs} />
+          {/* D1 — the retired inline payroll quick-view now deep-links to the canonical Bảng lương tab. */}
+          <SwingPanel clubIds={scopedIds} clubs={clubs} onOpenPayroll={() => setTab("payroll")} />
         </TabsContent>
         <TabsContent value="payroll" className="mt-4">
           <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />

@@ -186,7 +186,7 @@ const DIAG_LABELS: Record<string, string> = {
   step5c_pre_assigned: "đã pre-assign bàn khác",
 };
 
-export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] }) {
+export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds: string[]; clubs: ClubRow[]; onOpenPayroll?: () => void }) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = useMemo(() => {
     const ids = clubFilter ? [clubFilter] : clubIds;
@@ -317,56 +317,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     defaultBreakMinutesRef.current = defaultBreakMinutes;
   }, [defaultBreakMinutes]);
 
-  // Payroll modal state
-  const [payrollOpen, setPayrollOpen] = useState(false);
-  const [payrollData, setPayrollData] = useState<any[] | null>(null);
-  const [payrollClubSlug, setPayrollClubSlug] = useState("");
-  const [payrollLoading, setPayrollLoading] = useState(false);
-  const [payrollDatePreset, setPayrollDatePreset] = useState<"today" | "month" | "custom">("month");
-  const [payrollFromDate, setPayrollFromDate] = useState<Date>(() => {
-    const d = new Date(); d.setDate(1); return d;
-  });
-  const [payrollToDate, setPayrollToDate] = useState<Date>(new Date());
-  const [payrollEdits, setPayrollEdits] = useState<Record<string, { adjustedHours?: number; adjustedRate?: number }>>({});
-  const [payrollEditDealer, setPayrollEditDealer] = useState<string | null>(null);
-
-  const recalcPay = (row: any, edits: { adjustedHours?: number; adjustedRate?: number }) => {
-    const isPT = row.employment_type === "part_time";
-    const rate = Math.max(0, parseFloat(edits.adjustedRate ?? row.hourly_rate_vnd ?? 0));
-    if (rate <= 0) {
-      console.warn(`[Payroll] Dealer ${row.dealer_id} has invalid rate`);
-      return { ...row, base_pay: 0, overtime_pay: 0, total_pay: 0 };
-    }
-
-    // === PT: pay all hours, no OT ===
-    if (isPT) {
-      const hours = Math.max(0, parseFloat(edits.adjustedHours ?? row.total_hours ?? 0));
-      const basePay = hours * rate;
-      return { ...row, total_hours: hours, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: 0, total_pay: Math.round(basePay) };
-    }
-
-    // === FT: pass-through RPC if no edits (RPC is authoritative) ===
-    const hasHoursEdit = edits.adjustedHours != null;
-    const hasRateEdit = edits.adjustedRate != null;
-    if (!hasHoursEdit && !hasRateEdit) return row;
-
-    // === FT with base_rate_vnd (daily salary) ===
-    if (row.base_rate_vnd != null && row.base_rate_vnd > 0) {
-      const daysWorked = row.days_worked ?? 1;
-      const basePay = daysWorked * row.base_rate_vnd;
-      const otHours = Math.max(0, parseFloat(row.ot_hours ?? 0));
-      const otPay = otHours * rate * 1.5;
-      return { ...row, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
-    }
-
-    // === FT hourly fallback: trust RPC's regular_hours + ot_hours ===
-    const regularHours = Math.max(0, parseFloat(row.regular_hours ?? 0));
-    const otHours = Math.max(0, parseFloat(row.ot_hours ?? 0));
-    const basePay = regularHours * rate;
-    const otPay = otHours * rate * 1.5;
-    return { ...row, hourly_rate_vnd: rate, base_pay: Math.round(basePay), overtime_pay: Math.round(otPay), total_pay: Math.round(basePay + otPay) };
-  };
-
   // Batch checkout confirm dialog
   const [batchCheckoutConfirmOpen, setBatchCheckoutConfirmOpen] = useState(false);
   const [batchCheckoutWarnings, setBatchCheckoutWarnings] = useState<string[]>([]);
@@ -412,53 +362,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     const hasActivePoolTables = tables.some(t => t.status === "active" && t.shift_id == null);
     if (!hasTables && !hasActivePoolTables) setAutoSwingEnabled(false);
   }, [selectedTour, tables]);
-
-  // Payroll: fetch dealer_scores + today's attendance + pay rates
-  // Declared BEFORE the polling useEffect to avoid TDZ on `payrollDateBounds`
-  // (useEffect callback closure captured it before its source-order declaration).
-  const payrollDateBounds = useMemo(() => {
-    let from: string, to: string;
-    const today = new Date();
-    if (payrollDatePreset === "today") {
-      from = to = today.toISOString().split("T")[0];
-    } else if (payrollDatePreset === "month") {
-      from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
-      to = today.toISOString().split("T")[0];
-    } else {
-      from = payrollFromDate.toISOString().split("T")[0];
-      to = payrollToDate.toISOString().split("T")[0];
-    }
-    return { from, to };
-  }, [payrollDatePreset, payrollFromDate, payrollToDate]);
-
-  // Real-time payroll refresh: poll every 60s when modal is open
-  // (Supabase Realtime channels add complexity with RLS; polling is simpler + reliable)
-  const POLL_INTERVAL_MS = 60_000;
-  useEffect(() => {
-    if (!payrollOpen) return;
-    const cid = clubFilter ?? clubIds[0];
-    if (!cid) return;
-    let mounted = true;
-    let isLoading = false;
-    const tick = async () => {
-      if (isLoading || !mounted) return;
-      if (!payrollDateBounds?.from || !payrollDateBounds?.to) return;  // defensive
-      isLoading = true;
-      try {
-        const { from, to } = payrollDateBounds;
-        const { data, error } = await supabase.rpc("get_dealer_payroll", {
-          p_club_id: cid,
-          p_from_date: from,
-          p_to_date: to,
-        });
-        if (mounted && !error) setPayrollData((data ?? []) as any[]);
-      } catch { /* non-critical */ }
-      finally { isLoading = false; }
-    };
-    tick();  // initial fetch on mount + date change
-    const interval = setInterval(tick, POLL_INTERVAL_MS);
-    return () => { mounted = false; clearInterval(interval); };
-  }, [payrollOpen, clubFilter, clubIds, payrollDateBounds]);  // payrollLoading removed: local isLoading flag prevents drift
 
   // Toggle auto-swing
   const toggleAutoSwing = async () => {
@@ -1447,74 +1350,6 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     toast.success("Đã tải báo cáo ca");
   };
 
-  const openPayroll = async () => {
-    if (!clubFilter && clubIds.length > 1) {
-      toast.error("Vui lòng chọn một CLB trước khi xem lương");
-      return;
-    }
-    const clubId = clubFilter ?? clubIds[0];
-    setPayrollLoading(true);
-    setPayrollOpen(true);
-    await loadPayrollData(clubId);
-  };
-
-  const loadPayrollData = async (clubId: string) => {
-    setPayrollLoading(true);
-    const { from, to } = payrollDateBounds;
-    const { data: club } = await supabase.from("clubs").select("slug").eq("id", clubId).single();
-    const { data, error } = await supabase.rpc("get_dealer_payroll", {
-      p_club_id: clubId,
-      p_from_date: from,
-      p_to_date: to,
-    });
-    setPayrollLoading(false);
-    if (error) { toast.error(error.message); return; }
-    setPayrollData((data ?? []) as any[]);
-    setPayrollClubSlug((club as any)?.slug ?? "club");
-  };
-
-  const reloadPayroll = async () => {
-    const clubId = clubFilter ?? clubIds[0];
-    if (!clubId) return;
-    await loadPayrollData(clubId);
-  };
-
-  const doExportPayrollCsv = () => {
-    if (!payrollData?.length) return;
-    const today = new Date().toISOString().split("T")[0];
-    const label = `${payrollClubSlug}-${payrollDateBounds.from}-${payrollDateBounds.to}`;
-    const rows = payrollData.map((r: any) => {
-      const edits = payrollEdits[r.dealer_id] ?? {};
-      const displayRow = recalcPay(r, edits);
-      return {
-        "Dealer": r.full_name,
-        "Hạng": r.tier,
-        "Loại": r.employment_type === "part_time" ? "Part-time" : "Full-time",
-        "Tổng giờ": displayRow.total_hours,
-        "OT phút": r.overtime_minutes,
-        "Số swing": r.total_swings,
-        "Giờ (VND)": Number(displayRow.hourly_rate_vnd).toLocaleString("vi-VN"),
-        "Lương CB": Number(displayRow.base_pay).toLocaleString("vi-VN"),
-        "Lương OT": Number(displayRow.overtime_pay).toLocaleString("vi-VN"),
-        "Tổng lương": Number(displayRow.total_pay).toLocaleString("vi-VN"),
-      };
-    });
-    const columns = [
-      { header: "Dealer", get: (row: any) => row["Dealer"] },
-      { header: "Hạng", get: (row: any) => row["Hạng"] },
-      { header: "Loại", get: (row: any) => row["Loại"] },
-      { header: "Tổng giờ", get: (row: any) => row["Tổng giờ"] },
-      { header: "OT phút", get: (row: any) => row["OT phút"] },
-      { header: "Số swing", get: (row: any) => row["Số swing"] },
-      { header: "Giờ (VND)", get: (row: any) => row["Giờ (VND)"] },
-      { header: "Lương CB", get: (row: any) => row["Lương CB"] },
-      { header: "Lương OT", get: (row: any) => row["Lương OT"] },
-      { header: "Tổng lương", get: (row: any) => row["Tổng lương"] },
-    ];
-    exportToExcel(rows, columns, `bang-luong-${label}-${today}`, "Payroll");
-    toast.success("Đã tải bảng lương");
-  };
-
   const { triggerSwingAnimation, isAnimating } = useSwingAnimation();
   const { focusedTableId, focusTable } = useFocusNavigation();
 
@@ -1835,7 +1670,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onAutoSwing={autoSwingAll}
               onMassAssign={massAssign}
               onExportShift={exportShiftReport}
-              onExportPayroll={openPayroll}
+              onExportPayroll={() => onOpenPayroll?.()}
               swingAllBusy={swingAllBusy}
               massAssignBusy={massAssignBusy}
               autoSwingEnabled={autoSwingEnabled}
@@ -2420,213 +2255,6 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
           if (breakDurationOpen) sendToBreak(breakDurationOpen, minutes);
         }}
       />
-
-      {/* Payroll Preview Dialog */}
-      <Dialog open={payrollOpen} onOpenChange={(o) => { if (!o) { setPayrollOpen(false); setPayrollData(null); setPayrollEdits({}); setPayrollEditDealer(null); } }}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Bảng lương — {payrollClubSlug}</DialogTitle>
-            <DialogDescription>
-              {payrollDateBounds.from} → {payrollDateBounds.to} · {payrollData?.length ?? 0} dealer
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {(["today", "month", "custom"] as const).map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setPayrollDatePreset(preset)}
-                className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                  payrollDatePreset === preset
-                    ? "bg-success text-success-foreground"
-                    : "bg-muted text-muted-foreground hover:text-white hover:bg-secondary"
-                }`}
-              >
-                {preset === "today" ? "Hôm nay" : preset === "month" ? "Tháng này" : "Tuỳ chỉnh"}
-              </button>
-            ))}
-            {payrollDatePreset === "custom" && (
-              <div className="flex items-center gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-xs h-8">
-                      {payrollFromDate ? format(payrollFromDate, "dd/MM/yyyy") : "Từ ngày"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={payrollFromDate}
-                      onSelect={(d) => d && setPayrollFromDate(d)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <span className="text-xs text-muted-foreground">→</span>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-xs h-8">
-                      {payrollToDate ? format(payrollToDate, "dd/MM/yyyy") : "Đến ngày"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={payrollToDate}
-                      onSelect={(d) => d && setPayrollToDate(d)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Button size="sm" variant="outline" className="text-xs h-8" onClick={reloadPayroll} disabled={payrollLoading}>
-                  <RefreshCw className={`w-3 h-3 mr-1 ${payrollLoading ? "animate-spin" : ""}`} />
-                  Tải
-                </Button>
-              </div>
-            )}
-            {payrollDatePreset !== "custom" && (
-              <Button size="sm" variant="outline" className="text-xs h-8 ml-auto" onClick={reloadPayroll} disabled={payrollLoading}>
-                <RefreshCw className={`w-3 h-3 mr-1 ${payrollLoading ? "animate-spin" : ""}`} />
-                Làm mới
-              </Button>
-            )}
-          </div>
-
-          <div className="max-h-[60vh] overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Dealer</TableHead>
-                  <TableHead>Loại</TableHead>
-                  <TableHead>Hạng</TableHead>
-                  <TableHead className="text-right">Tổng giờ</TableHead>
-                  <TableHead className="text-right">OT phút</TableHead>
-                  <TableHead className="text-right">Swing</TableHead>
-                  <TableHead className="text-right">Giờ (VND)</TableHead>
-                  <TableHead className="text-right">Lương CB</TableHead>
-                  <TableHead className="text-right">Lương OT</TableHead>
-                  <TableHead className="text-right">Tổng lương</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payrollLoading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></TableCell></TableRow>
-                ) : (payrollData ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground">Không có dữ liệu</TableCell></TableRow>
-                ) : (
-                  <>
-                    {(payrollData ?? []).map((r: any, i: number) => {
-                      const edits = payrollEdits[r.dealer_id] ?? {};
-                      const isEditing = payrollEditDealer === r.dealer_id;
-                      const displayRow = recalcPay(r, edits);
-                      return (
-                      <TableRow key={r.dealer_id ?? i}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-1">
-                            {r.full_name}
-                            {!isEditing && (
-                              <button className="text-[10px] text-muted-foreground hover:text-primary ml-1" onClick={() => setPayrollEditDealer(r.dealer_id)} title="Điều chỉnh">
-                                ✏️
-                              </button>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={r.employment_type === "part_time" ? "outline" : "default"} className="text-[10px]">
-                            {r.employment_type === "part_time" ? "PT" : "FT"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{r.tier}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="0.1"
-                              className="w-20 bg-card border border-border text-white text-xs text-right px-1 py-0.5 rounded"
-                              value={edits.adjustedHours ?? r.total_hours}
-                              onChange={(e) => {
-                                const v = parseFloat(e.target.value);
-                                setPayrollEdits(prev => ({ ...prev, [r.dealer_id]: { ...prev[r.dealer_id], adjustedHours: isNaN(v) ? undefined : v } }));
-                              }}
-                            />
-                          ) : (
-                            Number(displayRow.total_hours).toFixed(1)
-                          )}
-                        </TableCell>
-                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-destructive font-semibold" : ""}`}>
-                          {r.overtime_minutes > 0 ? (() => { const h = Math.floor(r.overtime_minutes / 60); const m = r.overtime_minutes % 60; return h > 0 ? `${h}h ${m}ph` : `${m}ph`; })() : "—"}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">{r.total_swings}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="1000"
-                              className="w-24 bg-card border border-border text-white text-xs text-right px-1 py-0.5 rounded"
-                              value={edits.adjustedRate ?? r.hourly_rate_vnd}
-                              onChange={(e) => {
-                                const v = parseInt(e.target.value, 10);
-                                setPayrollEdits(prev => ({ ...prev, [r.dealer_id]: { ...prev[r.dealer_id], adjustedRate: isNaN(v) ? undefined : v } }));
-                              }}
-                            />
-                          ) : (
-                            Number(displayRow.hourly_rate_vnd).toLocaleString("vi-VN")
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">{Number(displayRow.base_pay).toLocaleString("vi-VN")}</TableCell>
-                        <TableCell className={`text-right font-mono text-xs ${r.overtime_minutes > 30 ? "text-destructive font-semibold" : ""}`}>
-                          {displayRow.overtime_pay > 0 ? Number(displayRow.overtime_pay).toLocaleString("vi-VN") : <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-semibold text-success">{Number(displayRow.total_pay).toLocaleString("vi-VN")}</TableCell>
-                      </TableRow>
-                      );
-                    })}
-                    <TableRow className="border-t-2 border-success/40 bg-success/5">
-                      <TableCell className="font-bold text-success">TỔNG</TableCell>
-                      <TableCell colSpan={2} />
-                      <TableCell className="text-right font-mono text-xs font-semibold">
-                        {(payrollData ?? []).reduce((s, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + (e.adjustedHours ?? r.total_hours); }, 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-warning">
-                        {(() => { const total = payrollData?.reduce((s: number, r: any) => s + (r.overtime_minutes ?? 0), 0) ?? 0; const h = Math.floor(total / 60); const m = total % 60; return total > 0 ? (h > 0 ? `${h}h ${m}ph` : `${m}ph`) : "—"; })()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold">
-                        {payrollData?.reduce((s, r: any) => s + (r.total_swings ?? 0), 0)}
-                      </TableCell>
-                      <TableCell />
-                      <TableCell className="text-right font-mono text-xs font-semibold">
-                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).base_pay); }, 0)).toLocaleString("vi-VN")}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-destructive">
-                        {(() => { const total = (payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).overtime_pay); }, 0); return total > 0 ? Number(total).toLocaleString("vi-VN") : "—"; })()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-success">
-                        {Number((payrollData ?? []).reduce((s: number, r: any) => { const e = payrollEdits[r.dealer_id] ?? {}; return s + Number(recalcPay(r, e).total_pay); }, 0)).toLocaleString("vi-VN")}
-                      </TableCell>
-                    </TableRow>
-                  </>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setPayrollOpen(false); setPayrollData(null); setPayrollEdits({}); setPayrollEditDealer(null); }}>Đóng</Button>
-            {payrollEditDealer && (
-              <Button variant="outline" onClick={() => setPayrollEditDealer(null)}>
-                ✅ Xong điều chỉnh
-              </Button>
-            )}
-            {Object.keys(payrollEdits).length > 0 && !payrollEditDealer && (
-              <Button variant="outline" onClick={() => { setPayrollEdits({}); }}>
-                ↺ Reset
-              </Button>
-            )}
-            <Button onClick={doExportPayrollCsv}>
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1" /> Xuất CSV
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Create Tour Dialog */}
       <Dialog open={createTourOpen} onOpenChange={setCreateTourOpen}>

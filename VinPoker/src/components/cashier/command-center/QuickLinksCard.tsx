@@ -48,7 +48,7 @@ export default function QuickLinksCard({
             <FileSpreadsheet className="w-3 h-3 mr-1.5" /> Xuất báo cáo ca
           </Button>
           <Button size="sm" variant="ghost" className="w-full justify-start text-[11px] h-7" onClick={onExportPayroll}>
-            <DollarSign className="w-3 h-3 mr-1.5" /> Xuất bảng lương
+            <DollarSign className="w-3 h-3 mr-1.5" /> Mở bảng lương
           </Button>
 
           <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider pt-1 pb-0.5">
