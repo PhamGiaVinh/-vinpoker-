@@ -171,7 +171,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('fold')}
-            className="min-h-[3.5rem] flex-[0.8] rounded-xl border border-white/15 bg-white/[0.05] text-sm font-semibold text-white/85 shadow-none hover:bg-white/10 hover:text-white"
+            className="op-press min-h-[3.5rem] flex-[0.8] rounded-xl border border-white/15 bg-white/[0.05] text-sm font-semibold text-white/85 shadow-none hover:bg-white/10 hover:text-white"
           >
             Fold
           </Button>
@@ -181,7 +181,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('check')}
-            className="min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
+            className="op-press min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
           >
             Check
           </Button>
@@ -189,7 +189,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('call', legal.toCall)}
-            className="min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
+            className="op-press min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
           >
             <BtnLabel action="Call" chips={legal.toCall} bb={bb} />
           </Button>
@@ -199,7 +199,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
-            className="min-h-[3.5rem] flex-[1.5] rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300"
+            className="op-press min-h-[3.5rem] flex-[1.5] rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300"
           >
             <BtnLabel action={canRaise ? 'Raise to' : 'Bet'} chips={raiseTo} bb={bb} />
           </Button>
@@ -212,7 +212,7 @@ export function ActionBar({
           type="button"
           disabled={disabled}
           onClick={() => act('allin', legal.maxRaiseTo)}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#991B1B] text-amber-100 transition-colors hover:bg-[#7d1515] disabled:opacity-50"
+          className="op-press flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#991B1B] text-amber-100 hover:bg-[#7d1515] disabled:opacity-50"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wide opacity-85">All-in</span>
           <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">
