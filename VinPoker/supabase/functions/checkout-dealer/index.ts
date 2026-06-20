@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, jsonResponse, pickNextDealer } from "../_shared/dealer-utils.ts";
 import {
-  sendTelegramNotification, getClubTelegramChatId, mention,
+  sendTelegramNotification, getClubTelegramChatId, mention, notifyDealerDM,
 } from "../_shared/telegram.ts";
 
 interface AttendanceRow {
@@ -253,16 +253,32 @@ async function processOneCheckout(
     } catch { /* non-critical */ }
 
     // 4b. Private DM to the dealer (owner rule: notify the dealer on check-out).
+    // Uses notifyDealerDM (HTML parse mode, same as the working break/meal DM flows) so the
+    // bold renders correctly. A DM REQUIRES the dealer's numeric telegram_user_id, which Telegram
+    // only exposes once the dealer has messaged the bot (/checkin or /start) — a bot cannot DM a
+    // user it has only as an @username. We log exactly why a DM did/didn't go so the gap is visible.
     if (dealer?.telegram_user_id) {
-      try {
-        const ci = checkInTime ? fmtTime(new Date(checkInTime)) : "?";
-        const co = fmtTime(new Date(nowISO));
-        const dm =
-          `✅ Bạn đã được *check-out* lúc ${co}.\n` +
-          `🕒 Thời gian làm việc: ${ci}–${co} (${totalHours} tiếng).\n` +
-          `Cảm ơn ca làm việc của bạn!`;
-        await sendTelegramNotification(botToken, String(dealer.telegram_user_id), dm).catch(() => {});
-      } catch { /* non-critical */ }
+      const ci = checkInTime ? fmtTime(new Date(checkInTime)) : "?";
+      const co = fmtTime(new Date(nowISO));
+      const dm =
+        `✅ Bạn đã được <b>check-out</b> lúc ${co}.\n` +
+        `🕒 Thời gian làm việc: ${ci}–${co} (${totalHours} tiếng).\n` +
+        `Cảm ơn ca làm việc của bạn!`;
+      const ok = await notifyDealerDM(
+        botToken,
+        { telegram_user_id: Number(dealer.telegram_user_id), full_name: dealerName },
+        dm,
+      );
+      console.log(
+        `[checkout-dealer] DM ${dealerName} (uid=${dealer.telegram_user_id}): ` +
+        (ok ? "sent" : "FAILED (dealer likely has not started the bot / blocked it)"),
+      );
+    } else {
+      console.warn(
+        `[checkout-dealer] DM skipped — dealer ${dealerName} (id=${dealer?.id}) has no telegram_user_id. ` +
+        `They must message the bot once (/checkin or /start) so Telegram exposes their chat id; ` +
+        `an operator-linked @username alone cannot receive a DM.`,
+      );
     }
 
     // If pre_assigned → also send alerts (existing behavior)
