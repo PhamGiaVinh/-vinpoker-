@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Database, Inbox, WifiOff } from "lucide-react";
+import { Database, Inbox, WifiOff, FlaskConical } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/series-intelligence/scenarioOutlook";
 import { computeGtdOverlay } from "@/lib/series-intelligence/gtdOverlay";
 import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePool";
+import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { OverviewCards } from "./OverviewCards";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
@@ -25,16 +26,24 @@ import { ScenarioOutlook } from "./ScenarioOutlook";
 import { GtdOverlayCard } from "./GtdOverlayCard";
 import { OwnerActionChecklist } from "./OwnerActionChecklist";
 
+/** Stable empty array so the true-prize hook key stays constant in CSV mode. */
+const EMPTY_EVENTS: SeriesEvent[] = [];
+
 /**
  * Owner Command Center (Phase 9 / Series Intelligence). Reads the live native
  * series events (read-only RPC via the hook), derives descriptive BI summaries,
  * and renders them. BI only — "what happened / is happening", never prediction.
+ *
+ * When `csvEvents` is provided, it renders the same dashboard over uploaded CSV test data
+ * (browser-only, never the DB) with a "dữ liệu test" banner.
  */
-export function OwnerCommandCenter() {
+export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | null } = {}) {
   const native = useNativeSeriesEvents();
-  const events = native.events;
-  // GTD #2 — server-authoritative true prize pool per GTD event (null unless the flag is on).
-  const truePrizeByEvent = useGtdTruePrizePool(events);
+  const isCsv = csvEvents != null;
+  const events = isCsv ? csvEvents : native.events;
+  // GTD #2 — server-authoritative true prize pool per GTD event (live native only; CSV test data
+  // has no DB-confirmed entries, so it falls back to the #415 estimate path).
+  const truePrizeByEvent = useGtdTruePrizePool(isCsv ? EMPTY_EVENTS : events);
 
   const view = useMemo(() => {
     if (events.length === 0) return null;
@@ -54,12 +63,21 @@ export function OwnerCommandCenter() {
     };
   }, [events]);
 
-  if (native.status === "loading") return <LoadingState />;
-  if (native.status === "unavailable") return <UnavailableState reason={native.reason} />;
+  if (!isCsv && native.status === "loading") return <LoadingState />;
+  if (!isCsv && native.status === "unavailable") return <UnavailableState reason={native.reason} />;
   if (!view) return <EmptyState />;
 
   return (
     <div className="space-y-4">
+      {isCsv && (
+        <Card className="p-3 border-warning/50 bg-warning/10 flex items-start gap-2 text-xs">
+          <FlaskConical className="w-4 h-4 text-warning shrink-0" />
+          <span>
+            <strong>Dữ liệu test (CSV)</strong> — {events.length} sự kiện từ file bạn tải lên, chỉ trên trình duyệt.
+            Đây KHÔNG phải dữ liệu thật của CLB; bấm “Về dữ liệu live” ở mục CSV bên dưới để quay lại.
+          </span>
+        </Card>
+      )}
       {/* BI pyramid: overview → data quality → economics → risk → scenario → GTD overlay → actions */}
       <section className="space-y-2">
         <h3 className="font-display text-base flex items-center gap-2">

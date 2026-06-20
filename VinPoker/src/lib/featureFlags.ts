@@ -270,6 +270,14 @@ export const FEATURES = {
    */
   clubSeriesIntelligence: true,
   /**
+   * Series Intelligence — CSV import (test / what-if data). When ON, the collapsed "CSV thủ công"
+   * section becomes a real importer: download a template, upload a CSV, and the dashboard renders
+   * the parsed events (source: 'csv') with a "dữ liệu test" banner. Browser-only and READ-ONLY —
+   * nothing is written to the DB; the data lives in the page session and clears on "Về dữ liệu live".
+   * When OFF, the legacy static placeholder (disabled CTA) shows instead.
+   */
+  seriesIntelligenceCsvImport: true,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
