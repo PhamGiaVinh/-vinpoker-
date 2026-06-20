@@ -136,6 +136,8 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
   const [muckedPlayerIds, setMuckedPlayerIds] = useState<Set<string>>(new Set());
   const [showdownLayers, setShowdownLayers] = useState<ShowdownLayerResult[]>([]);
+  // P2-2: the operator has flipped hole cards for an all-in runout this hand.
+  const [revealDone, setRevealDone] = useState(false);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
   const [sbAmount, setSbAmount] = useState(0);
@@ -278,6 +280,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setSelectedWinners([]);
     setMuckedPlayerIds(new Set());
     setShowdownLayers([]);
+    setRevealDone(false);
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
     setSentCommunityStreets(new Set());
@@ -584,6 +587,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     [players, endingStacks]
   );
   const reviewValid = isReview && conservationOk && winnerDetermined;
+  const allInRunout = isRunout(engineState.seats);
   const workflowState = deriveTrackerWorkflowState({
     handStarted,
     blindsConfirmed,
@@ -592,13 +596,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     isReview,
     reviewValid,
     submitted: false,
+    // P2-2 all-in runout reveal-first
+    isRunout: allInRunout,
+    bettingClosed: isRoundComplete(engineState),
+    revealDone,
   });
   const showBlindSetup = workflowState === "setup_blinds" && players.length >= 2;
   const showBoardEntry = isBoardEntryState(workflowState);
   const boardEntryStreetNow = boardEntryStreet(workflowState);
   const showShowdownInput = workflowState === "showdown_input";
+  const showRunoutReveal = workflowState === "runout_reveal";
   const showActionStep = isActionState(workflowState);
-  const allInRunout = isRunout(engineState.seats);
 
   const needsPostSB = engineActor?.needsPost === "post_sb";
   const needsPostBB = engineActor?.needsPost === "post_bb";
@@ -1121,6 +1129,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  // P2-2: all-in runout reveal-first — broadcast the flipped hole cards to the
+  // viewer (best-effort), then mark reveal done so the remaining board streets can
+  // be entered. The physical flip has happened; the viewer broadcast is cosmetic,
+  // so `revealDone` is set regardless of broadcast outcome. The final auto-settle
+  // (settleShowdown) still enforces "all contenders revealed-or-mucked", so a
+  // partial reveal here can never produce a phantom settlement.
+  const handleRevealRunout = async () => {
+    await handleShowHoleCards();
+    setRevealDone(true);
+  };
+
   const nextStreet = () => {
     const idx = STREET_ORDER.indexOf(currentStreet);
     if (idx < STREET_ORDER.length - 1) {
@@ -1369,6 +1388,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     showBoardEntry,
     boardEntryStreetNow,
     showShowdownInput,
+    showRunoutReveal,
     showActionStep,
     // sync
     syncPhase,
@@ -1421,6 +1441,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUndo,
     handleUpdateCommunityCards,
     handleShowHoleCards,
+    handleRevealRunout,
     handleToggleWinner,
     handleToggleMuck,
     handleAutoSettle,
