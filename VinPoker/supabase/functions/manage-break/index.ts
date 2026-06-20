@@ -15,6 +15,7 @@ import {
   formatBreakMessage,
 } from "../_shared/telegram.ts";
 import { startMealBreak, endMealBreak } from "../_shared/mealBreakService.ts";
+import { idempotentResponse } from "../_shared/idempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -68,6 +69,14 @@ Deno.serve(async (req: Request) => {
 
     switch (action) {
     case "start": {
+      // B1.2 — idempotent on an optional client key (dedups double-click/retry; avoids the
+      // open-break double-extend + concurrent duplicate break rows). Degrades to a plain run pre-apply.
+      const idemKeyStart = (body?.idempotency_key as string | undefined) ?? null;
+      return await idempotentResponse(admin, {
+        key: idemKeyStart, scope: "manage-break:start", clubId: club_id ?? null, actorId: null,
+        fingerprint: { action: "start", club_id, attendance_id, duration_minutes },
+        json: (b, s) => json(b, s),
+        run: async (): Promise<Response> => {
       // Allow starting break from either assigned dealers or checked-in dealers
       // already sitting in the pool. If the dealer has assignment history,
       // reuse the latest assignment as the break carrier; otherwise create an
@@ -285,6 +294,8 @@ Deno.serve(async (req: Request) => {
       }
 
       return response;
+        },
+      });
     }
 
     case "end":
@@ -313,6 +324,13 @@ Deno.serve(async (req: Request) => {
     }
 
     case "tournament_break": {
+      // B1.2 — idempotent on an optional client key (bulk all-table break; avoid double-breaking).
+      const idemKeyTb = (body?.idempotency_key as string | undefined) ?? null;
+      return await idempotentResponse(admin, {
+        key: idemKeyTb, scope: "manage-break:tournament_break", clubId: club_id ?? null, actorId: null,
+        fingerprint: { action: "tournament_break", club_id, duration_minutes },
+        json: (b, s) => json(b, s),
+        run: async (): Promise<Response> => {
       const { data: rpcResult, error: rpcErr } = await admin.rpc(
         "tournament_break_all_tables",
         {
@@ -378,6 +396,8 @@ Deno.serve(async (req: Request) => {
       }
 
       return response;
+        },
+      });
     }
 
     case "meal_break": {

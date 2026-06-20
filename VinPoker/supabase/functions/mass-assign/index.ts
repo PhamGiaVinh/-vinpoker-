@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, jsonResponse, fillEmptyTables, computeSwingDuration } from "../_shared/dealer-utils.ts";
 import { formatMassAssignMessage, sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
+import { idempotentResponse } from "../_shared/idempotency.ts";
 
 function decodeJWT(token: string): { sub: string } | null {
   try {
@@ -32,6 +33,18 @@ Deno.serve(async (req) => {
     const { data: isControl } = await admin.rpc("is_club_dealer_control", { _user_id: uid, _club_id: club_id });
     if (!isControl) return jsonResponse({ error: "Forbidden" }, 403);
 
+    // B1.2 — idempotent on an optional client key: dedups double-click / retry, returns the
+    // cached aggregate ("N assigned", not 0) on replay, 409 on a concurrent duplicate. Degrades
+    // to a plain run until the B1.1 RPCs are applied (zero regression).
+    const idemKey = (body?.idempotency_key as string | undefined) ?? null;
+    return await idempotentResponse(admin, {
+      key: idemKey,
+      scope: "mass-assign",
+      clubId: club_id,
+      actorId: uid,
+      fingerprint: { action: "mass-assign", club_id, shift_id: shift_id ?? null },
+      json: (b, s) => jsonResponse(b, s),
+      run: async () => {
     // ── Compute swing duration (batch-consistent) ──────────────────────────
     const { data: swingConfig } = await admin
       .from("swing_config")
@@ -116,6 +129,8 @@ Deno.serve(async (req) => {
         dealer_name: a.full_name,
         tier: "tournament",
       })),
+    });
+      },
     });
   } catch (e) {
     return jsonResponse({ error: (e as Error).message }, 500);
