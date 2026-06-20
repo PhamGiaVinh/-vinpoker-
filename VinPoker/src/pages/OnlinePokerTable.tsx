@@ -156,17 +156,22 @@ export default function OnlinePokerTable() {
   // cleanup is the server-side stale-seat reaper (PR-B). Never leave mid-hand (the server
   // forbids it, and the timeout-sweep force-folds an absent actor on their turn).
   const leaveRef = useRef<{ seated: boolean; inActiveHand: boolean; leave: () => Promise<unknown> } | null>(null);
+  // P1-1: a page UNLOAD (reload / tab close / bfcache) must KEEP the seat — the server
+  // reaper reclaims a genuinely-abandoned seat after its grace window. `pagehide` flags the
+  // unload so the unmount cleanup below does NOT auto-leave on a reload; only a real in-app
+  // navigation away from the table (cleanup with no preceding unload) still leaves.
+  const unloadingRef = useRef(false);
   useEffect(() => {
     const fireLeave = () => {
       const r = leaveRef.current;
       if (r && r.seated && !r.inActiveHand) void r.leave().catch(() => {});
     };
-    // pagehide with persisted=false = a real unload (not bfcache/background) → leave.
-    const onPageHide = (e: PageTransitionEvent) => { if (!e.persisted) fireLeave(); };
+    // ANY pagehide = a page unload (reload / close / bfcache) → keep the seat (do NOT leave).
+    const onPageHide = () => { unloadingRef.current = true; };
     window.addEventListener('pagehide', onPageHide);
     return () => {
       window.removeEventListener('pagehide', onPageHide);
-      fireLeave(); // SPA route unmount
+      if (!unloadingRef.current) fireLeave(); // leave only on a genuine in-app route change
     };
   }, []);
 
