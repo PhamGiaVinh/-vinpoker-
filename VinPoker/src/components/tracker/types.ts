@@ -43,6 +43,9 @@ export interface TrackerRacetrackProps {
   boardCards: string[]; // display strings, e.g. '5♦', 'K♠'
   pot: number;
   bigBlind: number;
+  // Optional: tapping a seat selects the dealer button (pre-hand) or the actor
+  // (during a hand). Display-only when absent — the PR-A preview is unaffected.
+  onSeatTap?: (seatNumber: number) => void;
 }
 
 export interface ForcedAmountPadProps {
