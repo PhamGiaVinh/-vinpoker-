@@ -30,7 +30,8 @@ import { actionToSound } from '@/lib/onlinePoker/pokerSounds';
 import { playPokerLiveSound, markPokerSoundGesture, isPokerSoundMuted, setPokerSoundMuted } from '@/lib/pokerLiveSound';
 import { readImmersivePref, writeImmersivePref, requestFullscreenBestEffort, exitFullscreenBestEffort } from '@/lib/onlinePoker/immersive';
 import { iAmInLiveHand as computeIAmInLiveHand } from '@/lib/onlinePoker/tableState';
-import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
+import { readFeltSkin, writeFeltSkin, type FeltSkin } from '@/lib/onlinePoker/feltSkin';
+import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2, Palette } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
   const n = Number(s);
@@ -133,6 +134,10 @@ export default function OnlinePokerTable() {
   const bustHandledRef = useRef(false);
   const [muted, setMuted] = useState<boolean>(isPokerSoundMuted());
   const toggleMute = () => { const v = !muted; setPokerSoundMuted(v); setMuted(v); markPokerSoundGesture(); };
+
+  // UI-4 — optional felt skin (emerald default / premium burgundy+gold), persisted locally.
+  const [feltSkin, setFeltSkin] = useState<FeltSkin>(readFeltSkin);
+  const toggleSkin = () => { const next: FeltSkin = feltSkin === 'premium' ? 'emerald' : 'premium'; setFeltSkin(next); writeFeltSkin(next); };
 
   // Mobile immersive table mode (CSS-default; native fullscreen requested on the gesture).
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -410,6 +415,15 @@ export default function OnlinePokerTable() {
           variant="ghost"
           size="icon"
           className="ml-auto"
+          onClick={toggleSkin}
+          aria-label="Đổi giao diện bàn"
+          title={feltSkin === 'premium' ? 'Giao diện: Cao cấp (chạm để về Xanh)' : 'Giao diện: Xanh (chạm để Cao cấp)'}
+        >
+          <Palette className={feltSkin === 'premium' ? 'h-4 w-4 text-amber-300' : 'h-4 w-4'} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={immersive ? exitImmersive : enterImmersive}
           aria-label={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
           title={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
@@ -435,7 +449,7 @@ export default function OnlinePokerTable() {
           it, centered in the available height so it dominates the screen. */}
       <div className="flex min-h-0 w-full flex-1 items-center justify-center">
         {cinematic && showing ? (
-          <AllInRunout hand={showing.ringView} bb={table.bb} onDone={() => setDwell(null)} />
+          <AllInRunout hand={showing.ringView} bb={table.bb} skin={feltSkin} onDone={() => setDwell(null)} />
         ) : (
           <SeatRing
             hand={feltView}
@@ -443,6 +457,7 @@ export default function OnlinePokerTable() {
             winnerSeats={feltWinners}
             dealSignal={dealSignal}
             dealSeats={dealSeats}
+            skin={feltSkin}
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}

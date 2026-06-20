@@ -10,6 +10,7 @@
 
 import { cn } from '@/lib/utils';
 import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
+import type { FeltSkin } from '@/lib/onlinePoker/feltSkin';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 import { DeckStack } from './DeckStack';
@@ -156,6 +157,7 @@ export function SeatRing({
   onEmptySeatClick,
   dealSignal = 0,
   dealSeats,
+  skin = 'emerald',
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -169,8 +171,23 @@ export function SeatRing({
   dealSignal?: number;
   /** seats the deal animation flies to (occupied seats); falls back to seated players. */
   dealSeats?: number[];
+  /** felt skin — 'emerald' (default, identity) or 'premium' (burgundy + gold, opt-in). */
+  skin?: FeltSkin;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
+
+  // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
+  // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
+  const premium = skin === 'premium';
+  const feltBg = premium
+    ? 'radial-gradient(ellipse at 50% 40%, #7a1f1f 0%, #561414 46%, #320c0c 80%, #1c0707 100%)'
+    : 'radial-gradient(ellipse at 50% 40%, #157a4b 0%, #0c5234 40%, #062f1e 74%, #03180c 100%)';
+  const centerGlowBg = premium
+    ? 'radial-gradient(ellipse at 50% 40%, rgba(245,194,96,0.14), transparent 55%)'
+    : 'radial-gradient(ellipse at 50% 40%, rgba(0,224,122,0.16), transparent 55%)';
+  const heroSpotBg = premium
+    ? 'radial-gradient(ellipse at 50% 100%, rgba(245,194,96,0.16), transparent 70%)'
+    : 'radial-gradient(ellipse at 50% 100%, rgba(0,224,122,0.18), transparent 70%)';
 
   // Portrait-leaning square felt on phones (fills more of the screen); wider oval on larger
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
@@ -180,25 +197,27 @@ export function SeatRing({
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 
-      {/* rail (outer band for depth) + a thin lit top edge */}
-      <div className="absolute inset-[3%] rounded-[48%] bg-gradient-to-b from-[#11221a] to-[#030806] shadow-[0_22px_60px_rgba(0,0,0,0.72)]" />
-      <div className="pointer-events-none absolute inset-[3%] rounded-[48%] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]" />
+      {/* rail (outer band for depth) + a thin lit top edge (gold on the premium skin) */}
+      <div className={cn('absolute inset-[3%] rounded-[48%] bg-gradient-to-b shadow-[0_22px_60px_rgba(0,0,0,0.72)]', premium ? 'from-[#2a1208] to-[#0d0604]' : 'from-[#11221a] to-[#030806]')} />
+      <div className={cn('pointer-events-none absolute inset-[3%] rounded-[48%]', premium ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(245,194,96,0.28)]' : 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]')} />
 
-      {/* felt — deep emerald, soft centre glow + strong vignette, thin neon rim */}
+      {/* felt — emerald (default) or burgundy (premium), soft centre glow + strong vignette */}
       <div
-        className="absolute inset-[6.5%] rounded-[47%] border border-[#0a3a25] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(0,224,122,0.12)]"
-        style={{ background: 'radial-gradient(ellipse at 50% 40%, #157a4b 0%, #0c5234 40%, #062f1e 74%, #03180c 100%)' }}
+        className={cn('absolute inset-[6.5%] rounded-[47%] border', premium
+          ? 'border-[#b9892f] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(245,194,96,0.25)]'
+          : 'border-[#0a3a25] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(0,224,122,0.12)]')}
+        style={{ background: feltBg }}
       >
         {/* center glow */}
-        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,224,122,0.16), transparent 55%)' }} />
+        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: centerGlowBg }} />
         {/* faint felt texture */}
         <div className="pointer-events-none absolute inset-0 rounded-[44%] opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)', backgroundSize: '15px 15px' }} />
         {/* very subtle desktop/tablet-only watermark (hidden on mobile; never competes with board) */}
         <div className="pointer-events-none absolute inset-0 hidden items-center justify-center sm:flex">
-          <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: 'rgba(0,224,122,0.06)' }}>VinPoker</span>
+          <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: premium ? 'rgba(245,194,96,0.07)' : 'rgba(0,224,122,0.06)' }}>VinPoker</span>
         </div>
         {/* inner rim */}
-        <div className="pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset ring-emerald-200/10" />
+        <div className={cn('pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset', premium ? 'ring-amber-200/15' : 'ring-emerald-200/10')} />
 
         {/* board + pot — the focal point, scaled up on larger screens */}
         <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
@@ -223,7 +242,7 @@ export function SeatRing({
       {/* hero spotlight (bottom centre, behind the seats) */}
       <div
         className="pointer-events-none absolute bottom-0 left-1/2 z-0 h-[40%] w-[46%] -translate-x-1/2"
-        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,224,122,0.18), transparent 70%)' }}
+        style={{ background: heroSpotBg }}
       />
 
       {/* committed-bet chips on the felt (toward the pot) */}
