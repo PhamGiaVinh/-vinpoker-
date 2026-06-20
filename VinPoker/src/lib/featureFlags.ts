@@ -161,7 +161,7 @@ export const FEATURES = {
    * Real Engine Mode UAT must run on a preview branch (flag ON) while main/prod
    * stays OFF — never via main.
    */
-  trackerEngineMode: false,
+  trackerEngineMode: true, // ⚠️ UAT BRANCH uat/engine-mode-on ONLY — DO NOT MERGE TO MAIN (prod = false)
   /**
    * Standalone operator Hand Input console (`/tracker/hand-input`) — the full-screen
    * floor-control surface (2-col desktop / 3-tab mobile) per the approved mockup.
