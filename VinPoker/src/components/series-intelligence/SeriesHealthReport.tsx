@@ -149,7 +149,7 @@ export function SeriesHealthReport({ onBack }: { onBack: () => void }) {
         <section className="space-y-2">
           <h3 className="font-display text-base">Kinh tế series</h3>
           <OverviewCards economics={report.economics} />
-          <p className="text-[10px] text-muted-foreground/80">Volume tham khảo — không thay thế báo cáo kế toán.</p>
+          <p className="text-[10px] text-muted-foreground/80">Volume tham khảo — không thay thế báo cáo kế toán. Prize pool là số ĐÃ NHẬP, chưa cập nhật tự động từ buy-in (không phải thực thu).</p>
         </section>
 
         {/* Risk Register (reuse RiskInsightCards) */}

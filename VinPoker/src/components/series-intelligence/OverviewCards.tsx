@@ -47,7 +47,7 @@ export function OverviewCards({ economics }: { economics: SeriesEconomics }) {
       <Kpi icon={RefreshCw} label="Re-entry" value={countFmt.format(e.reentries.value)} metric={e.reentries} />
       <Kpi icon={Coins} label="Tổng buy-in" value={formatVndShort(e.totalBuyIn.value)} metric={e.totalBuyIn} />
       <Kpi icon={Receipt} label="Tổng fee (rake)" value={formatVndShort(e.totalRake.value)} metric={e.totalRake} />
-      <Kpi icon={Trophy} label="Tổng prize pool" value={formatVndShort(e.totalPrizePool.value)} metric={e.totalPrizePool} />
+      <Kpi icon={Trophy} label="Prize pool đã nhập" value={formatVndShort(e.totalPrizePool.value)} metric={e.totalPrizePool} />
     </div>
   );
 }
