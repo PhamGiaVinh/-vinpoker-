@@ -174,6 +174,10 @@ export function SeatRing({
   skin?: FeltSkin;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
+  // N8 — drop the hero (my own seat) into the bottom-LEFT corner: its big cards + name-plate,
+  // its committed-bet chip, and the deal flourish all anchor here, leaving the felt's bottom-
+  // centre clear. Starting coords — tune via UAT (watch the lower-left ring seat at 6/9-max).
+  if (hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = { x: 15, y: 85 };
 
   // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
   // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
