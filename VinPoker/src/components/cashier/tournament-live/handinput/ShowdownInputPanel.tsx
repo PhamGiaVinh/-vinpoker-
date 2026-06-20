@@ -17,11 +17,12 @@ interface ShowdownInputPanelProps {
   board: (Card | null)[];
   holeCards: Record<string, (Card | null)[]>;
   usedCards: Set<Card>;
-  mucked: Set<string>;
+  /** Optional: the old embedded HandInputPanel tab renders manual-only (no muck/auto-settle). */
+  mucked?: Set<string>;
   onHoleCardChange: (playerId: string, ci: number, card: Card | null) => void;
-  onToggleMuck: (playerId: string) => void;
+  onToggleMuck?: (playerId: string) => void;
   onReveal: () => void;
-  onAutoSettle: () => void;
+  onAutoSettle?: () => void;
   selectedWinners: string[];
   onToggleWinner: (playerId: string) => void;
   onConfirmResult: () => void;
@@ -45,6 +46,7 @@ export function ShowdownInputPanel({
 }: ShowdownInputPanelProps) {
   const live = players.filter((p) => !p.is_folded);
   const canConfirm = selectedWinners.length > 0;
+  const muckedSet = mucked ?? new Set<string>();
 
   return (
     <div className="space-y-3 rounded-2xl border border-purple-500/40 bg-card p-3.5">
@@ -56,7 +58,7 @@ export function ShowdownInputPanel({
       <div className="space-y-2">
         <div className="text-[11px] font-semibold text-purple-300">Lật bài / Úp bài</div>
         {live.map((p) => {
-          const isMucked = mucked.has(p.player_id);
+          const isMucked = muckedSet.has(p.player_id);
           return (
             <div key={p.player_id} className={`flex items-center gap-2 ${isMucked ? "opacity-45" : ""}`}>
               <div className="w-28 truncate text-sm">Ghế {p.seat_number} · {p.display_name}</div>
@@ -70,17 +72,19 @@ export function ShowdownInputPanel({
                   />
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => onToggleMuck(p.player_id)}
-                className={`ml-auto rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
-                  isMucked
-                    ? "border-amber-400 bg-amber-500/20 text-amber-200"
-                    : "border-border text-muted-foreground hover:border-amber-400/50"
-                }`}
-              >
-                {isMucked ? "Đã úp bài" : "Úp bài"}
-              </button>
+              {onToggleMuck && (
+                <button
+                  type="button"
+                  onClick={() => onToggleMuck(p.player_id)}
+                  className={`ml-auto rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    isMucked
+                      ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                      : "border-border text-muted-foreground hover:border-amber-400/50"
+                  }`}
+                >
+                  {isMucked ? "Đã úp bài" : "Úp bài"}
+                </button>
+              )}
             </div>
           );
         })}
@@ -89,18 +93,22 @@ export function ShowdownInputPanel({
         </button>
       </div>
 
-      {/* AUTO-RANK — pays each side-pot layer exactly via settleShowdown */}
-      <button
-        type="button"
-        disabled={submitting}
-        onClick={onAutoSettle}
-        className="w-full rounded-xl border-2 border-emerald-400/60 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-200 transition active:scale-[0.99] disabled:opacity-40"
-      >
-        🎯 Tự chấm bài + chia pot (engine)
-      </button>
-      <div className="text-[10px] text-muted-foreground">
-        Cần đủ 5 lá board + 2 lá tẩy cho mỗi người còn bài (người không lật thì bấm "Úp bài"). Engine chia đúng từng side pot.
-      </div>
+      {/* AUTO-RANK — pays each side-pot layer exactly via settleShowdown (engine consoles only) */}
+      {onAutoSettle && (
+        <>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onAutoSettle}
+            className="w-full rounded-xl border-2 border-emerald-400/60 bg-emerald-500/15 px-4 py-2.5 text-sm font-bold text-emerald-200 transition active:scale-[0.99] disabled:opacity-40"
+          >
+            🎯 Tự chấm bài + chia pot (engine)
+          </button>
+          <div className="text-[10px] text-muted-foreground">
+            Cần đủ 5 lá board + 2 lá tẩy cho mỗi người còn bài (người không lật thì bấm "Úp bài"). Engine chia đúng từng side pot.
+          </div>
+        </>
+      )}
 
       <div className="space-y-2 rounded-lg border border-border/40 bg-card/40 p-2.5">
         <div className="text-[11px] font-semibold text-muted-foreground">…hoặc chọn người thắng thủ công</div>
