@@ -58,19 +58,23 @@ function Seat({
   isActing,
   isDealerButton,
   bigBlind,
+  onTap,
 }: {
   seat: SeatVM;
   isActing: boolean;
   isDealerButton: boolean;
   bigBlind: number;
+  onTap?: () => void;
 }) {
   const pos = SEAT_LAYOUT_9MAX[seat.seatNumber];
   if (!pos) return null;
+  const tappable = onTap ? "cursor-pointer" : "";
 
   if (seat.isEmpty) {
     return (
       <div
-        className="absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card)/0.4)] px-2 py-3 text-center"
+        onClick={onTap}
+        className={`absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card)/0.4)] px-2 py-3 text-center ${tappable}`}
         style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
       >
         <div className={`text-[10px] text-[hsl(var(--muted-foreground))] ${NUM}`}>
@@ -83,9 +87,10 @@ function Seat({
 
   return (
     <div
+      onClick={onTap}
       className={`absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-[hsl(var(--card)/0.94)] px-2 py-1.5 ${
         isActing ? 'z-20 border-[hsl(var(--primary))]' : 'z-10 border-[hsl(var(--border))]'
-      } ${seat.isFolded ? 'opacity-40 grayscale' : ''}`}
+      } ${seat.isFolded ? 'opacity-40 grayscale' : ''} ${tappable}`}
       style={{
         left: `${pos.left}%`,
         top: `${pos.top}%`,
@@ -135,6 +140,7 @@ export function TrackerRacetrack({
   boardCards,
   pot,
   bigBlind,
+  onSeatTap,
 }: TrackerRacetrackProps) {
   return (
     <div
@@ -184,6 +190,7 @@ export function TrackerRacetrack({
           isActing={seat.seatNumber === actingSeatNumber}
           isDealerButton={seat.seatNumber === dealerSeatNumber}
           bigBlind={bigBlind}
+          onTap={onSeatTap ? () => onSeatTap(seat.seatNumber) : undefined}
         />
       ))}
 

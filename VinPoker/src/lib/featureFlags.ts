@@ -176,6 +176,16 @@ export const FEATURES = {
    */
   trackerHandInputConsole: false,
   /**
+   * Racetrack hand-input UI (PR-B) — renders the standalone console with the NEW
+   * racetrack felt + action dock instead of the oval LiveFelt + ActionStepPanel.
+   * SAME engine/hook/RPCs (write-path byte-identical, proven by the payload-parity
+   * test); only the two presentational pieces change. Default **OFF**: while false
+   * the console page renders the existing `StandaloneHandInputConsole`, so production
+   * is unchanged. Flip to true only on a UAT preview branch / after owner UAT.
+   * Requires `trackerHandInputConsole` (the page gate) to be on as well.
+   */
+  trackerRacetrackUi: false,
+  /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
    * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible

@@ -738,7 +738,16 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleAction = async (playerId: string, actionType: string, amountOverride?: number) => {
+  // `betToOverride` (additive): submit a bet/raise with the street-TOTAL ("bet to")
+  // directly, bypassing the `betAmount` input-state async race. Used by the racetrack
+  // ActionDock (its ForcedAmountPad returns the TOTAL). When omitted, behavior is
+  // identical to before (reads `betAmount`) — the old console path is unchanged.
+  const handleAction = async (
+    playerId: string,
+    actionType: string,
+    amountOverride?: number,
+    betToOverride?: number,
+  ) => {
     const player = players.find((p) => p.player_id === playerId);
     if (!player) return;
     if (isReadOnly) {
@@ -794,7 +803,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       case "raise": {
         // Engine "Bet to" (street total) → chips ADDED; all-in only when it
         // consumes the whole stack. action_amount stays = chips added below.
-        const betTo = parseInt(betAmount) || 0;
+        // betToOverride (racetrack dock) supplies the TOTAL directly; default = the
+        // betAmount input (old console) — same value, same betToAdded, same payload.
+        const betTo = betToOverride ?? (parseInt(betAmount) || 0);
         const { added, allIn } = betToAdded(betTo, player.current_bet, player.current_stack);
         if (added <= 0) {
           toast.error("Mức cược phải lớn hơn cược hiện tại của ghế");
@@ -944,7 +955,9 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleDockAction = (type: string) => {
+  // `betTo` (additive): the street-TOTAL for bet/raise from the racetrack dock; old
+  // callers (ActionStepPanel) pass only `type`, so betTo is undefined ⇒ unchanged.
+  const handleDockAction = (type: string, betTo?: number) => {
     if (!effectiveActorId) {
       toast.error("Chạm một ghế để chọn người hành động");
       return;
@@ -954,7 +967,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const msg = `Xác nhận ALL-IN ${who ? formatStack(who.current_stack) : ""}${who ? ` của ${who.display_name}` : ""}? Toàn bộ stack sẽ vào pot.`;
       if (!confirm(msg)) return;
     }
-    handleAction(effectiveActorId, type);
+    handleAction(effectiveActorId, type, undefined, betTo);
     setSelectedActorId(null);
   };
 

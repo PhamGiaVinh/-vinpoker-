@@ -19,13 +19,19 @@ import { AlertTriangle, Construction } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { useStandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
 import { StandaloneHandInputConsole } from "@/components/cashier/tournament-live/handinput/StandaloneHandInputConsole";
+import { RacetrackHandInputConsole } from "@/components/cashier/tournament-live/handinput/RacetrackHandInputConsole";
 
 /** Inner component: only mounted when the flag is ON and a tournament id exists. */
 function ConsoleInner({ tournamentId }: { tournamentId: string }) {
   const hook = useStandaloneHandInput(tournamentId);
+  // Same hook/engine; the racetrack flag only swaps the presentational shell.
   return (
     <div className="container mx-auto p-3 md:p-6">
-      <StandaloneHandInputConsole hook={hook} />
+      {FEATURES.trackerRacetrackUi ? (
+        <RacetrackHandInputConsole hook={hook} />
+      ) : (
+        <StandaloneHandInputConsole hook={hook} />
+      )}
     </div>
   );
 }
