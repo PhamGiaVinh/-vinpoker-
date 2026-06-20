@@ -19,6 +19,7 @@ import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 import { EmailVerificationGate } from "@/components/EmailVerificationGate";
 import { LanguagePrompt } from "@/components/LanguagePrompt";
 import { RouteLoader } from "@/components/RouteLoader";
+import { TrackerInputPreview } from "@/components/tracker/TrackerInputPreview"; // UAT-PREVIEW (branch only)
 
 const Tournaments = lazy(() => import("./pages/Tournaments"));
 const TournamentDetail = lazy(() => import("./pages/TournamentDetail"));
@@ -133,6 +134,7 @@ const App = () => (
           <PushNotificationPrompt />
           <Suspense fallback={<RouteLoader />}>
             <Routes>
+<Route path="/tracker-preview" element={<TrackerInputPreview />} /> {/* UAT-PREVIEW (branch only — never merge to main) */}
 <Route path="/auth" element={<Auth />} />
 <Route path="/auth/callback" element={<AuthCallback />} />
 <Route path="/verify-email" element={<VerifyEmail />} />
