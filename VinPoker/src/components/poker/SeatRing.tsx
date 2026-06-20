@@ -43,7 +43,7 @@ function seatPositions(seats: PublicSeatView[], mySeat?: number): Record<number,
   const n = ordered.length || 1;
   const myIdx = Math.max(0, ordered.findIndex((s) => s.seat === mySeat));
   const out: Record<number, { x: number; y: number }> = {};
-  const rx = 45, ry = 42; // percent radii
+  const rx = 40, ry = 37; // percent radii (pulled in so the wider N8 name-plates stay inside the felt)
   ordered.forEach((s, i) => {
     // bottom = 90deg; step clockwise so my seat sits at the bottom center.
     const ang = (Math.PI / 2) + ((i - myIdx) / n) * 2 * Math.PI;
@@ -112,7 +112,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
 
       {/* N8-style horizontal name-plate: [avatar (+dealer D) │ name / stack] */}
       <div className={cn(
-        'flex items-center gap-1.5 rounded-lg border px-1.5 py-1 pr-2 transition-colors duration-300',
+        'flex items-center gap-1.5 rounded-lg border px-1 py-1 pr-1.5 transition-colors duration-300',
         isWinner ? 'op-winner-glow border-amber-300/70 bg-black/75'
           : seat.isToAct ? 'op-to-act-pulse border-transparent bg-black/80'
           : allin ? 'op-allin-pulse border-transparent bg-black/80'
@@ -133,7 +133,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
 
         <div className="min-w-0 leading-tight">
           <div className="flex items-center gap-1">
-            <span className="max-w-[58px] truncate text-[11px] font-medium text-white sm:max-w-[76px] sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</span>
+            <span className="max-w-[48px] truncate text-[11px] font-medium text-white sm:max-w-[64px] sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</span>
             {seat.isToAct && <Clock className="h-2.5 w-2.5 shrink-0 text-primary" />}
           </div>
           <div className={cn('text-[11px] font-semibold tabular-nums sm:text-xs', allin ? 'text-amber-300' : 'text-primary')}>
@@ -192,7 +192,7 @@ export function SeatRing({
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
   // evenly without crowding.
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-3xl sm:aspect-[16/10]">
+    <div className="relative mx-auto aspect-[4/5] w-full max-w-3xl sm:aspect-[16/10]">
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 
