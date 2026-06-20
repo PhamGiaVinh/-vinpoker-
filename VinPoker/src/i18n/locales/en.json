@@ -2942,6 +2942,112 @@
       "waiting": "Waiting for the dealer to start the hand..."
     }
   },
+  "playerIntelligence": {
+    "header": {
+      "title": "Your Poker Profile",
+      "subtitle": "Based on tournament data recorded in VinPoker. Not a guarantee of results."
+    },
+    "status": { "new": "New", "provisional": "Building", "verified": "Verified" },
+    "confidence": { "low": "Low", "medium": "Medium", "high": "High" },
+    "confidenceLabel": "Confidence",
+    "sample": {
+      "title": "Recorded events",
+      "totalEntries": "Entries",
+      "uniqueEvents": "Events",
+      "reentries": "Re-entries",
+      "lastPlayed": "Last played",
+      "empty": "No verified tournament data yet"
+    },
+    "results": {
+      "title": "Observed results",
+      "subtitle": "Based on recorded results",
+      "itm": "ITM rate",
+      "ft": "Final table rate",
+      "top3": "Top 3 rate",
+      "avgFinish": "Average finish"
+    },
+    "sourceQuality": {
+      "title": "Data quality",
+      "show": "Details",
+      "hide": "Hide",
+      "finishPosition": "Finish position",
+      "itm": "ITM source",
+      "fieldSize": "Field size",
+      "structure": "Structure",
+      "identity": "Identity",
+      "rateMethod": "Rate method",
+      "rawObservedNote": "Current rates are based on recorded data, not adjusted for sample size."
+    },
+    "sqValue": {
+      "exact_live": "Exact (live)",
+      "manual": "Manual entry",
+      "missing": "Missing",
+      "leaderboard_view": "Leaderboard",
+      "itm_places": "By payout structure",
+      "prize": "By prize",
+      "derived_position": "Derived from position",
+      "confirmed_entries": "Confirmed registrations",
+      "current_players_snapshot": "Player-count snapshot",
+      "legacy_total_entries": "Legacy data",
+      "configured": "Configured",
+      "default_assumed": "Default assumed",
+      "online_authenticated": "Online account",
+      "offline_ephemeral": "Walk-in guest",
+      "raw_observed": "Raw observed",
+      "unknown": "Unknown"
+    },
+    "outlook": {
+      "title": "Tournament outlook",
+      "lockedTitle": "locked",
+      "expectedItm": "Expected ITM",
+      "chanceItm": "Simulated chance of ≥1 ITM",
+      "windowTitle": "Scenario: {{n}} similar events",
+      "softNote": "A data scenario if you play similar events. Not a guarantee of results.",
+      "basis": "Based on your current observed rate, not adjusted for sample size.",
+      "reason": {
+        "not_enough_verified_entries": "More verified tournament results are needed to unlock the 4/8/12-event scenarios.",
+        "low_source_quality": "Data isn't good enough to unlock the outlook yet. Play more events to improve it."
+      }
+    },
+    "action": {
+      "title": "Next step",
+      "play_drill": "Play Poker IQ Drill",
+      "join_first_event": "Join your first event to start a verified profile",
+      "keep_playing_recorded": "Keep playing recorded events",
+      "see_fit_events": "See matching events",
+      "track_progress": "Track your progress after each event"
+    },
+    "milestone": {
+      "ladderTitle": "Your profile journey",
+      "eventUnit": "events",
+      "start": "Start your profile",
+      "verified": "Verified profile",
+      "outlook": "Unlock the 4/8/12 outlook",
+      "nextChip": "Next",
+      "remaining": "{{n}} more events to {{goal}}"
+    },
+    "empty": {
+      "heroTitle": "Build your verified Poker profile",
+      "heroSubtitle": "Every event you play at VinPoker is recorded and turned into a real profile — no self-reporting. Start your journey.",
+      "teaserTitle": "When unlocked, you'll see",
+      "teaserExample": "Illustrative example: a verified profile shows 'if you play 4 similar events → expect about 1 ITM'. This is an illustration, not your result."
+    },
+    "simulator": {
+      "title": "Try the outlook",
+      "badge": "Simulation",
+      "subtitle": "Drag the hypothetical ITM rate to see how the 4 / 8 / 12-event outlook changes.",
+      "rateLabel": "Hypothetical ITM rate",
+      "chanceItm": "≥1 ITM",
+      "expectedItm": "Expected ITM",
+      "preset": {
+        "new": "Beginner ~15%",
+        "good": "Decent ~25%",
+        "strong": "Strong ~35%"
+      },
+      "note": "This is a simulation based on a rate you choose, not your actual result."
+    },
+    "error": "Couldn't load profile. Try again later."
+  },
   "pokerDrill": {
     "intro": {
       "kicker": "Your Poker Journey",
