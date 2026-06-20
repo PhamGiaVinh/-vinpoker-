@@ -188,6 +188,15 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
   );
 }
 
+// GTD committed guarantee (Phase 3b-D1): empty -> null ("thiếu GTD", never faked from
+// prize pool); otherwise a non-negative number. Writes flow through the live audit trigger.
+const parseGtd = (v: string): number | null => {
+  const s = (v ?? "").toString().trim();
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 const NewTournamentDialog = ({
   clubs, defaultClubId, multiClub, onCreated,
 }: {
@@ -195,7 +204,7 @@ const NewTournamentDialog = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [clubId, setClubId] = useState(defaultClubId);
-  const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
+  const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, guarantee_amount: "", starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
   const [blindChoice, setBlindChoice] = useState("none");
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   useEffect(() => { setClubId(defaultClubId); }, [defaultClubId]);
@@ -227,6 +236,7 @@ const NewTournamentDialog = ({
       club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
       buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
       ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
+      guarantee_amount: parseGtd(f.guarantee_amount),
       starting_stack: Number(f.starting_stack),
       location: f.location, description: f.description, game_type: f.game_type,
       minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
@@ -280,6 +290,8 @@ const NewTournamentDialog = ({
             <div><Label>Phí dịch vụ (VND)</Label><Input type="number" value={f.service_fee_amount} onChange={e => setF({ ...f, service_fee_amount: +e.target.value })} /></div>
           )}
           <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0) + (FEATURES.tournamentServiceFee ? (Number(f.service_fee_amount) || 0) : 0))}</span> <span className="opacity-70">(buy-in + rake{FEATURES.tournamentServiceFee ? " + phí dịch vụ" : ""})</span></p>
+          <div><Label>GTD cam kết (VND)</Label><Input type="number" min={0} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} placeholder="Để trống nếu chưa có GTD" /></div>
+          <p className="text-[11px] text-muted-foreground -mt-1">Cam kết của floor. Để trống = chưa có GTD (sẽ hiện “thiếu GTD”), không suy ra từ prize pool.</p>
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
             <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
@@ -352,6 +364,7 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
     buy_in: tournament.buy_in,
     rake_amount: tournament.rake_amount ?? 0,
     service_fee_amount: tournament.service_fee_amount ?? 0,
+    guarantee_amount: tournament.guarantee_amount != null ? String(tournament.guarantee_amount) : "",
     starting_stack: tournament.starting_stack,
     location: tournament.location ?? "",
     description: tournament.description ?? "",
@@ -390,6 +403,7 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
       buy_in: Number(f.buy_in),
       rake_amount: Number(f.rake_amount) || 0,
       ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
+      guarantee_amount: parseGtd(f.guarantee_amount),
       starting_stack: Number(f.starting_stack),
       location: f.location,
       description: f.description,
@@ -439,6 +453,8 @@ const EditTournamentDialog = ({ tournament, onSaved }: { tournament: any; onSave
             <div><Label>Phí dịch vụ (VND)</Label><Input type="number" value={f.service_fee_amount} onChange={e => setF({ ...f, service_fee_amount: +e.target.value })} /></div>
           )}
           <p className="text-xs text-muted-foreground -mt-1">Người chơi trả: <span className="text-primary font-medium">{formatVND((Number(f.buy_in) || 0) + (Number(f.rake_amount) || 0) + (FEATURES.tournamentServiceFee ? (Number(f.service_fee_amount) || 0) : 0))}</span> <span className="opacity-70">(buy-in + rake{FEATURES.tournamentServiceFee ? " + phí dịch vụ" : ""})</span></p>
+          <div><Label>GTD cam kết (VND)</Label><Input type="number" min={0} value={f.guarantee_amount} onChange={e => setF({ ...f, guarantee_amount: e.target.value })} placeholder="Để trống nếu chưa có GTD" /></div>
+          <p className="text-[11px] text-muted-foreground -mt-1">Cam kết của floor. Để trống = chưa có GTD (sẽ hiện “thiếu GTD”), không suy ra từ prize pool.</p>
           <div className="grid grid-cols-2 gap-2">
             <div><Label>Starting stack</Label><Input type="number" value={f.starting_stack} onChange={e => setF({ ...f, starting_stack: +e.target.value })} /></div>
             <div><Label>Minutes / level</Label><Input type="number" value={f.minutes_per_level} onChange={e => setF({ ...f, minutes_per_level: +e.target.value })} /></div>
