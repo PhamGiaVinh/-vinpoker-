@@ -133,6 +133,28 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
         />
       );
     }
+    if (hook.showRunoutReveal) {
+      // P2-2 all-in runout: reveal hole cards FIRST (live procedure), then the
+      // board-entry branch below runs out the remaining streets, then auto-settle.
+      return (
+        <ShowdownInputPanel
+          players={hook.players}
+          board={hook.communityCards}
+          holeCards={hook.playerHoleCards}
+          usedCards={hook.usedCards}
+          mucked={hook.muckedPlayerIds}
+          onHoleCardChange={hook.handleHoleCardChange}
+          onToggleMuck={hook.handleToggleMuck}
+          onReveal={hook.handleShowHoleCards}
+          selectedWinners={hook.selectedWinners}
+          onToggleWinner={hook.handleToggleWinner}
+          onConfirmResult={hook.handleConfirmShowdownResult}
+          submitting={disabled}
+          revealOnly
+          onRevealAndContinue={hook.handleRevealRunout}
+        />
+      );
+    }
     if (hook.showBoardEntry && hook.boardEntryStreetNow) {
       return (
         <BoardEntryPanel
