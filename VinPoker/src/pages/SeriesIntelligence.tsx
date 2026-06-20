@@ -105,9 +105,10 @@ export default function SeriesIntelligence() {
         <CollapsibleContent className="space-y-3 pt-3">
           {FEATURES.seriesIntelligenceCsvImport ? (
             <CsvImportPanel
-              onLoaded={setCsvEvents}
-              onClear={() => setCsvEvents(null)}
-              isLoaded={csvEvents != null}
+              onSeriesParsed={lib.addSeriesFromParse}
+              loadedCount={lib.count}
+              existingFilenames={lib.filenames}
+              lastSaveError={lib.lastSaveError}
             />
           ) : (
             <>
