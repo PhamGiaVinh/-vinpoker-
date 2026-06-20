@@ -10,18 +10,22 @@ import { FEATURES } from "@/lib/featureFlags";
 import { SERIES_INTEL } from "@/lib/seriesIntelligence";
 import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerCommandCenter";
 import { SeriesHealthReport } from "@/components/series-intelligence/SeriesHealthReport";
+import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel";
+import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
  * Role-guarded (club admin / club owner / super_admin). Reads the club's own
  * live native series data (read-only) and renders a descriptive BI dashboard —
- * "what happened / is happening", never prediction. The legacy CSV prototype is
- * kept as a collapsed fallback. No backend / DB / write path here.
+ * "what happened / is happening", never prediction. A collapsed CSV import lets the
+ * owner load test / what-if data (browser-only). No backend / DB / write path here.
  */
 export default function SeriesIntelligence() {
   const nav = useNavigate();
   const { isAdmin, isClubAdmin, isClubOwner, loading } = useAuth();
   const [mode, setMode] = useState<"dashboard" | "report">("dashboard");
+  // CSV test data (browser-only). When set, the dashboard renders it instead of live native data.
+  const [csvEvents, setCsvEvents] = useState<SeriesEvent[] | null>(null);
 
   if (loading) return null;
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
@@ -72,11 +76,11 @@ export default function SeriesIntelligence() {
         <p className="text-sm text-muted-foreground">{SERIES_INTEL.safetyBoundary}</p>
       </Card>
 
-      {/* Owner Command Center — live native BI dashboard */}
-      <OwnerCommandCenter />
+      {/* Owner Command Center — live native BI dashboard (or CSV test data when loaded) */}
+      <OwnerCommandCenter csvEvents={csvEvents} />
 
-      {/* Legacy CSV prototype — demoted to a collapsed fallback */}
-      <Collapsible>
+      {/* CSV import — test / what-if data, browser-only (collapsed) */}
+      <Collapsible defaultOpen={csvEvents != null}>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between gap-2">
             <span className="flex items-center gap-2">
@@ -86,54 +90,62 @@ export default function SeriesIntelligence() {
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-3">
-          {/* 4 steps */}
-          <div className="space-y-3">
-            {SERIES_INTEL.steps.map((s) => (
-              <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
-                <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
-                  {s.n}
+          {FEATURES.seriesIntelligenceCsvImport ? (
+            <CsvImportPanel
+              onLoaded={setCsvEvents}
+              onClear={() => setCsvEvents(null)}
+              isLoaded={csvEvents != null}
+            />
+          ) : (
+            <>
+              {/* legacy static fallback (flag off) */}
+              <div className="space-y-3">
+                {SERIES_INTEL.steps.map((s) => (
+                  <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
+                    <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
+                      {s.n}
+                    </div>
+                    <div>
+                      <h3 className="font-display text-base">{s.label}</h3>
+                      <p className="text-xs text-muted-foreground">{s.desc}</p>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              <Card className="p-4 gradient-card border-primary/40">
+                <h3 className="font-display text-base flex items-center gap-2 mb-2">
+                  <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {SERIES_INTEL.requiredColumns.map((c) => (
+                    <Badge key={c} variant="secondary" className="font-mono text-[11px]">
+                      {c}
+                    </Badge>
+                  ))}
                 </div>
-                <div>
-                  <h3 className="font-display text-base">{s.label}</h3>
-                  <p className="text-xs text-muted-foreground">{s.desc}</p>
-                </div>
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{SERIES_INTEL.eventIdNote}</span>
+                </p>
               </Card>
-            ))}
-          </div>
 
-          {/* CSV checklist */}
-          <Card className="p-4 gradient-card border-primary/40">
-            <h3 className="font-display text-base flex items-center gap-2 mb-2">
-              <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {SERIES_INTEL.requiredColumns.map((c) => (
-                <Badge key={c} variant="secondary" className="font-mono text-[11px]">
-                  {c}
-                </Badge>
-              ))}
-            </div>
-            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{SERIES_INTEL.eventIdNote}</span>
-            </p>
-          </Card>
+              <Card className="p-4 border-primary/30">
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {SERIES_INTEL.demoNotes.map((n, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span aria-hidden>•</span>
+                      <span>{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
 
-          {/* demo notes */}
-          <Card className="p-4 border-primary/30">
-            <ul className="space-y-1 text-xs text-muted-foreground">
-              {SERIES_INTEL.demoNotes.map((n, i) => (
-                <li key={i} className="flex gap-2">
-                  <span aria-hidden>•</span>
-                  <span>{n}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Button disabled variant="outline" className="w-full gap-2">
-            <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
-          </Button>
+              <Button disabled variant="outline" className="w-full gap-2">
+                <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
+              </Button>
+            </>
+          )}
         </CollapsibleContent>
       </Collapsible>
     </div>
