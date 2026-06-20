@@ -18,7 +18,6 @@ import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import type { LiveSeat, LiveTableMeta } from '@/lib/onlinePoker/client';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
-import { HandStateViewer } from '@/components/poker/HandStateViewer';
 import { ActionBar } from '@/components/poker/ActionBar';
 import { ShowdownResult } from '@/components/poker/ShowdownResult';
 import { AllInRunout } from '@/components/poker/AllInRunout';
@@ -281,7 +280,6 @@ export default function OnlinePokerTable() {
   // (active/allin) — the server blocks that to preserve chip conservation. Just being at
   // the table while OTHERS play (sitting_out / joined after the deal) must NOT block leave.
   const iAmInLiveHand = computeIAmInLiveHand(hand, mySeatNo);
-  const seatedPlayers = [...seats].sort((a, b) => a.seatNo - b.seatNo);
   const occupied = occupiedCount(seats);
   const tableLive = isTableLive(table.status, occupied);
 
@@ -367,6 +365,10 @@ export default function OnlinePokerTable() {
     } catch { toast.error('Không mua được chip, thử lại.'); }
   };
 
+  // Host-transfer RPC wrapper. The N8 declutter removed the on-screen "Trao quyền" button
+  // (the server auto-reassigns host to the next seated player on leave, so continuity never
+  // depends on it); retained so a future header menu can re-add discretionary hand-off with
+  // zero new logic.
   const transfer = async (toUserId: string, name: string) => {
     try {
       const res = (await actions.transferHost(toUserId)) as RpcOutcome;
@@ -390,8 +392,6 @@ export default function OnlinePokerTable() {
     } catch { toast.error('Gửi hành động thất bại, thử lại.'); }
     finally { setSubmitting(false); }
   };
-
-  const nameFor = (s: LiveSeat) => (s.userId === myUserId ? 'Bạn' : s.displayName || `Ghế ${s.seatNo}`);
 
   return (
     <div
@@ -485,32 +485,6 @@ export default function OnlinePokerTable() {
         )}
       </div>
 
-      {/* players + host controls ("danh sách chủ trên bàn") */}
-      {seatedPlayers.length > 0 && (
-        <Card className="p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người chơi tại bàn</div>
-          <div className="space-y-1.5">
-            {seatedPlayers.map((s) => {
-              const isHost = s.userId === hostUserId;
-              const isMe = s.userId === myUserId;
-              return (
-                <div key={s.seatNo} className="flex items-center gap-2 text-sm">
-                  <span className="w-7 text-center text-xs text-muted-foreground tabular-nums">#{s.seatNo}</span>
-                  <span className={`truncate ${isMe ? 'font-semibold' : ''}`}>{nameFor(s)}</span>
-                  {isHost && <Badge variant="outline" className="gap-1 border-primary/40 text-primary"><Crown className="h-3 w-3" /> Chủ</Badge>}
-                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtChips(s.stack)}</span>
-                  {amIHost && !isHost && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => transfer(s.userId, nameFor(s))}>
-                      Trao quyền
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
       {/* showdown result — winner / pot / refund, held during the dwell so it's seen
           before the next hand. Suppressed for an all-in cinematic (which shows its own
           result at the end). Takes priority over the action bar + waiting hint. */}
@@ -541,8 +515,6 @@ export default function OnlinePokerTable() {
           </div>
         ) : null
       )}
-
-      {(showing || inActiveHand) && <HandStateViewer hand={showing ? showing.ringView : hand!} />}
 
       <SitDownDialog
         open={sitSeat != null}
