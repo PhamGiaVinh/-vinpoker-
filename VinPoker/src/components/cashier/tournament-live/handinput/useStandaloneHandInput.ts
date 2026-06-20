@@ -141,6 +141,8 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [revealDone, setRevealDone] = useState(false);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
+  // P2-3: operator marks this hand as having a dead small blind (no SB posted).
+  const [deadSb, setDeadSb] = useState(false);
   const [sbAmount, setSbAmount] = useState(0);
   const [bbAmount, setBbAmount] = useState(0);
   const [liveLevelNumber, setLiveLevelNumber] = useState<number | null>(null);
@@ -284,6 +286,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setRevealDone(false);
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
+    setDeadSb(false);
     setSentCommunityStreets(new Set());
     setPersistedBoardCount(0);
     setSyncPhase("idle");
@@ -484,8 +487,9 @@ export function useStandaloneHandInput(tournamentId: string) {
         .filter((a) => a.street === currentStreet)
         .map((a) => ({ player_id: a.player_id, seat_number: a.seat_number, action_type: a.action_type })),
       bigBlind,
+      deadSb,
     }),
-    [players, buttonSeat, currentStreet, actions, bigBlind]
+    [players, buttonSeat, currentStreet, actions, bigBlind, deadSb]
   );
   const engineActor = useMemo(() => actorToAct(engineState), [engineState]);
 
@@ -571,7 +575,8 @@ export function useStandaloneHandInput(tournamentId: string) {
   const actorPos = actorPlayer ? positionsBySeat.get(actorPlayer.seat_number) || "" : "";
   const sbPosted = useMemo(() => actions.some((a) => a.action_type === "post_sb"), [actions]);
   const bbPosted = useMemo(() => actions.some((a) => a.action_type === "post_bb"), [actions]);
-  const blindsConfirmed = blindsConfirmedLocal || (sbPosted && bbPosted);
+  // P2-3: a dead-SB hand needs only the BB posted.
+  const blindsConfirmed = blindsConfirmedLocal || (bbPosted && (deadSb || sbPosted));
   const isHeadsUp = players.length === 2;
   const blindLevelMissing = !blindLevelSnapshot || blindLevelSnapshot.level_number == null;
   const blindLevelChanged = hasLevelChangedDuringHand(blindLevelSnapshot, { level_number: liveLevelNumber });
@@ -980,12 +985,17 @@ export function useStandaloneHandInput(tournamentId: string) {
     void handleAction(playerId, type, amount);
   };
   const handleConfirmBlinds = () => {
-    if (!sbPosted || !bbPosted) {
-      toast.error("Hãy post Small Blind và Big Blind trước khi xác nhận");
+    if (!bbPosted || (!deadSb && !sbPosted)) {
+      toast.error(
+        deadSb ? "Hãy post Big Blind trước khi xác nhận" : "Hãy post Small Blind và Big Blind trước khi xác nhận"
+      );
       return;
     }
     setBlindsConfirmedLocal(true);
   };
+  // P2-3: toggle "dead small blind" (no SB this hand). Clearing it after an SB was
+  // already posted is harmless — sbPosted then drives the normal requirement again.
+  const handleToggleDeadSb = () => setDeadSb((v) => !v);
 
   const handleSeatTap = (seat: RailSeat) => {
     if (!handStarted) {
@@ -1417,6 +1427,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     sbPosted,
     bbPosted,
     blindsConfirmed,
+    deadSb,
     // showdown / review
     selectedWinners,
     muckedPlayerIds,
@@ -1444,6 +1455,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleDockAction,
     handlePostBlind,
     handleConfirmBlinds,
+    handleToggleDeadSb,
     handleSeatTap,
     handleSeatNumberTap,
     handleUndo,

@@ -49,6 +49,13 @@ export interface EngineState {
   streetActions: EngineStreetAction[];
   /** Big blind size (min-raise guidance). 0 → fall back to current bet. */
   bigBlind?: number;
+  /**
+   * P2-3 dead small blind: this hand posts no SB (the SB position is dead after a
+   * bust, per the tournament dead-button rule). OPTIONAL — only the engine
+   * standalone console sets it; default false ⇒ the normal flow and the old
+   * embedded tab are unchanged. When true, the SB is neither prompted nor required.
+   */
+  deadSb?: boolean;
 }
 
 export interface LegalActions {
@@ -186,7 +193,7 @@ export function actorToAct(state: EngineState): ActorView | null {
     const { sbSeat, bbSeat } = blindSeats(seatNums, buttonSeat);
     const sbPosted = streetActions.some((a) => a.action_type === "post_sb");
     const bbPosted = streetActions.some((a) => a.action_type === "post_bb");
-    if (sbSeat != null && !sbPosted) {
+    if (!state.deadSb && sbSeat != null && !sbPosted) {
       const p = seatOf(seats, sbSeat);
       if (p && !p.folded) return view(state, p, "post_sb");
     }
@@ -226,7 +233,7 @@ export function isRoundComplete(state: EngineState): boolean {
     const bbPosted = state.streetActions.some((a) => a.action_type === "post_bb");
     const sb = sbSeat != null ? seatOf(state.seats, sbSeat) : undefined;
     const bb = bbSeat != null ? seatOf(state.seats, bbSeat) : undefined;
-    if (sb && !sb.folded && !sbPosted) return false;
+    if (!state.deadSb && sb && !sb.folded && !sbPosted) return false;
     if (bb && !bb.folded && !bbPosted) return false;
   }
   const highest = currentBet(state.seats);
