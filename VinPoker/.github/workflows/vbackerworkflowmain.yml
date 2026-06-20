@@ -15,6 +15,19 @@ on:
         type: boolean
         default: false
 
+# Only the LATEST deploy to main wins. When several PRs merge close together, every
+# push triggers its own `vercel --prod` deploy; without this they ran in parallel and
+# the production alias could get pinned to an OLDER commit (the race that left prod on a
+# stale build even though every workflow reported "success"). cancel-in-progress stops
+# the older in-flight deploys so production always lands on the newest commit.
+# ⚠️ Owner-approved DB-migration deploys (workflow_dispatch + deploy_db=true) must be run
+# in a QUIET window with no concurrent merges — a later push can cancel an in-flight run
+# in this group, which would interrupt `supabase db push`. (DB deploys are already done in
+# controlled windows per VinPoker/CLAUDE.md, so this matches existing practice.)
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
