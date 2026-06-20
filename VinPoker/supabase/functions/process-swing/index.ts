@@ -599,6 +599,11 @@ Deno.serve(async (req: Request) => {
     for (const cid of clubIds) {
       let lockAcquired = false;
       let lockToken: string | null = null;  // B2.2b: fencing token from the fenced acquire
+      // C3 — per-club-run trace + pass-timing checkpoints (durations = diffs between marks).
+      const traceId = crypto.randomUUID();
+      const swingMarks: Array<{ pass: string; at: number }> = [];
+      const mark = (pass: string) => { swingMarks.push({ pass, at: Date.now() }); };
+      mark("run_start");
 
       // ── B2.1: scale the lock lease by active-table count ─────────
       // Worst-case runs (80–200s) can exceed the old hardcoded 120s lease, which the
@@ -711,6 +716,7 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        mark("pass0");
         // ── PASS 0 — Batch swing duration from pool snapshot ──────────────
         let batchDurationMinutes = clubCfg.swing_duration_minutes;
         let batchSwingDueAt: string | undefined;
@@ -781,6 +787,7 @@ Deno.serve(async (req: Request) => {
           availableDealerCount = count ?? 0;
         }
 
+        mark("pass0c");
         // ── PASS 0c: Detect & auto-fix stuck dealers ────────────────────────
 
         if (!dryRun) {
@@ -1342,6 +1349,7 @@ Deno.serve(async (req: Request) => {
 
         // B2.2b: still hold the lock before mutating? (lease reclaimed → abort)
         await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);
+        mark("pass1");
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
@@ -1402,6 +1410,7 @@ Deno.serve(async (req: Request) => {
         }
 
         await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);  // B2.2b ownership guard
+        mark("pass1b");
         // ── PASS 1b — Three-tier circuit breaker for stale pre-assign cleanup ──
         // Tier 3 (critical): pre-assign overdue ≥4h → force-release + alert
         // Tier 1+2 (stale):   pre-assign overdue ≥60min + assignment past due → cleanup
@@ -1998,6 +2007,7 @@ if (tier2Count > 0) {
         };
 
         await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);  // B2.2b ownership guard
+        mark("passR");
         // ── PASS R — Forward Rotation Scheduler ─────────────────────────
         // Reconcile/adopt → snapshot → honest OT marking → solve (R1-R6) →
         // persist schedule → CHỐT due slots + per-tournament Telegram batch.
@@ -2116,6 +2126,7 @@ if (tier2Count > 0) {
 
         // B2.2b: final + most important ownership gate before executing real swings.
         await ensureLockOwnership(admin, cid, lockToken, lockTimeoutSec);
+        mark("pass3");
         // ── PASS 3 — Execute swings at T-0 ────────────────────────────────
         const nowPlusBuf = new Date(Date.now() + SWING_WINDOW_BUFFER_MINUTES * 60 * 1000).toISOString();
         const now = new Date().toISOString();
@@ -3809,6 +3820,7 @@ if (tier2Count > 0) {
           }
         }
 
+        mark("pass4");
         // ── PASS 4 — End expired breaks ──────────────────────────────────
         if (!dryRun) {
           const { data: endedBreaks } = await admin.rpc("end_expired_breaks", {
@@ -3930,6 +3942,28 @@ if (tier2Count > 0) {
           );
         }
       } finally {
+        // C3 — best-effort per-run metrics (trace_id + per-pass durations). NEVER throws.
+        try {
+          mark("run_end");
+          const passDurations: Record<string, number> = {};
+          for (let i = 1; i < swingMarks.length; i++) {
+            passDurations[swingMarks[i - 1].pass] = swingMarks[i].at - swingMarks[i - 1].at;
+          }
+          const runTotalMs = swingMarks.length > 1
+            ? swingMarks[swingMarks.length - 1].at - swingMarks[0].at
+            : 0;
+          console.log(`[process-swing] run_metrics trace=${traceId} club=${cid} total_ms=${runTotalMs} ${JSON.stringify(passDurations)}`);
+          await admin.from("swing_run_metrics").insert({
+            trace_id: traceId,
+            club_id: cid,
+            total_ms: runTotalMs,
+            pass_durations: passDurations,
+            lock_token: lockToken,
+          });
+        } catch (metricsErr) {
+          console.warn(`[process-swing] run_metrics insert skipped (non-fatal) club=${cid}:`, metricsErr);
+        }
+
         if (lockAcquired) {
           try {
             // B2.2b: token-scoped release \u2014 only deletes OUR lock (fixes FM-2: an overran
