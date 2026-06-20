@@ -60,6 +60,9 @@ export function OwnerCommandCenter() {
           <Database className="h-4 w-4 text-primary" /> Tổng quan
         </h3>
         <OverviewCards economics={view.economics} />
+        <p className="text-[10px] text-muted-foreground/80">
+          Prize pool là số ĐÃ NHẬP trong giải, chưa cập nhật tự động từ buy-in — không phải prize pool thực thu.
+        </p>
       </section>
 
       <DataQualityCard readiness={view.readiness} />

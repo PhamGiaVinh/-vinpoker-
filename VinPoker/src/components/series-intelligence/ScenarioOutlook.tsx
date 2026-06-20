@@ -72,7 +72,7 @@ function ScenarioCard({ s }: { s: Scenario }) {
           <span>{moneyRange(s.feeVolumeRange)}</span>
         </div>
         <div className="flex justify-between tabular-nums">
-          <span className="text-muted-foreground">Prize pool</span>
+          <span className="text-muted-foreground">Prize pool (đã nhập)</span>
           <span>{moneyRange(s.prizePoolRange)}</span>
         </div>
       </div>

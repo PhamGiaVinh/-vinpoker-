@@ -36,7 +36,7 @@ export function EconomicsTable({ rows }: { rows: EventEconomicsRow[] }) {
               <TableHead className="text-right">Entry</TableHead>
               <TableHead className="text-right">Unique</TableHead>
               <TableHead className="text-right">Re-entry</TableHead>
-              <TableHead className="text-right">Prize pool</TableHead>
+              <TableHead className="text-right">Prize pool (đã nhập)</TableHead>
               <TableHead className="text-right">GTD</TableHead>
               <TableHead className="text-right">Rake yield</TableHead>
             </TableRow>
@@ -68,7 +68,8 @@ export function EconomicsTable({ rows }: { rows: EventEconomicsRow[] }) {
       </div>
       <p className="text-[10px] text-muted-foreground/80">
         Số mô tả từ dữ liệu VinPoker — không phải báo cáo kế toán. "—" = chưa có dữ liệu. Rake yield =
-        fee / buy-in (cần đối chiếu nghĩa buy-in khi UAT).
+        fee / buy-in (cần đối chiếu nghĩa buy-in khi UAT). <span className="text-warning">Prize pool là số ĐÃ NHẬP
+        trong giải, CHƯA cập nhật tự động từ buy-in — không phải prize pool thực thu.</span>
       </p>
     </Card>
   );
