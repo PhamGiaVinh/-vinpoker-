@@ -84,66 +84,65 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
     );
   }
 
-  // Hero (my own) cards are the strongest object after the pot: larger, lifted, shadowed.
+  // Cards float ABOVE the N8 name-plate. Hero (my own) cards are large + lifted; opponents
+  // get small backs or their revealed cards; folded / sitting-out seats show no cards.
   const cards = isMe
     ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="lg" reveal={!!c && c !== '?'} />)
-    : folded
-      ? <span className="px-2 py-1 text-[11px] text-white/45">đã bỏ</span>
-      : sittingOut
-        ? <span className="px-2 py-1 text-[11px] text-white/40">chờ ván</span>
-        : seat.revealedCards?.length
-          ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
-          : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
+    : folded || sittingOut
+      ? null
+      : seat.revealedCards?.length
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
+        : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
 
   return (
     <div className={cn(
-      'flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out sm:w-24 lg:w-28',
+      'flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out',
       // Non-contesting seats drop contrast so the eye finds the live players first.
-      folded && 'opacity-40',
-      sittingOut && 'opacity-55',
+      folded && 'opacity-45',
+      sittingOut && 'opacity-60',
       // The actor is gently lifted toward the viewer.
       seat.isToAct && 'scale-105',
     )}>
-      <div className={cn(
-        'flex items-end gap-0.5',
-        isMe && 'origin-bottom -translate-y-1 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
-      )}>{cards}</div>
+      {cards && (
+        <div className={cn(
+          'flex items-end gap-0.5',
+          isMe && 'origin-bottom -translate-y-0.5 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
+        )}>{cards}</div>
+      )}
 
-      <div className="relative">
-        <div
-          className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg sm:h-11 sm:w-11 sm:text-sm lg:h-12 lg:w-12',
-            folded ? 'bg-zinc-700 grayscale' : AVATAR_BG[seat.seat % AVATAR_BG.length],
-            seat.isToAct ? 'op-to-act-pulse'
-              : allin ? 'op-allin-pulse'
-              : isMe ? 'ring-2 ring-white/40'
-              : 'ring-1 ring-white/15',
-          )}
-        >
-          {initials(seat.displayName, seat.seat)}
-        </div>
-        {seat.isButton && (
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-bold text-black shadow sm:h-5 sm:w-5 sm:text-[10px]">D</span>
-        )}
-        {seat.isToAct && (
-          <span className="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-black shadow sm:h-5 sm:w-5">
-            <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-          </span>
-        )}
-        {allin && (
-          <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-[#991B1B] px-1.5 text-[8px] font-bold uppercase tracking-wide text-amber-200 shadow sm:text-[9px]">All-in</span>
-        )}
-      </div>
-
+      {/* N8-style horizontal name-plate: [avatar (+dealer D) │ name / stack] */}
       <div className={cn(
-        'w-full rounded-lg border px-1.5 py-0.5 text-center transition-colors duration-300',
-        isWinner ? 'op-winner-glow border-amber-300/70 bg-amber-300/10'
-          : seat.isToAct ? 'border-primary/60 bg-primary/15'
-          : allin ? 'border-amber-300/50 bg-amber-300/[0.06]'
-          : isMe ? 'border-white/25 bg-black/65' : 'border-white/10 bg-black/55',
+        'flex items-center gap-1.5 rounded-lg border px-1.5 py-1 pr-2 transition-colors duration-300',
+        isWinner ? 'op-winner-glow border-amber-300/70 bg-black/75'
+          : seat.isToAct ? 'op-to-act-pulse border-transparent bg-black/80'
+          : allin ? 'op-allin-pulse border-transparent bg-black/80'
+          : isMe ? 'border-primary/40 bg-black/72'
+          : 'border-white/10 bg-black/62',
       )}>
-        <div className="truncate text-[11px] font-medium text-white sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</div>
-        <div className={cn('text-[11px] font-semibold tabular-nums sm:text-xs', allin ? 'text-amber-300' : 'text-primary')}>{bbOrChips(seat.stack, bb)}</div>
+        <div className="relative shrink-0">
+          <div className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white sm:h-8 sm:w-8',
+            folded ? 'bg-zinc-700 grayscale' : AVATAR_BG[seat.seat % AVATAR_BG.length],
+          )}>
+            {initials(seat.displayName, seat.seat)}
+          </div>
+          {seat.isButton && (
+            <span className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-b from-[#f6d27a] to-[#b9892f] text-[8px] font-bold text-[#412402] shadow sm:h-[18px] sm:w-[18px] sm:text-[9px]">D</span>
+          )}
+        </div>
+
+        <div className="min-w-0 leading-tight">
+          <div className="flex items-center gap-1">
+            <span className="max-w-[58px] truncate text-[11px] font-medium text-white sm:max-w-[76px] sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</span>
+            {seat.isToAct && <Clock className="h-2.5 w-2.5 shrink-0 text-primary" />}
+          </div>
+          <div className={cn('text-[11px] font-semibold tabular-nums sm:text-xs', allin ? 'text-amber-300' : 'text-primary')}>
+            {folded ? <span className="font-normal text-white/45">đã bỏ</span>
+              : sittingOut ? <span className="font-normal text-white/40">chờ ván</span>
+              : allin ? <span>ALL-IN</span>
+              : bbOrChips(seat.stack, bb)}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -222,7 +221,7 @@ export function SeatRing({
         {/* board + pot — the focal point, scaled up on larger screens */}
         <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
           <div className={cn('flex items-center gap-1.5 rounded-full border border-amber-300/30 bg-black/60 px-3.5 py-1 shadow-md', winnerSeats?.length && 'op-winner-glow')}>
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Pot</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Tổng Pot</span>
             <span className="text-sm font-bold tabular-nums text-primary sm:text-base">{bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="text-[10px] tabular-nums text-white/45">{fmtChips(hand.pot)}</span>}
           </div>
