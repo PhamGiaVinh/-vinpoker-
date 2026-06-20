@@ -59,3 +59,50 @@ export function computeGtdOverlay(events: SeriesEvent[]): GtdOverlayResult {
   }
   return { available: rows.length > 0, rows, disclaimer: DISCLAIMER };
 }
+
+// ----------------------------------------------------------------------------
+// GTD #2 — server-authoritative TRUE prize pool (two-state).
+// ----------------------------------------------------------------------------
+
+/** Result of the read-only RPC get_tournament_prize_pool (server is the source of truth). */
+export interface TruePrizePool {
+  prizePool: number; // SUM(buy_in) over CONFIRMED (cashier-paid) registrations
+  confirmedEntryCount: number;
+}
+
+export type OverlaySource = "true" | "estimate";
+
+export interface ResolvedOverlay {
+  source: OverlaySource;
+  prizeValue: number | null; // true prize pool, or the estimate
+  overlay: number | null; // max(0, gtd − prizeValue)
+  covered: boolean | null;
+  label: string; // honest source label
+}
+
+export const TRUE_LABEL = "thực thu (cashier-confirmed)";
+export const ESTIMATE_LABEL = "ước tính (entry × buy-in)";
+
+/**
+ * Pick the honest overlay per row. Uses the SERVER's true prize pool ONLY when it exists AND
+ * there is at least one confirmed (cashier-paid) entry; otherwise falls back to the #415
+ * estimate. The client never recomputes the true number — it only reads `truePrize` from the RPC.
+ */
+export function resolveOverlay(row: GtdOverlayRow, truePrize: TruePrizePool | null): ResolvedOverlay {
+  if (truePrize !== null && truePrize.confirmedEntryCount > 0) {
+    return {
+      source: "true",
+      prizeValue: truePrize.prizePool,
+      overlay: Math.max(0, row.gtd - truePrize.prizePool),
+      covered: truePrize.prizePool >= row.gtd,
+      label: TRUE_LABEL,
+    };
+  }
+  return {
+    source: "estimate",
+    prizeValue: row.estimatedActual,
+    overlay: row.overlay,
+    covered: row.covered,
+    label: ESTIMATE_LABEL,
+  };
+}

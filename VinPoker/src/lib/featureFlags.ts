@@ -270,6 +270,14 @@ export const FEATURES = {
    */
   clubSeriesIntelligence: true,
   /**
+   * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
+   * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
+   * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
+   * otherwise. Default **OFF** (dark) — the RPC is source-only/not applied yet; flip to true
+   * only AFTER the controlled apply of 20261011000000.
+   */
+  gtdTruePrizePool: false,
+  /**
    * Payroll per-dealer MANUAL BHXH + tax override. Adds two optional inputs to the dealer
    * edit/create dialogs ("BHXH thủ công" + "Thuế TNCN thủ công"): để trống = tự động tính,
    * nhập 0 = không thu, nhập số = dùng số đó. Default **OFF** (dark) because it needs the two
