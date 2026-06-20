@@ -12,6 +12,7 @@ import { OwnerCommandCenter } from "@/components/series-intelligence/OwnerComman
 import { SeriesHealthReport } from "@/components/series-intelligence/SeriesHealthReport";
 import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel";
 import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
+import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 
 /**
@@ -91,6 +92,9 @@ export default function SeriesIntelligence() {
           onClearAll={lib.clearAll}
         />
       )}
+
+      {/* Reference Distribution — same tournaments grouped across the whole library (read-only) */}
+      {FEATURES.seriesIntelligenceCsvImport && <ReferenceDistributionPanel series={lib.series} />}
 
       {/* CSV import — test / what-if data, browser-only (collapsed) */}
       <Collapsible defaultOpen={lib.count > 0}>
