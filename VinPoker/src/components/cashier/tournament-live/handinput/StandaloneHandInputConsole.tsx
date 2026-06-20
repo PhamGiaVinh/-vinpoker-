@@ -130,6 +130,8 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onPost={hook.handlePostBlind}
           onConfirm={hook.handleConfirmBlinds}
           disabled={disabled}
+          deadSb={hook.deadSb}
+          onToggleDeadSb={hook.handleToggleDeadSb}
         />
       );
     }
