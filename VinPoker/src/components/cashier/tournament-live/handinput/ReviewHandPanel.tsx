@@ -6,6 +6,7 @@
 import { Input } from "@/components/ui/input";
 import { type Card, displayCard } from "@/components/shared/CardSlotPicker";
 import { formatStack } from "./format";
+import { type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
 
 export interface ReviewPlayer {
   player_id: string;
@@ -28,6 +29,8 @@ interface ReviewHandPanelProps {
   winnerDetermined: boolean;
   /** conservationOk && winnerDetermined (the submit_ready gate). */
   canSubmit: boolean;
+  /** Auto-settle per-pot-layer breakdown (P2-e) — who won which pot. Empty for manual/fold-win. */
+  showdownLayers?: ShowdownLayerResult[];
   onSubmit: () => void;
   onBack: () => void;
   submitting?: boolean;
@@ -42,12 +45,17 @@ export function ReviewHandPanel({
   conservationOk,
   winnerDetermined,
   canSubmit,
+  showdownLayers,
   onSubmit,
   onBack,
   submitting,
 }: ReviewHandPanelProps) {
   const startTotal = players.reduce((s, p) => s + p.starting_stack, 0);
   const endTotal = players.reduce((s, p) => s + (endingStacks[p.player_id] ?? p.current_stack), 0);
+  const seatLabel = (id: string) => {
+    const p = players.find((x) => x.player_id === id);
+    return p ? `Ghế ${p.seat_number}` : id.slice(0, 4);
+  };
 
   return (
     <div className="space-y-3 rounded-2xl border border-blue-500/40 bg-card p-3.5">
@@ -56,6 +64,20 @@ export function ReviewHandPanel({
         Board: <span className="font-mono text-foreground">{board.filter((c): c is Card => c !== null).map((c) => displayCard(c)).join("  ") || "—"}</span>
         <span className="ml-3">Pot: <strong className="text-emerald-400">{formatStack(potSize)}</strong></span>
       </div>
+
+      {showdownLayers && showdownLayers.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-950/10 p-2">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-300">Chia pot theo layer (engine)</div>
+          {showdownLayers.map((l) => (
+            <div key={l.index} className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">
+                {l.index === 0 ? "Pot chính" : `Side pot ${l.index}`}: <strong className="text-foreground">{formatStack(l.amount)}</strong>
+              </span>
+              <span className="text-emerald-300">→ {l.winner_player_ids.map(seatLabel).join(", ")}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
         {players.map((p) => {

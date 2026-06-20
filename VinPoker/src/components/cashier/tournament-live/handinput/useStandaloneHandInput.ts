@@ -42,6 +42,7 @@ import {
   type EngineState,
   type BlindLevelSnapshot,
 } from "@/lib/tracker-poker/trackerEngine";
+import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
 import {
   deriveTrackerWorkflowState,
   isActionState,
@@ -133,6 +134,8 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [buttonSeat, setButtonSeat] = useState<number>(1);
   const [buttonConfirmed, setButtonConfirmed] = useState(false);
   const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
+  const [muckedPlayerIds, setMuckedPlayerIds] = useState<Set<string>>(new Set());
+  const [showdownLayers, setShowdownLayers] = useState<ShowdownLayerResult[]>([]);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
   const [sbAmount, setSbAmount] = useState(0);
@@ -273,6 +276,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     setUndoStack([]);
     setSelectedActorId(null);
     setSelectedWinners([]);
+    setMuckedPlayerIds(new Set());
+    setShowdownLayers([]);
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
     setSentCommunityStreets(new Set());
@@ -1135,15 +1140,52 @@ export function useStandaloneHandInput(tournamentId: string) {
       return { ...prev, [playerId]: upd };
     });
   };
+  // Guardrail 3 — muck = forfeit but the chips stay in the pot (dead money):
+  // settleShowdown drops a mucked player from the rank but keeps their committed
+  // chips as a pot contributor (they just can't win).
+  const handleToggleMuck = (playerId: string) => {
+    setMuckedPlayerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  };
+
+  // P2-1 auto-settle: rank revealed hands + pay each side-pot layer exactly.
+  // settleShowdown returns null until every live contender has revealed or is mucked
+  // → we tell the operator exactly what's missing instead of guessing (no phantom stacks).
+  const handleAutoSettle = () => {
+    const board = communityCards.filter((c): c is Card => c !== null);
+    const settlement = settleShowdown(engineState.seats, playerHoleCards, board, muckedPlayerIds);
+    if (!settlement) {
+      toast.error("Chưa tự chấm được — cần đủ 5 lá board + 2 lá tẩy cho mỗi người còn bài (hoặc bấm Úp bài cho người không lật).");
+      return;
+    }
+    const map: Record<string, number> = {};
+    settlement.results.forEach((r) => {
+      map[r.player_id] = r.ending_stack;
+    });
+    setShowdownLayers(settlement.layers);
+    setEndingStacks(map);
+    toast.success("Đã tự chấm bài + chia pot theo từng layer");
+  };
+
   const handleConfirmShowdownResult = () => {
     if (selectedWinners.length === 0) {
       toast.error("Chọn người thắng trước");
       return;
     }
+    // Guardrail 2 — a whole-pot manual split re-introduces the side-pot imprecision
+    // auto-settle fixes; WARN (don't block) when side pots exist.
+    if (potBreakdown.sidePots.length > 0) {
+      toast.warning("Hand có side pot — chia nguyên pot thủ công có thể sai. Nên bấm 'Tự chấm bài', hoặc kiểm tra từng stack.");
+    }
     const map: Record<string, number> = {};
     settleSelectedWinners(engineState.seats, selectedWinners).forEach((r) => {
       map[r.player_id] = r.ending_stack;
     });
+    setShowdownLayers([]);
     setEndingStacks(map);
   };
   const handleEndingStackChange = (playerId: string, value: number) => {
@@ -1155,6 +1197,19 @@ export function useStandaloneHandInput(tournamentId: string) {
     // Workflow v2 HARD-GATE: only submit from submit_ready.
     if (workflowState !== "submit_ready") {
       toast.error("Chưa thể gửi hand — cần hoàn tất đúng quy trình trước.");
+      return;
+    }
+    // 🔴 P1-2 HARD-BLOCK (re-verify at the edge): never persist a phantom or
+    // non-conserving result. `submit_ready` already requires reviewValid
+    // (conservationOk + a winner), but re-check here so an EMPTY result (auto-settle
+    // returned null and the operator never entered manually) or any Σ-mismatch can
+    // NEVER reach record_hand.
+    if (Object.keys(endingStacks).length === 0) {
+      toast.error("Chưa có kết quả ván — bấm 'Tự chấm bài' hoặc chọn người thắng trước khi lưu.");
+      return;
+    }
+    if (!conservationOk) {
+      toast.error("Tổng chip vào ≠ ra — không thể lưu. Kiểm tra lại stack kết thúc / người thắng.");
       return;
     }
     const stacksEdited = players.some(
@@ -1336,6 +1391,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     blindsConfirmed,
     // showdown / review
     selectedWinners,
+    muckedPlayerIds,
+    showdownLayers,
     playerHoleCards,
     setPlayerHoleCards,
     isSummary,
@@ -1365,6 +1422,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUpdateCommunityCards,
     handleShowHoleCards,
     handleToggleWinner,
+    handleToggleMuck,
+    handleAutoSettle,
     handleHoleCardChange,
     handleConfirmShowdownResult,
     handleEndingStackChange,

@@ -102,6 +102,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           conservationOk={hook.conservationOk}
           winnerDetermined={hook.winnerDetermined}
           canSubmit={hook.reviewValid}
+          showdownLayers={hook.showdownLayers}
           onSubmit={hook.handleSubmitHand}
           onBack={() => hook.setEndingStacks({})}
           submitting={hook.submitting}
@@ -158,8 +159,11 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           board={hook.communityCards}
           holeCards={hook.playerHoleCards}
           usedCards={hook.usedCards}
+          mucked={hook.muckedPlayerIds}
           onHoleCardChange={hook.handleHoleCardChange}
+          onToggleMuck={hook.handleToggleMuck}
           onReveal={hook.handleShowHoleCards}
+          onAutoSettle={hook.handleAutoSettle}
           selectedWinners={hook.selectedWinners}
           onToggleWinner={hook.handleToggleWinner}
           onConfirmResult={hook.handleConfirmShowdownResult}
