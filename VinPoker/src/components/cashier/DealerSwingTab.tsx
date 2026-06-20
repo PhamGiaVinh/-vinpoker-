@@ -660,7 +660,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setMassAssignBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("mass-assign", {
-        body: { club_id: cid, shift_id: selectedTour ?? undefined },
+        // B1.3 — per-action idempotency key: a retried/duplicate delivery returns the cached
+        // "N assigned" instead of re-running fillEmptyTables (no double-assign).
+        body: { club_id: cid, shift_id: selectedTour ?? undefined, idempotency_key: crypto.randomUUID() },
       });
       if (error) {
         const ctx = (error as any)?.context;
@@ -764,7 +766,9 @@ export default function SwingPanel({ clubIds, clubs }: { clubIds: string[]; club
     setProcessing(attendanceId);
     try {
       const { data, error } = await supabase.functions.invoke("manage-break", {
-        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0], duration_minutes: durationMinutes },
+        // B1.3 — per-action idempotency key: a retried/duplicate "start" returns the cached
+        // result instead of extending the break / inserting a second break row.
+        body: { attendance_id: attendanceId, action: "start", requested_by: user?.id, club_id: clubFilter ?? filteredClubIds[0], duration_minutes: durationMinutes, idempotency_key: crypto.randomUUID() },
       });
       if (error) {
         let errorBody: any = null;
