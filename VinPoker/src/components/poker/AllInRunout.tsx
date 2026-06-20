@@ -12,6 +12,7 @@ import {
   ALLIN_CINEMATIC_PHASES, planAllInCinematic, type CinematicPhase,
 } from '@/lib/onlinePoker/allinCinematic';
 import { headsUpEquity, type HeadsUpEquity } from '@/lib/poker/handEval';
+import type { FeltSkin } from '@/lib/onlinePoker/feltSkin';
 import { SeatRing } from './SeatRing';
 import { ShowdownResult } from './ShowdownResult';
 import { PlayingCard } from './PlayingCard';
@@ -45,11 +46,14 @@ export function AllInRunout({
   hand,
   bb,
   onDone,
+  skin = 'emerald',
 }: {
   hand: PublicHandView;
   bb?: string;
   /** called once the replay (incl. the final result hold) finishes. */
   onDone?: () => void;
+  /** felt skin, passed straight through to the staged felt. */
+  skin?: FeltSkin;
 }) {
   const plan = useMemo(() => planAllInCinematic(hand), [hand]);
   const winnerSeats = useMemo(
@@ -126,7 +130,7 @@ export function AllInRunout({
 
       {/* the felt — board + reveals staged to this phase; winner glow only at the end */}
       <div className="overflow-hidden rounded-xl bg-black/20 p-2 sm:p-3">
-        <SeatRing hand={view} bb={bb} winnerSeats={isFinal ? winnerSeats : undefined} />
+        <SeatRing hand={view} bb={bb} winnerSeats={isFinal ? winnerSeats : undefined} skin={skin} />
       </div>
 
       {/* equity strip — exact heads-up %, from the flop on (real or hidden) */}

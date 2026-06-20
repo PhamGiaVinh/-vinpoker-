@@ -10,6 +10,7 @@
 
 import { cn } from '@/lib/utils';
 import type { PublicHandView, PublicSeatView } from '@/lib/onlinePoker/types';
+import type { FeltSkin } from '@/lib/onlinePoker/feltSkin';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 import { DeckStack } from './DeckStack';
@@ -83,66 +84,65 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
     );
   }
 
-  // Hero (my own) cards are the strongest object after the pot: larger, lifted, shadowed.
+  // Cards float ABOVE the N8 name-plate. Hero (my own) cards are large + lifted; opponents
+  // get small backs or their revealed cards; folded / sitting-out seats show no cards.
   const cards = isMe
     ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="lg" reveal={!!c && c !== '?'} />)
-    : folded
-      ? <span className="px-2 py-1 text-[11px] text-white/45">đã bỏ</span>
-      : sittingOut
-        ? <span className="px-2 py-1 text-[11px] text-white/40">chờ ván</span>
-        : seat.revealedCards?.length
-          ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
-          : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
+    : folded || sittingOut
+      ? null
+      : seat.revealedCards?.length
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
+        : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
 
   return (
     <div className={cn(
-      'flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out sm:w-24 lg:w-28',
+      'flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out',
       // Non-contesting seats drop contrast so the eye finds the live players first.
-      folded && 'opacity-40',
-      sittingOut && 'opacity-55',
+      folded && 'opacity-45',
+      sittingOut && 'opacity-60',
       // The actor is gently lifted toward the viewer.
       seat.isToAct && 'scale-105',
     )}>
-      <div className={cn(
-        'flex items-end gap-0.5',
-        isMe && 'origin-bottom -translate-y-1 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
-      )}>{cards}</div>
+      {cards && (
+        <div className={cn(
+          'flex items-end gap-0.5',
+          isMe && 'origin-bottom -translate-y-0.5 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
+        )}>{cards}</div>
+      )}
 
-      <div className="relative">
-        <div
-          className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg sm:h-11 sm:w-11 sm:text-sm lg:h-12 lg:w-12',
-            folded ? 'bg-zinc-700 grayscale' : AVATAR_BG[seat.seat % AVATAR_BG.length],
-            seat.isToAct ? 'op-to-act-pulse'
-              : allin ? 'op-allin-pulse'
-              : isMe ? 'ring-2 ring-white/40'
-              : 'ring-1 ring-white/15',
-          )}
-        >
-          {initials(seat.displayName, seat.seat)}
-        </div>
-        {seat.isButton && (
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-bold text-black shadow sm:h-5 sm:w-5 sm:text-[10px]">D</span>
-        )}
-        {seat.isToAct && (
-          <span className="absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-black shadow sm:h-5 sm:w-5">
-            <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-          </span>
-        )}
-        {allin && (
-          <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-[#991B1B] px-1.5 text-[8px] font-bold uppercase tracking-wide text-amber-200 shadow sm:text-[9px]">All-in</span>
-        )}
-      </div>
-
+      {/* N8-style horizontal name-plate: [avatar (+dealer D) │ name / stack] */}
       <div className={cn(
-        'w-full rounded-lg border px-1.5 py-0.5 text-center transition-colors duration-300',
-        isWinner ? 'op-winner-glow border-amber-300/70 bg-amber-300/10'
-          : seat.isToAct ? 'border-primary/60 bg-primary/15'
-          : allin ? 'border-amber-300/50 bg-amber-300/[0.06]'
-          : isMe ? 'border-white/25 bg-black/65' : 'border-white/10 bg-black/55',
+        'flex items-center gap-1.5 rounded-lg border px-1.5 py-1 pr-2 transition-colors duration-300',
+        isWinner ? 'op-winner-glow border-amber-300/70 bg-black/75'
+          : seat.isToAct ? 'op-to-act-pulse border-transparent bg-black/80'
+          : allin ? 'op-allin-pulse border-transparent bg-black/80'
+          : isMe ? 'border-primary/40 bg-black/72'
+          : 'border-white/10 bg-black/62',
       )}>
-        <div className="truncate text-[11px] font-medium text-white sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</div>
-        <div className={cn('text-[11px] font-semibold tabular-nums sm:text-xs', allin ? 'text-amber-300' : 'text-primary')}>{bbOrChips(seat.stack, bb)}</div>
+        <div className="relative shrink-0">
+          <div className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white sm:h-8 sm:w-8',
+            folded ? 'bg-zinc-700 grayscale' : AVATAR_BG[seat.seat % AVATAR_BG.length],
+          )}>
+            {initials(seat.displayName, seat.seat)}
+          </div>
+          {seat.isButton && (
+            <span className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-b from-[#f6d27a] to-[#b9892f] text-[8px] font-bold text-[#412402] shadow sm:h-[18px] sm:w-[18px] sm:text-[9px]">D</span>
+          )}
+        </div>
+
+        <div className="min-w-0 leading-tight">
+          <div className="flex items-center gap-1">
+            <span className="max-w-[58px] truncate text-[11px] font-medium text-white sm:max-w-[76px] sm:text-xs">{seat.displayName ?? `Ghế ${seat.seat}`}</span>
+            {seat.isToAct && <Clock className="h-2.5 w-2.5 shrink-0 text-primary" />}
+          </div>
+          <div className={cn('text-[11px] font-semibold tabular-nums sm:text-xs', allin ? 'text-amber-300' : 'text-primary')}>
+            {folded ? <span className="font-normal text-white/45">đã bỏ</span>
+              : sittingOut ? <span className="font-normal text-white/40">chờ ván</span>
+              : allin ? <span>ALL-IN</span>
+              : bbOrChips(seat.stack, bb)}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -156,6 +156,7 @@ export function SeatRing({
   onEmptySeatClick,
   dealSignal = 0,
   dealSeats,
+  skin = 'emerald',
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -169,8 +170,23 @@ export function SeatRing({
   dealSignal?: number;
   /** seats the deal animation flies to (occupied seats); falls back to seated players. */
   dealSeats?: number[];
+  /** felt skin — 'emerald' (default, identity) or 'premium' (burgundy + gold, opt-in). */
+  skin?: FeltSkin;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
+
+  // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
+  // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
+  const premium = skin === 'premium';
+  const feltBg = premium
+    ? 'radial-gradient(ellipse at 50% 40%, #7a1f1f 0%, #561414 46%, #320c0c 80%, #1c0707 100%)'
+    : 'radial-gradient(ellipse at 50% 40%, #157a4b 0%, #0c5234 40%, #062f1e 74%, #03180c 100%)';
+  const centerGlowBg = premium
+    ? 'radial-gradient(ellipse at 50% 40%, rgba(245,194,96,0.14), transparent 55%)'
+    : 'radial-gradient(ellipse at 50% 40%, rgba(0,224,122,0.16), transparent 55%)';
+  const heroSpotBg = premium
+    ? 'radial-gradient(ellipse at 50% 100%, rgba(245,194,96,0.16), transparent 70%)'
+    : 'radial-gradient(ellipse at 50% 100%, rgba(0,224,122,0.18), transparent 70%)';
 
   // Portrait-leaning square felt on phones (fills more of the screen); wider oval on larger
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
@@ -180,30 +196,32 @@ export function SeatRing({
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 
-      {/* rail (outer band for depth) + a thin lit top edge */}
-      <div className="absolute inset-[3%] rounded-[48%] bg-gradient-to-b from-[#11221a] to-[#030806] shadow-[0_22px_60px_rgba(0,0,0,0.72)]" />
-      <div className="pointer-events-none absolute inset-[3%] rounded-[48%] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]" />
+      {/* rail (outer band for depth) + a thin lit top edge (gold on the premium skin) */}
+      <div className={cn('absolute inset-[3%] rounded-[48%] bg-gradient-to-b shadow-[0_22px_60px_rgba(0,0,0,0.72)]', premium ? 'from-[#2a1208] to-[#0d0604]' : 'from-[#11221a] to-[#030806]')} />
+      <div className={cn('pointer-events-none absolute inset-[3%] rounded-[48%]', premium ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(245,194,96,0.28)]' : 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]')} />
 
-      {/* felt — deep emerald, soft centre glow + strong vignette, thin neon rim */}
+      {/* felt — emerald (default) or burgundy (premium), soft centre glow + strong vignette */}
       <div
-        className="absolute inset-[6.5%] rounded-[47%] border border-[#0a3a25] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(0,224,122,0.12)]"
-        style={{ background: 'radial-gradient(ellipse at 50% 40%, #157a4b 0%, #0c5234 40%, #062f1e 74%, #03180c 100%)' }}
+        className={cn('absolute inset-[6.5%] rounded-[47%] border', premium
+          ? 'border-[#b9892f] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(245,194,96,0.25)]'
+          : 'border-[#0a3a25] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(0,224,122,0.12)]')}
+        style={{ background: feltBg }}
       >
         {/* center glow */}
-        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(0,224,122,0.16), transparent 55%)' }} />
+        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: centerGlowBg }} />
         {/* faint felt texture */}
         <div className="pointer-events-none absolute inset-0 rounded-[44%] opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)', backgroundSize: '15px 15px' }} />
         {/* very subtle desktop/tablet-only watermark (hidden on mobile; never competes with board) */}
         <div className="pointer-events-none absolute inset-0 hidden items-center justify-center sm:flex">
-          <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: 'rgba(0,224,122,0.06)' }}>VinPoker</span>
+          <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: premium ? 'rgba(245,194,96,0.07)' : 'rgba(0,224,122,0.06)' }}>VinPoker</span>
         </div>
         {/* inner rim */}
-        <div className="pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset ring-emerald-200/10" />
+        <div className={cn('pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset', premium ? 'ring-amber-200/15' : 'ring-emerald-200/10')} />
 
         {/* board + pot — the focal point, scaled up on larger screens */}
         <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
           <div className={cn('flex items-center gap-1.5 rounded-full border border-amber-300/30 bg-black/60 px-3.5 py-1 shadow-md', winnerSeats?.length && 'op-winner-glow')}>
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Pot</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Tổng Pot</span>
             <span className="text-sm font-bold tabular-nums text-primary sm:text-base">{bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="text-[10px] tabular-nums text-white/45">{fmtChips(hand.pot)}</span>}
           </div>
@@ -223,7 +241,7 @@ export function SeatRing({
       {/* hero spotlight (bottom centre, behind the seats) */}
       <div
         className="pointer-events-none absolute bottom-0 left-1/2 z-0 h-[40%] w-[46%] -translate-x-1/2"
-        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,224,122,0.18), transparent 70%)' }}
+        style={{ background: heroSpotBg }}
       />
 
       {/* committed-bet chips on the felt (toward the pot) */}
