@@ -174,7 +174,7 @@ export const FEATURES = {
    * flow. Flip to true (after operator UAT on the preview branch) to let floor staff
    * open the new console. Kill-switch: set false to instantly hide it again.
    */
-  trackerHandInputConsole: false,
+  trackerHandInputConsole: true, // GO-LIVE 2026-06-21: operator console enabled as the racetrack (owner-approved)
   /**
    * Racetrack operator console — when ON, `/tracker/hand-input` renders the
    * RacetrackHandInputConsole (TrackerRacetrack felt + ActionDock) instead of the
@@ -184,7 +184,7 @@ export const FEATURES = {
    * differ. Default **OFF**: the route keeps the existing StandaloneHandInputConsole, so
    * production is unchanged. Flip to true (after operator UAT) to make the racetrack live.
    */
-  trackerRacetrackUi: false,
+  trackerRacetrackUi: true, // GO-LIVE 2026-06-21: racetrack IS the operator console (owner-approved)
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
