@@ -13,6 +13,7 @@ import { SeriesHealthReport } from "@/components/series-intelligence/SeriesHealt
 import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel";
 import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
 import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
+import { MonteCarloPanel } from "@/components/series-intelligence/MonteCarloPanel";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
 
@@ -106,6 +107,11 @@ export default function SeriesIntelligence() {
           onResetAll={grouping.resetAll}
           hasOverrides={grouping.hasOverrides}
         />
+      )}
+
+      {/* Forward-layer Monte Carlo — scenario / what-if (dark behind its own flag, default OFF) */}
+      {FEATURES.forwardLayerMonteCarlo && (
+        <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
       )}
 
       {/* CSV import — test / what-if data, browser-only (collapsed) */}

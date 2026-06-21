@@ -278,6 +278,16 @@ export const FEATURES = {
    */
   seriesIntelligenceCsvImport: true,
   /**
+   * Series Intelligence — Forward-layer Monte Carlo EV/Risk (PATCH 3). When ON, the page shows a
+   * MonteCarloPanel: pick a festival's events from the reference distribution, assume ρ/α/cost/bankroll,
+   * and see a SCENARIO / what-if (EV distribution, P(loss), Risk-of-Ruin, P(overlay)) — explicitly NOT a
+   * forecast. Pure client-side; reads only the loaded historical CSVs (never live DB/registrations); no
+   * Supabase/RPC/Edge/migration. Default **OFF** (dark) — an independent kill-switch for a feature that
+   * surfaces risk numbers; flip to true only for owner UAT on a preview branch (cf. trackerEngineMode),
+   * keep main/prod OFF until UAT passes.
+   */
+  forwardLayerMonteCarlo: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
