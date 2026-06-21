@@ -992,6 +992,31 @@ async function handleLinkCode(
   );
 }
 
+// ── /syncmenu — (re)register the bot's slash-command menu via the bot's own token ──
+// setMyCommands is global + idempotent; the list is hardcoded here so it can only set the
+// standard dealer menu (no injection). Lets the owner refresh the menu (e.g. to show /code)
+// from Telegram without curl or pasting the token.
+async function syncBotCommands(botToken: string): Promise<boolean> {
+  const commands = [
+    { command: "setup", description: "Liên kết tài khoản dealer" },
+    { command: "checkin", description: "Vào ca (vào pool sẵn sàng)" },
+    { command: "code", description: "Lấy mã đăng nhập app dealer" },
+    { command: "status", description: "Xem trạng thái hiện tại" },
+    { command: "break", description: "Nghỉ ăn cơm" },
+    { command: "unlink", description: "Hủy liên kết Telegram" },
+  ];
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ── Existing commands ──────────────────────────────────────────────────────
 
 async function handleCommand(
@@ -1049,6 +1074,19 @@ async function handleCommand(
   // /code (aliases /malienket, /malien, /login) — issue a one-time login code for the dealer app.
   if (["/code", "/malienket", "/malien", "/login", "/dangnhap"].includes(normalizedText)) {
     await handleLinkCode(admin, botToken, chatId, dealer);
+    return;
+  }
+
+  // /syncmenu — refresh the bot's slash-command menu (so /code etc. show in the / list).
+  if (normalizedText === "/syncmenu") {
+    const ok = await syncBotCommands(botToken);
+    await sendDM(
+      botToken,
+      chatId,
+      ok
+        ? "✅ Đã cập nhật menu lệnh của bot. Khởi động lại Telegram rồi gõ / để xem (có /code)."
+        : "Không cập nhật được menu lệnh. Vui lòng thử lại sau.",
+    );
     return;
   }
 
