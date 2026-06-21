@@ -14,6 +14,7 @@ import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel"
 import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
 import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
 import { MonteCarloPanel } from "@/components/series-intelligence/MonteCarloPanel";
+import { ScheduleGeneratorPanel } from "@/components/series-intelligence/ScheduleGeneratorPanel";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
 
@@ -113,6 +114,9 @@ export default function SeriesIntelligence() {
       {FEATURES.forwardLayerMonteCarlo && (
         <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
       )}
+
+      {/* Forward-layer schedule generator — DRAFT skeleton (same forward-layer flag, default OFF) */}
+      {FEATURES.forwardLayerMonteCarlo && <ScheduleGeneratorPanel />}
 
       {/* CSV import — test / what-if data, browser-only (collapsed) */}
       <Collapsible defaultOpen={lib.count > 0}>
