@@ -18,6 +18,13 @@ function schedEvt(over: Partial<ScheduleEvent> = {}): ScheduleEvent {
     fee_rake: 2_900_000,
     GTD: 17_000_000_000, // 850 × 20m
     sourceLabels: ["2-series"],
+    startTime: "10:00",
+    startingStack: 50_000,
+    minutesPerLevel: 60,
+    lateRegLevel: 12,
+    regEndTime: "22:00",
+    regEndLevel: 12,
+    regEndNextDay: false,
     ...over,
   };
 }
