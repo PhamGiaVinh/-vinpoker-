@@ -246,6 +246,11 @@ export function isRoundComplete(state: EngineState): boolean {
     const effBbSeat = state.bbSeatOverride ?? bbSeat; // P2-5 dead-button BB
     const sb = sbSeat != null ? seatOf(state.seats, sbSeat) : undefined;
     const bb = effBbSeat != null ? seatOf(state.seats, effBbSeat) : undefined;
+    // A DEAD SB is suppressed by the `deadSb` FLAG (P2-3), NOT by blindSeats
+    // returning null — blindSeats is untouched and still returns the occupied SB
+    // seat; the flag is what skips the SB-owed requirement. The `sbPosted` test is
+    // GLOBAL (any post_sb), so even when the dead-button SB ≠ blindSeats' pick the
+    // check passes once the operator posts the real SB (P2-5 sufficiency).
     if (!state.deadSb && sb && !sb.folded && !sbPosted) return false;
     if (bb && !bb.folded && !bbPosted) return false;
   }
