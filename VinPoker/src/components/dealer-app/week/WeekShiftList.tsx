@@ -7,7 +7,7 @@ function dm(date: string): string {
   return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export function WeekShiftList({ cells }: { cells: WeekDayCell[] }) {
+export function WeekShiftList({ cells, onPickDate }: { cells: WeekDayCell[]; onPickDate?: (date: string) => void }) {
   const { t, i18n } = useTranslation();
 
   const pill = (c: WeekDayCell) => {
@@ -31,7 +31,15 @@ export function WeekShiftList({ cells }: { cells: WeekDayCell[] }) {
         });
         const p = pill(c);
         return (
-          <div key={c.date} className="grid grid-cols-[52px_1fr] gap-2 items-stretch">
+          <button
+            key={c.date}
+            type="button"
+            onClick={() => onPickDate?.(c.date)}
+            className={cn(
+              "grid grid-cols-[52px_1fr] gap-2 items-stretch w-full text-left",
+              onPickDate && "transition-opacity hover:opacity-80",
+            )}
+          >
             <div
               className={cn(
                 "rounded-xl grid place-items-center border py-1.5 leading-none",
@@ -45,7 +53,7 @@ export function WeekShiftList({ cells }: { cells: WeekDayCell[] }) {
               {p.text}
               {c.isToday && <span className="ml-auto text-[10px] font-medium opacity-80">{t("dealer.week.today", "Hôm nay")}</span>}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
