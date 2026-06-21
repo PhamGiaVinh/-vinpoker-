@@ -107,12 +107,17 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
         <div className={cn(
           'flex items-end gap-0.5',
           isMe && 'origin-bottom -translate-y-0.5 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
+          // Opponent card-backs: small + tucked just above the plate (N8) so the felt dominates.
+          // Opponent face-down backs shrink hard (felt dominates); revealed cards at showdown
+          // stay a touch larger so the hand is still legible.
+          !isMe && (seat.revealedCards?.length ? 'origin-bottom -mb-0.5 scale-[0.8]' : 'origin-bottom -mb-1 scale-[0.62]'),
         )}>{cards}</div>
       )}
 
       {/* N8-style horizontal name-plate: [avatar (+dealer D) │ name / stack] */}
       <div className={cn(
         'flex items-center gap-1.5 rounded-lg border px-1 py-1 pr-1.5 transition-colors duration-300',
+        !isMe && 'gap-1', // opponent plates a touch tighter; hero keeps gap-1.5
         isWinner ? 'op-winner-glow border-amber-300/70 bg-black/75'
           : seat.isToAct ? 'op-to-act-pulse border-transparent bg-black/80'
           : allin ? 'op-allin-pulse border-transparent bg-black/80'
@@ -122,6 +127,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
         <div className="relative shrink-0">
           <div className={cn(
             'flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white sm:h-8 sm:w-8',
+            !isMe && 'h-6 w-6 text-[10px] sm:h-7 sm:w-7', // opponents smaller than the hero
             folded ? 'bg-zinc-700 grayscale' : AVATAR_BG[seat.seat % AVATAR_BG.length],
           )}>
             {initials(seat.displayName, seat.seat)}
@@ -255,8 +261,8 @@ export function SeatRing({
         const target = collecting ? { x: 50, y: 50 } : bp;
         return (
           <div key={`bet-${s.seat}`} className="op-chip absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${target.x}%`, top: `${target.y}%`, opacity: collecting ? 0.2 : 1 }}>
-            <span className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-black/75 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-300 shadow sm:text-[11px]">
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
+            <span className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-300 shadow sm:text-[10px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
               {bbOrChips(s.committed, bb)}
             </span>
           </div>
