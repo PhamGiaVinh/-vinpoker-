@@ -66,6 +66,7 @@ import {
   buildRecordHandBody,
   buildVoidHandBody,
   buildDeleteLastActionBody,
+  readEdgeError,
   type EdgePlayer,
 } from "./handInputEdge";
 
@@ -709,7 +710,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           buttonSeat,
         }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message || "Failed to start hand");
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       const handData = data?.data || data;
       setHandId(handData?.hand_id);
       setHandStarted(true);
@@ -795,7 +796,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildVoidHandBody({ tournamentId, handId: orphanHand.id }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Orphan hand voided");
       setOrphanHand(null);
     } catch (e: any) {
@@ -1153,7 +1154,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildUpdateCommunityCardsBody({ tournamentId, handId, communityCards: cards }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
       setPersistedBoardCount(cards.length);
       toast.success(`Đã gửi ${STREET_LABELS[currentStreet]} lên viewer (${cards.length} lá)`);
@@ -1186,7 +1187,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildShowHoleCardsBody({ tournamentId, handId, playerHoleCards: cardsPayload }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Hole cards revealed");
       markSync("sent", `Đã lật ${cardsPayload.length} tay bài`);
     } catch (e: any) {
@@ -1334,7 +1335,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           })),
         }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Hand recorded successfully");
       markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(data?.data?.hand_id ?? null);
@@ -1384,7 +1385,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildVoidHandBody({ tournamentId, handId: voidId }),
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
+      if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Hand VOIDED successfully");
       setLastHandId(null);
       setHandId(null);
