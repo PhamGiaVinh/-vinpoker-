@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Card } from "@/components/shared/CardSlotPicker";
 import { nextButton, getSeatPositions } from "@/lib/tournament/button";
+import { nextButtonTournament } from "@/lib/tournament/deadButton";
 import {
   replayActions,
   deriveResumeStreet,
@@ -134,6 +135,12 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [betAmount, setBetAmount] = useState("");
   const [buttonSeat, setButtonSeat] = useState<number>(1);
   const [buttonConfirmed, setButtonConfirmed] = useState(false);
+  // P2-5 dead-button: physical seat capacity of the table (tournament_tables.max_seats),
+  // the previous hand's posted-BB seat (in-memory, drives the BB-anchored suggestion),
+  // and whether the operator has manually overridden the suggested button this hand.
+  const [maxSeats, setMaxSeats] = useState<number>(9);
+  const [lastBbSeat, setLastBbSeat] = useState<number | null>(null);
+  const [buttonOverridden, setButtonOverridden] = useState(false);
   const [selectedWinners, setSelectedWinners] = useState<string[]>([]);
   const [muckedPlayerIds, setMuckedPlayerIds] = useState<Set<string>>(new Set());
   const [showdownLayers, setShowdownLayers] = useState<ShowdownLayerResult[]>([]);
@@ -287,6 +294,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
     setDeadSb(false);
+    setButtonOverridden(false); // P2-5: new hand → the dead-button suggestion drives the button again
     setSentCommunityStreets(new Set());
     setPersistedBoardCount(0);
     setSyncPhase("idle");
@@ -305,12 +313,25 @@ export function useStandaloneHandInput(tournamentId: string) {
     async (newTableId: string) => {
       setTableId(newTableId);
       setButtonConfirmed(false);
+      // P2-5: a fresh table load resets the dead-button anchor → the first hand has no
+      // suggestion (operator sets the button); subsequent hands auto-suggest.
+      setLastBbSeat(null);
+      setButtonOverridden(false);
       const tbl = availableTables.find((t) => t.id === newTableId);
       setTableName(tbl?.name || newTableId.slice(0, 8));
       if (!newTableId) {
         setPlayers([]);
         return;
       }
+
+      // P2-5: physical seat capacity for the dead-button ring (read-only; default 9).
+      supabase
+        .from("tournament_tables")
+        .select("max_seats")
+        .eq("tournament_id", tournamentId)
+        .eq("table_id", newTableId)
+        .maybeSingle()
+        .then(({ data }) => setMaxSeats((data as any)?.max_seats ?? 9));
 
       const { data: loadedSeats, error } = await supabase
         .from("tournament_seats")
@@ -469,6 +490,41 @@ export function useStandaloneHandInput(tournamentId: string) {
 
   const bigBlind = useMemo(() => actions.find((a) => a.action_type === "post_bb")?.amount ?? 0, [actions]);
 
+  const activeSeatNums = useMemo(() => players.map((p) => p.seat_number), [players]);
+  // P2-5 dead-button SUGGESTION (BB-anchored on the PREVIOUS hand's BB). Pre-hand
+  // default; stays active until the operator overrides the button by tapping a seat.
+  const deadButtonSuggestion = useMemo(
+    () => nextButtonTournament({ maxSeats, occupiedSeats: activeSeatNums, prevBbSeat: lastBbSeat }),
+    [maxSeats, activeSeatNums, lastBbSeat]
+  );
+  const suggestionActive = !!deadButtonSuggestion && !buttonOverridden;
+  const rawBlinds = useMemo(() => blindSeats(activeSeatNums, buttonSeat), [activeSeatNums, buttonSeat]);
+  // 🔴 CARRY-FORWARD: when the suggestion is active the SB/BB shown to the operator
+  // come from the dead-button suggestion (correct under empty seats), NOT blindSeats —
+  // which would mislabel the SB when the button/SB sit on empty seats.
+  const blindSbSeat = suggestionActive ? deadButtonSuggestion!.sbSeat : rawBlinds.sbSeat;
+  const blindBbSeat = suggestionActive ? deadButtonSuggestion!.bbSeat : rawBlinds.bbSeat;
+  // The suggestion auto-applies its dead SB; the operator can still toggle deadSb on.
+  const effectiveDeadSb = (suggestionActive && deadButtonSuggestion!.deadSb) || deadSb;
+  // The engine honors the dead-button BB only while the suggestion is active.
+  const bbSeatOverride = suggestionActive ? deadButtonSuggestion!.bbSeat : undefined;
+  const firstActorSeat = useMemo(() => {
+    if (blindBbSeat == null) return firstPreflopActor(activeSeatNums, buttonSeat);
+    const ring = [...activeSeatNums].sort((a, b) => a - b);
+    return ring.find((s) => s > blindBbSeat) ?? ring[0] ?? null; // first live seat left of the (effective) BB
+  }, [activeSeatNums, buttonSeat, blindBbSeat]);
+
+  // P2-5: pre-fill the suggested button (incl. a dead/empty seat) pre-hand, until the
+  // operator overrides by tapping a seat. Suggestion depends on prevBb/occupancy, not
+  // buttonSeat → no loop.
+  useEffect(() => {
+    if (suggestionActive && !handStarted && deadButtonSuggestion) {
+      setButtonSeat(deadButtonSuggestion.buttonSeat);
+      setButtonConfirmed(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestionActive, handStarted, deadButtonSuggestion?.buttonSeat]);
+
   const engineState = useMemo<EngineState>(
     () => ({
       seats: players.map((p) => ({
@@ -487,9 +543,10 @@ export function useStandaloneHandInput(tournamentId: string) {
         .filter((a) => a.street === currentStreet)
         .map((a) => ({ player_id: a.player_id, seat_number: a.seat_number, action_type: a.action_type })),
       bigBlind,
-      deadSb,
+      deadSb: effectiveDeadSb,
+      bbSeatOverride,
     }),
-    [players, buttonSeat, currentStreet, actions, bigBlind, deadSb]
+    [players, buttonSeat, currentStreet, actions, bigBlind, effectiveDeadSb, bbSeatOverride]
   );
   const engineActor = useMemo(() => actorToAct(engineState), [engineState]);
 
@@ -520,15 +577,6 @@ export function useStandaloneHandInput(tournamentId: string) {
     return () => clearInterval(id);
   }, [handStarted, tournamentId]);
 
-  const activeSeatNums = useMemo(() => players.map((p) => p.seat_number), [players]);
-  const { sbSeat: blindSbSeat, bbSeat: blindBbSeat } = useMemo(
-    () => blindSeats(activeSeatNums, buttonSeat),
-    [activeSeatNums, buttonSeat]
-  );
-  const firstActorSeat = useMemo(
-    () => firstPreflopActor(activeSeatNums, buttonSeat),
-    [activeSeatNums, buttonSeat]
-  );
 
   const flowInput = useMemo(() => {
     const streetActions = actions.filter((a) => a.street === currentStreet);
@@ -1001,6 +1049,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!handStarted) {
       setButtonSeat(seat.seat_number);
       setButtonConfirmed(true);
+      setButtonOverridden(true); // P2-5: manual button → drop the dead-button suggestion
       return;
     }
     if (isReadOnly) return;
@@ -1015,6 +1064,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!handStarted) {
       setButtonSeat(seatNumber);
       setButtonConfirmed(true);
+      setButtonOverridden(true); // P2-5: manual button (incl. an empty seat → dead button)
       return;
     }
     if (isReadOnly) return;
@@ -1293,6 +1343,10 @@ export function useStandaloneHandInput(tournamentId: string) {
         .map((s) => s.seat_number)
         .sort((a, b) => a - b);
       setButtonSeat(nextButton(activeNums, buttonSeat));
+      // P2-5: anchor the next hand's dead-button suggestion on THIS hand's posted BB,
+      // and clear the manual override so the suggestion drives the next button.
+      setLastBbSeat(actions.find((a) => a.action_type === "post_bb")?.seat_number ?? null);
+      setButtonOverridden(false);
       // P2-4: drop busted (now-inactive) players from the felt + show survivors'
       // new stacks immediately — no manual table reswitch. `endingStacks` is still
       // the operator-confirmed map here (resetHand clears it just below). Guard on a
@@ -1388,6 +1442,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     // actor
     buttonSeat,
     buttonConfirmed,
+    maxSeats,
+    deadButtonSuggestion,
     engineActor,
     toActId,
     effectiveActorId,
@@ -1427,7 +1483,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     sbPosted,
     bbPosted,
     blindsConfirmed,
-    deadSb,
+    deadSb: effectiveDeadSb,
     // showdown / review
     selectedWinners,
     muckedPlayerIds,

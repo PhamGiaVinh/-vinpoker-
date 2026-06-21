@@ -325,6 +325,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               buttonSeat={hook.buttonSeat}
               onSeatClick={hook.handleSeatNumberTap}
               selectedSeat={selectedSeatOf(hook.players, hook.selectedActorId)}
+              physicalSeats={hook.maxSeats}
             />
           )}
           {hook.handStarted && !hook.isSummary && (
