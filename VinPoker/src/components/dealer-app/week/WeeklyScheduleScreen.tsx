@@ -62,7 +62,7 @@ export function WeeklyScheduleScreen() {
           <WeekShiftList cells={cells} />
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#E6B84C]/30 bg-card p-3 text-[12px] text-muted-foreground">
             <Info className="w-4 h-4 mt-0.5 shrink-0 text-[#E6B84C]" />
-            {t("dealer.week.hint", "Bạn có thể đề xuất đổi ca hoặc xin nghỉ trong mục Lịch ngày.")}
+            {t("dealer.week.hint", "Muốn đăng ký ca mong muốn hoặc xin nghỉ? Vào Trang chủ → \"Đăng ký lịch\".")}
           </div>
         </>
       )}
