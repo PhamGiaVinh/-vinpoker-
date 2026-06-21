@@ -16,7 +16,9 @@ export function ev(type: HandEventType, payload: Record<string, unknown> = {}): 
 export const handStarted = (handId: string, buttonSeat: number, seats: number[]): HandEvent =>
   ev('hand_started', { handId, buttonSeat, seats });
 
-export const blindsPosted = (sbSeat: number, bbSeat: number, sb: string, bb: string): HandEvent =>
+// `sbSeat` is null + `sb` is "0" for a DEAD small blind (tournament dead-button
+// hand where the SB position is an empty seat — only the BB is posted).
+export const blindsPosted = (sbSeat: number | null, bbSeat: number, sb: string, bb: string): HandEvent =>
   ev('blinds_posted', { sbSeat, bbSeat, sb, bb });
 
 /** Announces dealing only — carries NO cards (cards are private). */

@@ -11,6 +11,8 @@ export {
   seatsInClockwiseOrder, firstClockwiseFrom, nextActorAfter,
 } from './betting.ts';
 export { computeSidePots, refundUncalled, clockwiseSeatOrder, distribute } from './pots.ts';
+export { nextButtonTournament } from './button.ts';
+export type { DeadButtonInput } from './button.ts';
 export { evaluate5, evaluateBest, compareHands, compareRankVec, HAND_CATEGORY_NAME } from './evaluate.ts';
 export type { EvaluatedHand, HandCategoryName } from './evaluate.ts';
 export { evaluateShowdown } from './showdown.ts';

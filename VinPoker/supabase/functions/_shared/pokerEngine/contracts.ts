@@ -164,6 +164,14 @@ export interface WireHandConfig {
   schemaVersion: number;
 }
 
+/**
+ * A pot partition for the wire. During `betting` this is a PROVISIONAL display
+ * partition (Σ sidePots === pot) that shifts as chips go in; authoritative awards
+ * live in `result.potAwards` at completion. An UNCALLED over-bet is never a real
+ * pot here — the engine refunds it to the bettor's stack BEFORE the awarded pots
+ * are built (see pots.ts:refundUncalled), so no `eligibleSeats` layer ever carries
+ * uncalled chips at settlement.
+ */
 export interface WireSidePot {
   amount: ChipString;
   eligibleSeats: number[];
