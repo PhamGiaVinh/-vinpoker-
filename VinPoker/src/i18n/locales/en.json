@@ -2939,7 +2939,12 @@
       "folded": "FOLDED",
       "action": "Action",
       "multiTable": "This tournament has multiple tables — pick a table above to watch live.",
-      "waiting": "Waiting for the dealer to start the hand..."
+      "waiting": "Waiting for the dealer to start the hand...",
+      "empty": "empty",
+      "potTotal": "Total Pot",
+      "dealerHere": "dealer · fixed",
+      "trackerHere": "Tracker stands here",
+      "engineHint": "suggested"
     }
   },
   "playerIntelligence": {

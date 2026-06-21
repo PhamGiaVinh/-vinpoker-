@@ -2689,7 +2689,12 @@
       "folded": "폴드",
       "action": "액션",
       "multiTable": "이 토너먼트에는 여러 테이블이 있습니다 — 위에서 테이블을 선택해 라이브로 시청하세요.",
-      "waiting": "딜러가 핸드를 시작하기를 기다리는 중..."
+      "waiting": "딜러가 핸드를 시작하기를 기다리는 중...",
+      "empty": "빈자리",
+      "potTotal": "총 팟",
+      "dealerHere": "딜러 · 고정",
+      "trackerHere": "트래커 위치",
+      "engineHint": "추천"
     }
   },
   "playerIntelligence": {

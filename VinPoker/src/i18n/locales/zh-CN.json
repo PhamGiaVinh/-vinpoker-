@@ -2693,7 +2693,12 @@
       "folded": "弃牌",
       "action": "动作",
       "multiTable": "本锦标赛有多张牌桌 — 请在上方选择一张牌桌观看直播。",
-      "waiting": "等待荷官开始这手牌……"
+      "waiting": "等待荷官开始这手牌……",
+      "empty": "空位",
+      "potTotal": "总底池",
+      "dealerHere": "荷官 · 固定",
+      "trackerHere": "记录员位置",
+      "engineHint": "建议"
     }
   },
   "playerIntelligence": {
