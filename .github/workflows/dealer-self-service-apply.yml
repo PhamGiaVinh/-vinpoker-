@@ -1,0 +1,38 @@
+name: Dealer self-service RPCs — apply migration (one-shot, owner-gated)
+
+# Manual trigger only — never runs on push. Applies 20260906000000_dealer_self_service_rpcs.sql
+# via the Management API (not the CLI push path; no schema_migrations write). Preflight is read-only
+# (also verifies the prerequisite planner tables exist); apply is gated by the confirm env. Brings
+# the dealer self-service RPCs live (confirm / check-in / check-out / submit-availability /
+# request-leave) — needed for the dealer-app "Đăng ký lịch làm việc" feature. Delete after verified.
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-dealer-self-service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preflight — read-only (scan + PRE state + prerequisites)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/dealer-swing/apply_dealer_self_service_rpcs.mjs --preflight
+
+      - name: Apply — self-service RPCs + post-verify
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_DEALER_SS: APPLY_DEALER_SELF_SERVICE
+        run: node scripts/dealer-swing/apply_dealer_self_service_rpcs.mjs --apply
