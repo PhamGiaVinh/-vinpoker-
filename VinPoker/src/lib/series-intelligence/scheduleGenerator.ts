@@ -22,17 +22,45 @@ export interface ScheduleInput {
   buyInTiers: number[];
   venueCapacity: number; // MAX committed-entries ceiling for ONE event (a GTD-risk ceiling) — NOT seats
   seasonalityOn: boolean;
+  dayFirstStart?: string; // "HH:MM" first start each day (DRAFT, editable; default "10:00"). Clock resets per day.
+  slotIntervalMinutes?: number; // minutes between consecutive slot starts (DRAFT; default 90; 0 ⇒ all same time)
+  customEvents?: CustomScheduleEvent[]; // owner-added tournaments appended after each day's generated slots
 }
+
+// An owner-authored tournament added on top of the generated skeleton. Price is buy_in_prize + fee_rake
+// (display-only); GTD = gtdEntries × buy_in_prize. Timing fields fall back to a neutral DRAFT default.
+export interface CustomScheduleEvent {
+  day: number; // 1-based; out-of-range days are dropped deterministically
+  name: string;
+  buy_in_prize: number;
+  fee_rake: number;
+  gtdEntries: number; // GTD = gtdEntries × buy_in_prize (0 ⇒ no GTD ⇒ honestly skipped by the B.2 EV feed)
+  startingStack?: number;
+  minutesPerLevel?: number;
+  lateRegLevel?: number;
+  startTime?: string; // "HH:MM"; absent ⇒ the renumbered slot's computed time
+}
+
+// Widened so an owner-authored row is honestly tagged "Custom" rather than mislabeled as a TD class.
+export type ScheduleEventClass = EventClass | "Custom";
 
 export interface ScheduleEvent {
   day: number; // 1-based
   slot: number; // 0-based within the day
   name: string;
-  eventClass: EventClass;
+  eventClass: ScheduleEventClass;
   buy_in_prize: number;
   fee_rake: number;
   GTD: number;
   sourceLabels: string[];
+  startTime: string; // "HH:MM" local clock (resets each day) — DRAFT estimate
+  startingStack: number; // chips
+  minutesPerLevel: number; // blind-level length
+  lateRegLevel: number; // reg closes after this many levels
+  regEndTime: string; // "HH:MM" = addMinutes(startTime, lateRegLevel × minutesPerLevel) — may wrap past midnight
+  regEndLevel: number; // = lateRegLevel
+  regEndNextDay: boolean; // reg-end rolls past midnight relative to the displayed startTime (engine-computed, not string-inferred)
+  isCustom?: boolean; // true for owner-added events
 }
 
 const MARQUEE_CLASSES: EventClass[] = ["MysteryBounty", "HighRoller", "SuperHighRoller", "PLO"]; // canonical order
@@ -55,6 +83,52 @@ function clampInt(v: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
 }
 
+const DEFAULT_FIRST_START_MIN = 600; // 10:00
+const DEFAULT_INTERVAL_MIN = 90;
+const CUSTOM_FALLBACK = { startingStack: 30_000, minutesPerLevel: 30, lateRegLevel: 10 } as const;
+
+/** Parse "HH:MM" → minutes since midnight (0..1439), or null if malformed/out of range. Pure. */
+export function parseHHMM(s: string): number | null {
+  if (typeof s !== "string") return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Minutes (any sign) → "HH:MM", wrapping into a 24h clock (past-midnight safe). Pure. */
+export function formatHHMM(totalMin: number): string {
+  const n = Number.isFinite(totalMin) ? Math.round(totalMin) : 0;
+  const m = ((n % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * "HH:MM" + minutes → "HH:MM" (wrapped). A malformed base falls back to 10:00 and a non-finite delta to 0,
+ * so this NEVER throws — the generator must stay total for any form input.
+ */
+export function addMinutes(hhmm: string, mins: number): string {
+  const base = parseHHMM(hhmm) ?? DEFAULT_FIRST_START_MIN;
+  return formatHHMM(base + (Number.isFinite(mins) ? mins : 0));
+}
+
+/**
+ * Reg-end fields derived from the DISPLAYED start (the poster shows startTime, so reg-end is measured from it):
+ * regEndTime = addMinutes(startTime, lateRegLevel × minutesPerLevel); regEndNextDay = that sum ≥ 1440 (crossed
+ * midnight). regEndNextDay is engine-computed from minutes — never inferred from the wrapped "01:00" string.
+ */
+function regFields(startTime: string, lateRegLevel: number, minutesPerLevel: number): {
+  regEndTime: string;
+  regEndLevel: number;
+  regEndNextDay: boolean;
+} {
+  const ds = parseHHMM(startTime) ?? DEFAULT_FIRST_START_MIN; // startTime is always a valid formatHHMM output
+  const abs = ds + Math.max(0, lateRegLevel) * Math.max(0, minutesPerLevel);
+  return { regEndTime: formatHHMM(abs), regEndLevel: lateRegLevel, regEndNextDay: abs >= 1440 };
+}
+
 /**
  * Deterministically generate a draft schedule. Main lands on MAIN_PLACEMENT.flightDay (or the last day
  * when the festival is too short); marquees take distinct days nearest the festival midpoint; side events
@@ -66,6 +140,24 @@ export function generateSchedule(input: ScheduleInput, rulesOverride?: RulesOver
   const eventsPerDay = clampInt(input.eventsPerDay, rules.density.min, rules.density.max);
   const venueCapacity = Math.max(1, Math.floor(Number.isFinite(input.venueCapacity) ? input.venueCapacity : 1));
   const seasonalityMult = input.seasonalityOn ? rules.seasonality.multiplier : 1;
+
+  // --- timing: a coarse, editable DRAFT clock that resets each day (startTime = firstStart + slot×interval) ---
+  const firstStartMin = parseHHMM(input.dayFirstStart ?? "") ?? DEFAULT_FIRST_START_MIN;
+  const interval =
+    typeof input.slotIntervalMinutes === "number" && Number.isFinite(input.slotIntervalMinutes) && input.slotIntervalMinutes >= 0
+      ? Math.floor(input.slotIntervalMinutes)
+      : DEFAULT_INTERVAL_MIN; // 0 honored (all slots same time); negative/NaN ⇒ default 90
+  const startTimeForSlot = (slot: number): string => formatHHMM(firstStartMin + slot * interval);
+
+  // --- owner-added custom events, grouped by day; out-of-range days dropped deterministically (input order kept) ---
+  const customsByDay = new Map<number, CustomScheduleEvent[]>();
+  for (const ce of input.customEvents ?? []) {
+    const d = Math.floor(Number(ce?.day));
+    if (!Number.isFinite(d) || d < 1 || d > festivalDays) continue;
+    const arr = customsByDay.get(d);
+    if (arr) arr.push(ce);
+    else customsByDay.set(d, [ce]);
+  }
 
   // --- placement: Main day + marquee→day map (deterministic by centrality) ---
   const mainDay = festivalDays >= rules.mainPlacement.flightDay ? rules.mainPlacement.flightDay : festivalDays;
@@ -110,6 +202,8 @@ export function generateSchedule(input: ScheduleInput, rulesOverride?: RulesOver
     return SIDE_POOL[flatIndex % SIDE_POOL.length];
   };
 
+  const pos = (v: number | undefined, fb: number): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fb);
+
   const sideCount: Partial<Record<EventClass, number>> = {};
   const events: ScheduleEvent[] = [];
   for (let day = 1; day <= festivalDays; day++) {
@@ -138,7 +232,57 @@ export function generateSchedule(input: ScheduleInput, rulesOverride?: RulesOver
         name = `${CLASS_DISPLAY[cls]} #${n}`;
       }
 
-      events.push({ day, slot, name, eventClass: cls, buy_in_prize, fee_rake, GTD, sourceLabels: [...labels] });
+      const startTime = startTimeForSlot(slot);
+      const { startingStack, minutesPerLevel, lateRegLevel } = def;
+      events.push({
+        day,
+        slot,
+        name,
+        eventClass: cls,
+        buy_in_prize,
+        fee_rake,
+        GTD,
+        sourceLabels: [...labels],
+        startTime,
+        startingStack,
+        minutesPerLevel,
+        lateRegLevel,
+        ...regFields(startTime, lateRegLevel, minutesPerLevel),
+      });
+    }
+
+    // append this day's owner-added events after the generated slots; slots continue contiguously
+    const customs = customsByDay.get(day);
+    if (customs) {
+      let slot = eventsPerDay;
+      for (const ce of customs) {
+        const buy_in_prize = pos(ce.buy_in_prize, 0);
+        const fee_rake = typeof ce.fee_rake === "number" && Number.isFinite(ce.fee_rake) && ce.fee_rake >= 0 ? ce.fee_rake : 0;
+        const gtdEntries = pos(ce.gtdEntries, 0);
+        const startingStack = pos(ce.startingStack, CUSTOM_FALLBACK.startingStack);
+        const minutesPerLevel = pos(ce.minutesPerLevel, CUSTOM_FALLBACK.minutesPerLevel);
+        const lateRegLevel = pos(ce.lateRegLevel, CUSTOM_FALLBACK.lateRegLevel);
+        const parsedStart = parseHHMM(ce.startTime ?? "");
+        const startTime = parsedStart != null ? formatHHMM(parsedStart) : startTimeForSlot(slot);
+        const name = typeof ce.name === "string" && ce.name.trim() ? ce.name.trim() : "Giải tự thêm";
+        events.push({
+          day,
+          slot,
+          name,
+          eventClass: "Custom",
+          buy_in_prize,
+          fee_rake,
+          GTD: gtdEntries * buy_in_prize,
+          sourceLabels: ["custom"],
+          startTime,
+          startingStack,
+          minutesPerLevel,
+          lateRegLevel,
+          ...regFields(startTime, lateRegLevel, minutesPerLevel),
+          isCustom: true,
+        });
+        slot++;
+      }
     }
   }
   return events;

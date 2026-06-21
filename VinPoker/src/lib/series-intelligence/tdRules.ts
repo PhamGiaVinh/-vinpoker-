@@ -22,6 +22,9 @@ export type SourceLabel = "TD-rule" | "2-series" | "Hypothesis" | "market-depend
 export interface EventClassDefault {
   gtdEntriesFloor: number; // expected entries floor ⇒ GTD = floor × buy_in_prize
   feeRatio: number; // fee_rake / buy_in_prize
+  startingStack: number; // [TD-rule] T-stack chips at registration (structural — context for "giờ thi đấu")
+  minutesPerLevel: number; // [TD-rule] blind-level length in minutes
+  lateRegLevel: number; // [TD-rule] reg closes AFTER this many levels ⇒ reg-end = start + lateRegLevel × minutesPerLevel
   marquee?: boolean; // a feature event that earns a dedicated day
   tags: string[];
   sourceLabels: SourceLabel[];
@@ -30,16 +33,18 @@ export interface EventClassDefault {
 // APT-corrected defaults. Main feeRatio 0.145 = APT-observed (4.572M fee / 31.428M prize); fee is the
 // rake driver, so 0.10 biased EV scenarios low. GTD floors: Main 700–1000 (use 850), MysteryBounty is a
 // MARQUEE (~400, not filler), SHR 30–40, HR 100–140, PLO ~140, side 80–400, satellites 0.
+// Structural timing (startingStack / minutesPerLevel / lateRegLevel) are [TD-rule] DRAFT conventions —
+// Main: big stack + long levels + late reg; turbo/hyper: short — all editable in the panel, await TD review.
 export const EVENT_CLASS_DEFAULTS: Record<EventClass, EventClassDefault> = {
-  Main: { gtdEntriesFloor: 850, feeRatio: 0.145, marquee: false, tags: ["flagship"], sourceLabels: ["2-series", "market-dependent", "APT-corrected"] },
-  MysteryBounty: { gtdEntriesFloor: 400, feeRatio: 0.12, marquee: true, tags: ["bounty", "marquee"], sourceLabels: ["2-series"] },
-  HighRoller: { gtdEntriesFloor: 120, feeRatio: 0.12, marquee: true, tags: ["high-roller"], sourceLabels: ["2-series"] },
-  SuperHighRoller: { gtdEntriesFloor: 35, feeRatio: 0.12, marquee: true, tags: ["super-high-roller"], sourceLabels: ["2-series"] },
-  PLO: { gtdEntriesFloor: 140, feeRatio: 0.12, marquee: true, tags: ["plo", "mixed"], sourceLabels: ["2-series"] },
-  Deepstack: { gtdEntriesFloor: 400, feeRatio: 0.15, marquee: false, tags: ["side", "deepstack"], sourceLabels: ["TD-rule"] },
-  Turbo: { gtdEntriesFloor: 120, feeRatio: 0.15, marquee: false, tags: ["side", "turbo"], sourceLabels: ["TD-rule"] },
-  Hyper: { gtdEntriesFloor: 80, feeRatio: 0.15, marquee: false, tags: ["side", "hyper"], sourceLabels: ["TD-rule"] },
-  Satellite: { gtdEntriesFloor: 0, feeRatio: 0.15, marquee: false, tags: ["side", "satellite"], sourceLabels: ["TD-rule"] },
+  Main: { gtdEntriesFloor: 850, feeRatio: 0.145, startingStack: 50_000, minutesPerLevel: 60, lateRegLevel: 12, marquee: false, tags: ["flagship"], sourceLabels: ["2-series", "market-dependent", "APT-corrected"] },
+  MysteryBounty: { gtdEntriesFloor: 400, feeRatio: 0.12, startingStack: 40_000, minutesPerLevel: 40, lateRegLevel: 12, marquee: true, tags: ["bounty", "marquee"], sourceLabels: ["2-series"] },
+  HighRoller: { gtdEntriesFloor: 120, feeRatio: 0.12, startingStack: 50_000, minutesPerLevel: 50, lateRegLevel: 10, marquee: true, tags: ["high-roller"], sourceLabels: ["2-series"] },
+  SuperHighRoller: { gtdEntriesFloor: 35, feeRatio: 0.12, startingStack: 50_000, minutesPerLevel: 50, lateRegLevel: 8, marquee: true, tags: ["super-high-roller"], sourceLabels: ["2-series"] },
+  PLO: { gtdEntriesFloor: 140, feeRatio: 0.12, startingStack: 40_000, minutesPerLevel: 40, lateRegLevel: 10, marquee: true, tags: ["plo", "mixed"], sourceLabels: ["2-series"] },
+  Deepstack: { gtdEntriesFloor: 400, feeRatio: 0.15, startingStack: 50_000, minutesPerLevel: 40, lateRegLevel: 14, marquee: false, tags: ["side", "deepstack"], sourceLabels: ["TD-rule"] },
+  Turbo: { gtdEntriesFloor: 120, feeRatio: 0.15, startingStack: 25_000, minutesPerLevel: 20, lateRegLevel: 9, marquee: false, tags: ["side", "turbo"], sourceLabels: ["TD-rule"] },
+  Hyper: { gtdEntriesFloor: 80, feeRatio: 0.15, startingStack: 20_000, minutesPerLevel: 12, lateRegLevel: 6, marquee: false, tags: ["side", "hyper"], sourceLabels: ["TD-rule"] },
+  Satellite: { gtdEntriesFloor: 0, feeRatio: 0.15, startingStack: 15_000, minutesPerLevel: 15, lateRegLevel: 6, marquee: false, tags: ["side", "satellite"], sourceLabels: ["TD-rule"] },
 };
 
 export const MAIN_PLACEMENT = { flightDay: 3, sourceLabels: ["TD-rule", "APT-corrected"] as SourceLabel[] }; // Main ~Day 3, NOT Day 5
