@@ -86,9 +86,13 @@ export function ActionBar({
   // stable. When it IS my turn but the legal menu hasn't arrived yet, say so explicitly so
   // it never reads as a frozen "waiting" bar — the poll loop fills it within ~1 round-trip.
   if (!isMySeatToAct || !legal) {
+    // Off-turn: a slim, collapsed dock so the felt keeps the screen. When it IS my turn but
+    // the menu hasn't arrived yet, say so explicitly (the poll fills it within ~1 round-trip)
+    // so it never reads as a frozen bar.
     return (
-      <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
-        {isMySeatToAct ? 'Đang tải lựa chọn…' : 'Đang chờ lượt của bạn…'}
+      <div className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-muted-foreground">
+        <Clock className="h-3.5 w-3.5 opacity-60" />
+        {isMySeatToAct ? 'Đang tải lựa chọn…' : 'Đang chờ tới lượt bạn…'}
       </div>
     );
   }
@@ -101,7 +105,7 @@ export function ActionBar({
   const act = (type: ActionType, amount?: string) => { if (!disabled) onAction?.({ type, amount }); };
 
   return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-2.5 sm:p-3">
+    <div className="mx-auto w-full max-w-md space-y-2.5 rounded-2xl border border-white/10 bg-black/45 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
       {/* turn / preview header */}
       <div className="flex items-center justify-between gap-2">
         <span className={cn(
@@ -121,29 +125,27 @@ export function ActionBar({
         <div className={cn('h-full rounded-full', interactive ? 'bg-primary' : 'bg-white/20')} style={{ width: interactive ? '62%' : '100%' }} />
       </div>
 
-      {/* %-pot sizing strip — quick chips (label + amount) + slider with min/max */}
+      {/* N8 bet-size column — each preset row is a DIRECT raise-to; the slider gives fine
+          control confirmed by the "Tố lên" button in the bottom row. Only when raising is
+          legal. Amounts re-validated server-side; the client never decides legality. */}
       {showSizing && (
         <div className="space-y-1.5">
-          <div className="flex gap-1.5">
-            {sizes.map((s) => (
+          {sizes.map((s) => {
+            const isMax = s.amount === legal.maxRaiseTo;
+            return (
               <button
                 key={s.key}
                 type="button"
                 disabled={disabled}
-                onClick={() => setRaiseTo(s.amount)}
-                className={cn(
-                  'flex h-11 flex-1 flex-col items-center justify-center rounded-md border leading-none transition-colors disabled:opacity-50',
-                  s.amount === raiseTo
-                    ? 'border-primary/60 bg-primary/15 text-primary'
-                    : 'border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.08]',
-                )}
+                onClick={() => act(canRaise ? 'raise' : 'bet', s.amount)}
+                className="op-press flex h-10 w-full items-center justify-between rounded-lg bg-amber-400/90 px-3 text-amber-950 transition-colors hover:bg-amber-300 disabled:opacity-50"
               >
-                <span className="text-[11px] font-semibold">{s.label}</span>
-                <span className="mt-px text-[8px] tabular-nums opacity-55">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
+                <span className="text-[11px] font-semibold">{s.label} · {isMax ? 'Tối đa' : 'Tăng cược'}</span>
+                <span className="text-[12px] font-bold tabular-nums">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
               </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
+            );
+          })}
+          <div className="flex items-center gap-2 pt-0.5">
             <span className="w-12 text-[10px] tabular-nums text-muted-foreground">{bbLabel(legal.minRaiseTo, bb)}</span>
             <Slider
               value={[sliderVal]}
@@ -160,15 +162,15 @@ export function ActionBar({
         </div>
       )}
 
-      {/* primary actions: Fold · Check/Call · Bet/Raise (Raise = brightest CTA) */}
+      {/* bottom action row — Bỏ bài (ghost) · Theo bài / Check (green) · Tố lên (gold, slider value) */}
       <div className="flex items-stretch gap-2">
         {canFold && (
           <Button
             disabled={disabled}
             onClick={() => act('fold')}
-            className="min-h-[3.25rem] flex-1 bg-rose-800/90 text-rose-50 hover:bg-rose-700 sm:min-h-[3rem]"
+            className="op-press min-h-[3.5rem] flex-[0.8] rounded-xl border border-white/15 bg-white/[0.05] text-sm font-semibold text-white/85 shadow-none hover:bg-white/10 hover:text-white"
           >
-            Fold
+            Bỏ bài
           </Button>
         )}
 
@@ -176,7 +178,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('check')}
-            className="min-h-[3.25rem] flex-1 bg-emerald-600 text-emerald-50 hover:bg-emerald-500 sm:min-h-[3rem]"
+            className="op-press min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
           >
             Check
           </Button>
@@ -184,9 +186,9 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('call', legal.toCall)}
-            className="min-h-[3.25rem] flex-1 bg-emerald-600 text-emerald-50 hover:bg-emerald-500 sm:min-h-[3rem]"
+            className="op-press min-h-[3.5rem] flex-1 rounded-xl bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
           >
-            <BtnLabel action="Call" chips={legal.toCall} bb={bb} />
+            <BtnLabel action="Theo bài" chips={legal.toCall} bb={bb} />
           </Button>
         ) : null}
 
@@ -194,22 +196,22 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
-            className="min-h-[3.25rem] flex-[1.3] bg-primary text-primary-foreground hover:bg-primary/90 sm:min-h-[3rem]"
+            className="op-press min-h-[3.5rem] flex-[1.4] rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300"
           >
-            <BtnLabel action={canRaise ? 'Raise to' : 'Bet'} chips={raiseTo} bb={bb} />
+            <BtnLabel action={canRaise ? 'Tố lên' : 'Cược'} chips={raiseTo} bb={bb} />
           </Button>
         )}
       </div>
 
-      {/* all-in — muted/danger affordance, deliberately NOT a primary CTA */}
+      {/* all-in — explicit deep-red max-commit affordance */}
       {canAllin && (
         <button
           type="button"
           disabled={disabled}
           onClick={() => act('allin', legal.maxRaiseTo)}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-amber-500/45 bg-amber-500/10 text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+          className="op-press flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#991B1B] text-amber-100 hover:bg-[#7d1515] disabled:opacity-50"
         >
-          <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">All-in</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide opacity-85">All-in</span>
           <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">
             {bb && fmtBB(legal.maxRaiseTo, bb) ? `${fmtBB(legal.maxRaiseTo, bb)} BB · ${fmtChips(legal.maxRaiseTo)}` : fmtChips(legal.maxRaiseTo)}
           </span>

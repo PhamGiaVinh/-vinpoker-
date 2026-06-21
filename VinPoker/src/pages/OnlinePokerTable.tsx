@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { FEATURES } from '@/lib/featureFlags';
 import { RUNTIME_LIVE, type ActionType, type PublicHandResult, type PublicHandView, type PublicSeatView } from '@/lib/onlinePoker/types';
@@ -30,7 +31,8 @@ import { actionToSound } from '@/lib/onlinePoker/pokerSounds';
 import { playPokerLiveSound, markPokerSoundGesture, isPokerSoundMuted, setPokerSoundMuted } from '@/lib/pokerLiveSound';
 import { readImmersivePref, writeImmersivePref, requestFullscreenBestEffort, exitFullscreenBestEffort } from '@/lib/onlinePoker/immersive';
 import { iAmInLiveHand as computeIAmInLiveHand } from '@/lib/onlinePoker/tableState';
-import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
+import { readFeltSkin, writeFeltSkin, type FeltSkin } from '@/lib/onlinePoker/feltSkin';
+import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2, Palette, Settings } from 'lucide-react';
 
 const fmtChips = (s: string): string => {
   const n = Number(s);
@@ -130,9 +132,14 @@ export default function OnlinePokerTable() {
   const [sitSeat, setSitSeat] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [bustOpen, setBustOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const bustHandledRef = useRef(false);
   const [muted, setMuted] = useState<boolean>(isPokerSoundMuted());
   const toggleMute = () => { const v = !muted; setPokerSoundMuted(v); setMuted(v); markPokerSoundGesture(); };
+
+  // UI-4 — optional felt skin (emerald default / premium burgundy+gold), persisted locally.
+  const [feltSkin, setFeltSkin] = useState<FeltSkin>(readFeltSkin);
+  const toggleSkin = () => { const next: FeltSkin = feltSkin === 'premium' ? 'emerald' : 'premium'; setFeltSkin(next); writeFeltSkin(next); };
 
   // Mobile immersive table mode (CSS-default; native fullscreen requested on the gesture).
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -367,6 +374,9 @@ export default function OnlinePokerTable() {
     } catch { toast.error('Không mua được chip, thử lại.'); }
   };
 
+  // Host-transfer RPC wrapper, surfaced in the ⚙️ settings sheet ("Trao quyền"). The server
+  // also auto-reassigns host to the next seated player on leave, so continuity never depends
+  // on this — it is the discretionary, stay-seated hand-off.
   const transfer = async (toUserId: string, name: string) => {
     try {
       const res = (await actions.transferHost(toUserId)) as RpcOutcome;
@@ -415,6 +425,15 @@ export default function OnlinePokerTable() {
           variant="ghost"
           size="icon"
           className="ml-auto"
+          onClick={toggleSkin}
+          aria-label="Đổi giao diện bàn"
+          title={feltSkin === 'premium' ? 'Giao diện: Cao cấp (chạm để về Xanh)' : 'Giao diện: Xanh (chạm để Cao cấp)'}
+        >
+          <Palette className={feltSkin === 'premium' ? 'h-4 w-4 text-amber-300' : 'h-4 w-4'} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={immersive ? exitImmersive : enterImmersive}
           aria-label={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
           title={immersive ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
@@ -430,6 +449,15 @@ export default function OnlinePokerTable() {
         >
           {muted ? <VolumeX className="h-4 w-4 text-muted-foreground" /> : <Volume2 className="h-4 w-4" />}
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Cài đặt bàn"
+          title="Cài đặt bàn — người chơi · xem ván · rời bàn"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
         {amIHost && <Badge className="gap-1"><Crown className="h-3 w-3" /> Chủ bàn</Badge>}
       </header>
 
@@ -440,7 +468,7 @@ export default function OnlinePokerTable() {
           it, centered in the available height so it dominates the screen. */}
       <div className="flex min-h-0 w-full flex-1 items-center justify-center">
         {cinematic && showing ? (
-          <AllInRunout hand={showing.ringView} bb={table.bb} onDone={() => setDwell(null)} />
+          <AllInRunout hand={showing.ringView} bb={table.bb} skin={feltSkin} onDone={() => setDwell(null)} />
         ) : (
           <SeatRing
             hand={feltView}
@@ -448,58 +476,13 @@ export default function OnlinePokerTable() {
             winnerSeats={feltWinners}
             dealSignal={dealSignal}
             dealSeats={dealSeats}
+            skin={feltSkin}
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
           />
         )}
       </div>
-
-      {/* seat controls */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {!seated ? (
-          <span className="text-sm text-muted-foreground">Chạm một ghế trống để vào chơi.</span>
-        ) : (
-          <>
-            <Badge variant="secondary">Bạn đang ngồi ghế {mySeatNo}</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={leave}
-              disabled={iAmInLiveHand}
-              title={iAmInLiveHand ? 'Bạn đang trong ván — sẽ rời được sau khi xong ván' : undefined}
-            >
-              {iAmInLiveHand ? 'Rời sau ván' : 'Đứng dậy / rời bàn'}
-            </Button>
-          </>
-        )}
-      </div>
-
-      {/* players + host controls ("danh sách chủ trên bàn") */}
-      {seatedPlayers.length > 0 && (
-        <Card className="p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người chơi tại bàn</div>
-          <div className="space-y-1.5">
-            {seatedPlayers.map((s) => {
-              const isHost = s.userId === hostUserId;
-              const isMe = s.userId === myUserId;
-              return (
-                <div key={s.seatNo} className="flex items-center gap-2 text-sm">
-                  <span className="w-7 text-center text-xs text-muted-foreground tabular-nums">#{s.seatNo}</span>
-                  <span className={`truncate ${isMe ? 'font-semibold' : ''}`}>{nameFor(s)}</span>
-                  {isHost && <Badge variant="outline" className="gap-1 border-primary/40 text-primary"><Crown className="h-3 w-3" /> Chủ</Badge>}
-                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtChips(s.stack)}</span>
-                  {amIHost && !isHost && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => transfer(s.userId, nameFor(s))}>
-                      Trao quyền
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
       {/* showdown result — winner / pot / refund, held during the dwell so it's seen
           before the next hand. Suppressed for an all-in cinematic (which shows its own
@@ -532,7 +515,71 @@ export default function OnlinePokerTable() {
         ) : null
       )}
 
-      {(showing || inActiveHand) && <HandStateViewer hand={showing ? showing.ringView : hand!} />}
+      {/* ⚙️ Settings sheet — players + host transfer + hand review + leave, moved off the
+          felt area so the bottom of the screen stays just the action dock (N8 layout). */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent side="right" className="w-[min(22rem,92vw)] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Cài đặt bàn</SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-4 space-y-5">
+            {/* seat status + leave (moved here from below the felt) */}
+            <div className="flex flex-wrap items-center gap-2">
+              {seated ? (
+                <>
+                  <Badge variant="secondary">Bạn đang ngồi ghế {mySeatNo}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={leave}
+                    disabled={iAmInLiveHand}
+                    title={iAmInLiveHand ? 'Bạn đang trong ván — sẽ rời được sau khi xong ván' : undefined}
+                  >
+                    {iAmInLiveHand ? 'Rời sau ván' : 'Đứng dậy / rời bàn'}
+                  </Button>
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">Chạm một ghế trống trên bàn để vào chơi.</span>
+              )}
+            </div>
+
+            {/* players + host controls */}
+            {seatedPlayers.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người chơi tại bàn</div>
+                <div className="space-y-1.5">
+                  {seatedPlayers.map((s) => {
+                    const isHost = s.userId === hostUserId;
+                    const isMe = s.userId === myUserId;
+                    return (
+                      <div key={s.seatNo} className="flex items-center gap-2 text-sm">
+                        <span className="w-7 text-center text-xs text-muted-foreground tabular-nums">#{s.seatNo}</span>
+                        <span className={`truncate ${isMe ? 'font-semibold' : ''}`}>{nameFor(s)}</span>
+                        {isHost && <Badge variant="outline" className="gap-1 border-primary/40 text-primary"><Crown className="h-3 w-3" /> Chủ</Badge>}
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtChips(s.stack)}</span>
+                        {amIHost && !isHost && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => transfer(s.userId, nameFor(s))}>
+                            Trao quyền
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* hand review — the public hand-state inspector (verify the public payload). */}
+            {(showing || inActiveHand) && (
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Xem ván (hand review)</div>
+                <HandStateViewer hand={showing ? showing.ringView : hand!} />
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <SitDownDialog
         open={sitSeat != null}
