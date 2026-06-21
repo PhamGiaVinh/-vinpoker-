@@ -58,23 +58,32 @@ function Seat({
   isActing,
   isDealerButton,
   bigBlind,
+  onTap,
 }: {
   seat: SeatVM;
   isActing: boolean;
   isDealerButton: boolean;
   bigBlind: number;
+  onTap?: () => void;
 }) {
   const pos = SEAT_LAYOUT_9MAX[seat.seatNumber];
   if (!pos) return null;
+  const tapProps = onTap ? { role: 'button' as const, tabIndex: 0, onClick: onTap } : {};
 
   if (seat.isEmpty) {
     return (
       <div
-        className="absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card)/0.4)] px-2 py-3 text-center"
+        {...tapProps}
+        className={`absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card)/0.4)] px-2 py-3 text-center${onTap ? ' cursor-pointer' : ''}`}
         style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
       >
-        <div className={`text-[10px] text-[hsl(var(--muted-foreground))] ${NUM}`}>
+        <div className={`flex items-center justify-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))] ${NUM}`}>
           Ghế {seat.seatNumber}
+          {isDealerButton && (
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[hsl(var(--warning))] text-[7px] font-bold text-[hsl(var(--warning-foreground))]">
+              D
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-[hsl(var(--muted-foreground))]">trống</div>
       </div>
@@ -83,9 +92,10 @@ function Seat({
 
   return (
     <div
+      {...tapProps}
       className={`absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-[hsl(var(--card)/0.94)] px-2 py-1.5 ${
         isActing ? 'z-20 border-[hsl(var(--primary))]' : 'z-10 border-[hsl(var(--border))]'
-      } ${seat.isFolded ? 'opacity-40 grayscale' : ''}`}
+      } ${seat.isFolded ? 'opacity-40 grayscale' : ''}${onTap ? ' cursor-pointer' : ''}`}
       style={{
         left: `${pos.left}%`,
         top: `${pos.top}%`,
@@ -135,6 +145,7 @@ export function TrackerRacetrack({
   boardCards,
   pot,
   bigBlind,
+  onSeatTap,
 }: TrackerRacetrackProps) {
   return (
     <div
@@ -184,6 +195,7 @@ export function TrackerRacetrack({
           isActing={seat.seatNumber === actingSeatNumber}
           isDealerButton={seat.seatNumber === dealerSeatNumber}
           bigBlind={bigBlind}
+          onTap={onSeatTap ? () => onSeatTap(seat.seatNumber) : undefined}
         />
       ))}
 

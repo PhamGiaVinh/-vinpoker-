@@ -43,6 +43,8 @@ export interface TrackerRacetrackProps {
   boardCards: string[]; // display strings, e.g. '5♦', 'K♠'
   pot: number;
   bigBlind: number;
+  /** Tap a seat (occupied OR empty) — used pre-hand to set the button incl. a dead button. */
+  onSeatTap?: (seatNumber: number) => void;
 }
 
 export interface ForcedAmountPadProps {

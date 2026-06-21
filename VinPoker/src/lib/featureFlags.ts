@@ -176,6 +176,16 @@ export const FEATURES = {
    */
   trackerHandInputConsole: false,
   /**
+   * Racetrack operator console — when ON, `/tracker/hand-input` renders the
+   * RacetrackHandInputConsole (TrackerRacetrack felt + ActionDock) instead of the
+   * LiveFelt-based StandaloneHandInputConsole. BOTH use the SAME `useStandaloneHandInput`
+   * hook + the same guided sub-panels, so every engine feature (settlement / runout /
+   * elimination / dead-button) is identical — only the felt + action-step presentation
+   * differ. Default **OFF**: the route keeps the existing StandaloneHandInputConsole, so
+   * production is unchanged. Flip to true (after operator UAT) to make the racetrack live.
+   */
+  trackerRacetrackUi: false,
+  /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
    * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible

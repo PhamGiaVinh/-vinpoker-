@@ -805,7 +805,12 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleAction = async (playerId: string, actionType: string, amountOverride?: number) => {
+  const handleAction = async (
+    playerId: string,
+    actionType: string,
+    amountOverride?: number,
+    betToOverride?: number, // racetrack ActionDock forwards the "bet to" street TOTAL directly
+  ) => {
     const player = players.find((p) => p.player_id === playerId);
     if (!player) return;
     if (isReadOnly) {
@@ -861,7 +866,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       case "raise": {
         // Engine "Bet to" (street total) → chips ADDED; all-in only when it
         // consumes the whole stack. action_amount stays = chips added below.
-        const betTo = parseInt(betAmount) || 0;
+        // The racetrack ActionDock forwards the total via betToOverride; the
+        // LiveFelt console uses the betAmount keypad state (same value, same payload).
+        const betTo = betToOverride ?? (parseInt(betAmount) || 0);
         const { added, allIn } = betToAdded(betTo, player.current_bet, player.current_stack);
         if (added <= 0) {
           toast.error("Mức cược phải lớn hơn cược hiện tại của ghế");
@@ -1011,7 +1018,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleDockAction = (type: string) => {
+  const handleDockAction = (type: string, betTo?: number) => {
     if (!effectiveActorId) {
       toast.error("Chạm một ghế để chọn người hành động");
       return;
@@ -1021,7 +1028,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       const msg = `Xác nhận ALL-IN ${who ? formatStack(who.current_stack) : ""}${who ? ` của ${who.display_name}` : ""}? Toàn bộ stack sẽ vào pot.`;
       if (!confirm(msg)) return;
     }
-    handleAction(effectiveActorId, type);
+    handleAction(effectiveActorId, type, undefined, betTo); // racetrack forwards the bet-to total
     setSelectedActorId(null);
   };
 
