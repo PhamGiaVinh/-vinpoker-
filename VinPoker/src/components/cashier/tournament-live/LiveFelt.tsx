@@ -134,6 +134,14 @@ export interface LiveFeltProps {
    * never read as the same highlight.
    */
   selectedSeat?: number | null;
+  /**
+   * P2-5 dead-button: the table's physical seat capacity (tournament_tables.max_seats).
+   * ADDITIVE — when set, EMPTY physical seats render as dimmed placeholders (so a DEAD
+   * button on an empty seat is visible, and the operator can tap one to set it via
+   * onSeatClick). Omit/undefined → only occupied seats render (the public viewer +
+   * replay + TV are byte-identical).
+   */
+  physicalSeats?: number;
 }
 
 export function LiveFelt({
@@ -151,6 +159,7 @@ export function LiveFelt({
   buttonSeat = null,
   onSeatClick,
   selectedSeat = null,
+  physicalSeats,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
@@ -384,6 +393,54 @@ export function LiveFelt({
             </div>
           );
         })}
+
+        {/* P2-5 ADDITIVE: empty physical seats (only when physicalSeats is supplied —
+            absent for the public viewer/replay/TV, so their render is byte-identical).
+            A dead button shows its "D" puck here; an operator tap sets the button. */}
+        {physicalSeats != null &&
+          Array.from({ length: physicalSeats }, (_, i) => i + 1)
+            .filter((n) => !seats.some((s) => s.seat_number === n))
+            .map((n) => {
+              const slot = ((n - 1) % 9) + 1;
+              const pos = geo.seats[slot] || geo.seats[1];
+              const posStyle: CSSProperties = { left: `${pos.l}%`, top: `${pos.t}%`, transform: "translate(-50%, -50%)" };
+              const isButtonSeat = buttonSeat != null && buttonSeat === n;
+              const tap = onSeatClick;
+              return (
+                <div
+                  key={`empty-${n}`}
+                  className={`absolute z-10 flex flex-col items-center opacity-60${tap ? " cursor-pointer" : ""}`}
+                  style={posStyle}
+                  {...(tap
+                    ? {
+                        role: "button" as const,
+                        tabIndex: 0,
+                        onClick: () => tap(n),
+                        onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            tap(n);
+                          }
+                        },
+                      }
+                    : {})}
+                >
+                  <div className="relative grid h-9 w-9 place-items-center rounded-full border border-dashed border-white/25 bg-black/20 text-[9px] font-bold text-white/45 sm:h-10 sm:w-10">
+                    {n}
+                    {isButtonSeat && (
+                      <span
+                        aria-label="Dealer (dead button)"
+                        className="tracker-display absolute -bottom-1 -right-1 grid h-3.5 w-3.5 place-items-center rounded-full text-[7px] font-black leading-none text-black shadow ring-1 ring-black/40"
+                        style={{ background: "hsl(var(--poker-gold))" }}
+                      >
+                        D
+                      </span>
+                    )}
+                  </div>
+                  <div className="tracker-display mt-1 text-[9px] font-medium text-white/40">{t("liveHub.felt.emptySeat", "Trống")}</div>
+                </div>
+              );
+            })}
 
         {multiTableUnresolved && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">

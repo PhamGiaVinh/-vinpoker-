@@ -130,6 +130,30 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onPost={hook.handlePostBlind}
           onConfirm={hook.handleConfirmBlinds}
           disabled={disabled}
+          deadSb={hook.deadSb}
+          onToggleDeadSb={hook.handleToggleDeadSb}
+        />
+      );
+    }
+    if (hook.showRunoutReveal) {
+      // P2-2 all-in runout: reveal hole cards FIRST (live procedure), then the
+      // board-entry branch below runs out the remaining streets, then auto-settle.
+      return (
+        <ShowdownInputPanel
+          players={hook.players}
+          board={hook.communityCards}
+          holeCards={hook.playerHoleCards}
+          usedCards={hook.usedCards}
+          mucked={hook.muckedPlayerIds}
+          onHoleCardChange={hook.handleHoleCardChange}
+          onToggleMuck={hook.handleToggleMuck}
+          onReveal={hook.handleShowHoleCards}
+          selectedWinners={hook.selectedWinners}
+          onToggleWinner={hook.handleToggleWinner}
+          onConfirmResult={hook.handleConfirmShowdownResult}
+          submitting={disabled}
+          revealOnly
+          onRevealAndContinue={hook.handleRevealRunout}
         />
       );
     }
@@ -301,6 +325,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               buttonSeat={hook.buttonSeat}
               onSeatClick={hook.handleSeatNumberTap}
               selectedSeat={selectedSeatOf(hook.players, hook.selectedActorId)}
+              physicalSeats={hook.maxSeats}
             />
           )}
           {hook.handStarted && !hook.isSummary && (
