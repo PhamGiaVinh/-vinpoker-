@@ -907,6 +907,91 @@ async function handleCheckout(
   );
 }
 
+// ── /code — one-time dealer-app login code ─────────────────────────────────
+// Unambiguous alphabet (no 0/O/1/I/L). 8 chars ≈ 39 bits → fine for a single-use, 10-min code.
+const LOGIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
+
+function genLoginCode(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let s = "";
+  for (let i = 0; i < 8; i++) s += LOGIN_CODE_ALPHABET[bytes[i] % LOGIN_CODE_ALPHABET.length];
+  return s;
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function handleLinkCode(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; full_name: string; telegram_user_id?: number | null },
+) {
+  // Must already have a dealer-app auth account (created by /setup) — a code never creates one.
+  const { data: d } = await admin
+    .from("dealers")
+    .select("user_id")
+    .eq("id", dealer.id)
+    .maybeSingle();
+  const userId: string | null = d?.user_id ?? null;
+  if (!userId) {
+    await sendDM(
+      botToken,
+      chatId,
+      "Bạn chưa có tài khoản app dealer.\nGõ /setup trước để tạo tài khoản, rồi gõ /code lại.",
+    );
+    return;
+  }
+
+  const nowMs = Date.now();
+
+  // Light rate-limit: one issue per ~15s.
+  const { data: recent } = await admin
+    .from("dealer_login_codes")
+    .select("created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (recent?.created_at && nowMs - new Date(recent.created_at).getTime() < 15_000) {
+    await sendDM(botToken, chatId, "Bạn vừa lấy mã. Đợi vài giây rồi gõ /code lại.");
+    return;
+  }
+
+  // Self-clean expired + invalidate this dealer's prior codes (single active code).
+  await admin.from("dealer_login_codes").delete().lt("expires_at", new Date(nowMs).toISOString());
+  await admin.from("dealer_login_codes").delete().eq("user_id", userId);
+
+  const code = genLoginCode();
+  const codeHash = await sha256Hex(code);
+  const { error } = await admin.from("dealer_login_codes").insert({
+    code_hash: codeHash,
+    user_id: userId,
+    dealer_id: dealer.id,
+    telegram_user_id: dealer.telegram_user_id ?? null,
+    expires_at: new Date(nowMs + LOGIN_CODE_TTL_MS).toISOString(),
+    used: false,
+  });
+  if (error) {
+    console.error("[telegram-bot] /code insert failed:", error.message);
+    await sendDM(botToken, chatId, "Không tạo được mã đăng nhập. Vui lòng thử lại sau.");
+    return;
+  }
+
+  const display = `${code.slice(0, 4)}-${code.slice(4)}`;
+  await sendDM(
+    botToken,
+    chatId,
+    `🔑 *Mã đăng nhập app dealer:*\n\n*${display}*\n\n` +
+      `Mở app dealer → "Đăng nhập bằng mã" → nhập mã trên.\n` +
+      `⏱ Hết hạn sau 10 phút, chỉ dùng được 1 lần.`,
+  );
+}
+
 // ── Existing commands ──────────────────────────────────────────────────────
 
 async function handleCommand(
@@ -928,6 +1013,7 @@ async function handleCommand(
         `• /setup <Tên> — Liên kết tài khoản\n` +
         `• /checkin — Vào ca (vào pool sẵn sàng)\n` +
         `• /status — Xem trạng thái hiện tại\n` +
+        `• /code — Lấy mã đăng nhập app dealer (login code)\n` +
         `• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p bonus)\n` +
         `• /unlink — Hủy liên kết Telegram\n\n` +
         `💡 /checkin xong là bạn vào pool, DC sẽ phân bàn. Kết thúc ca do DC check-out. Nghỉ ăn cơm: 1 lần/7 tiếng.`,
@@ -957,6 +1043,12 @@ async function handleCommand(
     normalizedText === "/trangthai"
   ) {
     await handleStatus(admin, botToken, chatId, dealer);
+    return;
+  }
+
+  // /code (aliases /malienket, /malien, /login) — issue a one-time login code for the dealer app.
+  if (["/code", "/malienket", "/malien", "/login", "/dangnhap"].includes(normalizedText)) {
+    await handleLinkCode(admin, botToken, chatId, dealer);
     return;
   }
 

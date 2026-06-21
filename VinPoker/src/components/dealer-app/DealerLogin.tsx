@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Spade, LogIn, Loader2 } from "lucide-react";
+import { Spade, LogIn, Loader2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,17 +10,49 @@ import { BackButton } from "@/components/BackButton";
 import { DEALER_EMAIL_DOMAIN } from "@/lib/dealerApp/constants";
 
 /**
- * Dealer-app login (shown by DealerAppShell when live + not signed in). Dealers
- * log in with the account code + temp password the Telegram bot sent — NO email
- * to type. The code is the email local-part; we append "@DEALER_EMAIL_DOMAIN"
- * before calling Supabase. A full email is also accepted (if it contains "@").
- * First-time dealers normally just tap the one-tap link in Telegram instead.
+ * Dealer-app login (shown by DealerAppShell when live + not signed in).
+ *
+ * Primary path "Đăng nhập bằng mã": the dealer types /code in the Telegram bot, gets a one-time
+ * code, and enters it here — the dealer-code-login edge fn validates it and returns a magic-link
+ * token_hash which we feed to supabase.auth.verifyOtp (same path as AuthCallback). No email/password.
+ *
+ * Secondary path (toggle): the original account-code + temp-password sign-in the bot also sends.
  */
 export function DealerLogin() {
   const { t } = useTranslation();
+  const [mode, setMode] = useState<"code" | "password">("code");
+  const [code, setCode] = useState("");
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const signInWithCode = async () => {
+    const c = code.trim();
+    if (!c) {
+      toast.error(t("dealer.login.codeMissing", "Nhập mã đăng nhập."));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("dealer-code-login", { body: { code: c } });
+      const tokenHash = (data as { token_hash?: string } | null)?.token_hash;
+      if (error || !tokenHash) {
+        toast.error((data as { error?: string } | null)?.error ?? t("dealer.login.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+        return;
+      }
+      const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+      if (vErr) {
+        toast.error(t("dealer.login.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+        return;
+      }
+      toast.success(t("dealer.login.ok", "Đăng nhập thành công."));
+      // AuthProvider updates `user` → DealerAppShell re-renders into the app.
+    } catch {
+      toast.error(t("dealer.login.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const signIn = async () => {
     const handle = account.trim();
@@ -37,7 +69,6 @@ export function DealerLogin() {
       return;
     }
     toast.success(t("dealer.login.ok", "Đăng nhập thành công."));
-    // AuthProvider updates `user` → DealerAppShell re-renders into the app.
   };
 
   return (
@@ -57,45 +88,83 @@ export function DealerLogin() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs">{t("dealer.login.account", "Tài khoản")}</Label>
-            <Input
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-              autoCapitalize="none"
-              autoCorrect="off"
-              placeholder={t("dealer.login.accountPlaceholder", "Mã tài khoản bot gửi (vd dlr2cl8gqg)")}
-              onKeyDown={(e) => e.key === "Enter" && signIn()}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">{t("dealer.login.password", "Mật khẩu")}</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              onKeyDown={(e) => e.key === "Enter" && signIn()}
-            />
-          </div>
+        {mode === "code" ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("dealer.login.code", "Mã đăng nhập")}</Label>
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                placeholder={t("dealer.login.codePlaceholder", "Mã bot gửi (vd ABCD-EFGH)")}
+                onKeyDown={(e) => e.key === "Enter" && signInWithCode()}
+              />
+            </div>
 
-          <Button
-            onClick={signIn}
-            disabled={submitting}
-            className="w-full gradient-neon text-primary-foreground border-0 font-bold"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <LogIn className="w-4 h-4 mr-1.5" />}
-            {t("dealer.login.submit", "Đăng nhập")}
-          </Button>
+            <Button
+              onClick={signInWithCode}
+              disabled={submitting}
+              className="w-full gradient-neon text-primary-foreground border-0 font-bold"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <KeyRound className="w-4 h-4 mr-1.5" />}
+              {t("dealer.login.codeSubmit", "Đăng nhập bằng mã")}
+            </Button>
 
-          <p className="text-[12px] text-muted-foreground text-center leading-relaxed pt-1">
-            {t(
-              "dealer.login.hint",
-              "Lần đầu? Mở Telegram và bấm link đăng nhập 1 chạm bot đã gửi, hoặc gõ /setup để nhận tài khoản.",
-            )}
-          </p>
-        </div>
+            <p className="text-[12px] text-muted-foreground text-center leading-relaxed pt-1">
+              {t("dealer.login.codeHint", "Mở Telegram, gõ /code để lấy mã đăng nhập (hết hạn sau 10 phút).")}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setMode("password")}
+              className="w-full text-[12px] text-muted-foreground underline underline-offset-2 pt-1"
+            >
+              {t("dealer.login.usePassword", "Đăng nhập bằng tài khoản + mật khẩu")}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("dealer.login.account", "Tài khoản")}</Label>
+              <Input
+                value={account}
+                onChange={(e) => setAccount(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder={t("dealer.login.accountPlaceholder", "Mã tài khoản bot gửi (vd dlr2cl8gqg)")}
+                onKeyDown={(e) => e.key === "Enter" && signIn()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("dealer.login.password", "Mật khẩu")}</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                onKeyDown={(e) => e.key === "Enter" && signIn()}
+              />
+            </div>
+
+            <Button
+              onClick={signIn}
+              disabled={submitting}
+              className="w-full gradient-neon text-primary-foreground border-0 font-bold"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <LogIn className="w-4 h-4 mr-1.5" />}
+              {t("dealer.login.submit", "Đăng nhập")}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => setMode("code")}
+              className="w-full text-[12px] text-muted-foreground underline underline-offset-2 pt-1"
+            >
+              {t("dealer.login.useCode", "Đăng nhập bằng mã (gõ /code trong Telegram)")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
