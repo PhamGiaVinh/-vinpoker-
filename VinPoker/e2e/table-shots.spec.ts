@@ -41,5 +41,12 @@ for (const vp of VIEWPORTS) {
         await settleAndShoot(page, `${vp.name}_seats${seats}_allin`, 1300);
       });
     }
+
+    // OFF-TURN state (toAct = an opponent) — confirms the action dock disappears off-turn
+    // (N8 behaviour) and the felt isn't broken. One representative 6-max flop is enough.
+    test('seats6_flop_offturn', async ({ page }) => {
+      await page.goto('/__dev/table?seats=6&phase=flop&allin=0&toAct=2');
+      await settleAndShoot(page, `${vp.name}_seats6_flop_offturn`, 500);
+    });
   });
 }

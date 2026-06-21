@@ -466,7 +466,9 @@ export default function OnlinePokerTable() {
           showdown snapshot. Empty seats are tap-to-sit when you're not seated / no result. */}
       {/* Felt is the page — the table floats in the dark void with no card chrome around
           it, centered in the available height so it dominates the screen. */}
-      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+      {/* `relative` so the action dock / result / hint can FLOAT over the felt's bottom edge
+          (N8) instead of pushing it up — the felt keeps its full size every turn, no resize. */}
+      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
         {cinematic && showing ? (
           <AllInRunout hand={showing.ringView} bb={table.bb} skin={feltSkin} onDone={() => setDwell(null)} />
         ) : (
@@ -477,43 +479,61 @@ export default function OnlinePokerTable() {
             dealSignal={dealSignal}
             dealSeats={dealSeats}
             skin={feltSkin}
+            // Lift the hero (my own seat) clear of the floating dock so the cards/plate are
+            // never covered; default {15,85} elsewhere (cinematic, spectator) is unchanged.
+            heroAnchor={{ x: 15, y: 75 }}
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
           />
         )}
+
+        {/* ── bottom overlay (N8) — result / action dock / waiting hint float over the felt's
+            bottom edge. OFF-TURN nothing renders → the felt owns the whole screen. A scrim
+            fades the felt under the dock for readability; pointer-events only on the content. */}
+
+        {/* showdown result — winner / pot / refund, held during the dwell. Cinematic shows its
+            own result at the end (excluded). Takes priority over the dock + hint. */}
+        {showing && !cinematic && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
+            <div className="pointer-events-auto">
+              <ShowdownResult
+                result={showing.result}
+                handNo={showing.ringView.handNo}
+                seats={showing.ringView.seats}
+                mySeat={showing.ringView.mySeat}
+                bb={table.bb}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* action dock — ONLY when it's my turn (N8: no dock off-turn). The "menu loading"
+            strip lives inside ActionBar (my turn, legal not yet arrived). */}
+        {!showing && inActiveHand && hand?.toActSeat === mySeatNo && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
+            <div className="pointer-events-auto">
+              <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />
+            </div>
+          </div>
+        )}
+
+        {/* status hint — closed/empty table or a live table between hands. A light centred
+            pill (no heavy scrim); suppressed while a result/cinematic is shown. */}
+        {!showing && !inActiveHand && (
+          <div className="absolute inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-2">
+            {!tableLive ? (
+              <div className="rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-center text-sm text-muted-foreground backdrop-blur-sm">
+                {emptyStateLabel(table.status, occupied)}
+              </div>
+            ) : seated ? (
+              <div className="rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-center text-sm text-muted-foreground backdrop-blur-sm">
+                {occupied < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
-
-      {/* showdown result — winner / pot / refund, held during the dwell so it's seen
-          before the next hand. Suppressed for an all-in cinematic (which shows its own
-          result at the end). Takes priority over the action bar + waiting hint. */}
-      {showing && !cinematic && (
-        <ShowdownResult
-          result={showing.result}
-          handNo={showing.ringView.handNo}
-          seats={showing.ringView.seats}
-          mySeat={showing.ringView.mySeat}
-          bb={table.bb}
-        />
-      )}
-
-      {/* action bar — only during an active hand, and never over a result being shown */}
-      {!showing && inActiveHand && <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />}
-
-      {/* status line — a closed/empty table shows "Bàn đã đóng / Bàn trống" (and never a
-          stale completed board, since feltHand is cleared above); a live table between
-          hands shows the waiting hint. Suppressed while a result/cinematic is shown. */}
-      {!showing && !inActiveHand && (
-        !tableLive ? (
-          <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
-            {emptyStateLabel(table.status, occupied)}
-          </div>
-        ) : seated ? (
-          <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-center text-sm text-muted-foreground">
-            {occupied < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
-          </div>
-        ) : null
-      )}
 
       {/* ⚙️ Settings sheet — players + host transfer + hand review + leave, moved off the
           felt area so the bottom of the screen stays just the action dock (N8 layout). */}

@@ -163,6 +163,7 @@ export function SeatRing({
   dealSignal = 0,
   dealSeats,
   skin = 'emerald',
+  heroAnchor,
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -178,12 +179,16 @@ export function SeatRing({
   dealSeats?: number[];
   /** felt skin — 'emerald' (default, identity) or 'premium' (burgundy + gold, opt-in). */
   skin?: FeltSkin;
+  /** where the hero (my own seat) anchors on the felt, in percent. Defaults to the bottom-
+   *  left corner {15,85}; the live table lifts it (e.g. y:75) so the floating N8 action dock
+   *  never covers the hero's cards/plate. */
+  heroAnchor?: { x: number; y: number };
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
   // N8 — drop the hero (my own seat) into the bottom-LEFT corner: its big cards + name-plate,
   // its committed-bet chip, and the deal flourish all anchor here, leaving the felt's bottom-
   // centre clear. Starting coords — tune via UAT (watch the lower-left ring seat at 6/9-max).
-  if (hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = { x: 15, y: 85 };
+  if (hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = heroAnchor ?? { x: 15, y: 85 };
 
   // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
   // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.

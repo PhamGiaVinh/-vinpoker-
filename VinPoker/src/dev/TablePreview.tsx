@@ -12,6 +12,9 @@
 //   seats = 2 | 6 | 9                          how many seated players
 //   phase = preflop | flop | turn | river | showdown
 //   allin = 0 | 1                              1 → render the AllInRunout cinematic
+//   toAct = <seat>                             seat to act (default = my seat 1). Set to an
+//                                              opponent seat to render an OFF-TURN state so
+//                                              we can screenshot "no dock" + check felt jump.
 //   skin  = emerald | premium                  felt skin
 //
 // 100% ADDITIVE: it consumes the components' public props verbatim (PublicHandView +
@@ -58,7 +61,7 @@ function mkSeat(n: number, over: Partial<PublicSeatView> = {}): PublicSeatView {
  * strings (server contract); cards are distinct 2-char strings. The all-in fixture mirrors
  * the proven onlinePoker test shape so AllInRunout's plan + equity never throw.
  */
-function buildFixture(seatsN: number, phase: Phase, allin: boolean): { hand: PublicHandView; legal?: WireLegalActions } {
+function buildFixture(seatsN: number, phase: Phase, allin: boolean, toAct?: number): { hand: PublicHandView; legal?: WireLegalActions } {
   const mySeat = 1;
   const n = Math.max(2, Math.min(9, seatsN));
 
@@ -103,7 +106,10 @@ function buildFixture(seatsN: number, phase: Phase, allin: boolean): { hand: Pub
     seats.push(s);
   }
   seats[n - 1].isButton = true;
-  if (!complete) seats[0].isToAct = true; // my turn → ActionBar renders the dock
+  // `toAct` (default = my seat) lets the harness render an OFF-TURN state (actor != mySeat)
+  // so we can screenshot "no dock" + check the felt doesn't jump between turns.
+  const actor = toAct && toAct >= 1 && toAct <= n ? toAct : mySeat;
+  if (!complete) seats[actor - 1].isToAct = true; // my turn → ActionBar dock; off-turn → no dock
 
   const result: PublicHandResult | undefined = complete
     ? { endedBy: 'showdown', potTotal: '10000', potAwards: [{ potIndex: 0, amount: '10000', winners: [1] }], payouts: { 1: '10000' } }
@@ -114,7 +120,7 @@ function buildFixture(seatsN: number, phase: Phase, allin: boolean): { hand: Pub
     street: phase,
     board: BOARD[phase],
     pot: complete ? '10000' : phase === 'preflop' ? '175' : '1250',
-    toActSeat: complete ? null : mySeat,
+    toActSeat: complete ? null : actor,
     buttonSeat: n,
     status: complete ? 'complete' : 'betting',
     seats,
@@ -123,7 +129,9 @@ function buildFixture(seatsN: number, phase: Phase, allin: boolean): { hand: Pub
     mySeat,
   };
 
-  const legal: WireLegalActions | undefined = complete
+  // Legal menu exists ONLY when it is my turn — off-turn the server sends none, so the dock
+  // collapses (mirrors the live contract). This is what drives the #2 "no off-turn dock" shot.
+  const legal: WireLegalActions | undefined = complete || actor !== mySeat
     ? undefined
     : {
         seat: mySeat,
@@ -142,9 +150,10 @@ export default function TablePreview() {
   const phaseParam = params.get('phase') as Phase | null;
   const phase: Phase = phaseParam && PHASES.includes(phaseParam) ? phaseParam : 'flop';
   const allin = params.get('allin') === '1';
+  const toAct = Number(params.get('toAct')) || undefined; // default → my seat (on-turn)
   const skin: FeltSkin = params.get('skin') === 'premium' ? 'premium' : 'emerald';
 
-  const { hand, legal } = buildFixture(seatsN, phase, allin);
+  const { hand, legal } = buildFixture(seatsN, phase, allin, toAct);
   const winnerSeats = hand.result?.potAwards.flatMap((a) => a.winners);
 
   // Mirror OnlinePokerTable's chrome-less shell (void room + flex-1 felt + dock) so the
@@ -161,13 +170,23 @@ export default function TablePreview() {
         <span className="ml-auto text-[11px] text-white/45">seats={seatsN} · {allin ? 'all-in' : phase} · {skin}</span>
       </header>
 
-      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+      {/* `relative` + floating dock mirror OnlinePokerTable exactly: the felt keeps full size
+          every turn; the dock floats over its bottom edge ONLY when it's my turn. */}
+      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
         {allin
           ? <AllInRunout hand={hand} bb={BB} skin={skin} />
-          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} />}
-      </div>
+          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAnchor={{ x: 15, y: 75 }} />}
 
-      {!allin && legal && <ActionBar hand={hand} legal={legal} bb={BB} onAction={() => { /* dev no-op */ }} />}
+        {/* action dock — ONLY when it's my turn (off-turn fixture → no dock, felt owns the
+            screen). Scrim fades the felt under it. Same structure as OnlinePokerTable. */}
+        {!allin && legal && hand.toActSeat === hand.mySeat && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
+            <div className="pointer-events-auto">
+              <ActionBar hand={hand} legal={legal} bb={BB} onAction={() => { /* dev no-op */ }} />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

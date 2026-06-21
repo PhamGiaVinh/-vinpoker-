@@ -110,7 +110,10 @@ export function AllInRunout({
   const showEquityStrip = phase.equityBoardLen > 0 && !isFinal;
 
   return (
-    <div className="space-y-3">
+    // Fill the parent's width + height so the staged felt is full-size and vertically
+    // centered. Without w-full this block shrank to the banner's width inside OnlinePokerTable's
+    // `items-center justify-center` row → the cinematic read as a tiny box floating in black.
+    <div className="flex h-full w-full flex-col justify-center gap-3">
       {/* phase banner */}
       <div className="flex items-center justify-center">
         <span
