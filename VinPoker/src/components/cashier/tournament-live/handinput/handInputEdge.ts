@@ -182,3 +182,30 @@ export function buildDeleteLastActionBody(p: { tournamentId: string; handId: str
     hand_id: p.handId,
   };
 }
+
+/**
+ * Extract the REAL error message from a `supabase.functions.invoke` result. On a
+ * non-2xx, supabase-js sets `error` to a FunctionsHttpError (whose `.message` is only
+ * the generic "Edge Function returned a non-2xx status code") and `data` to null, with
+ * the failed Response on `error.context`. This reads that response body's `{ error }`
+ * so the operator sees the actual RPC/Postgres message (e.g. the real cause of a failed
+ * void/record), not the opaque "non-2xx".
+ */
+export async function readEdgeError(error: any, data: any): Promise<string> {
+  if (data?.error) return String(data.error);
+  try {
+    const ctx = error?.context;
+    if (ctx && typeof ctx.json === "function") {
+      const res = typeof ctx.clone === "function" ? ctx.clone() : ctx;
+      const body = await res.json();
+      if (body?.error) return String(body.error);
+      if (body?.message) return String(body.message);
+    } else if (ctx && typeof ctx.text === "function") {
+      const txt = await ctx.text();
+      if (txt) return txt;
+    }
+  } catch {
+    /* body already consumed or not JSON — fall through to the generic message */
+  }
+  return error?.message || "Lỗi không xác định";
+}
