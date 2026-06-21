@@ -142,3 +142,20 @@ used / secrets exposed — expected all NO) · Next Step.** Then stop.
 Before any UI work, read the `stitch-ui` + `uiux-master-map` skills and declare roadmap phase +
 affected screens + allowed/forbidden files. Keep the Stitch Dark neon-green theme (red felt only
 inside poker-table components). The master map is guidance, not permission to edit out-of-scope files.
+
+## Web/UI inspection — BẮT BUỘC (mọi session)
+
+- **Xem TRƯỚC khi sửa:** mọi việc UI/UX, MỞ giao diện đang chạy bằng **Playwright MCP**
+  (dev server localhost / preview / UAT flag-ON), inspect accessibility snapshot + screenshot
+  TRƯỚC khi sửa. Chẩn đoán từ cái render THẬT, không đoán từ code.
+- **Verify SAU khi sửa:** sau mỗi thay đổi UI, MỞ LẠI bằng Playwright MCP, xác nhận fix bằng
+  screenshot + snapshot. `tsc -b`/build pass KHÔNG đủ — phải xác nhận bằng mắt (build pass ≠ UI chạy).
+- **Tham khảo web ngoài:** khi tham khảo sản phẩm/docs khác (layout racetrack, luật TDA…), dùng
+  **Playwright MCP** (UI sống) / **Firecrawl MCP** (scrape docs) — không đoán.
+- **Câu đầu mỗi lần** phải nói rõ "dùng playwright mcp" (không thì agent có thể chạy Bash thay vì MCP).
+- **Ngoại lệ:** thay đổi thuần logic/engine (không ảnh hưởng render) verify bằng test như thường.
+  Tôn trọng flag-gating — mở preview flag-ON, KHÔNG mở production.
+
+> Áp dụng đặc biệt cho **session Engine** và **session Tracker**. Tracker: tham khảo
+> `https://rptlive.app/event/...` (qua Playwright/Firecrawl, học bố cục live-event — KHÔNG copy
+> nguyên xi) rồi điều chỉnh, giữ theme + scope của VinPoker.
