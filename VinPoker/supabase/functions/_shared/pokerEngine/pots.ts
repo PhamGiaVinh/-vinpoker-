@@ -42,6 +42,13 @@ export function computeSidePots(state: HandState): SidePot[] {
  * Refund the uncalled top portion of the last bet to its owner. If exactly one
  * seat committed strictly more than everyone else, the excess was never matched
  * and is returned to that seat (pot -> stack). Returns the refunded amount.
+ *
+ * CONTRACT (locked): this is a SETTLEMENT-time operation — it runs at fold-to-one
+ * and at showdown, BEFORE computeSidePots builds the awarded layers, so the
+ * uncalled chips end up in the bettor's STACK and never inside an awarded pot.
+ * Do NOT call it on an open `betting` state to preview an overhang: the lone-top
+ * test would mis-flag the still-owed BIG BLIND as uncalled. (See
+ * tests/pokerEngine/sidePotContract.test.ts for the locked behaviour.)
  */
 export function refundUncalled(state: HandState): { seat: number; amount: bigint } | null {
   const inPlay = state.seats.filter((s) => s.totalCommitted > 0n);
@@ -69,11 +76,27 @@ export function refundUncalled(state: HandState): { seat: number; amount: bigint
   return null;
 }
 
-/** Seat numbers in clockwise order starting at the seat AFTER the button. */
+/**
+ * Seat numbers in clockwise order starting at the seat AFTER the button.
+ *
+ * When the button sits on a seat that IS present (cash play, and tournaments
+ * whose button is a live seat) the start is simply idx+1 — unchanged. When the
+ * button sits on an EMPTY seat that is NOT in `seats` (a DEAD tournament button),
+ * we anchor on the physical ring: start at the first present seat whose number is
+ * strictly greater than `buttonSeat` (wrapping to the lowest seat when none is).
+ * This keeps odd-chip distribution "first live seat clockwise from the button"
+ * correct even when the button itself is empty.
+ */
 export function clockwiseSeatOrder(seats: SeatState[], buttonSeat: number): number[] {
   const ordered = seatsInClockwiseOrder(seats);
   const idx = ordered.findIndex((s) => s.seat === buttonSeat);
-  const start = idx < 0 ? 0 : idx + 1;
+  let start: number;
+  if (idx >= 0) {
+    start = idx + 1; // button is a present seat — legacy behaviour, byte-identical
+  } else {
+    const after = ordered.findIndex((s) => s.seat > buttonSeat); // dead button: ring anchor
+    start = after < 0 ? 0 : after;
+  }
   const out: number[] = [];
   for (let k = 0; k < ordered.length; k++) out.push(ordered[(start + k) % ordered.length].seat);
   return out;

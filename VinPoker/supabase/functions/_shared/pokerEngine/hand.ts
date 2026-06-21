@@ -94,14 +94,18 @@ export function createHand(
   const needed = active.length * 2 + 5;
   if (deck.length < needed) throw new Error(`deck too small: need ${needed}, got ${deck.length}`);
 
+  // Tournament dead-button placement (optional + additive). When present it is the
+  // single source of truth for the button seat (which may be an EMPTY/dead seat).
+  const blindPlacement = config.blindPlacement;
   const cfg: HandConfig = {
     handId: config.handId,
     tableId: config.tableId,
     handNo: config.handNo,
-    buttonSeat: config.buttonSeat,
+    buttonSeat: blindPlacement ? blindPlacement.buttonSeat : config.buttonSeat,
     sb: config.sb,
     bb: config.bb,
     schemaVersion: config.schemaVersion ?? SCHEMA_VERSION,
+    ...(blindPlacement ? { blindPlacement } : {}),
   };
 
   const state: HandState = {
@@ -123,9 +127,24 @@ export function createHand(
   // blind seats
   const findActiveAfter = (from: number) =>
     firstClockwiseFrom(seats, from, false, isActive)!;
-  let sbSeat: SeatState;
+  let sbSeat: SeatState | null;
   let bbSeat: SeatState;
-  if (active.length === 2) {
+  if (blindPlacement) {
+    // Tournament: the BB is always a live seat; the SB may be DEAD (its physical
+    // seat is empty) in which case NO small blind is posted. The button may also
+    // sit on an empty seat — it is just a marker and posts nothing.
+    const bb = seats.find((s) => s.seat === blindPlacement.bbSeat && isActive(s));
+    if (!bb) throw new Error(`blindPlacement.bbSeat ${blindPlacement.bbSeat} is not an active seat`);
+    bbSeat = bb;
+    if (blindPlacement.sbSeat == null) {
+      sbSeat = null; // dead SB
+    } else {
+      const sb = seats.find((s) => s.seat === blindPlacement.sbSeat && isActive(s));
+      if (!sb) throw new Error(`blindPlacement.sbSeat ${blindPlacement.sbSeat} is not an active seat`);
+      if (sb.seat === bbSeat.seat) throw new Error('blindPlacement SB and BB are the same seat');
+      sbSeat = sb;
+    }
+  } else if (active.length === 2) {
     sbSeat = seats.find((s) => s.seat === cfg.buttonSeat)!; // heads-up: button is SB
     bbSeat = findActiveAfter(cfg.buttonSeat);
   } else {
@@ -133,21 +152,22 @@ export function createHand(
     bbSeat = findActiveAfter(sbSeat.seat);
   }
 
-  commit(state, sbSeat, sbSeat.stack < cfg.sb ? sbSeat.stack : cfg.sb);
+  if (sbSeat) commit(state, sbSeat, sbSeat.stack < cfg.sb ? sbSeat.stack : cfg.sb);
   commit(state, bbSeat, bbSeat.stack < cfg.bb ? bbSeat.stack : cfg.bb);
   state.currentBet = cfg.bb;
   state.lastFullRaiseSize = cfg.bb;
   state.aggressor = bbSeat.seat;
 
-  // deal 2 hole cards each, one at a time, clockwise from SB (cards consumed off
-  // deck front). The deal ring is the PRE-BLIND active list: posting a blind can
-  // put a short seat all-in, but an all-in-from-the-blinds seat is still dealt in.
-  // (GE-1.6 fix: walking the post-blind 'active' statuses here crashed when both
-  // blinds went all-in and mis-dealt — skipped the all-in BB, doubled another
-  // seat — whenever one blind did.)
+  // deal 2 hole cards each, one at a time, clockwise from the SB position (cards
+  // consumed off deck front). The deal ring is the PRE-BLIND active list: posting a
+  // blind can put a short seat all-in, but an all-in-from-the-blinds seat is still
+  // dealt in. (GE-1.6 fix: walking post-blind 'active' statuses mis-dealt when a
+  // blind went all-in.) With a DEAD SB the SB seat is empty, so dealing starts at
+  // the next live seat clockwise — the BB.
   let di = 0;
   const dealOrder = (() => {
-    const start = active.findIndex((s) => s.seat === sbSeat.seat);
+    const anchor = (sbSeat ?? bbSeat).seat;
+    const start = active.findIndex((s) => s.seat === anchor);
     return active.map((_, i) => active[(start + i) % active.length]);
   })();
   for (let round = 0; round < 2; round++) {
@@ -161,7 +181,12 @@ export function createHand(
 
   const events: HandEvent[] = [
     handStarted(cfg.handId, cfg.buttonSeat, active.map((s) => s.seat)),
-    blindsPosted(sbSeat.seat, bbSeat.seat, cfg.sb.toString(), cfg.bb.toString()),
+    blindsPosted(
+      sbSeat ? sbSeat.seat : null,
+      bbSeat.seat,
+      sbSeat ? cfg.sb.toString() : '0',
+      cfg.bb.toString(),
+    ),
     holeCardsDealt(active.map((s) => s.seat)),
   ];
 
@@ -200,7 +225,14 @@ function advanceStreetOnce(state: HandState, events: HandEvent[]): void {
 
 function firstActivePostflop(state: HandState): number | null {
   const s = firstClockwiseFrom(state.seats, state.buttonSeat, false, isActive);
-  return s ? s.seat : null;
+  if (s) return s.seat;
+  // Dead button: the button sits on an empty seat absent from `seats`, so the
+  // clockwise scan found no anchor. Fall back to the physical ring — the first
+  // active seat whose number exceeds the (empty) button seat, wrapping to the
+  // lowest active seat. (Cash play never reaches here: its button is a real seat.)
+  const actives = state.seats.filter(isActive).sort((a, b) => a.seat - b.seat);
+  if (actives.length === 0) return null;
+  return (actives.find((x) => x.seat > state.buttonSeat) ?? actives[0]).seat;
 }
 
 const countActiveWithChips = (state: HandState) =>
