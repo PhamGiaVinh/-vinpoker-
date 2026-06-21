@@ -1,0 +1,36 @@
+name: Dealer login codes — apply migration (one-shot, owner-gated)
+
+# Manual trigger only — never runs on push. Applies 20261013000000_dealer_login_codes.sql via the
+# Management API (not the CLI push path; no schema_migrations write). Preflight is read-only; apply
+# is gated by the confirm env. Delete this file + branch after the apply is verified.
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-dealer-login-codes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preflight — read-only (scan + PRE state)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/dealer-swing/apply_dealer_login_codes.mjs --preflight
+
+      - name: Apply — dealer_login_codes table + post-verify
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_DEALER_CODES: APPLY_DEALER_LOGIN_CODES
+        run: node scripts/dealer-swing/apply_dealer_login_codes.mjs --apply
