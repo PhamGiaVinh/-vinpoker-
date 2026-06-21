@@ -49,6 +49,23 @@ export interface EngineState {
   streetActions: EngineStreetAction[];
   /** Big blind size (min-raise guidance). 0 → fall back to current bet. */
   bigBlind?: number;
+  /**
+   * P2-3 dead small blind: this hand posts no SB (the SB position is dead after a
+   * bust, per the tournament dead-button rule). OPTIONAL — only the engine
+   * standalone console sets it; default false ⇒ the normal flow and the old
+   * embedded tab are unchanged. When true, the SB is neither prompted nor required.
+   */
+  deadSb?: boolean;
+  /**
+   * P2-5 dead-button: the BB seat per the tournament forward-moving button rule,
+   * which can differ from `blindSeats(occupied, button)` when the button/SB sit on
+   * empty seats. OPTIONAL — when set it drives the BB post-prompt, the preflop
+   * first-actor seed, and the BB-owed check (so the actor order is correct under a
+   * dead button) WITHOUT touching `blindSeats`. The SB-owed check stays global
+   * (`sbPosted`) and `deadSb` covers a dead SB, so the SB needs no override. Default
+   * unset ⇒ `blindSeats` drives everything (normal flow + old tab unchanged).
+   */
+  bbSeatOverride?: number;
 }
 
 export interface LegalActions {
@@ -184,14 +201,16 @@ export function actorToAct(state: EngineState): ActorView | null {
   // Preflop blind-posting phase (order: SB before BB) — drives correct heads-up.
   if (street === "preflop") {
     const { sbSeat, bbSeat } = blindSeats(seatNums, buttonSeat);
+    // P2-5: the dead-button BB overrides blindSeats' pick when set.
+    const effBbSeat = state.bbSeatOverride ?? bbSeat;
     const sbPosted = streetActions.some((a) => a.action_type === "post_sb");
     const bbPosted = streetActions.some((a) => a.action_type === "post_bb");
-    if (sbSeat != null && !sbPosted) {
+    if (!state.deadSb && sbSeat != null && !sbPosted) {
       const p = seatOf(seats, sbSeat);
       if (p && !p.folded) return view(state, p, "post_sb");
     }
-    if (bbSeat != null && !bbPosted) {
-      const p = seatOf(seats, bbSeat);
+    if (effBbSeat != null && !bbPosted) {
+      const p = seatOf(seats, effBbSeat);
       if (p && !p.folded) return view(state, p, "post_bb");
     }
   }
@@ -204,7 +223,7 @@ export function actorToAct(state: EngineState): ActorView | null {
     seed = lastVoluntary.seat_number;
   } else if (street === "preflop") {
     const { bbSeat } = blindSeats(seatNums, buttonSeat);
-    seed = bbSeat ?? buttonSeat;
+    seed = state.bbSeatOverride ?? bbSeat ?? buttonSeat; // P2-5 dead-button BB anchors the first actor
   } else {
     seed = buttonSeat;
   }
@@ -224,9 +243,15 @@ export function isRoundComplete(state: EngineState): boolean {
     const { sbSeat, bbSeat } = blindSeats(seatNums, state.buttonSeat);
     const sbPosted = state.streetActions.some((a) => a.action_type === "post_sb");
     const bbPosted = state.streetActions.some((a) => a.action_type === "post_bb");
+    const effBbSeat = state.bbSeatOverride ?? bbSeat; // P2-5 dead-button BB
     const sb = sbSeat != null ? seatOf(state.seats, sbSeat) : undefined;
-    const bb = bbSeat != null ? seatOf(state.seats, bbSeat) : undefined;
-    if (sb && !sb.folded && !sbPosted) return false;
+    const bb = effBbSeat != null ? seatOf(state.seats, effBbSeat) : undefined;
+    // A DEAD SB is suppressed by the `deadSb` FLAG (P2-3), NOT by blindSeats
+    // returning null — blindSeats is untouched and still returns the occupied SB
+    // seat; the flag is what skips the SB-owed requirement. The `sbPosted` test is
+    // GLOBAL (any post_sb), so even when the dead-button SB ≠ blindSeats' pick the
+    // check passes once the operator posts the real SB (P2-5 sufficiency).
+    if (!state.deadSb && sb && !sb.folded && !sbPosted) return false;
     if (bb && !bb.folded && !bbPosted) return false;
   }
   const highest = currentBet(state.seats);

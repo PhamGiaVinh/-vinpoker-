@@ -40,6 +40,13 @@ interface BlindSetupPanelProps {
   onPost: (type: "post_sb" | "post_bb", playerId: string, amount: number) => void;
   onConfirm: () => void;
   disabled?: boolean;
+  /**
+   * P2-3 dead small blind (OPTIONAL — only the engine standalone console passes
+   * these; the old embedded tab omits them and keeps the SB always required).
+   * When `deadSb`, the SB is skipped and confirm needs only the BB.
+   */
+  deadSb?: boolean;
+  onToggleDeadSb?: () => void;
 }
 
 function seatLabel(players: BlindSetupPlayer[], seat: number | null): string {
@@ -123,10 +130,12 @@ export function BlindSetupPanel({
   onPost,
   onConfirm,
   disabled,
+  deadSb,
+  onToggleDeadSb,
 }: BlindSetupPanelProps) {
   const sbPlayer = players.find((p) => p.seat_number === sbSeat);
   const bbPlayer = players.find((p) => p.seat_number === bbSeat);
-  const canConfirm = sbPosted && bbPosted;
+  const canConfirm = bbPosted && (deadSb || sbPosted);
 
   return (
     <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-card p-3.5">
@@ -151,9 +160,29 @@ export function BlindSetupPanel({
       </div>
 
       <div className="space-y-1.5">
-        <BlindRow role="post_sb" seat={sbSeat} player={sbPlayer} amount={sbAmount} onAmountChange={onSbAmountChange} posted={sbPosted} onPost={onPost} disabled={disabled} />
+        {deadSb ? (
+          <div className="flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px]">
+            <span className="font-bold uppercase tracking-wide text-amber-300">Small Blind — DEAD (bỏ qua)</span>
+            <span className="text-muted-foreground">{seatLabel(players, sbSeat)}</span>
+          </div>
+        ) : (
+          <BlindRow role="post_sb" seat={sbSeat} player={sbPlayer} amount={sbAmount} onAmountChange={onSbAmountChange} posted={sbPosted} onPost={onPost} disabled={disabled} />
+        )}
         <BlindRow role="post_bb" seat={bbSeat} player={bbPlayer} amount={bbAmount} onAmountChange={onBbAmountChange} posted={bbPosted} onPost={onPost} disabled={disabled} />
       </div>
+
+      {onToggleDeadSb && (
+        <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={!!deadSb}
+            disabled={disabled || sbPosted}
+            onChange={onToggleDeadSb}
+            className="h-3.5 w-3.5 accent-amber-500"
+          />
+          SB chết (dead SB) — ván này không có Small Blind
+        </label>
+      )}
 
       {ante > 0 && (
         <div className="text-[10px] text-muted-foreground">
