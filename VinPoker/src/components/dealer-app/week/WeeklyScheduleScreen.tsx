@@ -8,6 +8,7 @@ import { localTodayDate, addDays } from "@/lib/dealerApp/clock";
 import { weekDates, buildWeekCells, weekSummary } from "@/lib/dealerApp/selectors";
 import { WeekSummaryCard } from "./WeekSummaryCard";
 import { WeekShiftList } from "./WeekShiftList";
+import { RequestShiftDialog } from "../RequestShiftDialog";
 import { DealerNotLinkedScreen } from "../DealerNotLinkedScreen";
 
 function dm(date: string): string {
@@ -20,6 +21,8 @@ export function WeeklyScheduleScreen() {
   const { dealer, isDealer, loading } = useDealerLink();
   const today = localTodayDate();
   const [anchor, setAnchor] = useState(today);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [pickDate, setPickDate] = useState<string | undefined>(undefined);
   const { data: shifts, isLoading } = useWeeklySchedule(dealer?.dealerId, anchor);
 
   if (loading) return <Skeleton className="h-64 w-full rounded-2xl" />;
@@ -59,13 +62,22 @@ export function WeeklyScheduleScreen() {
       ) : (
         <>
           <WeekSummaryCard summary={summary} />
-          <WeekShiftList cells={cells} />
+          <WeekShiftList
+            cells={cells}
+            onPickDate={(d) => { setPickDate(d); setPickOpen(true); }}
+          />
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#E6B84C]/30 bg-card p-3 text-[12px] text-muted-foreground">
             <Info className="w-4 h-4 mt-0.5 shrink-0 text-[#E6B84C]" />
-            {t("dealer.week.hint", "Muốn đăng ký ca mong muốn hoặc xin nghỉ? Vào Trang chủ → \"Đăng ký lịch\".")}
+            {t("dealer.week.hint", "Bấm vào một ngày để đăng ký ca mong muốn hoặc xin nghỉ.")}
           </div>
         </>
       )}
+      <RequestShiftDialog
+        dealerId={dealer?.dealerId}
+        open={pickOpen}
+        onOpenChange={setPickOpen}
+        initialDate={pickDate}
+      />
     </div>
   );
 }
