@@ -17,22 +17,14 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Construction } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
-import { useStandaloneHandInput } from "@/components/cashier/tournament-live/handinput/useStandaloneHandInput";
-import { StandaloneHandInputConsole } from "@/components/cashier/tournament-live/handinput/StandaloneHandInputConsole";
-import { RacetrackHandInputConsole } from "@/components/cashier/tournament-live/handinput/RacetrackHandInputConsole";
+import { HandInputConsole } from "@/components/cashier/tournament-live/handinput/HandInputConsole";
 
-/** Inner component: only mounted when the flag is ON and a tournament id exists. */
+/** Inner component: only mounted when the flag is ON and a tournament id exists.
+ * Shares the SAME embeddable console as the operator "Nhập hand" tab (no drift). */
 function ConsoleInner({ tournamentId }: { tournamentId: string }) {
-  const hook = useStandaloneHandInput(tournamentId);
-  // Both consoles use the SAME hook + guided sub-panels — only the felt + action
-  // step differ. trackerRacetrackUi OFF ⇒ the existing StandaloneHandInputConsole.
   return (
     <div className="container mx-auto p-3 md:p-6">
-      {FEATURES.trackerRacetrackUi ? (
-        <RacetrackHandInputConsole hook={hook} />
-      ) : (
-        <StandaloneHandInputConsole hook={hook} />
-      )}
+      <HandInputConsole tournamentId={tournamentId} />
     </div>
   );
 }
