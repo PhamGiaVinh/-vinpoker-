@@ -292,11 +292,11 @@ export const FEATURES = {
    * MonteCarloPanel: pick a festival's events from the reference distribution, assume ρ/α/cost/bankroll,
    * and see a SCENARIO / what-if (EV distribution, P(loss), Risk-of-Ruin, P(overlay)) — explicitly NOT a
    * forecast. Pure client-side; reads only the loaded historical CSVs (never live DB/registrations); no
-   * Supabase/RPC/Edge/migration. Default **OFF** (dark) — an independent kill-switch for a feature that
-   * surfaces risk numbers; flip to true only for owner UAT on a preview branch (cf. trackerEngineMode),
-   * keep main/prod OFF until UAT passes.
+   * Supabase/RPC/Edge/migration. Also gates the ScheduleGeneratorPanel (PATCH B) + its EV-feed (B.2).
+   * **ON (owner UAT, 2026-06-21):** flipped at the owner's request to surface the forward-layer panels for
+   * review. Still client-only / read-only / no DB — kill-switch: set false to hide again.
    */
-  forwardLayerMonteCarlo: false,
+  forwardLayerMonteCarlo: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
