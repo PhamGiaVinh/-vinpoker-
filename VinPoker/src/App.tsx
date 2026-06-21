@@ -86,6 +86,10 @@ const TournamentDisplay = lazy(() => import("./pages/TournamentDisplay"));
 // GE-2D online-poker shell (dark; gated by FEATURES.onlinePoker)
 const OnlinePoker = lazy(() => import("./pages/OnlinePoker"));
 const OnlinePokerTable = lazy(() => import("./pages/OnlinePokerTable"));
+// DEV-ONLY visual harness for the poker table. Gated to import.meta.env.DEV so the route AND
+// its lazy chunk are tree-shaken out of the production build (the dead ternary branch drops
+// the dynamic import). Reached only at /__dev/table; not linked anywhere.
+const DevTablePreview = import.meta.env.DEV ? lazy(() => import("./dev/TablePreview")) : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -150,6 +154,11 @@ const App = () => (
               {/* Online-poker TABLE — chrome-less full-viewport route (NO Layout nav), like
                   /poker-iq. The lobby /poker stays inside <Layout> below (keeps its nav). */}
               <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />
+              {/* DEV-ONLY visual harness (import.meta.env.DEV) — fixture-rendered poker table
+                  for screenshots; not linked, stripped from the production build. */}
+              {import.meta.env.DEV && DevTablePreview && (
+                <Route path="/__dev/table" element={<DevTablePreview />} />
+              )}
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}
               <Route element={<DealerAppShell />}>

@@ -32,5 +32,11 @@ dist-ssr
 
 .vercel
 
+# Visual harness / Playwright artifacts (regenerate with `npm run shots`)
+shots/
+test-results/
+playwright-report/
+e2e/.out/
+
 # Supabase CLI local cache
 supabase/.temp/

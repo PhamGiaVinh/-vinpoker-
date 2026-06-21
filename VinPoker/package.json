@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "typecheck:engine": "tsc -p tsconfig.engine.json --noEmit",
     "test:e2e": "playwright test",
+    "shots": "playwright test e2e/table-shots.spec.ts",
     "analyze": "vite build --mode analyze",
     "deploy:functions": "supabase functions deploy --project-ref orlesggcjamwuknxwcpk",
     "deploy:db": "supabase db push",
