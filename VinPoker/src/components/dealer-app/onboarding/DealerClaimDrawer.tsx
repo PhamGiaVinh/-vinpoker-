@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { LucideIcon } from "lucide-react";
-import { Phone, MessageSquare, Send } from "lucide-react";
+import { Phone, MessageSquare, Send, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Drawer,
   DrawerContent,
@@ -30,7 +31,39 @@ export function DealerClaimDrawer({ open, onOpenChange }: { open: boolean; onOpe
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const preview = () => toast.info(t("dealer.toast.previewOnly", "Bản xem trước — thao tác sẽ bật khi triển khai"));
+
+  // Telegram link-code (/code) → real login: exchange the code for a session via dealer-code-login
+  // + verifyOtp (same path as DealerLogin). Logs in as the dealer's account → linked.
+  const linkByCode = async () => {
+    const c = code.trim();
+    if (!c) {
+      toast.error(t("dealer.onboarding.codeMissing", "Nhập mã liên kết."));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("dealer-code-login", { body: { code: c } });
+      const tokenHash = (data as { token_hash?: string } | null)?.token_hash;
+      if (error || !tokenHash) {
+        toast.error((data as { error?: string } | null)?.error ?? t("dealer.onboarding.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+        return;
+      }
+      const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+      if (vErr) {
+        toast.error(t("dealer.onboarding.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+        return;
+      }
+      toast.success(t("dealer.onboarding.linkOk", "Liên kết thành công!"));
+      onOpenChange(false);
+      // AuthProvider updates `user` → DealerAppShell re-renders into the app.
+    } catch {
+      toast.error(t("dealer.onboarding.codeFailed", "Mã không hợp lệ hoặc đã hết hạn."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -72,13 +105,20 @@ export function DealerClaimDrawer({ open, onOpenChange }: { open: boolean; onOpe
           ) : (
             <div className="space-y-2">
               <label className="text-[12px] text-muted-foreground">{t("dealer.onboarding.codeLabel", "Mã liên kết từ CLB / Telegram")}</label>
-              <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="VBK-XXXX" />
-              <Button onClick={preview} className="w-full gradient-neon text-primary-foreground border-0 font-bold">
-                <Send className="w-4 h-4 mr-1.5" />
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                placeholder="ABCD-EFGH"
+                onKeyDown={(e) => e.key === "Enter" && linkByCode()}
+              />
+              <Button onClick={linkByCode} disabled={submitting} className="w-full gradient-neon text-primary-foreground border-0 font-bold">
+                {submitting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
                 {t("dealer.onboarding.linkNow", "Liên kết ngay")}
               </Button>
               <p className="text-[11px] text-muted-foreground">
-                {t("dealer.onboarding.codeHint", "Nhận mã từ quản lý CLB hoặc lệnh /setup trên Telegram.")}
+                {t("dealer.onboarding.codeHint", "Mở Telegram, gõ /code để lấy mã liên kết (hết hạn sau 10 phút).")}
               </p>
             </div>
           )}
