@@ -6,6 +6,7 @@ import {
   groupEvents,
   computeGroupStats,
   confidenceTier,
+  obsKeyOf,
 } from "./referenceDistribution";
 
 function evt(name: string | null, over: Partial<SeriesEvent> = {}): SeriesEvent {
@@ -144,5 +145,46 @@ describe("confidenceTier boundaries", () => {
     expect(confidenceTier(2).level).toBe("trung bình");
     expect(confidenceTier(4).level).toBe("trung bình");
     expect(confidenceTier(5)).toEqual({ level: "cao", basis: "Quan sát p20-p80" });
+  });
+});
+
+describe("groupEvents — manual overrides (PATCH 2.5)", () => {
+  it("no overrides reproduces the auto grouping exactly", () => {
+    const lib = [series("a", "S1", [evt("Main 2023", { event_id: "csv-1" })]), series("b", "S2", [evt("Side", { event_id: "csv-1" })])];
+    expect(JSON.stringify(groupEvents(lib))).toBe(JSON.stringify(groupEvents(lib, {})));
+  });
+
+  it("each observation carries a stable obsKey + isOverridden=false by default", () => {
+    const g = groupEvents([series("a", "S1", [evt("X", { event_id: "csv-1" })])])[0];
+    expect(g.members[0].obsKey).toBe(obsKeyOf("a", "csv-1"));
+    expect(g.members[0].isOverridden).toBe(false);
+    expect(g.isOverridden).toBe(false);
+  });
+
+  it("MERGE: a shared label pulls two differently-named events into one group", () => {
+    const lib = [
+      series("a", "S1", [evt("Sunday Major", { event_id: "csv-1", total_entries: 100 })]),
+      series("b", "S2", [evt("Chủ Nhật Lớn", { event_id: "csv-1", total_entries: 200 })]), // different spelling
+    ];
+    expect(groupEvents(lib)).toHaveLength(2); // auto: two separate groups
+    const labels = { [obsKeyOf("a", "csv-1")]: "manual::x", [obsKeyOf("b", "csv-1")]: "manual::x" };
+    const merged = groupEvents(lib, labels);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].n).toBe(2);
+    expect(merged[0].isOverridden).toBe(true);
+    expect(merged[0].members.every((m) => m.isOverridden)).toBe(true);
+  });
+
+  it("SPLIT: labelling one member of an auto group pulls it into its own group", () => {
+    const lib = [
+      series("a", "S1", [evt("Main 2023", { event_id: "csv-1" })]),
+      series("b", "S2", [evt("Main 2024", { event_id: "csv-1" })]),
+    ];
+    expect(groupEvents(lib)).toHaveLength(1); // auto: both → "main"
+    const split = groupEvents(lib, { [obsKeyOf("b", "csv-1")]: "manual::solo" });
+    expect(split).toHaveLength(2); // b pulled out
+    const solo = split.find((g) => g.normalizedName === "manual::solo")!;
+    expect(solo.n).toBe(1);
+    expect(solo.isOverridden).toBe(true);
   });
 });

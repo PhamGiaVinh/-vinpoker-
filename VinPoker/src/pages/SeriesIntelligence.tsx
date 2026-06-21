@@ -14,6 +14,7 @@ import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel"
 import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
 import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
+import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
@@ -28,6 +29,8 @@ export default function SeriesIntelligence() {
   const [mode, setMode] = useState<"dashboard" | "report">("dashboard");
   // Series Library (browser-only). The dashboard renders the ACTIVE series, or live native when none.
   const lib = useSeriesLibrary();
+  // Manual grouping overrides for the reference distribution (browser-only, persisted).
+  const grouping = useGroupingOverrides(lib.series);
 
   if (loading) return null;
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
@@ -93,8 +96,17 @@ export default function SeriesIntelligence() {
         />
       )}
 
-      {/* Reference Distribution — same tournaments grouped across the whole library (read-only) */}
-      {FEATURES.seriesIntelligenceCsvImport && <ReferenceDistributionPanel series={lib.series} />}
+      {/* Reference Distribution — same tournaments grouped across the whole library (+ manual override) */}
+      {FEATURES.seriesIntelligenceCsvImport && (
+        <ReferenceDistributionPanel
+          series={lib.series}
+          overrideLabels={grouping.overrideLabels}
+          onMerge={grouping.merge}
+          onReset={grouping.reset}
+          onResetAll={grouping.resetAll}
+          hasOverrides={grouping.hasOverrides}
+        />
+      )}
 
       {/* CSV import — test / what-if data, browser-only (collapsed) */}
       <Collapsible defaultOpen={lib.count > 0}>

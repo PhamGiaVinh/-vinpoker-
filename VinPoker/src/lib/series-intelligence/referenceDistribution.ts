@@ -16,13 +16,21 @@ export interface EventObservation {
   event: SeriesEvent; // the original CSV row
   seriesId: string;
   seriesName: string;
+  obsKey: string; // stable per-observation id = seriesId::event_id (anchor for manual overrides)
+  isOverridden: boolean; // true when a manual override placed this event into its group
 }
 
 export interface EventGroup {
-  normalizedName: string; // grouping key ("" for unnamed)
+  normalizedName: string; // effective grouping key: auto-normalized name OR a manual override label
   displayName: string; // representative original name (first seen)
   members: EventObservation[];
   n: number; // = members.length
+  isOverridden: boolean; // true when this group's key came from a manual override
+}
+
+/** Stable per-observation id used to anchor manual grouping overrides (PATCH 2.5). */
+export function obsKeyOf(seriesId: string, eventId: string): string {
+  return `${seriesId}::${eventId}`;
 }
 
 export interface ConfidenceTier {
@@ -70,23 +78,33 @@ export function normalizeEventName(name: string | null | undefined): string {
 // grouping
 // ---------------------------------------------------------------------------
 
-/** Group every event across the whole library by normalized name. Deterministic order: N desc, then name. */
-export function groupEvents(series: Series[]): EventGroup[] {
+/**
+ * Group every event across the whole library by its EFFECTIVE key: a manual override label
+ * (PATCH 2.5) when present for that observation, otherwise the auto-normalized name. Passing no
+ * `overrideLabels` reproduces the pure auto-grouping exactly. Deterministic order: N desc, then name.
+ */
+export function groupEvents(series: Series[], overrideLabels?: Record<string, string>): EventGroup[] {
   const map = new Map<string, EventGroup>();
   for (const s of series) {
     for (const event of s.events) {
-      const normalizedName = normalizeEventName(event.event_name);
-      let group = map.get(normalizedName);
+      const autoKey = normalizeEventName(event.event_name);
+      const oKey = obsKeyOf(s.id, event.event_id);
+      const manual = overrideLabels?.[oKey];
+      const isManual = typeof manual === "string" && manual !== "";
+      const key = isManual ? manual : autoKey;
+      let group = map.get(key);
       if (!group) {
         group = {
-          normalizedName,
+          normalizedName: key,
           displayName: event.event_name?.trim() || "(không tên)",
           members: [],
           n: 0,
+          isOverridden: false,
         };
-        map.set(normalizedName, group);
+        map.set(key, group);
       }
-      group.members.push({ event, seriesId: s.id, seriesName: s.name });
+      group.members.push({ event, seriesId: s.id, seriesName: s.name, obsKey: oKey, isOverridden: isManual });
+      if (isManual) group.isOverridden = true;
     }
   }
   const groups = Array.from(map.values());
