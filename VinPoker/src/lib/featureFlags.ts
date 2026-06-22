@@ -159,7 +159,7 @@ export const FEATURES = {
    * ⚠️ If an RFID / hole-card-camera source is ever added, this guarantee BREAKS and
    * a broadcast delay + reveal policy becomes mandatory before showing any hand.
    */
-  liveHandFeed: false,
+  liveHandFeed: true, // GO-LIVE 2026-06-22: spectator hand feed enabled (owner-approved)
   /**
    * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
    * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
@@ -216,7 +216,7 @@ export const FEATURES = {
    * pattern). Flip to true (after operator UAT on the preview branch) to make the
    * richer table live; kill-switch = set false.
    */
-  trackerRacetrackRich: false,
+  trackerRacetrackRich: true, // GO-LIVE 2026-06-22: rich operator felt enabled (owner-approved)
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
