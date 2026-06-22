@@ -138,6 +138,24 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
       isFinal && players.some((p) => p.hole_cards && p.hole_cards.length > 0);
     const streetIndex = reveal ? 4 : maxStreetIdx;
 
+    // Winner net for the FINAL frame (drives the showdown glow + badge). Prefer the
+    // recorded ending_stack — exact, and the only way to resolve a SHOWDOWN (the
+    // engine doesn't evaluate hands). When ending_stack is absent, fall back to the
+    // fold-win case: a single un-folded seat takes the whole pot, so NON-showdown
+    // wins (A bets, B folds) light up too. Either way it is final-frame-only.
+    const pot = breakdown.totalCommitted;
+    const stillIn = isFinal ? players.filter((p) => !runtime.get(p.player_id)?.folded) : [];
+    const soleWinnerId = isFinal && stillIn.length === 1 ? stillIn[0].player_id : null;
+    const netWonFor = (p: ReplayHandPlayer): number | null => {
+      if (!isFinal) return null;
+      if (p.ending_stack != null) return p.ending_stack - clampChips(p.starting_stack);
+      if (p.player_id === soleWinnerId) {
+        // Profit = whole pot − this seat's own contribution (start − remaining chips).
+        return pot - (clampChips(p.starting_stack) - runtime.get(p.player_id)!.chip);
+      }
+      return null;
+    };
+
     const seats: SeatInfo[] = players.map((p) => {
       const st = runtime.get(p.player_id)!;
       return {
@@ -153,9 +171,7 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
         is_folded: st.folded,
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
-        // Net result, ONLY on the final frame (hand settled) and only when the
-        // ending stack is known → drives the showdown winner badge + glow.
-        net_won: isFinal && p.ending_stack != null ? p.ending_stack - clampChips(p.starting_stack) : null,
+        net_won: netWonFor(p),
       };
     });
 
