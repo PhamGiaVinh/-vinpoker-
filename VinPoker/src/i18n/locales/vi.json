@@ -2862,6 +2862,11 @@
     "create": "Tạo"
   },
   "liveHub": {
+    "tabs": { "updates": "Cập nhật", "handHistory": "Lịch sử ván", "prizes": "Giải thưởng", "structure": "Cấu trúc", "photos": "Hình ảnh", "back": "Quay lại" },
+    "watch": { "title": "Bàn đang chơi", "replay": "PHÁT LẠI VÁN" },
+    "prizes": { "empty": "Chưa có cơ cấu giải thưởng", "total": "Tổng thưởng", "position": "Hạng", "amount": "Tiền thưởng", "rank": "#{{n}}" },
+    "structure": { "empty": "Chưa có cấu trúc mù", "level": "Lv", "blinds": "Mù (SB/BB)", "ante": "Ante", "time": "Phút", "break": "Nghỉ giải lao" },
+    "photos": { "empty": "Chưa có ảnh", "soon": "Hình ảnh sự kiện sẽ sớm có ở đây" },
     "breakdown": {
       "title": "Phân tích ván",
       "pot": "Pot",

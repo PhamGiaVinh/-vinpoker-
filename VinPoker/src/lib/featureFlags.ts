@@ -172,6 +172,15 @@ export const FEATURES = {
    */
   liveTableFx: true, // GO-LIVE 2026-06-22: chip-push + enriched sounds + replay audio (owner-approved)
   /**
+   * Public live-tracker EVENT TABS (RPT-Live style): opening `/live/:id` no longer
+   * drops straight onto the felt — it shows a 5-tab event page (Cập nhật / Lịch sử
+   * ván / Giải thưởng / Cấu trúc / Hình ảnh). The felt mounts ON DEMAND (tap the
+   * "Bàn đang chơi" card to watch live, or a hand to replay). Public-viewer-only
+   * (LiveHub); TournamentLiveView/operator/TV untouched. OFF → today's stacked
+   * layout (felt always shown), byte-identical. Frontend-only. Kill-switch: set false.
+   */
+  liveEventTabs: true,
+  /**
    * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
    * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
    * seeding), legal actions, "Bet to" (street-total) sizing, automatic

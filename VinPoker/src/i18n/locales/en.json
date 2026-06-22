@@ -2862,6 +2862,11 @@
     "create": "Create"
   },
   "liveHub": {
+    "tabs": { "updates": "Updates", "handHistory": "Hand History", "prizes": "Prizes", "structure": "Structure", "photos": "Photos", "back": "Back" },
+    "watch": { "title": "Live tables", "replay": "HAND REPLAY" },
+    "prizes": { "empty": "No prize structure yet", "total": "Total prizes", "position": "Place", "amount": "Prize", "rank": "#{{n}}" },
+    "structure": { "empty": "No blind structure yet", "level": "Lv", "blinds": "Blinds (SB/BB)", "ante": "Ante", "time": "Min", "break": "Break" },
+    "photos": { "empty": "No photos yet", "soon": "Event photos coming soon" },
     "breakdown": {
       "title": "Hand breakdown",
       "pot": "Pot",
