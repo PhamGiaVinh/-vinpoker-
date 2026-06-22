@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { formatBuyInShort, formatShortDate, formatTime, formatStack } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import { FEATURES } from "@/lib/featureFlags";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { Loader2, ChevronLeft, ChevronRight, Trophy, ExternalLink, Radio, Newspaper, ChevronDown, Filter, Search, X, ArrowUp, ArrowDown, Eye, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { LivestreamSection } from "@/components/LivestreamSection";
@@ -74,6 +75,7 @@ const Tournaments = () => {
   const [items, setItems] = useState<Tournament[]>([]);
   const [series, setSeries] = useState<SeriesItem[]>([]);
   const [scheduleClubs, setScheduleClubs] = useState<{ id: string; name: string; region: string; daily_schedule_image_url: string | null; weekly_schedule_image_url: string | null; schedule_sort_order: number }[]>([]);
+  const [seriesByClub, setSeriesByClub] = useState<Record<string, { image_url: string; caption: string | null }[]>>({});
   const [reordering, setReordering] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"daily" | "weekly" | "news" | "series" | "livestream" | "livetracker" | "packages">("weekly");
@@ -106,6 +108,20 @@ const Tournaments = () => {
       setItems((t as any) ?? []);
       setSeries((sr as any) ?? []);
       setScheduleClubs((cs as any) ?? []);
+      // Club "Lịch series" galleries embedded in the weekly view (gated).
+      if (FEATURES.clubSeriesSchedule) {
+        const ids = ((cs as any[]) ?? []).map((c) => c.id);
+        if (ids.length) {
+          const { data: simgs } = await (supabase as any)
+            .from("club_series_images")
+            .select("club_id, image_url, caption, position")
+            .in("club_id", ids)
+            .order("position");
+          const grouped: Record<string, { image_url: string; caption: string | null }[]> = {};
+          for (const r of ((simgs ?? []) as any[])) (grouped[r.club_id] ??= []).push({ image_url: r.image_url, caption: r.caption ?? null });
+          setSeriesByClub(grouped);
+        }
+      }
       const list: BannerItem[] = [];
       const multi = (bs?.value as any)?.items;
       if (Array.isArray(multi)) {
@@ -482,7 +498,7 @@ const Tournaments = () => {
           )}
 
           {view === "weekly" ? (() => {
-            const visible = scheduleClubs.filter(c => c.weekly_schedule_image_url || c.daily_schedule_image_url);
+            const visible = scheduleClubs.filter(c => c.weekly_schedule_image_url || c.daily_schedule_image_url || (FEATURES.clubSeriesSchedule && (seriesByClub[c.id]?.length ?? 0) > 0));
             const moveClub = async (clubId: string, dir: "up" | "down") => {
               if (reordering) return;
               const idx = visible.findIndex(c => c.id === clubId);
@@ -548,6 +564,13 @@ const Tournaments = () => {
                           </div>
                         )}
                       </div>
+
+                      {FEATURES.clubSeriesSchedule && (seriesByClub[c.id]?.length ?? 0) > 0 && (
+                        <div className="mt-3">
+                          <div className="text-[11px] uppercase tracking-wider text-primary font-bold mb-1">Lịch series</div>
+                          <ImageCarousel images={seriesByClub[c.id]} />
+                        </div>
+                      )}
                     </Card>
                   ))
                 )}
