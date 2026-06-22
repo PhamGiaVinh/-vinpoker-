@@ -43,7 +43,10 @@ function seatPositions(seats: PublicSeatView[], mySeat?: number): Record<number,
   const n = ordered.length || 1;
   const myIdx = Math.max(0, ordered.findIndex((s) => s.seat === mySeat));
   const out: Record<number, { x: number; y: number }> = {};
-  const rx = 40, ry = 37; // percent radii (pulled in so the wider N8 name-plates stay inside the felt)
+  // percent radii. rx<=38 keeps an ~88px name-plate centred at x≈12/88% fully on-screen once
+  // the felt fills the full width. ry<=36 keeps the lower-side seats clear of the bottom action
+  // dock / hero HUD on the now-tall fill felt (the felt-fill itself, not ry, gives the size).
+  const rx = 38, ry = 36;
   ordered.forEach((s, i) => {
     // bottom = 90deg; step clockwise so my seat sits at the bottom center.
     const ang = (Math.PI / 2) + ((i - myIdx) / n) * 2 * Math.PI;
@@ -163,6 +166,7 @@ export function SeatRing({
   skin = 'emerald',
   heroAnchor,
   heroAsHud = false,
+  fill = false,
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -188,6 +192,10 @@ export function SeatRing({
    *  natural bottom-centre ring position only for its committed-bet chip + deal flourish.
    *  Default false → legacy in-ring hero (cinematic / spectator) is unchanged. */
   heroAsHud?: boolean;
+  /** When true the felt FILLS its parent (mobile: `absolute inset-0` → screen-tall oval; the
+   *  parent MUST be position:relative). Desktop (sm:) reverts to the centred aspect oval.
+   *  Default false keeps the legacy centred `aspect-[3/5]` box (cinematic / spectator). */
+  fill?: boolean;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
   // Legacy (non-HUD) layout — drop the hero into the bottom-LEFT corner. With heroAsHud the
@@ -212,7 +220,11 @@ export function SeatRing({
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
   // evenly without crowding.
   return (
-    <div className="relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]">
+    <div className={fill
+      // fill: mobile fills the (relative) felt-area wrapper edge-to-edge; desktop reverts to
+      // the centred aspect oval. Default keeps the legacy centred box (cinematic / spectator).
+      ? 'absolute inset-0 sm:relative sm:inset-auto sm:mx-auto sm:aspect-[16/10] sm:h-auto sm:w-full sm:max-w-3xl'
+      : 'relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]'}>
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 

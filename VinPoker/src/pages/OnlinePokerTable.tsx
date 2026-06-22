@@ -412,15 +412,15 @@ export default function OnlinePokerTable() {
         // The header floats over the top (absolute) so it never steals layout height. Only the
         // bottom safe-area is reserved (home indicator); the top notch is handled by the header.
         ? 'fixed inset-0 z-[60] flex h-[100dvh] w-full flex-col overflow-hidden bg-background [padding-bottom:env(safe-area-inset-bottom)]'
-        // Chrome-less route (no Layout nav): own full-viewport shell + safe-area insets so
-        // the table fills the phone edge-to-edge; max-w-4xl keeps desktop centered.
-        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
+        // Chrome-less route (no Layout nav): on MOBILE drop side padding + gap so the felt
+        // fills edge-to-edge (the header floats over the top); restore padding/centering at sm:
+        // so desktop stays a centred table.
+        : 'mx-auto flex min-h-[100dvh] w-full flex-col bg-background [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] sm:max-w-4xl sm:gap-2 sm:p-4'}
       style={{ background: 'radial-gradient(130% 85% at 50% 26%, #0b1410 0%, #07090b 72%)' }}
     >
-      <header className={immersive
-        // Immersive: float over the felt's top edge so it never steals height (felt is edge-to-edge).
-        ? 'absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 [padding-top:max(0.25rem,env(safe-area-inset-top))]'
-        : 'flex items-center gap-2 rounded-xl bg-black/25 px-1.5 py-1'}>
+      {/* Header floats over the felt's top edge (both modes) so it never steals layout height
+          and the felt reaches the top — N8-style thin top bar. */}
+      <header className="absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 [padding-top:max(0.25rem,env(safe-area-inset-top))]">
         {immersive ? (
           <Button variant="ghost" size="sm" onClick={exitImmersive}><Minimize2 className="h-4 w-4" /> Thoát</Button>
         ) : (
@@ -489,6 +489,8 @@ export default function OnlinePokerTable() {
             // N8: the hero leaves the ring → rendered as a screen-corner <HeroHud> below.
             // This frees the lower-left so seat 1 no longer overlaps the hero.
             heroAsHud
+            // N8: the felt fills the screen (mobile edge-to-edge; desktop stays centred).
+            fill
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}

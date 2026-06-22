@@ -165,12 +165,10 @@ export default function TablePreview() {
       data-dev-table-preview
       className={immersive
         ? 'fixed inset-0 z-[60] flex h-[100dvh] w-full flex-col overflow-hidden bg-background [padding-bottom:env(safe-area-inset-bottom)]'
-        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
+        : 'mx-auto flex min-h-[100dvh] w-full flex-col bg-background [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] sm:max-w-4xl sm:gap-2 sm:p-4'}
       style={{ background: 'radial-gradient(130% 85% at 50% 26%, #0b1410 0%, #07090b 72%)' }}
     >
-      <header className={immersive
-        ? 'absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 text-white/80 [padding-top:max(0.25rem,env(safe-area-inset-top))]'
-        : 'flex items-center gap-2 rounded-xl bg-black/25 px-2 py-1 text-white/80'}>
+      <header className="absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 text-white/80 [padding-top:max(0.25rem,env(safe-area-inset-top))]">
         <span className="text-base font-semibold">Bàn 1 · DEV</span>
         <span className="rounded-md border border-white/15 px-1.5 py-0.5 text-[11px] tabular-nums">25/50</span>
         <span className="ml-auto text-[11px] text-white/45">seats={seatsN} · {allin ? 'all-in' : phase} · {skin}</span>
@@ -181,7 +179,7 @@ export default function TablePreview() {
       <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
         {allin
           ? <AllInRunout hand={hand} bb={BB} skin={skin} />
-          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAsHud />}
+          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAsHud fill />}
 
         {/* hero HUD — own cards + stack pinned to the SCREEN's bottom-left corner (N8); mirrors
             OnlinePokerTable. FIXED — never lifts. */}
