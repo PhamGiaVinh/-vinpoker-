@@ -316,7 +316,7 @@ export const FEATURES = {
    * admin upload section and the ClubDetail carousel do not render / never query the
    * missing table. Flip to true ONLY after the table is applied in a controlled DB session.
    */
-  clubSeriesSchedule: false,
+  clubSeriesSchedule: true,
   /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
