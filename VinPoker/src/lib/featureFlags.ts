@@ -365,6 +365,9 @@ export const FEATURES = {
    * club_chip_masters (so it cannot 42P01 before the table exists — see lib/chipMaster.ts).
    * Flip to true ONLY after BOTH migrations are applied in a controlled DB session + types
    * regenerated. The panel degrades gracefully if the RPC is still absent.
+   * **ON** (2026-06-22): the 1a foundation (`20261015000000`) is applied live, so the
+   * owner-scoped inventory RPC works. Apply `20261016000000` (Chip-Master role) too to
+   * enable delegation + stop the guarded club_chip_masters lookup from 404-ing.
    */
-  chipOps: false,
+  chipOps: true,
 } as const;
