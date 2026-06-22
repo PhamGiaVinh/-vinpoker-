@@ -153,6 +153,9 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
         is_folded: st.folded,
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
+        // Net result, ONLY on the final frame (hand settled) and only when the
+        // ending stack is known → drives the showdown winner badge + glow.
+        net_won: isFinal && p.ending_stack != null ? p.ending_stack - clampChips(p.starting_stack) : null,
       };
     });
 
