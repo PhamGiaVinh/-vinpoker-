@@ -48,12 +48,15 @@ export function PokerCard({
   size = "md",
   muted = false,
   className,
+  style,
 }: {
   card?: string | null;
   hidden?: boolean;
   size?: "xs" | "sm" | "md" | "lg";
   muted?: boolean;
   className?: string;
+  /** Optional inline style (e.g. animationDelay for a staggered board reveal). */
+  style?: CSSProperties;
 }) {
   const red = isPokerCardRed(card);
   const sizeClass = {
@@ -102,6 +105,7 @@ export function PokerCard({
         sizeClass,
         className
       )}
+      style={style}
     >
       <div className="absolute inset-1 rounded-[inherit] border border-black/10" />
       <div className="absolute inset-0 flex items-center justify-center gap-0.5 text-[1.35em]">
@@ -274,10 +278,28 @@ export function TrackerVisualStyles() {
           from { transform: translateX(-110%) skewX(-18deg); opacity: .12; }
           to { transform: translateX(210%) skewX(-18deg); opacity: .28; }
         }
+        /* liveTableFx: a chip flies from a seat to the pot — anticipation pop-in, a
+           lifted arc apex (55%), ease-out landing. left/top travel = container-% path. */
+        @keyframes tracker-chip-push {
+          0%   { left: var(--cp-fx); top: var(--cp-fy); transform: translate(-50%,-50%) scale(.6); opacity: 0; }
+          12%  { left: var(--cp-fx); top: var(--cp-fy); transform: translate(-50%,-50%) scale(1.05); opacity: 1; }
+          55%  { left: calc((var(--cp-fx) + var(--cp-tx)) / 2);
+                 top:  calc((var(--cp-fy) + var(--cp-ty)) / 2 - 6%);
+                 transform: translate(-50%,-50%) scale(1); opacity: 1; }
+          100% { left: var(--cp-tx); top: var(--cp-ty); transform: translate(-50%,-50%) scale(.92); opacity: 0; }
+        }
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
         .tracker-bet-pulse { animation: tracker-bet-pulse .42s ease-out both; }
+        .tracker-chip-push {
+          position: absolute; left: var(--cp-fx); top: var(--cp-fy);
+          width: 14px; height: 14px; border-radius: 9999px;
+          background: radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%);
+          box-shadow: 0 0 0 1.5px rgba(154,100,24,.85), 0 2px 6px rgba(0,0,0,.5);
+          animation: tracker-chip-push 520ms cubic-bezier(.22,.61,.36,1) both;
+          pointer-events: none;
+        }
         .tracker-felt {
           background:
             radial-gradient(circle at 50% 38%, rgba(88, 23, 35, .96), rgba(43, 11, 19, .98) 58%, rgba(12, 13, 16, .98) 100%),
@@ -304,6 +326,7 @@ export function TrackerVisualStyles() {
           .tracker-seat-pop,
           .tracker-pot-pulse,
           .tracker-bet-pulse,
+          .tracker-chip-push,
           .tracker-shine::before {
             animation: none !important;
           }
