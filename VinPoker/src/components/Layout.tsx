@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -73,7 +73,7 @@ const desktopTabsData = tabsData.filter((t) => !DESKTOP_HIDDEN_ROUTES.has(t.to))
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, isDealer, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, isDealer, isChipMaster, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -222,7 +222,7 @@ export const Layout = () => {
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier + dealer).
                 Each destination guards itself; this is a UI entry only. A pure dealer
                 (no operator role) sees this menu with ONLY the Dealer App item. */}
-            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer) && (
+            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || (FEATURES.chipOps && isChipMaster)) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -271,6 +271,12 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/club/admin/series-intelligence")} className="gap-2.5 cursor-pointer">
                       <Sparkles className="w-4 h-4" />
                       Trí tuệ vận hành Series
+                    </DropdownMenuItem>
+                  )}
+                  {FEATURES.chipOps && (isClubOwner || isChipMaster) && (
+                    <DropdownMenuItem onClick={() => nav("/chip-ops")} className="gap-2.5 cursor-pointer">
+                      <Coins className="w-4 h-4" />
+                      Chip master
                     </DropdownMenuItem>
                   )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
