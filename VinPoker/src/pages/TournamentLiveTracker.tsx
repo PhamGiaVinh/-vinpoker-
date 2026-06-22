@@ -71,12 +71,24 @@ const TournamentLiveTracker = () => {
     [setSearchParams],
   );
 
+  // Leaving the felt (Quay lại) → drop ?hand so a refresh stays on the tabs.
+  const handleCloseHand = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete("hand");
+        return p;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
   useEffect(() => {
     if (!tournamentId) return;
     (async () => {
       const { data } = await supabase
         .from("tournaments")
-        .select("id, name, status, prize_pool, players_remaining, club:clubs(id, name)")
+        .select("id, name, status, prize_pool, players_remaining, current_level, club:clubs(id, name)")
         .eq("id", tournamentId)
         .maybeSingle();
       setTournament(data);
@@ -131,10 +143,12 @@ const TournamentLiveTracker = () => {
         clubId={tournament.club?.id}
         prizePool={tournament.prize_pool}
         playersRemaining={tournament.players_remaining}
+        currentLevel={tournament.current_level}
         onShare={handleShare}
         initialReplayHandNumber={deepHandNumber}
         onViewHand={handleViewHand}
         onShareHand={handleShareHand}
+        onCloseHand={handleCloseHand}
       >
         <TournamentLiveView tournamentId={tournamentId!} />
       </LiveHub>

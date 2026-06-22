@@ -13,6 +13,11 @@ export interface LiveTablesMapProps {
   /** Currently-featured table (highlighted). */
   activeTableId?: string | null;
   onSelect: (tableId: string) => void;
+  /** Min tables before the picker shows (default 2 — single table needs no picker).
+   *  The event-tabs "Bàn đang chơi" card passes 1 so a single live table is tappable. */
+  minToShow?: number;
+  /** Section heading override (default "Chọn bàn xem trực tiếp"). */
+  title?: string;
 }
 
 /** Poker-table top-view "logo": felt oval + 6 seat marks + a centered label. */
@@ -35,14 +40,14 @@ function TableTileIcon({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export function LiveTablesMap({ tables, activeTableId, onSelect }: LiveTablesMapProps) {
+export function LiveTablesMap({ tables, activeTableId, onSelect, minToShow = 2, title }: LiveTablesMapProps) {
   const { t } = useTranslation();
-  if (!tables || tables.length <= 1) return null; // single table → no picker needed
+  if (!tables || tables.length < minToShow) return null; // below threshold → no picker
 
   return (
     <div className="space-y-1.5">
       <div className="tracker-display text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-0.5">
-        {t("liveHub.map.title", "Chọn bàn xem trực tiếp")}
+        {title ?? t("liveHub.map.title", "Chọn bàn xem trực tiếp")}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
         {tables.map((tbl) => {
