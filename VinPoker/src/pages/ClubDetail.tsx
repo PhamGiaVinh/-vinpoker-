@@ -8,6 +8,8 @@ import { formatDateTime, formatVND } from "@/lib/format";
 import { FomoPrice } from "@/components/FomoPrice";
 import royalPokerLogo from "@/assets/royal-poker-logo.jpg";
 import { useTranslation } from "react-i18next";
+import { FEATURES } from "@/lib/featureFlags";
+import { ImageCarousel } from "@/components/ImageCarousel";
 
 const ClubDetail = () => {
   const { t } = useTranslation();
@@ -15,6 +17,7 @@ const ClubDetail = () => {
   const nav = useNavigate();
   const [club, setClub] = useState<any>(null);
   const [tours, setTours] = useState<any[]>([]);
+  const [seriesImgs, setSeriesImgs] = useState<{ image_url: string; caption: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,6 +27,15 @@ const ClubDetail = () => {
         supabase.from("tournaments").select("*").eq("club_id", id!).gte("start_time", new Date(Date.now() - 24*60*60*1000).toISOString()).order("start_time"),
       ]);
       setClub(c); setTours(t ?? []); setLoading(false);
+      // Club "Lịch series" gallery (gated): swipeable carousel below the day/week images.
+      if (FEATURES.clubSeriesSchedule && id) {
+        const { data: imgs } = await (supabase as any)
+          .from("club_series_images")
+          .select("image_url, caption, position")
+          .eq("club_id", id)
+          .order("position");
+        setSeriesImgs(((imgs ?? []) as any[]).map((r) => ({ image_url: r.image_url, caption: r.caption ?? null })));
+      }
     })();
   }, [id]);
 
@@ -77,6 +89,13 @@ const ClubDetail = () => {
               <img src={club.weekly_schedule_image_url} alt="Weekly schedule" className="w-full h-auto object-contain rounded-md" />
             </Card>
           )}
+        </div>
+      )}
+
+      {FEATURES.clubSeriesSchedule && seriesImgs.length > 0 && (
+        <div>
+          <h2 className="font-display text-lg text-gold mb-2">Lịch series</h2>
+          <ImageCarousel images={seriesImgs} />
         </div>
       )}
 
