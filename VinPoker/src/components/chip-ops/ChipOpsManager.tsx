@@ -15,6 +15,7 @@ import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2,
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardTab } from "./DashboardTab";
 import { BankAuditTab } from "./BankAuditTab";
+import { ColorUpTab } from "./ColorUpTab";
 
 // The chip_ops_* tables/RPCs are applied live but not yet in the generated Database types,
 // so all reads/writes go through this loosely-typed client. Strictly additive feature.
@@ -23,7 +24,7 @@ const sb = supabase as any;
 interface TourRow { id: string; name: string | null; club_id: string | null; }
 interface Denom { id: string; value: number; color: string | null; label: string | null; display_order: number; }
 interface TemplateRow { id: string; name: string; stack_value: number; lines: { denomination_id: string; count: number }[]; issued_count: number; }
-interface InvDenom { denomination_id: string; value: number; color: string | null; issued_count_total: number; }
+interface InvDenom { denomination_id: string; value: number; color: string | null; issued_count_total: number; current_count?: number; }
 interface Inventory { denominations: InvDenom[]; total_value: number; reconciliation_value: number; reconciled: boolean; error?: string; }
 
 const fmt = (n: number) => (n ?? 0).toLocaleString("vi-VN");
@@ -129,7 +130,13 @@ export function ChipOpsManager() {
         issued_count: Number(issu.find((s) => s.stack_template_id === x.id)?.issued_count ?? 0),
       })));
 
-      const invData = await callRpc("get_issued_chip_inventory", { p_tournament_id: tid });
+      // Prefer CURRENT inventory (issued + ledger, so color-ups reflect); fall back to issued.
+      let invData: any = null;
+      try {
+        const { data, error } = await sb.rpc("get_current_chip_inventory", { p_tournament_id: tid });
+        if (!error && data && !data.error) invData = data;
+      } catch { /* fall through */ }
+      if (!invData) invData = await callRpc("get_issued_chip_inventory", { p_tournament_id: tid });
       setInv(invData && !invData.error ? (invData as Inventory) : null);
     } finally {
       setLoading(false);
@@ -209,7 +216,7 @@ export function ChipOpsManager() {
           </TabsContent>
 
           <TabsContent value="colorup" className="mt-4">
-            <ComingSoon title="Color-Up / Chip race" desc="Rút mệnh giá nhỏ khi blind lên, đối soát giá trị bảo toàn." />
+            <ColorUpTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} />
           </TabsContent>
           <TabsContent value="bagtag" className="mt-4">
             <ComingSoon title="Bag & Tag — đóng kho cuối ngày" desc="Đóng bao từng người, đối soát theo mệnh giá, khoá ngày." />
@@ -469,7 +476,7 @@ function InventoryCard({ inv }: { inv: Inventory | null }) {
               {inv.denominations.map((d) => (
                 <TableRow key={d.denomination_id}>
                   <TableCell className="flex items-center gap-2"><span className="inline-block h-4 w-4 rounded-full border border-border" style={{ backgroundColor: d.color ?? "transparent" }} aria-hidden /><span className="tabular-nums">{fmt(d.value)}</span></TableCell>
-                  <TableCell className="text-right tabular-nums">{fmt(d.issued_count_total)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{fmt(d.current_count ?? d.issued_count_total)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

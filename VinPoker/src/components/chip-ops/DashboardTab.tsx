@@ -10,7 +10,7 @@ import { AlertTriangle, Crown, Users, Gauge, CheckCircle2 } from "lucide-react";
 const sb = supabase as any;
 const fmt = (n: number) => (n ?? 0).toLocaleString("vi-VN");
 
-interface InvDenom { denomination_id: string; value: number; color: string | null; issued_count_total: number; }
+interface InvDenom { denomination_id: string; value: number; color: string | null; issued_count_total: number; current_count?: number }
 interface Inventory { denominations: InvDenom[]; total_value: number; reconciled: boolean }
 interface Denom { id: string; value: number; color: string | null }
 interface Metrics {
@@ -74,8 +74,9 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
   const playersLeft = m?.players_remaining ?? null;
   const computedAvg = playersLeft && playersLeft > 0 ? Math.round(chipsInPlay / playersLeft) : null;
   const bb = m?.big_blind ?? null;
-  const issuedByValue = new Map(inv.denominations.map((d) => [d.value, d.issued_count_total]));
-  const dueDenoms = bb ? denoms.filter((d) => d.value < bb && (issuedByValue.get(d.value) ?? 0) > 0) : [];
+  const countOf = (d: InvDenom) => d.current_count ?? d.issued_count_total;
+  const currentByValue = new Map(inv.denominations.map((d) => [d.value, countOf(d)]));
+  const dueDenoms = bb ? denoms.filter((d) => d.value < bb && (currentByValue.get(d.value) ?? 0) > 0) : [];
 
   return (
     <div className="space-y-4">
@@ -126,7 +127,7 @@ export function DashboardTab({ tournamentId, inv, denoms }: { tournamentId: stri
               {inv.denominations.map((d) => (
                 <div key={d.denomination_id} className="flex w-20 flex-col items-center gap-2">
                   <ChipDisc value={d.value} color={d.color} size={52} />
-                  <div className="font-display text-sm font-bold tabular-nums text-foreground">{fmt(d.issued_count_total)}</div>
+                  <div className="font-display text-sm font-bold tabular-nums text-foreground">{fmt(d.current_count ?? d.issued_count_total)}</div>
                   <div className="text-center text-[11px] leading-tight text-muted-foreground">
                     T{fmt(d.value)}{bb && d.value < bb ? <><br /><span className="text-warning">color-up</span></> : null}
                   </div>
