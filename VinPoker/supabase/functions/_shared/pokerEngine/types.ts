@@ -73,6 +73,26 @@ export interface SidePot {
   eligibleSeats: number[];
 }
 
+/**
+ * Resolved tournament ("dead" / forward-moving button) blind placement for ONE hand.
+ * Produced by button.ts:nextButtonTournament and consumed by createHand when present
+ * on HandConfig.blindPlacement. Unlike cash play, the button and/or SB seat may land
+ * on an EMPTY (busted) physical seat — only the BB is guaranteed to be a live seat.
+ * Absent => createHand uses the legacy cash placement (button is always a live seat,
+ * SB/BB are the next live seats clockwise). This shape is OPTIONAL + additive: a hand
+ * without it behaves byte-for-byte as before.
+ */
+export interface TournamentBlindPlacement {
+  /** The button seat — may be an EMPTY/busted seat (dead button). */
+  buttonSeat: number;
+  /** The small-blind seat, or null when the SB position is empty (DEAD SB — no SB posted). */
+  sbSeat: number | null;
+  /** The big-blind seat — ALWAYS a live seat. */
+  bbSeat: number;
+  deadButton: boolean;
+  deadSb: boolean;
+}
+
 export interface HandConfig {
   handId: string;
   tableId: string;
@@ -82,6 +102,13 @@ export interface HandConfig {
   bb: bigint;
   /** STATE-SHAPE version (NOT a CAS counter). Bump when the HandState JSON shape changes. */
   schemaVersion: number;
+  /**
+   * OPTIONAL tournament dead-button placement. When present, createHand posts the
+   * BB always + the SB only if its seat is live, and the button may sit on an empty
+   * seat. When ABSENT (default), the legacy cash placement runs unchanged. Not part
+   * of the wire config (WireHandConfig) — it is an authoritative server-side input.
+   */
+  blindPlacement?: TournamentBlindPlacement;
 }
 
 export interface PotAward {
