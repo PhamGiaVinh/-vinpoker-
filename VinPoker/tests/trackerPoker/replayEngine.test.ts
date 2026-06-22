@@ -230,11 +230,37 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     expect(by.L.net_won).toBe(-10000); // 0 − 10000 → loser (<0, no badge)
   });
 
-  it("net_won is null when ending_stack is unknown (incomplete hand)", () => {
+  it("a SHOWDOWN with no ending_stack stays null (engine can't evaluate hands)", () => {
+    // Both players are still in at the end (all-in + call) → not a fold-win, so with
+    // ending_stack stripped there is no way to know the winner → no glow.
     const h = withEnd();
     h.players = h.players.map((p) => ({ ...p, ending_stack: null }));
     const final = buildReplayFrames(h).at(-1)!;
     expect(final.seats.every((s) => s.net_won == null)).toBe(true);
+  });
+
+  it("FOLD-WIN with no ending_stack: the lone survivor still gets net_won (non-showdown glow)", () => {
+    const h: ReplayHand = {
+      hand_number: 1,
+      button_seat: 1,
+      community_cards: [],
+      players: [
+        { player_id: "A", seat_number: 1, display_name: "A", starting_stack: 10000 }, // bettor → winner, no ending_stack
+        { player_id: "B", seat_number: 2, display_name: "B", starting_stack: 10000 },
+      ],
+      actions: [
+        { player_id: "A", action_type: "post_sb", action_amount: 50, street: "preflop", action_order: 1 },
+        { player_id: "B", action_type: "post_bb", action_amount: 100, street: "preflop", action_order: 2 },
+        { player_id: "A", action_type: "raise", action_amount: 250, street: "preflop", action_order: 3 }, // A contributes 50+250=300
+        { player_id: "B", action_type: "fold", action_amount: 0, street: "preflop", action_order: 4 },
+      ],
+    };
+    const frames = buildReplayFrames(h);
+    // Strictly final-frame-only: no glow on any step before the last.
+    expect(frames.slice(0, -1).every((f) => f.seats.every((s) => s.net_won == null))).toBe(true);
+    const by = Object.fromEntries(frames.at(-1)!.seats.map((s) => [s.player_id, s]));
+    expect(by.A.net_won).toBe(100); // pot 400 − A's 300 contribution → winner glows
+    expect(by.B.net_won).toBeNull(); // folder → no glow
   });
 });
 
