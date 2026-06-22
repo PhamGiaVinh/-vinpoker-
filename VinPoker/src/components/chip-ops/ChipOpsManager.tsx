@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2, Sparkles } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardTab } from "./DashboardTab";
+import { BankAuditTab } from "./BankAuditTab";
 
 // The chip_ops_* tables/RPCs are applied live but not yet in the generated Database types,
 // so all reads/writes go through this loosely-typed client. Strictly additive feature.
@@ -214,7 +215,7 @@ export function ChipOpsManager() {
             <ComingSoon title="Bag & Tag — đóng kho cuối ngày" desc="Đóng bao từng người, đối soát theo mệnh giá, khoá ngày." />
           </TabsContent>
           <TabsContent value="bank" className="mt-4">
-            <ComingSoon title="Két chip / Audit" desc="Tồn kho chip của CLB, xuất / thu, nhật ký sự kiện." />
+            <BankAuditTab clubId={tour?.club_id ?? null} tournamentId={tournamentId} />
           </TabsContent>
         </Tabs>
       )}
