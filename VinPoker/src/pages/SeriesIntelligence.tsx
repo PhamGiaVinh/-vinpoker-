@@ -17,6 +17,7 @@ import { MonteCarloPanel } from "@/components/series-intelligence/MonteCarloPane
 import { ScheduleGeneratorPanel } from "@/components/series-intelligence/ScheduleGeneratorPanel";
 import { FestivalEvPanel } from "@/components/series-intelligence/FestivalEvPanel";
 import { ScheduleExportPanel } from "@/components/series-intelligence/ScheduleExportPanel";
+import { ScenarioSimulatorPanel } from "@/components/series-intelligence/ScenarioSimulatorPanel";
 import { Stepper, type StepperItem } from "@/components/series-intelligence/Stepper";
 import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
@@ -227,6 +228,7 @@ export default function SeriesIntelligence() {
             hasOverrides={grouping.hasOverrides}
           />
         )}
+        {FEATURES.scenarioSimulator && <ScenarioSimulatorPanel csvEvents={lib.activeEvents} />}
       </StepSection>
 
       {/* ③ Lên lịch */}

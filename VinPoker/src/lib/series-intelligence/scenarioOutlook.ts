@@ -13,7 +13,8 @@
 //  - Labels are only Known Rule / Observed Pattern / Hypothesis. Never
 //    `Model Estimate` / `Tested Finding`.
 //  - No extrapolation beyond observed data: Upside is capped at the observed max.
-//  - GTD has no native column yet → gtdRisk is always null (no overlay computed).
+//  - This read-only outlook keeps gtdRisk as a pointer string; the real per-scenario overlay
+//    (now that native GTD is live) is computed in scenarioSimulator.ts (Phase 4 what-if).
 //  - Missing buy_in/fee/prize degrade gracefully to null ranges; every output
 //    carries missing-data notes. Copy uses "có thể / khoảng", never "sẽ /
 //    chắc chắn / đảm bảo".
@@ -44,7 +45,7 @@ export interface Scenario {
   buyInVolumeRange: Range | null;
   feeVolumeRange: Range | null;
   prizePoolRange: Range | null;
-  /** Only set if GTD data exists; null today (no native GTD column) → no overlay. */
+  /** Pointer string when GTD data exists; the real per-band overlay is computed in scenarioSimulator.ts (Phase 4). */
   gtdRisk: string | null;
   confidence: ScenarioConfidence;
   missingDataNotes: string[];
@@ -87,6 +88,37 @@ function scaleRange(r: Range, perEntry: number | null): Range | null {
   return { low: r.low * perEntry, high: r.high * perEntry };
 }
 
+export interface ScenarioEntryBands {
+  conservative: Range; // pMin..p25
+  base: Range; // p25..p75
+  upside: Range; // p75..pMax
+  pMin: number;
+  p25: number;
+  p75: number;
+  pMax: number;
+}
+
+/**
+ * The three entry-count bands (Conservative / Base / Upside) from observed entry counts.
+ * Caller passes a NON-EMPTY ascending array. Pure + deterministic — shared by the read-only
+ * outlook and the interactive what-if simulator (Phase 4) so both use the same quantile math.
+ */
+export function buildScenarioEntryBands(entriesAsc: number[]): ScenarioEntryBands {
+  const pMin = entriesAsc[0];
+  const p25 = percentile(entriesAsc, 0.25);
+  const p75 = percentile(entriesAsc, 0.75);
+  const pMax = entriesAsc[entriesAsc.length - 1];
+  return {
+    conservative: { low: pMin, high: p25 },
+    base: { low: p25, high: p75 },
+    upside: { low: p75, high: pMax },
+    pMin,
+    p25,
+    p75,
+    pMax,
+  };
+}
+
 /** Confidence from sample size + readiness. Low sample (<4) or low readiness ⇒ low. */
 export function computeScenarioConfidence(
   events: SeriesEvent[],
@@ -98,7 +130,7 @@ export function computeScenarioConfidence(
   return "medium";
 }
 
-/** Plain-VN notes on what weakens the scenarios. GTD is always flagged (no column yet). */
+/** Plain-VN notes on what weakens the scenarios. Events missing GTD are flagged (overlay needs GTD). */
 export function computeScenarioMissingData(events: SeriesEvent[]): string[] {
   const notes: string[] = [];
   const n = events.length;
@@ -138,10 +170,8 @@ export function computeScenarioOutlook(
     return { available: false, scenarios: [], confidence, missingDataNotes, sampleSize: 0, disclaimer: DISCLAIMER };
   }
 
-  const pMin = entries[0];
-  const p25 = percentile(entries, 0.25);
-  const p75 = percentile(entries, 0.75);
-  const pMax = entries[entries.length - 1];
+  const bands = buildScenarioEntryBands(entries);
+  const { pMin, p25, p75, pMax } = bands;
 
   const buyInPerEntry = median(events.map((e) => e.buy_in));
   const feePerEntry = median(events.map((e) => e.fee));
@@ -153,7 +183,7 @@ export function computeScenarioOutlook(
     ),
   );
 
-  // GTD has no native column yet → no overlay risk computed for any scenario.
+  // This read-only outlook doesn't compute per-scenario overlay; the interactive simulator (Phase 4) does.
   const gtdHasData = events.some((e) => e.gtd !== null);
   const r0 = (x: number) => Math.round(x);
 

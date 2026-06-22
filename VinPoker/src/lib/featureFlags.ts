@@ -330,6 +330,15 @@ export const FEATURES = {
    */
   forwardLayerMonteCarlo: true,
   /**
+   * Series Intelligence — Phase 4 Scenario what-if simulator. When ON, Step ② shows a
+   * ScenarioSimulatorPanel: the owner filters comparable events + sets transparent assumptions
+   * (marketing push, slot factor, candidate GTD), and sees Conservative/Base/Upside ENTRY ranges +
+   * a per-band GTD overlay. Rules-based, deterministic — NOT ML, NOT a forecast (Phase 5 stays gated).
+   * Pure client-side; reads live GTD READ-ONLY via the already-live RPC; no DB writes, no new deps.
+   * Default **OFF** (dark) — flip after owner UAT. Kill-switch: set false to hide the panel.
+   */
+  scenarioSimulator: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
