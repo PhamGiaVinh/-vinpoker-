@@ -71,7 +71,15 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       if (!mounted) return;
       setLoading(false);
       if (error || (data as any)?.error) {
-        toast.error((data as any)?.error ?? error?.message ?? t("tournamentRegister.regError"));
+        // supabase-js reports any non-2xx as a generic "Edge Function returned a
+        // non-2xx status code" and drops the body — surface the real reason
+        // (e.g. "Giải đã bắt đầu hoặc kết thúc.") from the response context.
+        let msg = (data as any)?.error ?? error?.message ?? t("tournamentRegister.regError");
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx.json === "function") {
+          try { const b = await ctx.json(); if (b?.error) msg = b.error; } catch { /* keep generic */ }
+        }
+        toast.error(msg);
         onClose();
         return;
       }
