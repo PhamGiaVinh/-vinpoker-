@@ -27,20 +27,13 @@ function bbLabel(chips: string, bb?: string): string {
   return inBB ? `${inBB} BB` : fmtChips(chips);
 }
 
-/** Stacked button label: ACTION / "X BB" / chips (BB never wraps alone). */
+/** Compact N8 button label: ACTION + amount on ONE inline line (small rectangle, no stack). */
 function BtnLabel({ action, chips, bb }: { action: string; chips: string; bb?: string }) {
   const inBB = bb ? fmtBB(chips, bb) : '';
   return (
-    <span className="flex flex-col items-center gap-0.5 leading-none">
-      <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">{action}</span>
-      {inBB ? (
-        <>
-          <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">{inBB} BB</span>
-          <span className="text-[9px] tabular-nums opacity-75">{fmtChips(chips)}</span>
-        </>
-      ) : (
-        <span className="whitespace-nowrap text-[13px] font-bold tabular-nums">{fmtChips(chips)}</span>
-      )}
+    <span className="flex items-baseline justify-center gap-1 leading-none">
+      <span className="text-[12px] font-semibold uppercase tracking-wide">{action}</span>
+      <span className="whitespace-nowrap text-[11px] font-bold tabular-nums opacity-90">{inBB ? `${inBB} BB` : fmtChips(chips)}</span>
     </span>
   );
 }
@@ -106,7 +99,7 @@ export function ActionBar({
   const act = (type: ActionType, amount?: string) => { if (!disabled) onAction?.({ type, amount }); };
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-2 rounded-2xl border border-white/10 bg-black/60 p-2.5 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+    <div className="mx-auto w-full max-w-md space-y-1.5 rounded-xl border border-white/10 bg-black/60 p-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm">
       {/* No header row — the felt already shows whose turn it is (to-act pulse) and the pot
           (Tổng Pot); the Call button shows the amount owed. Keeps the dock a short N8 strip
           so the hero's cards/plate stay clear above it. */}
@@ -125,7 +118,7 @@ export function ActionBar({
                   type="button"
                   disabled={disabled}
                   onClick={() => act(canRaise ? 'raise' : 'bet', s.amount)}
-                  className="op-press flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg bg-amber-400/90 px-1 py-1.5 leading-none text-amber-950 transition-colors hover:bg-amber-300 disabled:opacity-50"
+                  className="op-press flex flex-1 flex-col items-center justify-center gap-0.5 rounded-md bg-amber-400/90 px-1 py-1 leading-none text-amber-950 transition-colors hover:bg-amber-300 disabled:opacity-50"
                 >
                   <span className="text-[11px] font-bold">{isMax ? 'Max' : s.label}</span>
                   <span className="text-[10px] font-semibold tabular-nums opacity-80">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
@@ -158,7 +151,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('fold')}
-            className="op-press min-h-[3.5rem] flex-[0.7] rounded-lg bg-zinc-700/80 text-sm font-semibold text-zinc-100 shadow-none hover:bg-zinc-600"
+            className="op-press h-11 flex-[0.7] rounded-md bg-zinc-700/80 text-sm font-semibold text-zinc-100 shadow-none hover:bg-zinc-600"
           >
             Bỏ bài
           </Button>
@@ -168,7 +161,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('check')}
-            className="op-press min-h-[3.5rem] flex-1 rounded-lg bg-zinc-600/85 text-sm font-semibold text-zinc-50 hover:bg-zinc-500"
+            className="op-press h-11 flex-1 rounded-md bg-zinc-600/85 text-sm font-semibold text-zinc-50 hover:bg-zinc-500"
           >
             Check
           </Button>
@@ -176,7 +169,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('call', legal.toCall)}
-            className="op-press min-h-[3.5rem] flex-1 rounded-lg bg-zinc-600/85 text-zinc-50 hover:bg-zinc-500"
+            className="op-press h-11 flex-1 rounded-md bg-zinc-600/85 text-zinc-50 hover:bg-zinc-500"
           >
             <BtnLabel action="Theo bài" chips={legal.toCall} bb={bb} />
           </Button>
@@ -186,7 +179,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
-            className="op-press min-h-[3.5rem] flex-[1.2] rounded-lg bg-amber-400 text-amber-950 hover:bg-amber-300"
+            className="op-press h-11 flex-[1.2] rounded-md bg-amber-400 text-amber-950 hover:bg-amber-300"
           >
             <BtnLabel action={canRaise ? 'Tố lên' : 'Cược'} chips={raiseTo} bb={bb} />
           </Button>
@@ -196,7 +189,7 @@ export function ActionBar({
           <Button
             disabled={disabled}
             onClick={() => act('allin', legal.maxRaiseTo)}
-            className="op-press min-h-[3.5rem] flex-[0.9] rounded-lg bg-[#991B1B] text-amber-100 hover:bg-[#7d1515]"
+            className="op-press h-11 flex-[0.9] rounded-md bg-[#991B1B] text-amber-100 hover:bg-[#7d1515]"
           >
             <BtnLabel action="All-in" chips={legal.maxRaiseTo} bb={bb} />
           </Button>

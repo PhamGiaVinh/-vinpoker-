@@ -164,6 +164,7 @@ export function SeatRing({
   dealSeats,
   skin = 'emerald',
   heroAnchor,
+  heroAsHud = false,
 }: {
   hand: PublicHandView;
   bb?: string;
@@ -183,12 +184,18 @@ export function SeatRing({
    *  left corner {15,85}; the live table lifts it (e.g. y:75) so the floating N8 action dock
    *  never covers the hero's cards/plate. */
   heroAnchor?: { x: number; y: number };
+  /** N8 layout: when true the hero (my own seat) is NOT drawn on the ring — it lives in a
+   *  screen-corner <HeroHud> instead. This frees the lower-left so seat 1 no longer collides
+   *  with the hero, and lets the hero's cards sit in the true screen corner. The hero keeps a
+   *  natural bottom-centre ring position only for its committed-bet chip + deal flourish.
+   *  Default false → legacy in-ring hero (cinematic / spectator) is unchanged. */
+  heroAsHud?: boolean;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat);
-  // N8 — drop the hero (my own seat) into the bottom-LEFT corner: its big cards + name-plate,
-  // its committed-bet chip, and the deal flourish all anchor here, leaving the felt's bottom-
-  // centre clear. Starting coords — tune via UAT (watch the lower-left ring seat at 6/9-max).
-  if (hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = heroAnchor ?? { x: 15, y: 85 };
+  // Legacy (non-HUD) layout — drop the hero into the bottom-LEFT corner. With heroAsHud the
+  // hero leaves the ring entirely (rendered as a screen-corner <HeroHud>), so its natural
+  // bottom-centre position is kept here ONLY for the committed-bet chip + deal target.
+  if (!heroAsHud && hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = heroAnchor ?? { x: 15, y: 85 };
 
   // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
   // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
@@ -207,7 +214,7 @@ export function SeatRing({
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
   // evenly without crowding.
   return (
-    <div className="relative mx-auto aspect-[4/5] w-full max-w-3xl sm:aspect-[16/10]">
+    <div className="relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]">
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 
@@ -282,19 +289,23 @@ export function SeatRing({
         pos={pos}
       />
 
-      {/* seats */}
-      {hand.seats.map((s) => (
-        <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
-          <SeatChip
-            seat={s}
-            isMe={s.seat === hand.mySeat}
-            hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined}
-            bb={bb}
-            isWinner={winnerSeats?.includes(s.seat)}
-            onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
-          />
-        </div>
-      ))}
+      {/* seats — with heroAsHud the hero is skipped here (drawn as a screen-corner <HeroHud>),
+          so the lower-left no longer stacks the hero on top of seat 1. */}
+      {hand.seats.map((s) => {
+        if (heroAsHud && s.seat === hand.mySeat) return null;
+        return (
+          <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
+            <SeatChip
+              seat={s}
+              isMe={s.seat === hand.mySeat}
+              hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined}
+              bb={bb}
+              isWinner={winnerSeats?.includes(s.seat)}
+              onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -22,6 +22,7 @@
 
 import { useSearchParams } from 'react-router-dom';
 import { SeatRing } from '@/components/poker/SeatRing';
+import { HeroHud } from '@/components/poker/HeroHud';
 import { AllInRunout } from '@/components/poker/AllInRunout';
 import { ActionBar } from '@/components/poker/ActionBar';
 import type { FeltSkin } from '@/lib/onlinePoker/feltSkin';
@@ -152,6 +153,7 @@ export default function TablePreview() {
   const allin = params.get('allin') === '1';
   const toAct = Number(params.get('toAct')) || undefined; // default → my seat (on-turn)
   const skin: FeltSkin = params.get('skin') === 'premium' ? 'premium' : 'emerald';
+  const immersive = params.get('immersive') === '1'; // preview the edge-to-edge full-screen shell
 
   const { hand, legal } = buildFixture(seatsN, phase, allin, toAct);
   const winnerSeats = hand.result?.potAwards.flatMap((a) => a.winners);
@@ -161,10 +163,14 @@ export default function TablePreview() {
   return (
     <div
       data-dev-table-preview
-      className="mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]"
+      className={immersive
+        ? 'fixed inset-0 z-[60] flex h-[100dvh] w-full flex-col overflow-hidden bg-background [padding-bottom:env(safe-area-inset-bottom)]'
+        : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
       style={{ background: 'radial-gradient(130% 85% at 50% 26%, #0b1410 0%, #07090b 72%)' }}
     >
-      <header className="flex items-center gap-2 rounded-xl bg-black/25 px-2 py-1 text-white/80">
+      <header className={immersive
+        ? 'absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 text-white/80 [padding-top:max(0.25rem,env(safe-area-inset-top))]'
+        : 'flex items-center gap-2 rounded-xl bg-black/25 px-2 py-1 text-white/80'}>
         <span className="text-base font-semibold">Bàn 1 · DEV</span>
         <span className="rounded-md border border-white/15 px-1.5 py-0.5 text-[11px] tabular-nums">25/50</span>
         <span className="ml-auto text-[11px] text-white/45">seats={seatsN} · {allin ? 'all-in' : phase} · {skin}</span>
@@ -175,7 +181,13 @@ export default function TablePreview() {
       <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
         {allin
           ? <AllInRunout hand={hand} bb={BB} skin={skin} />
-          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAnchor={{ x: 15, y: 75 }} />}
+          : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAsHud />}
+
+        {/* hero HUD — own cards + stack at the SCREEN's bottom-left corner (N8); mirrors
+            OnlinePokerTable. Lifts above the dock when it's my turn. */}
+        {!allin && (
+          <HeroHud hand={hand} bb={BB} lifted={!!legal && hand.toActSeat === hand.mySeat} />
+        )}
 
         {/* action dock — ONLY when it's my turn (off-turn fixture → no dock, felt owns the
             screen). Scrim fades the felt under it. Same structure as OnlinePokerTable. */}
