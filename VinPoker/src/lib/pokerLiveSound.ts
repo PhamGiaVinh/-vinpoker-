@@ -8,7 +8,14 @@ export type PokerLiveSound =
   | "all_in"
   | "post_sb"
   | "post_bb"
-  | "post_ante";
+  | "post_ante"
+  // liveTableFx enriched kinds — synth-only (no MP3); called ONLY when the flag is on,
+  // so flag-OFF audio is byte-identical to today.
+  | "deal_flop"
+  | "deal_turn"
+  | "deal_river"
+  | "fold_muck"
+  | "chip";
 
 const MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   deal: "/sounds/poker/deal-card.mp3",
@@ -65,7 +72,9 @@ function canPlay(kind: PokerLiveSound) {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   ensureGestureListeners();
   const now = Date.now();
-  const throttleMs = kind === "deal" ? 180 : 70;
+  // Throttle is PER-KIND (Map keyed by kind), so deal_flop / deal_turn / deal_river
+  // never throttle each other — a turn dealt <180ms after the flop still sounds.
+  const throttleMs = kind.startsWith("deal") ? 150 : 70;
   if (now - (lastPlayedAt.get(kind) ?? 0) < throttleMs) return false;
   lastPlayedAt.set(kind, now);
   return userGestureSeen;
@@ -87,24 +96,107 @@ function playMp3(kind: PokerLiveSound, src: string) {
   });
 }
 
-function playSynth(kind: PokerLiveSound) {
-  if (typeof window === "undefined") return;
-  try {
-    const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtor) return;
-    audioContext ??= new AudioCtor();
+/** Single lazy AudioContext (never create a second one). */
+function ensureCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AudioCtor = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtor) return null;
+  audioContext ??= new AudioCtor();
+  return audioContext;
+}
 
-    const now = audioContext.currentTime;
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    osc.type = kind === "fold" ? "triangle" : "sine";
-    osc.frequency.setValueAtTime(kind === "fold" ? 180 : 520, now);
-    gain.gain.setValueAtTime(kind === "fold" ? 0.06 : 0.04, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + (kind === "fold" ? 0.14 : 0.08));
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.start(now);
-    osc.stop(now + (kind === "fold" ? 0.16 : 0.1));
+/**
+ * One filtered-noise burst (the building block for chip clinks / card swooshes /
+ * the muck slide). Noise → bandpass → gain envelope; exponential decay to ~0.001
+ * (never to 0); nodes disconnect on `onended` so they don't leak.
+ */
+function noiseBurst(
+  ctx: AudioContext,
+  startAt: number,
+  dur: number,
+  freq: number,
+  q: number,
+  gain: number,
+  sweepTo?: number,
+) {
+  const frames = Math.max(1, Math.ceil(ctx.sampleRate * dur));
+  const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.setValueAtTime(freq, startAt);
+  if (sweepTo) bp.frequency.exponentialRampToValueAtTime(Math.max(1, sweepTo), startAt + dur);
+  bp.Q.setValueAtTime(q, startAt);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, startAt);
+  g.gain.exponentialRampToValueAtTime(0.001, startAt + dur);
+  src.connect(bp);
+  bp.connect(g);
+  g.connect(ctx.destination);
+  src.start(startAt);
+  src.stop(startAt + dur);
+  src.onended = () => {
+    try {
+      src.disconnect();
+      bp.disconnect();
+      g.disconnect();
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+function playSynth(kind: PokerLiveSound) {
+  const ctx = ensureCtx();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    switch (kind) {
+      // Card deal swooshes — flop riffles in (3 staggered), turn/river = one card.
+      case "deal_flop":
+        noiseBurst(ctx, now, 0.06, 2600, 1.4, 0.2, 1800);
+        noiseBurst(ctx, now + 0.06, 0.055, 2500, 1.4, 0.18, 1750);
+        noiseBurst(ctx, now + 0.12, 0.05, 2400, 1.4, 0.16, 1700);
+        return;
+      case "deal_turn":
+      case "deal_river":
+        noiseBurst(ctx, now, 0.06, 2600, 1.4, 0.2, 1800);
+        return;
+      // Fold = cards mucked away: a longer, lower swoosh sweeping down.
+      case "fold_muck":
+        noiseBurst(ctx, now, 0.11, 2200, 1.2, 0.16, 900);
+        return;
+      // Chip clink = 2–3 short high filtered-noise bursts.
+      case "chip":
+        noiseBurst(ctx, now, 0.012, 4600, 3, 0.13);
+        noiseBurst(ctx, now + 0.03, 0.01, 5200, 4, 0.1);
+        noiseBurst(ctx, now + 0.058, 0.009, 4900, 3.5, 0.085);
+        return;
+      // Legacy tones (unchanged): fold beep / check tick.
+      default: {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = kind === "fold" ? "triangle" : "sine";
+        osc.frequency.setValueAtTime(kind === "fold" ? 180 : 520, now);
+        gain.gain.setValueAtTime(kind === "fold" ? 0.06 : 0.04, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + (kind === "fold" ? 0.14 : 0.08));
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + (kind === "fold" ? 0.16 : 0.1));
+        osc.onended = () => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch {
+            /* ignore */
+          }
+        };
+      }
+    }
   } catch {
     // Browser audio can be blocked; the tracker must continue silently.
   }

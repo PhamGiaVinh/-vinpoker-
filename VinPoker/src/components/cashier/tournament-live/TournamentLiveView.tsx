@@ -35,11 +35,16 @@ import {
   type ReplayHand,
   type ReplayFrame,
 } from "@/lib/tracker-poker/replayEngine";
+import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
 ]);
+
+// Actions that push chips into the pot — get a chip-clink layer + the chip-push
+// animation (liveTableFx only). Excludes fold/check.
+const CHIP_ACTIONS = new Set<string>(["call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante"]);
 
 const SOUND_MUTE_KEY = "tracker_sound_muted";
 
@@ -151,6 +156,14 @@ export function TournamentLiveView({
   const zeroRefetchDoneRef = useRef(false);
   const prevActionCountRef = useRef<number | null>(null);
   const prevBoardCountRef = useRef<number | null>(null);
+  // liveTableFx chip-push (viewer only): identity nonce so the first action of a
+  // NEW hand still fires even though actions.length resets per hand (P2-2).
+  const [chipPush, setChipPush] = useState<{ seatNumber: number; nonce: number } | null>(null);
+  const lastChipNonceRef = useRef<number | null>(null);
+  // liveTableFx replay playback FX: forward-only tracker (frame index + board count)
+  // so PLAYING a hand back emits the same sounds + chip-push; scrubbing back is silent.
+  const replayFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
+  const replayChipSeqRef = useRef(0);
 
   const loadAllData = useCallback(async () => {
     const seq = ++requestSeqRef.current;
@@ -511,16 +524,46 @@ export function TournamentLiveView({
     }
   }, [isRunning, localRemaining, loadAllData]);
 
-  // Action/deal sounds — only on increments after first load, never on tournament switch.
+  // Action sounds + (liveTableFx) chip-push. Sounds fire on count increments after
+  // first load (unchanged behavior); the chip-push is VISUAL so it is NOT gated by
+  // mute and keys off an identity nonce so it survives the per-hand actions reset.
   useEffect(() => {
     const count = actions.length;
     const prev = prevActionCountRef.current;
     prevActionCountRef.current = count;
-    if (soundMuted || prev === null || count <= prev) return;
     const last = actions[count - 1];
-    if (last && SOUND_KINDS.has(last.action_type)) {
-      playPokerLiveSound(last.action_type as PokerLiveSound);
+
+    // Sound — unchanged detection (new action by count, respects mute).
+    if (!soundMuted && prev !== null && count > prev && last && SOUND_KINDS.has(last.action_type)) {
+      if (FEATURES.liveTableFx && last.action_type === "fold") {
+        playPokerLiveSound("fold_muck"); // card-muck swoosh instead of the legacy beep
+      } else {
+        playPokerLiveSound(last.action_type as PokerLiveSound);
+        if (FEATURES.liveTableFx && CHIP_ACTIONS.has(last.action_type)) {
+          playPokerLiveSound("chip"); // crisp chip clink layered over the bet mp3
+        }
+      }
     }
+
+    // Chip-push animation — visual (NOT gated by mute). Composite nonce
+    // (handNumber*10000 + count) is unique across hands, so the FX layer's
+    // "nonce changed" dedupe fires on the first action of a new hand too (P2-2).
+    if (
+      FEATURES.liveTableFx &&
+      prev !== null &&
+      last &&
+      CHIP_ACTIONS.has(last.action_type) &&
+      (last.seat_number ?? 0) > 0
+    ) {
+      const nonce = (handNumber ?? 0) * 10000 + count;
+      if (lastChipNonceRef.current !== nonce) {
+        lastChipNonceRef.current = nonce;
+        setChipPush({ seatNumber: last.seat_number, nonce });
+      }
+    }
+    // handNumber intentionally omitted from deps: it updates in the same render as
+    // `actions`, so the effect's closure already has the fresh value on each change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions, soundMuted]);
 
   useEffect(() => {
@@ -528,14 +571,59 @@ export function TournamentLiveView({
     const prev = prevBoardCountRef.current;
     prevBoardCountRef.current = count;
     if (soundMuted || prev === null || count <= prev) return;
-    playPokerLiveSound("deal");
+    if (FEATURES.liveTableFx) {
+      // flop riffles in (deal_flop = 3 bursts), turn/river = a single card.
+      playPokerLiveSound(count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop");
+    } else {
+      playPokerLiveSound("deal");
+    }
   }, [communityCards, soundMuted]);
 
   // Reset sound baselines on tournament switch so the first load stays silent.
   useEffect(() => {
     prevActionCountRef.current = null;
     prevBoardCountRef.current = null;
+    lastChipNonceRef.current = null;
   }, [tournamentId]);
+
+  // liveTableFx replay-playback FX: as a completed hand is PLAYED back, emit the
+  // same enriched sounds + chip-push the live feed would. Forward-only (the frame
+  // index must increase) so scrubbing backward / jumping around stays silent. The
+  // Replay "Phát" button is itself a user gesture, so audio is already unlocked.
+  // Flag OFF → no-op (replay stays silent, exactly as today).
+  useEffect(() => {
+    if (mode !== "replay" || !FEATURES.liveTableFx || !replayFrame) {
+      replayFxRef.current = { index: null, board: 0 };
+      return;
+    }
+    const idx = replayFrame.index;
+    const board = replayFrame.displayCards.filter(Boolean).length;
+    const prev = replayFxRef.current;
+    replayFxRef.current = { index: idx, board };
+
+    const la = replayFrame.latestAction;
+    const fx = deriveReplayPlaybackFx({
+      prevIndex: prev.index,
+      prevBoard: prev.board,
+      index: idx,
+      board,
+      actionType: la?.action_type ?? null,
+      seatNumber: la?.seat_number ?? 0,
+    });
+
+    if (!soundMuted) {
+      if (fx.deal) playPokerLiveSound(fx.deal);
+      if (fx.action) playPokerLiveSound(fx.action);
+      if (fx.chipClink) playPokerLiveSound("chip");
+    }
+    // Chip-push is visual + viewer-only (spectator); a monotonic seq keeps the nonce
+    // unique even when the same hand is replayed twice.
+    if (fx.chipPush && spectator && la) {
+      replayChipSeqRef.current += 1;
+      setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayFrame, mode, soundMuted, spectator]);
 
   const toggleSoundMuted = useCallback(() => {
     setSoundMuted((m) => {
@@ -953,6 +1041,8 @@ export function TournamentLiveView({
             {...feltProps}
             portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
             viewerNeon={spectator && FEATURES.liveHandFeed}
+            tableFx={spectator && FEATURES.liveTableFx}
+            chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
           />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
