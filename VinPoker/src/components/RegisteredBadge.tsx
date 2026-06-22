@@ -38,27 +38,37 @@ export function RegisteredBadge() {
 
   const fetchReg = useCallback(async () => {
     if (!user) { setReg(null); setSeat(null); return; }
+    // NOTE: tournament_registrations.tournament_id has NO FK to tournaments, so a
+    // PostgREST embed (tournaments(...)) fails — fetch the tournaments separately.
     const { data } = await supabase
       .from("tournament_registrations")
-      .select("id, status, reference_code, tournament_id, tournaments(name, start_time, status)")
+      .select("id, status, reference_code, tournament_id")
       .eq("player_id", user.id)
       .in("status", ["pending", "confirmed"])
       .order("created_at", { ascending: false })
       .limit(8);
     const rows = (data ?? []) as any[];
+    if (!rows.length) { setReg(null); setSeat(null); return; }
+    const tourIds = Array.from(new Set(rows.map((r) => r.tournament_id).filter(Boolean)));
+    const { data: tours } = await supabase
+      .from("tournaments")
+      .select("id, name, start_time, status")
+      .in("id", tourIds.length ? tourIds : ["00000000-0000-0000-0000-000000000000"]);
+    const tourMap = Object.fromEntries(((tours ?? []) as any[]).map((tt) => [tt.id, tt]));
     // Most recent active registration whose tournament is still upcoming/running.
     const active = rows.find((r) => {
-      const ts = r.tournaments?.status as string | undefined;
+      const ts = tourMap[r.tournament_id]?.status as string | undefined;
       return ts ? !["completed", "cancelled"].includes(ts) : true;
     });
     if (!active) { setReg(null); setSeat(null); return; }
+    const tour = tourMap[active.tournament_id];
     setReg({
       id: active.id,
       status: active.status,
       reference_code: active.reference_code ?? null,
       tournament_id: active.tournament_id,
-      tournamentName: active.tournaments?.name ?? "Giải đấu",
-      tournamentDate: active.tournaments?.start_time ?? null,
+      tournamentName: tour?.name ?? "Giải đấu",
+      tournamentDate: tour?.start_time ?? null,
     });
     const { data: rec } = await supabase
       .from("seat_draw_receipts")
