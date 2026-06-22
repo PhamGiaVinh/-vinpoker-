@@ -69,33 +69,40 @@ type Pt = { l: number; t: number };
 
 // Tuned 9-max seat maps. Bottom seats (4–7) sit LOW on the rim; side seats (3,8)
 // stay far out — so none of them overlap the centre safe-zone (board + pot).
+// Portrait = a tall vertical RACETRACK (5/7 pill): seats line the long left/right
+// straights + the rounded top/bottom ends.
 const PORTRAIT_SEATS: Record<number, Pt> = {
-  1: { l: 50, t: 6 },
-  2: { l: 82, t: 17 },
-  3: { l: 92, t: 40 },
-  4: { l: 84, t: 70 },
-  5: { l: 63, t: 84 },
-  6: { l: 37, t: 84 },
-  7: { l: 16, t: 70 },
-  8: { l: 8, t: 40 },
-  9: { l: 18, t: 17 },
+  1: { l: 37, t: 90 },
+  2: { l: 12, t: 74 },
+  3: { l: 8, t: 48 },
+  4: { l: 20, t: 20 },
+  5: { l: 50, t: 10 },
+  6: { l: 80, t: 20 },
+  7: { l: 92, t: 48 },
+  8: { l: 88, t: 74 },
+  9: { l: 63, t: 90 },
 };
+// Landscape = a wide horizontal RACETRACK (13/6 pill) — same seat distribution as the
+// operator racetrack, so the viewer reads like a real broadcast table (not an oval).
 const LANDSCAPE_SEATS: Record<number, Pt> = {
-  1: { l: 50, t: 6 },
-  2: { l: 75, t: 16 },
-  3: { l: 91, t: 44 },
-  4: { l: 82, t: 80 },
-  5: { l: 63, t: 89 },
-  6: { l: 37, t: 89 },
-  7: { l: 18, t: 80 },
-  8: { l: 9, t: 44 },
-  9: { l: 25, t: 16 },
+  1: { l: 37, t: 86 },
+  2: { l: 10, t: 62 },
+  3: { l: 15, t: 27 },
+  4: { l: 34, t: 12 },
+  5: { l: 50, t: 9 },
+  6: { l: 66, t: 12 },
+  7: { l: 85, t: 27 },
+  8: { l: 90, t: 62 },
+  9: { l: 63, t: 86 },
 };
 
-// Taller ovals (not flat) so 9 seats + a centred board never vertically collide.
+// RACETRACK geometry — wide horizontal pill on desktop (13/6, like the operator
+// racetrack) + a tall vertical pill on phones (5/7). The felt uses a stadium radius
+// (9999px), and `maxW` caps it so on wide screens it stays a centred, well-
+// proportioned table (mx-auto) with side margins instead of sprawling edge-to-edge.
 const GEO = {
-  portrait: { aspect: "5 / 6", seats: PORTRAIT_SEATS, centerTop: "45%", centerW: "60%", vSize: "clamp(28px,10vw,42px)" },
-  landscape: { aspect: "7 / 6", seats: LANDSCAPE_SEATS, centerTop: "46%", centerW: "46%", vSize: "clamp(28px,6vw,44px)" },
+  portrait: { aspect: "5 / 7", seats: PORTRAIT_SEATS, centerTop: "44%", centerW: "60%", vSize: "clamp(26px,9vw,40px)", maxW: "440px" },
+  landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS, centerTop: "43%", centerW: "40%", vSize: "clamp(22px,4vw,36px)", maxW: "820px" },
 };
 
 export interface LiveFeltProps {
@@ -178,12 +185,12 @@ export function LiveFelt({
     <div className="w-full">
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). */}
-      <div className="relative mx-auto w-full overflow-visible" style={{ aspectRatio: geo.aspect }}>
+      <div className="relative mx-auto w-full overflow-visible" style={{ aspectRatio: geo.aspect, maxWidth: geo.maxW }}>
         <div
           aria-hidden="true"
           className="absolute inset-0"
           style={{
-            borderRadius: "50%",
+            borderRadius: "9999px",
             background: viewerNeon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
@@ -196,7 +203,7 @@ export function LiveFelt({
           aria-hidden="true"
           className="absolute inset-0"
           style={{
-            borderRadius: "50%",
+            borderRadius: "9999px",
             background: "radial-gradient(52% 42% at 50% 20%, rgba(255,255,255,0.06), transparent 72%)",
           }}
         />
