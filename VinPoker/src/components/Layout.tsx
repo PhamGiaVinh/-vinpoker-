@@ -310,19 +310,17 @@ export const Layout = () => {
                 </NavLink>
               )}
               {/* Cashier/Tracker desktop entries moved into the unified VẬN HÀNH dropdown above. */}
-              {isAdmin && (
-                <>
-                  <NavLink to="/admin/leaderboard" className="px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground text-[11px] font-semibold tracking-wider hover:text-primary hover:border-primary/60">
-                    {t("layout.ranking")}
-                  </NavLink>
-                  <NavLink to="/admin" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
-                    {t("layout.super")}
-                  </NavLink>
-                </>
-              )}
+              {/* Admin "Xếp hạng" (/admin/leaderboard) removed from the top nav: it duplicated
+                  the center "Xếp hạng" (/leaderboard) and the overflow hid Media Center.
+                  Still reachable via Super Admin / direct URL. */}
               {(isMedia || isAdmin) && (
                 <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))] text-[11px] font-bold tracking-wider hover:bg-[hsl(var(--ds-preassign)_/_0.15)]">
                   MEDIA
+                </NavLink>
+              )}
+              {isAdmin && (
+                <NavLink to="/admin" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
+                  {t("layout.super")}
                 </NavLink>
               )}
               {/* Poker entry moved into the center top nav (above) as a first-class item. */}
