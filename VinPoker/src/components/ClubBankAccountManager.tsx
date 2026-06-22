@@ -75,7 +75,10 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
     try {
       const file = await compressImage(raw, { maxEdge: 800, quality: 0.85 });
       const ext = file.type === "image/png" ? "png" : "jpg";
-      const path = `club-${clubId}/${Date.now()}.${ext}`;
+      // First folder MUST be the bare club id: the bank-qr-codes storage RLS policy
+      // checks (storage.foldername(name))[1] IN clubs.id::text for owner_id=auth.uid().
+      // A "club-" prefix breaks that match → "violates row-level security policy".
+      const path = `${clubId}/${Date.now()}.${ext}`;
       const { error } = await supabase.storage.from("bank-qr-codes")
         .upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
       if (error) throw error;
