@@ -183,19 +183,17 @@ export default function TablePreview() {
           ? <AllInRunout hand={hand} bb={BB} skin={skin} />
           : <SeatRing hand={hand} bb={BB} winnerSeats={winnerSeats} skin={skin} heroAsHud />}
 
-        {/* hero HUD — own cards + stack at the SCREEN's bottom-left corner (N8); mirrors
-            OnlinePokerTable. Lifts above the dock when it's my turn. */}
+        {/* hero HUD — own cards + stack pinned to the SCREEN's bottom-left corner (N8); mirrors
+            OnlinePokerTable. FIXED — never lifts. */}
         {!allin && (
-          <HeroHud hand={hand} bb={BB} lifted={!!legal && hand.toActSeat === hand.mySeat} />
+          <HeroHud hand={hand} bb={BB} />
         )}
 
         {/* action dock — ONLY when it's my turn (off-turn fixture → no dock, felt owns the
             screen). Scrim fades the felt under it. Same structure as OnlinePokerTable. */}
         {!allin && legal && hand.toActSeat === hand.mySeat && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
-            <div className="pointer-events-auto">
-              <ActionBar hand={hand} legal={legal} bb={BB} onAction={() => { /* dev no-op */ }} />
-            </div>
+            <ActionBar hand={hand} legal={legal} bb={BB} onAction={() => { /* dev no-op */ }} />
           </div>
         )}
       </div>

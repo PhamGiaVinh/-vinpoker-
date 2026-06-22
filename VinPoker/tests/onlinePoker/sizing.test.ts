@@ -15,16 +15,16 @@ const legal = (over: Partial<WireLegalActions> = {}): WireLegalActions => ({
 });
 
 describe('betSizingOptions — %-pot math (raise to = toCall + pct·(pot+toCall))', () => {
-  it('computes 25% / 40% / 66% / Pot for a normal window', () => {
+  it('computes 33% / 50% / 75% / 100% for a normal window', () => {
     // pot 475, toCall 150 → potAfterCall 625; min 300, max 1700
     const o = betSizingOptions(legal(), { pot: '475' });
     expect(o.map((x) => [x.key, x.amount])).toEqual([
-      ['25', '306'],   // 150 + 625·25/100 = 306
-      ['40', '400'],   // 150 + 625·40/100 = 400
-      ['66', '562'],   // 150 + 625·66/100 = 562 (floor)
-      ['pot', '775'],  // 150 + 625
+      ['33', '356'],   // 150 + 625·33/100 = 356 (floor)
+      ['50', '462'],   // 150 + 625·50/100 = 462 (floor)
+      ['75', '618'],   // 150 + 625·75/100 = 618 (floor)
+      ['100', '775'],  // 150 + 625
     ]);
-    expect(o.map((x) => x.label)).toEqual(['25%', '40%', '66%', 'Pot']);
+    expect(o.map((x) => x.label)).toEqual(['33%', '50%', '75%', '100%']);
   });
 
   it('every amount sits within [minRaiseTo, maxRaiseTo]', () => {

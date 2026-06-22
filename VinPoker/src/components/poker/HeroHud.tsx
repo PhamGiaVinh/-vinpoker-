@@ -5,15 +5,16 @@
 // collide with seat 1) and puts the cards in the real screen corner the way Natural8
 // /GGPoker mobile does. Pure presentation of a PublicHandView; visual only.
 //
-// `lifted` raises the HUD clear of the floating action dock while it's the hero's
-// turn, so the cards are never covered by the buttons.
+// FIXED position (N8): the HUD is pinned at a constant bottom-left offset that clears
+// the bottom Fold/Call row — it never lifts or jumps between turns, so the cards stay
+// put whether or not the action bar is showing.
 
 import { cn } from '@/lib/utils';
 import type { PublicHandView } from '@/lib/onlinePoker/types';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 
-export function HeroHud({ hand, bb, lifted = false }: { hand: PublicHandView; bb?: string; lifted?: boolean }) {
+export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
   if (hand.mySeat == null) return null;
   const me = hand.seats.find((s) => s.seat === hand.mySeat);
   if (!me || me.status === 'empty') return null;
@@ -26,15 +27,15 @@ export function HeroHud({ hand, bb, lifted = false }: { hand: PublicHandView; bb
   return (
     <div
       className={cn(
-        'pointer-events-none absolute left-2 z-40 flex flex-col items-start gap-1 transition-[bottom] duration-200 ease-out',
-        lifted ? 'bottom-[7.5rem]' : 'bottom-2',
+        // Constant bottom offset (clears the 44px Fold/Call row) — fixed, never lifts.
+        'pointer-events-none absolute bottom-[3.25rem] left-2 z-40 flex flex-col items-start gap-1',
         folded && 'opacity-50',
       )}
     >
-      {/* the hero's two cards — large, lifted off the felt with a soft drop shadow */}
-      <div className="flex items-end gap-0.5 origin-bottom-left scale-110 [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))] sm:scale-125">
+      {/* the hero's two cards — same size as the board + opponents (md), soft drop shadow */}
+      <div className="flex items-end gap-0.5 origin-bottom-left [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))]">
         {cards.map((c, i) => (
-          <PlayingCard key={i} card={c} size="lg" reveal={!!c && c !== '?'} />
+          <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />
         ))}
       </div>
 
