@@ -38,6 +38,17 @@ export function useDealerAvailability() {
         toast.error(t("dealer.toast.failed", "Thao tác không thành công. Vui lòng thử lại."));
         throw error;
       }
+      // The RPC can return a soft-failure outcome with error=null (no row written) — surface it
+      // instead of a false "success" toast (e.g. not_found = dealer has no club).
+      const outcome = (data as { outcome?: string } | null)?.outcome;
+      if (outcome && outcome !== "submitted") {
+        toast.error(
+          outcome === "not_found"
+            ? t("dealer.toast.noClub", "Hồ sơ dealer chưa gắn câu lạc bộ — liên hệ quản lý.")
+            : t("dealer.toast.failed", "Thao tác không thành công. Vui lòng thử lại."),
+        );
+        throw new Error(`dealer_submit_availability outcome=${outcome}`);
+      }
       toast.success(t("dealer.toast.availabilitySaved", "Đã lưu lịch rảnh."));
       await qc.invalidateQueries({ queryKey: dealerKeys.all });
       return data;
@@ -59,6 +70,15 @@ export function useDealerAvailability() {
       if (error) {
         toast.error(t("dealer.toast.failed", "Thao tác không thành công. Vui lòng thử lại."));
         throw error;
+      }
+      const outcome = (data as { outcome?: string } | null)?.outcome;
+      if (outcome && outcome !== "requested") {
+        toast.error(
+          outcome === "not_found"
+            ? t("dealer.toast.noClub", "Hồ sơ dealer chưa gắn câu lạc bộ — liên hệ quản lý.")
+            : t("dealer.toast.failed", "Thao tác không thành công. Vui lòng thử lại."),
+        );
+        throw new Error(`dealer_request_leave_or_swap outcome=${outcome}`);
       }
       toast.success(t("dealer.toast.leaveRequested", "Đã gửi yêu cầu nghỉ."));
       await qc.invalidateQueries({ queryKey: dealerKeys.all });
