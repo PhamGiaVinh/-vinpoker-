@@ -13,7 +13,7 @@
 //  • The action ticker lives in a rail BELOW the felt, not on top of it.
 //  • Seats are avatar + name + stack only (no name boxes); position badge is small.
 
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
@@ -157,6 +157,18 @@ export interface LiveFeltProps {
    * the public viewer (and only under the liveHandFeed flag).
    */
   viewerNeon?: boolean;
+  /**
+   * liveTableFx (viewer-only): master switch for the table FX. ADDITIVE — when false
+   * (operator/TV/replay always; viewer when the flag is off) the board key + reveal
+   * behave EXACTLY as today (runtime byte-identical). When true the board card key is
+   * value-stable (entrance fires once) + the flop staggers in.
+   */
+  tableFx?: boolean;
+  /**
+   * liveTableFx chip-push: a transient chip animates from this seat to the pot. Each
+   * distinct `nonce` triggers one chip; null → no chips. Viewer-only.
+   */
+  chipPush?: { seatNumber: number; nonce: number } | null;
 }
 
 export function LiveFelt({
@@ -176,10 +188,25 @@ export function LiveFelt({
   selectedSeat = null,
   physicalSeats,
   viewerNeon = false,
+  tableFx = false,
+  chipPush = null,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
+
+  // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
+  // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
+  const [chips, setChips] = useState<{ id: number; fx: string; fy: string }[]>([]);
+  const lastChipNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!chipPush || lastChipNonce.current === chipPush.nonce) return;
+    lastChipNonce.current = chipPush.nonce;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const slot = ((chipPush.seatNumber - 1) % 9) + 1;
+    const pos = geo.seats[slot] || geo.seats[1];
+    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%` }]);
+  }, [chipPush, geo]);
 
   return (
     <div className="w-full">
@@ -225,7 +252,15 @@ export function LiveFelt({
           <div data-testid="board-cards" className="flex items-center justify-center gap-1.5">
             {displayCards.map((card, i) =>
               card ? (
-                <PokerCard key={`${i}-${card}`} card={card} size="md" className={boardCardCls} />
+                <PokerCard
+                  // tableFx → value-stable key (entrance fires once); else the current key
+                  // (runtime byte-identical for operator/TV/replay). Keys aren't in the DOM.
+                  key={tableFx ? card : `${i}-${card}`}
+                  card={card}
+                  size="md"
+                  className={boardCardCls}
+                  style={tableFx && i < 3 ? { animationDelay: `${i * 45}ms` } : undefined}
+                />
               ) : (
                 <CardBack key={`${i}-back`} size="md" className={boardCardCls} />
               )
@@ -459,6 +494,27 @@ export function LiveFelt({
                 </div>
               );
             })}
+
+        {/* liveTableFx chip-push layer — transient gold chips flying seat→pot. */}
+        {chips.length > 0 && (
+          <div className="pointer-events-none absolute inset-0 z-[25] overflow-visible" aria-hidden="true">
+            {chips.map((c) => (
+              <span
+                key={c.id}
+                className="tracker-chip-push"
+                onAnimationEnd={() => setChips((cs) => cs.filter((x) => x.id !== c.id))}
+                style={
+                  {
+                    "--cp-fx": c.fx,
+                    "--cp-fy": c.fy,
+                    "--cp-tx": "50%",
+                    "--cp-ty": geo.centerTop,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+        )}
 
         {multiTableUnresolved && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">
