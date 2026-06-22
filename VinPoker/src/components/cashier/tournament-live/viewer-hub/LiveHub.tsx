@@ -35,11 +35,17 @@ export interface LiveHubProps {
   /** Players still alive — from `tournaments.players_remaining`; null when unset. */
   playersRemaining?: number | null;
   onShare: () => void;
+  /** Deep-link (?hand=N) → open that hand in the featured viewer's replay. */
+  initialReplayHandNumber?: number | null;
+  /** Hand-feed "Xem ván" → open the hand in replay (sets ?hand=N at the page). */
+  onViewHand?: (handNumber: number) => void;
+  /** Hand-feed "Chia sẻ" → share a link to that specific hand. */
+  onShareHand?: (handNumber: number) => void;
   /** The live table view (e.g. <TournamentLiveView/>). */
   children: ReactNode;
 }
 
-export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, onShare, children }: LiveHubProps) {
+export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, onShare, initialReplayHandNumber = null, onViewHand, onShareHand, children }: LiveHubProps) {
   // Isolated hub data (count / all-tables strip / feed / chip leader). Does NOT
   // touch TournamentLiveView — the featured felt below still renders the real viewer.
   const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId);
@@ -63,10 +69,11 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
   // so the props can't leak onto a <div> and trigger a React warning.
   const viewer =
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null }>, {
+      ? cloneElement(children as ReactElement<{ orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayHandNumber?: number | null }>, {
           orientationOverride: effectiveOrientation,
           spectator: true,
           selectedTableIdOverride: selectedTableId,
+          initialReplayHandNumber,
         })
       : children;
 
@@ -88,12 +95,26 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
       >
         {viewer}
       </FeaturedTableCard>
-      {/* RPT-Live-style completed-hands feed — primary block, read-only, flag-gated. */}
-      {FEATURES.liveHandFeed && (
-        <LiveHandFeed tournamentId={tournamentId} featuredTableId={featuredTableId} />
+      {/* Feeds. Flag ON (consolidated, RPT-Live style): the live-action ticker sits on
+          top and the completed-hands HAND FEED is the primary block; LiveStoryFeed is
+          folded into the cards (eliminations show as the "Eliminated" tag + finish
+          badge). Flag OFF: today's layout (story + ticker) is byte-identical. */}
+      {FEATURES.liveHandFeed ? (
+        <>
+          <LiveUpdatesFeed feed={feed} />
+          <LiveHandFeed
+            tournamentId={tournamentId}
+            featuredTableId={featuredTableId}
+            onViewHand={onViewHand}
+            onShare={onShareHand}
+          />
+        </>
+      ) : (
+        <>
+          <LiveStoryFeed items={storyFeed} />
+          <LiveUpdatesFeed feed={feed} />
+        </>
       )}
-      <LiveStoryFeed items={storyFeed} />
-      <LiveUpdatesFeed feed={feed} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
@@ -11,30 +11,65 @@ import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub
 const TournamentLiveTracker = () => {
   const { tournamentId } = useParams();
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tournament, setTournament] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const handleShare = useCallback(async () => {
-    const url = window.location.href;
-    const title = tournament?.name ? `Live Tracker — ${tournament.name}` : "VinPoker Live Tracker";
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, url });
-        return;
-      }
-      await navigator.clipboard.writeText(url);
-      toast.success("Đã sao chép link live tracker");
-    } catch (e: any) {
-      // User cancelling the native share sheet is not an error worth surfacing.
-      if (e?.name === "AbortError") return;
+  // Deep-link: ?hand=N opens that completed hand in the viewer's replay.
+  const deepHandRaw = Number(searchParams.get("hand"));
+  const deepHandNumber = Number.isFinite(deepHandRaw) && deepHandRaw > 0 ? deepHandRaw : null;
+
+  const shareUrl = useCallback(
+    async (url: string, ok: string) => {
+      const title = tournament?.name ? `Live Tracker — ${tournament.name}` : "VinPoker Live Tracker";
       try {
+        if (navigator.share) {
+          await navigator.share({ title, url });
+          return;
+        }
         await navigator.clipboard.writeText(url);
-        toast.success("Đã sao chép link live tracker");
-      } catch {
-        toast.error("Không sao chép được link — hãy copy từ thanh địa chỉ");
+        toast.success(ok);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return; // user cancelled the native sheet
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success(ok);
+        } catch {
+          toast.error("Không sao chép được link — hãy copy từ thanh địa chỉ");
+        }
       }
-    }
-  }, [tournament?.name]);
+    },
+    [tournament?.name],
+  );
+
+  const handleShare = useCallback(() => shareUrl(window.location.href, "Đã sao chép link live tracker"), [shareUrl]);
+
+  // Hand-feed "Chia sẻ" → a link to that specific hand (?hand=N).
+  const handleShareHand = useCallback(
+    (n: number) => {
+      const u = new URL(window.location.href);
+      u.searchParams.set("hand", String(n));
+      return shareUrl(u.toString(), `Đã sao chép link ván #${n}`);
+    },
+    [shareUrl],
+  );
+
+  // Hand-feed "Xem ván" → set ?hand=N (drives the viewer into replay) + scroll up to
+  // the featured felt.
+  const handleViewHand = useCallback(
+    (n: number) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set("hand", String(n));
+          return p;
+        },
+        { replace: false },
+      );
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -97,6 +132,9 @@ const TournamentLiveTracker = () => {
         prizePool={tournament.prize_pool}
         playersRemaining={tournament.players_remaining}
         onShare={handleShare}
+        initialReplayHandNumber={deepHandNumber}
+        onViewHand={handleViewHand}
+        onShareHand={handleShareHand}
       >
         <TournamentLiveView tournamentId={tournamentId!} />
       </LiveHub>
