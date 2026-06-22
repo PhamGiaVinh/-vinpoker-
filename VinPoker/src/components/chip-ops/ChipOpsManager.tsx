@@ -11,11 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2, Sparkles } from "lucide-react";
+import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardTab } from "./DashboardTab";
 import { BankAuditTab } from "./BankAuditTab";
 import { ColorUpTab } from "./ColorUpTab";
+import { BagTagTab } from "./BagTagTab";
 
 // The chip_ops_* tables/RPCs are applied live but not yet in the generated Database types,
 // so all reads/writes go through this loosely-typed client. Strictly additive feature.
@@ -219,7 +220,7 @@ export function ChipOpsManager() {
             <ColorUpTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} />
           </TabsContent>
           <TabsContent value="bagtag" className="mt-4">
-            <ComingSoon title="Bag & Tag — đóng kho cuối ngày" desc="Đóng bao từng người, đối soát theo mệnh giá, khoá ngày." />
+            <BagTagTab tournamentId={tournamentId} clubId={tour?.club_id ?? null} />
           </TabsContent>
           <TabsContent value="bank" className="mt-4">
             <BankAuditTab clubId={tour?.club_id ?? null} tournamentId={tournamentId} />
@@ -235,19 +236,6 @@ function LoadingCard() {
     <Card className="border-border"><CardContent className="space-y-3 py-6">
       <Skeleton className="h-6 w-1/3" /><Skeleton className="h-24 w-full" />
     </CardContent></Card>
-  );
-}
-
-function ComingSoon({ title, desc }: { title: string; desc: string }) {
-  return (
-    <Card className="border-dashed border-border">
-      <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-        <Sparkles className="h-6 w-6 text-primary/60" />
-        <div className="font-display text-base text-foreground">{title}</div>
-        <div className="max-w-sm text-sm text-muted-foreground">{desc}</div>
-        <div className="mt-1 text-xs text-muted-foreground">Đang phát triển — sắp có ở bản cập nhật tới.</div>
-      </CardContent>
-    </Card>
   );
 }
 
