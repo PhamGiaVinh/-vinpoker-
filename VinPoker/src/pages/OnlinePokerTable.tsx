@@ -499,11 +499,7 @@ export default function OnlinePokerTable() {
             Hidden during the all-in cinematic (it shows its own hero). Lifts above the action
             dock while it's my turn so the buttons never cover the cards. */}
         {!(cinematic && showing) && (
-          <HeroHud
-            hand={feltView}
-            bb={table.bb}
-            lifted={!showing && inActiveHand && hand?.toActSeat === mySeatNo}
-          />
+          <HeroHud hand={feltView} bb={table.bb} />
         )}
 
         {/* ── bottom overlay (N8) — result / action dock / waiting hint float over the felt's
@@ -530,9 +526,9 @@ export default function OnlinePokerTable() {
             strip lives inside ActionBar (my turn, legal not yet arrived). */}
         {!showing && inActiveHand && hand?.toActSeat === mySeatNo && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
-            <div className="pointer-events-auto">
-              <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />
-            </div>
+            {/* pointer-events-none here — ActionBar re-enables taps per control group so its
+                empty centre lets felt taps (and the hero HUD) through. */}
+            <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />
           </div>
         )}
 

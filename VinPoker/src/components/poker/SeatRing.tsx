@@ -84,15 +84,15 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
     );
   }
 
-  // Cards float ABOVE the N8 name-plate. Hero (my own) cards are large + lifted; opponents
-  // get small backs or their revealed cards; folded / sitting-out seats show no cards.
+  // Cards float ABOVE the N8 name-plate. All cards (hero, opponents, board) use ONE uniform
+  // size `md` so the table reads consistently; folded / sitting-out seats show no cards.
   const cards = isMe
-    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="lg" reveal={!!c && c !== '?'} />)
+    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />)
     : folded || sittingOut
       ? null
       : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="sm" reveal revealDelayMs={i * 130} />)
-        : <><PlayingCard size="sm" /><PlayingCard size="sm" /></>;
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="md" reveal revealDelayMs={i * 130} />)
+        : <><PlayingCard size="md" /><PlayingCard size="md" /></>;
 
   return (
     <div className={cn(
@@ -105,12 +105,10 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
     )}>
       {cards && (
         <div className={cn(
+          // No scale multipliers — every card renders at its native `md` size so hero,
+          // opponents and board are equal in ratio AND size.
           'flex items-end gap-0.5',
-          isMe && 'origin-bottom -translate-y-0.5 scale-110 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))] lg:scale-125',
-          // Opponent card-backs: small + tucked just above the plate (N8) so the felt dominates.
-          // Opponent face-down backs shrink hard (felt dominates); revealed cards at showdown
-          // stay a touch larger so the hand is still legible.
-          !isMe && (seat.revealedCards?.length ? 'origin-bottom -mb-0.5 scale-[0.8]' : 'origin-bottom -mb-1 scale-[0.62]'),
+          isMe && 'origin-bottom -translate-y-0.5 [filter:drop-shadow(0_8px_14px_rgba(0,0,0,0.6))]',
         )}>{cards}</div>
       )}
 
@@ -240,9 +238,11 @@ export function SeatRing({
         {/* inner rim */}
         <div className={cn('pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset', premium ? 'ring-amber-200/15' : 'ring-emerald-200/10')} />
 
-        {/* board + pot — the focal point, scaled up on larger screens */}
-        <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 scale-105 flex-col items-center gap-1.5 sm:scale-110 sm:gap-2 lg:scale-125">
-          <div className={cn('flex items-center gap-1.5 rounded-full border border-amber-300/30 bg-black/60 px-3.5 py-1 shadow-md', winnerSeats?.length && 'op-winner-glow')}>
+        {/* board + pot. The board CARDS stay at native `md` (equal to hero + opponents); the
+            pot pill keeps its own prominence via text size + a small pill-only scale, so
+            equalising the cards never shrinks them below the seats' cards. */}
+        <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 sm:gap-2">
+          <div className={cn('flex scale-105 items-center gap-1.5 rounded-full border border-amber-300/30 bg-black/60 px-3.5 py-1 shadow-md sm:scale-110', winnerSeats?.length && 'op-winner-glow')}>
             <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Tổng Pot</span>
             <span className="text-sm font-bold tabular-nums text-primary sm:text-base">{bbOrChips(hand.pot, bb)}</span>
             {bb && fmtBB(hand.pot, bb) && <span className="text-[10px] tabular-nums text-white/45">{fmtChips(hand.pot)}</span>}

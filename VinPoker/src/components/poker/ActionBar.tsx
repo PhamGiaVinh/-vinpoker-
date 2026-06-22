@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { RUNTIME_LIVE, type ActionType, type PublicHandView } from '@/lib/onlinePoker/types';
 import type { WireLegalActions } from '@/lib/onlinePoker/wire';
 import { betSizingOptions, clampRaiseTo, fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
-import { Clock } from 'lucide-react';
+import { Clock, Grid3x3, ChevronDown, ChevronUp } from 'lucide-react';
 
 /** "X BB" if bb known, else raw chips — for inline labels. */
 function bbLabel(chips: string, bb?: string): string {
@@ -75,6 +75,9 @@ export function ActionBar({
   // Selected "raise to" — defaults to the minimum legal raise; chips/slider move it.
   const [raiseTo, setRaiseTo] = useState<string>(legal?.minRaiseTo ?? '0');
   useEffect(() => { setRaiseTo(legal?.minRaiseTo ?? '0'); }, [legal?.minRaiseTo, legal?.maxRaiseTo]);
+  // ⊞ reveals the custom-amount slider; ^ collapses the %-sizing column (N8 chevrons).
+  const [showCustom, setShowCustom] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   // Off-turn: render NOTHING (N8). When it isn't your turn the felt owns the whole screen —
   // no "waiting" strip. The dock reappears the instant the turn returns to you.
@@ -99,54 +102,65 @@ export function ActionBar({
   const act = (type: ActionType, amount?: string) => { if (!disabled) onAction?.({ type, amount }); };
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-1.5 rounded-xl border border-white/10 bg-black/60 p-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm">
-      {/* No header row — the felt already shows whose turn it is (to-act pulse) and the pot
-          (Tổng Pot); the Call button shows the amount owed. Keeps the dock a short N8 strip
-          so the hero's cards/plate stay clear above it. */}
-
-      {/* N8 bet-size strip — a COMPACT horizontal row of quick-raise chips (each a DIRECT
-          raise-to) + a thin slider for fine control confirmed by the "Tố lên" button. Only
-          when raising is legal; every amount re-validated server-side (client never decides). */}
-      {showSizing && (
-        <div className="space-y-1.5">
-          <div className="flex items-stretch gap-1.5">
-            {sizes.map((s) => {
-              const isMax = s.amount === legal.maxRaiseTo;
-              return (
-                <button
-                  key={s.key}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => act(canRaise ? 'raise' : 'bet', s.amount)}
-                  className="op-press flex flex-1 flex-col items-center justify-center gap-0.5 rounded-md bg-amber-400/90 px-1 py-1 leading-none text-amber-950 transition-colors hover:bg-amber-300 disabled:opacity-50"
-                >
-                  <span className="text-[11px] font-bold">{isMax ? 'Max' : s.label}</span>
-                  <span className="text-[10px] font-semibold tabular-nums opacity-80">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-10 shrink-0 text-[10px] tabular-nums text-muted-foreground">{bbLabel(legal.minRaiseTo, bb)}</span>
-            <Slider
-              value={[sliderVal]}
-              min={sliderMin}
-              max={sliderMax}
-              step={sliderStep}
-              disabled={disabled}
-              onValueChange={(v) => setRaiseTo(clampRaiseTo(legal, String(v[0] ?? sliderMin)))}
-              className="flex-1"
-              aria-label="Raise to"
-            />
-            <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">{bbLabel(legal.maxRaiseTo, bb)}</span>
-          </div>
+    // N8 fixed layout: a transparent column — the %-sizing tiles stack on the RIGHT, the
+    // Fold/Call row pins to the bottom, and the empty centre stays pointer-events-none so the
+    // felt (and the bottom-left hero HUD) are never blocked. Each control group re-enables taps.
+    <div className="pointer-events-none mx-auto flex w-full max-w-md flex-col items-stretch gap-1.5">
+      {/* (a) bet-sizing — a VERTICAL column on the RIGHT (N8). Each tile is a DIRECT raise-to;
+          the 100%/Tối đa tile fires the all-in. Reversed so 100% sits on top. */}
+      {showSizing && sizes.length > 0 && !collapsed && (
+        <div className="pointer-events-auto flex w-[8.5rem] flex-col gap-1.5 self-end">
+          {[...sizes].reverse().map((s) => {
+            const isMax = s.amount === legal.maxRaiseTo;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                disabled={disabled}
+                onClick={() => (isMax && canAllin ? act('allin', legal.maxRaiseTo) : act(canRaise ? 'raise' : 'bet', s.amount))}
+                className="op-press flex items-center justify-between gap-2 rounded-xl bg-black/85 px-3 py-2 ring-1 ring-white/10 transition-colors hover:bg-black/70 disabled:opacity-50"
+              >
+                <span className="text-[11px] font-semibold tabular-nums text-white/55">{s.label}</span>
+                <span className="flex flex-col items-end leading-none">
+                  <span className={cn('text-[9px] font-medium uppercase tracking-wide', isMax ? 'text-red-400' : 'text-white/50')}>{isMax ? 'Tối đa' : 'Tăng cược'}</span>
+                  <span className="text-[13px] font-bold tabular-nums text-amber-300">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* bottom action row — N8 flat rectangular tiles in ONE row: Bỏ bài + Theo bài/Check
-          neutral dark-gray · Tố lên/Cược amber · All-in deep-red. One short row keeps the
-          dock a thin strip the hero's cards stay clear above. */}
-      <div className="flex items-stretch gap-2">
+      {/* (b) custom-amount panel — revealed by ⊞: the fine-control slider + a confirm button
+          (the slider is inert without it). Right-aligned, same width as the %-column. */}
+      {showSizing && showCustom && (
+        <div className="pointer-events-auto w-[8.5rem] space-y-1.5 self-end rounded-xl bg-black/85 p-2 ring-1 ring-white/10">
+          <div className="flex items-center justify-between text-[10px] tabular-nums text-muted-foreground">
+            <span>{bbLabel(legal.minRaiseTo, bb)}</span>
+            <span>{bbLabel(legal.maxRaiseTo, bb)}</span>
+          </div>
+          <Slider
+            value={[sliderVal]}
+            min={sliderMin}
+            max={sliderMax}
+            step={sliderStep}
+            disabled={disabled}
+            onValueChange={(v) => setRaiseTo(clampRaiseTo(legal, String(v[0] ?? sliderMin)))}
+            aria-label="Raise to"
+          />
+          <Button
+            disabled={disabled}
+            onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
+            className="op-press h-9 w-full rounded-md bg-amber-400 text-amber-950 hover:bg-amber-300"
+          >
+            <BtnLabel action={canRaise ? 'Tố lên' : 'Cược'} chips={raiseTo} bb={bb} />
+          </Button>
+        </div>
+      )}
+
+      {/* (c) bottom action row — pinned to the very bottom: Bỏ bài + Theo bài/Check, then the
+          ⊞ custom + ^ collapse toggles. Raises come from the %-column (all-in = its 100% tile). */}
+      <div className="pointer-events-auto flex items-stretch gap-2">
         {canFold && (
           <Button
             disabled={disabled}
@@ -175,24 +189,27 @@ export function ActionBar({
           </Button>
         ) : null}
 
-        {(canRaise || canBet) && (
-          <Button
-            disabled={disabled}
-            onClick={() => act(canRaise ? 'raise' : 'bet', raiseTo)}
-            className="op-press h-11 flex-[1.2] rounded-md bg-amber-400 text-amber-950 hover:bg-amber-300"
-          >
-            <BtnLabel action={canRaise ? 'Tố lên' : 'Cược'} chips={raiseTo} bb={bb} />
-          </Button>
-        )}
-
-        {canAllin && (
-          <Button
-            disabled={disabled}
-            onClick={() => act('allin', legal.maxRaiseTo)}
-            className="op-press h-11 flex-[0.9] rounded-md bg-[#991B1B] text-amber-100 hover:bg-[#7d1515]"
-          >
-            <BtnLabel action="All-in" chips={legal.maxRaiseTo} bb={bb} />
-          </Button>
+        {showSizing && (
+          <>
+            <Button
+              disabled={disabled}
+              onClick={() => setShowCustom((v) => !v)}
+              aria-label="Tự nhập mức cược"
+              title="Tự nhập mức cược"
+              className={cn('op-press h-11 w-11 shrink-0 rounded-md bg-zinc-800/80 p-0 text-white/80 hover:bg-zinc-700', showCustom && 'ring-1 ring-amber-400/60')}
+            >
+              <Grid3x3 className="h-4 w-4" />
+            </Button>
+            <Button
+              disabled={disabled}
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? 'Hiện mức cược' : 'Ẩn mức cược'}
+              title={collapsed ? 'Hiện mức cược' : 'Ẩn mức cược'}
+              className="op-press h-11 w-11 shrink-0 rounded-md bg-zinc-800/80 p-0 text-white/80 hover:bg-zinc-700"
+            >
+              {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </>
         )}
       </div>
     </div>

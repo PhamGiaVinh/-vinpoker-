@@ -8,7 +8,7 @@
 
 import { isChipString, type ChipString, type WireLegalActions } from './wire';
 
-export type BetSizingKey = '25' | '40' | '66' | 'pot';
+export type BetSizingKey = '33' | '50' | '75' | '100';
 
 export interface BetSizingOption {
   key: BetSizingKey;
@@ -20,11 +20,13 @@ export interface BetSizingOption {
 
 // GG-style quick sizes: a "raise to" of `toCall + pct·(pot + toCall)` (pot after the
 // call), expressed as exact num/den so the math stays integer (no float drift).
+// N8-style: 33 / 50 / 75 / 100% of the pot-after-call, ascending (the bar reverses
+// for top-down display); 100% replaces "Pot" and reads "Tối đa" once it clamps to max.
 const PERCENTS: { key: BetSizingKey; label: string; num: bigint; den: bigint }[] = [
-  { key: '25', label: '25%', num: 25n, den: 100n },
-  { key: '40', label: '40%', num: 40n, den: 100n },
-  { key: '66', label: '66%', num: 66n, den: 100n },
-  { key: 'pot', label: 'Pot', num: 100n, den: 100n },
+  { key: '33', label: '33%', num: 33n, den: 100n },
+  { key: '50', label: '50%', num: 50n, den: 100n },
+  { key: '75', label: '75%', num: 75n, den: 100n },
+  { key: '100', label: '100%', num: 100n, den: 100n },
 ];
 
 const clamp = (v: bigint, lo: bigint, hi: bigint): bigint => (v < lo ? lo : v > hi ? hi : v);
