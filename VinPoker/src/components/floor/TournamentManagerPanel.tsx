@@ -300,6 +300,7 @@ const NewTournamentDialog = ({
   const [f, setF] = useState({ name: "", start_time: "", buy_in: 1000000, rake_amount: 0, service_fee_amount: 0, guarantee_amount: "", starting_stack: 20000, location: "", description: "", game_type: "nlh", minutes_per_level: 20, late_reg_close_level: 6 });
   const [blindChoice, setBlindChoice] = useState("none");
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
+  const [busy, setBusy] = useState(false);
   useEffect(() => { setClubId(defaultClubId); }, [defaultClubId]);
   // Load this club's saved blind structures for the picker (gated).
   useEffect(() => {
@@ -323,31 +324,37 @@ const NewTournamentDialog = ({
   };
 
   const submit = async () => {
+    if (busy) return; // guard: never double-insert on a fast double-click
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     if (!clubId) return toast.error("Chọn câu lạc bộ");
-    const { data: created, error } = await supabase.from("tournaments").insert({
-      club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
-      buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
-      ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
-      guarantee_amount: parseGtd(f.guarantee_amount),
-      starting_stack: Number(f.starting_stack),
-      location: f.location, description: f.description, game_type: f.game_type,
-      minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
-    }).select("id").single();
-    if (error) { toast.error(error.message); return; }
-    // Seed the blind structure from a chosen preset / club template (gated).
-    if (FEATURES.blindTemplates && blindChoice !== "none" && created?.id) {
-      const levels = resolveLevels(blindChoice);
-      if (levels.length) {
-        const { error: lvlErr } = await (supabase as any)
-          .from("tournament_levels")
-          .insert(levels.map((l) => ({ tournament_id: created.id, ...l })));
-        if (lvlErr) toast.error("Tạo giải OK nhưng nạp cấu trúc blind lỗi: " + lvlErr.message);
+    setBusy(true);
+    try {
+      const { data: created, error } = await supabase.from("tournaments").insert({
+        club_id: clubId, name: f.name, start_time: new Date(f.start_time).toISOString(),
+        buy_in: Number(f.buy_in), rake_amount: Number(f.rake_amount) || 0,
+        ...(FEATURES.tournamentServiceFee ? { service_fee_amount: Number(f.service_fee_amount) || 0 } : {}),
+        guarantee_amount: parseGtd(f.guarantee_amount),
+        starting_stack: Number(f.starting_stack),
+        location: f.location, description: f.description, game_type: f.game_type,
+        minutes_per_level: Number(f.minutes_per_level), late_reg_close_level: Number(f.late_reg_close_level),
+      }).select("id").single();
+      if (error) { toast.error(error.message); return; }
+      // Seed the blind structure from a chosen preset / club template (gated).
+      if (FEATURES.blindTemplates && blindChoice !== "none" && created?.id) {
+        const levels = resolveLevels(blindChoice);
+        if (levels.length) {
+          const { error: lvlErr } = await (supabase as any)
+            .from("tournament_levels")
+            .insert(levels.map((l) => ({ tournament_id: created.id, ...l })));
+          if (lvlErr) toast.error("Tạo giải OK nhưng nạp cấu trúc blind lỗi: " + lvlErr.message);
+        }
       }
+      toast.success("Tournament created");
+      setOpen(false);
+      onCreated();
+    } finally {
+      setBusy(false);
     }
-    toast.success("Tournament created");
-    setOpen(false);
-    onCreated();
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -417,7 +424,7 @@ const NewTournamentDialog = ({
               <p className="text-xs text-muted-foreground -mt-1">Chọn cấu trúc có sẵn để giải chạy được ngay (đồng hồ/tracker đọc theo cấu trúc này).</p>
             </>
           )}
-          <Button onClick={submit} className="w-full gradient-neon text-primary-foreground border-0">Create</Button>
+          <Button onClick={submit} disabled={busy} className="w-full gradient-neon text-primary-foreground border-0">{busy ? "Đang tạo…" : "Create"}</Button>
         </div>
       </DialogContent>
     </Dialog>
