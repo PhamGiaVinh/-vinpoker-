@@ -161,6 +161,18 @@ export const FEATURES = {
    */
   liveHandFeed: true, // GO-LIVE 2026-06-22: spectator hand feed enabled (owner-approved)
   /**
+   * Live-tracker table FX (presentational, viewer-only): a chip-push-to-pot animation
+   * on bet/call/raise/all-in + a card-reveal-once stagger on the felt, plus enriched
+   * synth sounds (flop riffle / turn / river deal swooshes, card-muck fold, chip clink).
+   * ADDITIVE: the FX is gated by LiveFelt PROPS the VIEWER passes (`tableFx`/`chipPush`)
+   * and by the enriched-sound branch in TournamentLiveView's sound effects — operator /
+   * TV / replay never pass the props and the enriched sound kinds are never called, so
+   * they stay byte-identical at RUNTIME regardless of this flag. Default **OFF** → the
+   * viewer renders + sounds exactly as today. Frontend-only; flip after UAT (unmute to
+   * hear). Kill-switch: set false.
+   */
+  liveTableFx: false,
+  /**
    * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
    * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
    * seeding), legal actions, "Bet to" (street-total) sizing, automatic
