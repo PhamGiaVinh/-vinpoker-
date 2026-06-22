@@ -355,4 +355,19 @@ export const FEATURES = {
    * the "Khấu trừ thủ công" inputs. Kill-switch: set false to hide them again.
    */
   manualPayrollDeductions: true,
+  /**
+   * Chip Ops — read-only Issued-Chip-Inventory screen (/chip-ops) + the Chip-Master role.
+   * The screen shows server-computed per-denomination chip counts + a reconciliation badge for
+   * a tournament (RPC `get_issued_chip_inventory`); strictly read-only. Default **OFF** (dark):
+   * both the chip_ops_* foundation (migration 20261015000000) and the club_chip_masters role
+   * (20261016000000) are source-only / NOT applied live yet. While false: the ClubAdmin entry
+   * card is hidden, the /chip-ops route redirects, AND `useAuth` never queries
+   * club_chip_masters (so it cannot 42P01 before the table exists — see lib/chipMaster.ts).
+   * Flip to true ONLY after BOTH migrations are applied in a controlled DB session + types
+   * regenerated. The panel degrades gracefully if the RPC is still absent.
+   * **ON** (2026-06-22): the 1a foundation (`20261015000000`) is applied live, so the
+   * owner-scoped inventory RPC works. Apply `20261016000000` (Chip-Master role) too to
+   * enable delegation + stop the guarded club_chip_masters lookup from 404-ing.
+   */
+  chipOps: true,
 } as const;

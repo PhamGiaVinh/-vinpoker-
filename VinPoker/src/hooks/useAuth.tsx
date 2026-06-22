@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { linkUser, logoutUser } from "@/lib/onesignal";
+import { deriveIsChipMaster } from "@/lib/chipMaster";
 
 // HMR safety: AuthContext identity must stay stable across hot updates.
 // If this module (or any of its imports) is hot-reloaded, force a full
@@ -27,6 +28,7 @@ interface AuthContextValue {
   isMediaOrAdmin: boolean; // can manage CMS / support
   isTracker: boolean; // tracker role — can access live tracker
   isDealer: boolean; // linked to a dealers row (dealers.user_id = auth.uid())
+  isChipMaster: boolean; // Chip-Master of >=1 club (club_chip_masters) — flag-gated + guarded
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -37,6 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isClubOwner, setIsClubOwner] = useState(false);
   const [isDealer, setIsDealer] = useState(false);
+  const [isChipMaster, setIsChipMaster] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,6 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setRoles([]);
         setIsClubOwner(false);
         setIsDealer(false);
+        setIsChipMaster(false);
         setTimeout(() => logoutUser(), 0);
       }
     });
@@ -83,6 +87,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setRoles((roleRows ?? []).map((r: any) => r.role as AppRole));
     setIsClubOwner((ownedClubs ?? []).length > 0);
     setIsDealer((dealerRows ?? []).length > 0);
+    // Chip-Master is additive + flag-gated + guarded (returns false without querying while
+    // FEATURES.chipOps is off / on any error) so it never blocks or breaks auth init.
+    deriveIsChipMaster(userId).then(setIsChipMaster).catch(() => setIsChipMaster(false));
   };
 
   const signOut = async () => {
@@ -90,6 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setRoles([]);
     setIsClubOwner(false);
     setIsDealer(false);
+    setIsChipMaster(false);
   };
 
   return (
@@ -104,6 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isMediaOrAdmin: roles.includes("super_admin") || roles.includes("media"),
       isTracker: roles.includes("tracker"),
       isDealer,
+      isChipMaster,
     }}>
       {children}
     </AuthContext.Provider>
