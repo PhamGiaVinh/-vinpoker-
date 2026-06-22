@@ -19,6 +19,7 @@ import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import type { LiveSeat, LiveTableMeta } from '@/lib/onlinePoker/client';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
+import { HeroHud } from '@/components/poker/HeroHud';
 import { HandStateViewer } from '@/components/poker/HandStateViewer';
 import { ActionBar } from '@/components/poker/ActionBar';
 import { ShowdownResult } from '@/components/poker/ShowdownResult';
@@ -407,13 +408,19 @@ export default function OnlinePokerTable() {
     <div
       ref={rootRef}
       className={immersive
-        ? 'fixed inset-0 z-[60] mx-auto flex h-[100dvh] w-full max-w-4xl flex-col gap-2 overflow-y-auto bg-background p-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'
+        // TRUE full-screen: no max-width, no outer padding, no gap — the felt fills every edge.
+        // The header floats over the top (absolute) so it never steals layout height. Only the
+        // bottom safe-area is reserved (home indicator); the top notch is handled by the header.
+        ? 'fixed inset-0 z-[60] flex h-[100dvh] w-full flex-col overflow-hidden bg-background [padding-bottom:env(safe-area-inset-bottom)]'
         // Chrome-less route (no Layout nav): own full-viewport shell + safe-area insets so
         // the table fills the phone edge-to-edge; max-w-4xl keeps desktop centered.
         : 'mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-2 bg-background p-3 sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))] [padding-top:max(0.75rem,env(safe-area-inset-top))]'}
       style={{ background: 'radial-gradient(130% 85% at 50% 26%, #0b1410 0%, #07090b 72%)' }}
     >
-      <header className="flex items-center gap-2 rounded-xl bg-black/25 px-1.5 py-1">
+      <header className={immersive
+        // Immersive: float over the felt's top edge so it never steals height (felt is edge-to-edge).
+        ? 'absolute inset-x-0 top-0 z-50 flex items-center gap-1 bg-gradient-to-b from-black/60 via-black/30 to-transparent px-2 pb-3 [padding-top:max(0.25rem,env(safe-area-inset-top))]'
+        : 'flex items-center gap-2 rounded-xl bg-black/25 px-1.5 py-1'}>
         {immersive ? (
           <Button variant="ghost" size="sm" onClick={exitImmersive}><Minimize2 className="h-4 w-4" /> Thoát</Button>
         ) : (
@@ -479,12 +486,23 @@ export default function OnlinePokerTable() {
             dealSignal={dealSignal}
             dealSeats={dealSeats}
             skin={feltSkin}
-            // Lift the hero (my own seat) clear of the floating dock so the cards/plate are
-            // never covered; default {15,85} elsewhere (cinematic, spectator) is unchanged.
-            heroAnchor={{ x: 15, y: 75 }}
+            // N8: the hero leaves the ring → rendered as a screen-corner <HeroHud> below.
+            // This frees the lower-left so seat 1 no longer overlaps the hero.
+            heroAsHud
             // Sit is allowed on any OPEN table (incl. an empty one — that's how you start
             // it); only a closed table or an active result/cinematic blocks it.
             onEmptySeatClick={!seated && !loading && !showing && table.status !== 'closed' ? openSit : undefined}
+          />
+        )}
+
+        {/* hero HUD — my own cards + stack pinned to the SCREEN's bottom-left corner (N8).
+            Hidden during the all-in cinematic (it shows its own hero). Lifts above the action
+            dock while it's my turn so the buttons never cover the cards. */}
+        {!(cinematic && showing) && (
+          <HeroHud
+            hand={feltView}
+            bb={table.bb}
+            lifted={!showing && inActiveHand && hand?.toActSeat === mySeatNo}
           />
         )}
 
@@ -526,9 +544,11 @@ export default function OnlinePokerTable() {
               <div className="rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-center text-sm text-muted-foreground backdrop-blur-sm">
                 {emptyStateLabel(table.status, occupied)}
               </div>
-            ) : seated ? (
+            ) : seated && occupied < 2 ? (
+              // Only the "waiting for players" hint remains; the between-hands "Ván mới…" line
+              // is removed (N8: between hands the felt owns the screen, no status strip).
               <div className="rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-center text-sm text-muted-foreground backdrop-blur-sm">
-                {occupied < 2 ? 'Đang chờ thêm người chơi…' : 'Ván mới sẽ bắt đầu trong giây lát…'}
+                Đang chờ thêm người chơi…
               </div>
             ) : null}
           </div>
