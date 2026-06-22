@@ -80,22 +80,26 @@ const PORTRAIT_SEATS: Record<number, Pt> = {
   8: { l: 8, t: 40 },
   9: { l: 18, t: 17 },
 };
+// Landscape = a WIDE oval (16/9): seats fan along the long top/bottom edges so 9
+// players read like a real broadcast table instead of a cramped near-circle.
 const LANDSCAPE_SEATS: Record<number, Pt> = {
-  1: { l: 50, t: 6 },
-  2: { l: 75, t: 16 },
-  3: { l: 91, t: 44 },
-  4: { l: 82, t: 80 },
-  5: { l: 63, t: 89 },
-  6: { l: 37, t: 89 },
-  7: { l: 18, t: 80 },
-  8: { l: 9, t: 44 },
-  9: { l: 25, t: 16 },
+  1: { l: 50, t: 9 },
+  2: { l: 71, t: 14 },
+  3: { l: 91, t: 42 },
+  4: { l: 84, t: 79 },
+  5: { l: 61, t: 91 },
+  6: { l: 39, t: 91 },
+  7: { l: 16, t: 79 },
+  8: { l: 9, t: 42 },
+  9: { l: 29, t: 14 },
 };
 
-// Taller ovals (not flat) so 9 seats + a centred board never vertically collide.
+// Balanced ovals — WIDE landscape (premium broadcast read) + taller portrait for
+// phones. `maxW` caps the felt so on wide screens it stays a centred, well-
+// proportioned table (mx-auto) instead of sprawling edge-to-edge near-square.
 const GEO = {
-  portrait: { aspect: "5 / 6", seats: PORTRAIT_SEATS, centerTop: "45%", centerW: "60%", vSize: "clamp(28px,10vw,42px)" },
-  landscape: { aspect: "7 / 6", seats: LANDSCAPE_SEATS, centerTop: "46%", centerW: "46%", vSize: "clamp(28px,6vw,44px)" },
+  portrait: { aspect: "5 / 6", seats: PORTRAIT_SEATS, centerTop: "44%", centerW: "62%", vSize: "clamp(28px,10vw,42px)", maxW: "440px" },
+  landscape: { aspect: "16 / 9", seats: LANDSCAPE_SEATS, centerTop: "49%", centerW: "42%", vSize: "clamp(24px,4.5vw,38px)", maxW: "760px" },
 };
 
 export interface LiveFeltProps {
@@ -178,7 +182,7 @@ export function LiveFelt({
     <div className="w-full">
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). */}
-      <div className="relative mx-auto w-full overflow-visible" style={{ aspectRatio: geo.aspect }}>
+      <div className="relative mx-auto w-full overflow-visible" style={{ aspectRatio: geo.aspect, maxWidth: geo.maxW }}>
         <div
           aria-hidden="true"
           className="absolute inset-0"
