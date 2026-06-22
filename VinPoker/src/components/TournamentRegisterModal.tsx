@@ -87,6 +87,8 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       setInfo(r);
       setProofUrl(r.transfer_proof_url ?? null);
       setProofSubmitted(!!r.transfer_proof_submitted);
+      // Tell the mobile "Đã đăng ký" badge (RegisteredBadge) to refresh.
+      window.dispatchEvent(new Event("vinpoker:registration-changed"));
     })();
     return () => { mounted = false; };
   }, [open, tournamentId, user?.id]);
@@ -160,6 +162,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     setCancelling(false);
     if (error) { toast.error(error.message); return; }
     toast.success(t("tournamentRegister.cancelled"));
+    window.dispatchEvent(new Event("vinpoker:registration-changed"));
     onClose();
   };
 
