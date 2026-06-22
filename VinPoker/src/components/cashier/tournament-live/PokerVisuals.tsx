@@ -288,6 +288,13 @@ export function TrackerVisualStyles() {
                  transform: translate(-50%,-50%) scale(1); opacity: 1; }
           100% { left: var(--cp-tx); top: var(--cp-ty); transform: translate(-50%,-50%) scale(.92); opacity: 0; }
         }
+        /* liveTableFx showdown winner: a soft gold halo + ring fades in (ease-out)
+           to a STEADY glow (RPT-style, no pulse). The class carries the end state so
+           reduced-motion keeps the glow without the entrance. */
+        @keyframes tracker-win-glow {
+          from { box-shadow: 0 0 0 0 hsl(var(--poker-gold) / 0); }
+          to   { box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6); }
+        }
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
@@ -299,6 +306,10 @@ export function TrackerVisualStyles() {
           box-shadow: 0 0 0 1.5px rgba(154,100,24,.85), 0 2px 6px rgba(0,0,0,.5);
           animation: tracker-chip-push 520ms cubic-bezier(.22,.61,.36,1) both;
           pointer-events: none;
+        }
+        .tracker-win-glow {
+          box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6);
+          animation: tracker-win-glow .45s ease-out both;
         }
         .tracker-felt {
           background:
@@ -327,6 +338,7 @@ export function TrackerVisualStyles() {
           .tracker-pot-pulse,
           .tracker-bet-pulse,
           .tracker-chip-push,
+          .tracker-win-glow,
           .tracker-shine::before {
             animation: none !important;
           }

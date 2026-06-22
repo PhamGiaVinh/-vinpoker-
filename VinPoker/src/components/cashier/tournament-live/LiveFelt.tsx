@@ -33,6 +33,9 @@ export interface SeatInfo {
   hole_cards?: string[];
   /** Chips committed on the CURRENT street (Live Action Engine overlay; 0/undef → no chip shown). */
   current_bet?: number;
+  /** Net chips for the hand (ending − starting); set ONLY on a replay's final frame.
+   * >0 → winner (gold glow + green "+X" badge under liveTableFx). null/undef → no badge. */
+  net_won?: number | null;
 }
 
 export interface ActionLog {
@@ -335,6 +338,11 @@ export function LiveFelt({
               ? "ring-1 ring-[hsl(var(--poker-gold)/0.4)]"
               : "";
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
+          // Showdown winner (replay final frame, viewer FX only): gold glow + green
+          // net-won badge. net_won is set only on the replay final frame, so live /
+          // operator / TV never trigger this — byte-identical without `tableFx`.
+          const netWon = seat.net_won ?? 0;
+          const isWinner = tableFx && netWon > 0;
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -378,7 +386,9 @@ export function LiveFelt({
                 )}
                 <div className="relative">
                   <div
-                    className={`grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:h-9 sm:w-9 sm:text-[11px] ${avatarBorder} ${avatarRing}`}
+                    className={`grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:h-9 sm:w-9 sm:text-[11px] ${
+                      isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
+                    }`}
                     style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))" }}
                   >
                     {seat.avatar_url ? (
@@ -417,6 +427,16 @@ export function LiveFelt({
                 <div className="tracker-num text-[10px] font-bold leading-tight" style={{ color: "hsl(var(--poker-stack))", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}>
                   {formatStack(seat.chip_count)}
                 </div>
+                {isWinner && (
+                  <div
+                    data-testid="seat-net-won"
+                    className="tracker-win-amount tracker-num mt-0.5 text-[9px] font-extrabold leading-tight sm:text-[10px]"
+                    style={{ color: "hsl(var(--success))", textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
+                  >
+                    +{formatStack(netWon)}
+                    {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
+                  </div>
+                )}
                 {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
                   <div
                     key={`bet-${seat.current_bet}`}
@@ -435,7 +455,10 @@ export function LiveFelt({
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                   <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90" style={nameShadow}>{seat.last_action}</div>
                 )}
-                <div data-testid="seat-holecards" className="mt-0.5 flex justify-center gap-0.5">
+                <div
+                  data-testid="seat-holecards"
+                  className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
+                >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
                     seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />)
                   ) : (

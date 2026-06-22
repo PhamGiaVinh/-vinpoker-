@@ -205,6 +205,39 @@ describe("buildReplayFrames", () => {
   });
 });
 
+describe("buildReplayFrames — net_won (showdown winner badge)", () => {
+  const withEnd = (): ReplayHand => ({
+    hand_number: 1,
+    button_seat: 1,
+    community_cards: ["As", "Kd", "7c", "2h", "9s"],
+    players: [
+      { player_id: "W", seat_number: 1, display_name: "Winner", starting_stack: 10000, ending_stack: 19400, hole_cards: ["Ah", "Ad"] },
+      { player_id: "L", seat_number: 2, display_name: "Loser", starting_stack: 10000, ending_stack: 0, hole_cards: ["Kh", "Qs"] },
+    ],
+    actions: [
+      { player_id: "L", action_type: "all_in", action_amount: 10000, street: "preflop", action_order: 1 },
+      { player_id: "W", action_type: "call", action_amount: 10000, street: "preflop", action_order: 2 },
+    ],
+  });
+
+  it("sets signed net_won ONLY on the final frame", () => {
+    const frames = buildReplayFrames(withEnd());
+    expect(frames[0].seats.every((s) => s.net_won == null)).toBe(true); // initial
+    expect(frames[1].seats.every((s) => s.net_won == null)).toBe(true); // mid-hand
+    const final = frames.at(-1)!;
+    const by = Object.fromEntries(final.seats.map((s) => [s.player_id, s]));
+    expect(by.W.net_won).toBe(9400); // 19400 − 10000 → winner (>0 drives the badge)
+    expect(by.L.net_won).toBe(-10000); // 0 − 10000 → loser (<0, no badge)
+  });
+
+  it("net_won is null when ending_stack is unknown (incomplete hand)", () => {
+    const h = withEnd();
+    h.players = h.players.map((p) => ({ ...p, ending_stack: null }));
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.seats.every((s) => s.net_won == null)).toBe(true);
+  });
+});
+
 describe("streetFrameIndex", () => {
   it("maps each present street to the frame it first appears on", () => {
     const h = hand({
