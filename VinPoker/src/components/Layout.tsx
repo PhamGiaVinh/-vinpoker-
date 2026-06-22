@@ -24,6 +24,7 @@ import { InstallPWAButton } from "@/components/InstallPWAButton";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { MyQrSheet } from "@/components/MyQrSheet";
 import { LogoFanButton } from "@/components/LogoFanButton";
+import { RegisteredBadge } from "@/components/RegisteredBadge";
 import { FEATURES } from "@/lib/featureFlags";
 import appLogo from "@/assets/app-logo.png";
 
@@ -371,6 +372,7 @@ export const Layout = () => {
       <InstallPWAButton />
 
       <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+        <RegisteredBadge />
         <div className="mx-auto grid h-[68px] max-w-3xl grid-cols-5 items-stretch">
           {mobileTabsData.slice(0, 2).map((tab) => (
             <NavLink
