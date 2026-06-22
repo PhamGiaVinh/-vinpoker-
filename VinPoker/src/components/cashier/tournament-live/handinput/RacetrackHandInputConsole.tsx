@@ -15,6 +15,7 @@
 // StandaloneHandInputConsole, so production is unchanged.
 
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
 import { displayCard, type Card } from "@/components/shared/CardSlotPicker";
 import { TrackerRacetrack } from "@/components/tracker/TrackerRacetrack";
 import { ActionDock } from "@/components/tracker/ActionDock";
@@ -32,17 +33,36 @@ import { HandGuideDrawer } from "./HandGuideDrawer";
 import { OperatorActionLog } from "./OperatorActionLog";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
 
-// players → racetrack SeatVM (display-only view-model).
-function toSeatVMs(players: PlayerState[], positionsBySeat: Map<number, string>): SeatVM[] {
-  return players.map((p) => ({
-    seatNumber: p.seat_number,
-    name: p.display_name,
-    stack: p.current_stack, // chips BEHIND (audit Q5)
-    committed: p.current_bet, // committed THIS street (audit Q5)
-    position: positionsBySeat.get(p.seat_number) || undefined,
-    isFolded: p.is_folded,
-    isAllIn: p.is_all_in,
-  }));
+// players → racetrack SeatVM (display-only view-model). The `rich` extras (avatar +
+// hole cards + muck) are joined ONLY when FEATURES.trackerRacetrackRich is on; when
+// off the VM is byte-identical to before. Hole cards join via PlayerState (carries
+// both player_id and seat_number), never by array index.
+function toSeatVMs(
+  players: PlayerState[],
+  positionsBySeat: Map<number, string>,
+  rich = false,
+  holeCardsByPlayer: Record<string, (Card | null)[]> = {},
+  muckedPlayerIds: Set<string> = new Set<string>(),
+): SeatVM[] {
+  return players.map((p) => {
+    const base: SeatVM = {
+      seatNumber: p.seat_number,
+      name: p.display_name,
+      stack: p.current_stack, // chips BEHIND (audit Q5)
+      committed: p.current_bet, // committed THIS street (audit Q5)
+      position: positionsBySeat.get(p.seat_number) || undefined,
+      isFolded: p.is_folded,
+      isAllIn: p.is_all_in,
+    };
+    if (!rich) return base;
+    const hc = holeCardsByPlayer[p.player_id];
+    return {
+      ...base,
+      avatarUrl: p.avatar_url ?? null,
+      holeCards: hc ? hc.map((c) => (c ? displayCard(c) : null)) : undefined,
+      isMucked: muckedPlayerIds.has(p.player_id),
+    };
+  });
 }
 
 export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput }) {
@@ -59,7 +79,8 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   const disabled = hook.submitting || hook.isReadOnly;
   // P2-5: include EMPTY physical seats so a DEAD button is visible on an empty seat
   // and the operator can tap one to set it. TrackerRacetrack renders `isEmpty` seats.
-  const occupiedVMs = toSeatVMs(hook.players, hook.positionsBySeat);
+  const rich = FEATURES.trackerRacetrackRich;
+  const occupiedVMs = toSeatVMs(hook.players, hook.positionsBySeat, rich, hook.playerHoleCards, hook.muckedPlayerIds);
   const occupiedNums = new Set(occupiedVMs.map((s) => s.seatNumber));
   const emptyVMs: SeatVM[] = Array.from({ length: hook.maxSeats }, (_, i) => i + 1)
     .filter((n) => !occupiedNums.has(n))
@@ -291,6 +312,11 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           pot={hook.potSize}
           bigBlind={bigBlind}
           onSeatTap={hook.isReadOnly ? undefined : hook.handleSeatNumberTap}
+          rich={rich}
+          potBreakdown={rich ? hook.potBreakdown : undefined}
+          engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
+          showHoleCards={rich ? hook.showShowdownInput || hook.showRunoutReveal : undefined}
+          waiting={rich ? !hook.handStarted : undefined}
         />
       )}
 

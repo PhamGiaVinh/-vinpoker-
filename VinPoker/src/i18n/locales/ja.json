@@ -2693,7 +2693,12 @@
       "folded": "フォールド",
       "action": "アクション",
       "multiTable": "この大会には複数のテーブルがあります — 上でテーブルを選んでライブ観戦してください。",
-      "waiting": "ディーラーがハンドを開始するのを待っています..."
+      "waiting": "ディーラーがハンドを開始するのを待っています...",
+      "empty": "空席",
+      "potTotal": "総ポット",
+      "dealerHere": "ディーラー · 固定",
+      "trackerHere": "トラッカー位置",
+      "engineHint": "推奨"
     }
   },
   "playerIntelligence": {

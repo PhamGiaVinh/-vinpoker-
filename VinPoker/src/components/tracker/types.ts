@@ -17,6 +17,8 @@
 //   upward. PR-B reads `amount` as the post-action street total for every betting action.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { PotBreakdown } from '@/lib/tracker-poker/potEngine';
+
 export type TrackerAction = 'fold' | 'call' | 'check' | 'raise' | 'bet' | 'all_in';
 
 export interface ActionIntent {
@@ -34,6 +36,12 @@ export interface SeatVM {
   isEmpty?: boolean;
   isFolded?: boolean;
   isAllIn?: boolean;
+  // ─── RICH (optional; consumed only when TrackerRacetrackProps.rich) ──────────
+  avatarUrl?: string | null; // player avatar; falls back to initials
+  /** Operator-entered hole cards (display strings, e.g. '5♦'). Present only at
+   *  showdown/reveal. Face-down backs render when absent; never leaks a value. */
+  holeCards?: (string | null)[];
+  isMucked?: boolean; // player mucked at showdown → keep cards face-down
 }
 
 export interface TrackerRacetrackProps {
@@ -45,6 +53,21 @@ export interface TrackerRacetrackProps {
   bigBlind: number;
   /** Tap a seat (occupied OR empty) — used pre-hand to set the button incl. a dead button. */
   onSeatTap?: (seatNumber: number) => void;
+  // ─── RICH props (all optional; omitting them = byte-identical to today) ───────
+  /** Master switch. Falsy ⇒ renders exactly as before (no card faces/backs,
+   *  avatars, side pots, felt skin). The console sets this from FEATURES.trackerRacetrackRich. */
+  rich?: boolean;
+  /** Main + side pots (from the hook's existing computePotBreakdown). */
+  potBreakdown?: PotBreakdown | null;
+  /** The engine's SUGGESTED next actor. When it differs from actingSeatNumber
+   *  (operator has tapped elsewhere) a subtle "máy gợi ý" cue marks it. */
+  engineToActSeatNumber?: number | null;
+  /** True only during showdown / runout-reveal — gates rendering hole-card FACES. */
+  showHoleCards?: boolean;
+  /** Pre-hand: show a "waiting for dealer" overlay. */
+  waiting?: boolean;
+  /** Use the portrait seat map + aspect (narrow screens). Default = landscape racetrack. */
+  portrait?: boolean;
 }
 
 export interface ForcedAmountPadProps {

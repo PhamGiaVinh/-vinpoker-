@@ -204,6 +204,20 @@ export const FEATURES = {
    */
   trackerRacetrackUi: true, // GO-LIVE 2026-06-21: racetrack IS the operator console (owner-approved)
   /**
+   * Racetrack RICH felt — additive visual enrichment of <TrackerRacetrack>: per-seat
+   * hole cards (face / face-down) + avatars, main+side-pot chips, a distinct
+   * engine-suggestion cue, a pre-hand waiting overlay, responsive portrait/landscape
+   * seat maps, and the burgundy+gold poker-felt skin (reusing the existing
+   * --poker-felt/--poker-gold tokens + PokerCard/CardBack). Presentational ONLY — it
+   * reads MORE of the data the hook already produces (playerHoleCards, potBreakdown,
+   * avatar_url, engineActor) and changes NO write-path / engine / RPC / Edge. Default
+   * **OFF**: while false the console passes ONLY today's props, so the racetrack renders
+   * byte-identical to the current live console (mirrors LiveFelt's opt-in physicalSeats
+   * pattern). Flip to true (after operator UAT on the preview branch) to make the
+   * richer table live; kill-switch = set false.
+   */
+  trackerRacetrackRich: false,
+  /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
    * **ON** (2026-06-16, owner-approved launch for dealer UAT): the app is visible
