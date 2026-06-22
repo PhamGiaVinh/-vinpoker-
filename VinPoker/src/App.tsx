@@ -32,6 +32,7 @@ const ClubAdmin = lazy(() => import("./pages/ClubAdmin"));
 const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
 const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
+const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
@@ -205,6 +206,8 @@ const App = () => (
                 <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
+                {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
+                <Route path="/chip-ops" element={<ChipOpsInventory />} />
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
@@ -26,7 +26,7 @@ const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
 const ClubAdmin = () => {
   const { t } = useTranslation();
 
-  const { user, loading: authLoading, isClubAdmin, isClubOwner } = useAuth();
+  const { user, loading: authLoading, isClubAdmin, isClubOwner, isChipMaster } = useAuth();
   const nav = useNavigate();
   const [clubs, setClubs] = useState<any[]>([]);
   const [activeClub, setActiveClub] = useState<any>(null);
@@ -180,6 +180,20 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to="/club/admin/insurance">
                   <ShieldCheck className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
+          {activeClub && (isClubOwner || isChipMaster) && FEATURES.chipOps && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><Coins className="w-4 h-4 text-primary" /> Tồn kho chip (Chip Ops)</h3>
+                <p className="text-xs text-muted-foreground">Số chip mỗi mệnh giá đã phát theo giải + đối soát tổng — chỉ xem.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/chip-ops">
+                  <Coins className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>
