@@ -67,6 +67,7 @@ export function TournamentLiveView({
   orientationOverride = null,
   spectator = false,
   selectedTableIdOverride = null,
+  initialReplayHandNumber = null,
 }: {
   tournamentId: string;
   /** Presentational only: force the felt orientation (set by the viewer hub's
@@ -82,6 +83,9 @@ export function TournamentLiveView({
       view). When set + valid it wins over the internal selector so the featured
       felt shows that table. Operator callers omit it → null → existing behaviour. */
   selectedTableIdOverride?: string | null;
+  /** Deep-link from the spectator hand feed (?hand=N): open this hand in replay.
+      ADDITIVE — omit/null keeps live mode (operator callers are unchanged). */
+  initialReplayHandNumber?: number | null;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
@@ -596,6 +600,12 @@ export function TournamentLiveView({
     setLiveBaseline(null);
   }, []);
 
+  // Deep-link (?hand=N from the spectator hand feed): jump into replay on that hand.
+  // The HandSelector below selects the matching hand via `initialHandNumber`.
+  useEffect(() => {
+    if (initialReplayHandNumber != null) enterReplay();
+  }, [initialReplayHandNumber, enterReplay]);
+
   // ----- Multi-table resolution: never mix table_ids on one felt -----
   const tableIds = useMemo(
     () => [...new Set(seats.map((s) => s.table_id).filter((t): t is string => !!t))],
@@ -918,6 +928,7 @@ export function TournamentLiveView({
             tournamentId={tournamentId}
             tableId={effectiveTableId}
             selectedHandId={replayHandId}
+            initialHandNumber={initialReplayHandNumber}
             onSelectHand={(id, h) => {
               setReplayHandId(id);
               setReplayHand(h);
@@ -941,6 +952,7 @@ export function TournamentLiveView({
           <LiveFelt
             {...feltProps}
             portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
+            viewerNeon={spectator && FEATURES.liveHandFeed}
           />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />

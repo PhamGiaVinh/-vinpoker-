@@ -22,6 +22,9 @@ interface HandSelectorProps {
   tableId: string | null;
   selectedHandId: string | null;
   onSelectHand: (handId: string, hand: ReplayHand) => void;
+  /** Deep-link: when set, select this hand number instead of the most recent one
+   *  (ADDITIVE — omit/null keeps the auto-select-most-recent behaviour). */
+  initialHandNumber?: number | null;
 }
 
 export function HandSelector({
@@ -29,6 +32,7 @@ export function HandSelector({
   tableId,
   selectedHandId,
   onSelectHand,
+  initialHandNumber = null,
 }: HandSelectorProps) {
   const [hands, setHands] = useState<HandRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -128,13 +132,20 @@ export function HandSelector({
     [onSelectHand]
   );
 
-  // Auto-select the most recent hand once the list loads.
+  // Select the deep-linked hand if given, else auto-select the most recent once the
+  // list loads.
   useEffect(() => {
-    if (!selectedHandId && hands.length > 0) {
-      void loadHand(hands[0]);
+    if (hands.length === 0) return;
+    if (initialHandNumber != null) {
+      const target = hands.find((h) => h.hand_number === initialHandNumber);
+      if (target && target.id !== selectedHandId) {
+        void loadHand(target);
+        return;
+      }
     }
+    if (!selectedHandId) void loadHand(hands[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hands]);
+  }, [hands, initialHandNumber]);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">

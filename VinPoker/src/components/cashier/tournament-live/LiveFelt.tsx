@@ -142,6 +142,14 @@ export interface LiveFeltProps {
    * replay + TV are byte-identical).
    */
   physicalSeats?: number;
+  /**
+   * Public spectator NEON variant (PokerVN / Stitch Dark). ADDITIVE: when true the
+   * felt surface becomes dark blue-black with a neon-green (`--primary`) rim + glow
+   * instead of the burgundy `--poker-felt` + gold rings. Omit/false → the burgundy
+   * felt is byte-identical (operator racetrack / TV / replay unchanged). Set only by
+   * the public viewer (and only under the liveHandFeed flag).
+   */
+  viewerNeon?: boolean;
 }
 
 export function LiveFelt({
@@ -160,6 +168,7 @@ export function LiveFelt({
   onSeatClick,
   selectedSeat = null,
   physicalSeats,
+  viewerNeon = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   const geo = portrait ? GEO.portrait : GEO.landscape;
@@ -175,10 +184,12 @@ export function LiveFelt({
           className="absolute inset-0"
           style={{
             borderRadius: "50%",
-            background:
-              "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
-            boxShadow:
-              "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
+            background: viewerNeon
+              ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
+              : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
+            boxShadow: viewerNeon
+              ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
+              : "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
           }}
         />
         <div
@@ -199,7 +210,7 @@ export function LiveFelt({
           <div
             data-testid="felt-v"
             className="tracker-display mb-2 font-black leading-none"
-            style={{ fontSize: geo.vSize, color: "hsl(var(--poker-gold) / 0.55)", textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
+            style={{ fontSize: geo.vSize, color: viewerNeon ? "hsl(var(--primary) / 0.5)" : "hsl(var(--poker-gold) / 0.55)", textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
           >
             V
           </div>
