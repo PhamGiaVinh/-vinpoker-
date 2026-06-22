@@ -16,7 +16,7 @@ type Reg = {
   tournamentName: string;
   tournamentDate: string | null;
 };
-type Seat = { table_number: number | null; seat_number: number; receipt_code: string } | null;
+type Seat = { table_number: number | null; seat_number: number } | null;
 
 const STATUS_VI: Record<string, string> = {
   pending: "Chờ thanh toán",
@@ -70,15 +70,34 @@ export function RegisteredBadge() {
       tournamentName: tour?.name ?? "Giải đấu",
       tournamentDate: tour?.start_time ?? null,
     });
-    const { data: rec } = await supabase
-      .from("seat_draw_receipts")
-      .select("table_number, seat_number, receipt_code")
+  }, [user]);
+
+  // LIVE seat from tournament_seats (NOT the seat_draw_receipts print, which goes
+  // stale after a move). Resolves table_number via tournament_tables (a seat's
+  // table_id may reference tournament_tables.id OR game_tables.id — match both).
+  const fetchSeat = useCallback(async (tid: string) => {
+    if (!user) { setSeat(null); return; }
+    const { data: seatRows } = await supabase
+      .from("tournament_seats")
+      .select("seat_number, table_id")
+      .eq("tournament_id", tid)
       .eq("player_id", user.id)
-      .eq("tournament_id", active.tournament_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    setSeat((rec as Seat) ?? null);
+      .eq("is_active", true)
+      .limit(1);
+    const s = ((seatRows ?? []) as any[])[0];
+    if (!s) { setSeat(null); return; }
+    let tableNumber: number | null = null;
+    if (s.table_id) {
+      const { data: tt } = await supabase
+        .from("tournament_tables")
+        .select("table_number")
+        .eq("tournament_id", tid)
+        .or(`id.eq.${s.table_id},table_id.eq.${s.table_id}`)
+        .limit(1)
+        .maybeSingle();
+      tableNumber = (tt as any)?.table_number ?? null;
+    }
+    setSeat({ table_number: tableNumber, seat_number: s.seat_number });
   }, [user]);
 
   useEffect(() => {
@@ -88,9 +107,27 @@ export function RegisteredBadge() {
     return () => window.removeEventListener("vinpoker:registration-changed", onChange);
   }, [fetchReg]);
 
+  // Seat + realtime: refetch the live seat whenever the active tournament's seats
+  // change (e.g. the floor moves/seats the player). tournament_seats is in the
+  // realtime publication, so the receipt updates without a manual refresh.
+  useEffect(() => {
+    if (!reg) { setSeat(null); return; }
+    const tid = reg.tournament_id;
+    fetchSeat(tid);
+    const ch = supabase
+      .channel(`reg-badge-seat:${tid}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tournament_seats", filter: `tournament_id=eq.${tid}` },
+        () => fetchSeat(tid),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [reg?.tournament_id, fetchSeat]);
+
   if (!reg) return null;
 
-  const qrValue = seat?.receipt_code || reg.reference_code || reg.id;
+  const qrValue = reg.reference_code || reg.id;
   const copy = (txt: string) => {
     navigator.clipboard.writeText(txt);
     toast.success("Đã sao chép");
