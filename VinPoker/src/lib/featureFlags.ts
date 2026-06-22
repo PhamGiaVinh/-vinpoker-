@@ -299,6 +299,16 @@ export const FEATURES = {
    */
   floorTableOps: true,
   /**
+   * Club "Lịch series" — a per-club gallery of MANY series-schedule images (posters +
+   * match schedules) shown as a swipeable carousel on the public ClubDetail page and
+   * managed by admins in Media Center (MediaClubSchedules), alongside the single
+   * daily/weekly schedule images. Default **OFF**: needs the source-only
+   * `club_series_images` table (20261022000000) applied live first. While false the
+   * admin upload section and the ClubDetail carousel do not render / never query the
+   * missing table. Flip to true ONLY after the table is applied in a controlled DB session.
+   */
+  clubSeriesSchedule: false,
+  /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
    * false: the ClubAdmin tournament create/edit "Phí dịch vụ" input is hidden, the cashier offline/
