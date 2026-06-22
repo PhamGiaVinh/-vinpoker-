@@ -198,7 +198,7 @@ export const FEATURES = {
    * pattern). Flip to true (after operator UAT on the preview branch) to make the
    * richer table live; kill-switch = set false.
    */
-  trackerRacetrackRich: false,
+  trackerRacetrackRich: true, // GO-LIVE 2026-06-22: rich operator felt enabled (owner-approved)
   /**
    * Dealer Mobile App (/dealer/*) — dealer-facing portal over the Shift Planner
    * V2.1 layer (view shifts, confirm, ROSTER check-in/out, careers/marketplace).
