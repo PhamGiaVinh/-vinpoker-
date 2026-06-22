@@ -125,7 +125,7 @@ export function useShiftPlanner({
       const weekLowIso = new Date(startMs - DAY_MS).toISOString(); // -1 day catches straddling shifts
       const weekHighIso = new Date(endMs).toISOString();
 
-      const [dealersRes, skillsRes, templatesRes, availabilityRes, assignmentsRes] = await Promise.all([
+      const [dealersRes, skillsRes, templatesRes, assignmentsRes] = await Promise.all([
         db.from("dealers")
           .select("id, club_id, full_name, tier, status, skills")
           .in("club_id", clubIds)
@@ -136,10 +136,6 @@ export function useShiftPlanner({
           .select("id, club_id, label, scheduled_start_at, scheduled_end_at, default_hours, required_skills, needs_lead, need_count")
           .in("club_id", clubIds)
           .eq("active", true),
-        db.from("dealer_availability_requests")
-          .select("dealer_id, work_date, kind, template_id, note")
-          .in("club_id", clubIds)
-          .eq("work_date", workDate),
         db.from("dealer_shift_assignments")
           .select("dealer_id, scheduled_start_at, scheduled_end_at, status")
           .in("club_id", clubIds)
@@ -147,8 +143,28 @@ export function useShiftPlanner({
           .lt("scheduled_start_at", weekHighIso),
       ]);
 
-      for (const res of [dealersRes, skillsRes, templatesRes, availabilityRes, assignmentsRes]) {
+      for (const res of [dealersRes, skillsRes, templatesRes, assignmentsRes]) {
         if (res.error) throw res.error;
+      }
+
+      // Availability requests via a SECURITY DEFINER RPC scoped to the operator's clubs (cashier ∪
+      // dealer-control). The table's _control_all RLS blocks cashier-access operators from the direct
+      // read, so a dealer's request showed as "Chưa có yêu cầu" on the planner. Fallback to the direct
+      // read if the RPC isn't applied yet (no regression).
+      let availabilityRows: any[] = [];
+      try {
+        const { data: avData, error: avErr } = await (db as any).rpc("get_dealer_availability_requests", {
+          p_club_ids: clubIds,
+          p_work_date: workDate,
+        });
+        if (avErr) throw avErr;
+        availabilityRows = Array.isArray(avData) ? avData : [];
+      } catch {
+        const { data: avFallback } = await db.from("dealer_availability_requests")
+          .select("dealer_id, work_date, kind, template_id, note")
+          .in("club_id", clubIds)
+          .eq("work_date", workDate);
+        availabilityRows = avFallback ?? [];
       }
 
       const scenario = buildLiveScenario({
@@ -158,7 +174,7 @@ export function useShiftPlanner({
         dealerRows: dealersRes.data ?? [],
         skillRows: skillsRes.data ?? [],
         templateRows: templatesRes.data ?? [],
-        availabilityRows: availabilityRes.data ?? [],
+        availabilityRows,
         weekAssignmentRows: (assignmentsRes.data ?? [])
           .filter((a: any) => a.status !== "cancelled" && a.status !== "no_show")
           .map((a: any) => ({
