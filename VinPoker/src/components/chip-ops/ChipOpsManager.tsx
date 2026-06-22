@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2 } from "lucide-react";
+import { Coins, CheckCircle2, AlertTriangle, Lock, Plus, Trash2, Loader2, Link2, Sparkles } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DashboardTab } from "./DashboardTab";
 
 // The chip_ops_* tables/RPCs are applied live but not yet in the generated Database types,
 // so all reads/writes go through this loosely-typed client. Strictly additive feature.
@@ -150,52 +152,94 @@ export function ChipOpsManager() {
 
   return (
     <div className="space-y-4">
-      {/* Tournament picker */}
-      <Card className="border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-foreground"><Coins className="w-5 h-5 text-primary" /> Chọn giải để cài đặt chip</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Select value={tournamentId} onValueChange={onPick}>
-            <SelectTrigger className="w-full sm:w-[340px]"><SelectValue placeholder="Chọn giải đấu" /></SelectTrigger>
-            <SelectContent>{tours.map((t) => <SelectItem key={t.id} value={t.id}>{t.name ?? t.id}</SelectItem>)}</SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
+      {/* Topbar — tournament picker shared across all tabs */}
+      <div className="flex items-center gap-2">
+        <Coins className="h-5 w-5 shrink-0 text-primary" />
+        <Select value={tournamentId} onValueChange={onPick}>
+          <SelectTrigger className="w-full sm:w-[340px]"><SelectValue placeholder="Chọn giải đấu" /></SelectTrigger>
+          <SelectContent>{tours.map((t) => <SelectItem key={t.id} value={t.id}>{t.name ?? t.id}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
 
-      {tournamentId && loading && (
-        <Card className="border-border"><CardContent className="py-6 space-y-3"><Skeleton className="h-6 w-1/3" /><Skeleton className="h-24 w-full" /></CardContent></Card>
-      )}
+      {!tournamentId ? (
+        <Card className="border-border"><CardContent className="py-8 text-sm text-muted-foreground">
+          Chọn một giải đấu để xem tổng quan và cài đặt chip.
+        </CardContent></Card>
+      ) : (
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="flex h-auto flex-wrap justify-start gap-1">
+            <TabsTrigger value="overview">Tổng quan</TabsTrigger>
+            <TabsTrigger value="setup">Setup stack</TabsTrigger>
+            <TabsTrigger value="colorup">Color-Up</TabsTrigger>
+            <TabsTrigger value="bagtag">Bag &amp; Tag</TabsTrigger>
+            <TabsTrigger value="bank">Két / Audit</TabsTrigger>
+          </TabsList>
 
-      {tournamentId && !loading && (
-        <>
-          <ChipSetCard
-            tour={tour}
-            boundChipSetId={boundChipSetId}
-            clubChipSets={clubChipSets}
-            denoms={denoms}
-            busy={busy} setBusy={setBusy}
-            reload={() => reload(tournamentId)}
-          />
+          <TabsContent value="overview" className="mt-4">
+            {loading ? <LoadingCard /> : <DashboardTab tournamentId={tournamentId} inv={inv} denoms={denoms} />}
+          </TabsContent>
 
-          {boundChipSetId && denoms.length > 0 && (
-            <TemplatesCard
-              tournamentId={tournamentId}
-              denoms={denoms}
-              templates={templates}
-              busy={busy} setBusy={setBusy}
-              reload={() => reload(tournamentId)}
-            />
-          )}
+          <TabsContent value="setup" className="mt-4 space-y-4">
+            {loading ? <LoadingCard /> : (
+              <>
+                <ChipSetCard
+                  tour={tour}
+                  boundChipSetId={boundChipSetId}
+                  clubChipSets={clubChipSets}
+                  denoms={denoms}
+                  busy={busy} setBusy={setBusy}
+                  reload={() => reload(tournamentId)}
+                />
+                {boundChipSetId && denoms.length > 0 && (
+                  <TemplatesCard
+                    tournamentId={tournamentId}
+                    denoms={denoms}
+                    templates={templates}
+                    busy={busy} setBusy={setBusy}
+                    reload={() => reload(tournamentId)}
+                  />
+                )}
+                {templates.length > 0 && (
+                  <IssuanceCard templates={templates} busy={busy} setBusy={setBusy} reload={() => reload(tournamentId)} />
+                )}
+                <InventoryCard inv={inv} />
+              </>
+            )}
+          </TabsContent>
 
-          {templates.length > 0 && (
-            <IssuanceCard templates={templates} busy={busy} setBusy={setBusy} reload={() => reload(tournamentId)} />
-          )}
-
-          <InventoryCard inv={inv} />
-        </>
+          <TabsContent value="colorup" className="mt-4">
+            <ComingSoon title="Color-Up / Chip race" desc="Rút mệnh giá nhỏ khi blind lên, đối soát giá trị bảo toàn." />
+          </TabsContent>
+          <TabsContent value="bagtag" className="mt-4">
+            <ComingSoon title="Bag & Tag — đóng kho cuối ngày" desc="Đóng bao từng người, đối soát theo mệnh giá, khoá ngày." />
+          </TabsContent>
+          <TabsContent value="bank" className="mt-4">
+            <ComingSoon title="Két chip / Audit" desc="Tồn kho chip của CLB, xuất / thu, nhật ký sự kiện." />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <Card className="border-border"><CardContent className="space-y-3 py-6">
+      <Skeleton className="h-6 w-1/3" /><Skeleton className="h-24 w-full" />
+    </CardContent></Card>
+  );
+}
+
+function ComingSoon({ title, desc }: { title: string; desc: string }) {
+  return (
+    <Card className="border-dashed border-border">
+      <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+        <Sparkles className="h-6 w-6 text-primary/60" />
+        <div className="font-display text-base text-foreground">{title}</div>
+        <div className="max-w-sm text-sm text-muted-foreground">{desc}</div>
+        <div className="mt-1 text-xs text-muted-foreground">Đang phát triển — sắp có ở bản cập nhật tới.</div>
+      </CardContent>
+    </Card>
   );
 }
 

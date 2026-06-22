@@ -4,8 +4,8 @@ import { ChipOpsManager } from "@/components/chip-ops/ChipOpsManager";
 
 const ChipOpsInventory = () => {
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-6">
-      <h1 className="mb-4 font-display text-xl text-foreground">Chip Ops — Cài đặt & tồn kho chip</h1>
+    <div className="container mx-auto max-w-5xl px-4 py-6">
+      <h1 className="mb-4 font-display text-xl text-foreground">Chip Ops</h1>
       <ChipOpsManager />
     </div>
   );
