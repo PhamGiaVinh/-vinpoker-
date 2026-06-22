@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { BannersEditor, SeriesEditor } from "./SuperAdmin";
 import { AdminSupportTab } from "@/components/admin/AdminSupportTab";
 import { MediaClubSchedules } from "@/components/admin/MediaClubSchedules";
+import { TournamentPhotosManager } from "@/components/admin/TournamentPhotosManager";
 import News from "./News";
 import InternationalEvents from "./InternationalEvents";
 
@@ -43,6 +44,7 @@ const MediaCenter = () => {
             <TabsTrigger value="series" className="text-xs"><Trophy className="w-3.5 h-3.5 mr-1" />{t("mediaCenterPage.tabSeries")}</TabsTrigger>
             <TabsTrigger value="international" className="text-xs"><Globe className="w-3.5 h-3.5 mr-1" />{t("mediaCenterPage.tabInternational")}</TabsTrigger>
             <TabsTrigger value="schedules" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" />{t("mediaCenterPage.tabSchedules")}</TabsTrigger>
+            <TabsTrigger value="photos" className="text-xs"><ImageIcon className="w-3.5 h-3.5 mr-1" />{t("mediaCenterPage.tabPhotos", "Ảnh giải đấu")}</TabsTrigger>
             <TabsTrigger value="support" className="text-xs"><LifeBuoy className="w-3.5 h-3.5 mr-1" />{t("mediaCenterPage.tabSupport")}</TabsTrigger>
           </TabsList>
         </div>
@@ -52,6 +54,7 @@ const MediaCenter = () => {
         <TabsContent value="series" className="mt-4"><SeriesEditor /></TabsContent>
         <TabsContent value="international" className="mt-4"><InternationalEvents /></TabsContent>
         <TabsContent value="schedules" className="mt-4"><MediaClubSchedules /></TabsContent>
+        <TabsContent value="photos" className="mt-4"><TournamentPhotosManager /></TabsContent>
         <TabsContent value="support" className="mt-4"><AdminSupportTab /></TabsContent>
       </Tabs>
     </div>

@@ -6,15 +6,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 
 let mockRows: unknown[] = [];
+// A thenable that also chains .order() any number of times (Prizes/Structure use one
+// .order(); PhotosPanel uses .order().order()).
+const makeResult = (): unknown => ({
+  order: () => makeResult(),
+  then: (res: (v: { data: unknown[]; error: null }) => unknown) => Promise.resolve({ data: mockRows, error: null }).then(res),
+});
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => Promise.resolve({ data: mockRows, error: null }),
-        }),
-      }),
-    }),
+    from: () => ({ select: () => ({ eq: () => ({ order: () => makeResult() }) }) }),
   },
 }));
 
@@ -69,8 +69,18 @@ describe("StructurePanel (Cấu trúc)", () => {
 });
 
 describe("PhotosPanel (Hình ảnh)", () => {
-  it("is a placeholder empty state", () => {
-    render(<PhotosPanel />);
-    expect(screen.getByText(/Chưa có ảnh/)).toBeTruthy();
+  it("shows the empty state when a tour has no photos", async () => {
+    mockRows = [];
+    render(<PhotosPanel tournamentId="t1" />);
+    expect(await screen.findByText(/Chưa có ảnh/)).toBeTruthy();
+  });
+
+  it("renders a gallery image per uploaded photo", async () => {
+    mockRows = [
+      { id: "p1", photo_url: "https://x/1.jpg" },
+      { id: "p2", photo_url: "https://x/2.jpg" },
+    ];
+    const { container } = render(<PhotosPanel tournamentId="t1" />);
+    await waitFor(() => expect(container.querySelectorAll("img").length).toBe(2));
   });
 });
