@@ -73,10 +73,10 @@ export function ReferenceDistributionPanel({
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="font-display text-base flex items-center gap-2">
-            <Layers className="h-4 w-4 text-primary" /> Phân phối tham chiếu
+            <Layers className="h-4 w-4 text-primary" /> Giải này thường có bao nhiêu khách?
           </h3>
           <p className="text-[11px] text-muted-foreground">
-            Gộp các giải cùng tên (đã chuẩn hóa) xuyên toàn thư viện → khoảng entries quan sát được. Là{" "}
+            <span className="text-muted-foreground/80">Phân phối tham chiếu · </span>Gộp các giải cùng tên (đã chuẩn hóa) xuyên toàn thư viện → khoảng entries quan sát được. Là{" "}
             <strong>ước tính theo N giải đã nạp</strong>, không phải dự đoán. N=1 chỉ là giả thuyết.
           </p>
         </div>

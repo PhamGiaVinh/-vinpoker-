@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText } from "lucide-react";
+import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText, BarChart3, CalendarRange, Dice5, FileImage } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,15 +15,21 @@ import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibra
 import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
 import { MonteCarloPanel } from "@/components/series-intelligence/MonteCarloPanel";
 import { ScheduleGeneratorPanel } from "@/components/series-intelligence/ScheduleGeneratorPanel";
+import { FestivalEvPanel } from "@/components/series-intelligence/FestivalEvPanel";
+import { ScheduleExportPanel } from "@/components/series-intelligence/ScheduleExportPanel";
+import { Stepper, type StepperItem } from "@/components/series-intelligence/Stepper";
+import { StepSection } from "@/components/series-intelligence/StepSection";
+import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
+import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
+import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
 import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverrides";
 
 /**
  * Club Admin → Series Intelligence — Owner Command Center (Phase 9).
- * Role-guarded (club admin / club owner / super_admin). Reads the club's own
- * live native series data (read-only) and renders a descriptive BI dashboard —
- * "what happened / is happening", never prediction. A collapsed CSV import lets the
- * owner load test / what-if data (browser-only). No backend / DB / write path here.
+ * Role-guarded (club admin / club owner / super_admin). Reads the club's own live native series data
+ * (read-only) and presents it as a guided 5-step flow: ①Nạp dữ liệu → ②Dữ liệu nói gì → ③Lên lịch →
+ * ④Kiểm rủi ro & EV → ⑤Xuất. UI-only re-architecture — no backend / DB / write path, no logic change.
  */
 export default function SeriesIntelligence() {
   const nav = useNavigate();
@@ -33,6 +39,28 @@ export default function SeriesIntelligence() {
   const lib = useSeriesLibrary();
   // Manual grouping overrides for the reference distribution (browser-only, persisted).
   const grouping = useGroupingOverrides(lib.series);
+  // Generated festival schedule — LIFTED here so the EV (④) and Export (⑤) panels share it with the generator (③).
+  const [draft, setDraft] = useState<ScheduleEvent[] | null>(null);
+
+  const hasData = lib.count > 0;
+  const scrollToLoad = (): void => document.getElementById("step-load")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // "Dùng dữ liệu mẫu" — reuses the EXISTING sample CSV + parser + add-handler (no new data/logic).
+  const loadSample = (): void => {
+    const parsed = parseSeriesCsv(SAMPLE_CSV_TEXT);
+    if (parsed.events.length > 0) lib.addSeriesFromParse("series-mau.csv", parsed.events);
+  };
+
+  const stepItems: StepperItem[] = [
+    { n: 1, label: "Nạp dữ liệu", targetId: "step-load" },
+    { n: 2, label: "Dữ liệu nói gì", targetId: "step-insights" },
+    ...(FEATURES.forwardLayerMonteCarlo
+      ? [
+          { n: 3, label: "Lên lịch", targetId: "step-schedule" },
+          { n: 4, label: "Kiểm rủi ro & EV", targetId: "step-risk" },
+          { n: 5, label: "Xuất", targetId: "step-export" },
+        ]
+      : []),
+  ];
 
   if (loading) return null;
   if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
@@ -46,7 +74,7 @@ export default function SeriesIntelligence() {
   }
 
   return (
-    <div className="container max-w-5xl mx-auto p-4 space-y-4">
+    <div className="container max-w-5xl mx-auto p-4 space-y-5">
       {/* header */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" onClick={() => nav(-1)} aria-label="Quay lại">
@@ -83,111 +111,163 @@ export default function SeriesIntelligence() {
         <p className="text-sm text-muted-foreground">{SERIES_INTEL.safetyBoundary}</p>
       </Card>
 
-      {/* Owner Command Center — live native BI dashboard (or the ACTIVE CSV series when loaded) */}
-      <OwnerCommandCenter csvEvents={lib.activeEvents} />
+      {/* step legend */}
+      <Stepper items={stepItems} current={hasData ? undefined : 1} />
 
-      {/* Series Library — loaded CSV series; pick the active one (browser-only) */}
-      {FEATURES.seriesIntelligenceCsvImport && (
-        <SeriesLibraryPanel
-          series={lib.series}
-          activeId={lib.activeId}
-          onSelect={lib.select}
-          onRename={lib.rename}
-          onRemove={lib.remove}
-          onClearAll={lib.clearAll}
-        />
-      )}
+      {/* start-here CTA when no series is loaded */}
+      {!hasData && <SeriesIntelEmptyState onUpload={scrollToLoad} onSample={loadSample} />}
 
-      {/* Reference Distribution — same tournaments grouped across the whole library (+ manual override) */}
-      {FEATURES.seriesIntelligenceCsvImport && (
-        <ReferenceDistributionPanel
-          series={lib.series}
-          overrideLabels={grouping.overrideLabels}
-          onMerge={grouping.merge}
-          onReset={grouping.reset}
-          onResetAll={grouping.resetAll}
-          hasOverrides={grouping.hasOverrides}
-        />
-      )}
-
-      {/* Forward-layer Monte Carlo — scenario / what-if (dark behind its own flag, default OFF) */}
-      {FEATURES.forwardLayerMonteCarlo && (
-        <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
-      )}
-
-      {/* Forward-layer schedule generator — DRAFT skeleton (same forward-layer flag, default OFF) */}
-      {FEATURES.forwardLayerMonteCarlo && <ScheduleGeneratorPanel />}
-
-      {/* CSV import — test / what-if data, browser-only (collapsed) */}
-      <Collapsible defaultOpen={lib.count > 0}>
-        <CollapsibleTrigger asChild>
-          <Button variant="outline" className="w-full justify-between gap-2">
-            <span className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.csvSectionLabel}
-            </span>
-            <ChevronDown className="w-4 h-4 opacity-60" />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-3 pt-3">
-          {FEATURES.seriesIntelligenceCsvImport ? (
-            <CsvImportPanel
-              onSeriesParsed={lib.addSeriesFromParse}
-              loadedCount={lib.count}
-              existingFilenames={lib.filenames}
-              lastSaveError={lib.lastSaveError}
-            />
-          ) : (
-            <>
-              {/* legacy static fallback (flag off) */}
-              <div className="space-y-3">
-                {SERIES_INTEL.steps.map((s) => (
-                  <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
-                    <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
-                      {s.n}
-                    </div>
-                    <div>
-                      <h3 className="font-display text-base">{s.label}</h3>
-                      <p className="text-xs text-muted-foreground">{s.desc}</p>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-
-              <Card className="p-4 gradient-card border-primary/40">
-                <h3 className="font-display text-base flex items-center gap-2 mb-2">
-                  <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {SERIES_INTEL.requiredColumns.map((c) => (
-                    <Badge key={c} variant="secondary" className="font-mono text-[11px]">
-                      {c}
-                    </Badge>
+      {/* ① Nạp dữ liệu */}
+      <StepSection
+        id="step-load"
+        n={1}
+        title="Nạp dữ liệu"
+        subtitle="Tải CSV các series đã chạy — mỗi file là một series. Chỉ nằm trên trình duyệt này."
+        icon={<FileSpreadsheet className="h-4 w-4 text-primary" />}
+      >
+        <Collapsible defaultOpen={!hasData}>
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.csvSectionLabel}
+              </span>
+              <ChevronDown className="w-4 h-4 opacity-60" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 pt-3">
+            {FEATURES.seriesIntelligenceCsvImport ? (
+              <CsvImportPanel
+                onSeriesParsed={lib.addSeriesFromParse}
+                loadedCount={lib.count}
+                existingFilenames={lib.filenames}
+                lastSaveError={lib.lastSaveError}
+              />
+            ) : (
+              <>
+                {/* legacy static fallback (flag off) */}
+                <div className="space-y-3">
+                  {SERIES_INTEL.steps.map((s) => (
+                    <Card key={s.n} className="p-4 gradient-card border-primary/40 flex items-start gap-3">
+                      <div className="grid place-items-center w-7 h-7 rounded-full bg-primary/15 text-primary text-sm font-semibold shrink-0">
+                        {s.n}
+                      </div>
+                      <div>
+                        <h3 className="font-display text-base">{s.label}</h3>
+                        <p className="text-xs text-muted-foreground">{s.desc}</p>
+                      </div>
+                    </Card>
                   ))}
                 </div>
-                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{SERIES_INTEL.eventIdNote}</span>
-                </p>
-              </Card>
 
-              <Card className="p-4 border-primary/30">
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  {SERIES_INTEL.demoNotes.map((n, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span aria-hidden>•</span>
-                      <span>{n}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+                <Card className="p-4 gradient-card border-primary/40">
+                  <h3 className="font-display text-base flex items-center gap-2 mb-2">
+                    <FileSpreadsheet className="w-4 h-4 text-primary" /> Cột CSV cần chuẩn bị
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SERIES_INTEL.requiredColumns.map((c) => (
+                      <Badge key={c} variant="secondary" className="font-mono text-[11px]">
+                        {c}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{SERIES_INTEL.eventIdNote}</span>
+                  </p>
+                </Card>
 
-              <Button disabled variant="outline" className="w-full gap-2">
-                <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
-              </Button>
-            </>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+                <Card className="p-4 border-primary/30">
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {SERIES_INTEL.demoNotes.map((n, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span aria-hidden>•</span>
+                        <span>{n}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+
+                <Button disabled variant="outline" className="w-full gap-2">
+                  <FileSpreadsheet className="w-4 h-4" /> {SERIES_INTEL.ctaDisabledLabel}
+                </Button>
+              </>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Series Library — loaded CSV series; pick the active one (browser-only). Secondary, near ①. */}
+        {FEATURES.seriesIntelligenceCsvImport && (
+          <SeriesLibraryPanel
+            series={lib.series}
+            activeId={lib.activeId}
+            onSelect={lib.select}
+            onRename={lib.rename}
+            onRemove={lib.remove}
+            onClearAll={lib.clearAll}
+          />
+        )}
+      </StepSection>
+
+      {/* ② Dữ liệu nói gì */}
+      <StepSection
+        id="step-insights"
+        n={2}
+        title="Dữ liệu nói gì"
+        subtitle="Các series đã qua: kinh tế, rủi ro, và mỗi giải thường đông bao nhiêu."
+        icon={<BarChart3 className="h-4 w-4 text-primary" />}
+      >
+        <OwnerCommandCenter csvEvents={lib.activeEvents} />
+        {FEATURES.seriesIntelligenceCsvImport && (
+          <ReferenceDistributionPanel
+            series={lib.series}
+            overrideLabels={grouping.overrideLabels}
+            onMerge={grouping.merge}
+            onReset={grouping.reset}
+            onResetAll={grouping.resetAll}
+            hasOverrides={grouping.hasOverrides}
+          />
+        )}
+      </StepSection>
+
+      {/* ③ Lên lịch */}
+      {FEATURES.forwardLayerMonteCarlo && (
+        <StepSection
+          id="step-schedule"
+          n={3}
+          title="Lên lịch"
+          subtitle="Sinh lịch festival nháp: giờ thi đấu, cấu trúc, GTD — sửa được, cần TD review."
+          icon={<CalendarRange className="h-4 w-4 text-primary" />}
+        >
+          <ScheduleGeneratorPanel draft={draft} onDraftChange={setDraft} />
+        </StepSection>
+      )}
+
+      {/* ④ Kiểm rủi ro & EV — overlay 1 giải TRƯỚC, EV festival SAU */}
+      {FEATURES.forwardLayerMonteCarlo && (
+        <StepSection
+          id="step-risk"
+          n={4}
+          title="Kiểm rủi ro & EV"
+          subtitle="Soi rủi ro trước, EV sau. Mô phỏng overlay GTD & EV (Monte Carlo) — kịch bản, không phải dự báo."
+          icon={<Dice5 className="h-4 w-4 text-primary" />}
+        >
+          <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
+          <FestivalEvPanel draft={draft} />
+        </StepSection>
+      )}
+
+      {/* ⑤ Xuất — poster PNG + Excel, sau khi đã kiểm rủi ro */}
+      {FEATURES.forwardLayerMonteCarlo && (
+        <StepSection
+          id="step-export"
+          n={5}
+          title="Xuất"
+          subtitle="Poster PNG + Excel để marketing & vận hành. Poster dán nhãn DRAFT tới khi bạn xác nhận đã TD review."
+          icon={<FileImage className="h-4 w-4 text-primary" />}
+        >
+          <ScheduleExportPanel draft={draft} />
+        </StepSection>
+      )}
     </div>
   );
 }
