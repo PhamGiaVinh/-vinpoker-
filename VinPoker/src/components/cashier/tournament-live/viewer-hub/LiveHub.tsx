@@ -16,9 +16,11 @@ import { FeaturedTableCard } from "./FeaturedTableCard";
 import { LiveTablesMap } from "./LiveTablesMap";
 import { LiveStoryFeed } from "./LiveStoryFeed";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
+import { LiveHandFeed } from "./LiveHandFeed";
 import { OrientationToggle } from "./OrientationToggle";
 import { useLiveTrackerData } from "./useLiveTrackerData";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { FEATURES } from "@/lib/featureFlags";
 
 type Orientation = "landscape" | "portrait";
 
@@ -86,6 +88,10 @@ export function LiveHub({ tournamentId, title, clubName, clubId, subtitle, prize
       >
         {viewer}
       </FeaturedTableCard>
+      {/* RPT-Live-style completed-hands feed — primary block, read-only, flag-gated. */}
+      {FEATURES.liveHandFeed && (
+        <LiveHandFeed tournamentId={tournamentId} featuredTableId={featuredTableId} />
+      )}
       <LiveStoryFeed items={storyFeed} />
       <LiveUpdatesFeed feed={feed} />
     </div>

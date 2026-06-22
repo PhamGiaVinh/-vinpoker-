@@ -143,6 +143,24 @@ export const FEATURES = {
    */
   liveActionEngine: false,
   /**
+   * Spectator HAND FEED — an RPT-Live-style "completed hands" feed on the public
+   * viewer (/live/:id): one rich card per completed hand (tags ALL-IN/BIG POT/HIGH
+   * HAND/Eliminated, pot in chips + BB, board, per-player chip delta abs&BB, revealed
+   * or face-down hole cards, winner). READ-ONLY: derived entirely from already-
+   * persisted data (tournament_hands / hand_players / hand_actions / eliminations);
+   * no write-path / RPC / Edge / publication change. Default **OFF**: while false the
+   * viewer renders exactly as today (the feed hook never mounts → zero extra reads).
+   * Flip true (after UAT on a preview branch) to show the feed; kill-switch = false.
+   *
+   * 🟢 HOLE-CARD GUARANTEE: hole_cards are persisted ONLY when the operator reveals
+   * them at showdown/runout (already face-up at the physical table); there is NO
+   * hidden/RFID hole-card source, and this feed shows COMPLETED hands only → the
+   * viewer can never know more than the table showed → no leak, no delay needed.
+   * ⚠️ If an RFID / hole-card-camera source is ever added, this guarantee BREAKS and
+   * a broadcast delay + reveal policy becomes mandatory before showing any hand.
+   */
+  liveHandFeed: false,
+  /**
    * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
    * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
    * seeding), legal actions, "Bet to" (street-total) sizing, automatic
