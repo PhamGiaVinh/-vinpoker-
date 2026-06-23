@@ -318,6 +318,16 @@ export const FEATURES = {
    */
   clubSeriesSchedule: true,
   /**
+   * Multi-day tournaments ("Main Event" + flights + final day). Default **OFF**:
+   * needs the source-only `tournament_events` table + `tournaments.event_id/phase/
+   * flight_label` columns (20261024000000) applied live first, then the atomic
+   * create RPC (MD-1B). While false: the "Multi-day" create option is hidden and
+   * NOTHING queries `tournament_events` or the new columns (no select, no group-by
+   * event_id) — so a not-yet-applied schema can never break the page. Flip to true
+   * ONLY after the schema + create RPC are applied live in a controlled DB session.
+   */
+  multiDayTournaments: false,
+  /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
    * false: the ClubAdmin tournament create/edit "Phí dịch vụ" input is hidden, the cashier offline/
