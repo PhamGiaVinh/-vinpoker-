@@ -244,18 +244,23 @@ export function useTableHand(tableId: string): TableHandState {
   // Polling fallback (live only): realtime postgres_changes can drop or lag, which would
   // freeze the opponent on stale state even though the engine already advanced the hand.
   // A steady poll guarantees both clients converge to server truth. Paused while the tab
-  // is hidden; an immediate refresh fires when it returns. (~2.5s mirrors the Tracker
-  // Live Action Engine fast-poll.)
+  // is hidden; an immediate refresh fires when it returns.
+  //
+  // ADAPTIVE cadence so play feels ~1s without hammering an idle table: while a hand is in
+  // progress (the latency-sensitive moment — opponents acting, my menu, the showdown) poll
+  // every ~1s; with NO hand (idle table waiting for players) back off to ~3s. The value only
+  // flips when a hand appears/disappears, so the interval is not re-created every tick.
+  const pollMs = hand ? 1000 : 3000;
   useEffect(() => {
     if (!RUNTIME_LIVE) return;
     const id = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       setTick((n) => n + 1);
-    }, 2500);
+    }, pollMs);
     const onVisible = () => { if (!document.hidden) setTick((n) => n + 1); };
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
-  }, []);
+  }, [pollMs]);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
