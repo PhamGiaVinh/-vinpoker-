@@ -254,6 +254,18 @@ export const FEATURES = {
    */
   dealerMobileApp: true,
   /**
+   * Dealer self-salary screen — "Lương của tôi" in the dealer app (/dealer/salary),
+   * READ-ONLY. FT shows the saved monthly payslip (full breakdown); PT shows a live
+   * accruing balance + payment history. Dealers never pay themselves (the club pays
+   * + resets). Default **OFF** (dark): while false the bottom-nav "Lương" tab is
+   * hidden. Salary-A ships only a MOCK preview screen (no DB/RPC); the real per-dealer
+   * data (get_my_dealer_payroll / get_my_pt_wage) + the PT wage ledger are wired in
+   * Salary-D AFTER the B1 backend is applied live + types regenerated. Flip to true
+   * ONLY after that. The /dealer/salary route is ALSO flag-gated — it redirects to
+   * /dealer when off (not just nav-hidden), so direct navigation can't reach it.
+   */
+  dealerSelfSalary: false,
+  /**
    * Scheduled pool entry for dealer self check-in (app + Telegram). UI-only mirror
    * of the server flag `dealer_selfcheckin_config.scheduled_pool_enabled`. When ON,
    * the dealer app shows the pool-entry note ("đã có mặt · vào pool lúc HH:MM" while

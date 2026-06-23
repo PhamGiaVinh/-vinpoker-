@@ -100,6 +100,7 @@ const DealerDay = lazy(() => import("./pages/dealer/DealerDay"));
 const DealerWeek = lazy(() => import("./pages/dealer/DealerWeek"));
 const DealerCareers = lazy(() => import("./pages/dealer/DealerCareers"));
 const DealerAccount = lazy(() => import("./pages/dealer/DealerAccount"));
+const DealerSalary = lazy(() => import("./pages/dealer/DealerSalary"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -168,6 +169,7 @@ const App = () => (
                 <Route path="/dealer/week" element={<DealerWeek />} />
                 <Route path="/dealer/careers" element={<DealerCareers />} />
                 <Route path="/dealer/account" element={<DealerAccount />} />
+                <Route path="/dealer/salary" element={<DealerSalary />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
