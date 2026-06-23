@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play, History, Award } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play, History, Award, Dices } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -39,6 +39,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [flightMeta, setFlightMeta] = useState<Record<string, FlightMeta>>({});
+  const [finalMeta, setFinalMeta] = useState<Record<string, FinalMeta>>({});
 
   const clubNameMap = Object.fromEntries(clubs.map((c) => [c.id, c.name]));
   const multiClub = clubs.length > 1;
@@ -79,21 +80,26 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
     return () => { supabase.removeChannel(channel); };
   }, [clubKey]);
 
-  // MD-2 — per-flight ITM readiness (gated). For each flight compute the entrant-based
-  // qualifier target and current survivors so the 🏅 button can glow when the flight has
-  // played down to its ITM count. Only queries the new objects when the flag is on.
+  // MD-2/3 — per-flight ITM readiness + per-final qualifier pool (gated). Flights: the
+  // entrant-based target + current survivors so the 🏅 button glows when a flight has
+  // played down to its ITM count. Finals: how many qualifiers are pending vs already
+  // seated, for the "Bốc thăm Day 2" button. Only queries the new objects when on.
   useEffect(() => {
-    if (!FEATURES.multiDayTournaments) { setFlightMeta({}); return; }
+    if (!FEATURES.multiDayTournaments) { setFlightMeta({}); setFinalMeta({}); return; }
     const flights = tours.filter((x) => x.phase === "flight" && x.event_id);
-    if (!flights.length) { setFlightMeta({}); return; }
+    const finals = tours.filter((x) => x.phase === "final");
+    if (!flights.length && !finals.length) { setFlightMeta({}); setFinalMeta({}); return; }
     let cancelled = false;
     (async () => {
       const flightIds = flights.map((x) => x.id);
+      const finalIds = finals.map((x) => x.id);
       const eventIds = [...new Set(flights.map((x) => x.event_id))];
-      const [regsRes, seatsRes, evsRes] = await Promise.all([
-        (supabase as any).from("tournament_registrations").select("tournament_id").in("tournament_id", flightIds).eq("status", "confirmed"),
-        (supabase as any).from("tournament_seats").select("tournament_id, player_id").in("tournament_id", flightIds).eq("is_active", true),
-        (supabase as any).from("tournament_events").select("id, itm_percent").in("id", eventIds),
+      const [regsRes, seatsRes, evsRes, qualRes, entRes] = await Promise.all([
+        flightIds.length ? (supabase as any).from("tournament_registrations").select("tournament_id").in("tournament_id", flightIds).eq("status", "confirmed") : Promise.resolve({ data: [] }),
+        flightIds.length ? (supabase as any).from("tournament_seats").select("tournament_id, player_id").in("tournament_id", flightIds).eq("is_active", true) : Promise.resolve({ data: [] }),
+        eventIds.length ? (supabase as any).from("tournament_events").select("id, itm_percent").in("id", eventIds) : Promise.resolve({ data: [] }),
+        finalIds.length ? (supabase as any).from("tournament_event_qualifiers").select("final_tournament_id").in("final_tournament_id", finalIds) : Promise.resolve({ data: [] }),
+        finalIds.length ? (supabase as any).from("tournament_entries").select("tournament_id, player_id").in("tournament_id", finalIds) : Promise.resolve({ data: [] }),
       ]);
       if (cancelled) return;
       const regCount: Record<string, number> = {};
@@ -102,15 +108,26 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
       for (const s of ((seatsRes.data ?? []) as any[])) (survivors[s.tournament_id] ??= new Set()).add(s.player_id);
       const itmMap: Record<string, number> = {};
       for (const e of ((evsRes.data ?? []) as any[])) itmMap[e.id] = Number(e.itm_percent) || 0;
-      const meta: Record<string, FlightMeta> = {};
+      const fMeta: Record<string, FlightMeta> = {};
       for (const fl of flights) {
         const surv = survivors[fl.id]?.size ?? 0;
         const ent = flightEntrants(regCount[fl.id] ?? 0, surv, fl.players_remaining);
         const itm = itmMap[fl.event_id] ?? 0;
         const target = qualifierTarget(ent, itm);
-        meta[fl.id] = { entrants: ent, survivors: surv, itm, target, ready: surv > 0 && surv <= target };
+        fMeta[fl.id] = { entrants: ent, survivors: surv, itm, target, ready: surv > 0 && surv <= target };
       }
-      setFlightMeta(meta);
+      const qCount: Record<string, number> = {};
+      for (const q of ((qualRes.data ?? []) as any[])) qCount[q.final_tournament_id] = (qCount[q.final_tournament_id] || 0) + 1;
+      const seatedByFinal: Record<string, Set<string>> = {};
+      for (const e of ((entRes.data ?? []) as any[])) (seatedByFinal[e.tournament_id] ??= new Set()).add(e.player_id);
+      const fnMeta: Record<string, FinalMeta> = {};
+      for (const fn of finals) {
+        const qualifiers = qCount[fn.id] ?? 0;
+        const seated = seatedByFinal[fn.id]?.size ?? 0;
+        fnMeta[fn.id] = { qualifiers, seated, pending: Math.max(0, qualifiers - seated) };
+      }
+      setFlightMeta(fMeta);
+      setFinalMeta(fnMeta);
     })();
     return () => { cancelled = true; };
   }, [tours]);
@@ -222,6 +239,9 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
                       <Play className="w-3.5 h-3.5 mr-1" /> Bắt đầu giải (chạy đồng hồ + lên live)
                     </Button>
                   )}
+                  {FEATURES.multiDayTournaments && t2.phase === "final" && (
+                    <Day2DrawDialog final={t2} meta={finalMeta[t2.id]} onDone={load} />
+                  )}
                 </Card>
               ))}
             </div>
@@ -243,6 +263,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
 // "đủ ITM": the 🏅 button glows and the dialog pre-selects everyone left (all qualify).
 type QualifierPlayer = { player_id: string; player_name: string; chip_count: number };
 type FlightMeta = { entrants: number; survivors: number; itm: number; target: number; ready: boolean };
+type FinalMeta = { qualifiers: number; seated: number; pending: number };
 
 // Field size for ITM — registrations can undercount walk-ins, so never below seated/remaining.
 const flightEntrants = (regCount: number, survivors: number, playersRemaining: number | null | undefined): number =>
@@ -375,6 +396,68 @@ const FlightQualifiersDialog = ({ flight, meta, onDone }: { flight: any; meta?: 
             <Button onClick={confirm} disabled={busy || selected.size === 0} className="w-full gradient-neon text-primary-foreground border-0">{busy ? "Đang chuyển…" : "Xác nhận qualified → Final Day"}</Button>
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// MD-3 — "Bốc thăm Day 2": seat the Final Day qualifier pool. One atomic RPC seats every
+// not-yet-seated qualifier onto the final's active tables carrying their bagged stack
+// (no new buy-in). Idempotent + capacity-aware: if a player can't fit, the floor opens
+// more tables and re-runs. Gated by FEATURES.multiDayTournaments, shown on final rows.
+const Day2DrawDialog = ({ final, meta, onDone }: { final: any; meta?: FinalMeta; onDone: () => void }) => {
+  const [open, setOpen] = useState(false);
+  const [drawMode, setDrawMode] = useState("random_balanced");
+  const [busy, setBusy] = useState(false);
+  const qualifiers = meta?.qualifiers ?? 0;
+  const seated = meta?.seated ?? 0;
+  const pending = meta?.pending ?? 0;
+
+  const draw = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("seat_day2_qualifiers", { p_final_id: final.id, p_draw_mode: drawMode });
+      const res = (data ?? null) as { ok?: boolean; seated?: number; skipped_existing?: number; no_seat?: number; error?: string } | null;
+      if (error || !res?.ok) { toast.error(res?.error || error?.message || "Bốc thăm Day 2 lỗi"); return; }
+      if ((res.no_seat ?? 0) > 0) {
+        toast.warning(`Đã xếp ${res.seated} người. Còn ${res.no_seat} chưa có ghế — mở thêm bàn rồi bốc lại.`);
+      } else {
+        toast.success(`Đã xếp ${res.seated} người vào Final Day${(res.skipped_existing ?? 0) > 0 ? ` (${res.skipped_existing} đã có ghế)` : ""}.`);
+      }
+      setOpen(false);
+      onDone();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" disabled={qualifiers === 0}
+          className="w-full h-9 text-xs border-amber-500/50 text-amber-600 hover:bg-amber-500/10">
+          <Dices className="w-3.5 h-3.5 mr-1" /> Bốc thăm Day 2 {pending > 0 ? `(${pending} chờ)` : qualifiers > 0 ? "(đã xếp đủ)" : "(chưa có qualified)"}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle className="truncate">Bốc thăm Day 2 — {final.name}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {qualifiers} người qualified · đã xếp {seated} · <span className="text-amber-600 font-semibold">còn {pending} chờ ghế</span>. Bốc thăm sẽ xếp họ vào các bàn đang mở của Final Day, <span className="text-foreground font-medium">giữ nguyên stack</span> mang sang từ flight (không tính buy-in lại). Mở bàn trước khi bốc.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Chế độ xếp chỗ</Label>
+            <Select value={drawMode} onValueChange={setDrawMode}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="random_balanced">Bốc thăm cân bàn (mặc định)</SelectItem>
+                <SelectItem value="fill_lowest_table">Lấp bàn số nhỏ trước</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={draw} disabled={busy || pending === 0} className="w-full gradient-neon text-primary-foreground border-0">
+            {busy ? "Đang bốc…" : `Bốc thăm ${pending} người → Final Day`}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

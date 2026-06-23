@@ -2,17 +2,18 @@
 -- MD-2 — Multi-day qualifiers: floor advances flight players to the final day
 -- ============================================================================
 -- SOURCE-ONLY. Adds (1) an audit/idempotency table recording who advanced from
--- each flight, and (2) an atomic RPC the floor calls to advance a picked set of
--- players: it records the qualifier and carries each player's end-of-flight stack
--- into the final tournament's chip counts. Gated by FEATURES.multiDayTournaments.
+-- each flight (this table IS the Final Day "pool"), and (2) an atomic RPC the floor
+-- calls to advance a picked set of players. Gated by FEATURES.multiDayTournaments.
 --
--- Design (owner): floor PICKS qualifiers (the UI shows a suggested count =
--- ceil(flight entrants × itm_percent/100), rounded up). Advancement is recorded
--- explicitly in tournament_event_qualifiers (idempotent on flight+player) — never
--- inferred from the final's chip counts. Carried stack = the player's active-seat
--- chip count in the flight (fallback: their tournament_chip_counts entry, else 0).
--- The floor draws the final-day seating separately; this only seeds the roster's
--- chip counts. No tournament rows are seated/deleted here.
+-- Design (owner, Option A — "vào pool → floor bốc thăm Day 2"): floor PICKS qualifiers
+-- (UI suggested count = ceil(flight ENTRANTS × itm_percent/100), rounded up). Advancement
+-- is recorded explicitly in tournament_event_qualifiers (idempotent on flight+player) with
+-- the player's end-of-flight CARRIED STACK (active-seat chip in the flight; fallback their
+-- tournament_chip_counts entry, else 0). This RPC ONLY records the qualifier — it does NOT
+-- seat anyone or write money. Final-day seating is a separate atomic "Bốc thăm Day 2" draw
+-- (MD-3, seat_day2_qualifiers) that materialises registration + entry + seat carrying each
+-- stack, with buy_in=0 (players already paid in the flight → finance-neutral). The qualifiers
+-- table is the source of truth for the carried stack until that draw runs.
 --
 -- Auth: actor = auth.uid(), super_admin OR the flight club's owner OR a club
 -- cashier. SECURITY DEFINER, search_path=public. REVOKE PUBLIC/anon, GRANT
@@ -137,22 +138,14 @@ BEGIN
     END IF;
     v_stack := COALESCE(v_stack, 0);
 
-    -- record the qualifier (idempotent on flight + player)
+    -- record the qualifier into the Day-2 pool (idempotent on flight + player). On a
+    -- repeat pick we REFRESH the carried stack (the flight stack may have changed) — the
+    -- player only seats once, at the Day-2 draw.
     INSERT INTO public.tournament_event_qualifiers
       (event_id, flight_tournament_id, final_tournament_id, club_id, player_id, carried_stack, advanced_by)
     VALUES (v_event_id, p_flight_id, v_final_id, v_club_id, v_pid, v_stack, v_actor)
-    ON CONFLICT (flight_tournament_id, player_id) DO NOTHING;
-
-    -- carry stack into the final's chip counts (explicit upsert; no constraint-name dependency)
-    IF EXISTS (SELECT 1 FROM public.tournament_chip_counts
-               WHERE tournament_id = v_final_id AND player_id = v_pid AND entry_number = 1) THEN
-      UPDATE public.tournament_chip_counts
-        SET chip_count = v_stack, updated_at = now()
-        WHERE tournament_id = v_final_id AND player_id = v_pid AND entry_number = 1;
-    ELSE
-      INSERT INTO public.tournament_chip_counts (tournament_id, player_id, entry_number, chip_count)
-      VALUES (v_final_id, v_pid, 1, v_stack);
-    END IF;
+    ON CONFLICT (flight_tournament_id, player_id)
+      DO UPDATE SET carried_stack = EXCLUDED.carried_stack, advanced_by = EXCLUDED.advanced_by, advanced_at = now();
 
     v_advanced := v_advanced + 1;
   END LOOP;
