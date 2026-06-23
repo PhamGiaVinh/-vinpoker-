@@ -20,17 +20,19 @@ const AdminUsers = () => {
   const [cashierClubsByUser, setCashierClubsByUser] = useState<Record<string, string[]>>({});
   const [dealerClubsByUser, setDealerClubsByUser] = useState<Record<string, string[]>>({});
   const [trackerClubsByUser, setTrackerClubsByUser] = useState<Record<string, string[]>>({});
+  const [mediaClubsByUser, setMediaClubsByUser] = useState<Record<string, string[]>>({});
   const [search, setSearch] = useState("");
 
   const load = async () => {
     setBusy(true);
-    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes] = await Promise.all([
+    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes, mcRes] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("clubs").select("id, name, owner_id"),
       supabase.from("club_cashiers" as any).select("user_id, club_id"),
       supabase.from("club_dealer_controls" as any).select("user_id, club_id"),
       supabase.from("club_trackers" as any).select("user_id, club_id"),
+      supabase.from("club_media" as any).select("user_id, club_id"),
     ]);
     if (profsRes.error) {
       toast.error("Lỗi tải user: " + profsRes.error.message);
@@ -59,6 +61,11 @@ const AdminUsers = () => {
       (tcMap[r.user_id] ??= []).push(r.club_id);
     }
     setTrackerClubsByUser(tcMap);
+    const mcMap: Record<string, string[]> = {};
+    for (const r of (mcRes.data ?? []) as any[]) {
+      (mcMap[r.user_id] ??= []).push(r.club_id);
+    }
+    setMediaClubsByUser(mcMap);
     setBusy(false);
   };
 
@@ -146,6 +153,24 @@ const AdminUsers = () => {
       const { error } = await supabase.from("club_trackers" as any).insert({ user_id: uid, club_id: clubId, granted_by: user?.id });
       if (error && !error.message.includes("duplicate")) toast.error(error.message);
       else { toast.success("Đã gán tracker cho CLB"); load(); }
+    }
+  };
+
+  const revokeMedia = async (uid: string) => {
+    const { error: rErr } = await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", "media");
+    if (rErr) { toast.error(rErr.message); return; }
+    await supabase.from("club_media" as any).delete().eq("user_id", uid);
+    toast.success("Revoked media"); load();
+  };
+
+  const toggleMediaClub = async (uid: string, clubId: string, currentlyAssigned: boolean) => {
+    if (currentlyAssigned) {
+      const { error } = await supabase.from("club_media" as any).delete().eq("user_id", uid).eq("club_id", clubId);
+      if (error) toast.error(error.message); else { toast.success("Đã bỏ gán CLB"); load(); }
+    } else {
+      const { error } = await supabase.from("club_media" as any).insert({ user_id: uid, club_id: clubId, granted_by: user?.id });
+      if (error && !error.message.includes("duplicate")) toast.error(error.message);
+      else { toast.success("Đã gán media cho CLB"); load(); }
     }
   };
 
@@ -243,7 +268,7 @@ const AdminUsers = () => {
                   </Button>
                 )}
                 {roles.includes("media") ? (
-                  <Button size="sm" variant="outline" className="border-destructive/40 text-destructive" onClick={() => revoke(u.user_id, "media")}>
+                  <Button size="sm" variant="outline" className="border-destructive/40 text-destructive" onClick={() => revokeMedia(u.user_id)}>
                     Revoke Media
                   </Button>
                 ) : (
@@ -343,6 +368,28 @@ const AdminUsers = () => {
                   </div>
                   {(trackerClubsByUser[u.user_id] ?? []).length === 0 && (
                     <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — tracker sẽ không thấy giải nào.</div>
+                  )}
+                </div>
+              )}
+              {roles.includes("media") && clubs.length > 0 && (
+                <div className="pt-2 border-t border-border/50">
+                  <div className="text-xs font-medium text-[hsl(var(--ds-preassign))] mb-1.5">Media cho CLB:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {clubs.map(c => {
+                      const assigned = (mediaClubsByUser[u.user_id] ?? []).includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => toggleMediaClub(u.user_id, c.id, assigned)}
+                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-[hsl(var(--ds-preassign)_/_0.2)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.5)]" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+                        >
+                          {assigned ? "✓ " : ""}{c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(mediaClubsByUser[u.user_id] ?? []).length === 0 && (
+                    <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — media sẽ không up được ảnh giải nào.</div>
                   )}
                 </div>
               )}

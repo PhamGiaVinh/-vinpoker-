@@ -200,7 +200,7 @@ export function LiveHub({
           </TabsContent>
 
           <TabsContent value="photos" className="mt-3">
-            <PhotosPanel />
+            <PhotosPanel tournamentId={tournamentId} />
           </TabsContent>
         </Tabs>
       )}
