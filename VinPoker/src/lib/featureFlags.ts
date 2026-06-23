@@ -326,7 +326,7 @@ export const FEATURES = {
    * event_id) — so a not-yet-applied schema can never break the page. Flip to true
    * ONLY after the schema + create RPC are applied live in a controlled DB session.
    */
-  multiDayTournaments: false,
+  multiDayTournaments: true,
   /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
