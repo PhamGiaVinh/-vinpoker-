@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, Play } from "lucide-react";
@@ -8,7 +8,11 @@ import {
   DRILL_HANDS,
   DrillAnswer,
   DrillCategory,
+  DrillHand,
+  mergeHands,
 } from "@/lib/pokerIQ";
+import { FEATURES } from "@/lib/featureFlags";
+import { loadRemoteApprovedHands } from "@/lib/pokerIQ/loadRemoteQuestions";
 import { DraftRibbon } from "@/components/pokerIQ/DraftRibbon";
 import { HandQuestion } from "@/components/pokerIQ/HandQuestion";
 import { ResultCard } from "@/components/pokerIQ/ResultCard";
@@ -22,7 +26,21 @@ type Phase = "intro" | "playing" | "result";
 export default function PokerIQ() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const hands = DRILL_HANDS;
+
+  // Built-in static bank by default; when the flag is ON, merge any APPROVED
+  // questions the Super Admin authored (shape-guarded, append/override by id). On
+  // any failure we keep the static bank, so the drill always works.
+  const [hands, setHands] = useState<DrillHand[]>(DRILL_HANDS);
+  useEffect(() => {
+    if (!FEATURES.pokerIqRemoteQuestions) return;
+    let cancelled = false;
+    loadRemoteApprovedHands().then((remote) => {
+      if (!cancelled && remote.length > 0) setHands(mergeHands(DRILL_HANDS, remote));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [idx, setIdx] = useState(0);

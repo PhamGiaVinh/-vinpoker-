@@ -400,4 +400,18 @@ export const FEATURES = {
    * enable delegation + stop the guarded club_chip_masters lookup from 404-ing.
    */
   chipOps: true,
+  /**
+   * Remote Poker IQ questions — lets the live drill (/poker-iq) merge questions a
+   * Super Admin authored in the admin panel (Poker IQ → Câu hỏi, stored in the
+   * `app_settings` key `poker_iq_questions`) on top of the built-in static hand
+   * bank. Only `approved` authored questions are ever merged, and every hand is
+   * shape-guarded (≥2 options + a valid preferredBaseline) before use, so a
+   * corrupt bank can never break the drill. Default **OFF** (dark): while false the
+   * drill plays the built-in static bank EXACTLY as today (zero extra reads, no
+   * behaviour change) — the authoring panel still works so the owner can build &
+   * review the bank first. Flip to true to start serving the authored questions to
+   * players. Frontend-only — no DB/RPC/Edge/migration (app_settings already exists
+   * with public-read / super_admin-write RLS). Kill-switch: set false.
+   */
+  pokerIqRemoteQuestions: false,
 } as const;
