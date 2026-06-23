@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { ChipDisc } from "./ChipDisc";
-import { ArrowDown, ArrowUp, Loader2, Vault } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Vault, Zap, RefreshCw, Info } from "lucide-react";
 
 // chip_ops_* bank objects are applied live but not in generated types → loose client.
 const sb = supabase as any;
@@ -17,14 +19,23 @@ const fmt = (n: number) => (n ?? 0).toLocaleString("vi-VN");
 const ERR: Record<string, string> = {
   Forbidden: "Bạn không có quyền.",
   Unauthorized: "Bạn chưa đăng nhập.",
-  BANK_NEGATIVE: "Không đủ chip trong két để xuất.",
+  BANK_NEGATIVE: "Không đủ chip trong két để xuất (thủ công).",
   race_lost: "Số liệu vừa thay đổi, mở lại và thử lại.",
   DENOM_NOT_IN_CLUB: "Mệnh giá không thuộc CLB.",
   INVALID_INPUT: "Dữ liệu nhập chưa hợp lệ.",
 };
+// bank-ledger reason → friendly label
+const REASON: Record<string, string> = {
+  manual: "Thủ công",
+  couple_issuance: "Phát chip (tự động)",
+  couple_color_up: "Color-up (tự động)",
+  couple_color_up_reverse: "Hoàn color-up (tự động)",
+  sync: "Đồng bộ",
+};
 
 interface BankDenom { denomination_id: string; value: number; color: string | null; on_hand_count: number; version: number }
-interface LedgerRow { id: string; denomination_id: string; direction: string; count: number; balance_after: number; created_at: string }
+interface LedgerRow { id: string; denomination_id: string; direction: string; count: number; balance_after: number; reason: string | null; created_at: string }
+interface SyncRow { denomination_id: string; total: number; in_play: number; on_hand: number }
 
 async function callRpc(fn: string, args: Record<string, unknown>): Promise<any | null> {
   try {
@@ -35,23 +46,34 @@ async function callRpc(fn: string, args: Record<string, unknown>): Promise<any |
   } catch { toast.error("Có lỗi xảy ra, thử lại."); return null; }
 }
 
-/** Két / Audit — club-level chip bank (Model B = manual): balances + xuất/thu + append-only log. */
+// on-hand count: negative = a deficit (ghi nợ) under auto-coupling → render red.
+function OnHand({ n, className = "" }: { n: number; className?: string }) {
+  const neg = n < 0;
+  return <span className={`tabular-nums ${neg ? "text-destructive" : "text-foreground"} ${className}`}>{fmt(n)}{neg ? " (ghi nợ)" : ""}</span>;
+}
+
+/** Két / Audit — club chip bank: balances + manual xuất/thu + auto-coupling (Model A) toggle + đồng bộ + log. */
 export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; tournamentId: string }) {
   const [bank, setBank] = useState<BankDenom[]>([]);
+  const [coupling, setCoupling] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [denomId, setDenomId] = useState("");
   const [dir, setDir] = useState<"thu" | "xuat">("thu");
   const [count, setCount] = useState("");
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncTotals, setSyncTotals] = useState<Record<string, string>>({});
+  const [syncResult, setSyncResult] = useState<{ rows: SyncRow[]; tours: { name: string | null }[] } | null>(null);
 
   const reload = useCallback(async () => {
     if (!clubId) return;
     setLoading(true);
     const b = await callRpc("get_chip_bank", { p_club_id: clubId });
     setBank(b && !b.error ? (b.denominations as BankDenom[]) : []);
+    setCoupling(!!(b && !b.error && b.coupling_enabled));
     const { data: lg } = await sb.from("chip_bank_ledger")
-      .select("id,denomination_id,direction,count,balance_after,created_at")
+      .select("id,denomination_id,direction,count,balance_after,reason,created_at")
       .eq("club_id", clubId).order("created_at", { ascending: false }).limit(50);
     setLedger((lg ?? []) as LedgerRow[]);
     setLoading(false);
@@ -60,6 +82,7 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
   useEffect(() => { reload(); }, [reload]);
 
   const valueOf = (id: string) => bank.find((d) => d.denomination_id === id)?.value ?? 0;
+  const hasDeficit = useMemo(() => bank.some((d) => d.on_hand_count < 0), [bank]);
 
   const submit = async () => {
     const n = Number(count);
@@ -67,15 +90,32 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
     if (!d || !Number.isFinite(n) || n <= 0) { toast.error("Chọn mệnh giá và nhập số chip > 0."); return; }
     setBusy(true);
     const r = await callRpc("chip_ops_bank_adjust", {
-      p_club_id: clubId,
-      p_denomination_id: denomId,
-      p_direction: dir,
-      p_count: n,
-      p_tournament_id: tournamentId || null,
-      p_old_version: d.version,
-      p_idempotency_key: crypto.randomUUID(),
+      p_club_id: clubId, p_denomination_id: denomId, p_direction: dir, p_count: n,
+      p_tournament_id: tournamentId || null, p_old_version: d.version, p_idempotency_key: crypto.randomUUID(),
     });
     if (r?.status === "ok") { toast.success(dir === "thu" ? "Đã thu chip vào két." : "Đã xuất chip khỏi két."); setCount(""); reload(); }
+    setBusy(false);
+  };
+
+  const toggleCoupling = async (enabled: boolean) => {
+    setBusy(true);
+    const r = await callRpc("chip_ops_set_bank_coupling", { p_club_id: clubId, p_enabled: enabled });
+    if (r?.status === "ok") { setCoupling(enabled); toast.success(enabled ? "Đã bật két tự động." : "Đã tắt két tự động."); }
+    setBusy(false);
+  };
+
+  const runSync = async () => {
+    const totals = bank
+      .map((d) => ({ denomination_id: d.denomination_id, total: Number(syncTotals[d.denomination_id]) }))
+      .filter((x) => Number.isFinite(x.total) && x.total >= 0);
+    if (totals.length === 0) { toast.error("Nhập tổng số chip sở hữu cho ít nhất một mệnh giá."); return; }
+    setBusy(true);
+    const r = await callRpc("chip_ops_bank_sync", { p_club_id: clubId, p_totals: totals });
+    if (r?.status === "ok") {
+      setSyncResult({ rows: (r.denominations ?? []) as SyncRow[], tours: (r.tournaments_counted ?? []) as { name: string | null }[] });
+      toast.success("Đã đồng bộ kho két.");
+      reload();
+    }
     setBusy(false);
   };
 
@@ -85,6 +125,35 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
 
   return (
     <div className="space-y-4">
+      {/* auto-coupling (Model A) */}
+      <Card className="border-border">
+        <CardContent className="space-y-3 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Zap className={`h-4 w-4 ${coupling ? "text-primary" : "text-muted-foreground"}`} />
+              <div>
+                <div className="text-sm font-medium text-foreground">Két tự động (Model A)</div>
+                <div className="text-xs text-muted-foreground">Phát chip tự trừ két · color-up tự thu/xuất.</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => { setSyncResult(null); setSyncOpen(true); }}>
+                <RefreshCw className="h-4 w-4" /> Đồng bộ kho két
+              </Button>
+              <Switch checked={coupling} disabled={busy} onCheckedChange={toggleCoupling} aria-label="Bật két tự động" />
+            </div>
+          </div>
+          {coupling && (
+            <div className="flex items-start gap-2 rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+              <div>
+                Đang BẬT: mỗi lần <b className="text-foreground">phát stack</b> sẽ tự <b className="text-foreground">xuất</b> chip khỏi két, và <b className="text-foreground">color-up</b> tự <b className="text-foreground">thu</b> chip nhỏ về + <b className="text-foreground">xuất</b> chip lớn. Két thiếu thì hiện <span className="text-destructive">ghi nợ</span> (vẫn cho làm). Hãy bấm <b className="text-foreground">Đồng bộ kho két</b> để số trong két khớp thực tế.
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="border-border">
         <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base text-foreground"><Vault className="h-4 w-4 text-primary" /> Tồn kho két chip (CLB)</CardTitle></CardHeader>
         <CardContent>
@@ -95,12 +164,13 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
               {bank.map((d) => (
                 <div key={d.denomination_id} className="flex w-20 flex-col items-center gap-2">
                   <ChipDisc value={d.value} color={d.color} size={48} />
-                  <div className="font-display text-sm font-bold tabular-nums text-foreground">{fmt(d.on_hand_count)}</div>
+                  <div className="font-display text-sm font-bold"><OnHand n={d.on_hand_count} /></div>
                   <div className="text-[11px] text-muted-foreground">T{fmt(d.value)}</div>
                 </div>
               ))}
             </div>
           )}
+          {hasDeficit && <p className="mt-3 text-xs text-destructive">Có mệnh giá đang <b>ghi nợ</b> (két âm) — nạp thêm chip hoặc đồng bộ lại kho két.</p>}
         </CardContent>
       </Card>
 
@@ -144,7 +214,7 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
             <Table>
               <TableHeader><TableRow>
                 <TableHead>Thời gian</TableHead><TableHead>Mệnh giá</TableHead><TableHead>Chiều</TableHead>
-                <TableHead className="text-right">Số chip</TableHead><TableHead className="text-right">Tồn sau</TableHead>
+                <TableHead>Nguồn</TableHead><TableHead className="text-right">Số chip</TableHead><TableHead className="text-right">Tồn sau</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {ledger.map((e) => (
@@ -152,8 +222,9 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
                     <TableCell className="text-xs text-muted-foreground">{new Date(e.created_at).toLocaleString("vi-VN")}</TableCell>
                     <TableCell className="tabular-nums">T{fmt(valueOf(e.denomination_id))}</TableCell>
                     <TableCell>{e.direction === "thu" ? <span className="text-primary">Thu</span> : <span className="text-warning">Xuất</span>}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{REASON[e.reason ?? "manual"] ?? e.reason}</TableCell>
                     <TableCell className="text-right tabular-nums">{fmt(e.count)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{fmt(e.balance_after)}</TableCell>
+                    <TableCell className="text-right"><OnHand n={e.balance_after} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -161,6 +232,47 @@ export function BankAuditTab({ clubId, tournamentId }: { clubId: string | null; 
           )}
         </CardContent>
       </Card>
+
+      {/* Đồng bộ kho két */}
+      <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Đồng bộ kho két</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Nhập <b className="text-foreground">tổng số chip CLB sở hữu</b> mỗi mệnh giá. App tự trừ phần đang chơi (các giải đang chạy) để ra số còn trong két.</p>
+          <div className="space-y-2">
+            {bank.map((d) => (
+              <div key={d.denomination_id} className="flex items-center gap-3">
+                <ChipDisc value={d.value} color={d.color} size={32} />
+                <span className="w-16 shrink-0 text-sm tabular-nums text-muted-foreground">T{fmt(d.value)}</span>
+                <Input type="number" inputMode="numeric" min={0} value={syncTotals[d.denomination_id] ?? ""}
+                  onChange={(e) => setSyncTotals((s) => ({ ...s, [d.denomination_id]: e.target.value }))}
+                  placeholder="tổng sở hữu" className="h-9" />
+              </div>
+            ))}
+          </div>
+          {syncResult && (
+            <div className="rounded-lg border border-border p-3 text-xs">
+              <div className="mb-1 text-muted-foreground">Đã tính (đang chơi ở: {syncResult.tours.map((t) => t.name ?? "—").join(", ") || "không có giải đang chạy"}):</div>
+              <Table>
+                <TableHeader><TableRow><TableHead>Mệnh giá</TableHead><TableHead className="text-right">Sở hữu</TableHead><TableHead className="text-right">Đang chơi</TableHead><TableHead className="text-right">Trong két</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {syncResult.rows.map((r) => (
+                    <TableRow key={r.denomination_id}>
+                      <TableCell className="tabular-nums">T{fmt(valueOf(r.denomination_id))}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmt(r.total)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{fmt(r.in_play)}</TableCell>
+                      <TableCell className="text-right"><OnHand n={r.on_hand} /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSyncOpen(false)}>Đóng</Button>
+            <Button disabled={busy} onClick={runSync}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Đồng bộ</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
