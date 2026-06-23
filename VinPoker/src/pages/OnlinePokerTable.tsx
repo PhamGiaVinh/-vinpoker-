@@ -17,6 +17,7 @@ import { RUNTIME_LIVE, type ActionType, type PublicHandResult, type PublicHandVi
 import type { RpcOutcome } from '@/lib/onlinePoker/wire';
 import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import type { LiveSeat, LiveTableMeta } from '@/lib/onlinePoker/client';
+import { loadBuyinsLive, type BuyinSummary } from '@/lib/onlinePoker/client';
 import { PokerComingSoon } from '@/components/poker/PokerComingSoon';
 import { SeatRing } from '@/components/poker/SeatRing';
 import { HeroHud } from '@/components/poker/HeroHud';
@@ -134,8 +135,20 @@ export default function OnlinePokerTable() {
   const [submitting, setSubmitting] = useState(false);
   const [bustOpen, setBustOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [buyins, setBuyins] = useState<BuyinSummary[]>([]);
   const bustHandledRef = useRef(false);
   const [muted, setMuted] = useState<boolean>(isPokerSoundMuted());
+
+  // Buy-in history — loaded each time the settings sheet opens (append-only ledger;
+  // degrades to [] when the ledger migration isn't applied yet).
+  useEffect(() => {
+    if (!settingsOpen || !RUNTIME_LIVE || !tableId) return;
+    let alive = true;
+    loadBuyinsLive(tableId)
+      .then((b) => { if (alive) setBuyins(b); })
+      .catch(() => { if (alive) setBuyins([]); });
+    return () => { alive = false; };
+  }, [settingsOpen, tableId]);
   const toggleMute = () => { const v = !muted; setPokerSoundMuted(v); setMuted(v); markPokerSoundGesture(); };
 
   // UI-4 — optional felt skin (emerald default / premium burgundy+gold), persisted locally.
@@ -605,6 +618,24 @@ export default function OnlinePokerTable() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* buy-in history — informal record of how many chips each player has bought in
+                (sit + rebuy) over this table's lifetime; survives a leave→re-sit. */}
+            {buyins.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lịch sử buy-in</div>
+                <div className="space-y-1.5">
+                  {buyins.map((b) => (
+                    <div key={b.userId} className="flex items-center gap-2 text-sm">
+                      <span className={`truncate ${b.userId === myUserId ? 'font-semibold' : ''}`}>{b.displayName ?? 'Người chơi'}</span>
+                      {b.count > 1 && <span className="shrink-0 rounded bg-muted px-1 text-[10px] tabular-nums text-muted-foreground">×{b.count}</span>}
+                      <span className="ml-auto shrink-0 font-semibold tabular-nums text-primary">{fmtChips(b.total)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-1.5 text-[11px] text-muted-foreground">Tổng chip mỗi người đã buy-in (gồm rebuy) tại bàn này.</div>
               </div>
             )}
 
