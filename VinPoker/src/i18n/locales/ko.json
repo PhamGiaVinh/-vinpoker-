@@ -2932,5 +2932,82 @@
       "medium": "보통",
       "high": "높음"
     }
+  },
+  "marketing": {
+    "navTitle": "마케팅",
+    "title": "마케팅",
+    "subtitle": "클럽 채널에 게시물을 작성·예약하고 자동 게시합니다.",
+    "notReady": "마케팅 모듈이 아직 준비되지 않았습니다(기능 활성화 및 DB 적용 필요).",
+    "noClubs": "마케팅을 위해 배정된 클럽이 없습니다.",
+    "club": "클럽",
+    "selectClub": "클럽 선택",
+    "tabs": {
+      "compose": "작성",
+      "posts": "게시물",
+      "channels": "채널"
+    },
+    "composer": {
+      "title": "새 게시물",
+      "postTitle": "제목",
+      "postTitlePh": "제목(선택)",
+      "body": "내용",
+      "bodyPh": "게시물 내용…",
+      "image": "이미지",
+      "addImage": "이미지 추가",
+      "removeImage": "이미지 삭제",
+      "onlyJpgPng": "JPG 또는 PNG 이미지만 허용됩니다.",
+      "max5mb": "이미지는 5MB 이하여야 합니다.",
+      "channels": "게시 채널",
+      "comingSoon": "준비 중",
+      "schedule": "게시 시점",
+      "publishNow": "지금 게시",
+      "scheduleLater": "예약",
+      "hashtags": "해시태그",
+      "saveDraft": "초안 저장",
+      "scheduleBtn": "예약",
+      "publishBtn": "지금 게시",
+      "savedDraft": "초안이 저장되었습니다.",
+      "scheduled": "게시가 예약되었습니다.",
+      "publishing": "게시 대기열에 추가되었습니다.",
+      "errBody": "내용을 입력하세요.",
+      "errNoChannels": "채널을 하나 이상 선택하세요.",
+      "errPickTime": "게시 시간을 선택하세요.",
+      "errCompliance": "차단됨 — 금지어 포함: {{terms}}",
+      "errChannel": "채널이 설정되지 않았습니다: {{channel}}",
+      "errForbidden": "권한이 없습니다.",
+      "errGeneric": "오류가 발생했습니다."
+    },
+    "list": {
+      "empty": "게시물이 없습니다.",
+      "refresh": "새로고침",
+      "channels": "채널",
+      "scheduledAt": "예약",
+      "sentAt": "게시됨",
+      "blocked": "차단됨",
+      "cancel": "취소",
+      "cancelled": "게시물이 취소되었습니다."
+    },
+    "status": {
+      "draft": "초안",
+      "scheduled": "예약됨",
+      "processing": "처리 중",
+      "sent": "게시됨",
+      "failed": "실패",
+      "cancelled": "취소됨"
+    },
+    "delivery": {
+      "pending": "대기",
+      "processing": "전송 중",
+      "sent": "전송됨",
+      "failed": "오류",
+      "skipped": "건너뜀"
+    },
+    "channels": {
+      "intro": "초기에는 Telegram만 지원합니다. Facebook과 Zalo는 다음 단계에 제공됩니다. 여기서는 토큰을 입력하지 않습니다 — Telegram은 시스템 공용 봇과 클럽의 연결된 채팅을 사용합니다.",
+      "tokenNote": "클럽별 연동이 필요합니다. 토큰은 Supabase Secrets/Vault에 저장되며 이 화면에서 입력하지 않습니다.",
+      "telegramReady": "준비됨 — 클럽의 Telegram 채팅이 연결되었습니다.",
+      "telegramNotLinked": "아직 연결되지 않음 — 클럽 설정에서 Telegram 봇으로 클럽 채팅을 연결하세요.",
+      "comingSoon": "준비 중"
+    }
   }
 }

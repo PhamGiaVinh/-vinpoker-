@@ -2936,5 +2936,82 @@
       "medium": "中",
       "high": "高"
     }
+  },
+  "marketing": {
+    "navTitle": "マーケティング",
+    "title": "マーケティング",
+    "subtitle": "クラブのチャンネルへ投稿を作成・予約し、自動投稿します。",
+    "notReady": "マーケティングモジュールは未準備です（機能の有効化とDB適用が必要）。",
+    "noClubs": "マーケティング担当として割り当てられたクラブがありません。",
+    "club": "クラブ",
+    "selectClub": "クラブを選択",
+    "tabs": {
+      "compose": "作成",
+      "posts": "投稿",
+      "channels": "チャンネル"
+    },
+    "composer": {
+      "title": "新規投稿",
+      "postTitle": "タイトル",
+      "postTitlePh": "タイトル（任意）",
+      "body": "本文",
+      "bodyPh": "投稿本文…",
+      "image": "画像",
+      "addImage": "画像を追加",
+      "removeImage": "画像を削除",
+      "onlyJpgPng": "JPGまたはPNG画像のみ可能です。",
+      "max5mb": "画像は5MB以下にしてください。",
+      "channels": "投稿チャンネル",
+      "comingSoon": "近日対応",
+      "schedule": "投稿日時",
+      "publishNow": "今すぐ投稿",
+      "scheduleLater": "予約",
+      "hashtags": "ハッシュタグ",
+      "saveDraft": "下書き保存",
+      "scheduleBtn": "予約",
+      "publishBtn": "今すぐ投稿",
+      "savedDraft": "下書きを保存しました。",
+      "scheduled": "投稿を予約しました。",
+      "publishing": "投稿キューに追加しました。",
+      "errBody": "本文を入力してください。",
+      "errNoChannels": "チャンネルを1つ以上選択してください。",
+      "errPickTime": "投稿時間を選択してください。",
+      "errCompliance": "ブロックされました — 禁止語句が含まれています: {{terms}}",
+      "errChannel": "チャンネルが未設定です: {{channel}}",
+      "errForbidden": "権限がありません。",
+      "errGeneric": "エラーが発生しました。"
+    },
+    "list": {
+      "empty": "投稿はまだありません。",
+      "refresh": "更新",
+      "channels": "チャンネル",
+      "scheduledAt": "予約",
+      "sentAt": "投稿済み",
+      "blocked": "ブロック",
+      "cancel": "キャンセル",
+      "cancelled": "投稿をキャンセルしました。"
+    },
+    "status": {
+      "draft": "下書き",
+      "scheduled": "予約済み",
+      "processing": "処理中",
+      "sent": "投稿済み",
+      "failed": "失敗",
+      "cancelled": "キャンセル"
+    },
+    "delivery": {
+      "pending": "待機",
+      "processing": "送信中",
+      "sent": "送信済み",
+      "failed": "エラー",
+      "skipped": "スキップ"
+    },
+    "channels": {
+      "intro": "初期はTelegramのみ対応です。FacebookとZaloは後のフェーズで提供します。ここではトークンを入力しません — Telegramはシステム共有ボットとクラブの連携済みチャットを使用します。",
+      "tokenNote": "クラブごとの連携が必要です。トークンはSupabase Secrets/Vaultに保存され、この画面では入力しません。",
+      "telegramReady": "準備完了 — クラブのTelegramチャットが連携済みです。",
+      "telegramNotLinked": "未連携 — クラブ設定のTelegramボットからクラブチャットを連携してください。",
+      "comingSoon": "近日対応"
+    }
   }
 }

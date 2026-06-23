@@ -2936,5 +2936,82 @@
       "medium": "中",
       "high": "高"
     }
+  },
+  "marketing": {
+    "navTitle": "营销",
+    "title": "营销",
+    "subtitle": "撰写、排程并自动发布到俱乐部的渠道。",
+    "notReady": "营销模块尚未就绪（需启用功能并应用数据库）。",
+    "noClubs": "您尚未被分配到任何俱乐部进行营销。",
+    "club": "俱乐部",
+    "selectClub": "选择俱乐部",
+    "tabs": {
+      "compose": "撰写",
+      "posts": "帖子",
+      "channels": "渠道"
+    },
+    "composer": {
+      "title": "新帖子",
+      "postTitle": "标题",
+      "postTitlePh": "标题（可选）",
+      "body": "内容",
+      "bodyPh": "帖子内容…",
+      "image": "图片",
+      "addImage": "添加图片",
+      "removeImage": "删除图片",
+      "onlyJpgPng": "仅允许 JPG 或 PNG 图片。",
+      "max5mb": "图片不超过 5MB。",
+      "channels": "发布渠道",
+      "comingSoon": "即将推出",
+      "schedule": "发布时间",
+      "publishNow": "立即发布",
+      "scheduleLater": "排程",
+      "hashtags": "话题标签",
+      "saveDraft": "保存草稿",
+      "scheduleBtn": "排程",
+      "publishBtn": "立即发布",
+      "savedDraft": "草稿已保存。",
+      "scheduled": "帖子已排程。",
+      "publishing": "已加入发布队列。",
+      "errBody": "请输入内容。",
+      "errNoChannels": "请至少选择一个渠道。",
+      "errPickTime": "请选择发布时间。",
+      "errCompliance": "已拦截——内容包含违禁词：{{terms}}",
+      "errChannel": "渠道未配置：{{channel}}",
+      "errForbidden": "您没有权限。",
+      "errGeneric": "出错了。"
+    },
+    "list": {
+      "empty": "暂无帖子。",
+      "refresh": "刷新",
+      "channels": "渠道",
+      "scheduledAt": "排程",
+      "sentAt": "已发布",
+      "blocked": "已拦截",
+      "cancel": "取消",
+      "cancelled": "帖子已取消。"
+    },
+    "status": {
+      "draft": "草稿",
+      "scheduled": "已排程",
+      "processing": "处理中",
+      "sent": "已发布",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "delivery": {
+      "pending": "等待",
+      "processing": "发送中",
+      "sent": "已发送",
+      "failed": "错误",
+      "skipped": "已跳过"
+    },
+    "channels": {
+      "intro": "初期仅支持 Telegram。Facebook 和 Zalo 将在后续阶段推出。此处不输入任何令牌——Telegram 使用系统共享机器人和俱乐部已关联的聊天。",
+      "tokenNote": "将需要按俱乐部单独集成；令牌存放在 Supabase Secrets/Vault，不在此页面输入。",
+      "telegramReady": "就绪——俱乐部的 Telegram 聊天已关联。",
+      "telegramNotLinked": "尚未关联——请在俱乐部设置中通过 Telegram 机器人关联俱乐部聊天。",
+      "comingSoon": "即将推出"
+    }
   }
 }

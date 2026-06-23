@@ -3182,5 +3182,82 @@
       "medium": "Medium",
       "high": "High"
     }
+  },
+  "marketing": {
+    "navTitle": "Marketing",
+    "title": "Marketing",
+    "subtitle": "Compose, schedule and auto-publish posts to your club's channels.",
+    "notReady": "Marketing module is not ready yet (enable the feature and apply the database).",
+    "noClubs": "You are not assigned to any club for marketing.",
+    "club": "Club",
+    "selectClub": "Select a club",
+    "tabs": {
+      "compose": "Compose",
+      "posts": "Posts",
+      "channels": "Channels"
+    },
+    "composer": {
+      "title": "New post",
+      "postTitle": "Title",
+      "postTitlePh": "Title (optional)",
+      "body": "Content",
+      "bodyPh": "Post content…",
+      "image": "Image",
+      "addImage": "Add image",
+      "removeImage": "Remove image",
+      "onlyJpgPng": "Only JPG or PNG images are allowed.",
+      "max5mb": "Image must be ≤ 5MB.",
+      "channels": "Channels",
+      "comingSoon": "coming soon",
+      "schedule": "When to publish",
+      "publishNow": "Publish now",
+      "scheduleLater": "Schedule",
+      "hashtags": "Hashtags",
+      "saveDraft": "Save draft",
+      "scheduleBtn": "Schedule",
+      "publishBtn": "Publish now",
+      "savedDraft": "Draft saved.",
+      "scheduled": "Post scheduled.",
+      "publishing": "Queued for publishing.",
+      "errBody": "Please enter content.",
+      "errNoChannels": "Select at least one channel.",
+      "errPickTime": "Pick a publish time.",
+      "errCompliance": "Blocked — content contains forbidden terms: {{terms}}",
+      "errChannel": "Channel not configured: {{channel}}",
+      "errForbidden": "You don't have permission.",
+      "errGeneric": "Something went wrong."
+    },
+    "list": {
+      "empty": "No posts yet.",
+      "refresh": "Refresh",
+      "channels": "Channels",
+      "scheduledAt": "Scheduled",
+      "sentAt": "Sent",
+      "blocked": "Blocked",
+      "cancel": "Cancel",
+      "cancelled": "Post cancelled."
+    },
+    "status": {
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "processing": "Processing",
+      "sent": "Sent",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "delivery": {
+      "pending": "Pending",
+      "processing": "Sending",
+      "sent": "Sent",
+      "failed": "Error",
+      "skipped": "Skipped"
+    },
+    "channels": {
+      "intro": "P0 supports Telegram only. Facebook and Zalo come in a later phase. No tokens are entered here — Telegram uses the shared system bot and the club's linked chat.",
+      "tokenNote": "Will need a per-club integration; tokens will live in Supabase Secrets/Vault, never entered on this screen.",
+      "telegramReady": "Ready — the club's Telegram chat is linked.",
+      "telegramNotLinked": "Not linked yet — link the club's Telegram chat via the Telegram bot in club settings.",
+      "comingSoon": "Coming soon"
+    }
   }
 }
