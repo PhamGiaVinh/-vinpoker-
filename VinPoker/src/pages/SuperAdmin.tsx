@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2, Sparkles, History, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, Check, X, Shield, Plus, Trash2, Save, Pencil, Image as ImageIcon, Upload, Wand2, Sparkles, ChevronDown, ChevronRight, Brain } from "lucide-react";
 import { FomoPrice } from "@/components/FomoPrice";
 import { formatDateTime, formatVND } from "@/lib/format";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -20,11 +20,127 @@ import { BackingReviewQueue } from "@/components/BackingReviewQueue";
 import { SpreadPnL } from "@/components/admin/SpreadPnL";
 import { AdminSupportTab } from "@/components/admin/AdminSupportTab";
 import { AdminStreamManager } from "@/components/admin/AdminStreamManager";
+import { PokerIqQuestionsEditor } from "@/components/admin/PokerIqQuestionsEditor";
+import { cn } from "@/lib/utils";
 
 const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
 const GAME_TYPES = [{v:"nlh",l:"No Limit Hold'em"},{v:"plo",l:"Pot Limit Omaha"},{v:"mixed",l:"Mixed Games"}];
 
 type TournamentStatus = "scheduled" | "live" | "finished" | "cancelled";
+
+type SectionKey =
+  | "tournaments" | "series" | "banners"
+  | "registrations" | "backing" | "streams" | "support"
+  | "clubs"
+  | "rates" | "packages" | "pnl"
+  | "profiles"
+  | "poker-iq";
+
+type NavItem = { key: SectionKey; label: string };
+type NavGroupDef = { key: string; label: string; items: NavItem[] };
+
+const NAV_GROUPS: NavGroupDef[] = [
+  {
+    key: "content", label: "Nội dung",
+    items: [
+      { key: "tournaments", label: "Tournaments" },
+      { key: "series", label: "Series" },
+      { key: "banners", label: "Banners" },
+    ],
+  },
+  {
+    key: "ops", label: "Vận hành",
+    items: [
+      { key: "registrations", label: "Registrations" },
+      { key: "backing", label: "Backing" },
+      { key: "streams", label: "Livestream" },
+      { key: "support", label: "Hỗ trợ" },
+    ],
+  },
+  {
+    key: "clubs-g", label: "Câu lạc bộ",
+    items: [
+      { key: "clubs", label: "Clubs" },
+    ],
+  },
+  {
+    key: "finance", label: "Tài chính",
+    items: [
+      { key: "rates", label: "Tỷ giá" },
+      { key: "packages", label: "Packages" },
+      { key: "pnl", label: "P&L Spread" },
+    ],
+  },
+  {
+    key: "users-g", label: "Người dùng",
+    items: [
+      { key: "profiles", label: "Hồ sơ" },
+    ],
+  },
+  {
+    key: "poker-iq-g", label: "Poker IQ",
+    items: [
+      { key: "poker-iq", label: "Câu hỏi" },
+    ],
+  },
+];
+
+/**
+ * Grouped section navigation that replaces the old 12-tab horizontal strip.
+ * Desktop (md+): a sticky vertical sidebar grouped by category. Mobile: a single
+ * grouped dropdown so the panel never feels cramped on a narrow screen.
+ */
+const AdminNav = ({ active, onSelect }: { active: SectionKey; onSelect: (s: SectionKey) => void }) => (
+  <>
+    {/* Mobile — grouped dropdown */}
+    <div className="md:hidden">
+      <Select value={active} onValueChange={(v) => onSelect(v as SectionKey)}>
+        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {NAV_GROUPS.map((g) => (
+            <SelectGroup key={g.key}>
+              <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">{g.label}</SelectLabel>
+              {g.items.map((it) => (
+                <SelectItem key={it.key} value={it.key}>{it.label}</SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+
+    {/* Desktop — vertical grouped sidebar */}
+    <nav className="hidden md:block w-52 shrink-0 self-start sticky top-4 space-y-4" aria-label="Super Admin sections">
+      {NAV_GROUPS.map((g) => (
+        <div key={g.key} className="space-y-1">
+          <div className="px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{g.label}</div>
+          <div className="space-y-0.5">
+            {g.items.map((it) => {
+              const isActive = it.key === active;
+              return (
+                <button
+                  key={it.key}
+                  type="button"
+                  onClick={() => onSelect(it.key)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors border",
+                    isActive
+                      ? "bg-primary/10 text-primary font-medium border-primary/30"
+                      : "text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground",
+                  )}
+                >
+                  {it.key === "poker-iq" && <Brain className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                  <span className="truncate">{it.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  </>
+);
 
 const SuperAdmin = () => {
   const { user, loading, isAdmin } = useAuth();
@@ -36,6 +152,7 @@ const SuperAdmin = () => {
   const [regs, setRegs] = useState<any[]>([]);
   const [profileLogs, setProfileLogs] = useState<any[]>([]);
   const [profileClubFilter, setProfileClubFilter] = useState<string>("all");
+  const [activeSection, setActiveSection] = useState<SectionKey>("tournaments");
 
   const load = async () => {
     if (!initialLoaded) setBusy(true);
@@ -130,21 +247,10 @@ const SuperAdmin = () => {
         <p className="text-xs text-muted-foreground">Full system control for VBacker.</p>
       </div>
 
-      <Tabs defaultValue="tournaments">
-        <TabsList className="flex w-full overflow-x-auto justify-start md:grid md:grid-cols-12">
-          <TabsTrigger value="tournaments">Tournaments</TabsTrigger>
-          <TabsTrigger value="series">Series</TabsTrigger>
-          <TabsTrigger value="registrations">Registrations</TabsTrigger>
-          <TabsTrigger value="clubs">Clubs</TabsTrigger>
-          <TabsTrigger value="backing">Backing</TabsTrigger>
-          <TabsTrigger value="banners">Banners</TabsTrigger>
-          <TabsTrigger value="pnl">P&L Spread</TabsTrigger>
-          <TabsTrigger value="streams">Livestream</TabsTrigger>
-          <TabsTrigger value="rates">Tỷ giá</TabsTrigger>
-          <TabsTrigger value="packages">Packages</TabsTrigger>
-          <TabsTrigger value="support">Hỗ trợ</TabsTrigger>
-          <TabsTrigger value="profiles"><History className="w-3.5 h-3.5 mr-1" />Hồ sơ</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeSection} onValueChange={(v) => setActiveSection(v as SectionKey)}>
+        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+          <AdminNav active={activeSection} onSelect={setActiveSection} />
+          <div className="min-w-0 flex-1">
 
 
         <TabsContent value="pnl" className="mt-4"><SpreadPnL /></TabsContent>
@@ -296,6 +402,10 @@ const SuperAdmin = () => {
             </div>
           )}
         </TabsContent>
+            {/* POKER IQ — question authoring for players */}
+            <TabsContent value="poker-iq" className="mt-4"><PokerIqQuestionsEditor /></TabsContent>
+          </div>
+        </div>
       </Tabs>
     </div>
   );
