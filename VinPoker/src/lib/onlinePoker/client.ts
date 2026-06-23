@@ -326,6 +326,65 @@ export async function loadSeatsLive(tableId: string): Promise<LiveSeat[]> {
   }));
 }
 
+/** One player's aggregated buy-in history at a table (from the append-only ledger). */
+export interface BuyinSummary {
+  userId: string;
+  displayName?: string;
+  /** total chips bought in over the table's lifetime (sum of every sit + rebuy), chip string */
+  total: string;
+  /** number of buy-in events (sits + rebuys) */
+  count: number;
+  /** latest event time (ISO) — newest-activity ordering */
+  lastAt: string;
+}
+
+/**
+ * Per-player buy-in totals from the append-only `online_poker_buyins` ledger. Wallet-free
+ * friends-practice: an informal record of how many chips each player has bought in (sit +
+ * rebuy) over the table's whole lifetime — it SURVIVES a leave→re-sit (a new sit just adds
+ * on). Grouped by user (duplicate display names are fine). Degrades to [] when the ledger
+ * isn't applied yet (source-only migration) or there are no rows. Gated.
+ */
+export async function loadBuyinsLive(tableId: string): Promise<BuyinSummary[]> {
+  if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  // online_poker_buyins is source-only (not in generated types until applied) → cast + degrade.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (rails() as any)
+    .from('online_poker_buyins')
+    .select('user_id, amount, created_at')
+    .eq('table_id', tableId)
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+  const rows = data as Array<{ user_id: string; amount: number | string; created_at: string }>;
+  if (!rows.length) return [];
+
+  const agg = new Map<string, { total: bigint; count: number; lastAt: string }>();
+  for (const r of rows) {
+    if (!r.user_id) continue;
+    const cur = agg.get(r.user_id) ?? { total: 0n, count: 0, lastAt: r.created_at };
+    cur.total += BigInt(String(r.amount));
+    cur.count += 1;
+    if (r.created_at > cur.lastAt) cur.lastAt = r.created_at;
+    agg.set(r.user_id, cur);
+  }
+
+  const ids = [...agg.keys()];
+  const names: Record<string, string> = {};
+  if (ids.length) {
+    const { data: profs } = await rails().from('profiles').select('id, display_name').in('id', ids);
+    for (const p of (profs ?? []) as Array<{ id: string; display_name: string | null }>) {
+      if (p.display_name) names[p.id] = p.display_name;
+    }
+  }
+
+  return ids
+    .map((id) => {
+      const a = agg.get(id)!;
+      return { userId: id, displayName: names[id], total: a.total.toString(), count: a.count, lastAt: a.lastAt };
+    })
+    .sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+}
+
 /** Server-authoritative legal-action menu for the caller's seat, or null if not in the hand. */
 export async function loadLegalActionsLive(handId: string): Promise<WireLegalActions | null> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
