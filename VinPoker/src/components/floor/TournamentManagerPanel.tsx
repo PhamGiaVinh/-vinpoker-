@@ -38,6 +38,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
   const [tours, setTours] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [flightMeta, setFlightMeta] = useState<Record<string, FlightMeta>>({});
 
   const clubNameMap = Object.fromEntries(clubs.map((c) => [c.id, c.name]));
   const multiClub = clubs.length > 1;
@@ -77,6 +78,42 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [clubKey]);
+
+  // MD-2 — per-flight ITM readiness (gated). For each flight compute the entrant-based
+  // qualifier target and current survivors so the 🏅 button can glow when the flight has
+  // played down to its ITM count. Only queries the new objects when the flag is on.
+  useEffect(() => {
+    if (!FEATURES.multiDayTournaments) { setFlightMeta({}); return; }
+    const flights = tours.filter((x) => x.phase === "flight" && x.event_id);
+    if (!flights.length) { setFlightMeta({}); return; }
+    let cancelled = false;
+    (async () => {
+      const flightIds = flights.map((x) => x.id);
+      const eventIds = [...new Set(flights.map((x) => x.event_id))];
+      const [regsRes, seatsRes, evsRes] = await Promise.all([
+        (supabase as any).from("tournament_registrations").select("tournament_id").in("tournament_id", flightIds).eq("status", "confirmed"),
+        (supabase as any).from("tournament_seats").select("tournament_id, player_id").in("tournament_id", flightIds).eq("is_active", true),
+        (supabase as any).from("tournament_events").select("id, itm_percent").in("id", eventIds),
+      ]);
+      if (cancelled) return;
+      const regCount: Record<string, number> = {};
+      for (const r of ((regsRes.data ?? []) as any[])) regCount[r.tournament_id] = (regCount[r.tournament_id] || 0) + 1;
+      const survivors: Record<string, Set<string>> = {};
+      for (const s of ((seatsRes.data ?? []) as any[])) (survivors[s.tournament_id] ??= new Set()).add(s.player_id);
+      const itmMap: Record<string, number> = {};
+      for (const e of ((evsRes.data ?? []) as any[])) itmMap[e.id] = Number(e.itm_percent) || 0;
+      const meta: Record<string, FlightMeta> = {};
+      for (const fl of flights) {
+        const surv = survivors[fl.id]?.size ?? 0;
+        const ent = flightEntrants(regCount[fl.id] ?? 0, surv, fl.players_remaining);
+        const itm = itmMap[fl.event_id] ?? 0;
+        const target = qualifierTarget(ent, itm);
+        meta[fl.id] = { entrants: ent, survivors: surv, itm, target, ready: surv > 0 && surv <= target };
+      }
+      setFlightMeta(meta);
+    })();
+    return () => { cancelled = true; };
+  }, [tours]);
 
   const deleteTour = async (id: string) => {
     if (!confirm(t("clubAdmin.deleteConfirm"))) return;
@@ -158,7 +195,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
                     <div className="flex gap-1">
                       <EditTournamentDialog tournament={t2} onSaved={load} />
                       <AuditHistoryDialog tournament={t2} />
-                      {FEATURES.multiDayTournaments && t2.phase === "flight" && <FlightQualifiersDialog flight={t2} onDone={load} />}
+                      {FEATURES.multiDayTournaments && t2.phase === "flight" && <FlightQualifiersDialog flight={t2} meta={flightMeta[t2.id]} onDone={load} />}
                       {FEATURES.blindTemplates && <BlindStructureDialog tournament={t2} />}
                       <Button variant="ghost" size="icon" onClick={() => deleteTour(t2.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -196,18 +233,35 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
 }
 
 // MD-2 — Floor picks qualified players from a flight → they advance to the event's
-// Final Day carrying their end-of-flight stack. Suggested count = ceil(active players ×
-// itm_percent / 100), rounded UP (owner spec); floor selects manually. The advance is one
-// atomic RPC (advance_flight_qualifiers, idempotent). Gated by FEATURES.multiDayTournaments.
+// Final Day carrying their end-of-flight stack. The advance is one atomic RPC
+// (advance_flight_qualifiers, idempotent). Gated by FEATURES.multiDayTournaments.
+//
+// ITM target = ceil(ENTRANTS × itm% / 100), rounded UP (owner spec) — entrants is the
+// flight's FIELD SIZE (confirmed registrations, never below who's still seated / the
+// remaining counter), NOT the current survivor count. So 90 entries @ 12.5% = 12 fixed,
+// even after the flight has played down. When survivors fall to the target the flight is
+// "đủ ITM": the 🏅 button glows and the dialog pre-selects everyone left (all qualify).
 type QualifierPlayer = { player_id: string; player_name: string; chip_count: number };
-const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () => void }) => {
+type FlightMeta = { entrants: number; survivors: number; itm: number; target: number; ready: boolean };
+
+// Field size for ITM — registrations can undercount walk-ins, so never below seated/remaining.
+const flightEntrants = (regCount: number, survivors: number, playersRemaining: number | null | undefined): number =>
+  Math.max(regCount || 0, survivors || 0, Number(playersRemaining) || 0);
+const qualifierTarget = (entrants: number, itmPercent: number): number =>
+  Math.ceil((entrants * (Number(itmPercent) || 0)) / 100);
+
+const FlightQualifiersDialog = ({ flight, meta, onDone }: { flight: any; meta?: FlightMeta; onDone: () => void }) => {
   const [open, setOpen] = useState(false);
   const [players, setPlayers] = useState<QualifierPlayer[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [advanced, setAdvanced] = useState<Set<string>>(new Set());
-  const [itm, setItm] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const itm = meta?.itm ?? 0;
+  const entrants = meta?.entrants ?? 0;
+  const target = meta?.target ?? 0;
+  const ready = meta?.ready ?? false;
 
   useEffect(() => {
     if (!open) return;
@@ -220,15 +274,12 @@ const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () =>
         .eq("tournament_id", flight.id)
         .eq("is_active", true)
         .order("chip_count", { ascending: false });
-      const evRes = flight.event_id
-        ? await (supabase as any).from("tournament_events").select("itm_percent").eq("id", flight.event_id).maybeSingle()
-        : { data: null };
       const { data: q } = await (supabase as any)
         .from("tournament_event_qualifiers")
         .select("player_id")
         .eq("flight_tournament_id", flight.id);
       if (cancelled) return;
-      // one row per player (seats may have re-entries; keep the first = highest chip)
+      // one row per player (re-entries share a player_id; keep the first = highest chip)
       const seen = new Set<string>();
       const uniq: QualifierPlayer[] = [];
       for (const s of ((seats ?? []) as any[])) {
@@ -239,19 +290,19 @@ const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () =>
       const adv = new Set<string>(((q ?? []) as any[]).map((r) => r.player_id));
       setPlayers(uniq);
       setAdvanced(adv);
-      setSelected(new Set(adv)); // pre-select already-advanced
-      setItm(Number(evRes?.data?.itm_percent) || 0);
+      // Đủ ITM → tất cả người còn lại là qualified, tích sẵn; chưa đủ → chỉ giữ người đã chốt.
+      setSelected(ready ? new Set([...adv, ...uniq.map((p) => p.player_id)]) : new Set(adv));
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [open, flight.id, flight.event_id]);
+  }, [open, flight.id, ready]);
 
-  const suggested = Math.ceil((players.length * itm) / 100);
   const toggle = (pid: string) => setSelected((prev) => {
     const next = new Set(prev);
     if (next.has(pid)) next.delete(pid); else next.add(pid);
     return next;
   });
+  const selectAll = () => setSelected(new Set(players.map((p) => p.player_id)));
 
   const confirm = async () => {
     if (busy) return;
@@ -271,7 +322,14 @@ const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () =>
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title="Chọn qualified vào Final Day"><Award className="w-4 h-4 text-amber-500" /></Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          title={ready ? "Đủ ITM — chốt qualified vào Final Day" : "Chọn qualified vào Final Day"}
+          className={ready ? "ring-2 ring-amber-400 animate-pulse" : ""}
+        >
+          <Award className={`w-4 h-4 ${ready ? "text-amber-500" : "text-muted-foreground"}`} />
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="truncate">Qualified — {flight.name}</DialogTitle></DialogHeader>
@@ -280,30 +338,40 @@ const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () =>
         ) : (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              ITM {itm}% × {players.length} người = <span className="text-primary font-semibold">gợi ý {suggested} qualified</span> (làm tròn lên). Floor tự chọn ai vào Final Day; người được chọn mang theo stack hiện tại.
+              {entrants} người vào giải · ITM {itm}% → <span className="text-primary font-semibold">cần {target} qualified</span> (làm tròn lên) · còn lại {players.length}.
             </p>
+            {ready && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                ✓ Đã về đúng số ITM — tất cả {players.length} người còn lại là qualified, đã tích sẵn. Bấm xác nhận để đưa vào Final Day.
+              </div>
+            )}
             {players.length === 0 ? (
               <p className="text-sm text-muted-foreground">Flight chưa có người chơi (active seat).</p>
             ) : (
-              <div className="space-y-1">
-                {players.map((p) => {
-                  const isSel = selected.has(p.player_id);
-                  const wasAdv = advanced.has(p.player_id);
-                  return (
-                    <button key={p.player_id} type="button" onClick={() => toggle(p.player_id)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${isSel ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40"}`}>
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>{isSel ? "✓" : ""}</span>
-                        <span className="truncate">{p.player_name}</span>
-                        {wasAdv && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600">đã qualified</span>}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">{p.chip_count.toLocaleString("vi-VN")}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <div className="flex justify-end">
+                  <button type="button" onClick={selectAll} className="text-[11px] text-primary hover:underline">Chọn tất cả người còn lại</button>
+                </div>
+                <div className="space-y-1">
+                  {players.map((p) => {
+                    const isSel = selected.has(p.player_id);
+                    const wasAdv = advanced.has(p.player_id);
+                    return (
+                      <button key={p.player_id} type="button" onClick={() => toggle(p.player_id)}
+                        className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${isSel ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40"}`}>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>{isSel ? "✓" : ""}</span>
+                          <span className="truncate">{p.player_name}</span>
+                          {wasAdv && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600">đã qualified</span>}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{p.chip_count.toLocaleString("vi-VN")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
-            <div className="pt-1 text-xs text-muted-foreground">Đã chọn: <span className="text-primary font-semibold">{selected.size}</span> / gợi ý {suggested}</div>
+            <div className="pt-1 text-xs text-muted-foreground">Đã chọn: <span className="text-primary font-semibold">{selected.size}</span> / cần {target}</div>
             <Button onClick={confirm} disabled={busy || selected.size === 0} className="w-full gradient-neon text-primary-foreground border-0">{busy ? "Đang chuyển…" : "Xác nhận qualified → Final Day"}</Button>
           </div>
         )}
