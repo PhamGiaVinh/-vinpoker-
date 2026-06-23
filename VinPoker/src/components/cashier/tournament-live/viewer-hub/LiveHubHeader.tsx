@@ -16,13 +16,40 @@ export interface LiveHubHeaderProps {
   subtitle?: string | null;
   /** Optional live-table count badge ("X bàn trực tiếp"); omitted when <= 0. */
   liveTableCount?: number;
+  /** Event info chips (RPT-style): guarantee / buy-in / starting stack. */
+  guarantee?: number | null;
+  buyIn?: number | null;
+  startingStack?: number | null;
+  /** When the hub data was last refreshed → "Cập nhật … trước". */
+  lastUpdated?: Date | null;
   onShare: () => void;
 }
 
-export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCount, onShare }: LiveHubHeaderProps) {
+const fmtMoney = (n: number) => {
+  if (n >= 1e9) return (n / 1e9).toFixed(n % 1e9 === 0 ? 0 : 1).replace(/\.0$/, "") + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
+};
+
+export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCount, guarantee, buyIn, startingStack, lastUpdated, onShare }: LiveHubHeaderProps) {
   const { t } = useTranslation();
+
+  const timeAgo = (d: Date) => {
+    const s = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+    if (s < 45) return t("liveHub.header.justNow", "vừa xong");
+    if (s < 3600) return t("liveHub.header.minsAgo", "{{n}} phút trước", { n: Math.round(s / 60) });
+    if (s < 86400) return t("liveHub.header.hoursAgo", "{{n}} giờ trước", { n: Math.round(s / 3600) });
+    return t("liveHub.header.daysAgo", "{{n}} ngày trước", { n: Math.round(s / 86400) });
+  };
+
+  const chips: { label: string; value: string }[] = [];
+  if (guarantee != null && guarantee > 0) chips.push({ label: "GTD", value: fmtMoney(guarantee) });
+  if (buyIn != null && buyIn > 0) chips.push({ label: t("liveHub.header.buyIn", "BUY-IN"), value: fmtMoney(buyIn) });
+  if (startingStack != null && startingStack > 0) chips.push({ label: "STACK", value: fmtMoney(startingStack) });
   return (
-    <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-success/10 text-success rounded-md text-[11px] sm:text-xs font-bold border border-success/30 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -55,6 +82,22 @@ export function LiveHubHeader({ title, clubName, clubId, subtitle, liveTableCoun
       >
         <Share2 className="w-3.5 h-3.5 mr-1.5" /> {t("liveHub.header.share", "Chia sẻ")}
       </Button>
+      </div>
+      {(chips.length > 0 || lastUpdated) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {chips.map((c) => (
+            <span key={c.label} className="tracker-display inline-flex items-center gap-1 rounded-md border border-border/50 bg-card/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+              <span className="text-muted-foreground">{c.label}</span>
+              <span className="tracker-num text-foreground">{c.value}</span>
+            </span>
+          ))}
+          {lastUpdated && (
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {t("liveHub.header.updated", "Cập nhật")} {timeAgo(lastUpdated)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
