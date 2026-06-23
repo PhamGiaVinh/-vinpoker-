@@ -11,7 +11,7 @@ if (import.meta.hot) {
   import.meta.hot.accept(() => import.meta.hot!.invalidate());
 }
 
-type AppRole = "player" | "club_admin" | "super_admin" | "cashier" | "club_cashier" | "media" | "tracker";
+type AppRole = "player" | "club_admin" | "super_admin" | "cashier" | "club_cashier" | "media" | "tracker" | "floor";
 
 interface AuthContextValue {
   session: Session | null;
@@ -27,6 +27,7 @@ interface AuthContextValue {
   isMedia: boolean; // media role
   isMediaOrAdmin: boolean; // can manage CMS / support
   isTracker: boolean; // tracker role — can access live tracker
+  isFloor: boolean; // floor role — NAV/affordance only; data access is gated server-side by is_club_floor / floor_club_ids
   isDealer: boolean; // linked to a dealers row (dealers.user_id = auth.uid())
   isChipMaster: boolean; // Chip-Master of >=1 club (club_chip_masters) — flag-gated + guarded
 }
@@ -111,6 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isMedia: roles.includes("media"),
       isMediaOrAdmin: roles.includes("super_admin") || roles.includes("media"),
       isTracker: roles.includes("tracker"),
+      isFloor: roles.includes("floor"),
       isDealer,
       isChipMaster,
     }}>
