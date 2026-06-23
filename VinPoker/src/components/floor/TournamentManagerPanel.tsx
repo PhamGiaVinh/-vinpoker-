@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play, History } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ChevronDown, ChevronRight, CalendarPlus, Loader2, ListOrdered, Play, History, Award } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import { LiveStateEditor } from "@/components/LiveStateEditor";
@@ -142,7 +142,11 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
                 <Card key={t2.id} className="p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold truncate">{t2.name}</div>
+                      <div className="font-semibold truncate flex items-center gap-1">
+                        <span className="truncate">{t2.name}</span>
+                        {FEATURES.multiDayTournaments && t2.phase === "flight" && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">Flight {t2.flight_label}</span>}
+                        {FEATURES.multiDayTournaments && t2.phase === "final" && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600">Final</span>}
+                      </div>
                       <div className="text-xs text-muted-foreground">{formatDateTime(t2.start_time)}</div>
                       <div className="mt-0.5"><FomoPrice tournament={t2} /></div>
                       <div className="text-[11px] text-muted-foreground">
@@ -154,6 +158,7 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
                     <div className="flex gap-1">
                       <EditTournamentDialog tournament={t2} onSaved={load} />
                       <AuditHistoryDialog tournament={t2} />
+                      {FEATURES.multiDayTournaments && t2.phase === "flight" && <FlightQualifiersDialog flight={t2} onDone={load} />}
                       {FEATURES.blindTemplates && <BlindStructureDialog tournament={t2} />}
                       <Button variant="ghost" size="icon" onClick={() => deleteTour(t2.id)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -189,6 +194,123 @@ export function TournamentManagerPanel({ clubIds, clubs, embedded = false }: { c
     </Card>
   );
 }
+
+// MD-2 — Floor picks qualified players from a flight → they advance to the event's
+// Final Day carrying their end-of-flight stack. Suggested count = ceil(active players ×
+// itm_percent / 100), rounded UP (owner spec); floor selects manually. The advance is one
+// atomic RPC (advance_flight_qualifiers, idempotent). Gated by FEATURES.multiDayTournaments.
+type QualifierPlayer = { player_id: string; player_name: string; chip_count: number };
+const FlightQualifiersDialog = ({ flight, onDone }: { flight: any; onDone: () => void }) => {
+  const [open, setOpen] = useState(false);
+  const [players, setPlayers] = useState<QualifierPlayer[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [advanced, setAdvanced] = useState<Set<string>>(new Set());
+  const [itm, setItm] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data: seats } = await (supabase as any)
+        .from("tournament_seats")
+        .select("player_id, player_name, chip_count, entry_number")
+        .eq("tournament_id", flight.id)
+        .eq("is_active", true)
+        .order("chip_count", { ascending: false });
+      const evRes = flight.event_id
+        ? await (supabase as any).from("tournament_events").select("itm_percent").eq("id", flight.event_id).maybeSingle()
+        : { data: null };
+      const { data: q } = await (supabase as any)
+        .from("tournament_event_qualifiers")
+        .select("player_id")
+        .eq("flight_tournament_id", flight.id);
+      if (cancelled) return;
+      // one row per player (seats may have re-entries; keep the first = highest chip)
+      const seen = new Set<string>();
+      const uniq: QualifierPlayer[] = [];
+      for (const s of ((seats ?? []) as any[])) {
+        if (seen.has(s.player_id)) continue;
+        seen.add(s.player_id);
+        uniq.push({ player_id: s.player_id, player_name: s.player_name || "?", chip_count: s.chip_count || 0 });
+      }
+      const adv = new Set<string>(((q ?? []) as any[]).map((r) => r.player_id));
+      setPlayers(uniq);
+      setAdvanced(adv);
+      setSelected(new Set(adv)); // pre-select already-advanced
+      setItm(Number(evRes?.data?.itm_percent) || 0);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [open, flight.id, flight.event_id]);
+
+  const suggested = Math.ceil((players.length * itm) / 100);
+  const toggle = (pid: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    return next;
+  });
+
+  const confirm = async () => {
+    if (busy) return;
+    const ids = [...selected];
+    if (!ids.length) return toast.error("Chọn ít nhất 1 người");
+    setBusy(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("advance_flight_qualifiers", { p_flight_id: flight.id, p_player_ids: ids });
+      const res = (data ?? null) as { ok?: boolean; advanced?: number; error?: string } | null;
+      if (error || !res?.ok) { toast.error(res?.error || error?.message || "Chuyển qualified lỗi"); return; }
+      toast.success(`Đã chuyển ${res.advanced} người vào Final Day (mang theo stack)`);
+      setOpen(false);
+      onDone();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" title="Chọn qualified vào Final Day"><Award className="w-4 h-4 text-amber-500" /></Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="truncate">Qualified — {flight.name}</DialogTitle></DialogHeader>
+        {loading ? (
+          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              ITM {itm}% × {players.length} người = <span className="text-primary font-semibold">gợi ý {suggested} qualified</span> (làm tròn lên). Floor tự chọn ai vào Final Day; người được chọn mang theo stack hiện tại.
+            </p>
+            {players.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Flight chưa có người chơi (active seat).</p>
+            ) : (
+              <div className="space-y-1">
+                {players.map((p) => {
+                  const isSel = selected.has(p.player_id);
+                  const wasAdv = advanced.has(p.player_id);
+                  return (
+                    <button key={p.player_id} type="button" onClick={() => toggle(p.player_id)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${isSel ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40"}`}>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] ${isSel ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>{isSel ? "✓" : ""}</span>
+                        <span className="truncate">{p.player_name}</span>
+                        {wasAdv && <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600">đã qualified</span>}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">{p.chip_count.toLocaleString("vi-VN")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="pt-1 text-xs text-muted-foreground">Đã chọn: <span className="text-primary font-semibold">{selected.size}</span> / gợi ý {suggested}</div>
+            <Button onClick={confirm} disabled={busy || selected.size === 0} className="w-full gradient-neon text-primary-foreground border-0">{busy ? "Đang chuyển…" : "Xác nhận qualified → Final Day"}</Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 // GTD committed guarantee (Phase 3b-D1): empty -> null ("thiếu GTD", never faked from
 // prize pool); otherwise a non-negative number. Writes flow through the live audit trigger.
