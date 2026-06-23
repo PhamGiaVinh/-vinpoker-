@@ -361,6 +361,9 @@ const FlightQualifiersDialog = ({ flight, meta, onDone }: { flight: any; meta?: 
             <p className="text-xs text-muted-foreground">
               {entrants} người vào giải · ITM {itm}% → <span className="text-primary font-semibold">cần {target} qualified</span> (làm tròn lên) · còn lại {players.length}.
             </p>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              Stack mang sang Final Day lấy theo <span className="text-foreground font-medium">túi Bag &amp; Tag đã niêm phong</span> (chip master); chưa bag thì lấy stack hiện tại.
+            </p>
             {ready && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
                 ✓ Đã về đúng số ITM — tất cả {players.length} người còn lại là qualified, đã tích sẵn. Bấm xác nhận để đưa vào Final Day.
