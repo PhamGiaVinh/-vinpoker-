@@ -301,6 +301,12 @@ const NewTournamentDialog = ({
   const [blindChoice, setBlindChoice] = useState("none");
   const [clubTemplates, setClubTemplates] = useState<BlindTemplate[]>([]);
   const [busy, setBusy] = useState(false);
+  // Multi-day (Main Event + flights A..K + final). Gated by FEATURES.multiDayTournaments.
+  const [mode, setMode] = useState<"single" | "multi">("single");
+  const [itmPercent, setItmPercent] = useState("");
+  const [flightCount, setFlightCount] = useState(3);
+  const [finalStart, setFinalStart] = useState("");
+  const flightLabels = Array.from({ length: Math.min(11, Math.max(1, flightCount)) }, (_, i) => String.fromCharCode(65 + i)).join(", ");
   useEffect(() => { setClubId(defaultClubId); }, [defaultClubId]);
   // Load this club's saved blind structures for the picker (gated).
   useEffect(() => {
@@ -323,8 +329,45 @@ const NewTournamentDialog = ({
     return [];
   };
 
+  // Multi-day: one atomic RPC creates the event + flights A..K + final + blind levels.
+  const submitMultiDay = async () => {
+    if (busy) return;
+    if (!clubId) return toast.error("Chọn câu lạc bộ");
+    if (!f.name) return toast.error("Nhập tên Main Event");
+    if (!finalStart) return toast.error("Chọn giờ Final Day");
+    if (!flightCount || flightCount < 1 || flightCount > 11) return toast.error("Số flight 1–11 (A–K)");
+    setBusy(true);
+    try {
+      const levels = resolveLevels(blindChoice);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC 20261025000000, not in generated types
+      const { data, error } = await (supabase.rpc as any)("create_tournament_event_with_flights", {
+        p_club_id: clubId,
+        p_name: f.name,
+        p_itm_percent: Number(itmPercent) || 0,
+        p_buy_in: Number(f.buy_in),
+        p_rake_amount: Number(f.rake_amount) || 0,
+        p_starting_stack: Number(f.starting_stack),
+        p_game_type: f.game_type,
+        p_minutes_per_level: Number(f.minutes_per_level),
+        p_late_reg_close_level: Number(f.late_reg_close_level),
+        p_flight_count: Number(flightCount),
+        p_final_start_time: new Date(finalStart).toISOString(),
+        p_flight_start_times: f.start_time ? Array.from({ length: Number(flightCount) }, () => new Date(f.start_time).toISOString()) : null,
+        p_levels: levels.length ? levels : null,
+      });
+      const res = (data ?? null) as { ok?: boolean; error?: string } | null;
+      if (error || !res?.ok) { toast.error(res?.error || error?.message || "Tạo Main Event lỗi"); return; }
+      toast.success(`Đã tạo "${f.name}" — ${flightCount} flight (${flightLabels}) + Final Day`);
+      setOpen(false);
+      onCreated();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async () => {
     if (busy) return; // guard: never double-insert on a fast double-click
+    if (FEATURES.multiDayTournaments && mode === "multi") return submitMultiDay();
     if (!f.name || !f.start_time) return toast.error("Please fill all required fields");
     if (!clubId) return toast.error("Chọn câu lạc bộ");
     setBusy(true);
@@ -373,8 +416,24 @@ const NewTournamentDialog = ({
               </Select>
             </>
           )}
-          <Label>Name</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          <Label>Start time</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
+          {FEATURES.multiDayTournaments && (
+            <div className="flex gap-1 rounded-lg bg-muted/40 p-1">
+              <button type="button" onClick={() => setMode("single")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${mode === "single" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Giải thường</button>
+              <button type="button" onClick={() => setMode("multi")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${mode === "multi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>Multi-day (nhiều flight)</button>
+            </div>
+          )}
+          <Label>{mode === "multi" ? "Tên Main Event" : "Name"}</Label><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder={mode === "multi" ? "VD: Main Event" : ""} />
+          <Label>{mode === "multi" ? "Giờ bắt đầu flight (mặc định — sửa từng flight sau)" : "Start time"}</Label><Input type="datetime-local" value={f.start_time} onChange={e => setF({ ...f, start_time: e.target.value })} />
+          {mode === "multi" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label>ITM % (mỗi flight)</Label><Input type="number" step="0.1" min={0} value={itmPercent} onChange={e => setItmPercent(e.target.value)} placeholder="VD: 12.5" /></div>
+                <div><Label>Số flight (A–K)</Label><Input type="number" min={1} max={11} value={flightCount} onChange={e => setFlightCount(Math.min(11, Math.max(1, Math.floor(+e.target.value) || 1)))} /></div>
+              </div>
+              <p className="text-[11px] text-muted-foreground -mt-1">Tạo {flightCount} flight ({flightLabels}) + 1 Final Day. Qualified mỗi flight = làm tròn lên(số entrant × ITM%/100); floor tự chọn ai vào final (bước sau).</p>
+              <Label>Giờ Final Day</Label><Input type="datetime-local" value={finalStart} onChange={e => setFinalStart(e.target.value)} />
+            </>
+          )}
           <Label>Game type</Label>
           <Select value={f.game_type} onValueChange={v => setF({ ...f, game_type: v })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
