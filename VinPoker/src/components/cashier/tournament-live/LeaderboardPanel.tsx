@@ -10,17 +10,43 @@ export function LeaderboardPanel({ tournamentId, refreshTrigger }: { tournamentI
   const [leaderboard, setLeaderboard] = useState<TournamentLeaderboard | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Read the leaderboard straight from the DB RPC (no Edge Function hop). The old
+  // `tournament-live-leaderboard` Edge wrapper just called this same RPC, but when
+  // it isn't deployed the client throws "Failed to send a request to the Edge
+  // Function" with no fallback — calling the RPC directly is simpler and resilient.
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("tournament-live-leaderboard", {
-      body: { tournament_id: tournamentId },
-    });
+    const { data, error } = await supabase.rpc("get_tournament_leaderboard", { p_tournament_id: tournamentId });
     setLoading(false);
-    if (error || data?.error) { toast.error(data?.error || error?.message); return; }
-    setLeaderboard(data?.data ?? null);
+    if (error) { toast.error(error.message); return; }
+    setLeaderboard((data as unknown as TournamentLeaderboard) ?? null);
   }, [tournamentId]);
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
+
+  // Live chip counts: refresh when seats / chip counts / hands change for this
+  // tournament (same realtime tables the tracker subscribes to). A debounce coalesces
+  // bursts; if realtime is unavailable we fall back to an 8s poll.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const refresh = () => { if (debounce) clearTimeout(debounce); debounce = setTimeout(() => load(), 700); };
+    const channel = supabase
+      .channel(`leaderboard:${tournamentId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_seats", filter: `tournament_id=eq.${tournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_chip_counts", filter: `tournament_id=eq.${tournamentId}` }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_hands", filter: `tournament_id=eq.${tournamentId}` }, refresh)
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!poll) poll = setInterval(() => load(), 8000);
+        } else if (status === "SUBSCRIBED" && poll) { clearInterval(poll); poll = null; }
+      });
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      if (poll) clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+  }, [tournamentId, load]);
 
   return (
     <Card className="p-4 space-y-4">
