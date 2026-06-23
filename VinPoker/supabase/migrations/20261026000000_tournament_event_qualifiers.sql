@@ -8,8 +8,10 @@
 -- Design (owner, Option A — "vào pool → floor bốc thăm Day 2"): floor PICKS qualifiers
 -- (UI suggested count = ceil(flight ENTRANTS × itm_percent/100), rounded up). Advancement
 -- is recorded explicitly in tournament_event_qualifiers (idempotent on flight+player) with
--- the player's end-of-flight CARRIED STACK (active-seat chip in the flight; fallback their
--- tournament_chip_counts entry, else 0). This RPC ONLY records the qualifier — it does NOT
+-- the player's end-of-flight CARRIED STACK. That stack is SYNCED with the chip master's
+-- Bag & Tag (20261021000000): the player's SEALED chip_bag.total_value for the flight (the
+-- reconciled, official end-of-flight count) is authoritative; it falls back to the live
+-- active-seat chip, then tournament_chip_counts, then 0. This RPC ONLY records the qualifier — it does NOT
 -- seat anyone or write money. Final-day seating is a separate atomic "Bốc thăm Day 2" draw
 -- (MD-3, seat_day2_qualifiers) that materialises registration + entry + seat carrying each
 -- stack, with buy_in=0 (players already paid in the flight → finance-neutral). The qualifiers
@@ -127,10 +129,22 @@ BEGIN
   END IF;
 
   FOREACH v_pid IN ARRAY p_player_ids LOOP
-    -- carried stack: active seat in the flight, else the chip-count tracker, else 0
-    SELECT chip_count INTO v_stack FROM public.tournament_seats
-      WHERE tournament_id = p_flight_id AND player_id = v_pid AND is_active = true
-      ORDER BY entry_number DESC LIMIT 1;
+    -- Carried stack — SYNCED with the chip master's Bag & Tag (chip_bag, day_close): the
+    -- player's SEALED bag for this flight is the official, reconciled end-of-flight count,
+    -- so it wins. Fall back to the live active-seat chip, then the chip-count tracker, then 0.
+    -- Guarded by to_regclass so advancing still works if Bag & Tag is ever rolled back.
+    v_stack := NULL;
+    IF to_regclass('public.chip_bag') IS NOT NULL THEN
+      EXECUTE 'SELECT total_value FROM public.chip_bag
+                 WHERE tournament_id = $1 AND player_id = $2 AND sealed = true
+                 ORDER BY day_number DESC LIMIT 1'
+        INTO v_stack USING p_flight_id, v_pid;
+    END IF;
+    IF v_stack IS NULL THEN
+      SELECT chip_count INTO v_stack FROM public.tournament_seats
+        WHERE tournament_id = p_flight_id AND player_id = v_pid AND is_active = true
+        ORDER BY entry_number DESC LIMIT 1;
+    END IF;
     IF v_stack IS NULL THEN
       SELECT chip_count INTO v_stack FROM public.tournament_chip_counts
         WHERE tournament_id = p_flight_id AND player_id = v_pid
