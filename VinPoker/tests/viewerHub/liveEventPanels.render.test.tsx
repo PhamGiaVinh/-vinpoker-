@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 
 let mockRows: unknown[] = [];
+let mockLb: unknown = null; // get_tournament_leaderboard RPC result (finishers/champion)
 // A thenable that also chains .order() any number of times (Prizes/Structure use one
 // .order(); PhotosPanel uses .order().order()).
 const makeResult = (): unknown => ({
@@ -15,6 +16,7 @@ const makeResult = (): unknown => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({ select: () => ({ eq: () => ({ order: () => makeResult() }) }) }),
+    rpc: () => Promise.resolve({ data: mockLb, error: null }),
   },
 }));
 
@@ -25,7 +27,7 @@ import { StructurePanel } from "@/components/cashier/tournament-live/viewer-hub/
 // eslint-disable-next-line import/first
 import { PhotosPanel } from "@/components/cashier/tournament-live/viewer-hub/PhotosPanel";
 
-beforeEach(() => { mockRows = []; });
+beforeEach(() => { mockRows = []; mockLb = null; });
 afterEach(() => cleanup());
 
 describe("PrizesPanel (Giải thưởng)", () => {
@@ -45,6 +47,25 @@ describe("PrizesPanel (Giải thưởng)", () => {
     mockRows = [];
     render(<PrizesPanel tournamentId="t1" />);
     expect(await screen.findByText(/Chưa có cơ cấu giải thưởng/)).toBeTruthy();
+  });
+
+  it("shows the Champion card + finisher name when the leaderboard RPC returns positions", async () => {
+    mockRows = [
+      { position: 1, amount: 5000000, percentage: 50 },
+      { position: 2, amount: 2500000, percentage: 25 },
+    ];
+    mockLb = {
+      prize_pool: 10000000,
+      players: [
+        { position: 1, player_name: "Nguyễn Huy Hoàng", prize: 5000000 },
+        { position: 2, player_name: "Trần Hoài Anh", prize: 2500000 },
+        { position: 0, player_name: "Still Alive", prize: 0 },
+      ],
+    };
+    render(<PrizesPanel tournamentId="t1" />);
+    expect(await screen.findByText(/Nhà vô địch/)).toBeTruthy(); // champion card label
+    expect(screen.getAllByText("Nguyễn Huy Hoàng").length).toBeGreaterThan(0); // champion + row
+    expect(screen.getByText("Trần Hoài Anh")).toBeTruthy(); // 2nd-place finisher name in the row
   });
 });
 

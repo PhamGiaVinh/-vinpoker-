@@ -1,46 +1,56 @@
-// Public "Giải thưởng" (payouts) tab — READ-ONLY prize structure for the spectator
-// event view. Reads tournament_prizes (anon-readable) ordered by finish position.
-// Presentational + a tiny self-contained query; no operator editor coupling, no
-// writes. Empty/loading states. Stitch-Dark, theme-token colors (dark + warm safe).
+// Public "Giải thưởng" (payouts) tab — RPT-style results: a Champion card + the
+// payout list with the FINISHER's name per place + entries + prize pool. Names come
+// from get_tournament_leaderboard (finish positions); the prize structure comes from
+// tournament_prizes (anon-readable). If the leaderboard RPC isn't public yet it
+// degrades to the prize structure alone (amounts only). No writes.
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Trophy } from "lucide-react";
+import { Loader2, Trophy, Crown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { formatStack } from "../LiveFelt";
 
-interface PrizeRow {
-  position: number;
-  amount: number;
-  percentage: number;
-}
+interface PrizeRow { position: number; amount: number; percentage: number }
+interface Finisher { name: string; prize: number }
 
 export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<PrizeRow[] | null>(null);
+  const [finishers, setFinishers] = useState<Record<number, Finisher>>({});
+  const [entries, setEntries] = useState<number | null>(null);
+  const [prizePool, setPrizePool] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data } = await supabase
+      // Prize structure (always available, anon-readable).
+      const prizesP = supabase
         .from("tournament_prizes")
         .select("position, amount, percentage")
         .eq("tournament_id", tournamentId)
         .order("position", { ascending: true });
+      // Finishers / champion (needs the leaderboard RPC to be public — degrades if not).
+      const lbP = supabase.rpc("get_tournament_leaderboard", { p_tournament_id: tournamentId });
+      const [{ data: prizes }, lbRes] = await Promise.all([prizesP, lbP]);
       if (!alive) return;
-      setRows((data ?? []) as PrizeRow[]);
+      setRows((prizes ?? []) as PrizeRow[]);
+
+      const lb = (lbRes?.data ?? null) as { players?: { position?: number; player_name?: string; prize?: number }[]; prize_pool?: number } | null;
+      const players = lb?.players ?? [];
+      const byPos: Record<number, Finisher> = {};
+      for (const p of players) {
+        const pos = Number(p.position) || 0;
+        if (pos > 0) byPos[pos] = { name: (p.player_name || "").trim(), prize: Number(p.prize) || 0 };
+      }
+      setFinishers(byPos);
+      setEntries(players.length || null);
+      setPrizePool(lb?.prize_pool ?? null);
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [tournamentId]);
 
   if (rows === null) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-emerald-400" />
-      </div>
-    );
+    return <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-emerald-400" /></div>;
   }
 
   if (rows.length === 0) {
@@ -51,32 +61,50 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
     );
   }
 
-  const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+  const champion = finishers[1];
+  const totalStructure = rows.reduce((s, r) => s + (r.amount || 0), 0);
+  const pool = prizePool ?? totalStructure;
 
   return (
-    <div className="space-y-2">
-      {total > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-[hsl(var(--poker-gold)/0.35)] bg-card/50 px-3.5 py-2">
-          <span className="tracker-display text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-            {t("liveHub.prizes.total", "Tổng thưởng")}
-          </span>
-          <span className="tracker-num text-base font-bold" style={{ color: "hsl(var(--poker-gold))" }}>
-            {formatStack(total)}
-          </span>
+    <div className="space-y-2.5">
+      {champion && champion.name && (
+        <div
+          className="flex items-center gap-3 rounded-xl border px-3.5 py-3"
+          style={{ borderColor: "hsl(var(--poker-gold) / 0.55)", background: "linear-gradient(110deg, hsl(var(--poker-gold)/0.16), transparent 70%)" }}
+        >
+          <Crown className="h-7 w-7 shrink-0" style={{ color: "hsl(var(--poker-gold))" }} />
+          <div className="min-w-0 flex-1">
+            <div className="tracker-display text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              {t("liveHub.prizes.champion", "Nhà vô địch")}
+            </div>
+            <div className="truncate text-base font-extrabold text-foreground">{champion.name}</div>
+          </div>
+          {champion.prize > 0 && (
+            <div className="tracker-num shrink-0 text-lg font-bold" style={{ color: "hsl(var(--poker-gold))" }}>{formatStack(champion.prize)}</div>
+          )}
         </div>
       )}
+
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-border/50 bg-card/50 px-3.5 py-2 text-[12px]">
+        {entries != null && entries > 0 && (
+          <span className="text-muted-foreground">{t("liveHub.prizes.entries", "Entries")}: <b className="tracker-num text-foreground">{entries}</b></span>
+        )}
+        <span className="text-muted-foreground">{t("liveHub.prizes.total", "Tổng thưởng")}: <b className="tracker-num" style={{ color: "hsl(var(--poker-gold))" }}>{formatStack(pool)}</b></span>
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-border/50">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-card/70 text-[11px] uppercase tracking-wider text-muted-foreground">
               <th className="px-3 py-2 text-left font-semibold">{t("liveHub.prizes.position", "Hạng")}</th>
+              <th className="px-3 py-2 text-left font-semibold">{t("liveHub.prizes.player", "Người chơi")}</th>
               <th className="px-3 py-2 text-right font-semibold">{t("liveHub.prizes.amount", "Tiền thưởng")}</th>
-              <th className="px-3 py-2 text-right font-semibold">%</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const top = r.position <= 3;
+              const who = finishers[r.position]?.name;
               return (
                 <tr key={r.position} className="border-t border-border/30">
                   <td className="px-3 py-2">
@@ -85,13 +113,11 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
                       {t("liveHub.prizes.rank", "#{{n}}", { n: r.position })}
                     </span>
                   </td>
+                  <td className="px-3 py-2 truncate text-foreground">{who || <span className="text-muted-foreground/60">—</span>}</td>
                   <td className="px-3 py-2 text-right">
                     <span className="tracker-num font-bold" style={{ color: top ? "hsl(var(--poker-gold))" : "hsl(var(--success))" }}>
                       {formatStack(r.amount)}
                     </span>
-                  </td>
-                  <td className="px-3 py-2 text-right tracker-num text-muted-foreground">
-                    {r.percentage ? `${r.percentage}%` : "—"}
                   </td>
                 </tr>
               );

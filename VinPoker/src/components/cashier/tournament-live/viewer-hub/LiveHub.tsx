@@ -44,6 +44,10 @@ export interface LiveHubProps {
   playersRemaining?: number | null;
   /** Live level number — highlights the current row in the Cấu trúc tab. */
   currentLevel?: number | null;
+  /** Event info chips for the header (GTD / buy-in / starting stack). */
+  guarantee?: number | null;
+  buyIn?: number | null;
+  startingStack?: number | null;
   onShare: () => void;
   /** Deep-link (?hand=N) → open that hand in the featured viewer's replay. */
   initialReplayHandNumber?: number | null;
@@ -59,12 +63,18 @@ export interface LiveHubProps {
 
 export function LiveHub({
   tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, currentLevel,
+  guarantee, buyIn, startingStack,
   onShare, initialReplayHandNumber = null, onViewHand, onShareHand, onCloseHand, children,
 }: LiveHubProps) {
   // Isolated hub data (count / all-tables / feed / chip leader). Does NOT touch
   // TournamentLiveView — the featured felt still renders the real viewer when watched.
   const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId);
   const { t } = useTranslation();
+
+  // "Cập nhật … trước" — stamp the moment the hub data last changed (each poll for a
+  // live event re-stamps, so the header stays fresh; a finished event freezes).
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  useEffect(() => { setLastUpdated(new Date()); }, [feed, tables, storyFeed]);
 
   // Public table-map picker (legacy stacked layout): which table to feature.
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -100,7 +110,7 @@ export function LiveHub({
     const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayHandNumber });
     return (
       <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
-        <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} onShare={onShare} />
+        <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} guarantee={guarantee} buyIn={buyIn} startingStack={startingStack} lastUpdated={lastUpdated} onShare={onShare} />
         <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
         <LiveTablesMap tables={tables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
         <FeaturedTableCard

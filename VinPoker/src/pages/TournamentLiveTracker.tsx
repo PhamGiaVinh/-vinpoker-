@@ -88,7 +88,7 @@ const TournamentLiveTracker = () => {
     (async () => {
       const { data } = await supabase
         .from("tournaments")
-        .select("id, name, status, prize_pool, players_remaining, current_level, club:clubs(id, name)")
+        .select("id, name, status, prize_pool, players_remaining, current_level, buy_in, guarantee_amount, starting_stack, club:clubs(id, name)")
         .eq("id", tournamentId)
         .maybeSingle();
       setTournament(data);
@@ -144,6 +144,9 @@ const TournamentLiveTracker = () => {
         prizePool={tournament.prize_pool}
         playersRemaining={tournament.players_remaining}
         currentLevel={tournament.current_level}
+        guarantee={tournament.guarantee_amount}
+        buyIn={tournament.buy_in}
+        startingStack={tournament.starting_stack}
         onShare={handleShare}
         initialReplayHandNumber={deepHandNumber}
         onViewHand={handleViewHand}
