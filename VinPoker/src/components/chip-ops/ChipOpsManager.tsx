@@ -83,6 +83,7 @@ export function ChipOpsManager() {
   const [denoms, setDenoms] = useState<Denom[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [inv, setInv] = useState<Inventory | null>(null);
+  const [coupling, setCoupling] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // load tournaments (RLS-scoped)
@@ -139,6 +140,14 @@ export function ChipOpsManager() {
       } catch { /* fall through */ }
       if (!invData) invData = await callRpc("get_issued_chip_inventory", { p_tournament_id: tid });
       setInv(invData && !invData.error ? (invData as Inventory) : null);
+
+      // két auto-coupling (Model A) state — silent if not applied on the server
+      if (clubId) {
+        try {
+          const { data: cb, error: ce } = await sb.rpc("get_chip_bank", { p_club_id: clubId });
+          setCoupling(!!(cb && !ce && !cb.error && cb.coupling_enabled));
+        } catch { setCoupling(false); }
+      } else { setCoupling(false); }
     } finally {
       setLoading(false);
     }
@@ -209,7 +218,13 @@ export function ChipOpsManager() {
                   />
                 )}
                 {templates.length > 0 && (
-                  <IssuanceCard templates={templates} busy={busy} setBusy={setBusy} reload={() => reload(tournamentId)} />
+                  <IssuanceCard
+                    templates={templates}
+                    coupling={coupling}
+                    opsStarted={!!(inv && (((inv as any).ledger_delta_value ?? 0) !== 0 || ((inv as any).rounding_total ?? 0) !== 0))}
+                    busy={busy} setBusy={setBusy}
+                    reload={() => reload(tournamentId)}
+                  />
                 )}
                 <InventoryCard inv={inv} />
               </>
@@ -411,31 +426,65 @@ function TemplatesCard({ tournamentId, denoms, templates, busy, setBusy, reload 
 }
 
 // ---------- Issuance ----------
-function IssuanceCard({ templates, busy, setBusy, reload }: { templates: TemplateRow[]; busy: boolean; setBusy: (b: boolean) => void; reload: () => void; }) {
+// When két auto-coupling (Model A) is ON, editing the issued count IS a két movement (phát→xuất /
+// bớt→thu), so the card relabels + previews the delta. Even when OFF, if the tournament already has
+// chip transactions (color-up / adjust), changing issuance shifts current inventory → a warning.
+function IssuanceCard({ templates, coupling, opsStarted, busy, setBusy, reload }: {
+  templates: TemplateRow[]; coupling: boolean; opsStarted: boolean; busy: boolean; setBusy: (b: boolean) => void; reload: () => void;
+}) {
   const [vals, setVals] = useState<Record<string, string>>({});
+  const deltaOf = (t: TemplateRow) => {
+    const raw = vals[t.id];
+    if (raw === undefined || raw === "") return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n - t.issued_count : 0;
+  };
   const save = async (templateId: string) => {
     const raw = vals[templateId];
     const n = raw === undefined ? NaN : Number(raw);
     if (!Number.isFinite(n) || n < 0) { toast.error("Nhập số bộ ≥ 0."); return; }
     setBusy(true);
     const r = await callRpc("chip_ops_set_issuance", { p_stack_template_id: templateId, p_issued_count: n });
-    if (r?.status === "ok") { toast.success("Đã lưu số bộ phát."); reload(); }
+    if (r?.status === "ok") {
+      toast.success(r.coupled ? "Đã lưu & cập nhật kho két." : "Đã lưu số bộ phát.");
+      reload();
+    }
     setBusy(false);
   };
   return (
     <Card className="border-border">
-      <CardHeader className="pb-3"><CardTitle className="text-base text-foreground">3. Số bộ đã phát</CardTitle></CardHeader>
-      <CardContent>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base text-foreground">{coupling ? "3. Phát / thu stack (tự động trừ két)" : "3. Số bộ đã phát"}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {opsStarted && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <div>Giải đã phát sinh giao dịch chip (color-up / điều chỉnh). Sửa số bộ phát sẽ <b>thay đổi tồn kho hiện tại</b> — chỉ sửa khi thật sự phát/thu thêm.</div>
+          </div>
+        )}
         <Table>
-          <TableHeader><TableRow><TableHead>Mẫu stack</TableHead><TableHead className="w-40">Số bộ đã phát</TableHead><TableHead className="text-right">Lưu</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Mẫu stack</TableHead><TableHead className="w-44">{coupling ? "Số bộ (phát/thu)" : "Số bộ đã phát"}</TableHead><TableHead className="text-right">Lưu</TableHead></TableRow></TableHeader>
           <TableBody>
-            {templates.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.name}</TableCell>
-                <TableCell><Input type="number" inputMode="numeric" min={0} value={vals[t.id] ?? String(t.issued_count)} onChange={(e) => setVals((v) => ({ ...v, [t.id]: e.target.value }))} className="h-9" /></TableCell>
-                <TableCell className="text-right"><Button size="sm" disabled={busy} onClick={() => save(t.id)}>Lưu</Button></TableCell>
-              </TableRow>
-            ))}
+            {templates.map((t) => {
+              const delta = deltaOf(t);
+              return (
+                <TableRow key={t.id}>
+                  <TableCell className="font-medium">{t.name}</TableCell>
+                  <TableCell>
+                    <Input type="number" inputMode="numeric" min={0} value={vals[t.id] ?? String(t.issued_count)} onChange={(e) => setVals((v) => ({ ...v, [t.id]: e.target.value }))} className="h-9" />
+                    {coupling && delta !== 0 && (
+                      <div className={`mt-1 text-[11px] ${delta > 0 ? "text-warning" : "text-primary"}`}>
+                        {delta > 0 ? `+${delta} bộ → xuất ${delta} bộ chip khỏi két` : `${delta} bộ → thu ${-delta} bộ chip về két`}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" disabled={busy} onClick={() => save(t.id)}>{coupling && delta !== 0 ? (delta > 0 ? "Lưu & xuất" : "Lưu & thu") : "Lưu"}</Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>
