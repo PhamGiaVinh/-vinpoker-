@@ -65,18 +65,37 @@ The PT "minutes since last reset" must reuse this exact shape so PT accrual == p
 include it.** Do **not** touch `payment_records`.
 
 1. New table **`dealer_pt_wage_payments`** (immutable): `id, dealer_id, club_id,
-   amount_vnd int, minutes_paid int, covered_from timestamptz, covered_to timestamptz,
-   paid_by uuid, created_by uuid, created_at, payment_method, payment_reference,
-   payment_record_id uuid NULL (reserved/unused under Option B), voided_at/voided_by,
-   audit_note`. Use **minutes_paid** (not decimal hours). Idempotency guard.
+   amount_vnd int, minutes_paid int, hourly_rate_vnd_snapshot int, covered_from timestamptz,
+   covered_to timestamptz, paid_at timestamptz, paid_by uuid, created_by uuid, created_at,
+   payment_method, payment_reference, idempotency_key text, note, voided_at/voided_by`.
+   Use **minutes_paid** (not decimal hours). **Snapshot the rate**
+   (`hourly_rate_vnd_snapshot`) so changing a dealer's rate later never makes old payouts
+   ambiguous. **Idempotency:** `UNIQUE(dealer_id, idempotency_key)` — a retried call (client
+   timeout after a successful insert) returns the prior result, never a spurious
+   "balance = 0" or a second reset. (No `payment_record_id` under Option B — PT payouts do
+   not touch `payment_records`.)
 2. **Extend `get_club_finance_summary`** to also `SUM(dealer_pt_wage_payments.amount_vnd)`
-   (paid, in range, not voided) into the payroll/payout cost (`payrollNet`) so PT pay-reset
-   is visible to the owner. This extension is part of B1 and must be golden-diff verified
+   into the payroll/payout cost (`payrollNet`). **Cash basis: sum by `paid_at`** within the
+   requested range (exclude voided) — `covered_from/covered_to` are explanatory (which work
+   period the pay covers), NOT the cash-accounting date. Part of B1; golden-diff verified
    (no change to existing numbers when there are no PT payments).
-3. **Reset semantics**: the dealer's reset anchor = `MAX(covered_to)` (fallback: first
-   attendance / joined_date). Accrued balance is *derived* from attendance since the anchor;
-   a full payment writes a ledger row and advances the anchor. Saved ledger rows are
-   immutable (business reversal only via `voided_at/voided_by`).
+3. **Reset semantics**: the dealer's reset anchor = `MAX(covered_to)` over non-voided rows
+   (fallback: first attendance / joined_date). Accrued balance is *derived* from attendance
+   since the anchor; a full payment writes a ledger row and advances the anchor. If paid
+   mid-shift (e.g. checked-in 18:00, paid 21:00 with shift still open), the next balance
+   counts from 21:00, not from 18:00. Saved ledger rows are immutable (business reversal only
+   via `voided_at/voided_by`).
+
+### 2b. PT pay is real cash — mandatory visibility (owner, 2026-06-23)
+A PT wage payout is real money leaving the club. Because it does **not** go through
+`payment_records`, B1 MUST make every PT payout visible in **all** of:
+- **Finance Summary** (`get_club_finance_summary` → `payrollNet`, summed by `paid_at`),
+- **PT payment history** (per dealer, from `dealer_pt_wage_payments`),
+- **`payroll_audit_log`** (one row per payout: actor + amount + dealer),
+- **Owner payout report**.
+
+The owner must never see monthly payroll but miss PT live payments. If any one of these
+surfaces would not reflect a PT payout, the design is wrong and B1 is not ready.
 
 **Why not the alternatives:** Option A (nullable `period_id` + payout-kind on `payment_records`)
 breaks the one-record-per-period invariant and forces refactoring the LIVE lifecycle RPCs.
@@ -92,7 +111,11 @@ Option C (synthetic `payroll_periods`) pollutes period selectors and is hard to 
 - Dealer-self RPCs take `p_dealer_id` and verify `dealers.user_id = auth.uid()` (multi-club).
 - Every RPC: `SECURITY DEFINER`, `SET search_path = public`, `REVOKE ALL … FROM PUBLIC`,
   `GRANT EXECUTE … TO authenticated`; anon denied; resolve `club_id` from the dealer.
+- Idempotency: `pay_part_time_balance` takes `p_idempotency_key`; `UNIQUE(dealer_id, idempotency_key)`; a retry returns the prior payout summary (not an error, not a second reset).
+- Ledger stores `hourly_rate_vnd_snapshot`; finance sums PT by `paid_at` (cash basis), not `covered_to`.
+- Re-check the migration slot immediately before commit (`git fetch origin` + `ls supabase/migrations | sort | tail`) — parallel sessions take slots; `20261026000000` is the current candidate (NOT `20261025000000`, taken by MD-1B) — verify again.
 - Migrations **source-only**, flags **OFF**, owner-gated apply, types regen before UI wiring.
+- `db-safety-auditor` + `rls-security-auditor` PASS before PR-ready.
 
 ## 4. Open items
 - Confirm the exact dealer-self RLS policy text for `dealers` / `dealer_attendance` on
