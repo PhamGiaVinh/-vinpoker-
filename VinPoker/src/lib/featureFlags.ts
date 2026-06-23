@@ -436,4 +436,29 @@ export const FEATURES = {
    * with public-read / super_admin-write RLS). Kill-switch: set false.
    */
   pokerIqRemoteQuestions: false,
+  /**
+   * Marketing module — the club-scoped `marketing` role + the /marketing surface (compose →
+   * schedule → auto-dispatch to channels) + the `marketing-dispatch` Edge cron. Default **OFF**
+   * (dark): it needs the source-only migrations applied live first (`20261101000000` enum,
+   * `20261101000001` role, `20261101000002` core schema/RPCs, `20261101000003` dispatch cron).
+   * While false:
+   *   - the /marketing route redirects and the nav entry is hidden;
+   *   - `useAuth` NEVER queries `club_marketers` (see lib/marketer.ts) so it cannot 42P01 before
+   *     the table exists;
+   *   - the dispatch Edge fn / cron simply have no due posts (or are not yet scheduled).
+   * Flip to true ONLY after the four migrations are applied in a controlled DB session, the
+   * `marketing-dispatch` Edge fn is deployed, and owner UAT passes on a preview branch.
+   * P0 scope is **Telegram-only** — Facebook/Zalo channels stay disabled in the composer until a
+   * real per-club integration exists. Kill-switch: set false to hide the whole module again.
+   */
+  marketingModule: false,
+  /**
+   * Marketing approval gate. Default **OFF** because the owner chose direct-publish: a marketer
+   * can schedule their own posts without a separate approver (a compliance hard-block still runs
+   * at schedule time — see `marketing_schedule_post`). Flip to true later to require club-owner
+   * approval before a post can be scheduled (the `approved_by`/`approved_at` columns already
+   * exist for this). UI-only intent today; the server enforces direct-publish until the approval
+   * RPCs are added in a later phase.
+   */
+  marketingRequireApproval: false,
 } as const;
