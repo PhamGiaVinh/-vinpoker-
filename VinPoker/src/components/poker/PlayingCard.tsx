@@ -21,14 +21,16 @@ export function PlayingCard({
 }: {
   /** "Ah", "Td", … or undefined/"?" for a face-down card */
   card?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'mc' | 'md' | 'lg';
   /** play a one-shot flip-in when the card mounts (deal / showdown reveal) */
   reveal?: boolean;
   /** stagger the reveal flip (e.g. 2nd showdown card) — only applies when `reveal` */
   revealDelayMs?: number;
   className?: string;
 }) {
-  const dims = size === 'lg' ? 'h-16 w-11' : size === 'sm' ? 'h-8 w-6' : 'h-12 w-9';
+  // 'mc' (md-compact) ≈ 15% smaller than md — keeps every in-play card equal while giving the
+  // wide 5-card board breathing room beside the side seats on the tall mobile felt.
+  const dims = size === 'lg' ? 'h-16 w-11' : size === 'sm' ? 'h-8 w-6' : size === 'mc' ? 'h-10 w-[1.875rem]' : 'h-12 w-9';
 
   if (!card || card === '?') {
     return <CardBack size={size} className={className} />;
@@ -40,8 +42,8 @@ export function PlayingCard({
   const red = RED.has(suit);
   const color = red ? 'text-rose-600' : 'text-zinc-900';
 
-  const idx = size === 'lg' ? 'text-[11px]' : size === 'sm' ? 'text-[7px]' : 'text-[9px]';
-  const pip = size === 'lg' ? 'text-[28px]' : size === 'sm' ? 'text-[15px]' : 'text-[22px]';
+  const idx = size === 'lg' ? 'text-[11px]' : size === 'sm' ? 'text-[7px]' : size === 'mc' ? 'text-[8px]' : 'text-[9px]';
+  const pip = size === 'lg' ? 'text-[28px]' : size === 'sm' ? 'text-[15px]' : size === 'mc' ? 'text-[19px]' : 'text-[22px]';
 
   return (
     <div

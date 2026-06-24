@@ -37,19 +37,57 @@ function bbOrChips(chips: string, bb?: string): string {
   return inBB ? `${inBB} BB` : fmtChips(chips);
 }
 
-/** Seat-center positions around an ellipse, with `mySeat` rotated to the bottom. */
-function seatPositions(seats: PublicSeatView[], mySeat?: number): Record<number, { x: number; y: number }> {
+/** N8 "racetrack" opponent position for fraction t∈[0,1] of the path that goes from the
+ *  lower-LEFT, straight UP the left column, across the TOP row, then straight DOWN the right
+ *  column to the lower-right. Left/right columns share a fixed x (so seats line up in straight
+ *  columns) and sit INSIDE the felt with a green margin — the bottom is left free for the hero
+ *  HUD + action dock. Percent coords (0–100). */
+function racetrackPos(t: number): { x: number; y: number } {
+  const LX = 14, RX = 86;      // left / right column x — inside the felt with a margin; the
+                               // 'mc' compact board (narrower) leaves the side cards clear here
+  const YT = 18, YB = 56;      // top row y / bottom of the columns — capped so the lowest side
+                               // seats clear the bottom action dock (right) + hero HUD (left)
+  const leftEnd = 0.38, topEnd = 0.62;
+  if (t <= leftEnd) {                                   // left column, bottom → top
+    return { x: LX, y: YB + (YT - YB) * (t / leftEnd) };
+  }
+  if (t <= topEnd) {                                    // top row, left → right (slight bow up)
+    const u = (t - leftEnd) / (topEnd - leftEnd);
+    return { x: LX + (RX - LX) * u, y: YT - 3 * Math.sin(Math.PI * u) };
+  }
+  const u = (t - topEnd) / (1 - topEnd);                // right column, top → bottom
+  return { x: RX, y: YT + (YB - YT) * u };
+}
+
+/**
+ * Seat-center positions. `columns` (N8 / heroAsHud) lays the opponents out in STRAIGHT
+ * left+right columns + a top row, tucked inside the felt — the hero is drawn as a bottom
+ * HUD so the bottom is free (its bottom-centre slot is kept only for the bet chip + deal
+ * target). Otherwise (cinematic / spectator) the legacy even-ellipse is used.
+ */
+function seatPositions(seats: PublicSeatView[], mySeat?: number, columns = false): Record<number, { x: number; y: number }> {
   const ordered = [...seats].sort((a, b) => a.seat - b.seat);
   const n = ordered.length || 1;
   const myIdx = Math.max(0, ordered.findIndex((s) => s.seat === mySeat));
   const out: Record<number, { x: number; y: number }> = {};
-  // percent radii. rx<=38 keeps an ~88px name-plate centred at x≈12/88% fully on-screen once
-  // the felt fills the full width. ry<=36 keeps the lower-side seats clear of the bottom action
-  // dock / hero HUD on the now-tall fill felt (the felt-fill itself, not ry, gives the size).
+
+  // The racetrack suits the PORTRAIT mobile fill-felt; the desktop felt is a landscape oval
+  // where vertical side-columns would leave a big empty centre, so desktop keeps the ellipse.
+  const racetrack = columns && (typeof window === 'undefined' || window.matchMedia('(max-width: 639px)').matches);
+  if (racetrack) {
+    const m = n - 1; // opponents (the hero is a HUD, not on the ring)
+    ordered.forEach((s, i) => {
+      const k = (((i - myIdx) % n) + n) % n; // 0 = hero, 1..m = opponents clockwise from hero
+      if (k === 0) { out[s.seat] = { x: 50, y: 88 }; return; } // hero anchor (bet chip / deal only)
+      out[s.seat] = racetrackPos(m > 0 ? (k - 0.5) / m : 0.5);
+    });
+    return out;
+  }
+
+  // legacy even-ellipse (cinematic / spectator). rx<=38 keeps the ~88px plate on-screen.
   const rx = 38, ry = 36;
   ordered.forEach((s, i) => {
-    // bottom = 90deg; step clockwise so my seat sits at the bottom center.
-    const ang = (Math.PI / 2) + ((i - myIdx) / n) * 2 * Math.PI;
+    const ang = (Math.PI / 2) + ((i - myIdx) / n) * 2 * Math.PI; // bottom = 90deg, clockwise
     out[s.seat] = { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang) };
   });
   return out;
@@ -88,14 +126,15 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
   }
 
   // Cards float ABOVE the N8 name-plate. All cards (hero, opponents, board) use ONE uniform
-  // size `md` so the table reads consistently; folded / sitting-out seats show no cards.
+  // size `mc` (md-compact) so every in-play card reads equal AND the wide board clears the
+  // side seats on the tall mobile felt; folded / sitting-out seats show no cards.
   const cards = isMe
-    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />)
+    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal={!!c && c !== '?'} />)
     : folded || sittingOut
       ? null
       : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="md" reveal revealDelayMs={i * 130} />)
-        : <><PlayingCard size="md" /><PlayingCard size="md" /></>;
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal revealDelayMs={i * 130} />)
+        : <><PlayingCard size="mc" /><PlayingCard size="mc" /></>;
 
   return (
     <div className={cn(
@@ -197,7 +236,7 @@ export function SeatRing({
    *  Default false keeps the legacy centred `aspect-[3/5]` box (cinematic / spectator). */
   fill?: boolean;
 }) {
-  const pos = seatPositions(hand.seats, hand.mySeat);
+  const pos = seatPositions(hand.seats, hand.mySeat, heroAsHud);
   // Legacy (non-HUD) layout — drop the hero into the bottom-LEFT corner. With heroAsHud the
   // hero leaves the ring entirely (rendered as a screen-corner <HeroHud>), so its natural
   // bottom-centre position is kept here ONLY for the committed-bet chip + deal target.
@@ -263,7 +302,7 @@ export function SeatRing({
               opens, the real board takes over. */}
           {hand.board.some(Boolean) ? (
             <div className="flex gap-1">
-              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="md" reveal={!!hand.board[i]} />)}
+              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="mc" reveal={!!hand.board[i]} />)}
             </div>
           ) : (
             <DeckStack size="lg" />
