@@ -22,7 +22,7 @@ const BASE: TournamentClockData = {
     { rank: "4th", amount: "31,000,000 VND" },
     { rank: "5th", amount: "22,000,000 VND" },
   ],
-  footerNote: "Hết đăng ký cuối Level 8 — Day 1 kết thúc sau Level 10 (khoảng 22:30)",
+  footerNote: "Reg end — Level 8",
 };
 
 // Sample backgrounds to test readability over different club photos (owner P0-5/6).

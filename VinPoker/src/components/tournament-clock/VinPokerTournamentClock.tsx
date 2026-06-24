@@ -55,7 +55,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
 
           <div
             className="vpc-panel grid"
-            style={{ padding: "2.2vmin 2.4vmin", gridTemplateRows: "auto 1fr auto", gap: "1.4vmin", minHeight: "34vmin" }}
+            style={{ padding: "2.2vmin 2.4vmin 3vmin", gridTemplateRows: "auto 1fr auto", gap: "1.4vmin", minHeight: "34vmin" }}
           >
             <div>
               <div className="vpc-label" style={labelUpper}>Prize Pool</div>
@@ -74,7 +74,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
             </div>
             <div className="justify-self-center text-center">
               <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "clamp(22px, 3.4vmin, 56px)", letterSpacing: ".08em", color: "#ecfff0", textShadow: "0 0 16px rgba(98,255,143,.78), 0 3px 0 rgba(0,0,0,.7)" }}>VINPOKER</div>
-              <div style={{ color: "var(--clock-green)", letterSpacing: ".5em", fontSize: "clamp(12px, 1.4vmin, 20px)", textShadow: "0 0 10px var(--clock-green)" }}>♠♥♣♦</div>
+              <div style={{ color: "var(--clock-green)", letterSpacing: ".34em", textIndent: ".34em", marginTop: ".5vmin", fontSize: "clamp(12px, 1.4vmin, 20px)", textShadow: "0 0 10px var(--clock-green)" }}>♠♥♦♣</div>
             </div>
           </div>
 
@@ -130,7 +130,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
           style={{ gridTemplateColumns: "auto 1fr auto", padding: "1.4vmin 3vmin", minHeight: "8vmin", fontSize: "clamp(13px, 1.9vmin, 30px)", gap: "2vmin" }}
         >
           <div className="vpc-footer-icon" style={{ fontSize: "clamp(20px, 3vmin, 45px)" }}>♣</div>
-          <div>{data.footerNote}</div>
+          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.footerNote}</div>
           <div className="vpc-footer-icon" style={{ fontSize: "clamp(20px, 3vmin, 45px)" }}>♦</div>
         </footer>
       </div>
