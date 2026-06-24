@@ -1,23 +1,17 @@
 name: Marketing — apply migrations + deploy dispatch (one-shot, owner-gated)
 
-# Manual trigger only — never runs on push. Applies the FOUR reviewed marketing migrations via the
-# allowlisted Management-API runner (no `supabase db push`, no deploy_db, no schema_migrations
-# write), deploys the marketing-dispatch Edge Function, dry-invokes it, then schedules the cron —
-# in the safe order. Does NOT flip any feature flag. Delete this file + branch after verification.
+# Manual trigger only — never runs on push. CLICKING "Run workflow" = FULL APPLY (no field to type),
+# matching the proven service-fee-apply pattern. Applies the four reviewed marketing migrations via
+# the allowlisted Management-API runner (no CLI push path, no deploy_db, no schema_migrations write),
+# deploys the marketing-dispatch Edge Function, dry-invokes it, then schedules the cron — in the safe
+# order. Idempotent (safe to re-run). Does NOT flip any feature flag. Delete this file after the
+# apply is verified.
 #
-# HOW TO RUN:
-#   • Read-only check: Run workflow with "confirm" left blank  → preflight only (nothing changes).
-#   • Apply for real : Run workflow with confirm = APPLY_MARKETING_MIGRATIONS
-#
-# After this is green, tell the assistant "DB xong" to flip FEATURES.marketingModule (separate PR).
+# HOW TO RUN: Actions → this workflow → "Run workflow" (branch main) → Run. That's it.
+# When it's green, tell the assistant "DB xong" to flip FEATURES.marketingModule (separate PR).
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: "Type APPLY_MARKETING_MIGRATIONS to apply. Leave blank for a read-only preflight."
-        required: false
-        default: ""
 
 jobs:
   marketing-apply:
@@ -25,6 +19,7 @@ jobs:
     env:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+      CONFIRM_APPLY_MARKETING: APPLY_MARKETING_MIGRATIONS
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -36,48 +31,34 @@ jobs:
         with:
           node-version: "20"
 
-      # Always runs — read-only state snapshot (expect enum/tables absent before apply).
-      - name: Preflight (read-only)
+      - name: Preflight (read-only snapshot)
         working-directory: ./VinPoker
         run: node scripts/marketing/apply_marketing_migrations.mjs --preflight
 
-      # ----- everything below only runs when confirm == APPLY_MARKETING_MIGRATIONS -----
-
-      - name: Apply schema (enum → role → core)
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
+      - name: Apply schema (enum -> role -> core)
         working-directory: ./VinPoker
-        env:
-          CONFIRM_APPLY_MARKETING: ${{ inputs.confirm }}
         run: node scripts/marketing/apply_marketing_migrations.mjs --apply-schema
 
       - name: Install Supabase CLI
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         run: npm install -g supabase
 
       - name: Link Supabase project
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         working-directory: ./VinPoker
         run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
 
-      # verify_jwt stays ON (no --no-verify-jwt): the cron sends the project anon JWT, which is
-      # valid and passes the gateway, while unauthenticated callers are rejected.
+      # verify_jwt stays ON (no --no-verify-jwt): the cron sends the project anon JWT, which is valid
+      # and passes the gateway, while unauthenticated callers are rejected.
       - name: Deploy marketing-dispatch Edge Function
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         working-directory: ./VinPoker
         run: supabase functions deploy marketing-dispatch
 
       - name: Dry-invoke (expect outcome=no_posts)
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         working-directory: ./VinPoker
         run: node scripts/marketing/apply_marketing_migrations.mjs --dry-invoke
 
       - name: Apply cron (LAST — after dry-invoke)
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         working-directory: ./VinPoker
-        env:
-          CONFIRM_APPLY_MARKETING: ${{ inputs.confirm }}
         run: node scripts/marketing/apply_marketing_migrations.mjs --apply-cron
 
       - name: Done
-        if: ${{ inputs.confirm == 'APPLY_MARKETING_MIGRATIONS' }}
         run: echo "Marketing backend applied + dispatch deployed + cron scheduled. Flag still OFF — tell the assistant 'DB xong' to flip FEATURES.marketingModule."
