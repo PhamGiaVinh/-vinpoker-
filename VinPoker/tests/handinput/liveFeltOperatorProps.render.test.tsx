@@ -43,6 +43,15 @@ describe("LiveFelt additive operator props", () => {
     expect(defaults).toBe(plain);
   });
 
+  it("Viewer Felt V2 is fully gated: viewerLayout absent === viewerLayout={false} (operator byte-identical)", () => {
+    const plain = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
+    const off = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} viewerLayout={false} />);
+    expect(off).toBe(plain);
+    // And the V2 container query / cqi sizing never appears in the operator render.
+    expect(plain).not.toContain("cqi");
+    expect(plain).not.toContain("container-type");
+  });
+
   it("the public/replay render (no onSeatClick) puts NO button role or selection frame on seats", () => {
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
     expect(html).not.toContain('role="button"');

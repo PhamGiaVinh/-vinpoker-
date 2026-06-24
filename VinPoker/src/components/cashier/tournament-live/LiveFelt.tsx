@@ -108,6 +108,22 @@ const GEO = {
   landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS, centerTop: "43%", centerW: "40%", vSize: "clamp(22px,4vw,36px)", maxW: "820px" },
 };
 
+// Viewer Felt V2 (viewerLayout-only) — CoinPoker-style geometry: sides pushed further
+// out + top/bottom rows raised/lowered so the central column (board + pot) is wide open,
+// and the felt is a touch larger. Used ONLY when viewerLayout is on; operator/TV keep GEO.
+const PORTRAIT_SEATS_V2: Record<number, Pt> = {
+  1: { l: 35, t: 92 }, 2: { l: 10, t: 76 }, 3: { l: 6, t: 50 }, 4: { l: 18, t: 18 }, 5: { l: 50, t: 8 },
+  6: { l: 82, t: 18 }, 7: { l: 94, t: 50 }, 8: { l: 90, t: 76 }, 9: { l: 65, t: 92 },
+};
+const LANDSCAPE_SEATS_V2: Record<number, Pt> = {
+  1: { l: 35, t: 88 }, 2: { l: 8, t: 60 }, 3: { l: 13, t: 24 }, 4: { l: 33, t: 9 }, 5: { l: 50, t: 6 },
+  6: { l: 67, t: 9 }, 7: { l: 87, t: 24 }, 8: { l: 92, t: 60 }, 9: { l: 65, t: 88 },
+};
+const GEO_V2 = {
+  portrait: { aspect: "5 / 7", seats: PORTRAIT_SEATS_V2, centerTop: "42%", centerW: "54%", vSize: "clamp(26px,9vw,40px)", maxW: "480px" },
+  landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS_V2, centerTop: "44%", centerW: "36%", vSize: "clamp(22px,4vw,36px)", maxW: "880px" },
+};
+
 export interface LiveFeltProps {
   /** Active seats already positioned for the table on view. */
   seats: SeatInfo[];
@@ -172,6 +188,16 @@ export interface LiveFeltProps {
    * distinct `nonce` triggers one chip; null → no chips. Viewer-only.
    */
   chipPush?: { seatNumber: number; nonce: number } | null;
+  /**
+   * Viewer Felt V2 (liveViewerFeltV2): responsive, premium PUBLIC-VIEWER layout.
+   * ADDITIVE — when false/absent (operator/TV/replay always; viewer when the flag is
+   * off) the felt renders byte-identical to today. When true: every card sizes with the
+   * FELT's own width (a CSS container query on the oval + `clamp()` inline styles) so
+   * hole cards can't overlap each other / the board on mobile, and the felt forces its
+   * OWN neon premium surface (independent of `viewerNeon`/`liveHandFeed`). Set only by
+   * the public viewer (TournamentLiveView when `spectator && liveViewerFeltV2`).
+   */
+  viewerLayout?: boolean;
 }
 
 export function LiveFelt({
@@ -193,10 +219,31 @@ export function LiveFelt({
   viewerNeon = false,
   tableFx = false,
   chipPush = null,
+  viewerLayout = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
-  const geo = portrait ? GEO.portrait : GEO.landscape;
+  // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
+  const geoSet = viewerLayout ? GEO_V2 : GEO;
+  const geo = portrait ? geoSet.portrait : geoSet.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
+
+  // Viewer Felt V2 — cards size with the FELT's own width (cqi resolves to the
+  // container-type set on the oval below) so they never overlap on mobile. Inline
+  // width/height beats the fixed Tailwind size class. When viewerLayout is off these
+  // are `undefined` → every card keeps its current size (operator/TV byte-identical).
+  const holeStyle: CSSProperties | undefined = viewerLayout
+    ? portrait
+      ? { width: "clamp(15px,6.2cqi,26px)", height: "clamp(21px,8.7cqi,36px)" }
+      : { width: "clamp(16px,3.0cqi,30px)", height: "clamp(22px,4.2cqi,42px)" }
+    : undefined;
+  const boardStyle: CSSProperties | undefined = viewerLayout
+    ? portrait
+      ? { width: "clamp(22px,8.4cqi,40px)", height: "clamp(31px,11.8cqi,56px)" }
+      : { width: "clamp(26px,4.6cqi,48px)", height: "clamp(36px,6.4cqi,66px)" }
+    : undefined;
+  // V2 forces its OWN neon premium surface, so the redesign never depends on the
+  // separate liveHandFeed/viewerNeon flag being on (review P1).
+  const neon = viewerNeon || viewerLayout;
 
   // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
   // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
@@ -215,16 +262,26 @@ export function LiveFelt({
     <div className="w-full">
       {/* Felt oval — scales with container; seats may straddle the rim so the
           container is overflow-visible (never clips a seat). */}
-      <div className="relative mx-auto w-full overflow-visible" style={{ aspectRatio: geo.aspect, maxWidth: geo.maxW }}>
+      <div
+        className="relative mx-auto w-full overflow-visible"
+        style={{
+          aspectRatio: geo.aspect,
+          maxWidth: geo.maxW,
+          // V2: make the oval a size container so card `cqi` units resolve to the FELT
+          // width. inline-size containment only fixes the inline axis — height still
+          // comes from aspectRatio + width, so there is no sizing side-effect.
+          ...(viewerLayout ? { containerType: "inline-size" } : {}),
+        }}
+      >
         <div
           aria-hidden="true"
           className="absolute inset-0"
           style={{
             borderRadius: "9999px",
-            background: viewerNeon
+            background: neon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
-            boxShadow: viewerNeon
+            boxShadow: neon
               ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
               : "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
           }}
@@ -247,7 +304,7 @@ export function LiveFelt({
           <div
             data-testid="felt-v"
             className="tracker-display mb-2 font-black leading-none"
-            style={{ fontSize: geo.vSize, color: viewerNeon ? "hsl(var(--primary) / 0.5)" : "hsl(var(--poker-gold) / 0.55)", textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
+            style={{ fontSize: geo.vSize, color: neon ? "hsl(var(--primary) / 0.5)" : "hsl(var(--poker-gold) / 0.55)", textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
           >
             V
           </div>
@@ -262,10 +319,15 @@ export function LiveFelt({
                   card={card}
                   size="md"
                   className={boardCardCls}
-                  style={tableFx && i < 3 ? { animationDelay: `${i * 45}ms` } : undefined}
+                  // V2 boardStyle (clamp) merges with the FX stagger delay; both absent → undefined.
+                  style={
+                    boardStyle || (tableFx && i < 3)
+                      ? { ...boardStyle, ...(tableFx && i < 3 ? { animationDelay: `${i * 45}ms` } : {}) }
+                      : undefined
+                  }
                 />
               ) : (
-                <CardBack key={`${i}-back`} size="md" className={boardCardCls} />
+                <CardBack key={`${i}-back`} size="md" className={boardCardCls} style={boardStyle} />
               )
             )}
           </div>
@@ -421,12 +483,30 @@ export function LiveFelt({
                     </span>
                   )}
                 </div>
-                <div className="tracker-display mt-1 max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameShadow}>
-                  {seat.display_name}
-                </div>
-                <div className="tracker-num text-[10px] font-bold leading-tight" style={{ color: "hsl(var(--poker-stack))", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}>
-                  {formatStack(seat.chip_count)}
-                </div>
+                {viewerLayout ? (
+                  // V2: a CoinPoker-style "nameplate" capsule — name + stack grouped in one
+                  // dark, neon-bordered pill so each seat reads as a tight unit.
+                  <div
+                    className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
+                    style={{ background: "rgba(8,12,10,0.82)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}
+                  >
+                    <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
+                      {seat.display_name}
+                    </div>
+                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(var(--poker-stack))" }}>
+                      {formatStack(seat.chip_count)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="tracker-display mt-1 max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameShadow}>
+                      {seat.display_name}
+                    </div>
+                    <div className="tracker-num text-[10px] font-bold leading-tight" style={{ color: "hsl(var(--poker-stack))", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}>
+                      {formatStack(seat.chip_count)}
+                    </div>
+                  </>
+                )}
                 {isWinner && (
                   <div
                     data-testid="seat-net-won"
@@ -460,9 +540,9 @@ export function LiveFelt({
                   className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
-                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} />)
+                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={holeStyle} />)
                   ) : (
-                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} />)
+                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={holeStyle} />)
                   )}
                 </div>
               </div>
