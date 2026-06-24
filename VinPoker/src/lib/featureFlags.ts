@@ -181,6 +181,18 @@ export const FEATURES = {
    */
   liveEventTabs: true,
   /**
+   * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
+   * Fixes the mobile bug where hole cards overlap each other / the central board by
+   * sizing every card with the felt's own width (CSS container query + clamp), and
+   * (PR-B) ships premium geometry + compact pods. PUBLIC-VIEWER-ONLY: gated by the
+   * LiveFelt `viewerLayout` prop, which `TournamentLiveView` sets ONLY when
+   * `spectator` (LiveHub is the sole setter of spectator=true) — so operator hand
+   * input + TV stay byte-identical. When false the felt renders exactly as today.
+   * The V2 path also forces its own neon premium surface, so the redesign never
+   * depends on `liveHandFeed`/`viewerNeon` being on. Frontend-only. Kill-switch: set false.
+   */
+  liveViewerFeltV2: true,
+  /**
    * Tracker Engine Mode (Phase 1) — engine-assisted operator Hand Input. While
    * ON, the pure `trackerEngine` drives action order (correct heads-up / 3+
    * seeding), legal actions, "Bet to" (street-total) sizing, automatic

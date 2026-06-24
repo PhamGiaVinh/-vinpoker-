@@ -74,6 +74,7 @@ export function PokerCard({
           sizeClass,
           className
         )}
+        style={style}
       >
         <div className="absolute inset-1 rounded-[inherit] border border-emerald-300/20" />
         <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.9)]" />
@@ -134,10 +135,13 @@ export function CardBack({
   size = "xs",
   muted = false,
   className,
+  style,
 }: {
   size?: "xs" | "sm" | "md" | "lg";
   muted?: boolean;
   className?: string;
+  /** Optional inline style (e.g. clamp width/height for the responsive viewer felt). */
+  style?: CSSProperties;
 }) {
   const sizeClass = {
     xs: "h-8 w-6 rounded-md",
@@ -166,7 +170,7 @@ export function CardBack({
         sizeClass,
         className
       )}
-      style={{ borderColor: "var(--poker-card-border)" }}
+      style={{ borderColor: "var(--poker-card-border)", ...style }}
     >
       <svg viewBox="0 0 100 140" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
         <defs>

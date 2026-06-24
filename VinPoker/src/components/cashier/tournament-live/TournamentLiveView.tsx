@@ -1041,6 +1041,7 @@ export function TournamentLiveView({
             {...feltProps}
             portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
             viewerNeon={spectator && FEATURES.liveHandFeed}
+            viewerLayout={spectator && FEATURES.liveViewerFeltV2}
             tableFx={spectator && FEATURES.liveTableFx}
             chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
           />
