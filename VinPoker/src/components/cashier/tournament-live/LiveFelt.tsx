@@ -258,20 +258,69 @@ export function LiveFelt({
     setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%` }]);
   }, [chipPush, geo]);
 
+  // V2 landscape scale-to-fit: a wide 9-max table can't fit a narrow phone width without
+  // overlap, so below LANDSCAPE_DESIGN_W we render the felt at that design width and scale
+  // the WHOLE thing down to fit (everything shrinks uniformly → never overlaps). Portrait is
+  // untouched (it already fits, and stays the big-readable option). Wide screens (≥ design
+  // width) also untouched. Operator/TV (viewerLayout off) never measure.
+  const LANDSCAPE_DESIGN_W = 560;
+  const FIT_PAD = 26; // breathing room above/below for pods that straddle the rim
+  const feltWrapRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!viewerLayout || portrait) { setFit(null); return; }
+    const el = feltWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (!w || w >= LANDSCAPE_DESIGN_W) { setFit(null); return; }
+      const scale = w / LANDSCAPE_DESIGN_W;
+      const designH = (LANDSCAPE_DESIGN_W * 6) / 13; // landscape aspect 13/6
+      setFit({ scale, h: Math.round(designH * scale) + FIT_PAD * 2 });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [viewerLayout, portrait]);
+
   return (
-    <div className="w-full">
+    <div className="w-full" ref={feltWrapRef}>
       {/* Felt oval — scales with container; seats may straddle the rim so the
-          container is overflow-visible (never clips a seat). */}
+          container is overflow-visible (never clips a seat). When `fit` is set
+          (narrow landscape) a height-reserver clips the oversized design-width box
+          and the oval is scaled down to fit, so a wide 9-max table never overlaps. */}
+      {/* When fit: a real height-reserver box clips the oversized design-width felt.
+          When NOT fit: display:contents → this wrapper vanishes, so operator/TV/portrait
+          render the oval exactly as before (byte-identical). */}
+      <div style={fit ? { position: "relative", height: fit.h, overflow: "hidden" } : { display: "contents" }}>
       <div
-        className="relative mx-auto w-full overflow-visible"
-        style={{
-          aspectRatio: geo.aspect,
-          maxWidth: geo.maxW,
-          // V2: make the oval a size container so card `cqi` units resolve to the FELT
-          // width. inline-size containment only fixes the inline axis — height still
-          // comes from aspectRatio + width, so there is no sizing side-effect.
-          ...(viewerLayout ? { containerType: "inline-size" } : {}),
-        }}
+        className={fit ? "overflow-visible" : "relative mx-auto w-full overflow-visible"}
+        style={
+          fit
+            ? {
+                // Fit (narrow landscape): render at the design width, CENTER it (absolute +
+                // left 50% + translateX(-50%) — margin-auto can't center an element wider
+                // than its container), then scale the whole thing down to fit.
+                aspectRatio: geo.aspect,
+                position: "absolute",
+                left: "50%",
+                top: `${FIT_PAD}px`,
+                width: `${LANDSCAPE_DESIGN_W}px`,
+                transform: `translateX(-50%) scale(${fit.scale})`,
+                transformOrigin: "top center",
+                containerType: "inline-size",
+              }
+            : {
+                // Default (byte-identical with pre-V2): the oval scales with its container.
+                aspectRatio: geo.aspect,
+                maxWidth: geo.maxW,
+                // V2: make the oval a size container so card `cqi` units resolve to the FELT
+                // width. inline-size containment only fixes the inline axis — height still
+                // comes from aspectRatio + width, so there is no sizing side-effect.
+                ...(viewerLayout ? { containerType: "inline-size" } : {}),
+              }
+        }
       >
         <div
           aria-hidden="true"
@@ -634,6 +683,7 @@ export function LiveFelt({
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {/* Action rail — OUTSIDE the felt so it never collides with the table. */}
