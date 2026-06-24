@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Table2, Calculator, CalendarRange } from "lucide-react";
 import SwingPanel from "@/components/cashier/DealerSwingTab";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
+import DealerPayrollTabV2 from "@/components/cashier/DealerPayrollTabV2";
 import ShiftPlannerTab from "@/components/cashier/ShiftPlannerTab";
 import { FEATURES } from "@/lib/featureFlags";
 
@@ -79,7 +80,9 @@ export default function DealerSwingDashboard() {
           <SwingPanel clubIds={scopedIds} clubs={clubs} onOpenPayroll={() => setTab("payroll")} />
         </TabsContent>
         <TabsContent value="payroll" className="mt-4">
-          <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />
+          {FEATURES.salaryTabV2
+            ? <DealerPayrollTabV2 clubIds={scopedIds} clubs={clubs} />
+            : <DealerPayrollTab clubIds={scopedIds} clubs={clubs} />}
         </TabsContent>
         {showShiftPlanner && (
           <TabsContent value="shift_planner" className="mt-4">

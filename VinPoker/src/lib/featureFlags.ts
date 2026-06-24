@@ -408,6 +408,16 @@ export const FEATURES = {
    */
   manualPayrollDeductions: true,
   /**
+   * Salary v2 — operator dealer-salary tab split into two sub-tabs: "Theo tháng · Full-time"
+   * (the existing monthly payroll + payment lifecycle, reused unchanged) and "Theo giờ ·
+   * Part-time" (live accruing wage balance + full-payment-then-reset). Default **OFF** (dark):
+   * the PT sub-tab calls the Salary-B1 RPCs (get_club_pt_wages / pay_part_time_balance) which
+   * are merged as source but NOT applied live yet, so while false the parent renders the legacy
+   * DealerPayrollTab directly (byte-identical) and the V2 wrapper never mounts. Flip to true ONLY
+   * after the B1 migrations (20261028000000/01) are applied live + types regenerated.
+   */
+  salaryTabV2: false,
+  /**
    * Chip Ops — read-only Issued-Chip-Inventory screen (/chip-ops) + the Chip-Master role.
    * The screen shows server-computed per-denomination chip counts + a reconciliation badge for
    * a tournament (RPC `get_issued_chip_inventory`); strictly read-only. Default **OFF** (dark):
