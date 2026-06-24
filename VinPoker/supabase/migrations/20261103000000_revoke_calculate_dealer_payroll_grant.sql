@@ -1,0 +1,36 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECURITY HARDENING — lock EXECUTE on calculate_dealer_payroll. SOURCE-ONLY: NOT applied.
+--
+-- FINDING (rls-security review during Salary-v2; PRE-EXISTING, not introduced by it):
+--   public.calculate_dealer_payroll(uuid, date, date, integer) is SECURITY DEFINER and has NO
+--   internal authorization check (it computes payroll for whatever p_dealer_id is passed). It has
+--   NO explicit EXECUTE grant anywhere in source, so it defaults to PUBLIC execute. Exposed via
+--   PostgREST (/rest/v1/rpc/calculate_dealer_payroll), that lets any authenticated — possibly anon —
+--   caller compute + read ANY dealer's payroll (cross-dealer financial leak).
+--
+-- WHY THE REVOKE IS SAFE (no app path breaks):
+--   calculate_dealer_payroll has NO direct frontend/API caller (verified: grep src → only comments
+--   + generated types). It is invoked ONLY inside other SECURITY DEFINER functions —
+--   calculate_club_payroll (operator path), save_payroll_period (B7), the payment-lifecycle RPCs —
+--   which run as the function owner and KEEP execute regardless of PUBLIC grants. The dealer-self
+--   path uses the ownership-checked get_my_dealer_payroll (20261102000000). So revoking only closes
+--   the direct-call hole. REVOKE of an absent grant is a no-op, so this is idempotent + safe even if
+--   live grants were already tightened.
+--
+-- READ-ONLY VERIFY (run BEFORE applying, to confirm the live exposure / drift):
+--   SELECT proname, proacl FROM pg_proc WHERE proname = 'calculate_dealer_payroll';
+--   SELECT has_function_privilege('anon',          'public.calculate_dealer_payroll(uuid,date,date,integer)','EXECUTE') AS anon_exec,
+--          has_function_privilege('authenticated', 'public.calculate_dealer_payroll(uuid,date,date,integer)','EXECUTE') AS auth_exec;
+--   -- Also reconfirm no NEW direct caller appeared: grep src for supabase.rpc("calculate_dealer_payroll").
+--
+-- APPLY = owner-gated controlled op (Management API). NO `supabase db push`, NO deploy_db,
+--   NO schema_migrations edit. ROLLBACK (only if a real direct caller is ever found):
+--   GRANT EXECUTE ON FUNCTION public.calculate_dealer_payroll(uuid, date, date, integer) TO authenticated;
+--
+-- NOTE (related, OUT OF SCOPE — separate review): calculate_club_payroll likewise has no explicit
+--   grants AND is called directly by the operator UI, so it relies on default PUBLIC execute. If it
+--   has no internal club-authorization check, it may be similarly exposed — but it CANNOT just be
+--   revoked (the UI needs it); it would need internal authz added. Flag for its own review.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+revoke execute on function public.calculate_dealer_payroll(uuid, date, date, integer) from public, anon, authenticated;
