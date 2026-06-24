@@ -28,6 +28,7 @@ import {
   claimDisplay, displayLabel, isDisplayOnline, listClubDisplays, pingDisplay,
   revokeDisplay, updateDisplay, type TvDisplayLayout, type TvDisplayRow,
 } from "@/lib/tv/displayAdminRpc";
+import { TvLivePreviewCard } from "./TvLivePreviewCard";
 
 interface TvDisplaysPanelProps {
   tournamentId: string;
@@ -164,6 +165,9 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
 
   return (
     <div className="space-y-4">
+      {/* Live preview of the running TV screen for this tournament */}
+      <TvLivePreviewCard tournamentId={tournamentId} />
+
       {/* Pair a new TV */}
       <Card className="p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
