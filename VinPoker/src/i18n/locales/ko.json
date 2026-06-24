@@ -2944,7 +2944,8 @@
     "tabs": {
       "compose": "작성",
       "posts": "게시물",
-      "channels": "채널"
+      "channels": "채널",
+      "staff": "직원"
     },
     "composer": {
       "title": "새 게시물",
@@ -3003,11 +3004,32 @@
       "skipped": "건너뜀"
     },
     "channels": {
-      "intro": "초기에는 Telegram만 지원합니다. Facebook과 Zalo는 다음 단계에 제공됩니다. 여기서는 토큰을 입력하지 않습니다 — Telegram은 시스템 공용 봇과 클럽의 연결된 채팅을 사용합니다.",
-      "tokenNote": "클럽별 연동이 필요합니다. 토큰은 Supabase Secrets/Vault에 저장되며 이 화면에서 입력하지 않습니다.",
-      "telegramReady": "준비됨 — 클럽의 Telegram 채팅이 연결되었습니다.",
-      "telegramNotLinked": "아직 연결되지 않음 — 클럽 설정에서 Telegram 봇으로 클럽 채팅을 연결하세요.",
-      "comingSoon": "준비 중"
+      "intro": "초기에는 Telegram만. 마케팅 전용 채팅을 설정하세요(딜러 그룹과 분리). 봇 토큰은 선택 — 비우면 공용 VinPoker 봇 사용.",
+      "tokenNote": "Facebook/Zalo는 추후 별도 연동 필요; 토큰은 Supabase Vault에 암호화 저장되며 여기 표시되지 않습니다.",
+      "comingSoon": "준비 중",
+      "statusReady": "준비됨",
+      "statusNotConfigured": "미설정",
+      "chatId": "마케팅 Chat ID",
+      "chatIdHelp": "마케팅용 Telegram 그룹/채널(딜러 그룹 아님). 봇을 해당 채팅에 추가해 chat id를 얻으세요.",
+      "botToken": "봇 토큰 (선택)",
+      "botTokenPlaceholder": "비우면 공용 VinPoker 봇 사용",
+      "botTokenKeep": "•••••• (설정됨 — 비우면 유지)",
+      "botTokenHelp": "클럽 전용 마케팅 봇을 쓰려면 토큰을 입력하세요. 암호화 저장되며 다시 표시되지 않습니다.",
+      "tokenSet": "전용 봇 설정됨",
+      "save": "저장",
+      "saved": "저장되었습니다.",
+      "useGlobalBot": "공용 봇 사용 (토큰 제거)",
+      "errChatId": "마케팅 Chat ID를 입력하세요."
+    },
+    "staff": {
+      "search": "이름 또는 전화번호로 검색",
+      "grant": "부여",
+      "revoke": "해제",
+      "granted": "마케팅 권한을 부여했습니다.",
+      "revoked": "마케팅 권한을 해제했습니다.",
+      "empty": "일치하는 계정이 없습니다.",
+      "loadError": "아직 멤버를 불러올 수 없습니다.",
+      "assignedCount": "{{count}}명에게 권한 부여됨"
     }
   }
 }

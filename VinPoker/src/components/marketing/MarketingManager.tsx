@@ -11,6 +11,7 @@ import { AlertTriangle } from "lucide-react";
 import { PostComposer } from "./PostComposer";
 import { PostList } from "./PostList";
 import { ChannelSettings } from "./ChannelSettings";
+import { MarketingStaffManager } from "./MarketingStaffManager";
 
 // The marketing_* tables/RPCs ship source-only and are not yet in the generated Database types,
 // so reads/writes go through this loosely-typed client (mirrors ChipOpsManager). Strictly additive.
@@ -121,6 +122,7 @@ export const MarketingManager = () => {
           <TabsTrigger value="compose">{t("marketing.tabs.compose")}</TabsTrigger>
           <TabsTrigger value="posts">{t("marketing.tabs.posts")}</TabsTrigger>
           {canManageChannels && <TabsTrigger value="channels">{t("marketing.tabs.channels")}</TabsTrigger>}
+          {canManageChannels && <TabsTrigger value="staff">{t("marketing.tabs.staff")}</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="compose" className="mt-4">
@@ -138,6 +140,12 @@ export const MarketingManager = () => {
         {canManageChannels && (
           <TabsContent value="channels" className="mt-4">
             <ChannelSettings clubId={clubId} clubName={selectedClubName} onChanged={bumpRefresh} />
+          </TabsContent>
+        )}
+
+        {canManageChannels && (
+          <TabsContent value="staff" className="mt-4">
+            <MarketingStaffManager clubId={clubId} onChanged={bumpRefresh} />
           </TabsContent>
         )}
       </Tabs>

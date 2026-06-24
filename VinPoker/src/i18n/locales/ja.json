@@ -2948,7 +2948,8 @@
     "tabs": {
       "compose": "作成",
       "posts": "投稿",
-      "channels": "チャンネル"
+      "channels": "チャンネル",
+      "staff": "スタッフ"
     },
     "composer": {
       "title": "新規投稿",
@@ -3007,11 +3008,32 @@
       "skipped": "スキップ"
     },
     "channels": {
-      "intro": "初期はTelegramのみ対応です。FacebookとZaloは後のフェーズで提供します。ここではトークンを入力しません — Telegramはシステム共有ボットとクラブの連携済みチャットを使用します。",
-      "tokenNote": "クラブごとの連携が必要です。トークンはSupabase Secrets/Vaultに保存され、この画面では入力しません。",
-      "telegramReady": "準備完了 — クラブのTelegramチャットが連携済みです。",
-      "telegramNotLinked": "未連携 — クラブ設定のTelegramボットからクラブチャットを連携してください。",
-      "comingSoon": "近日対応"
+      "intro": "初期はTelegramのみ。マーケ専用チャットを設定（ディーラー群と分離）。Botトークンは任意 — 空欄なら共有のVinPoker Botを使用。",
+      "tokenNote": "Facebook/Zaloは後で個別連携が必要；トークンはSupabase Vaultに暗号化保存され、ここには表示されません。",
+      "comingSoon": "近日対応",
+      "statusReady": "準備完了",
+      "statusNotConfigured": "未設定",
+      "chatId": "マーケ Chat ID",
+      "chatIdHelp": "マーケ用のTelegramグループ/チャンネル（ディーラー群ではない）。Botをそのチャットに追加してchat idを取得します。",
+      "botToken": "Botトークン（任意）",
+      "botTokenPlaceholder": "空欄 = 共有VinPoker Botを使用",
+      "botTokenKeep": "••••••（設定済み — 空欄で維持）",
+      "botTokenHelp": "クラブ専用のマーケBotを使うにはトークンを入力。暗号化保存され、再表示されません。",
+      "tokenSet": "専用Bot設定済み",
+      "save": "保存",
+      "saved": "保存しました。",
+      "useGlobalBot": "共有Botを使う（トークン削除）",
+      "errChatId": "マーケ Chat IDを入力してください。"
+    },
+    "staff": {
+      "search": "名前または電話で検索",
+      "grant": "付与",
+      "revoke": "解除",
+      "granted": "マーケ権限を付与しました。",
+      "revoked": "マーケ権限を解除しました。",
+      "empty": "一致するアカウントがありません。",
+      "loadError": "メンバーをまだ読み込めません。",
+      "assignedCount": "{{count}}名に付与済み"
     }
   }
 }
