@@ -85,6 +85,10 @@ function toTvData(state: MockState): TvData {
       { position: 6, amount: 4_500_000 },
     ],
     sponsorText: null,
+    startingStack: 30_000,
+    buyIn: 1_000_000,
+    rakeAmount: 100_000,
+    clubCoverUrl: null,
   };
 }
 

@@ -340,6 +340,15 @@ export const FEATURES = {
    */
   multiDayTournaments: true,
   /**
+   * New neon-green broadcast Tournament Clock (PR Clock-B). When true, every screen that
+   * composes TvClockScreen (/tv/:id, /display/:token clock layout, ?mock=1) renders the new
+   * VinPokerTournamentClock fed by mapTvDataToClock instead of the legacy Tv* layout. Default
+   * **OFF** — it replaces a live broadcast surface, so it ships dark and the owner flips it ON
+   * (PR Clock-C) only after UAT. Presentational-only swap: no DB writes, reads are additive
+   * (starting_stack/guarantee_amount/buy_in/rake_amount/cover_url already in the TV select).
+   */
+  tournamentClockV2: false,
+  /**
    * Per-tournament SERVICE FEE (phí dịch vụ) — a SECOND configured per-entry charge, separate from
    * rake. Player price = buy_in + rake_amount + service_fee_amount. Default **OFF** (dark). While
    * false: the ClubAdmin tournament create/edit "Phí dịch vụ" input is hidden, the cashier offline/

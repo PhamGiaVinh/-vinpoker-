@@ -48,4 +48,11 @@ export interface TvData {
   guarantee?: number | null;
   prizes: TvPrize[];
   sponsorText?: string | null;
+  /** Tournament starting stack (chips) — used to derive total chips in play. */
+  startingStack: number;
+  /** Per-entry buy-in / rake (VND) — feed a prize-pool estimate when prize_pool is stale. */
+  buyIn: number | null;
+  rakeAmount: number | null;
+  /** Club cover photo (clubs.cover_url) → the broadcast clock's replaceable background. */
+  clubCoverUrl?: string | null;
 }
