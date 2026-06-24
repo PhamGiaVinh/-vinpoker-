@@ -47,10 +47,12 @@ DROP POLICY IF EXISTS "tournament_photos_obj_delete" ON storage.objects;
 DO $$ BEGIN
   CREATE POLICY "tournament_photos_obj_insert" ON storage.objects FOR INSERT TO authenticated
     WITH CHECK (bucket_id = 'tournament-photos'
+      AND public.safe_uuid_from_storage_folder(name) IS NOT NULL  -- malformed path → denied for EVERYONE (incl. super_admin)
       AND public.is_club_floor_or_media(auth.uid(), (SELECT t.club_id FROM public.tournaments t WHERE t.id = public.safe_uuid_from_storage_folder(name))));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE POLICY "tournament_photos_obj_delete" ON storage.objects FOR DELETE TO authenticated
     USING (bucket_id = 'tournament-photos'
+      AND public.safe_uuid_from_storage_folder(name) IS NOT NULL
       AND public.is_club_floor_or_media(auth.uid(), (SELECT t.club_id FROM public.tournaments t WHERE t.id = public.safe_uuid_from_storage_folder(name))));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
