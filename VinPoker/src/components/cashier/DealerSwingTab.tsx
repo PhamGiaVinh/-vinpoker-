@@ -59,6 +59,7 @@ import SwingTableCard, { type ConfirmSwingRequest } from "./dealer-swing/SwingTa
 import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type TableTimeline } from "./dealer-swing/swingTableView";
 import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
 import DealerSearchPanel from "./dealer-swing/DealerSearchPanel";
+import { FeatureTablePoolBox } from "./dealer-swing/FeatureTablePoolBox";
 import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
@@ -1645,6 +1646,9 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
               onRetry={refetchBreakPool}
             />
+            {FEATURES.dealerFeatureTables && (
+              <FeatureTablePoolBox tables={tables ?? []} dealers={dealers ?? []} />
+            )}
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
                 <span className="font-display tracking-wider">ĐỘI HÌNH / CHECK-IN</span>

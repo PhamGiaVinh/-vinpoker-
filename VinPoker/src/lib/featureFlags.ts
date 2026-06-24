@@ -266,6 +266,16 @@ export const FEATURES = {
    */
   dealerMobileApp: true,
   /**
+   * Dealer Swing Feature/Final table dealer pools (ADR 012). Feature/spotlight +
+   * final tables rotate only a selected dealer pool; a shortage is shown and a
+   * normal dealer is never silently substituted. Default **OFF**. While false: the
+   * table-mode badges, the config dialog, and the "Đội dealer tâm điểm" right-rail
+   * box do not render and the (mock, Patch 1) store is never read → zero change to
+   * the live swing. Patch 1 is UI-mock only; enforcement (RLS/RPC/solver) lands in
+   * later owner-gated patches.
+   */
+  dealerFeatureTables: false,
+  /**
    * Dealer self-salary screen — "Lương của tôi" in the dealer app (/dealer/salary),
    * READ-ONLY. FT shows the saved monthly payslip (full breakdown); PT shows a live
    * accruing balance + payment history. Dealers never pay themselves (the club pays
