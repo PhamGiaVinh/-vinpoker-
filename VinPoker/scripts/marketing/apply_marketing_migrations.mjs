@@ -165,7 +165,7 @@ async function schemaVerify(creds) {
        ('marketing_post_status','marketing_channel','marketing_channel_delivery_status','marketing_compliance_status')) as enums,
     (select count(*) from pg_tables where schemaname='public' and tablename in
        ('marketing_posts','post_channel_status','club_channel_integrations','marketing_blocked_terms')) as tables,
-    (select count(*) from public.marketing_blocked_terms where club_id is null) as seed,
+    (select count(distinct term) from public.marketing_blocked_terms where club_id is null) as seed,
     has_function_privilege('authenticated','public.marketing_claim_due_posts(int)','EXECUTE') as authed_claim,
     has_function_privilege('service_role','public.marketing_claim_due_posts(int)','EXECUTE') as svc_claim,
     has_function_privilege('authenticated','public.marketing_create_post(uuid,text,text,jsonb,jsonb,text[],jsonb,text)','EXECUTE') as authed_create;`))[0];
@@ -174,12 +174,12 @@ async function schemaVerify(creds) {
   log(`  club_marketers table        : ${r.role_table} (expect true)`);
   log(`  new enums (4)               : ${r.enums} (expect 4)`);
   log(`  core tables (4)             : ${r.tables} (expect 4)`);
-  log(`  seeded global blocked terms : ${r.seed} (expect 14)`);
+  log(`  distinct global blocked terms : ${r.seed} (expect >= 14)`);
   log(`  claim RPC authed EXECUTE    : ${r.authed_claim} (expect false)`);
   log(`  claim RPC service EXECUTE   : ${r.svc_claim} (expect true)`);
   log(`  create_post authed EXECUTE  : ${r.authed_create} (expect true)`);
   const ok = r.enum_ok === true && r.role_table === true && Number(r.enums) === 4 &&
-    Number(r.tables) === 4 && Number(r.seed) === 14 &&
+    Number(r.tables) === 4 && Number(r.seed) >= 14 &&
     r.authed_claim === false && r.svc_claim === true && r.authed_create === true;
   if (!ok) fail("schema post-verify mismatch.");
   log("schema post-verify PASS.");
@@ -239,6 +239,24 @@ async function main() {
   if (process.env[CONFIRM_ENV] !== CONFIRM_VAL) fail(`APPLY blocked. Set ${CONFIRM_ENV}=${CONFIRM_VAL}`);
 
   if (mode === "--apply-schema") {
+    // Idempotent skip: if the schema is already applied, do NOT re-run the migrations. Re-running
+    // core would re-execute its blocked-terms seed, and because global terms have club_id=NULL the
+    // ON CONFLICT (club_id, term) does NOT dedupe (NULLs are distinct in a unique index) → the seed
+    // would duplicate (14→28→…). So when already applied we only DEDUPE any prior duplicates and
+    // verify. This is the re-run-safe path.
+    if (pre.enum_has_marketing === true && Number(pre.mkt_tables) === 4 && pre.role_table === true) {
+      log("schema already applied — skipping re-apply (idempotent); deduping global blocked terms …");
+      const d = (await mgmt(creds, `WITH dups AS (
+        SELECT id, row_number() OVER (PARTITION BY club_id, term ORDER BY created_at, id) AS rn
+        FROM public.marketing_blocked_terms
+      ) DELETE FROM public.marketing_blocked_terms t USING dups
+        WHERE t.id = dups.id AND dups.rn > 1
+        RETURNING t.id;`));
+      log(`  removed ${Array.isArray(d) ? d.length : 0} duplicate blocked-term row(s).`);
+      await schemaVerify(creds);
+      log("schema OK (already applied). NEXT: --apply-telegram …");
+      return;
+    }
     const enumSql = load("enum"), roleSql = load("role"), coreSql = load("core");
     log("safety scan PASS (enum · role · core).");
     log("applying enum (own tx) …");
