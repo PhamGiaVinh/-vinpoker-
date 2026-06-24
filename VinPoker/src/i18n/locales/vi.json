@@ -3194,7 +3194,8 @@
     "tabs": {
       "compose": "Soạn bài",
       "posts": "Bài viết",
-      "channels": "Kênh"
+      "channels": "Kênh",
+      "staff": "Nhân sự"
     },
     "composer": {
       "title": "Soạn bài mới",
@@ -3253,11 +3254,32 @@
       "skipped": "Bỏ qua"
     },
     "channels": {
-      "intro": "Giai đoạn đầu chỉ hỗ trợ Telegram. Facebook và Zalo sẽ có ở giai đoạn sau. Không nhập token tại đây — Telegram dùng bot chung của hệ thống và chat đã liên kết của CLB.",
-      "tokenNote": "Sẽ cần tích hợp riêng cho từng CLB; token lưu trong Supabase Secrets/Vault, không nhập ở màn hình này.",
-      "telegramReady": "Sẵn sàng — chat Telegram của CLB đã được liên kết.",
-      "telegramNotLinked": "Chưa liên kết — liên kết chat Telegram của CLB qua bot Telegram trong cài đặt CLB.",
-      "comingSoon": "Sắp có"
+      "intro": "Giai đoạn đầu chỉ Telegram. Đặt chat RIÊNG cho marketing (tách khỏi nhóm dealer). Bot token tuỳ chọn — để trống dùng bot VinPoker chung.",
+      "tokenNote": "Facebook/Zalo sẽ cần tích hợp riêng sau; token lưu mã hoá trong Supabase Vault, không hiển thị ở đây.",
+      "comingSoon": "Sắp có",
+      "statusReady": "Sẵn sàng",
+      "statusNotConfigured": "Chưa đặt",
+      "chatId": "Chat ID marketing",
+      "chatIdHelp": "Nhóm/kênh Telegram dành cho marketing (KHÔNG phải nhóm dealer). Thêm bot vào nhóm đó để lấy chat id.",
+      "botToken": "Bot token (tuỳ chọn)",
+      "botTokenPlaceholder": "để trống = dùng bot VinPoker chung",
+      "botTokenKeep": "•••••• (đã đặt — để trống để giữ nguyên)",
+      "botTokenHelp": "Nhập token để dùng bot marketing riêng của club. Lưu mã hoá; không hiển thị lại.",
+      "tokenSet": "đã đặt bot riêng",
+      "save": "Lưu",
+      "saved": "Đã lưu.",
+      "useGlobalBot": "Dùng bot chung (xoá token)",
+      "errChatId": "Nhập Chat ID marketing."
+    },
+    "staff": {
+      "search": "Tìm theo tên hoặc SĐT",
+      "grant": "Cấp quyền",
+      "revoke": "Thu hồi",
+      "granted": "Đã cấp quyền marketing.",
+      "revoked": "Đã thu hồi quyền marketing.",
+      "empty": "Không có tài khoản phù hợp.",
+      "loadError": "Chưa tải được danh sách.",
+      "assignedCount": "{{count}} người được cấp quyền"
     }
   }
 }

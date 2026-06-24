@@ -121,15 +121,15 @@ async function processTick(admin: any, botToken: string, startTime: number): Pro
     const alreadySent = (existing ?? []).filter((r: any) => r.status === "sent").map((r: any) => r.channel);
     const toSend = channelsNeedingSend(requested, alreadySent);
 
-    // Resolve the club's Telegram chat once (P0 routing).
+    // Resolve the DEDICATED marketing Telegram (chat id + OPTIONAL per-club bot token) via the
+    // service-role RPC. This is the marketing channel, NOT the dealer group (club_settings). When
+    // the club set no custom token, fall back to the global TELEGRAM_BOT_TOKEN.
     let tgChat: string | null = null;
+    let tgBot: string = botToken; // global fallback
     if (toSend.includes("telegram")) {
-      const { data: cs } = await admin
-        .from("club_settings")
-        .select("telegram_chat_id")
-        .eq("club_id", post.club_id)
-        .maybeSingle();
-      tgChat = cs?.telegram_chat_id ?? null;
+      const { data: tg } = await admin.rpc("marketing_get_telegram_dispatch", { p_club_id: post.club_id });
+      tgChat = (tg?.chat_id as string) ?? null;
+      if (tg?.bot_token) tgBot = tg.bot_token as string;
     }
 
     for (const channel of toSend) {
@@ -141,7 +141,7 @@ async function processTick(admin: any, botToken: string, startTime: number): Pro
           continue;
         }
         const text = composeTelegramText(post.title ?? null, post.body, post.hashtags ?? []);
-        const res = await sendTelegram(botToken, tgChat, text);
+        const res = await sendTelegram(tgBot, tgChat, text);
         if (res.ok) {
           await record(admin, post.id, "telegram", "sent", res.externalId ?? null, null);
           channelsSent++;

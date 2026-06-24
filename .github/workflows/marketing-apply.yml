@@ -39,6 +39,10 @@ jobs:
         working-directory: ./VinPoker
         run: node scripts/marketing/apply_marketing_migrations.mjs --apply-schema
 
+      - name: Apply telegram-dedicated (MKT-5 — chat/token + re-pointed RPCs)
+        working-directory: ./VinPoker
+        run: node scripts/marketing/apply_marketing_migrations.mjs --apply-telegram
+
       - name: Install Supabase CLI
         run: npm install -g supabase
 

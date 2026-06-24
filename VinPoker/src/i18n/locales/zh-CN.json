@@ -2948,7 +2948,8 @@
     "tabs": {
       "compose": "撰写",
       "posts": "帖子",
-      "channels": "渠道"
+      "channels": "渠道",
+      "staff": "人员"
     },
     "composer": {
       "title": "新帖子",
@@ -3007,11 +3008,32 @@
       "skipped": "已跳过"
     },
     "channels": {
-      "intro": "初期仅支持 Telegram。Facebook 和 Zalo 将在后续阶段推出。此处不输入任何令牌——Telegram 使用系统共享机器人和俱乐部已关联的聊天。",
-      "tokenNote": "将需要按俱乐部单独集成；令牌存放在 Supabase Secrets/Vault，不在此页面输入。",
-      "telegramReady": "就绪——俱乐部的 Telegram 聊天已关联。",
-      "telegramNotLinked": "尚未关联——请在俱乐部设置中通过 Telegram 机器人关联俱乐部聊天。",
-      "comingSoon": "即将推出"
+      "intro": "初期仅 Telegram。为营销设置独立聊天（与荷官群分开）。机器人令牌可选——留空使用共享的 VinPoker 机器人。",
+      "tokenNote": "Facebook/Zalo 之后需要单独集成；令牌加密存放在 Supabase Vault，此处不显示。",
+      "comingSoon": "即将推出",
+      "statusReady": "就绪",
+      "statusNotConfigured": "未设置",
+      "chatId": "营销 Chat ID",
+      "chatIdHelp": "用于营销的 Telegram 群/频道（不是荷官群）。把机器人加入该群以获取 chat id。",
+      "botToken": "机器人令牌（可选）",
+      "botTokenPlaceholder": "留空 = 使用共享 VinPoker 机器人",
+      "botTokenKeep": "••••••（已设置——留空则保持不变）",
+      "botTokenHelp": "输入令牌以使用俱乐部自己的营销机器人。加密存储，不再显示。",
+      "tokenSet": "已设置专用机器人",
+      "save": "保存",
+      "saved": "已保存。",
+      "useGlobalBot": "使用共享机器人（移除令牌）",
+      "errChatId": "请输入营销 Chat ID。"
+    },
+    "staff": {
+      "search": "按姓名或电话搜索",
+      "grant": "授予",
+      "revoke": "撤销",
+      "granted": "已授予营销权限。",
+      "revoked": "已撤销营销权限。",
+      "empty": "没有匹配的账号。",
+      "loadError": "暂时无法加载成员。",
+      "assignedCount": "已分配 {{count}} 名营销人员"
     }
   }
 }

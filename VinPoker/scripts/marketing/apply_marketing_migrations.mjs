@@ -46,12 +46,14 @@ const MIG = {
   role: "supabase/migrations/20261101000001_marketing_role.sql",
   core: "supabase/migrations/20261101000002_marketing_core.sql",
   cron: "supabase/migrations/20261101000003_schedule_marketing_dispatch.sql",
+  tg:   "supabase/migrations/20261101000004_marketing_telegram_dedicated.sql",
 };
 const REQUIRED = {
   enum: /\bALTER\s+TYPE\s+public\.app_role\s+ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'marketing'/i,
   role: /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+public\.club_marketers\b/i,
   core: /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+public\.marketing_posts\b/i,
   cron: /cron\.schedule\(\s*'marketing-dispatch'/i,
+  tg:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_telegram\b/i,
 };
 
 const CONFIRM_ENV = "CONFIRM_APPLY_MARKETING";
@@ -185,16 +187,16 @@ async function schemaVerify(creds) {
 
 async function main() {
   const mode = process.argv[2] || "";
-  if (!["--scan", "--preflight", "--apply-schema", "--dry-invoke", "--apply-cron"].includes(mode)) {
-    log("modes: --scan | --preflight | --apply-schema | --dry-invoke | --apply-cron");
+  if (!["--scan", "--preflight", "--apply-schema", "--apply-telegram", "--dry-invoke", "--apply-cron"].includes(mode)) {
+    log("modes: --scan | --preflight | --apply-schema | --apply-telegram | --dry-invoke | --apply-cron");
     log(`apply modes require ${CONFIRM_ENV}=${CONFIRM_VAL} + SUPABASE_PROJECT_REF + SUPABASE_ACCESS_TOKEN`);
     process.exit(0);
   }
 
   // ── --scan: offline safety-scan of all four allowlisted files (no creds, no DB) ──
   if (mode === "--scan") {
-    for (const key of ["enum", "role", "core", "cron"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
-    log("all four migrations pass the safety scan.");
+    for (const key of ["enum", "role", "core", "cron", "tg"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
+    log("all five migrations pass the safety scan.");
     return;
   }
 
@@ -249,7 +251,33 @@ async function main() {
     log("applying core (own tx) …");
     await mgmt(creds, `BEGIN;\n${coreSql}\nCOMMIT;`);
     await schemaVerify(creds);
-    log("schema apply complete. NEXT: deploy marketing-dispatch + --dry-invoke, THEN --apply-cron.");
+    log("schema apply complete. NEXT: --apply-telegram, then deploy marketing-dispatch + --dry-invoke, THEN --apply-cron.");
+    return;
+  }
+
+  if (mode === "--apply-telegram") {
+    // MKT-5: dedicated marketing Telegram (Vault token) + re-pointed RPCs. Requires core applied.
+    const v = (await mgmt(creds, PREFLIGHT_SQL))[0];
+    if (Number(v.mkt_tables) !== 4 || v.role_table !== true) fail("core schema not applied — run --apply-schema first.");
+    const tgSql = load("tg");
+    log("safety scan PASS (tg).");
+    log("applying telegram-dedicated (own tx) …");
+    await mgmt(creds, `BEGIN;\n${tgSql}\nCOMMIT;`);
+    const r = (await mgmt(creds, `select
+      (select count(*) from information_schema.columns
+         where table_schema='public' and table_name='club_channel_integrations' and column_name='bot_token_vault_key') as col,
+      (select count(*) from pg_proc where proname in
+         ('marketing_set_telegram','marketing_get_telegram_config','marketing_get_telegram_dispatch','marketing_list_club_members')) as fns,
+      has_function_privilege('authenticated','public.marketing_get_telegram_dispatch(uuid)','EXECUTE') as authed_dispatch,
+      has_function_privilege('service_role','public.marketing_get_telegram_dispatch(uuid)','EXECUTE') as svc_dispatch;`))[0];
+    log(`  bot_token_vault_key column : ${r.col} (expect 1)`);
+    log(`  new telegram/staff RPCs    : ${r.fns} (expect 4)`);
+    log(`  dispatch RPC authed EXEC   : ${r.authed_dispatch} (expect false)`);
+    log(`  dispatch RPC service EXEC  : ${r.svc_dispatch} (expect true)`);
+    if (Number(r.col) !== 1 || Number(r.fns) !== 4 || r.authed_dispatch !== false || r.svc_dispatch !== true) {
+      fail("telegram post-verify mismatch.");
+    }
+    log("telegram apply complete + post-verify PASS.");
     return;
   }
 

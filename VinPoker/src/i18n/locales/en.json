@@ -3194,7 +3194,8 @@
     "tabs": {
       "compose": "Compose",
       "posts": "Posts",
-      "channels": "Channels"
+      "channels": "Channels",
+      "staff": "Staff"
     },
     "composer": {
       "title": "New post",
@@ -3253,11 +3254,32 @@
       "skipped": "Skipped"
     },
     "channels": {
-      "intro": "P0 supports Telegram only. Facebook and Zalo come in a later phase. No tokens are entered here — Telegram uses the shared system bot and the club's linked chat.",
-      "tokenNote": "Will need a per-club integration; tokens will live in Supabase Secrets/Vault, never entered on this screen.",
-      "telegramReady": "Ready — the club's Telegram chat is linked.",
-      "telegramNotLinked": "Not linked yet — link the club's Telegram chat via the Telegram bot in club settings.",
-      "comingSoon": "Coming soon"
+      "intro": "P0 = Telegram only. Set marketing's OWN chat (separate from the dealer group). Bot token optional — blank uses the shared VinPoker bot.",
+      "tokenNote": "Facebook/Zalo need a separate integration later; tokens are stored encrypted in Supabase Vault, never shown here.",
+      "comingSoon": "Coming soon",
+      "statusReady": "Ready",
+      "statusNotConfigured": "Not set",
+      "chatId": "Marketing chat ID",
+      "chatIdHelp": "The Telegram group/channel for marketing (NOT the dealer group). Add the bot to that chat to get its id.",
+      "botToken": "Bot token (optional)",
+      "botTokenPlaceholder": "blank = use the shared VinPoker bot",
+      "botTokenKeep": "•••••• (set — leave blank to keep)",
+      "botTokenHelp": "Enter a token to use the club's own marketing bot. Stored encrypted; never shown again.",
+      "tokenSet": "custom bot set",
+      "save": "Save",
+      "saved": "Saved.",
+      "useGlobalBot": "Use shared bot (remove token)",
+      "errChatId": "Enter the marketing chat ID."
+    },
+    "staff": {
+      "search": "Search by name or phone",
+      "grant": "Grant",
+      "revoke": "Revoke",
+      "granted": "Marketing role granted.",
+      "revoked": "Marketing role revoked.",
+      "empty": "No matching accounts.",
+      "loadError": "Can't load members yet.",
+      "assignedCount": "{{count}} marketer(s) assigned"
     }
   }
 }
