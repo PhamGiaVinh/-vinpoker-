@@ -108,6 +108,22 @@ const GEO = {
   landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS, centerTop: "43%", centerW: "40%", vSize: "clamp(22px,4vw,36px)", maxW: "820px" },
 };
 
+// Viewer Felt V2 (viewerLayout-only) — CoinPoker-style geometry: sides pushed further
+// out + top/bottom rows raised/lowered so the central column (board + pot) is wide open,
+// and the felt is a touch larger. Used ONLY when viewerLayout is on; operator/TV keep GEO.
+const PORTRAIT_SEATS_V2: Record<number, Pt> = {
+  1: { l: 35, t: 92 }, 2: { l: 10, t: 76 }, 3: { l: 6, t: 50 }, 4: { l: 18, t: 18 }, 5: { l: 50, t: 8 },
+  6: { l: 82, t: 18 }, 7: { l: 94, t: 50 }, 8: { l: 90, t: 76 }, 9: { l: 65, t: 92 },
+};
+const LANDSCAPE_SEATS_V2: Record<number, Pt> = {
+  1: { l: 35, t: 88 }, 2: { l: 8, t: 60 }, 3: { l: 13, t: 24 }, 4: { l: 33, t: 9 }, 5: { l: 50, t: 6 },
+  6: { l: 67, t: 9 }, 7: { l: 87, t: 24 }, 8: { l: 92, t: 60 }, 9: { l: 65, t: 88 },
+};
+const GEO_V2 = {
+  portrait: { aspect: "5 / 7", seats: PORTRAIT_SEATS_V2, centerTop: "42%", centerW: "54%", vSize: "clamp(26px,9vw,40px)", maxW: "480px" },
+  landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS_V2, centerTop: "44%", centerW: "36%", vSize: "clamp(22px,4vw,36px)", maxW: "880px" },
+};
+
 export interface LiveFeltProps {
   /** Active seats already positioned for the table on view. */
   seats: SeatInfo[];
@@ -206,7 +222,9 @@ export function LiveFelt({
   viewerLayout = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
-  const geo = portrait ? GEO.portrait : GEO.landscape;
+  // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
+  const geoSet = viewerLayout ? GEO_V2 : GEO;
+  const geo = portrait ? geoSet.portrait : geoSet.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
 
   // Viewer Felt V2 — cards size with the FELT's own width (cqi resolves to the
@@ -465,12 +483,30 @@ export function LiveFelt({
                     </span>
                   )}
                 </div>
-                <div className="tracker-display mt-1 max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameShadow}>
-                  {seat.display_name}
-                </div>
-                <div className="tracker-num text-[10px] font-bold leading-tight" style={{ color: "hsl(var(--poker-stack))", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}>
-                  {formatStack(seat.chip_count)}
-                </div>
+                {viewerLayout ? (
+                  // V2: a CoinPoker-style "nameplate" capsule — name + stack grouped in one
+                  // dark, neon-bordered pill so each seat reads as a tight unit.
+                  <div
+                    className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
+                    style={{ background: "rgba(8,12,10,0.82)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}
+                  >
+                    <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
+                      {seat.display_name}
+                    </div>
+                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(var(--poker-stack))" }}>
+                      {formatStack(seat.chip_count)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="tracker-display mt-1 max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameShadow}>
+                      {seat.display_name}
+                    </div>
+                    <div className="tracker-num text-[10px] font-bold leading-tight" style={{ color: "hsl(var(--poker-stack))", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}>
+                      {formatStack(seat.chip_count)}
+                    </div>
+                  </>
+                )}
                 {isWinner && (
                   <div
                     data-testid="seat-net-won"
