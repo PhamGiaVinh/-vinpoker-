@@ -1,0 +1,250 @@
+/* VinPoker neon-green tournament clock — scoped styles (prefix: vpc-).
+ * FIXED broadcast theme: the palette is defined here on .vpc-root and NEVER
+ * references the app's --primary, so the clock stays neon-green in both the
+ * dark and the [data-theme="vinpoker-warm"] app themes. Clubs change only the
+ * background photo (--club-bg-image, injected inline by the component).
+ * Mirrors the co-located scoped-CSS convention of poker/pokerTable.css. */
+
+.vpc-root {
+  --clock-green: #62ff8f;
+  --clock-green-2: #19d96a;
+  --clock-panel: linear-gradient(180deg, rgba(7, 16, 12, 0.82), rgba(3, 8, 6, 0.68));
+  --clock-line: rgba(98, 255, 143, 0.66);
+  --clock-bg-fallback: #03100a;
+  --clock-white: #f7fff8;
+  --clock-muted: rgba(235, 255, 239, 0.72);
+
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 100vh;
+  margin-inline: auto;
+  overflow: hidden;
+  background: var(--clock-bg-fallback);
+  color: var(--clock-white);
+  isolation: isolate;
+  font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+}
+
+/* Replaceable background layer — club photo OR the dark fallback. Heavy
+ * blur + low brightness so any bright/busy club photo stays safely behind
+ * the panels (owner P0-5). */
+.vpc-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -5;
+  background-image: var(--club-bg-image, none);
+  background-position: center;
+  background-size: cover;
+  background-color: var(--clock-bg-fallback);
+  filter: blur(2px) saturate(0.85) brightness(0.35);
+  transform: scale(1.03);
+}
+
+/* Dark overlay — radial green vignette + strong top/bottom darkening so text
+ * keeps contrast no matter the photo. */
+.vpc-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(29, 255, 110, 0.13), transparent 36%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0.16) 48%, rgba(0, 0, 0, 0.66)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.74), rgba(0, 0, 0, 0.2) 44%, rgba(0, 0, 0, 0.82));
+}
+
+/* Outer neon HUD frame. */
+.vpc-frame {
+  position: absolute;
+  inset: 1.1vmin;
+  z-index: -1;
+  border: 0.2vmin solid rgba(98, 255, 143, 0.55);
+  border-radius: 1.6vmin;
+  box-shadow:
+    0 0 18px rgba(98, 255, 143, 0.45),
+    inset 0 0 38px rgba(98, 255, 143, 0.06);
+  pointer-events: none;
+}
+
+/* Glass panels with green glowing border. */
+.vpc-panel {
+  position: relative;
+  border: 1px solid var(--clock-line);
+  border-radius: 1.1vmin;
+  background: var(--clock-panel);
+  box-shadow: 0 0 22px rgba(98, 255, 143, 0.14), inset 0 0 24px rgba(98, 255, 143, 0.05);
+  backdrop-filter: blur(10px);
+}
+
+.vpc-label {
+  color: var(--clock-green);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 12px rgba(98, 255, 143, 0.42);
+}
+.vpc-value {
+  color: var(--clock-white);
+  font-weight: 900;
+  line-height: 1.04;
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.18), 0 0 20px rgba(98, 255, 143, 0.18);
+  font-variant-numeric: tabular-nums;
+}
+
+.vpc-divider-x {
+  border-left: 1px solid rgba(98, 255, 143, 0.5);
+}
+
+/* Title with side rules. */
+.vpc-title {
+  font-family: "Arial Narrow", "Bebas Neue", Impact, Inter, sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 0.9;
+  color: #caffd4;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(98, 255, 143, 0.95), 0 0 32px rgba(98, 255, 143, 0.42), 0 3px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Brand chip emblem. */
+.vpc-chip {
+  border-radius: 50%;
+  border: 0.7vmin solid rgba(193, 255, 203, 0.72);
+  background:
+    radial-gradient(circle at center, rgba(98, 255, 143, 0.34) 0 28%, #0c1510 30% 52%, rgba(98, 255, 143, 0.8) 54% 57%, #111 59% 100%),
+    conic-gradient(from 0deg, #1e3, #111 15%, #1e3 22%, #111 39%, #1e3 48%, #111 64%, #1e3 74%, #111 88%, #1e3);
+  box-shadow: 0 0 18px var(--clock-green), inset 0 0 22px rgba(98, 255, 143, 0.42);
+}
+
+/* ── Central countdown ring (decorative conic tick ring; not a progress arc) ── */
+.vpc-ring {
+  position: relative;
+  aspect-ratio: 1;
+  width: min(42vmin, 600px);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.94) 0 55%, transparent 56%),
+    repeating-conic-gradient(from 0deg, rgba(98, 255, 143, 0.98) 0 1.2deg, transparent 1.2deg 6deg),
+    radial-gradient(circle, rgba(98, 255, 143, 0.18), transparent 62%);
+  box-shadow: 0 0 14px var(--clock-green), 0 0 52px rgba(98, 255, 143, 0.5), inset 0 0 30px rgba(98, 255, 143, 0.16);
+}
+.vpc-ring::before {
+  content: "";
+  position: absolute;
+  inset: 4.6%;
+  border-radius: 50%;
+  border: 0.55vmin solid rgba(98, 255, 143, 0.95);
+  box-shadow: inset 0 0 30px rgba(98, 255, 143, 0.16), 0 0 25px rgba(98, 255, 143, 0.55);
+  background:
+    radial-gradient(circle at center, rgba(4, 8, 6, 0.92), rgba(0, 0, 0, 0.88)),
+    repeating-linear-gradient(135deg, rgba(98, 255, 143, 0.04) 0 1px, transparent 1px 7px);
+}
+.vpc-ring-inner {
+  position: relative;
+  z-index: 2;
+  width: 84%;
+  text-align: center;
+}
+.vpc-ring-level {
+  color: var(--clock-green);
+  font-weight: 900;
+  text-shadow: 0 0 12px var(--clock-green);
+}
+.vpc-ring-time {
+  font-family: "Arial Narrow", "Bebas Neue", Impact, Inter, sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fff;
+  line-height: 0.96;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.42), 0 0 34px rgba(98, 255, 143, 0.34);
+  font-variant-numeric: tabular-nums;
+}
+.vpc-ring-break {
+  color: var(--clock-green);
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(98, 255, 143, 0.62);
+}
+
+/* Prizes list. */
+.vpc-payout-row {
+  display: grid;
+  grid-template-columns: minmax(64px, auto) 1fr;
+  align-items: center;
+  gap: 1vmin;
+  padding: 0.75vmin 0;
+  border-bottom: 1px solid rgba(98, 255, 143, 0.18);
+  font-weight: 700;
+}
+.vpc-payout-row:last-child {
+  border-bottom: 0;
+}
+.vpc-payout-row > span:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Footer. */
+.vpc-footer {
+  border: 0.22vmin solid rgba(98, 255, 143, 0.6);
+  border-radius: 1.2vmin;
+  background: rgba(3, 8, 6, 0.78);
+  box-shadow: 0 0 18px rgba(98, 255, 143, 0.42), inset 0 0 24px rgba(98, 255, 143, 0.07);
+}
+.vpc-footer-icon {
+  color: var(--clock-green);
+  text-shadow: 0 0 16px var(--clock-green);
+}
+
+/* The colon in the running clock blinks once a second — purely sensory, and
+ * disabled for users who prefer reduced motion. */
+@keyframes vpc-blink {
+  50% { opacity: 0.35; }
+}
+.vpc-blink {
+  animation: vpc-blink 1s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vpc-blink { animation: none; }
+  .vpc-bg { transform: none; }
+}
+
+/* ── Layout grid (in CSS so the mobile media query can restack it) ── */
+.vpc-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1.18fr) 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 2vmin 2.4vmin;
+  height: 100%;
+  padding: 3vmin 3.4vmin;
+}
+.vpc-title-cell { grid-column: 1 / -1; }
+.vpc-footer-cell { grid-column: 1 / -1; align-self: end; }
+
+/* Phone / narrow portrait — drop the forced 16:9, stack vertically and fill the
+ * screen, and bump the ring up. Order: title → ring → stats → blinds/prizes → footer.
+ * The clamp() minimums on every font keep text readable even though vmin is small. */
+@media (max-width: 760px) {
+  .vpc-root {
+    aspect-ratio: auto;
+    min-height: 100svh;
+  }
+  .vpc-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
+    gap: 3.4vw;
+    padding: 5vw 4vw 4vw;
+    height: auto;
+    min-height: 100svh;
+    align-content: center;
+  }
+  .vpc-title-cell,
+  .vpc-footer-cell { grid-column: 1; }
+  .vpc-center { order: 2; }
+  .vpc-aside-l { order: 3; }
+  .vpc-aside-r { order: 4; }
+  .vpc-footer-cell { order: 5; }
+  .vpc-ring { width: min(72vw, 360px); }
+}

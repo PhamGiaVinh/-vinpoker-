@@ -93,6 +93,10 @@ const OnlinePokerTable = lazy(() => import("./pages/OnlinePokerTable"));
 // its lazy chunk are tree-shaken out of the production build (the dead ternary branch drops
 // the dynamic import). Reached only at /__dev/table; not linked anywhere.
 const DevTablePreview = import.meta.env.DEV ? lazy(() => import("./dev/TablePreview")) : null;
+// DEV-ONLY visual harness for the neon-green tournament clock (PR Clock-A). Same
+// import.meta.env.DEV gate → route + lazy chunk stripped from production. Reached
+// only at /__dev/clock; not linked anywhere.
+const DevClockPreview = import.meta.env.DEV ? lazy(() => import("./dev/ClockPreview")) : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -162,6 +166,9 @@ const App = () => (
                   for screenshots; not linked, stripped from the production build. */}
               {import.meta.env.DEV && DevTablePreview && (
                 <Route path="/__dev/table" element={<DevTablePreview />} />
+              )}
+              {import.meta.env.DEV && DevClockPreview && (
+                <Route path="/__dev/clock" element={<DevClockPreview />} />
               )}
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}

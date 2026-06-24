@@ -43,7 +43,11 @@ const TOURNAMENT: TvTournamentRow = {
   players_remaining: 42,
   average_stack: 48500,
   prize_pool: 87_300_000,
-  club: { name: "VinPoker Club" },
+  starting_stack: 30_000,
+  guarantee_amount: null,
+  buy_in: 1_000_000,
+  rake_amount: 100_000,
+  club: { name: "VinPoker Club", cover_url: null },
 };
 
 const LEVEL_ROWS = [
