@@ -19,6 +19,7 @@ import SwingTableActions from "./SwingTableActions";
 import SwingClockRing from "./SwingClockRing";
 import { deriveTableSwingView, formatTimeHHmm, type TableTimeline } from "./swingTableView";
 import { dealerStatusStyle, type DealerTableStatus } from "./dealerStatusStyle";
+import { FeatureTableBadge, useFeatureTableBorder } from "./FeatureTableBadge";
 import { getPreAssignStatusLabel } from "@/lib/dealerSwingState";
 import { OPEN_TABLE_GRACE_MINUTES } from "@/lib/breakPoolState";
 import type {
@@ -103,6 +104,7 @@ export default function SwingTableCard({
 }: SwingTableCardProps) {
   const dealer = a ? (a as any).dealer_attendance?.dealers : null;
   const s = dealerStatusStyle[dealerStatus];
+  const featureBorder = useFeatureTableBorder(t.id);
 
   // ── Shared timing view (single source of truth — see swingTableView) ──
   const {
@@ -228,6 +230,7 @@ export default function SwingTableCard({
             "group relative flex w-full items-center gap-3 overflow-hidden rounded-xl border p-3 text-left transition",
             "bg-gradient-card shadow-card hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
             s.border,
+            featureBorder,
             !a && "border-dashed",
             isOt && "shadow-neon",
             isAnimating?.(t.id) && "table-card--swinging",
@@ -267,6 +270,7 @@ export default function SwingTableCard({
               <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} aria-hidden="true" />
               {s.label}
             </span>
+            <FeatureTableBadge tableId={t.id} className="ml-1 mt-1.5 align-middle" />
             {dealer && nextName && (
               <div className="mt-1 flex items-baseline gap-1 text-[11px] leading-tight">
                 <span className="shrink-0 text-[hsl(var(--ds-preassign))]" aria-hidden="true">→</span>
