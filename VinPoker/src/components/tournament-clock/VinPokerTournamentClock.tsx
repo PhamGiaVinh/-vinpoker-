@@ -34,18 +34,10 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
       <div className="vpc-overlay" aria-hidden="true" />
       <div className="vpc-frame" aria-hidden="true" />
 
-      <div
-        className="relative grid h-full"
-        style={{
-          gridTemplateColumns: "1fr minmax(0, 1.18fr) 1fr",
-          gridTemplateRows: "auto 1fr auto",
-          gap: "2vmin 2.4vmin",
-          padding: "3vmin 3.4vmin",
-        }}
-      >
+      <div className="vpc-grid">
         {/* Title */}
         <h1
-          className="vpc-title col-span-3 flex items-center justify-center text-center"
+          className="vpc-title vpc-title-cell flex items-center justify-center text-center"
           style={{ fontSize: "clamp(28px, 5.4vmin, 92px)", gap: "2.4vmin" }}
         >
           <span aria-hidden className="hidden sm:inline-block" style={rule} />
@@ -54,7 +46,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
         </h1>
 
         {/* Left column */}
-        <aside className="grid content-start" style={{ gap: "1.8vmin" }}>
+        <aside className="vpc-aside-l grid content-start" style={{ gap: "1.8vmin" }}>
           <div className="vpc-panel grid grid-cols-3 items-center" style={{ padding: "2vmin 2.2vmin", minHeight: "13vmin" }}>
             <Stat label="Players" value={data.players.toLocaleString("vi-VN")} />
             <Stat label="Entries" value={data.entries.toLocaleString("vi-VN")} divider />
@@ -99,7 +91,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
         </aside>
 
         {/* Center ring */}
-        <section className="grid place-items-center self-stretch">
+        <section className="vpc-center grid place-items-center self-stretch">
           <ClockRing
             levelLabel={data.levelLabel}
             secondsLeft={data.secondsLeft}
@@ -108,7 +100,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
         </section>
 
         {/* Right column */}
-        <aside className="grid content-start" style={{ gap: "1.8vmin" }}>
+        <aside className="vpc-aside-r grid content-start" style={{ gap: "1.8vmin" }}>
           <div className="vpc-panel text-center" style={{ padding: "1.8vmin 2.2vmin" }}>
             <div className="vpc-label" style={labelUpper}>Current Level</div>
             <div className="vpc-value" style={midValue}>{data.currentLevel}</div>
@@ -134,7 +126,7 @@ export function VinPokerTournamentClock({ data }: { data: TournamentClockData })
 
         {/* Footer */}
         <footer
-          className="vpc-footer col-span-3 self-end grid items-center text-center"
+          className="vpc-footer vpc-footer-cell self-end grid items-center text-center"
           style={{ gridTemplateColumns: "auto 1fr auto", padding: "1.4vmin 3vmin", minHeight: "8vmin", fontSize: "clamp(13px, 1.9vmin, 30px)", gap: "2vmin" }}
         >
           <div className="vpc-footer-icon" style={{ fontSize: "clamp(20px, 3vmin, 45px)" }}>♣</div>

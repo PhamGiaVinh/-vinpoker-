@@ -26,7 +26,12 @@ export function ClockRing({
         </div>
         <div
           className="vpc-ring-time"
-          style={{ fontSize: "clamp(58px, 12vmin, 158px)", margin: "2.2vmin 0 1.4vmin" }}
+          style={{
+            fontSize: "clamp(36px, 9.3vmin, 124px)",
+            margin: "1.8vmin 0 1.2vmin",
+            maxWidth: "100%",
+            whiteSpace: "nowrap",
+          }}
         >
           {formatClock(secondsLeft)}
         </div>
