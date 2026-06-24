@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,12 +24,12 @@ export const MarketingStaffManager = ({ clubId, onChanged }: Props) => {
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (query: string) => {
     if (!clubId) return;
     setLoading(true);
     setLoadError(false);
     try {
-      const { data, error } = await sb.rpc("marketing_list_club_members", { p_club_id: clubId });
+      const { data, error } = await sb.rpc("marketing_list_club_members", { p_club_id: clubId, p_query: query });
       if (error || data?.error) { setLoadError(true); setMembers([]); }
       else setMembers((data?.members ?? []) as Member[]);
     } catch {
@@ -39,7 +39,11 @@ export const MarketingStaffManager = ({ clubId, onChanged }: Props) => {
     }
   }, [clubId]);
 
-  useEffect(() => { load(); }, [load]);
+  // Server-side search (debounced) — searches ALL registered accounts, not just this club's members.
+  useEffect(() => {
+    const id = setTimeout(() => { load(q); }, 300);
+    return () => clearTimeout(id);
+  }, [q, load]);
 
   const toggle = async (m: Member) => {
     setBusyId(m.user_id);
@@ -52,13 +56,6 @@ export const MarketingStaffManager = ({ clubId, onChanged }: Props) => {
       onChanged?.();
     } finally { setBusyId(null); }
   };
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return members;
-    return members.filter((m) =>
-      (m.name ?? "").toLowerCase().includes(s) || (m.phone ?? "").toLowerCase().includes(s));
-  }, [members, q]);
 
   if (loading) return <div className="space-y-2"><Skeleton className="h-9 w-full" /><Skeleton className="h-24 w-full" /></div>;
 
@@ -77,11 +74,11 @@ export const MarketingStaffManager = ({ clubId, onChanged }: Props) => {
 
       <p className="text-xs text-muted-foreground">{t("marketing.staff.assignedCount", { count: assignedCount })}</p>
 
-      {filtered.length === 0 ? (
+      {members.length === 0 ? (
         <Card><CardContent className="py-6 text-sm text-muted-foreground">{t("marketing.staff.empty")}</CardContent></Card>
       ) : (
         <div className="space-y-1.5">
-          {filtered.map((m) => (
+          {members.map((m) => (
             <div key={m.user_id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
               <div className="min-w-0">
                 <div className="truncate text-sm text-foreground">{m.name ?? m.user_id.slice(0, 8)}</div>

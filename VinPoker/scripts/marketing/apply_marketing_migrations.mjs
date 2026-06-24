@@ -47,6 +47,7 @@ const MIG = {
   core: "supabase/migrations/20261101000002_marketing_core.sql",
   cron: "supabase/migrations/20261101000003_schedule_marketing_dispatch.sql",
   tg:   "supabase/migrations/20261101000004_marketing_telegram_dedicated.sql",
+  acct: "supabase/migrations/20261101000005_marketing_account_search.sql",
 };
 const REQUIRED = {
   enum: /\bALTER\s+TYPE\s+public\.app_role\s+ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'marketing'/i,
@@ -54,6 +55,7 @@ const REQUIRED = {
   core: /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+public\.marketing_posts\b/i,
   cron: /cron\.schedule\(\s*'marketing-dispatch'/i,
   tg:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_telegram\b/i,
+  acct: /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_list_club_members\(p_club_id\s+uuid,\s*p_query\s+text\)/i,
 };
 
 const CONFIRM_ENV = "CONFIRM_APPLY_MARKETING";
@@ -195,8 +197,8 @@ async function main() {
 
   // ── --scan: offline safety-scan of all four allowlisted files (no creds, no DB) ──
   if (mode === "--scan") {
-    for (const key of ["enum", "role", "core", "cron", "tg"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
-    log("all five migrations pass the safety scan.");
+    for (const key of ["enum", "role", "core", "cron", "tg", "acct"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
+    log("all six migrations pass the safety scan.");
     return;
   }
 
@@ -284,7 +286,7 @@ async function main() {
     const r = (await mgmt(creds, `select
       (select count(*) from information_schema.columns
          where table_schema='public' and table_name='club_channel_integrations' and column_name='bot_token_vault_key') as col,
-      (select count(*) from pg_proc where proname in
+      (select count(distinct proname) from pg_proc where proname in
          ('marketing_set_telegram','marketing_get_telegram_config','marketing_get_telegram_dispatch','marketing_list_club_members')) as fns,
       has_function_privilege('authenticated','public.marketing_get_telegram_dispatch(uuid)','EXECUTE') as authed_dispatch,
       has_function_privilege('service_role','public.marketing_get_telegram_dispatch(uuid)','EXECUTE') as svc_dispatch;`))[0];
@@ -295,7 +297,15 @@ async function main() {
     if (Number(r.col) !== 1 || Number(r.fns) !== 4 || r.authed_dispatch !== false || r.svc_dispatch !== true) {
       fail("telegram post-verify mismatch.");
     }
-    log("telegram apply complete + post-verify PASS.");
+    // MKT-5 follow-up: account-search overload (find ANY registered account for role assignment).
+    const acctSql = load("acct");
+    log("applying account-search overload (own tx) …");
+    await mgmt(creds, `BEGIN;\n${acctSql}\nCOMMIT;`);
+    const a = (await mgmt(creds, `select count(*) as n from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname='marketing_list_club_members' and p.pronargs=2;`))[0];
+    log(`  marketing_list_club_members(uuid,text) overload : ${a.n} (expect 1)`);
+    if (Number(a.n) !== 1) fail("account-search overload not present.");
+    log("telegram + account-search apply complete + post-verify PASS.");
     return;
   }
 
