@@ -13,9 +13,9 @@ const GOLD = '#d9c27a';
 const GOLD_HI = '#f4e6b0'; // bevel highlight
 const GOLD_LO = '#8a6f2b'; // bevel shadow
 
-export function CardBack({ size = 'md', className }: { size?: 'sm' | 'md' | 'lg'; className?: string }) {
-  const dims = size === 'lg' ? 'h-16 w-11' : size === 'sm' ? 'h-8 w-6' : 'h-12 w-9';
-  const mono = size === 'lg' ? 'h-6 w-6 text-[13px]' : size === 'sm' ? 'h-3.5 w-3.5 text-[8px]' : 'h-5 w-5 text-[11px]';
+export function CardBack({ size = 'md', className }: { size?: 'sm' | 'mc' | 'md' | 'lg'; className?: string }) {
+  const dims = size === 'lg' ? 'h-16 w-11' : size === 'sm' ? 'h-8 w-6' : size === 'mc' ? 'h-10 w-[1.875rem]' : 'h-12 w-9';
+  const mono = size === 'lg' ? 'h-6 w-6 text-[13px]' : size === 'sm' ? 'h-3.5 w-3.5 text-[8px]' : size === 'mc' ? 'h-4 w-4 text-[10px]' : 'h-5 w-5 text-[11px]';
 
   return (
     <div

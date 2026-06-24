@@ -32,10 +32,10 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
         folded && 'opacity-50',
       )}
     >
-      {/* the hero's two cards — same size as the board + opponents (md), soft drop shadow */}
+      {/* the hero's two cards — same size as the board + opponents (mc), soft drop shadow */}
       <div className="flex items-end gap-0.5 origin-bottom-left [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))]">
         {cards.map((c, i) => (
-          <PlayingCard key={i} card={c} size="md" reveal={!!c && c !== '?'} />
+          <PlayingCard key={i} card={c} size="mc" reveal={!!c && c !== '?'} />
         ))}
       </div>
 
