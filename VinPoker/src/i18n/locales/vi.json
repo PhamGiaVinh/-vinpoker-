@@ -3182,5 +3182,82 @@
       "medium": "Trung bình",
       "high": "Cao"
     }
+  },
+  "marketing": {
+    "navTitle": "Marketing",
+    "title": "Marketing",
+    "subtitle": "Soạn, lên lịch và tự động đăng bài lên các kênh của câu lạc bộ.",
+    "notReady": "Module marketing chưa sẵn sàng (cần bật tính năng và áp dụng cơ sở dữ liệu).",
+    "noClubs": "Bạn chưa được gán vào câu lạc bộ nào để làm marketing.",
+    "club": "Câu lạc bộ",
+    "selectClub": "Chọn câu lạc bộ",
+    "tabs": {
+      "compose": "Soạn bài",
+      "posts": "Bài viết",
+      "channels": "Kênh"
+    },
+    "composer": {
+      "title": "Soạn bài mới",
+      "postTitle": "Tiêu đề",
+      "postTitlePh": "Tiêu đề (không bắt buộc)",
+      "body": "Nội dung",
+      "bodyPh": "Nội dung bài viết…",
+      "image": "Hình ảnh",
+      "addImage": "Thêm ảnh",
+      "removeImage": "Xoá ảnh",
+      "onlyJpgPng": "Chỉ chấp nhận ảnh JPG hoặc PNG.",
+      "max5mb": "Ảnh tối đa 5MB.",
+      "channels": "Kênh đăng",
+      "comingSoon": "sắp có",
+      "schedule": "Thời gian đăng",
+      "publishNow": "Đăng ngay",
+      "scheduleLater": "Lên lịch",
+      "hashtags": "Hashtag",
+      "saveDraft": "Lưu nháp",
+      "scheduleBtn": "Lên lịch",
+      "publishBtn": "Đăng ngay",
+      "savedDraft": "Đã lưu nháp.",
+      "scheduled": "Đã lên lịch đăng.",
+      "publishing": "Đã đưa vào hàng đợi đăng.",
+      "errBody": "Vui lòng nhập nội dung.",
+      "errNoChannels": "Chọn ít nhất một kênh.",
+      "errPickTime": "Chọn thời gian đăng.",
+      "errCompliance": "Bị chặn — nội dung chứa từ cấm: {{terms}}",
+      "errChannel": "Kênh chưa được cấu hình: {{channel}}",
+      "errForbidden": "Bạn không có quyền.",
+      "errGeneric": "Có lỗi xảy ra."
+    },
+    "list": {
+      "empty": "Chưa có bài viết nào.",
+      "refresh": "Làm mới",
+      "channels": "Kênh",
+      "scheduledAt": "Lên lịch",
+      "sentAt": "Đã đăng",
+      "blocked": "Bị chặn",
+      "cancel": "Huỷ",
+      "cancelled": "Đã huỷ bài viết."
+    },
+    "status": {
+      "draft": "Nháp",
+      "scheduled": "Đã lên lịch",
+      "processing": "Đang xử lý",
+      "sent": "Đã đăng",
+      "failed": "Thất bại",
+      "cancelled": "Đã huỷ"
+    },
+    "delivery": {
+      "pending": "Chờ",
+      "processing": "Đang gửi",
+      "sent": "Đã gửi",
+      "failed": "Lỗi",
+      "skipped": "Bỏ qua"
+    },
+    "channels": {
+      "intro": "Giai đoạn đầu chỉ hỗ trợ Telegram. Facebook và Zalo sẽ có ở giai đoạn sau. Không nhập token tại đây — Telegram dùng bot chung của hệ thống và chat đã liên kết của CLB.",
+      "tokenNote": "Sẽ cần tích hợp riêng cho từng CLB; token lưu trong Supabase Secrets/Vault, không nhập ở màn hình này.",
+      "telegramReady": "Sẵn sàng — chat Telegram của CLB đã được liên kết.",
+      "telegramNotLinked": "Chưa liên kết — liên kết chat Telegram của CLB qua bot Telegram trong cài đặt CLB.",
+      "comingSoon": "Sắp có"
+    }
   }
 }
