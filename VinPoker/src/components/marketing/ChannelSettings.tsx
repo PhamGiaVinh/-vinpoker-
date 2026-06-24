@@ -10,10 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { ShieldAlert, CheckCircle2, Clock, Loader2, KeyRound } from "lucide-react";
 
-// Editable marketing-Telegram config: a DEDICATED chat id (so marketing doesn't post to the dealer
-// group) + an OPTIONAL per-club bot token. The token is WRITE-ONLY here: it's stored encrypted in
-// Supabase Vault by marketing_set_telegram and is NEVER returned to the client (we only learn
-// whether one is set). Blank token = use the shared VinPoker bot.
+// Editable Telegram + Facebook config. Telegram: dedicated chat id + OPTIONAL bot token (blank =
+// shared VinPoker bot). Facebook: Page id + REQUIRED Page Access Token (pages_manage_posts). Tokens
+// are WRITE-ONLY here — stored encrypted in Supabase Vault by marketing_set_telegram/_facebook and
+// NEVER returned to the client (we only learn whether one is set). Zalo: coming soon.
 const sb = supabase as any;
 
 interface Props { clubId: string; clubName?: string; onChanged?: () => void }
@@ -21,26 +21,33 @@ interface Props { clubId: string; clubName?: string; onChanged?: () => void }
 export const ChannelSettings = ({ clubId, onChanged }: Props) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
-  const [enabled, setEnabled] = useState(false);
+  // Telegram
+  const [tgEnabled, setTgEnabled] = useState(false);
   const [chatId, setChatId] = useState("");
-  const [hasToken, setHasToken] = useState(false);
-  const [token, setToken] = useState("");
+  const [tgHasToken, setTgHasToken] = useState(false);
+  const [tgToken, setTgToken] = useState("");
+  // Facebook
+  const [fbEnabled, setFbEnabled] = useState(false);
+  const [pageId, setPageId] = useState("");
+  const [fbHasToken, setFbHasToken] = useState(false);
+  const [fbToken, setFbToken] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!clubId) return;
     setLoading(true);
     try {
-      const { data, error } = await sb.rpc("marketing_get_telegram_config", { p_club_id: clubId });
-      if (error || data?.error) { setEnabled(false); setChatId(""); setHasToken(false); }
-      else {
-        setEnabled(!!data?.enabled);
-        setChatId((data?.chat_id as string) ?? "");
-        setHasToken(!!data?.has_custom_token);
-      }
-      setToken("");
+      const [tg, fb] = await Promise.all([
+        sb.rpc("marketing_get_telegram_config", { p_club_id: clubId }),
+        sb.rpc("marketing_get_facebook_config", { p_club_id: clubId }),
+      ]);
+      const t1 = tg?.data;
+      if (!tg?.error && !t1?.error) { setTgEnabled(!!t1?.enabled); setChatId((t1?.chat_id as string) ?? ""); setTgHasToken(!!t1?.has_custom_token); }
+      const f1 = fb?.data;
+      if (!fb?.error && !f1?.error) { setFbEnabled(!!f1?.enabled); setPageId((f1?.page_id as string) ?? ""); setFbHasToken(!!f1?.has_token); }
+      setTgToken(""); setFbToken("");
     } catch {
-      setEnabled(false); setChatId(""); setHasToken(false);
+      /* leave defaults */
     } finally {
       setLoading(false);
     }
@@ -48,24 +55,31 @@ export const ChannelSettings = ({ clubId, onChanged }: Props) => {
 
   useEffect(() => { load(); }, [load]);
 
-  // p_bot_token: undefined→null (keep), a value→store, '' (sentinel)→clear to global bot.
-  const save = async (botTokenArg: string | null) => {
+  const saveTelegram = async (botTokenArg: string | null) => {
     if (!chatId.trim()) { toast.error(t("marketing.channels.errChatId")); return; }
     setBusy(true);
     try {
-      const { data, error } = await sb.rpc("marketing_set_telegram", {
-        p_club_id: clubId,
-        p_chat_id: chatId.trim(),
-        p_bot_token: botTokenArg,
-      });
+      const { data, error } = await sb.rpc("marketing_set_telegram", { p_club_id: clubId, p_chat_id: chatId.trim(), p_bot_token: botTokenArg });
       if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "error"); return; }
-      toast.success(t("marketing.channels.saved"));
-      onChanged?.();
-      await load();
+      toast.success(t("marketing.channels.saved")); onChanged?.(); await load();
     } finally { setBusy(false); }
   };
 
-  if (loading) return <Skeleton className="h-56 w-full" />;
+  const saveFacebook = async (tokenArg: string | null) => {
+    if (!pageId.trim()) { toast.error(t("marketing.channels.errPageId")); return; }
+    setBusy(true);
+    try {
+      const { data, error } = await sb.rpc("marketing_set_facebook", { p_club_id: clubId, p_page_id: pageId.trim(), p_page_token: tokenArg });
+      if (error || data?.error) { toast.error(error?.message ?? data?.error ?? "error"); return; }
+      toast.success(t("marketing.channels.saved")); onChanged?.(); await load();
+    } finally { setBusy(false); }
+  };
+
+  if (loading) return <Skeleton className="h-72 w-full" />;
+
+  const statusBadge = (ready: boolean) => ready
+    ? <Badge className="gap-1"><CheckCircle2 className="h-3.5 w-3.5" />{t("marketing.channels.statusReady")}</Badge>
+    : <Badge variant="outline" className="gap-1"><Clock className="h-3.5 w-3.5" />{t("marketing.channels.statusNotConfigured")}</Badge>;
 
   return (
     <div className="space-y-4">
@@ -76,16 +90,10 @@ export const ChannelSettings = ({ clubId, onChanged }: Props) => {
         </CardContent>
       </Card>
 
+      {/* Telegram */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center justify-between text-base">
-            Telegram
-            {enabled && chatId ? (
-              <Badge className="gap-1"><CheckCircle2 className="h-3.5 w-3.5" />{t("marketing.channels.statusReady")}</Badge>
-            ) : (
-              <Badge variant="outline" className="gap-1"><Clock className="h-3.5 w-3.5" />{t("marketing.channels.statusNotConfigured")}</Badge>
-            )}
-          </CardTitle>
+          <CardTitle className="flex items-center justify-between text-base">Telegram {statusBadge(tgEnabled && !!chatId)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -93,47 +101,60 @@ export const ChannelSettings = ({ clubId, onChanged }: Props) => {
             <Input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="-1001234567890" />
             <p className="mt-1 text-[11px] text-muted-foreground">{t("marketing.channels.chatIdHelp")}</p>
           </div>
-
           <div>
             <Label className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
               <KeyRound className="h-3.5 w-3.5" />{t("marketing.channels.botToken")}
-              {hasToken && <Badge variant="secondary" className="ml-1">{t("marketing.channels.tokenSet")}</Badge>}
+              {tgHasToken && <Badge variant="secondary" className="ml-1">{t("marketing.channels.tokenSet")}</Badge>}
             </Label>
-            <Input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={hasToken ? t("marketing.channels.botTokenKeep") : t("marketing.channels.botTokenPlaceholder")}
-              autoComplete="off"
-            />
+            <Input type="password" value={tgToken} onChange={(e) => setTgToken(e.target.value)} autoComplete="off"
+              placeholder={tgHasToken ? t("marketing.channels.botTokenKeep") : t("marketing.channels.botTokenPlaceholder")} />
             <p className="mt-1 text-[11px] text-muted-foreground">{t("marketing.channels.botTokenHelp")}</p>
           </div>
-
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button onClick={() => save(token.trim() ? token.trim() : null)} disabled={busy}>
-              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-              {t("marketing.channels.save")}
+            <Button onClick={() => saveTelegram(tgToken.trim() ? tgToken.trim() : null)} disabled={busy}>
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}{t("marketing.channels.save")}
             </Button>
-            {hasToken && (
-              <Button variant="outline" onClick={() => save("")} disabled={busy}>
-                {t("marketing.channels.useGlobalBot")}
-              </Button>
-            )}
+            {tgHasToken && <Button variant="outline" onClick={() => saveTelegram("")} disabled={busy}>{t("marketing.channels.useGlobalBot")}</Button>}
           </div>
         </CardContent>
       </Card>
 
-      {["Facebook", "Zalo OA"].map((label) => (
-        <Card key={label} className="opacity-70">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center justify-between text-base">
-              {label}
-              <Badge variant="outline">{t("marketing.channels.comingSoon")}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">{t("marketing.channels.tokenNote")}</CardContent>
-        </Card>
-      ))}
+      {/* Facebook */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center justify-between text-base">Facebook {statusBadge(fbEnabled && !!pageId)}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label className="mb-1 block text-xs text-muted-foreground">{t("marketing.channels.fbPageId")} *</Label>
+            <Input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="123456789012345" />
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("marketing.channels.fbPageIdHelp")}</p>
+          </div>
+          <div>
+            <Label className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <KeyRound className="h-3.5 w-3.5" />{t("marketing.channels.fbPageToken")} {fbEnabled ? "" : "*"}
+              {fbHasToken && <Badge variant="secondary" className="ml-1">{t("marketing.channels.tokenSet")}</Badge>}
+            </Label>
+            <Input type="password" value={fbToken} onChange={(e) => setFbToken(e.target.value)} autoComplete="off"
+              placeholder={fbHasToken ? t("marketing.channels.botTokenKeep") : t("marketing.channels.fbPageTokenPlaceholder")} />
+            <p className="mt-1 text-[11px] text-muted-foreground">{t("marketing.channels.fbPageTokenHelp")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button onClick={() => saveFacebook(fbToken.trim() ? fbToken.trim() : null)} disabled={busy}>
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}{t("marketing.channels.save")}
+            </Button>
+            {fbHasToken && <Button variant="outline" onClick={() => saveFacebook("")} disabled={busy}>{t("marketing.channels.fbClearToken")}</Button>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Zalo — coming soon */}
+      <Card className="opacity-70">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center justify-between text-base">Zalo OA<Badge variant="outline">{t("marketing.channels.comingSoon")}</Badge></CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">{t("marketing.channels.tokenNote")}</CardContent>
+      </Card>
     </div>
   );
 };

@@ -3269,7 +3269,14 @@
       "save": "Lưu",
       "saved": "Đã lưu.",
       "useGlobalBot": "Dùng bot chung (xoá token)",
-      "errChatId": "Nhập Chat ID marketing."
+      "errChatId": "Nhập Chat ID marketing.",
+      "fbPageId": "Facebook Page ID",
+      "fbPageIdHelp": "ID dạng số của Facebook Page (Trang → Giới thiệu/Cài đặt → Page ID). Đăng cho Page bạn quản trị.",
+      "fbPageToken": "Page Access Token",
+      "fbPageTokenHelp": "Token có quyền pages_manage_posts từ Meta app của bạn (cho Page bạn quản trị). Lưu mã hoá, không hiển thị lại. Bắt buộc để bật Facebook.",
+      "fbPageTokenPlaceholder": "dán Page Access Token (bắt buộc)",
+      "fbClearToken": "Xoá token (tắt Facebook)",
+      "errPageId": "Nhập Facebook Page ID."
     },
     "staff": {
       "search": "Tìm theo tên hoặc SĐT",

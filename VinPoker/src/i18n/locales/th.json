@@ -3023,7 +3023,14 @@
       "save": "บันทึก",
       "saved": "บันทึกแล้ว",
       "useGlobalBot": "ใช้บอทกลาง (ลบโทเค็น)",
-      "errChatId": "กรอก Chat ID มาร์เก็ตติ้ง"
+      "errChatId": "กรอก Chat ID มาร์เก็ตติ้ง",
+      "fbPageId": "Facebook Page ID",
+      "fbPageIdHelp": "ID ตัวเลขของเพจ Facebook (เพจ → เกี่ยวกับ/ตั้งค่า → Page ID) โพสต์ได้เฉพาะเพจที่คุณดูแล",
+      "fbPageToken": "Page Access Token",
+      "fbPageTokenHelp": "โทเค็นที่มีสิทธิ์ pages_manage_posts จาก Meta app ของคุณ (สำหรับเพจที่คุณดูแล) เก็บเข้ารหัสและไม่แสดงอีก จำเป็นต่อการเปิดใช้ Facebook",
+      "fbPageTokenPlaceholder": "วาง Page Access Token (จำเป็น)",
+      "fbClearToken": "ลบโทเค็น (ปิด Facebook)",
+      "errPageId": "กรอก Facebook Page ID"
     },
     "staff": {
       "search": "ค้นหาด้วยชื่อหรือเบอร์โทร",

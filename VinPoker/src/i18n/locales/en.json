@@ -3269,7 +3269,14 @@
       "save": "Save",
       "saved": "Saved.",
       "useGlobalBot": "Use shared bot (remove token)",
-      "errChatId": "Enter the marketing chat ID."
+      "errChatId": "Enter the marketing chat ID.",
+      "fbPageId": "Facebook Page ID",
+      "fbPageIdHelp": "Your Facebook Page's numeric ID (Page → About/Settings → Page ID). Posts to a Page you administer.",
+      "fbPageToken": "Page Access Token",
+      "fbPageTokenHelp": "A token with pages_manage_posts from your Meta app (for a Page you admin). Stored encrypted; never shown again. Required to enable Facebook.",
+      "fbPageTokenPlaceholder": "paste Page Access Token (required)",
+      "fbClearToken": "Remove token (disable Facebook)",
+      "errPageId": "Enter the Facebook Page ID."
     },
     "staff": {
       "search": "Search by name or phone",

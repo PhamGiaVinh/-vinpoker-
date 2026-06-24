@@ -48,6 +48,7 @@ const MIG = {
   cron: "supabase/migrations/20261101000003_schedule_marketing_dispatch.sql",
   tg:   "supabase/migrations/20261101000004_marketing_telegram_dedicated.sql",
   acct: "supabase/migrations/20261101000005_marketing_account_search.sql",
+  fb:   "supabase/migrations/20261101000006_marketing_facebook.sql",
 };
 const REQUIRED = {
   enum: /\bALTER\s+TYPE\s+public\.app_role\s+ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'marketing'/i,
@@ -56,6 +57,7 @@ const REQUIRED = {
   cron: /cron\.schedule\(\s*'marketing-dispatch'/i,
   tg:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_telegram\b/i,
   acct: /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_list_club_members\(p_club_id\s+uuid,\s*p_query\s+text\)/i,
+  fb:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_facebook\b/i,
 };
 
 const CONFIRM_ENV = "CONFIRM_APPLY_MARKETING";
@@ -197,8 +199,8 @@ async function main() {
 
   // ── --scan: offline safety-scan of all four allowlisted files (no creds, no DB) ──
   if (mode === "--scan") {
-    for (const key of ["enum", "role", "core", "cron", "tg", "acct"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
-    log("all six migrations pass the safety scan.");
+    for (const key of ["enum", "role", "core", "cron", "tg", "acct", "fb"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
+    log("all seven migrations pass the safety scan.");
     return;
   }
 
@@ -305,7 +307,22 @@ async function main() {
       where n.nspname='public' and p.proname='marketing_list_club_members' and p.pronargs=2;`))[0];
     log(`  marketing_list_club_members(uuid,text) overload : ${a.n} (expect 1)`);
     if (Number(a.n) !== 1) fail("account-search overload not present.");
-    log("telegram + account-search apply complete + post-verify PASS.");
+
+    // MKT-6: Facebook Page channel (Graph API; manual page id + Vault token).
+    const fbSql = load("fb");
+    log("applying facebook channel (own tx) …");
+    await mgmt(creds, `BEGIN;\n${fbSql}\nCOMMIT;`);
+    const f = (await mgmt(creds, `select
+      (select count(distinct proname) from pg_proc where proname in
+        ('marketing_set_facebook','marketing_get_facebook_config','marketing_get_facebook_dispatch')) as fns,
+      has_function_privilege('authenticated','public.marketing_get_facebook_dispatch(uuid)','EXECUTE') as authed_fb,
+      has_function_privilege('service_role','public.marketing_get_facebook_dispatch(uuid)','EXECUTE') as svc_fb;`))[0];
+    log(`  facebook RPCs (3)            : ${f.fns} (expect 3)`);
+    log(`  fb dispatch authed EXEC      : ${f.authed_fb} (expect false)`);
+    log(`  fb dispatch service EXEC     : ${f.svc_fb} (expect true)`);
+    if (Number(f.fns) !== 3 || f.authed_fb !== false || f.svc_fb !== true) fail("facebook post-verify mismatch.");
+
+    log("telegram + account-search + facebook apply complete + post-verify PASS.");
     return;
   }
 

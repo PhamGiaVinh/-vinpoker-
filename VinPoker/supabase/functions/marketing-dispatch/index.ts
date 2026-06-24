@@ -26,6 +26,7 @@ import {
   parseChannels,
 } from "./dispatchLogic.ts";
 import { composeTelegramText, sendTelegram } from "./adapters/telegram.ts";
+import { composeFacebookText, sendFacebook } from "./adapters/facebook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,10 +151,31 @@ async function processTick(admin: any, botToken: string, startTime: number): Pro
           channelsFailed++;
           errors.push(`post ${post.id}: telegram ${res.error ?? "send_failed"}`);
         }
+      } else if (channel === "facebook") {
+        // Facebook Page (MKT-6): resolve page id + Vault token via service-role RPC; post via Graph
+        // API (photo+caption if the post has an image, else a text feed post).
+        const { data: fb } = await admin.rpc("marketing_get_facebook_dispatch", { p_club_id: post.club_id });
+        const pageId = (fb?.page_id as string) ?? null;
+        const pageToken = (fb?.page_token as string) ?? null;
+        if (!pageId || !pageToken) {
+          await record(admin, post.id, "facebook", "failed", null, "fb_not_configured");
+          channelsFailed++;
+          continue;
+        }
+        const media = Array.isArray(post.media_urls) && post.media_urls.length ? String(post.media_urls[0]) : null;
+        const text = composeFacebookText(post.title ?? null, post.body, post.hashtags ?? []);
+        const res = await sendFacebook(pageToken, pageId, text, media);
+        if (res.ok) {
+          await record(admin, post.id, "facebook", "sent", res.externalId ?? null, null);
+          channelsSent++;
+        } else {
+          await record(admin, post.id, "facebook", "failed", null, res.error ?? "send_failed");
+          channelsFailed++;
+          errors.push(`post ${post.id}: facebook ${res.error ?? "send_failed"}`);
+        }
       } else if (!IMPLEMENTED_CHANNELS.has(channel)) {
-        // P0 = Telegram-only. FB/Zalo have no adapter yet — record an explicit failure (never a
-        // silent "skipped" that could read as delivered). The schedule RPC already prevents this
-        // for unconfigured channels; this is defence-in-depth.
+        // Zalo not implemented yet — record an explicit failure (never a silent "skipped"). The
+        // schedule RPC already prevents scheduling an unconfigured channel; this is defence-in-depth.
         await record(admin, post.id, channel, "failed", null, "CHANNEL_ADAPTER_NOT_IMPLEMENTED");
         channelsFailed++;
       }
