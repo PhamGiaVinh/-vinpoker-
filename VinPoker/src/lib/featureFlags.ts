@@ -460,8 +460,13 @@ export const FEATURES = {
    * `marketing-dispatch` Edge fn is deployed, and owner UAT passes on a preview branch.
    * P0 scope is **Telegram-only** — Facebook/Zalo channels stay disabled in the composer until a
    * real per-club integration exists. Kill-switch: set false to hide the whole module again.
+   *
+   * **ON** (2026-06-24, owner-authorized go-live): the four migrations were applied live + the
+   * marketing-dispatch Edge fn deployed + cron scheduled via the marketing-apply workflow (run
+   * 28097001780, all steps green incl. dry-invoke=no_posts). Tab now visible in VẬN HÀNH for
+   * marketers / club owners / admins. Kill-switch: set false to hide the module again.
    */
-  marketingModule: false,
+  marketingModule: true,
   /**
    * Marketing approval gate. Default **OFF** because the owner chose direct-publish: a marketer
    * can schedule their own posts without a separate approver (a compliance hard-block still runs
