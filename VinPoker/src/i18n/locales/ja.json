@@ -3023,7 +3023,14 @@
       "save": "保存",
       "saved": "保存しました。",
       "useGlobalBot": "共有Botを使う（トークン削除）",
-      "errChatId": "マーケ Chat IDを入力してください。"
+      "errChatId": "マーケ Chat IDを入力してください。",
+      "fbPageId": "Facebook ページID",
+      "fbPageIdHelp": "FacebookページのID（ページ → 基本データ/設定 → ページID）。自分が管理するページに投稿します。",
+      "fbPageToken": "ページアクセストークン",
+      "fbPageTokenHelp": "自分のMetaアプリのpages_manage_posts権限トークン（管理するページ用）。暗号化保存され再表示されません。Facebook有効化に必須。",
+      "fbPageTokenPlaceholder": "ページアクセストークンを貼り付け（必須）",
+      "fbClearToken": "トークン削除（Facebook無効化）",
+      "errPageId": "Facebook ページIDを入力してください。"
     },
     "staff": {
       "search": "名前または電話で検索",

@@ -3019,7 +3019,14 @@
       "save": "저장",
       "saved": "저장되었습니다.",
       "useGlobalBot": "공용 봇 사용 (토큰 제거)",
-      "errChatId": "마케팅 Chat ID를 입력하세요."
+      "errChatId": "마케팅 Chat ID를 입력하세요.",
+      "fbPageId": "Facebook 페이지 ID",
+      "fbPageIdHelp": "Facebook 페이지의 숫자 ID(페이지 → 정보/설정 → 페이지 ID). 본인이 관리하는 페이지에만 게시됩니다.",
+      "fbPageToken": "페이지 액세스 토큰",
+      "fbPageTokenHelp": "본인 Meta 앱의 pages_manage_posts 권한 토큰(관리 중인 페이지). 암호화 저장되며 다시 표시되지 않습니다. Facebook 사용에 필수.",
+      "fbPageTokenPlaceholder": "페이지 액세스 토큰 붙여넣기(필수)",
+      "fbClearToken": "토큰 제거(Facebook 비활성화)",
+      "errPageId": "Facebook 페이지 ID를 입력하세요."
     },
     "staff": {
       "search": "이름 또는 전화번호로 검색",

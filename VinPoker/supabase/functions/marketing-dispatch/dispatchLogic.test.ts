@@ -28,8 +28,8 @@ Deno.test("computePostStatus: sent only when all delivered", () => {
   assertEquals(computePostStatus(0, 0), "failed"); // no channels = not a success
 });
 
-Deno.test("P0: only telegram has an implemented adapter", () => {
+Deno.test("implemented adapters: telegram + facebook (zalo not yet)", () => {
   assertEquals(IMPLEMENTED_CHANNELS.has("telegram"), true);
-  assertEquals(IMPLEMENTED_CHANNELS.has("facebook"), false);
+  assertEquals(IMPLEMENTED_CHANNELS.has("facebook"), true);
   assertEquals(IMPLEMENTED_CHANNELS.has("zalo"), false);
 });

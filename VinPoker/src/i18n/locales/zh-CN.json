@@ -3023,7 +3023,14 @@
       "save": "保存",
       "saved": "已保存。",
       "useGlobalBot": "使用共享机器人（移除令牌）",
-      "errChatId": "请输入营销 Chat ID。"
+      "errChatId": "请输入营销 Chat ID。",
+      "fbPageId": "Facebook 主页 ID",
+      "fbPageIdHelp": "你的 Facebook 主页数字 ID（主页 → 关于/设置 → 主页 ID）。只能发布到你管理的主页。",
+      "fbPageToken": "主页访问令牌",
+      "fbPageTokenHelp": "来自你的 Meta 应用、具有 pages_manage_posts 权限的令牌（针对你管理的主页）。加密存储，不再显示。启用 Facebook 必需。",
+      "fbPageTokenPlaceholder": "粘贴主页访问令牌（必填）",
+      "fbClearToken": "移除令牌（停用 Facebook）",
+      "errPageId": "请输入 Facebook 主页 ID。"
     },
     "staff": {
       "search": "按姓名或电话搜索",

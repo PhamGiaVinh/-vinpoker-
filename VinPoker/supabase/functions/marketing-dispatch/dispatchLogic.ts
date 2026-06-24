@@ -6,10 +6,10 @@ export type ChannelName = "telegram" | "facebook" | "zalo";
 
 const KNOWN_CHANNELS: ReadonlySet<string> = new Set(["telegram", "facebook", "zalo"]);
 
-/** Channels for which a real adapter exists in P0. Facebook/Zalo are deliberately absent
- *  (P0 = Telegram-only) — the schedule RPC already refuses unconfigured channels, but the
- *  dispatcher stays defensive and never silently "skips" an unsupported channel. */
-export const IMPLEMENTED_CHANNELS: ReadonlySet<ChannelName> = new Set<ChannelName>(["telegram"]);
+/** Channels for which a real adapter exists. Telegram (MKT-3) + Facebook (MKT-6). Zalo is still
+ *  absent — the schedule RPC refuses unconfigured channels, but the dispatcher stays defensive and
+ *  never silently "skips" an unsupported channel. */
+export const IMPLEMENTED_CHANNELS: ReadonlySet<ChannelName> = new Set<ChannelName>(["telegram", "facebook"]);
 
 /** Parse + validate a post's `channels` jsonb into a clean, de-duplicated channel list. */
 export function parseChannels(raw: unknown): ChannelName[] {
