@@ -74,7 +74,7 @@ const desktopTabsData = tabsData.filter((t) => !DESKTOP_HIDDEN_ROUTES.has(t.to))
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isTracker, isDealer, isChipMaster, isMarketing, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -117,7 +117,7 @@ export const Layout = () => {
                     </DropdownMenuItem>
                   );
                 })}
-                {(isMedia || isAdmin) && (
+                {(isMedia || isFloor || isAdmin) && (
                   <DropdownMenuItem
                     onClick={() => nav("/media")}
                     className={cn("gap-2.5 cursor-pointer", location.pathname === "/media" && "text-primary")}
@@ -319,7 +319,9 @@ export const Layout = () => {
               {/* Admin "Xếp hạng" (/admin/leaderboard) removed from the top nav: it duplicated
                   the center "Xếp hạng" (/leaderboard) and the overflow hid Media Center.
                   Still reachable via Super Admin / direct URL. */}
-              {(isMedia || isAdmin) && (
+              {/* Floor sees the MEDIA nav only to reach the photo-upload tab; CMS tabs stay
+                  media/admin-only (gated inside MediaCenter), and writes are RLS-gated server-side. */}
+              {(isMedia || isFloor || isAdmin) && (
                 <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))] text-[11px] font-bold tracking-wider hover:bg-[hsl(var(--ds-preassign)_/_0.15)]">
                   MEDIA
                 </NavLink>

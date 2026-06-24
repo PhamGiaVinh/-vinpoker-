@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Loader2, Shield, Search, UserCog } from "lucide-react";
 
-type Role = "player" | "club_admin" | "super_admin" | "cashier" | "media" | "dealer_control" | "tracker";
+type Role = "player" | "club_admin" | "super_admin" | "cashier" | "media" | "dealer_control" | "tracker" | "floor";
 
 const AdminUsers = () => {
   const { user, loading, isAdmin } = useAuth();
@@ -21,11 +21,12 @@ const AdminUsers = () => {
   const [dealerClubsByUser, setDealerClubsByUser] = useState<Record<string, string[]>>({});
   const [trackerClubsByUser, setTrackerClubsByUser] = useState<Record<string, string[]>>({});
   const [mediaClubsByUser, setMediaClubsByUser] = useState<Record<string, string[]>>({});
+  const [floorClubsByUser, setFloorClubsByUser] = useState<Record<string, string[]>>({});
   const [search, setSearch] = useState("");
 
   const load = async () => {
     setBusy(true);
-    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes, mcRes] = await Promise.all([
+    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes, mcRes, fcRes] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("clubs").select("id, name, owner_id"),
@@ -33,6 +34,7 @@ const AdminUsers = () => {
       supabase.from("club_dealer_controls" as any).select("user_id, club_id"),
       supabase.from("club_trackers" as any).select("user_id, club_id"),
       supabase.from("club_media" as any).select("user_id, club_id"),
+      supabase.from("club_floors" as any).select("user_id, club_id"),
     ]);
     if (profsRes.error) {
       toast.error("Lỗi tải user: " + profsRes.error.message);
@@ -66,6 +68,11 @@ const AdminUsers = () => {
       (mcMap[r.user_id] ??= []).push(r.club_id);
     }
     setMediaClubsByUser(mcMap);
+    const fcMap: Record<string, string[]> = {};
+    for (const r of (fcRes.data ?? []) as any[]) {
+      (fcMap[r.user_id] ??= []).push(r.club_id);
+    }
+    setFloorClubsByUser(fcMap);
     setBusy(false);
   };
 
@@ -92,13 +99,15 @@ const AdminUsers = () => {
   );
 
   const grant = async (uid: string, role: Role) => {
-    const { error } = await supabase.from("user_roles").insert({ user_id: uid, role });
+    // `role` is cast at the boundary: types.ts lags the live app_role enum (e.g. 'floor'
+    // from migration 20261025000000 is not regenerated yet). RLS still enforces validity.
+    const { error } = await supabase.from("user_roles").insert({ user_id: uid, role: role as any });
     if (error && !error.message.includes("duplicate")) toast.error(error.message);
     else { toast.success(`Granted ${role}`); load(); }
   };
 
   const revoke = async (uid: string, role: Role) => {
-    const { error } = await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", role);
+    const { error } = await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", role as any);
     if (error) toast.error(error.message); else { toast.success(`Revoked ${role}`); load(); }
   };
 
@@ -174,6 +183,24 @@ const AdminUsers = () => {
     }
   };
 
+  const revokeFloor = async (uid: string) => {
+    const { error: rErr } = await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", "floor" as any);
+    if (rErr) { toast.error(rErr.message); return; }
+    await supabase.from("club_floors" as any).delete().eq("user_id", uid);
+    toast.success("Revoked floor"); load();
+  };
+
+  const toggleFloorClub = async (uid: string, clubId: string, currentlyAssigned: boolean) => {
+    if (currentlyAssigned) {
+      const { error } = await supabase.from("club_floors" as any).delete().eq("user_id", uid).eq("club_id", clubId);
+      if (error) toast.error(error.message); else { toast.success("Đã bỏ gán CLB"); load(); }
+    } else {
+      const { error } = await supabase.from("club_floors" as any).insert({ user_id: uid, club_id: clubId, granted_by: user?.id });
+      if (error && !error.message.includes("duplicate")) toast.error(error.message);
+      else { toast.success("Đã gán floor cho CLB"); load(); }
+    }
+  };
+
   const assignClub = async (uid: string, clubId: string) => {
     const { error } = await supabase.from("clubs").update({ owner_id: uid }).eq("id", clubId);
     if (error) toast.error(error.message);
@@ -223,7 +250,7 @@ const AdminUsers = () => {
                 </div>
                 <div className="flex flex-wrap gap-1 justify-end">
                     {roles.map(r => (
-                    <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border ${r === "super_admin" ? "bg-destructive/15 text-destructive border-destructive/30" : r === "cashier" ? "bg-primary/15 text-primary border-primary/30" : r === "club_admin" ? "bg-gold/15 text-gold border-gold/30" : r === "media" ? "bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]" : r === "dealer_control" ? "bg-success/15 text-success border-success/30" : r === "tracker" ? "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]" : "bg-muted text-muted-foreground border-border"}`}>
+                    <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border ${r === "super_admin" ? "bg-destructive/15 text-destructive border-destructive/30" : r === "cashier" ? "bg-primary/15 text-primary border-primary/30" : r === "club_admin" ? "bg-gold/15 text-gold border-gold/30" : r === "media" ? "bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)]" : r === "dealer_control" ? "bg-success/15 text-success border-success/30" : r === "tracker" ? "bg-[hsl(var(--ds-active)_/_0.15)] text-[hsl(var(--ds-active))] border-[hsl(var(--ds-active)_/_0.3)]" : r === "floor" ? "bg-primary/15 text-primary border-primary/30" : "bg-muted text-muted-foreground border-border"}`}>
                       {r}
                     </span>
                   ))}
@@ -274,6 +301,15 @@ const AdminUsers = () => {
                 ) : (
                   <Button size="sm" variant="outline" className="border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))]" onClick={() => grant(u.user_id, "media")}>
                     Grant Media
+                  </Button>
+                )}
+                {roles.includes("floor") ? (
+                  <Button size="sm" variant="outline" className="border-destructive/40 text-destructive" onClick={() => revokeFloor(u.user_id)}>
+                    Revoke Floor
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="border-primary/40 text-primary" onClick={() => grant(u.user_id, "floor")}>
+                    Grant Floor
                   </Button>
                 )}
                 {roles.includes("dealer_control") ? (
@@ -390,6 +426,28 @@ const AdminUsers = () => {
                   </div>
                   {(mediaClubsByUser[u.user_id] ?? []).length === 0 && (
                     <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — media sẽ không up được ảnh giải nào.</div>
+                  )}
+                </div>
+              )}
+              {roles.includes("floor") && clubs.length > 0 && (
+                <div className="pt-2 border-t border-border/50">
+                  <div className="text-xs font-medium text-primary mb-1.5">Floor cho CLB:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {clubs.map(c => {
+                      const assigned = (floorClubsByUser[u.user_id] ?? []).includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => toggleFloorClub(u.user_id, c.id, assigned)}
+                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-primary/20 text-primary border-primary/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+                        >
+                          {assigned ? "✓ " : ""}{c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(floorClubsByUser[u.user_id] ?? []).length === 0 && (
+                    <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — floor sẽ không up được ảnh giải nào.</div>
                   )}
                 </div>
               )}

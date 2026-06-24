@@ -1,8 +1,9 @@
-// MediaCenter "Ảnh giải đấu" tab — a club-scoped media person picks one of THEIR
-// tournaments and uploads public photos that appear in the viewer's Hình ảnh tab.
+// MediaCenter "Ảnh giải đấu" tab — a club-scoped media OR floor person picks one of
+// THEIR tournaments and uploads public photos that appear in the viewer's Hình ảnh tab.
 // Mirrors MediaClubSchedules (compress → storage upload → getPublicUrl → save row).
-// Allowed clubs come from the media_club_ids RPC; writes are gated server-side by
-// the tournament_photos / storage RLS (is_club_media) — this UI is convenience only.
+// Allowed clubs come from the UNION of media_club_ids + floor_club_ids RPCs; writes are
+// gated server-side by the tournament_photos / storage RLS (is_club_floor_or_media) —
+// this UI is convenience only. floor_club_ids may not be live yet → it degrades to []​.
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,13 +29,29 @@ export function TournamentPhotosManager() {
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Tours the current user may manage (club-scoped via media_club_ids).
+  // Tours the current user may manage (club-scoped via media_club_ids ∪ floor_club_ids).
   useEffect(() => {
     if (!user) return;
     let alive = true;
     (async () => {
-      const { data: ids } = await supabase.rpc("media_club_ids" as any, { _user_id: user.id } as any);
-      const clubIds = ((ids ?? []) as unknown[]).map((r) => (typeof r === "string" ? r : (r as { media_club_ids?: string }).media_club_ids ?? r)) as string[];
+      // SETOF uuid can come back as bare strings or {<rpc_name>: uuid} rows — normalize both.
+      const extractIds = (rows: unknown, key: string): string[] =>
+        ((rows ?? []) as unknown[])
+          .map((r) => (typeof r === "string" ? r : (r as Record<string, string>)[key] ?? null))
+          .filter((v): v is string => typeof v === "string");
+      // floor_club_ids may not be applied live yet (its migration is owner-gated). Use
+      // allSettled + per-result error checks so a missing/erroring floor RPC degrades to []
+      // WITHOUT taking media down with it — and a rejected promise can't crash the effect.
+      const idsFrom = (res: PromiseSettledResult<any>, key: string): string[] =>
+        res.status === "fulfilled" && !res.value?.error ? extractIds(res.value?.data, key) : [];
+      const [mediaRes, floorRes] = await Promise.allSettled([
+        supabase.rpc("media_club_ids" as any, { _user_id: user.id } as any),
+        supabase.rpc("floor_club_ids" as any, { _user_id: user.id } as any),
+      ]);
+      const clubIds = Array.from(new Set([
+        ...idsFrom(mediaRes, "media_club_ids"),
+        ...idsFrom(floorRes, "floor_club_ids"),
+      ]));
       if (!clubIds.length) { if (alive) setTours([]); return; }
       const { data } = await supabase
         .from("tournaments")
@@ -108,7 +125,7 @@ export function TournamentPhotosManager() {
   if (tours.length === 0) {
     return (
       <Card className="p-6 text-center text-sm text-muted-foreground">
-        Bạn chưa được gán CLB nào — hãy nhờ quản trị viên gán quyền media theo CLB để tải ảnh giải.
+        Bạn chưa được gán CLB nào — hãy nhờ quản trị viên gán quyền media hoặc floor theo CLB để tải ảnh giải.
       </Card>
     );
   }
