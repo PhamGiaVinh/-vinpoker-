@@ -83,7 +83,7 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
-function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center' }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor }) {
+function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center', compact = false }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor; compact?: boolean }) {
   const tcls = anchorTranslate(anchor);
   const empty = seat.status === 'empty';
   const folded = seat.status === 'folded';
@@ -111,16 +111,17 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center' }: 
     );
   }
 
-  // Cards float ABOVE the N8 name-plate. All cards (hero, opponents, board) use ONE uniform
-  // size `mc` (md-compact) so every in-play card reads equal AND the wide board clears the
-  // side seats on the tall mobile felt; folded / sitting-out seats show no cards.
+  // Cards float ABOVE the N8 name-plate. `mc` (md-compact) by default so hero / opponents /
+  // board read equal; on a CROWDED table (`compact`, 7–9 max) the opponents' FACE-DOWN backs
+  // shrink to `sm` so 8 sets of cards don't dominate the small felt (N8 shows small backs at
+  // 9-max). Readable cards — showdown reveals — stay `mc`. Folded / sitting-out show no cards.
   const cards = isMe
     ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal={!!c && c !== '?'} />)
     : folded || sittingOut
       ? null
       : seat.revealedCards?.length
         ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal revealDelayMs={i * 130} />)
-        : <><PlayingCard size="mc" /><PlayingCard size="mc" /></>;
+        : <><PlayingCard size={compact ? 'sm' : 'mc'} /><PlayingCard size={compact ? 'sm' : 'mc'} /></>;
 
   return (
     <div className={cn(
@@ -344,6 +345,7 @@ export function SeatRing({
               isWinner={winnerSeats?.includes(s.seat)}
               onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
               anchor={pos[s.seat]?.anchor ?? 'center'}
+              compact={hand.seats.length >= 7}
             />
           </div>
         );
