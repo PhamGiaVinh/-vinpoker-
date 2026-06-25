@@ -244,6 +244,13 @@ export function LiveFelt({
   // V2 forces its OWN neon premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
+  // RPT-style subtle hole-card FAN (viewer only): the two cards tilt out + overlap a hair.
+  const fanFor = (ci: number): CSSProperties | undefined =>
+    !viewerLayout
+      ? undefined
+      : ci === 0
+        ? { transform: "rotate(-7deg)", transformOrigin: "bottom right", marginRight: "-3px" }
+        : { transform: "rotate(7deg)", transformOrigin: "bottom left", marginLeft: "-3px" };
 
   // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
   // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
@@ -327,10 +334,17 @@ export function LiveFelt({
           className="absolute inset-0"
           style={{
             borderRadius: "9999px",
-            background: neon
+            // viewerLayout (V2) → RPT-style CLEAN CHARCOAL felt + a thin neon-green rim hint
+            // (keeps the VinPoker brand without a heavy green felt). `neon` (old viewerNeon-only
+            // path) keeps the green felt; default = burgundy operator felt.
+            background: viewerLayout
+              ? "radial-gradient(circle at 50% 42%, #282a2f 0%, #1c1e22 44%, #101114 100%)"
+              : neon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
-            boxShadow: neon
+            boxShadow: viewerLayout
+              ? "inset 0 0 0 1.5px hsl(var(--primary) / 0.22), inset 0 22px 60px rgba(0,0,0,0.42), inset 0 0 64px rgba(0,0,0,0.5), 0 18px 48px rgba(0,0,0,0.5), 0 0 28px hsl(var(--primary) / 0.06)"
+              : neon
               ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
               : "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
           }}
@@ -497,7 +511,7 @@ export function LiveFelt({
                 )}
                 <div className="relative">
                   <div
-                    className={`grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:h-9 sm:w-9 sm:text-[11px] ${
+                    className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
                     }`}
                     style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))" }}
@@ -542,7 +556,7 @@ export function LiveFelt({
                     <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
                       {seat.display_name}
                     </div>
-                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(var(--poker-stack))" }}>
+                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
                       {formatStack(seat.chip_count)}
                     </div>
                   </div>
@@ -589,9 +603,9 @@ export function LiveFelt({
                   className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
-                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={holeStyle} />)
+                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   ) : (
-                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={holeStyle} />)
+                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   )}
                 </div>
               </div>
