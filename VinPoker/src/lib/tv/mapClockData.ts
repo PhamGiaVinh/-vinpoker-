@@ -74,6 +74,7 @@ export function mapTvDataToClock(d: TvData): TournamentClockData {
     nextLevel: levelStr(d.nextLevel),
     payouts,
     footerNote: d.eventNote ?? d.sponsorText ?? "",
+    brandName: d.brandName ?? undefined,
     clubBackgroundUrl: d.clubCoverUrl ?? null,
     clubLogoUrl: d.clubLogoUrl ?? null,
   };
