@@ -78,6 +78,7 @@ jobs:
           supabase functions deploy run-dealer-ready-backup --no-verify-jwt
           supabase functions deploy process-pre-announce-jobs --no-verify-jwt
           supabase functions deploy online-poker-action --no-verify-jwt
+          supabase functions deploy sepay-webhook --no-verify-jwt
         working-directory: ./VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
