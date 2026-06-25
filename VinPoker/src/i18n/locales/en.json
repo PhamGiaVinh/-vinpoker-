@@ -3276,7 +3276,9 @@
       "fbPageTokenHelp": "A token with pages_manage_posts from your Meta app (for a Page you admin). Stored encrypted; never shown again. Required to enable Facebook.",
       "fbPageTokenPlaceholder": "paste Page Access Token (required)",
       "fbClearToken": "Remove token (disable Facebook)",
-      "errPageId": "Enter the Facebook Page ID."
+      "errPageId": "Enter the Facebook Page ID.",
+      "fbGuideTitle": "How to get a Page Access Token",
+      "fbGuide": "How to get a Page Access Token (for a Page you administer):\n1. Go to developers.facebook.com → Create App, type \"Business\".\n2. Add the \"Facebook Login for Business\" product.\n3. Open the Graph API Explorer: developers.facebook.com/tools/explorer\n4. Pick your app under \"Meta App\"; under \"User or Page\" choose \"Get Page Access Token\" and select your Page.\n5. Add permissions: pages_manage_posts and pages_read_engagement → click \"Generate Access Token\" and approve.\n6. Copy the token (this is a SHORT-lived token, ~1-2 hours).\n7. Exchange it for a LONG-lived token (~60 days): open developers.facebook.com/tools/debug/accesstoken → paste → \"Extend Access Token\" → copy the new token.\n8. Paste the long-lived token into \"Page Access Token\" above, enter the Page ID, and Save.\n\nNotes:\n• Page ID: Page → About/Settings → \"Page ID\".\n• A long-lived token (~60 days) eventually expires — if posting fails with a token error, get a new one and paste it again.\n• For a Page you administer, no Facebook App Review is needed."
     },
     "staff": {
       "search": "Search by name or phone",

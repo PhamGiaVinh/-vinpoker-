@@ -3030,7 +3030,9 @@
       "fbPageTokenHelp": "自分のMetaアプリのpages_manage_posts権限トークン（管理するページ用）。暗号化保存され再表示されません。Facebook有効化に必須。",
       "fbPageTokenPlaceholder": "ページアクセストークンを貼り付け（必須）",
       "fbClearToken": "トークン削除（Facebook無効化）",
-      "errPageId": "Facebook ページIDを入力してください。"
+      "errPageId": "Facebook ページIDを入力してください。",
+      "fbGuideTitle": "ページアクセストークンの取得方法",
+      "fbGuide": "ページアクセストークンの取得方法（自分が管理するページ）：\n1. developers.facebook.com → アプリを作成（Create App）、種類は \"Business\"。\n2. アプリに \"Facebook Login for Business\" を追加。\n3. Graph API Explorer を開く：developers.facebook.com/tools/explorer\n4. \"Meta App\" で自分のアプリを選択；\"User or Page\" で \"Get Page Access Token\" を選び、自分のページを選択。\n5. 権限を追加：pages_manage_posts と pages_read_engagement → \"Generate Access Token\" をクリックして承認。\n6. トークンをコピー（短期トークン、約1〜2時間）。\n7. 長期トークン（約60日）に交換：developers.facebook.com/tools/debug/accesstoken を開く → 貼り付け → \"Extend Access Token\" → 新しいトークンをコピー。\n8. 長期トークンを上の \"ページアクセストークン\" に貼り付け、ページIDを入力して保存。\n\n注意：\n• ページID：ページ → 基本データ/設定 → \"ページID\"。\n• 長期トークン（約60日）は期限切れになります — 投稿で \"token\" エラーが出たら新しく取得して貼り直してください。\n• 自分が管理するページなら Facebook の審査（App Review）は不要です。"
     },
     "staff": {
       "search": "名前または電話で検索",

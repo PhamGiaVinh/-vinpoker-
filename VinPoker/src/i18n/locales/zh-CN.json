@@ -3030,7 +3030,9 @@
       "fbPageTokenHelp": "来自你的 Meta 应用、具有 pages_manage_posts 权限的令牌（针对你管理的主页）。加密存储，不再显示。启用 Facebook 必需。",
       "fbPageTokenPlaceholder": "粘贴主页访问令牌（必填）",
       "fbClearToken": "移除令牌（停用 Facebook）",
-      "errPageId": "请输入 Facebook 主页 ID。"
+      "errPageId": "请输入 Facebook 主页 ID。",
+      "fbGuideTitle": "如何获取主页访问令牌",
+      "fbGuide": "如何获取主页访问令牌（针对你管理的主页）：\n1. 打开 developers.facebook.com → 创建应用（Create App），类型选 \"Business\"。\n2. 在应用中添加 \"Facebook Login for Business\" 产品。\n3. 打开 Graph API Explorer：developers.facebook.com/tools/explorer\n4. 在 \"Meta App\" 选择你的应用；在 \"User or Page\" 选择 \"Get Page Access Token\" 并选择你的主页。\n5. 添加权限：pages_manage_posts 和 pages_read_engagement → 点击 \"Generate Access Token\" 并同意。\n6. 复制令牌（这是短期令牌，约 1-2 小时）。\n7. 换成长期令牌（约 60 天）：打开 developers.facebook.com/tools/debug/accesstoken → 粘贴 → \"Extend Access Token\" → 复制新令牌。\n8. 把长期令牌粘贴到上方 \"主页访问令牌\"，填写主页 ID，然后保存。\n\n注意：\n• 主页 ID：主页 → 关于/设置 → \"主页 ID\"。\n• 长期令牌（约 60 天）会过期——若发布出现 \"token\" 错误，请重新获取并粘贴。\n• 针对你管理的主页，无需 Facebook 审核（App Review）。"
     },
     "staff": {
       "search": "按姓名或电话搜索",
