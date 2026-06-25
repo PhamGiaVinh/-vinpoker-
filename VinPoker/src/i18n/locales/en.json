@@ -3194,6 +3194,7 @@
     "tabs": {
       "compose": "Compose",
       "posts": "Posts",
+      "auto": "Automation",
       "channels": "Channels",
       "staff": "Staff"
     },
@@ -3236,7 +3237,34 @@
       "sentAt": "Sent",
       "blocked": "Blocked",
       "cancel": "Cancel",
-      "cancelled": "Post cancelled."
+      "cancelled": "Post cancelled.",
+      "autoBadge": "Auto",
+      "publishNow": "Publish now",
+      "scheduleLater": "Schedule",
+      "confirmSchedule": "Confirm",
+      "publishing": "Queued for publishing.",
+      "scheduledOk": "Post scheduled.",
+      "blockedCantPublish": "Blocked by compliance — edit the content before publishing."
+    },
+    "auto": {
+      "intro": "Bots auto-generate posts from your live data — but only as DRAFTS. Review them in the Posts tab and publish manually. The overlay figure is a snapshot taken when the draft is created.",
+      "title": "Auto-content bots",
+      "enable": "Enable auto-content",
+      "enableHelp": "When on, bots create draft posts on a schedule for the kinds selected below.",
+      "kinds": "What to generate",
+      "kind": {
+        "schedule": "Tomorrow's schedule",
+        "livestream": "Livestream is on air",
+        "overlay": "Overlay alert"
+      },
+      "kindHelp": {
+        "schedule": "Every morning, a draft listing tomorrow's tournaments.",
+        "livestream": "A draft when one of your tournaments goes live.",
+        "overlay": "A draft when a tournament starting soon is below its guarantee."
+      },
+      "channels": "Channels for drafts",
+      "save": "Save",
+      "saved": "Automation saved."
     },
     "status": {
       "draft": "Draft",

@@ -2948,6 +2948,7 @@
     "tabs": {
       "compose": "撰写",
       "posts": "帖子",
+      "auto": "自动化",
       "channels": "渠道",
       "staff": "人员"
     },
@@ -2990,7 +2991,34 @@
       "sentAt": "已发布",
       "blocked": "已拦截",
       "cancel": "取消",
-      "cancelled": "帖子已取消。"
+      "cancelled": "帖子已取消。",
+      "autoBadge": "自动",
+      "publishNow": "立即发布",
+      "scheduleLater": "排程",
+      "confirmSchedule": "确认",
+      "publishing": "已加入发布队列。",
+      "scheduledOk": "帖子已排程。",
+      "blockedCantPublish": "因合规被拦截——请先修改内容再发布。"
+    },
+    "auto": {
+      "intro": "机器人会根据实时数据自动生成帖子，但仅为草稿。请在帖子标签页中审核并手动发布。overlay 数字是生成草稿时的快照。",
+      "title": "自动内容机器人",
+      "enable": "启用自动内容",
+      "enableHelp": "开启后，机器人会按计划为下面所选类型创建草稿帖子。",
+      "kinds": "生成内容",
+      "kind": {
+        "schedule": "明日赛程",
+        "livestream": "正在直播",
+        "overlay": "Overlay 提醒"
+      },
+      "kindHelp": {
+        "schedule": "每天早上生成一份明日锦标赛列表草稿。",
+        "livestream": "当你的锦标赛开始直播时生成草稿。",
+        "overlay": "当即将开始的锦标赛低于保底时生成草稿。"
+      },
+      "channels": "草稿发布渠道",
+      "save": "保存",
+      "saved": "已保存自动化设置。"
     },
     "status": {
       "draft": "草稿",
