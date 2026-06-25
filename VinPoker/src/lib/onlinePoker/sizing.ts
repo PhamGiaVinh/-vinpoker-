@@ -11,8 +11,9 @@ import { isChipString, type ChipString, type WireLegalActions } from './wire';
 export type BetSizingKey = '33' | '50' | '75' | '100';
 
 export interface BetSizingOption {
-  key: BetSizingKey;
-  /** UI label, e.g. "25%" … "Pot". */
+  /** stable React key — a pot-% key ('33'…) or a preflop multiple ('2x'…). */
+  key: string;
+  /** UI label, e.g. "33%" (postflop) or "2.5×" (preflop multiple of the bet). */
   label: string;
   /** canonical chip string, GUARANTEED within [minRaiseTo, maxRaiseTo] */
   amount: ChipString;
@@ -61,6 +62,47 @@ export function betSizingOptions(legal: WireLegalActions, opts: { pot: ChipStrin
     if (seen.has(c.amount)) continue;
     seen.add(c.amount);
     out.push(c);
+  }
+  return out;
+}
+
+// Preflop multiples of the CURRENT bet level (the largest committed this street): 2× / 2.5× /
+// 3× / 4×. On an open the level is the BB → 2/2.5/3/4 BB; facing a 3-bet to 6 BB the level is
+// 6 BB → 12/15/18/24 BB. This is what makes "BB sizing" scale to a re-raise (owner spec:
+// BB preflop, %-pot postflop). Labelled by the multiple; the bar shows the resulting BB amount.
+const BB_MULTS: { key: string; label: string; num: bigint; den: bigint }[] = [
+  { key: '2x', label: '2×', num: 2n, den: 1n },
+  { key: '2.5x', label: '2.5×', num: 5n, den: 2n },
+  { key: '3x', label: '3×', num: 3n, den: 1n },
+  { key: '4x', label: '4×', num: 4n, den: 1n },
+];
+
+/**
+ * Preflop "raise to" sizing chips: `multiple × betLevel`, KEPT ONLY when the result lands inside
+ * the legal window `[minRaiseTo, maxRaiseTo]` — an out-of-window multiple is DROPPED, never
+ * silently clamped under a wrong label (so a tile's amount always matches its multiple). Returns
+ * [] (fail-closed) when the menu has no bet/raise, any chip string is malformed, the window is
+ * degenerate, or the bet level is non-positive. `betLevel` is the max committed this street.
+ */
+export function betSizingOptionsBB(legal: WireLegalActions, opts: { betLevel: ChipString }): BetSizingOption[] {
+  if (!legal.types.includes('raise') && !legal.types.includes('bet')) return [];
+  if (![legal.minRaiseTo, legal.maxRaiseTo, opts.betLevel].every(isChipString)) return [];
+
+  const lo = BigInt(legal.minRaiseTo);
+  const hi = BigInt(legal.maxRaiseTo);
+  if (hi < lo) return [];
+  const level = BigInt(opts.betLevel);
+  if (level <= 0n) return [];
+
+  const seen = new Set<string>();
+  const out: BetSizingOption[] = [];
+  for (const m of BB_MULTS) {
+    const to = (level * m.num) / m.den; // raise-to in chips (integer; 2.5× via num/den = 5n/2n)
+    if (to < lo || to > hi) continue;   // out of window → drop (no misleading clamp)
+    const amount = to.toString();
+    if (seen.has(amount)) continue;     // de-dup multiples that collapse to the same chips
+    seen.add(amount);
+    out.push({ key: m.key, label: m.label, amount });
   }
   return out;
 }

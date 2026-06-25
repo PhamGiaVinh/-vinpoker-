@@ -18,7 +18,7 @@ import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { RUNTIME_LIVE, type ActionType, type PublicHandView } from '@/lib/onlinePoker/types';
 import type { WireLegalActions } from '@/lib/onlinePoker/wire';
-import { betSizingOptions, clampRaiseTo, fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
+import { betSizingOptions, betSizingOptionsBB, clampRaiseTo, fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { Clock, Grid3x3, ChevronDown, ChevronUp } from 'lucide-react';
 
 /** "X BB" if bb known, else raw chips — for inline labels. */
@@ -67,9 +67,20 @@ export function ActionBar({
   const canAllin = types.includes('allin');
   const showSizing = canRaise || canBet;
 
+  // Hybrid sizing (owner spec): PREFLOP shows BB multiples (2/2.5/3/4× the current bet level —
+  // scales to a re-raise); POSTFLOP shows %-pot. The current bet level = the largest committed
+  // this street (preflop ≥ the BB).
+  const isPreflop = hand.street === 'preflop';
+  const betLevel = useMemo(() => {
+    const maxC = hand.seats.reduce((m, s) => { const c = BigInt(s.committed || '0'); return c > m ? c : m; }, 0n);
+    const bbN = bb && /^\d+$/.test(bb) ? BigInt(bb) : 0n;
+    return (maxC > bbN ? maxC : bbN).toString();
+  }, [hand.seats, bb]);
   const sizes = useMemo(
-    () => (legal && showSizing ? betSizingOptions(legal, { pot: hand.pot }) : []),
-    [legal, showSizing, hand.pot],
+    () => (!legal || !showSizing ? []
+      : isPreflop ? betSizingOptionsBB(legal, { betLevel })
+      : betSizingOptions(legal, { pot: hand.pot })),
+    [legal, showSizing, isPreflop, betLevel, hand.pot],
   );
 
   // Selected "raise to" — defaults to the minimum legal raise; chips/slider move it.
@@ -101,33 +112,46 @@ export function ActionBar({
 
   const act = (type: ActionType, amount?: string) => { if (!disabled) onAction?.({ type, amount }); };
 
+  // The raise column, top→bottom: All-in (ALWAYS present when legal — independent of the preset
+  // list, so a short stack that can't min-raise still sees the shove), then the generator's presets
+  // (high→low), then a Min-raise floor. De-duped so no amount repeats.
+  const raiseTiles: { key: string; label: string; allin: boolean; amount: string }[] = [];
+  const seenTile = new Set<string>();
+  if (canAllin) { raiseTiles.push({ key: 'allin', label: '', allin: true, amount: legal.maxRaiseTo }); seenTile.add(legal.maxRaiseTo); }
+  for (const s of [...sizes].reverse()) {
+    if (seenTile.has(s.amount)) continue;
+    seenTile.add(s.amount);
+    raiseTiles.push({ key: s.key, label: s.label, allin: false, amount: s.amount });
+  }
+  if (showSizing && !seenTile.has(legal.minRaiseTo)) {
+    raiseTiles.push({ key: 'min', label: 'Min', allin: false, amount: legal.minRaiseTo });
+  }
+
   return (
     // N8 fixed layout: a transparent column — the %-sizing tiles stack on the RIGHT, the
     // Fold/Call row pins to the bottom, and the empty centre stays pointer-events-none so the
     // felt (and the bottom-left hero HUD) are never blocked. Each control group re-enables taps.
     <div className="pointer-events-none mx-auto flex w-full max-w-md flex-col items-stretch gap-1.5">
-      {/* (a) bet-sizing — a VERTICAL column on the RIGHT (N8). Each tile is a DIRECT raise-to;
-          the 100%/Tối đa tile fires the all-in. Reversed so 100% sits on top. */}
-      {showSizing && sizes.length > 0 && !collapsed && (
+      {/* (a) bet-sizing — a VERTICAL column on the RIGHT (N8). Preflop tiles are BB multiples
+          (2×…4×), postflop are %-pot; All-in sits on top as its OWN tile (never hidden), Min on
+          the bottom. Each tile is a DIRECT raise-to; the All-in tile fires the shove. */}
+      {raiseTiles.length > 0 && !collapsed && (
         <div className="pointer-events-auto flex w-[8.5rem] flex-col gap-1.5 self-end">
-          {[...sizes].reverse().map((s) => {
-            const isMax = s.amount === legal.maxRaiseTo;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                disabled={disabled}
-                onClick={() => (isMax && canAllin ? act('allin', legal.maxRaiseTo) : act(canRaise ? 'raise' : 'bet', s.amount))}
-                className="op-press flex items-center justify-between gap-2 rounded-xl bg-black/85 px-3 py-2 ring-1 ring-white/10 transition-colors hover:bg-black/70 disabled:opacity-50"
-              >
-                <span className="text-[11px] font-semibold tabular-nums text-white/55">{s.label}</span>
-                <span className="flex flex-col items-end leading-none">
-                  <span className={cn('text-[9px] font-medium uppercase tracking-wide', isMax ? 'text-red-400' : 'text-white/50')}>{isMax ? 'Tối đa' : 'Tăng cược'}</span>
-                  <span className="text-[13px] font-bold tabular-nums text-amber-300">{bb && fmtBB(s.amount, bb) ? `${fmtBB(s.amount, bb)} BB` : fmtChips(s.amount)}</span>
-                </span>
-              </button>
-            );
-          })}
+          {raiseTiles.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              disabled={disabled}
+              onClick={() => (t.allin ? act('allin', t.amount) : act(canRaise ? 'raise' : 'bet', t.amount))}
+              className="op-press flex items-center justify-between gap-2 rounded-xl bg-black/85 px-3 py-2 ring-1 ring-white/10 transition-colors hover:bg-black/70 disabled:opacity-50"
+            >
+              <span className="text-[11px] font-semibold tabular-nums text-white/55">{t.label}</span>
+              <span className="flex flex-col items-end leading-none">
+                <span className={cn('text-[9px] font-medium uppercase tracking-wide', t.allin ? 'text-red-400' : 'text-white/50')}>{t.allin ? 'Tất tay' : 'Tăng cược'}</span>
+                <span className="text-[13px] font-bold tabular-nums text-amber-300">{bb && fmtBB(t.amount, bb) ? `${fmtBB(t.amount, bb)} BB` : fmtChips(t.amount)}</span>
+              </span>
+            </button>
+          ))}
         </div>
       )}
 
@@ -159,7 +183,7 @@ export function ActionBar({
       )}
 
       {/* (c) bottom action row — pinned to the very bottom: Bỏ bài + Theo bài/Check, then the
-          ⊞ custom + ^ collapse toggles. Raises come from the %-column (all-in = its 100% tile). */}
+          ⊞ custom + ^ collapse toggles. Raises come from the column above (All-in = its own tile). */}
       <div className="pointer-events-auto flex items-stretch gap-2">
         {canFold && (
           <Button
