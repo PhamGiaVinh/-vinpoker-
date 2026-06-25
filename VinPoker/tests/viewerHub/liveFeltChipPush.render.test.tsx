@@ -104,3 +104,41 @@ describe("LiveFelt liveTableFx — chip-push (P2-2)", () => {
     }
   });
 });
+
+// RPT-style colored chips (Option B): the flying chip's --chip-color is set from `kind`
+// (all_in=red, call=green, blinds=amber, bet/raise=gold), and omitted/unknown kinds set
+// NO var so the CSS default (gold) fires. LiveFelt is setter-agnostic, so this also covers
+// the replay path (which passes the same {seatNumber,nonce,kind} shape).
+describe("LiveFelt chip color by action (Option B)", () => {
+  const seats = [seat({ player_id: "a", seat_number: 1 })];
+  const chipVar = (container: HTMLElement): string => {
+    const chip = container.querySelector(".tracker-chip-push") as HTMLElement | null;
+    return chip?.style.getPropertyValue("--chip-color") ?? "";
+  };
+
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["all_in", "#d33"], // red
+    ["call", "#2fbf73"], // green
+    ["post_sb", "#d97a1e"], // amber
+    ["post_bb", "#d97a1e"], // amber
+    ["post_ante", "#d97a1e"], // amber
+    ["bet", "#f5b340"], // gold
+    ["raise", "#f5b340"], // gold
+  ];
+  for (const [kind, hex] of cases) {
+    it(`kind=${kind} → chip carries the matching --chip-color`, () => {
+      let n = 1;
+      const { container } = render(<LiveFelt seats={seats} {...baseProps} tableFx chipPush={{ seatNumber: 1, nonce: ++n + 5000, kind }} />);
+      const v = chipVar(container).toLowerCase();
+      expect(v).not.toBe("");
+      expect(v).toContain(hex);
+    });
+  }
+
+  it("unknown/omitted kind → NO --chip-color (CSS default gold fires)", () => {
+    const { container } = render(<LiveFelt seats={seats} {...baseProps} tableFx chipPush={{ seatNumber: 1, nonce: 7777 }} />);
+    expect(chipVar(container)).toBe("");
+    const { container: c2 } = render(<LiveFelt seats={seats} {...baseProps} tableFx chipPush={{ seatNumber: 1, nonce: 7778, kind: "check" }} />);
+    expect(chipVar(c2)).toBe("");
+  });
+});

@@ -306,7 +306,9 @@ export function TrackerVisualStyles() {
         .tracker-chip-push {
           position: absolute; left: var(--cp-fx); top: var(--cp-fy);
           width: 14px; height: 14px; border-radius: 9999px;
-          background: radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%);
+          /* --chip-color set per action (all_in=red, call=green, blinds=amber, bet/raise=gold);
+             absent (operator/TV, or no kind) → the gold default → byte-identical. */
+          background: var(--chip-color, radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%));
           box-shadow: 0 0 0 1.5px rgba(154,100,24,.85), 0 2px 6px rgba(0,0,0,.5);
           animation: tracker-chip-push 520ms cubic-bezier(.22,.61,.36,1) both;
           pointer-events: none;

@@ -54,6 +54,27 @@ export function formatStack(n: number): string {
   return n.toString();
 }
 
+// RPT-style flying-chip color by action (Option B). Returns a radial-gradient for the
+// chip face, or `undefined` for unknown actions so the CSS default (gold) applies — do
+// NOT return gold explicitly here, so operator/old paths with no kind stay byte-identical.
+export function chipColorFor(kind?: string): string | undefined {
+  switch (kind) {
+    case "all_in":
+      return "radial-gradient(circle at 35% 30%, #ff8a8a, #d33 55%, #7a1111 100%)"; // red
+    case "call":
+      return "radial-gradient(circle at 35% 30%, #9ff5c9, #2fbf73 55%, #0f6e3e 100%)"; // green
+    case "post_sb":
+    case "post_bb":
+    case "post_ante":
+      return "radial-gradient(circle at 35% 30%, #ffc97a, #d97a1e 55%, #7a3e0a 100%)"; // amber
+    case "bet":
+    case "raise":
+      return "radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%)"; // gold
+    default:
+      return undefined; // CSS fallback (gold)
+  }
+}
+
 export function formatActionLabel(a: ActionLog): string {
   const t = a.action_type;
   if (t === "fold") return "Fold";
@@ -185,9 +206,11 @@ export interface LiveFeltProps {
   tableFx?: boolean;
   /**
    * liveTableFx chip-push: a transient chip animates from this seat to the pot. Each
-   * distinct `nonce` triggers one chip; null → no chips. Viewer-only.
+   * distinct `nonce` triggers one chip; null → no chips. Viewer-only. `kind` (the
+   * originating action_type) colors the chip (all_in=red, call=green, blinds=amber,
+   * bet/raise=gold); omitted/unknown → the CSS default gold (byte-identical).
    */
-  chipPush?: { seatNumber: number; nonce: number } | null;
+  chipPush?: { seatNumber: number; nonce: number; kind?: string } | null;
   /**
    * Viewer Felt V2 (liveViewerFeltV2): responsive, premium PUBLIC-VIEWER layout.
    * ADDITIVE — when false/absent (operator/TV/replay always; viewer when the flag is
@@ -244,10 +267,17 @@ export function LiveFelt({
   // V2 forces its OWN neon premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
+  // RPT-style subtle hole-card FAN (viewer only): the two cards tilt out + overlap a hair.
+  const fanFor = (ci: number): CSSProperties | undefined =>
+    !viewerLayout
+      ? undefined
+      : ci === 0
+        ? { transform: "rotate(-7deg)", transformOrigin: "bottom right", marginRight: "-3px" }
+        : { transform: "rotate(7deg)", transformOrigin: "bottom left", marginLeft: "-3px" };
 
   // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
   // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
-  const [chips, setChips] = useState<{ id: number; fx: string; fy: string }[]>([]);
+  const [chips, setChips] = useState<{ id: number; fx: string; fy: string; color?: string }[]>([]);
   const lastChipNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!chipPush || lastChipNonce.current === chipPush.nonce) return;
@@ -255,33 +285,89 @@ export function LiveFelt({
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const slot = ((chipPush.seatNumber - 1) % 9) + 1;
     const pos = geo.seats[slot] || geo.seats[1];
-    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%` }]);
+    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%`, color: chipColorFor(chipPush.kind) }]);
   }, [chipPush, geo]);
 
+  // V2 landscape scale-to-fit: a wide 9-max table can't fit a narrow phone width without
+  // overlap, so below LANDSCAPE_DESIGN_W we render the felt at that design width and scale
+  // the WHOLE thing down to fit (everything shrinks uniformly → never overlaps). Portrait is
+  // untouched (it already fits, and stays the big-readable option). Wide screens (≥ design
+  // width) also untouched. Operator/TV (viewerLayout off) never measure.
+  const LANDSCAPE_DESIGN_W = 560;
+  const FIT_PAD = 26; // breathing room above/below for pods that straddle the rim
+  const feltWrapRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!viewerLayout || portrait) { setFit(null); return; }
+    const el = feltWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (!w || w >= LANDSCAPE_DESIGN_W) { setFit(null); return; }
+      const scale = w / LANDSCAPE_DESIGN_W;
+      const designH = (LANDSCAPE_DESIGN_W * 6) / 13; // landscape aspect 13/6
+      setFit({ scale, h: Math.round(designH * scale) + FIT_PAD * 2 });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [viewerLayout, portrait]);
+
   return (
-    <div className="w-full">
+    <div className="w-full" ref={feltWrapRef}>
       {/* Felt oval — scales with container; seats may straddle the rim so the
-          container is overflow-visible (never clips a seat). */}
+          container is overflow-visible (never clips a seat). When `fit` is set
+          (narrow landscape) a height-reserver clips the oversized design-width box
+          and the oval is scaled down to fit, so a wide 9-max table never overlaps. */}
+      {/* When fit: a real height-reserver box clips the oversized design-width felt.
+          When NOT fit: display:contents → this wrapper vanishes, so operator/TV/portrait
+          render the oval exactly as before (byte-identical). */}
+      <div style={fit ? { position: "relative", height: fit.h, overflow: "hidden" } : { display: "contents" }}>
       <div
-        className="relative mx-auto w-full overflow-visible"
-        style={{
-          aspectRatio: geo.aspect,
-          maxWidth: geo.maxW,
-          // V2: make the oval a size container so card `cqi` units resolve to the FELT
-          // width. inline-size containment only fixes the inline axis — height still
-          // comes from aspectRatio + width, so there is no sizing side-effect.
-          ...(viewerLayout ? { containerType: "inline-size" } : {}),
-        }}
+        className={fit ? "overflow-visible" : "relative mx-auto w-full overflow-visible"}
+        style={
+          fit
+            ? {
+                // Fit (narrow landscape): render at the design width, CENTER it (absolute +
+                // left 50% + translateX(-50%) — margin-auto can't center an element wider
+                // than its container), then scale the whole thing down to fit.
+                aspectRatio: geo.aspect,
+                position: "absolute",
+                left: "50%",
+                top: `${FIT_PAD}px`,
+                width: `${LANDSCAPE_DESIGN_W}px`,
+                transform: `translateX(-50%) scale(${fit.scale})`,
+                transformOrigin: "top center",
+                containerType: "inline-size",
+              }
+            : {
+                // Default (byte-identical with pre-V2): the oval scales with its container.
+                aspectRatio: geo.aspect,
+                maxWidth: geo.maxW,
+                // V2: make the oval a size container so card `cqi` units resolve to the FELT
+                // width. inline-size containment only fixes the inline axis — height still
+                // comes from aspectRatio + width, so there is no sizing side-effect.
+                ...(viewerLayout ? { containerType: "inline-size" } : {}),
+              }
+        }
       >
         <div
           aria-hidden="true"
           className="absolute inset-0"
           style={{
             borderRadius: "9999px",
-            background: neon
+            // viewerLayout (V2) → RPT-style CLEAN CHARCOAL felt + a thin neon-green rim hint
+            // (keeps the VinPoker brand without a heavy green felt). `neon` (old viewerNeon-only
+            // path) keeps the green felt; default = burgundy operator felt.
+            background: viewerLayout
+              ? "radial-gradient(circle at 50% 42%, #282a2f 0%, #1c1e22 44%, #101114 100%)"
+              : neon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
-            boxShadow: neon
+            boxShadow: viewerLayout
+              ? "inset 0 0 0 1.5px hsl(var(--primary) / 0.22), inset 0 22px 60px rgba(0,0,0,0.42), inset 0 0 64px rgba(0,0,0,0.5), 0 18px 48px rgba(0,0,0,0.5), 0 0 28px hsl(var(--primary) / 0.06)"
+              : neon
               ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
               : "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
           }}
@@ -337,7 +423,14 @@ export function LiveFelt({
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
               >
-                <div className="tracker-display text-[8px] uppercase tracking-[0.22em]" style={{ color: "hsl(var(--poker-gold) / 0.78)" }}>
+                <div className={`tracker-display text-[8px] uppercase tracking-[0.22em]${viewerLayout ? " inline-flex items-center gap-1" : ""}`} style={{ color: "hsl(var(--poker-gold) / 0.78)" }}>
+                  {viewerLayout && (
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: "radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%)", boxShadow: "0 0 0 1px rgba(0,0,0,.4)" }}
+                    />
+                  )}
                   {t("liveHub.felt.pot", "Pot")}
                 </div>
                 <div className="tracker-num text-lg font-bold leading-tight sm:text-xl" style={{ color: "hsl(var(--poker-gold))" }}>
@@ -448,7 +541,7 @@ export function LiveFelt({
                 )}
                 <div className="relative">
                   <div
-                    className={`grid h-8 w-8 place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:h-9 sm:w-9 sm:text-[11px] ${
+                    className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
                     }`}
                     style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))" }}
@@ -493,7 +586,7 @@ export function LiveFelt({
                     <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
                       {seat.display_name}
                     </div>
-                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(var(--poker-stack))" }}>
+                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
                       {formatStack(seat.chip_count)}
                     </div>
                   </div>
@@ -517,20 +610,41 @@ export function LiveFelt({
                     {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
                   </div>
                 )}
-                {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
-                  <div
-                    key={`bet-${seat.current_bet}`}
-                    className="tracker-bet-pulse tracker-num mt-0.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold"
-                    style={{
-                      background: "hsl(var(--poker-gold) / 0.15)",
-                      border: "1px solid hsl(var(--poker-gold) / 0.4)",
-                      color: "hsl(var(--poker-gold))",
-                    }}
-                  >
-                    {t("liveHub.felt.bet", "Cược {{amount}}", { amount: formatStack(seat.current_bet) })}
-                  </div>
+                {/* RPT committed-chip indicator. viewerLayout → ONE pill colored all-in
+                    (white-on-red) vs regular (emerald-on-dark) with a chip glyph (all-in label
+                    merged in). Gated on viewerLayout so operator/TV render NO bet pill — even
+                    though current_bet is now populated under liveActionEngine — keeping them
+                    byte-identical; the operator keeps the standalone ALL IN label as today. */}
+                {viewerLayout ? (
+                  (seat.is_all_in || (!seat.is_folded && (seat.current_bet ?? 0) > 0)) && (
+                    <div
+                      key={`bet-${seat.is_all_in ? "allin" : seat.current_bet}`}
+                      className="tracker-bet-pulse tracker-num mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold"
+                      style={
+                        seat.is_all_in
+                          ? { background: "rgb(184,31,31)", border: "0.8px solid rgba(255,150,150,0.9)", color: "#fff", borderRadius: "9999px" }
+                          : { background: "rgba(0,0,0,0.65)", border: "1px solid hsl(146 62% 56% / 0.45)", color: "hsl(146 62% 56%)", borderRadius: "6px" }
+                      }
+                    >
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: seat.is_all_in
+                            ? "radial-gradient(circle at 35% 30%, #ff8a8a, #d33 55%, #7a1111 100%)"
+                            : "radial-gradient(circle at 35% 30%, #9ff5c9, #2fbf73 55%, #0f6e3e 100%)",
+                          boxShadow: "0 0 0 1px rgba(0,0,0,.45)",
+                        }}
+                      />
+                      {seat.is_all_in
+                        ? (seat.current_bet ?? 0) > 0
+                          ? `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(seat.current_bet as number)}`
+                          : t("liveHub.felt.allIn", "ALL IN")
+                        : formatStack(seat.current_bet as number)}
+                    </div>
+                  )
+                ) : (
+                  seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>
                 )}
-                {seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>}
                 {seat.is_folded && <div className="mt-0.5 text-[8px] text-zinc-300" style={nameShadow}>{t("liveHub.felt.folded", "FOLDED")}</div>}
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                   <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90" style={nameShadow}>{seat.last_action}</div>
@@ -540,9 +654,9 @@ export function LiveFelt({
                   className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
-                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={holeStyle} />)
+                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   ) : (
-                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={holeStyle} />)
+                    [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   )}
                 </div>
               </div>
@@ -612,6 +726,9 @@ export function LiveFelt({
                     "--cp-fy": c.fy,
                     "--cp-tx": "50%",
                     "--cp-ty": geo.centerTop,
+                    // Action color (all_in=red, call=green, blinds=amber, bet/raise=gold).
+                    // Omitted when undefined → the .tracker-chip-push CSS default (gold) fires.
+                    ...(c.color ? { "--chip-color": c.color } : {}),
                   } as CSSProperties
                 }
               />
@@ -634,6 +751,7 @@ export function LiveFelt({
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {/* Action rail — OUTSIDE the felt so it never collides with the table. */}

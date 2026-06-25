@@ -136,12 +136,19 @@ export const FEATURES = {
    * fast-polls so spectators see each recorded action in near-real-time
    * (`record_action` only writes `hand_actions`, which fires no
    * `tournament_hands` realtime event, so the default path updates only after
-   * the hand is finalised). Default **OFF**: while false the viewer behaves
-   * exactly as today (realtime + 30s polling fallback only). Frontend-only — no
-   * DB/publication change; a later phase can swap the fast-poll for a
-   * `hand_actions` realtime subscription (controlled publication op).
+   * the hand is finalised). Frontend-only — no DB/publication change; a later
+   * phase can swap the fast-poll for a `hand_actions` realtime subscription
+   * (controlled publication op).
+   *
+   * **ON** (RPT-style live chips): drives the spectator's per-seat committed-chip
+   * pills (`current_bet`), the colored flying chips, and the "◀ chờ" whose-turn
+   * spotlight. ALL of its effects are VIEWER-ONLY — the fast-poll is `spectator`-
+   * gated + visibility-aware, the toActId pass is `spectator`-gated, and the bet
+   * pill renders only under `viewerLayout` — so the operator/TV are byte-identical.
+   * Kill-switch: set false → the viewer falls back to realtime + 30s polling (no
+   * live pills/spotlight), exactly as before.
    */
-  liveActionEngine: false,
+  liveActionEngine: true,
   /**
    * Spectator HAND FEED — an RPT-Live-style "completed hands" feed on the public
    * viewer (/live/:id): one rich card per completed hand (tags ALL-IN/BIG POT/HIGH
