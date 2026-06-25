@@ -5,6 +5,8 @@ import {
   computePostStatus,
   IMPLEMENTED_CHANNELS,
   parseChannels,
+  telegramSendMode,
+  validTelegramPhotos,
 } from "./dispatchLogic.ts";
 
 Deno.test("parseChannels: keeps known channels, drops junk + dups", () => {
@@ -32,4 +34,18 @@ Deno.test("implemented adapters: telegram + facebook (zalo not yet)", () => {
   assertEquals(IMPLEMENTED_CHANNELS.has("telegram"), true);
   assertEquals(IMPLEMENTED_CHANNELS.has("facebook"), true);
   assertEquals(IMPLEMENTED_CHANNELS.has("zalo"), false);
+});
+
+Deno.test("validTelegramPhotos: keeps storage http URLs, drops junk, caps 10", () => {
+  const good = "https://x.supabase.co/storage/v1/object/public/app-assets/marketing/a.jpg";
+  assertEquals(validTelegramPhotos([good, "not-a-url", "ftp://x/y", 1, null]), [good]);
+  assertEquals(validTelegramPhotos("nope"), []);
+  assertEquals(validTelegramPhotos(Array(12).fill(good)).length, 10);
+});
+
+Deno.test("telegramSendMode: 0->text, 1->photo, 2+->group", () => {
+  assertEquals(telegramSendMode(0), "text");
+  assertEquals(telegramSendMode(1), "photo");
+  assertEquals(telegramSendMode(2), "group");
+  assertEquals(telegramSendMode(7), "group");
 });
