@@ -15,6 +15,7 @@ import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 import { DeckStack } from './DeckStack';
 import { DealAnimation } from './DealAnimation';
+import { oppSlots, MOBILE_HERO_ANCHOR, MOBILE_FELT_CLASS, type SeatAnchor, type SeatSlot } from './mobileTableLayout';
 import './pokerTable.css';
 import { Clock } from 'lucide-react';
 
@@ -37,60 +38,44 @@ function bbOrChips(chips: string, bb?: string): string {
   return inBB ? `${inBB} BB` : fmtChips(chips);
 }
 
-/** N8 "racetrack" opponent position for fraction t∈[0,1] of the path that goes from the
- *  lower-LEFT, straight UP the left column, across the TOP row, then straight DOWN the right
- *  column to the lower-right. Left/right columns share a fixed x (so seats line up in straight
- *  columns) and sit INSIDE the felt with a green margin — the bottom is left free for the hero
- *  HUD + action dock. Percent coords (0–100). */
-function racetrackPos(t: number): { x: number; y: number } {
-  const LX = 14, RX = 86;      // left / right column x — inside the felt with a margin; the
-                               // 'mc' compact board (narrower) leaves the side cards clear here
-  const YT = 18, YB = 56;      // top row y / bottom of the columns — capped so the lowest side
-                               // seats clear the bottom action dock (right) + hero HUD (left)
-  const leftEnd = 0.38, topEnd = 0.62;
-  if (t <= leftEnd) {                                   // left column, bottom → top
-    return { x: LX, y: YB + (YT - YB) * (t / leftEnd) };
-  }
-  if (t <= topEnd) {                                    // top row, left → right (slight bow up)
-    const u = (t - leftEnd) / (topEnd - leftEnd);
-    return { x: LX + (RX - LX) * u, y: YT - 3 * Math.sin(Math.PI * u) };
-  }
-  const u = (t - topEnd) / (1 - topEnd);                // right column, top → bottom
-  return { x: RX, y: YT + (YB - YT) * u };
-}
-
 /**
- * Seat-center positions. `columns` (N8 / heroAsHud) lays the opponents out in STRAIGHT
- * left+right columns + a top row, tucked inside the felt — the hero is drawn as a bottom
- * HUD so the bottom is free (its bottom-centre slot is kept only for the bet chip + deal
- * target). Otherwise (cinematic / spectator) the legacy even-ellipse is used.
+ * Seat positions. `columns` (N8 / heroAsHud) on a MOBILE viewport lays the opponents out on the
+ * fixed N8 slot map (`mobileTableLayout`) hugging the contained oval, with side pods edge-anchored
+ * so a wide plate never clips; the hero is the bottom-left HUD (its slot here is only the
+ * bet-chip / deal anchor). Desktop / cinematic / spectator keep the even ellipse (centre-anchored).
  */
-function seatPositions(seats: PublicSeatView[], mySeat?: number, columns = false): Record<number, { x: number; y: number }> {
+function seatPositions(seats: PublicSeatView[], mySeat?: number, columns = false): Record<number, SeatSlot> {
   const ordered = [...seats].sort((a, b) => a.seat - b.seat);
   const n = ordered.length || 1;
   const myIdx = Math.max(0, ordered.findIndex((s) => s.seat === mySeat));
-  const out: Record<number, { x: number; y: number }> = {};
+  const out: Record<number, SeatSlot> = {};
 
-  // The racetrack suits the PORTRAIT mobile fill-felt; the desktop felt is a landscape oval
-  // where vertical side-columns would leave a big empty centre, so desktop keeps the ellipse.
-  const racetrack = columns && (typeof window === 'undefined' || window.matchMedia('(max-width: 639px)').matches);
-  if (racetrack) {
-    const m = n - 1; // opponents (the hero is a HUD, not on the ring)
+  // Fixed N8 slot map only on the portrait mobile felt; desktop's landscape oval keeps the ellipse.
+  const mobileFixed = columns && (typeof window === 'undefined' || window.matchMedia('(max-width: 639px)').matches);
+  if (mobileFixed) {
+    const slots = oppSlots(n);
     ordered.forEach((s, i) => {
       const k = (((i - myIdx) % n) + n) % n; // 0 = hero, 1..m = opponents clockwise from hero
-      if (k === 0) { out[s.seat] = { x: 50, y: 88 }; return; } // hero anchor (bet chip / deal only)
-      out[s.seat] = racetrackPos(m > 0 ? (k - 0.5) / m : 0.5);
+      if (k === 0) { out[s.seat] = MOBILE_HERO_ANCHOR; return; } // hero HUD anchor (bet chip / deal only)
+      out[s.seat] = slots[(k - 1) % slots.length] ?? { x: 50, y: 50, anchor: 'center' };
     });
     return out;
   }
 
-  // legacy even-ellipse (cinematic / spectator). rx<=38 keeps the ~88px plate on-screen.
+  // legacy even-ellipse (cinematic / spectator / desktop). rx<=38 keeps the ~88px plate on-screen.
   const rx = 38, ry = 36;
   ordered.forEach((s, i) => {
     const ang = (Math.PI / 2) + ((i - myIdx) / n) * 2 * Math.PI; // bottom = 90deg, clockwise
-    out[s.seat] = { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang) };
+    out[s.seat] = { x: 50 + rx * Math.cos(ang), y: 50 + ry * Math.sin(ang), anchor: 'center' };
   });
   return out;
+}
+
+/** Tailwind translate for a slot's anchor — side pods align their OUTER edge to the slot x. */
+function anchorTranslate(anchor: SeatAnchor): string {
+  return anchor === 'left' ? '-translate-y-1/2'
+    : anchor === 'right' ? '-translate-x-full -translate-y-1/2'
+    : '-translate-x-1/2 -translate-y-1/2';
 }
 
 /** A point 36% of the way from a seat toward the table centre (where bets sit). */
@@ -98,7 +83,8 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
-function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void }) {
+function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center' }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor }) {
+  const tcls = anchorTranslate(anchor);
   const empty = seat.status === 'empty';
   const folded = seat.status === 'folded';
   const sittingOut = seat.status === 'sitting_out';
@@ -110,7 +96,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
         <button
           type="button"
           onClick={onSit}
-          className="group w-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-center text-[10px] font-medium text-primary/80 transition-colors hover:border-primary hover:bg-primary/15 hover:text-primary sm:w-20 sm:text-[11px]"
+          className={cn('group w-16 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-center text-[10px] font-medium text-primary/80 transition-colors hover:border-primary hover:bg-primary/15 hover:text-primary sm:w-20 sm:text-[11px]', tcls)}
         >
           <span className="block leading-tight">Ghế {seat.seat}</span>
           <span className="block text-[8px] uppercase tracking-wide opacity-70 group-hover:opacity-100 sm:text-[9px]">+ Ngồi</span>
@@ -119,7 +105,7 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
     }
     // Spectator view of an empty chair — kept very quiet so the live hand dominates.
     return (
-      <div className="w-16 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-dashed border-white/10 bg-black/20 py-2.5 text-center text-[10px] text-white/25 sm:w-20 sm:text-[11px]">
+      <div className={cn('w-16 rounded-xl border border-dashed border-white/10 bg-black/20 py-2.5 text-center text-[10px] text-white/25 sm:w-20 sm:text-[11px]', tcls)}>
         Ghế {seat.seat}
       </div>
     );
@@ -138,7 +124,8 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit }: { seat: PublicSeatV
 
   return (
     <div className={cn(
-      'flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out',
+      'flex flex-col items-center gap-1 transition-[opacity,transform] duration-300 ease-out',
+      tcls,
       // Non-contesting seats drop contrast so the eye finds the live players first.
       folded && 'opacity-45',
       sittingOut && 'opacity-60',
@@ -240,7 +227,7 @@ export function SeatRing({
   // Legacy (non-HUD) layout — drop the hero into the bottom-LEFT corner. With heroAsHud the
   // hero leaves the ring entirely (rendered as a screen-corner <HeroHud>), so its natural
   // bottom-centre position is kept here ONLY for the committed-bet chip + deal target.
-  if (!heroAsHud && hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = heroAnchor ?? { x: 15, y: 85 };
+  if (!heroAsHud && hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = { x: heroAnchor?.x ?? 15, y: heroAnchor?.y ?? 85, anchor: 'center' };
 
   // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
   // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
@@ -259,11 +246,14 @@ export function SeatRing({
   // viewports. Seats sit on a near-circular ellipse (rx≈ry) so the square box spreads them
   // evenly without crowding.
   return (
-    <div className={fill
-      // fill: mobile fills the (relative) felt-area wrapper edge-to-edge; desktop reverts to
-      // the centred aspect oval. Default keeps the legacy centred box (cinematic / spectator).
-      ? 'absolute inset-0 sm:relative sm:inset-auto sm:mx-auto sm:aspect-[16/10] sm:h-auto sm:w-full sm:max-w-3xl'
-      : 'relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]'}>
+    <div className={heroAsHud
+      // N8 mobile: a CONTAINED wide oval the seats hug (not the full-screen fill) — owner-chosen.
+      // Desktop reverts to the landscape oval (handled inside MOBILE_FELT_CLASS via sm:).
+      ? MOBILE_FELT_CLASS
+      : fill
+        // fill: mobile fills the (relative) felt-area wrapper edge-to-edge; desktop reverts to oval.
+        ? 'absolute inset-0 sm:relative sm:inset-auto sm:mx-auto sm:aspect-[16/10] sm:h-auto sm:w-full sm:max-w-3xl'
+        : 'relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]'}>
       {/* outer halo — lifts the table off the near-black room */}
       <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
 
@@ -353,6 +343,7 @@ export function SeatRing({
               bb={bb}
               isWinner={winnerSeats?.includes(s.seat)}
               onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
+              anchor={pos[s.seat]?.anchor ?? 'center'}
             />
           </div>
         );
