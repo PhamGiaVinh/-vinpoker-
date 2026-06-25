@@ -54,6 +54,27 @@ export function formatStack(n: number): string {
   return n.toString();
 }
 
+// RPT-style flying-chip color by action (Option B). Returns a radial-gradient for the
+// chip face, or `undefined` for unknown actions so the CSS default (gold) applies — do
+// NOT return gold explicitly here, so operator/old paths with no kind stay byte-identical.
+export function chipColorFor(kind?: string): string | undefined {
+  switch (kind) {
+    case "all_in":
+      return "radial-gradient(circle at 35% 30%, #ff8a8a, #d33 55%, #7a1111 100%)"; // red
+    case "call":
+      return "radial-gradient(circle at 35% 30%, #9ff5c9, #2fbf73 55%, #0f6e3e 100%)"; // green
+    case "post_sb":
+    case "post_bb":
+    case "post_ante":
+      return "radial-gradient(circle at 35% 30%, #ffc97a, #d97a1e 55%, #7a3e0a 100%)"; // amber
+    case "bet":
+    case "raise":
+      return "radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%)"; // gold
+    default:
+      return undefined; // CSS fallback (gold)
+  }
+}
+
 export function formatActionLabel(a: ActionLog): string {
   const t = a.action_type;
   if (t === "fold") return "Fold";
@@ -185,9 +206,11 @@ export interface LiveFeltProps {
   tableFx?: boolean;
   /**
    * liveTableFx chip-push: a transient chip animates from this seat to the pot. Each
-   * distinct `nonce` triggers one chip; null → no chips. Viewer-only.
+   * distinct `nonce` triggers one chip; null → no chips. Viewer-only. `kind` (the
+   * originating action_type) colors the chip (all_in=red, call=green, blinds=amber,
+   * bet/raise=gold); omitted/unknown → the CSS default gold (byte-identical).
    */
-  chipPush?: { seatNumber: number; nonce: number } | null;
+  chipPush?: { seatNumber: number; nonce: number; kind?: string } | null;
   /**
    * Viewer Felt V2 (liveViewerFeltV2): responsive, premium PUBLIC-VIEWER layout.
    * ADDITIVE — when false/absent (operator/TV/replay always; viewer when the flag is
@@ -254,7 +277,7 @@ export function LiveFelt({
 
   // liveTableFx chip-push: a transient chip per distinct nonce flies seat→pot.
   // Reduced-motion → never enqueue (so the absent onAnimationEnd can't orphan a chip).
-  const [chips, setChips] = useState<{ id: number; fx: string; fy: string }[]>([]);
+  const [chips, setChips] = useState<{ id: number; fx: string; fy: string; color?: string }[]>([]);
   const lastChipNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!chipPush || lastChipNonce.current === chipPush.nonce) return;
@@ -262,7 +285,7 @@ export function LiveFelt({
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const slot = ((chipPush.seatNumber - 1) % 9) + 1;
     const pos = geo.seats[slot] || geo.seats[1];
-    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%` }]);
+    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%`, color: chipColorFor(chipPush.kind) }]);
   }, [chipPush, geo]);
 
   // V2 landscape scale-to-fit: a wide 9-max table can't fit a narrow phone width without
@@ -400,7 +423,14 @@ export function LiveFelt({
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
               >
-                <div className="tracker-display text-[8px] uppercase tracking-[0.22em]" style={{ color: "hsl(var(--poker-gold) / 0.78)" }}>
+                <div className={`tracker-display text-[8px] uppercase tracking-[0.22em]${viewerLayout ? " inline-flex items-center gap-1" : ""}`} style={{ color: "hsl(var(--poker-gold) / 0.78)" }}>
+                  {viewerLayout && (
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: "radial-gradient(circle at 35% 30%, #ffe7a8, #f5b340 60%, #9a6418 100%)", boxShadow: "0 0 0 1px rgba(0,0,0,.4)" }}
+                    />
+                  )}
                   {t("liveHub.felt.pot", "Pot")}
                 </div>
                 <div className="tracker-num text-lg font-bold leading-tight sm:text-xl" style={{ color: "hsl(var(--poker-gold))" }}>
@@ -580,20 +610,41 @@ export function LiveFelt({
                     {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
                   </div>
                 )}
-                {!seat.is_folded && seat.current_bet != null && seat.current_bet > 0 && (
-                  <div
-                    key={`bet-${seat.current_bet}`}
-                    className="tracker-bet-pulse tracker-num mt-0.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold"
-                    style={{
-                      background: "hsl(var(--poker-gold) / 0.15)",
-                      border: "1px solid hsl(var(--poker-gold) / 0.4)",
-                      color: "hsl(var(--poker-gold))",
-                    }}
-                  >
-                    {t("liveHub.felt.bet", "Cược {{amount}}", { amount: formatStack(seat.current_bet) })}
-                  </div>
+                {/* RPT committed-chip indicator. viewerLayout → ONE pill colored all-in
+                    (white-on-red) vs regular (emerald-on-dark) with a chip glyph (all-in label
+                    merged in). Gated on viewerLayout so operator/TV render NO bet pill — even
+                    though current_bet is now populated under liveActionEngine — keeping them
+                    byte-identical; the operator keeps the standalone ALL IN label as today. */}
+                {viewerLayout ? (
+                  (seat.is_all_in || (!seat.is_folded && (seat.current_bet ?? 0) > 0)) && (
+                    <div
+                      key={`bet-${seat.is_all_in ? "allin" : seat.current_bet}`}
+                      className="tracker-bet-pulse tracker-num mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold"
+                      style={
+                        seat.is_all_in
+                          ? { background: "rgb(184,31,31)", border: "0.8px solid rgba(255,150,150,0.9)", color: "#fff", borderRadius: "9999px" }
+                          : { background: "rgba(0,0,0,0.65)", border: "1px solid hsl(146 62% 56% / 0.45)", color: "hsl(146 62% 56%)", borderRadius: "6px" }
+                      }
+                    >
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: seat.is_all_in
+                            ? "radial-gradient(circle at 35% 30%, #ff8a8a, #d33 55%, #7a1111 100%)"
+                            : "radial-gradient(circle at 35% 30%, #9ff5c9, #2fbf73 55%, #0f6e3e 100%)",
+                          boxShadow: "0 0 0 1px rgba(0,0,0,.45)",
+                        }}
+                      />
+                      {seat.is_all_in
+                        ? (seat.current_bet ?? 0) > 0
+                          ? `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(seat.current_bet as number)}`
+                          : t("liveHub.felt.allIn", "ALL IN")
+                        : formatStack(seat.current_bet as number)}
+                    </div>
+                  )
+                ) : (
+                  seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>
                 )}
-                {seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>}
                 {seat.is_folded && <div className="mt-0.5 text-[8px] text-zinc-300" style={nameShadow}>{t("liveHub.felt.folded", "FOLDED")}</div>}
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                   <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90" style={nameShadow}>{seat.last_action}</div>
@@ -675,6 +726,9 @@ export function LiveFelt({
                     "--cp-fy": c.fy,
                     "--cp-tx": "50%",
                     "--cp-ty": geo.centerTop,
+                    // Action color (all_in=red, call=green, blinds=amber, bet/raise=gold).
+                    // Omitted when undefined → the .tracker-chip-push CSS default (gold) fires.
+                    ...(c.color ? { "--chip-color": c.color } : {}),
                   } as CSSProperties
                 }
               />

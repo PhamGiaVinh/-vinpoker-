@@ -52,6 +52,16 @@ describe("LiveFelt additive operator props", () => {
     expect(plain).not.toContain("container-type");
   });
 
+  it("operator render shows no colored-chip surfaces even with current_bet populated", () => {
+    // liveActionEngine is now ON, so the operator's seats can carry current_bet — but the
+    // RPT pill + chip color are viewer-only, so the operator render must stay pill-less.
+    const live = [seat({ player_id: "a", seat_number: 1, current_bet: 500, is_all_in: true })];
+    const html = renderToStaticMarkup(<LiveFelt seats={live} {...baseProps} />);
+    expect(html).not.toContain("rgb(184,31,31)"); // no red all-in pill
+    expect(html).not.toContain("146 62% 56%"); // no emerald committed pill
+    expect(html).not.toContain("--chip-color"); // no flying-chip color (no chipPush)
+  });
+
   it("the public/replay render (no onSeatClick) puts NO button role or selection frame on seats", () => {
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
     expect(html).not.toContain('role="button"');

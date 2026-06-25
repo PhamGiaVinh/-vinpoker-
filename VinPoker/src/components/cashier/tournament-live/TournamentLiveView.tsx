@@ -158,7 +158,7 @@ export function TournamentLiveView({
   const prevBoardCountRef = useRef<number | null>(null);
   // liveTableFx chip-push (viewer only): identity nonce so the first action of a
   // NEW hand still fires even though actions.length resets per hand (P2-2).
-  const [chipPush, setChipPush] = useState<{ seatNumber: number; nonce: number } | null>(null);
+  const [chipPush, setChipPush] = useState<{ seatNumber: number; nonce: number; kind?: string } | null>(null);
   const lastChipNonceRef = useRef<number | null>(null);
   // liveTableFx replay playback FX: forward-only tracker (frame index + board count)
   // so PLAYING a hand back emits the same sounds + chip-push; scrubbing back is silent.
@@ -416,11 +416,17 @@ export function TournamentLiveView({
   // the hand is finalised. Reuses loadAllData (requestSeqRef guard intact).
   // Never runs in replay mode or when the flag is off → zero behaviour change.
   useEffect(() => {
-    if (!FEATURES.liveActionEngine) return;
+    // VIEWER-ONLY: `spectator` gate keeps the operator's polling cadence unchanged even
+    // with the flag ON. Visibility-aware: a backgrounded tab skips the tick, so it stops
+    // hitting the DB every 2.5s while not being watched.
+    if (!FEATURES.liveActionEngine || !spectator) return;
     if (!tournamentId || mode !== "live" || !handInProgress) return;
-    const id = window.setInterval(() => loadAllData(), LIVE_ACTION_POLL_MS);
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      loadAllData();
+    }, LIVE_ACTION_POLL_MS);
     return () => window.clearInterval(id);
-  }, [tournamentId, mode, handInProgress, loadAllData]);
+  }, [tournamentId, mode, handInProgress, loadAllData, spectator]);
 
   // Reset all state when switching tournaments, then load.
   useEffect(() => {
@@ -558,7 +564,8 @@ export function TournamentLiveView({
       const nonce = (handNumber ?? 0) * 10000 + count;
       if (lastChipNonceRef.current !== nonce) {
         lastChipNonceRef.current = nonce;
-        setChipPush({ seatNumber: last.seat_number, nonce });
+        // kind = the action_type → the viewer colors the flying chip by action (all_in=red, etc.).
+        setChipPush({ seatNumber: last.seat_number, nonce, kind: last.action_type });
       }
     }
     // handNumber intentionally omitted from deps: it updates in the same render as
@@ -620,7 +627,7 @@ export function TournamentLiveView({
     // unique even when the same hand is replayed twice.
     if (fx.chipPush && spectator && la) {
       replayChipSeqRef.current += 1;
-      setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current });
+      setChipPush({ seatNumber: la.seat_number, nonce: 1_000_000 + replayChipSeqRef.current, kind: la.action_type });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayFrame, mode, soundMuted, spectator]);
@@ -847,7 +854,7 @@ export function TournamentLiveView({
     : {
         seats: activeSeatsToRender,
         lastActorId,
-        toActId: FEATURES.liveActionEngine ? toActId : null,
+        toActId: spectator && FEATURES.liveActionEngine ? toActId : null,
         displayCards,
         potSize,
         potBreakdown,
