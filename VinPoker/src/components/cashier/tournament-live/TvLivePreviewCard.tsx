@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Tv, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
  * "Trực tiếp" = the real /tv for this tournament (what the paired TVs display now).
  * "Demo mẫu" = /tv?mock=1, a self-running sample clock for a quick look at the UI.
  */
-export function TvLivePreviewCard({ tournamentId }: { tournamentId: string }) {
+export function TvLivePreviewCard({ tournamentId, action }: { tournamentId: string; action?: ReactNode }) {
   const [mock, setMock] = useState(false);
   const src = `/tv/${tournamentId}${mock ? "?mock=1" : ""}`;
 
@@ -36,6 +36,7 @@ export function TvLivePreviewCard({ tournamentId }: { tournamentId: string }) {
           </a>
         </div>
       </div>
+      {action && <div className="flex flex-wrap gap-2">{action}</div>}
       <p className="text-xs text-muted-foreground">
         {mock
           ? "Mẫu tự chạy (dữ liệu demo) — xem nhanh giao diện đồng hồ TV."
