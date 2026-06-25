@@ -8,7 +8,8 @@ import { bigBlindsOf, formatBlinds, formatChips } from "@/lib/tv/format";
 
 const RANK = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
 const rankLabel = (pos: number) => RANK[pos - 1] ?? `${pos}th`;
-const vnd = (n: number) => `${formatChips(n)} đ`;
+// Prize pool + payouts show plain grouped numbers (no "đ" suffix) — owner preference.
+const money = (n: number) => formatChips(n);
 
 function levelStr(l: TvLevel | null): string {
   if (!l) return "—";
@@ -47,7 +48,7 @@ export function mapTvDataToClock(d: TvData): TournamentClockData {
         ? d.guarantee
         : estimate;
 
-  const payouts: PayoutRow[] = d.prizes.map((p) => ({ rank: rankLabel(p.position), amount: vnd(p.amount) }));
+  const payouts: PayoutRow[] = d.prizes.map((p) => ({ rank: rankLabel(p.position), amount: money(p.amount) }));
 
   const bb = bigBlindsOf(d.averageStack, d.currentLevel?.bigBlind);
   const averageStack =
@@ -62,7 +63,7 @@ export function mapTvDataToClock(d: TvData): TournamentClockData {
     players,
     entries: d.totalEntries,
     reEntries: d.reEntries ?? 0,
-    prizePool: prizePoolValue != null ? vnd(prizePoolValue) : "—",
+    prizePool: prizePoolValue != null ? money(prizePoolValue) : "—",
     totalChips: totalChips > 0 ? formatChips(totalChips) : "—",
     averageStack,
     levelLabel: d.currentLevel ? `Level ${d.currentLevel.levelNumber}` : d.isBreak ? "Break" : "—",
