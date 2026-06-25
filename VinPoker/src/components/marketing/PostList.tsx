@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, Trash2, RefreshCw, Send, CalendarClock, Bot } from "lucide-react";
 
 const sb = supabase as any;
 
@@ -20,6 +21,7 @@ interface PostRow {
   sent_at: string | null;
   compliance_status: string;
   compliance_flags: string[];
+  source_kind: string | null;
   created_at: string;
 }
 interface ChannelRow { post_id: string; channel: string; status: string; error: string | null }
@@ -41,6 +43,9 @@ export const PostList = ({ clubId, refreshKey, onChanged }: Props) => {
   const [channelsByPost, setChannelsByPost] = useState<Record<string, ChannelRow[]>>({});
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<string | null>(null);
+  const [scheduleAt, setScheduleAt] = useState("");
 
   const load = useCallback(async () => {
     if (!clubId) { setPosts([]); setLoading(false); return; }
@@ -48,7 +53,7 @@ export const PostList = ({ clubId, refreshKey, onChanged }: Props) => {
     try {
       const { data, error } = await sb
         .from("marketing_posts")
-        .select("id,title,body,channels,status,scheduled_at,sent_at,compliance_status,compliance_flags,created_at")
+        .select("id,title,body,channels,status,scheduled_at,sent_at,compliance_status,compliance_flags,source_kind,created_at")
         .eq("club_id", clubId)
         .order("created_at", { ascending: false })
         .limit(50);
@@ -86,6 +91,31 @@ export const PostList = ({ clubId, refreshKey, onChanged }: Props) => {
     } finally { setCancelling(null); }
   };
 
+  // Publish-time compliance is re-checked server-side (marketing_schedule_post) — surface it nicely.
+  const publishError = (err: any): string => {
+    const code = err?.error ?? err?.message ?? "";
+    if (code === "COMPLIANCE_BLOCKED") {
+      const flags = Array.isArray(err?.flags) ? err.flags.join(", ") : "";
+      return t("marketing.composer.errCompliance", { terms: flags });
+    }
+    if (code === "CHANNEL_NOT_CONFIGURED") return t("marketing.composer.errChannel", { channel: err?.channel ?? "" });
+    if (code === "NO_CHANNELS") return t("marketing.composer.errNoChannels");
+    return code || t("marketing.composer.errGeneric");
+  };
+
+  // Publish a draft now (null) or schedule it for a chosen time (ISO).
+  const onPublish = async (id: string, whenIso: string | null) => {
+    setPublishing(id);
+    try {
+      const { data, error } = await sb.rpc("marketing_schedule_post", { p_post_id: id, p_scheduled_at: whenIso });
+      if (error) { toast.error(error.message); return; }
+      if (data?.error) { toast.error(publishError(data)); return; }
+      toast.success(whenIso ? t("marketing.list.scheduledOk") : t("marketing.list.publishing"));
+      setScheduleFor(null); setScheduleAt("");
+      onChanged();
+    } finally { setPublishing(null); }
+  };
+
   if (loading) return <div className="space-y-2"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div>;
 
   if (posts.length === 0) {
@@ -114,7 +144,12 @@ export const PostList = ({ clubId, refreshKey, onChanged }: Props) => {
                 {p.title && <div className="truncate font-medium text-foreground">{p.title}</div>}
                 <div className="line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{p.body}</div>
               </div>
-              <Badge variant={STATUS_VARIANT[p.status] ?? "outline"}>{t(`marketing.status.${p.status}`)}</Badge>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {p.source_kind === "auto_event" && (
+                  <Badge variant="secondary" className="gap-1"><Bot className="h-3 w-3" />{t("marketing.list.autoBadge")}</Badge>
+                )}
+                <Badge variant={STATUS_VARIANT[p.status] ?? "outline"}>{t(`marketing.status.${p.status}`)}</Badge>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -140,11 +175,50 @@ export const PostList = ({ clubId, refreshKey, onChanged }: Props) => {
             )}
 
             {(p.status === "draft" || p.status === "scheduled") && (
-              <div className="pt-1">
-                <Button variant="outline" size="sm" onClick={() => onCancel(p.id)} disabled={cancelling === p.id}>
-                  {cancelling === p.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
-                  {t("marketing.list.cancel")}
-                </Button>
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap gap-2">
+                  {p.status === "draft" && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => onPublish(p.id, null)}
+                        disabled={p.compliance_status === "blocked" || publishing === p.id}
+                      >
+                        {publishing === p.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                        {t("marketing.list.publishNow")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setScheduleFor(scheduleFor === p.id ? null : p.id); setScheduleAt(""); }}
+                        disabled={p.compliance_status === "blocked" || publishing === p.id}
+                      >
+                        <CalendarClock className="mr-1.5 h-4 w-4" />{t("marketing.list.scheduleLater")}
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => onCancel(p.id)} disabled={cancelling === p.id}>
+                    {cancelling === p.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
+                    {t("marketing.list.cancel")}
+                  </Button>
+                </div>
+
+                {p.status === "draft" && p.compliance_status === "blocked" && (
+                  <p className="text-[11px] text-destructive">{t("marketing.list.blockedCantPublish")}</p>
+                )}
+
+                {scheduleFor === p.id && p.compliance_status !== "blocked" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className="w-auto" />
+                    <Button
+                      size="sm"
+                      onClick={() => scheduleAt && onPublish(p.id, new Date(scheduleAt).toISOString())}
+                      disabled={!scheduleAt || publishing === p.id}
+                    >
+                      {t("marketing.list.confirmSchedule")}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

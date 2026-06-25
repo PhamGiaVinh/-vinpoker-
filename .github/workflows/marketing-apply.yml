@@ -56,6 +56,13 @@ jobs:
         working-directory: ./VinPoker
         run: supabase functions deploy marketing-dispatch
 
+      # MKT-7 Part 2: the auto-content generator. Deploy BEFORE scheduling its cron (000008). The
+      # cron sends the project anon JWT (valid, passes the gateway); the fn uses its own service-role
+      # key to create DRAFTS. verify_jwt stays ON.
+      - name: Deploy marketing-autocontent Edge Function
+        working-directory: ./VinPoker
+        run: supabase functions deploy marketing-autocontent
+
       - name: Dry-invoke (expect outcome=no_posts)
         working-directory: ./VinPoker
         run: node scripts/marketing/apply_marketing_migrations.mjs --dry-invoke
@@ -64,5 +71,9 @@ jobs:
         working-directory: ./VinPoker
         run: node scripts/marketing/apply_marketing_migrations.mjs --apply-cron
 
+      - name: Apply auto-content (MKT-7 — config + draft generator + cron, after fn deploy)
+        working-directory: ./VinPoker
+        run: node scripts/marketing/apply_marketing_migrations.mjs --apply-autocontent
+
       - name: Done
-        run: echo "Marketing backend applied + dispatch deployed + cron scheduled. Flag still OFF — tell the assistant 'DB xong' to flip FEATURES.marketingModule."
+        run: echo "Marketing backend applied + dispatch & autocontent deployed + crons scheduled. Flag still OFF — tell the assistant 'DB xong' to flip FEATURES.marketingModule. Auto-content stays dormant until a club sets marketing_auto_jobs.enabled."

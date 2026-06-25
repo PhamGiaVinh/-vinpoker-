@@ -3194,6 +3194,7 @@
     "tabs": {
       "compose": "Soạn bài",
       "posts": "Bài viết",
+      "auto": "Tự động",
       "channels": "Kênh",
       "staff": "Nhân sự"
     },
@@ -3236,7 +3237,34 @@
       "sentAt": "Đã đăng",
       "blocked": "Bị chặn",
       "cancel": "Huỷ",
-      "cancelled": "Đã huỷ bài viết."
+      "cancelled": "Đã huỷ bài viết.",
+      "autoBadge": "Tự động",
+      "publishNow": "Đăng ngay",
+      "scheduleLater": "Lên lịch",
+      "confirmSchedule": "Xác nhận",
+      "publishing": "Đã đưa vào hàng đợi đăng.",
+      "scheduledOk": "Đã lên lịch đăng.",
+      "blockedCantPublish": "Bị chặn do nội dung — hãy sửa nội dung trước khi đăng."
+    },
+    "auto": {
+      "intro": "Bot tự tạo bài viết từ dữ liệu trực tiếp — nhưng chỉ ở dạng BẢN NHÁP. Hãy vào tab Bài viết để duyệt và đăng thủ công. Con số overlay là ảnh chụp tại thời điểm tạo bản nháp.",
+      "title": "Bot tự tạo nội dung",
+      "enable": "Bật tự động tạo nội dung",
+      "enableHelp": "Khi bật, bot sẽ tạo bài nháp theo lịch cho các loại được chọn bên dưới.",
+      "kinds": "Loại nội dung tự tạo",
+      "kind": {
+        "schedule": "Lịch giải ngày mai",
+        "livestream": "Đang livestream",
+        "overlay": "Cảnh báo overlay"
+      },
+      "kindHelp": {
+        "schedule": "Mỗi sáng, một bản nháp liệt kê các giải ngày mai.",
+        "livestream": "Một bản nháp khi có giải của bạn lên sóng trực tiếp.",
+        "overlay": "Một bản nháp khi một giải sắp bắt đầu đang dưới mức cam kết (GTD)."
+      },
+      "channels": "Kênh đăng cho bản nháp",
+      "save": "Lưu",
+      "saved": "Đã lưu cấu hình tự động."
     },
     "status": {
       "draft": "Nháp",

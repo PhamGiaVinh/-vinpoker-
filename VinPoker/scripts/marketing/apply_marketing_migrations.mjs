@@ -49,6 +49,8 @@ const MIG = {
   tg:   "supabase/migrations/20261101000004_marketing_telegram_dedicated.sql",
   acct: "supabase/migrations/20261101000005_marketing_account_search.sql",
   fb:   "supabase/migrations/20261101000006_marketing_facebook.sql",
+  auto: "supabase/migrations/20261101000007_marketing_autocontent.sql",
+  autocron: "supabase/migrations/20261101000008_schedule_marketing_autocontent.sql",
 };
 const REQUIRED = {
   enum: /\bALTER\s+TYPE\s+public\.app_role\s+ADD\s+VALUE\s+IF\s+NOT\s+EXISTS\s+'marketing'/i,
@@ -58,6 +60,8 @@ const REQUIRED = {
   tg:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_telegram\b/i,
   acct: /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_list_club_members\(p_club_id\s+uuid,\s*p_query\s+text\)/i,
   fb:   /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.marketing_set_facebook\b/i,
+  auto: /\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+public\.marketing_auto_jobs\b/i,
+  autocron: /cron\.schedule\(\s*'marketing-autocontent'/i,
 };
 
 const CONFIRM_ENV = "CONFIRM_APPLY_MARKETING";
@@ -191,16 +195,16 @@ async function schemaVerify(creds) {
 
 async function main() {
   const mode = process.argv[2] || "";
-  if (!["--scan", "--preflight", "--apply-schema", "--apply-telegram", "--dry-invoke", "--apply-cron"].includes(mode)) {
-    log("modes: --scan | --preflight | --apply-schema | --apply-telegram | --dry-invoke | --apply-cron");
+  if (!["--scan", "--preflight", "--apply-schema", "--apply-telegram", "--dry-invoke", "--apply-cron", "--apply-autocontent"].includes(mode)) {
+    log("modes: --scan | --preflight | --apply-schema | --apply-telegram | --dry-invoke | --apply-cron | --apply-autocontent");
     log(`apply modes require ${CONFIRM_ENV}=${CONFIRM_VAL} + SUPABASE_PROJECT_REF + SUPABASE_ACCESS_TOKEN`);
     process.exit(0);
   }
 
-  // ── --scan: offline safety-scan of all four allowlisted files (no creds, no DB) ──
+  // ── --scan: offline safety-scan of all allowlisted files (no creds, no DB) ──
   if (mode === "--scan") {
-    for (const key of ["enum", "role", "core", "cron", "tg", "acct", "fb"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
-    log("all seven migrations pass the safety scan.");
+    for (const key of ["enum", "role", "core", "cron", "tg", "acct", "fb", "auto", "autocron"]) { load(key); log(`scan PASS — ${MIG[key]}`); }
+    log("all nine migrations pass the safety scan.");
     return;
   }
 
@@ -338,6 +342,48 @@ async function main() {
     log(`  cron.job 'marketing-dispatch' rows: ${j.n} (expect 1)`);
     if (Number(j.n) !== 1) fail("cron job not scheduled.");
     log("cron apply complete. Marketing backend is LIVE (still flag-OFF until the owner flips marketingModule).");
+    return;
+  }
+
+  if (mode === "--apply-autocontent") {
+    // MKT-7 Part 2: auto-content config + service-role draft generator (000007) + its cron (000008).
+    // Requires core applied. The marketing-autocontent Edge fn must be deployed BEFORE the cron is
+    // scheduled (the workflow deploys it first); the generator only creates DRAFTS, never sends.
+    const v = (await mgmt(creds, PREFLIGHT_SQL))[0];
+    if (Number(v.mkt_tables) !== 4 || v.role_table !== true) fail("core schema not applied — run --apply-schema first.");
+
+    const autoSql = load("auto");
+    log("safety scan PASS (auto).");
+    log("applying auto-content config + RPCs (own tx) …");
+    await mgmt(creds, `BEGIN;\n${autoSql}\nCOMMIT;`);
+    const r = (await mgmt(creds, `select
+      (select to_regclass('public.marketing_auto_jobs') is not null) as job_table,
+      (select count(distinct proname) from pg_proc where proname in
+        ('marketing_get_auto_job','marketing_set_auto_job','marketing_create_auto_draft')) as fns,
+      has_function_privilege('authenticated','public.marketing_create_auto_draft(uuid,text,text,text,jsonb,jsonb,text)','EXECUTE') as authed_draft,
+      has_function_privilege('service_role','public.marketing_create_auto_draft(uuid,text,text,text,jsonb,jsonb,text)','EXECUTE') as svc_draft,
+      has_function_privilege('authenticated','public.marketing_set_auto_job(uuid,boolean,text[],jsonb)','EXECUTE') as authed_set,
+      (select pg_get_functiondef('public.marketing_schedule_post(uuid,timestamptz)'::regprocedure)
+         ilike '%marketing_check_compliance%') as schedule_rechecks;`))[0];
+    log(`  marketing_auto_jobs table     : ${r.job_table} (expect true)`);
+    log(`  auto-content RPCs (3)         : ${r.fns} (expect 3)`);
+    log(`  create_auto_draft authed EXEC : ${r.authed_draft} (expect false)`);
+    log(`  create_auto_draft service EXEC: ${r.svc_draft} (expect true)`);
+    log(`  set_auto_job authed EXEC      : ${r.authed_set} (expect true)`);
+    log(`  schedule_post rechecks compliance (P1-4): ${r.schedule_rechecks} (expect true)`);
+    if (r.job_table !== true || Number(r.fns) !== 3 || r.authed_draft !== false ||
+        r.svc_draft !== true || r.authed_set !== true || r.schedule_rechecks !== true) {
+      fail("auto-content post-verify mismatch.");
+    }
+
+    const autoCronSql = load("autocron");
+    log("safety scan PASS (autocron).");
+    log("applying auto-content cron (own tx) …");
+    await mgmt(creds, `BEGIN;\n${autoCronSql}\nCOMMIT;`);
+    const jc = (await mgmt(creds, `select count(*)::int as n from cron.job where jobname='marketing-autocontent';`))[0];
+    log(`  cron.job 'marketing-autocontent' rows: ${jc.n} (expect 1)`);
+    if (Number(jc.n) !== 1) fail("auto-content cron job not scheduled.");
+    log("auto-content apply complete (bots generate DRAFTS only; each club opts in via marketing_auto_jobs.enabled).");
     return;
   }
 }
