@@ -24,8 +24,17 @@ import {
   channelsNeedingSend,
   IMPLEMENTED_CHANNELS,
   parseChannels,
+  telegramSendMode,
+  validTelegramPhotos,
 } from "./dispatchLogic.ts";
-import { composeTelegramText, sendTelegram } from "./adapters/telegram.ts";
+import {
+  composeTelegramCaption,
+  composeTelegramText,
+  sendTelegram,
+  sendTelegramMediaGroup,
+  sendTelegramPhoto,
+  TG_CAPTION_MAX,
+} from "./adapters/telegram.ts";
 import { composeFacebookText, sendFacebook } from "./adapters/facebook.ts";
 
 const corsHeaders = {
@@ -141,9 +150,20 @@ async function processTick(admin: any, botToken: string, startTime: number): Pro
           errors.push(`post ${post.id}: telegram no_chat_id`);
           continue;
         }
-        const text = composeTelegramText(post.title ?? null, post.body, post.hashtags ?? []);
-        const res = await sendTelegram(tgBot, tgChat, text);
+        // Route by valid-image count: 0 → text, 1 → photo, 2-10 → album (P1-1). Caption ≤1024 with a
+        // full-text follow-up when the body overflows (P2-6). A bad URL in an album fails the whole
+        // album (recorded failed) — never a silent partial send.
+        const fullText = composeTelegramText(post.title ?? null, post.body, post.hashtags ?? []);
+        const photos = validTelegramPhotos(post.media_urls);
+        const mode = telegramSendMode(photos.length);
+        const overflow = fullText.length > TG_CAPTION_MAX;
+        const caption = overflow ? composeTelegramCaption(post.title ?? null, post.body) : fullText;
+        let res;
+        if (mode === "text") res = await sendTelegram(tgBot, tgChat, fullText);
+        else if (mode === "photo") res = await sendTelegramPhoto(tgBot, tgChat, photos[0], caption);
+        else res = await sendTelegramMediaGroup(tgBot, tgChat, photos, caption);
         if (res.ok) {
+          if (mode !== "text" && overflow) await sendTelegram(tgBot, tgChat, fullText); // full-text follow-up
           await record(admin, post.id, "telegram", "sent", res.externalId ?? null, null);
           channelsSent++;
         } else {

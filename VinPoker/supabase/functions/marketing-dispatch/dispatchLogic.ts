@@ -31,6 +31,22 @@ export function channelsNeedingSend(requested: ChannelName[], alreadySent: Itera
   return requested.filter((c) => !sent.has(c));
 }
 
+/** Filter a post's media_urls to valid, publicly-fetchable photo URLs for Telegram (must be http(s)
+ *  Supabase Storage object URLs). Caps at 10 (Telegram album max). P1-1: bad/junk URLs are dropped
+ *  here so a single bad entry can't break the whole send. */
+export function validTelegramPhotos(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((u): u is string =>
+      typeof u === "string" && /^https?:\/\//i.test(u) && u.includes("/storage/v1/object/"))
+    .slice(0, 10);
+}
+
+/** Telegram send mode by valid-image count: 0 → text, 1 → photo, ≥2 → album. */
+export function telegramSendMode(validImageCount: number): "text" | "photo" | "group" {
+  return validImageCount <= 0 ? "text" : validImageCount === 1 ? "photo" : "group";
+}
+
 /** Final post status from the count of successfully-sent channels vs the total requested.
  *  A post is 'sent' only when EVERY requested channel delivered; otherwise 'failed'
  *  (per-channel rows remain the source of truth for which channel failed). */
