@@ -5,7 +5,7 @@
 // %-pot math, the clamping, the malformed-input guards, and the BB display helper.
 
 import { describe, it, expect } from 'vitest';
-import { betSizingOptions, clampRaiseTo, fmtBB } from '@/lib/onlinePoker/sizing';
+import { betSizingOptions, betSizingOptionsBB, clampRaiseTo, fmtBB } from '@/lib/onlinePoker/sizing';
 import type { WireLegalActions } from '@/lib/onlinePoker/wire';
 
 const CHIP = /^(0|[1-9][0-9]*)$/;
@@ -68,6 +68,53 @@ describe('betSizingOptions — fail-closed', () => {
 
   it('returns [] on a degenerate window (max < min)', () => {
     expect(betSizingOptions(legal({ minRaiseTo: '1700', maxRaiseTo: '300' }), { pot: '475' })).toEqual([]);
+  });
+});
+
+describe('betSizingOptionsBB — preflop multiples of the bet level (raise to = mult·betLevel)', () => {
+  it('open (betLevel = 1 BB): 2 / 2.5 / 3 / 4 BB, all in-window', () => {
+    // bb 50, betLevel 50; min 100 (=2 BB), max 20000
+    const o = betSizingOptionsBB(legal({ minRaiseTo: '100', maxRaiseTo: '20000' }), { betLevel: '50' });
+    expect(o.map((x) => [x.label, x.amount])).toEqual([
+      ['2×', '100'], ['2.5×', '125'], ['3×', '150'], ['4×', '200'],
+    ]);
+  });
+
+  it('facing a 3-bet to 6 BB (betLevel 300): the 4-bet sizes scale up in BB', () => {
+    // open 2 BB → 3-bet to 6 BB; betLevel 300, min-raise (4-bet) 500 (=10 BB), max 20000
+    const o = betSizingOptionsBB(legal({ minRaiseTo: '500', maxRaiseTo: '20000' }), { betLevel: '300' });
+    expect(o.map((x) => x.amount)).toEqual(['600', '750', '900', '1200']); // 12 / 15 / 18 / 24 BB
+  });
+
+  it('DROPS a multiple that falls outside the window (no misleading clamp)', () => {
+    // betLevel 300, min 800 → 2× (600) and 2.5× (750) are below min and dropped, not clamped
+    const o = betSizingOptionsBB(legal({ minRaiseTo: '800', maxRaiseTo: '20000' }), { betLevel: '300' });
+    expect(o.map((x) => x.amount)).toEqual(['900', '1200']);
+  });
+
+  it('2.5× truncates via exact num/den (no float drift) and de-dups collisions', () => {
+    // betLevel 5: 2×=10, 2.5×=12 (5·5/2=12 floor), 3×=15, 4×=20
+    expect(betSizingOptionsBB(legal({ minRaiseTo: '1', maxRaiseTo: '100' }), { betLevel: '5' })
+      .map((x) => x.amount)).toEqual(['10', '12', '15', '20']);
+    // betLevel 1: 2×=2 and 2.5×=2 (5·1/2=2 floor) collide → the 2× is kept, 2.5× de-duped
+    expect(betSizingOptionsBB(legal({ minRaiseTo: '1', maxRaiseTo: '100' }), { betLevel: '1' })
+      .map((x) => [x.label, x.amount])).toEqual([['2×', '2'], ['3×', '3'], ['4×', '4']]);
+  });
+
+  it('fail-closed: no bet/raise, malformed chips, degenerate window, or non-positive level → []', () => {
+    expect(betSizingOptionsBB(legal({ types: ['fold', 'call', 'allin'] }), { betLevel: '50' })).toEqual([]);
+    expect(betSizingOptionsBB(legal({ minRaiseTo: '' }), { betLevel: '50' })).toEqual([]);
+    expect(betSizingOptionsBB(legal(), { betLevel: 'x' })).toEqual([]);
+    expect(betSizingOptionsBB(legal({ minRaiseTo: '1700', maxRaiseTo: '300' }), { betLevel: '50' })).toEqual([]);
+    expect(betSizingOptionsBB(legal(), { betLevel: '0' })).toEqual([]);
+  });
+
+  it('every emitted amount is a canonical chip string', () => {
+    for (const lvl of ['1', '50', '300', '999999999']) {
+      for (const x of betSizingOptionsBB(legal({ minRaiseTo: '1', maxRaiseTo: '9999999999' }), { betLevel: lvl })) {
+        expect(x.amount).toMatch(CHIP);
+      }
+    }
   });
 });
 
