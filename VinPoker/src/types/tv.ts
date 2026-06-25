@@ -28,6 +28,9 @@ export interface TvData {
   tournamentName: string;
   clubName: string;
   clubLogoUrl?: string | null;
+  /** Per-club brand name shown under the logo on the clock (clubs.tv_brand_name,
+   *  fallback club name). Defaults to "VINPOKER" in the clock when absent. */
+  brandName?: string | null;
   /** Free-text note, e.g. "Hết đăng ký đầu Level 11". Hidden when null. */
   eventNote?: string | null;
   status: TvTournamentStatus;

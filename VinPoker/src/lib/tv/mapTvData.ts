@@ -38,7 +38,7 @@ export interface TvTournamentRow {
   guarantee_amount: number | null;
   buy_in: number | null;
   rake_amount: number | null;
-  club: { name: string; cover_url: string | null } | null;
+  club: { name: string; cover_url: string | null; tv_logo_url: string | null; tv_brand_name: string | null; tv_bg_url: string | null } | null;
 }
 
 export interface TvLevelRow {
@@ -133,7 +133,8 @@ export function mapTvData(sources: TvDataSources): TvData {
   return {
     tournamentName: tournament.name,
     clubName: tournament.club?.name ?? "",
-    clubLogoUrl: null,
+    clubLogoUrl: tournament.club?.tv_logo_url ?? null,
+    brandName: tournament.club?.tv_brand_name ?? tournament.club?.name ?? null,
     eventNote: null, // no schema column yet — hidden by contract
     status: mapTournamentStatus(tournament.status),
     isRunning: clock.is_running ?? false,
@@ -154,6 +155,6 @@ export function mapTvData(sources: TvDataSources): TvData {
     startingStack: tournament.starting_stack != null ? Number(tournament.starting_stack) : 0,
     buyIn: tournament.buy_in != null ? Number(tournament.buy_in) : null,
     rakeAmount: tournament.rake_amount != null ? Number(tournament.rake_amount) : null,
-    clubCoverUrl: tournament.club?.cover_url ?? null,
+    clubCoverUrl: tournament.club?.tv_bg_url ?? tournament.club?.cover_url ?? null,
   };
 }

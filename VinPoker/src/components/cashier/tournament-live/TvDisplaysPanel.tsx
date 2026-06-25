@@ -29,6 +29,7 @@ import {
   revokeDisplay, updateDisplay, type TvDisplayLayout, type TvDisplayRow,
 } from "@/lib/tv/displayAdminRpc";
 import { TvLivePreviewCard } from "./TvLivePreviewCard";
+import { TvBrandingEditor } from "./TvBrandingEditor";
 
 interface TvDisplaysPanelProps {
   tournamentId: string;
@@ -167,6 +168,9 @@ export function TvDisplaysPanel({ tournamentId, tournamentName, clubId, tourname
     <div className="space-y-4">
       {/* Live preview of the running TV screen for this tournament */}
       <TvLivePreviewCard tournamentId={tournamentId} />
+
+      {/* Per-club TV branding (logo / background / name) */}
+      <TvBrandingEditor clubId={clubId} />
 
       {/* Pair a new TV */}
       <Card className="p-4 space-y-3">

@@ -25,6 +25,8 @@ export type TournamentClockData = {
   nextLevel: string;
   payouts: PayoutRow[];
   footerNote: string;
+  /** Brand name shown under the logo (per-club). Defaults to "VINPOKER" when absent. */
+  brandName?: string;
   /** Club-replaceable background image. Falls back to a dark poker-room
    *  gradient when absent or on load error. */
   clubBackgroundUrl?: string | null;

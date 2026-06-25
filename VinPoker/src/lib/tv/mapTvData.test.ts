@@ -47,7 +47,7 @@ const TOURNAMENT: TvTournamentRow = {
   guarantee_amount: null,
   buy_in: 1_000_000,
   rake_amount: 100_000,
-  club: { name: "VinPoker Club", cover_url: null },
+  club: { name: "VinPoker Club", cover_url: null, tv_logo_url: null, tv_brand_name: null, tv_bg_url: null },
 };
 
 const LEVEL_ROWS = [
