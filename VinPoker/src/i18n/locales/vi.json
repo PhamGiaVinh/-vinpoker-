@@ -3276,7 +3276,9 @@
       "fbPageTokenHelp": "Token có quyền pages_manage_posts từ Meta app của bạn (cho Page bạn quản trị). Lưu mã hoá, không hiển thị lại. Bắt buộc để bật Facebook.",
       "fbPageTokenPlaceholder": "dán Page Access Token (bắt buộc)",
       "fbClearToken": "Xoá token (tắt Facebook)",
-      "errPageId": "Nhập Facebook Page ID."
+      "errPageId": "Nhập Facebook Page ID.",
+      "fbGuideTitle": "Hướng dẫn lấy Page Access Token",
+      "fbGuide": "Cách lấy Page Access Token (cho Page bạn quản trị):\n1. Vào developers.facebook.com → Tạo ứng dụng (Create App), loại \"Business\".\n2. Trong app, thêm sản phẩm \"Facebook Login for Business\".\n3. Mở Graph API Explorer: developers.facebook.com/tools/explorer\n4. Ở ô \"Meta App\" chọn app của bạn; ở \"User or Page\" chọn \"Get Page Access Token\" rồi chọn Page của bạn.\n5. Thêm quyền: pages_manage_posts và pages_read_engagement → bấm \"Generate Access Token\" và đồng ý.\n6. Copy token (đây là token NGẮN HẠN ~1-2 giờ).\n7. Đổi sang token DÀI HẠN (~60 ngày): mở developers.facebook.com/tools/debug/accesstoken → dán token → \"Extend Access Token\" → copy token mới.\n8. Dán token dài hạn vào ô \"Page Access Token\" ở trên, nhập Page ID, rồi bấm Lưu.\n\nLưu ý:\n• Page ID: vào Page → Giới thiệu/Cài đặt → mục \"ID Trang / Page ID\".\n• Token dài hạn ~60 ngày sẽ hết hạn — nếu đăng lỗi \"token\", lấy token mới và dán lại.\n• Với Page bạn tự quản trị, KHÔNG cần Facebook duyệt (App Review)."
     },
     "staff": {
       "search": "Tìm theo tên hoặc SĐT",

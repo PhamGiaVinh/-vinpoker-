@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { ShieldAlert, CheckCircle2, Clock, Loader2, KeyRound } from "lucide-react";
+import { ShieldAlert, CheckCircle2, Clock, Loader2, KeyRound, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 // Editable Telegram + Facebook config. Telegram: dedicated chat id + OPTIONAL bot token (blank =
 // shared VinPoker bot). Facebook: Page id + REQUIRED Page Access Token (pages_manage_posts). Tokens
@@ -31,6 +31,7 @@ export const ChannelSettings = ({ clubId, onChanged }: Props) => {
   const [pageId, setPageId] = useState("");
   const [fbHasToken, setFbHasToken] = useState(false);
   const [fbToken, setFbToken] = useState("");
+  const [showFbGuide, setShowFbGuide] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -125,6 +126,23 @@ export const ChannelSettings = ({ clubId, onChanged }: Props) => {
           <CardTitle className="flex items-center justify-between text-base">Facebook {statusBadge(fbEnabled && !!pageId)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Collapsible "how to get a Page Access Token" guide, right where the token is entered. */}
+          <div className="rounded-md border border-border/50 bg-muted/20">
+            <button
+              type="button"
+              onClick={() => setShowFbGuide((s) => !s)}
+              className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-foreground"
+            >
+              <span className="flex items-center gap-1.5"><HelpCircle className="h-3.5 w-3.5 text-primary" />{t("marketing.channels.fbGuideTitle")}</span>
+              {showFbGuide ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {showFbGuide && (
+              <div className="whitespace-pre-line px-3 pb-3 text-[11px] leading-relaxed text-muted-foreground">
+                {t("marketing.channels.fbGuide")}
+              </div>
+            )}
+          </div>
+
           <div>
             <Label className="mb-1 block text-xs text-muted-foreground">{t("marketing.channels.fbPageId")} *</Label>
             <Input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="123456789012345" />

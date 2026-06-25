@@ -3026,7 +3026,9 @@
       "fbPageTokenHelp": "본인 Meta 앱의 pages_manage_posts 권한 토큰(관리 중인 페이지). 암호화 저장되며 다시 표시되지 않습니다. Facebook 사용에 필수.",
       "fbPageTokenPlaceholder": "페이지 액세스 토큰 붙여넣기(필수)",
       "fbClearToken": "토큰 제거(Facebook 비활성화)",
-      "errPageId": "Facebook 페이지 ID를 입력하세요."
+      "errPageId": "Facebook 페이지 ID를 입력하세요.",
+      "fbGuideTitle": "페이지 액세스 토큰 받는 방법",
+      "fbGuide": "페이지 액세스 토큰 받는 방법(본인이 관리하는 페이지):\n1. developers.facebook.com → 앱 만들기(Create App), 유형 \"Business\".\n2. 앱에 \"Facebook Login for Business\" 제품 추가.\n3. Graph API Explorer 열기: developers.facebook.com/tools/explorer\n4. \"Meta App\"에서 본인 앱 선택; \"User or Page\"에서 \"Get Page Access Token\" 선택 후 본인 페이지 선택.\n5. 권한 추가: pages_manage_posts, pages_read_engagement → \"Generate Access Token\" 클릭 후 승인.\n6. 토큰 복사(단기 토큰, 약 1-2시간).\n7. 장기 토큰(약 60일)으로 교환: developers.facebook.com/tools/debug/accesstoken 열기 → 붙여넣기 → \"Extend Access Token\" → 새 토큰 복사.\n8. 장기 토큰을 위의 \"페이지 액세스 토큰\"에 붙여넣고 페이지 ID 입력 후 저장.\n\n참고:\n• 페이지 ID: 페이지 → 정보/설정 → \"페이지 ID\".\n• 장기 토큰(약 60일)은 만료됩니다 — 게시 시 \"token\" 오류가 나면 새로 받아 다시 붙여넣으세요.\n• 본인이 관리하는 페이지는 Facebook 앱 심사(App Review)가 필요 없습니다."
     },
     "staff": {
       "search": "이름 또는 전화번호로 검색",

@@ -3030,7 +3030,9 @@
       "fbPageTokenHelp": "โทเค็นที่มีสิทธิ์ pages_manage_posts จาก Meta app ของคุณ (สำหรับเพจที่คุณดูแล) เก็บเข้ารหัสและไม่แสดงอีก จำเป็นต่อการเปิดใช้ Facebook",
       "fbPageTokenPlaceholder": "วาง Page Access Token (จำเป็น)",
       "fbClearToken": "ลบโทเค็น (ปิด Facebook)",
-      "errPageId": "กรอก Facebook Page ID"
+      "errPageId": "กรอก Facebook Page ID",
+      "fbGuideTitle": "วิธีรับ Page Access Token",
+      "fbGuide": "วิธีรับ Page Access Token (สำหรับเพจที่คุณดูแล):\n1. ไปที่ developers.facebook.com → สร้างแอป (Create App) ประเภท \"Business\"\n2. เพิ่มผลิตภัณฑ์ \"Facebook Login for Business\" ในแอป\n3. เปิด Graph API Explorer: developers.facebook.com/tools/explorer\n4. เลือกแอปของคุณที่ช่อง \"Meta App\"; ที่ \"User or Page\" เลือก \"Get Page Access Token\" แล้วเลือกเพจของคุณ\n5. เพิ่มสิทธิ์: pages_manage_posts และ pages_read_engagement → กด \"Generate Access Token\" และอนุญาต\n6. คัดลอกโทเค็น (เป็นโทเค็นระยะสั้น ~1-2 ชั่วโมง)\n7. แปลงเป็นโทเค็นระยะยาว (~60 วัน): เปิด developers.facebook.com/tools/debug/accesstoken → วาง → \"Extend Access Token\" → คัดลอกโทเค็นใหม่\n8. วางโทเค็นระยะยาวในช่อง \"Page Access Token\" ด้านบน กรอก Page ID แล้วกดบันทึก\n\nหมายเหตุ:\n• Page ID: เพจ → เกี่ยวกับ/ตั้งค่า → \"Page ID\"\n• โทเค็นระยะยาว (~60 วัน) จะหมดอายุ — ถ้าโพสต์แล้วขึ้นข้อผิดพลาด \"token\" ให้ขอใหม่แล้ววางอีกครั้ง\n• สำหรับเพจที่คุณดูแลเอง ไม่ต้องผ่าน App Review ของ Facebook"
     },
     "staff": {
       "search": "ค้นหาด้วยชื่อหรือเบอร์โทร",
