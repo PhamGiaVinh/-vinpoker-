@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
+import { ChipStack } from "./ChipStack";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
 
 export interface SeatInfo {
@@ -264,6 +265,33 @@ export function LiveFelt({
       ? { width: "clamp(22px,8.4cqi,40px)", height: "clamp(31px,11.8cqi,56px)" }
       : { width: "clamp(26px,4.6cqi,48px)", height: "clamp(36px,6.4cqi,66px)" }
     : undefined;
+  // Committed-bet chip STACK on the felt (viewerLayout only): disc + label sizing,
+  // scaling with the felt via cqi (and uniformly under the narrow-landscape `fit`).
+  const stackStyle: CSSProperties | undefined = viewerLayout
+    ? portrait
+      ? { width: "clamp(12px,4.6cqi,20px)", fontSize: "clamp(7px,2.6cqi,10px)" }
+      : { width: "clamp(11px,2.3cqi,18px)", fontSize: "clamp(7px,1.6cqi,10px)" }
+    : undefined;
+  // Where a seat's chip stack sits: lerp from the seat toward the pot center, then
+  // COLLISION-GUARDED — clamp the result to a minimum radial gap from the pot center so
+  // near-pot/top seats can't land on the board safe-zone and 9 stacks don't converge onto
+  // each other at the pot (the board is positionally protected, NOT just by z-order).
+  // K + MINGAP are tuned in the 9-handed-all-bet visual check.
+  const potCenterT = parseFloat(geo.centerTop) || 43;
+  const STACK_K = 0.42;
+  const STACK_MINGAP = 16; // % of the felt that the stack center stays clear of the pot
+  const stackPt = (pos: Pt): Pt => {
+    let l = pos.l + (50 - pos.l) * STACK_K;
+    let t = pos.t + (potCenterT - pos.t) * STACK_K;
+    const dx = l - 50;
+    const dy = t - potCenterT;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.01 && d < STACK_MINGAP) {
+      l = 50 + (dx / d) * STACK_MINGAP;
+      t = potCenterT + (dy / d) * STACK_MINGAP;
+    }
+    return { l, t };
+  };
   // V2 forces its OWN neon premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
@@ -610,40 +638,12 @@ export function LiveFelt({
                     {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
                   </div>
                 )}
-                {/* RPT committed-chip indicator. viewerLayout → ONE pill colored all-in
-                    (white-on-red) vs regular (emerald-on-dark) with a chip glyph (all-in label
-                    merged in). Gated on viewerLayout so operator/TV render NO bet pill — even
-                    though current_bet is now populated under liveActionEngine — keeping them
-                    byte-identical; the operator keeps the standalone ALL IN label as today. */}
-                {viewerLayout ? (
-                  (seat.is_all_in || (!seat.is_folded && (seat.current_bet ?? 0) > 0)) && (
-                    <div
-                      key={`bet-${seat.is_all_in ? "allin" : seat.current_bet}`}
-                      className="tracker-bet-pulse tracker-num mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold"
-                      style={
-                        seat.is_all_in
-                          ? { background: "rgb(184,31,31)", border: "0.8px solid rgba(255,150,150,0.9)", color: "#fff", borderRadius: "9999px" }
-                          : { background: "rgba(0,0,0,0.65)", border: "1px solid hsl(146 62% 56% / 0.45)", color: "hsl(146 62% 56%)", borderRadius: "6px" }
-                      }
-                    >
-                      <span
-                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{
-                          background: seat.is_all_in
-                            ? "radial-gradient(circle at 35% 30%, #ff8a8a, #d33 55%, #7a1111 100%)"
-                            : "radial-gradient(circle at 35% 30%, #9ff5c9, #2fbf73 55%, #0f6e3e 100%)",
-                          boxShadow: "0 0 0 1px rgba(0,0,0,.45)",
-                        }}
-                      />
-                      {seat.is_all_in
-                        ? (seat.current_bet ?? 0) > 0
-                          ? `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(seat.current_bet as number)}`
-                          : t("liveHub.felt.allIn", "ALL IN")
-                        : formatStack(seat.current_bet as number)}
-                    </div>
-                  )
-                ) : (
-                  seat.is_all_in && <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>
+                {/* Committed-bet indicator. viewerLayout → an RPT-style chip STACK rendered
+                    ON THE FELT (in the placement layer below the seats map), NOT a pill here.
+                    Operator/TV (viewerLayout off) keep the standalone ALL IN label as today,
+                    so their render is byte-identical even with current_bet now populated. */}
+                {!viewerLayout && seat.is_all_in && (
+                  <div className="mt-0.5 text-[8px] font-bold text-red-400" style={nameShadow}>{t("liveHub.felt.allIn", "ALL IN")}</div>
                 )}
                 {seat.is_folded && <div className="mt-0.5 text-[8px] text-zinc-300" style={nameShadow}>{t("liveHub.felt.folded", "FOLDED")}</div>}
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
@@ -663,6 +663,33 @@ export function LiveFelt({
             </div>
           );
         })}
+
+        {/* Committed-bet CHIP STACKS on the felt (viewerLayout only). A pointer-events-none
+            layer placed in front of each betting/all-in seat, toward the pot (collision-guarded
+            stackPt). Operator/TV never render this → byte-identical. z-[15]: above the felt,
+            below the to-act badge (z-20) and the flying chip-push (z-[25]). */}
+        {viewerLayout &&
+          seats
+            .filter((s) => s.is_all_in || (!s.is_folded && (s.current_bet ?? 0) > 0))
+            .map((s) => {
+              const slot = ((s.seat_number - 1) % 9) + 1;
+              const pt = stackPt(geo.seats[slot] || geo.seats[1]);
+              const amt = s.current_bet ?? 0;
+              const label = s.is_all_in
+                ? amt > 0
+                  ? `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(amt)}`
+                  : t("liveHub.felt.allIn", "ALL IN")
+                : formatStack(amt);
+              return (
+                <div
+                  key={`stack-${s.player_id}-${s.is_all_in ? "allin" : amt}`}
+                  className="pointer-events-none absolute z-[15] -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${pt.l}%`, top: `${pt.t}%` }}
+                >
+                  <ChipStack label={label} allIn={s.is_all_in} sizeStyle={stackStyle} />
+                </div>
+              );
+            })}
 
         {/* P2-5 ADDITIVE: empty physical seats (only when physicalSeats is supplied —
             absent for the public viewer/replay/TV, so their render is byte-identical).
