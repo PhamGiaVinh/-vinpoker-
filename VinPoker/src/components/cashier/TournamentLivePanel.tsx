@@ -30,6 +30,7 @@ import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel
 import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 import { TdAiTabPanel } from "@/components/td-ai/TdAiTabPanel";
 import { TournamentManagerPanel } from "@/components/floor/TournamentManagerPanel";
+import { FloorTournamentsLanding } from "@/components/floor/FloorTournamentsLanding";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -200,6 +201,13 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
   );
 
   const renderOverview = () => {
+    // Floor landing → the Daily / Multi-day split (full management lives here now). Other
+    // modes keep the legacy selection grid below. Clicking a tour calls onSelect → the
+    // operational tabs. (Patch C: the legacy "Quản lý giải" tab still exists as a parity
+    // window; removed in Patch D.)
+    if (mode === "floor") {
+      return <FloorTournamentsLanding clubIds={clubIds} clubs={clubs} onSelect={setSelectedTournamentId} />;
+    }
     if (listError && (!tournaments || tournaments.length === 0)) {
       return (
         <Card className="p-8 text-center space-y-3">
