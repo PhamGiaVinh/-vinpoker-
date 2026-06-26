@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { FEATURES } from "@/lib/featureFlags";
-import { flightEntrants, qualifierTarget, type FlightMeta, type FinalMeta } from "./TournamentManagerShared";
+import { flightEntrants, qualifierTarget, type ClubRow, type FlightMeta, type FinalMeta } from "./TournamentManagerShared";
 
 export type EventMeta = { name: string; itm_percent: number };
 type TourStatus = "scheduled" | "live" | "finished" | "cancelled";
@@ -132,3 +132,13 @@ export function useFloorTournaments(clubIds: string[]) {
 
   return { tours, loading, error, flightMeta, finalMeta, eventMeta, reload: load, deleteTour, setTourStatus, startTournament };
 }
+
+/** Props every Floor board receives — the hook's return plus the view-level extras the
+ *  landing computes (club lookups + the select callback into operational tabs). */
+export type FloorBoardProps = ReturnType<typeof useFloorTournaments> & {
+  multiClub: boolean;
+  clubNameMap: Record<string, string>;
+  clubs: ClubRow[];
+  clubIds: string[];
+  onSelect: (id: string) => void;
+};
