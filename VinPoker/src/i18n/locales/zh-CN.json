@@ -3018,7 +3018,9 @@
       },
       "channels": "草稿发布渠道",
       "save": "保存",
-      "saved": "已保存自动化设置。"
+      "saved": "已保存自动化设置。",
+      "stateOn": "已开启",
+      "stateOff": "已关闭"
     },
     "status": {
       "draft": "草稿",

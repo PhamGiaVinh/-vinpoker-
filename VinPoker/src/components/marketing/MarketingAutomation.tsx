@@ -83,15 +83,20 @@ export const MarketingAutomation = ({ clubId, onChanged }: Props) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 p-3">
             <div>
               <Label className="text-sm">{t("marketing.auto.enable")}</Label>
               <p className="text-[11px] text-muted-foreground">{t("marketing.auto.enableHelp")}</p>
             </div>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-medium ${enabled ? "text-primary" : "text-muted-foreground"}`}>
+                {enabled ? t("marketing.auto.stateOn") : t("marketing.auto.stateOff")}
+              </span>
+              <Switch checked={enabled} onCheckedChange={setEnabled} />
+            </div>
           </div>
 
-          <div className={enabled ? "" : "pointer-events-none opacity-50"}>
+          <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">{t("marketing.auto.kinds")}</Label>
             <div className="space-y-2">
               {KINDS.map((k) => (
@@ -110,7 +115,7 @@ export const MarketingAutomation = ({ clubId, onChanged }: Props) => {
             </div>
           </div>
 
-          <div className={enabled ? "" : "pointer-events-none opacity-50"}>
+          <div>
             <Label className="mb-1.5 block text-xs text-muted-foreground">{t("marketing.auto.channels")}</Label>
             <div className="flex flex-wrap gap-4">
               {AUTO_CHANNELS.map((c) => (

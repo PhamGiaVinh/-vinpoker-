@@ -3264,7 +3264,9 @@
       },
       "channels": "Channels for drafts",
       "save": "Save",
-      "saved": "Automation saved."
+      "saved": "Automation saved.",
+      "stateOn": "On",
+      "stateOff": "Off"
     },
     "status": {
       "draft": "Draft",
