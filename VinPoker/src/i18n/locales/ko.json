@@ -3014,7 +3014,9 @@
       },
       "channels": "초안 게시 채널",
       "save": "저장",
-      "saved": "자동화가 저장되었습니다."
+      "saved": "자동화가 저장되었습니다.",
+      "stateOn": "켜짐",
+      "stateOff": "꺼짐"
     },
     "status": {
       "draft": "초안",

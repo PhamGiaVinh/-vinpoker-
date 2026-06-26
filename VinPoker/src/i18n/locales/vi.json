@@ -3264,7 +3264,9 @@
       },
       "channels": "Kênh đăng cho bản nháp",
       "save": "Lưu",
-      "saved": "Đã lưu cấu hình tự động."
+      "saved": "Đã lưu cấu hình tự động.",
+      "stateOn": "Đang bật",
+      "stateOff": "Đang tắt"
     },
     "status": {
       "draft": "Nháp",
