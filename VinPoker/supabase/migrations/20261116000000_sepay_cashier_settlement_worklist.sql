@@ -20,7 +20,10 @@
 -- (= club_cashiers ∪ clubs.owner_id; 20260512184948) — no spoofable club param; empty if no auth.uid().
 -- Only returns transfers whose resolved club ∈ the caller's clubs. Account→club resolved exactly as
 -- settle does (platform_bank_accounts, exactly one active club); unresolved-club transfers are excluded
--- (a super_admin concern). EXECUTE to authenticated ONLY. No writes.
+-- (a super_admin concern). The registration match is ALSO scoped to that resolved club (a reg counts /
+-- attaches only when its tournament's club = the transfer's club) so the worklist never surfaces a
+-- cross-club reg that manual_confirm_bank_transaction would then reject as club_mismatch — the UI mirrors
+-- the validator. EXECUTE to authenticated ONLY. No writes.
 --
 -- Idempotent: CREATE OR REPLACE FUNCTION; explicit REVOKE/GRANT.
 
@@ -101,13 +104,17 @@ BEGIN
     SELECT count(*)::int AS cnt
     FROM public.tournament_registrations tr
     WHERE pref.ref IS NOT NULL AND upper(tr.reference_code) = upper(pref.ref)
+      -- scope the match to THIS transfer's resolved club (mirrors manual_confirm's club_mismatch gate)
+      AND (SELECT t2.club_id FROM public.tournaments t2 WHERE t2.id = tr.tournament_id) = a.club_id
   ) m ON true
   LEFT JOIN LATERAL (
     SELECT tr.id, tr.status, tr.total_pay, tr.tournament_id, tr.player_id
     FROM public.tournament_registrations tr
     WHERE pref.ref IS NOT NULL AND upper(tr.reference_code) = upper(pref.ref)
+      -- same club scope as the count above — never attach a reg from another club
+      AND (SELECT t2.club_id FROM public.tournaments t2 WHERE t2.id = tr.tournament_id) = a.club_id
     LIMIT 1
-  ) r ON (m.cnt = 1)        -- only attach the registration when EXACTLY one matches
+  ) r ON (m.cnt = 1)        -- only attach the registration when EXACTLY one matches (within this club)
   LEFT JOIN public.tournaments t  ON t.id = r.tournament_id
   LEFT JOIN public.profiles prof  ON prof.user_id = r.player_id
   LEFT JOIN LATERAL (
