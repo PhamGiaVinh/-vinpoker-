@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       all_time_money_list: {
@@ -206,6 +181,137 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      bank_transactions: {
+        Row: {
+          account_number: string
+          amount: number | null
+          api_verified_at: string | null
+          api_verified_source: string | null
+          club_id: string | null
+          content: string | null
+          created_at: string
+          gateway: string | null
+          id: string
+          occurred_at: string | null
+          processed_at: string | null
+          provider: string
+          provider_txn_id: string
+          raw_body: string | null
+          raw_payload: Json
+          status: string
+          sub_account: string | null
+          transfer_type: string | null
+          txn_ref: string | null
+        }
+        Insert: {
+          account_number: string
+          amount?: number | null
+          api_verified_at?: string | null
+          api_verified_source?: string | null
+          club_id?: string | null
+          content?: string | null
+          created_at?: string
+          gateway?: string | null
+          id?: string
+          occurred_at?: string | null
+          processed_at?: string | null
+          provider?: string
+          provider_txn_id: string
+          raw_body?: string | null
+          raw_payload?: Json
+          status?: string
+          sub_account?: string | null
+          transfer_type?: string | null
+          txn_ref?: string | null
+        }
+        Update: {
+          account_number?: string
+          amount?: number | null
+          api_verified_at?: string | null
+          api_verified_source?: string | null
+          club_id?: string | null
+          content?: string | null
+          created_at?: string
+          gateway?: string | null
+          id?: string
+          occurred_at?: string | null
+          processed_at?: string | null
+          provider?: string
+          provider_txn_id?: string
+          raw_body?: string | null
+          raw_payload?: Json
+          status?: string
+          sub_account?: string | null
+          transfer_type?: string | null
+          txn_ref?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_webhook_audit: {
+        Row: {
+          bank_transaction_id: string | null
+          created_at: string
+          http_status: number
+          id: string
+          outcome: string
+          provider: string
+          raw_body: string | null
+          raw_payload: Json
+          received_at: string
+          remote_ip: string | null
+          verified: boolean
+        }
+        Insert: {
+          bank_transaction_id?: string | null
+          created_at?: string
+          http_status: number
+          id?: string
+          outcome: string
+          provider?: string
+          raw_body?: string | null
+          raw_payload?: Json
+          received_at?: string
+          remote_ip?: string | null
+          verified: boolean
+        }
+        Update: {
+          bank_transaction_id?: string | null
+          created_at?: string
+          http_status?: number
+          id?: string
+          outcome?: string
+          provider?: string
+          raw_body?: string | null
+          raw_payload?: Json
+          received_at?: string
+          remote_ip?: string | null
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_webhook_audit_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bankroll_entries: {
         Row: {
@@ -588,6 +694,539 @@ export type Database = {
           },
         ]
       }
+      chip_bag: {
+        Row: {
+          bag_code: string | null
+          club_id: string
+          created_at: string
+          created_by: string | null
+          day_number: number
+          id: string
+          player_id: string
+          player_name: string | null
+          sealed: boolean
+          seat_number: number | null
+          stack_value: number
+          table_id: string | null
+          total_value: number
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          bag_code?: string | null
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          day_number: number
+          id?: string
+          player_id: string
+          player_name?: string | null
+          sealed?: boolean
+          seat_number?: number | null
+          stack_value?: number
+          table_id?: string | null
+          total_value?: number
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          bag_code?: string | null
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          day_number?: number
+          id?: string
+          player_id?: string
+          player_name?: string | null
+          sealed?: boolean
+          seat_number?: number | null
+          stack_value?: number
+          table_id?: string | null
+          total_value?: number
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_bag_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bag_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bag_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "chip_bag_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_bank: {
+        Row: {
+          club_id: string
+          denomination_id: string
+          on_hand_count: number
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          club_id: string
+          denomination_id: string
+          on_hand_count?: number
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          club_id?: string
+          denomination_id?: string
+          on_hand_count?: number
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_bank_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_bank_ledger: {
+        Row: {
+          actor: string | null
+          balance_after: number
+          club_id: string
+          count: number
+          created_at: string
+          denomination_id: string
+          details: Json
+          direction: string
+          id: string
+          idempotency_key: string | null
+          reason: string | null
+          ref_id: string | null
+          ref_type: string | null
+          tournament_id: string | null
+        }
+        Insert: {
+          actor?: string | null
+          balance_after: number
+          club_id: string
+          count: number
+          created_at?: string
+          denomination_id: string
+          details?: Json
+          direction: string
+          id?: string
+          idempotency_key?: string | null
+          reason?: string | null
+          ref_id?: string | null
+          ref_type?: string | null
+          tournament_id?: string | null
+        }
+        Update: {
+          actor?: string | null
+          balance_after?: number
+          club_id?: string
+          count?: number
+          created_at?: string
+          denomination_id?: string
+          details?: Json
+          direction?: string
+          id?: string
+          idempotency_key?: string | null
+          reason?: string | null
+          ref_id?: string | null
+          ref_type?: string | null
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_bank_ledger_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_ledger_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_ledger_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_ledger_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_bank_ledger_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "chip_bank_ledger_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_inventory_ledger: {
+        Row: {
+          actor: string | null
+          club_id: string
+          created_at: string
+          delta_count: number
+          denomination_id: string
+          details: Json
+          id: string
+          reason: string
+          ref_id: string | null
+          ref_type: string | null
+          tournament_id: string
+        }
+        Insert: {
+          actor?: string | null
+          club_id: string
+          created_at?: string
+          delta_count: number
+          denomination_id: string
+          details?: Json
+          id?: string
+          reason: string
+          ref_id?: string | null
+          ref_type?: string | null
+          tournament_id: string
+        }
+        Update: {
+          actor?: string | null
+          club_id?: string
+          created_at?: string
+          delta_count?: number
+          denomination_id?: string
+          details?: Json
+          id?: string
+          reason?: string
+          ref_id?: string | null
+          ref_type?: string | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_inventory_ledger_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_inventory_ledger_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_inventory_ledger_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_inventory_ledger_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_inventory_ledger_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "chip_inventory_ledger_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_ops_bank_config: {
+        Row: {
+          club_id: string
+          coupling_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          club_id: string
+          coupling_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          club_id?: string
+          coupling_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_ops_bank_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_ops_bank_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_ops_signoff_audit: {
+        Row: {
+          action: string
+          actor: string | null
+          club_id: string
+          created_at: string
+          day_close_id: string | null
+          details: Json
+          id: string
+          tournament_id: string | null
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          club_id: string
+          created_at?: string
+          day_close_id?: string | null
+          details?: Json
+          id?: string
+          tournament_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          club_id?: string
+          created_at?: string
+          day_close_id?: string | null
+          details?: Json
+          id?: string
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_ops_signoff_audit_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_ops_signoff_audit_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_ops_signoff_audit_day_close_id_fkey"
+            columns: ["day_close_id"]
+            isOneToOne: false
+            referencedRelation: "day_close"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_ops_signoff_audit_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "chip_ops_signoff_audit_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_set: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_set_denomination: {
+        Row: {
+          chip_set_id: string
+          club_id: string
+          color: string | null
+          created_at: string
+          created_by: string | null
+          display_order: number
+          id: string
+          label: string | null
+          value: number
+        }
+        Insert: {
+          chip_set_id: string
+          club_id: string
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          id?: string
+          label?: string | null
+          value: number
+        }
+        Update: {
+          chip_set_id?: string
+          club_id?: string
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          id?: string
+          label?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_set_denomination_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_cashiers: {
         Row: {
           club_id: string
@@ -617,6 +1256,96 @@ export type Database = {
           },
           {
             foreignKeyName: "club_cashiers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_channel_integrations: {
+        Row: {
+          bot_token_vault_key: string | null
+          channel: Database["public"]["Enums"]["marketing_channel"]
+          club_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          secret_ref: string | null
+          target_ref: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bot_token_vault_key?: string | null
+          channel: Database["public"]["Enums"]["marketing_channel"]
+          club_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          secret_ref?: string | null
+          target_ref?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bot_token_vault_key?: string | null
+          channel?: Database["public"]["Enums"]["marketing_channel"]
+          club_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          secret_ref?: string | null
+          target_ref?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_channel_integrations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_channel_integrations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_chip_masters: {
+        Row: {
+          club_id: string
+          created_at: string
+          granted_by: string | null
+          user_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          granted_by?: string | null
+          user_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          granted_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_chip_masters_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_chip_masters_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
@@ -950,6 +1679,42 @@ export type Database = {
           },
         ]
       }
+      club_marketers: {
+        Row: {
+          club_id: string
+          created_at: string
+          granted_by: string | null
+          user_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          granted_by?: string | null
+          user_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          granted_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_marketers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_marketers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_members: {
         Row: {
           cccd: string | null
@@ -1040,26 +1805,137 @@ export type Database = {
         }
         Relationships: []
       }
+      club_payment_config: {
+        Row: {
+          api_token_vault_key: string | null
+          club_id: string
+          created_at: string
+          is_active: boolean
+          last_pull_at: string | null
+          last_pull_error: string | null
+          last_pull_status: string | null
+          master_account_number: string | null
+          provider: string
+          updated_at: string
+          updated_by: string | null
+          webhook_secret_vault_key: string | null
+        }
+        Insert: {
+          api_token_vault_key?: string | null
+          club_id: string
+          created_at?: string
+          is_active?: boolean
+          last_pull_at?: string | null
+          last_pull_error?: string | null
+          last_pull_status?: string | null
+          master_account_number?: string | null
+          provider?: string
+          updated_at?: string
+          updated_by?: string | null
+          webhook_secret_vault_key?: string | null
+        }
+        Update: {
+          api_token_vault_key?: string | null
+          club_id?: string
+          created_at?: string
+          is_active?: boolean
+          last_pull_at?: string | null
+          last_pull_error?: string | null
+          last_pull_status?: string | null
+          master_account_number?: string | null
+          provider?: string
+          updated_at?: string
+          updated_by?: string | null
+          webhook_secret_vault_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_payment_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_payment_config_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_processing_locks: {
         Row: {
           club_id: string
           expires_at: string
+          last_heartbeat_at: string | null
+          lock_token: string | null
           locked_at: string
           locked_by: string
+          owner_id: string | null
         }
         Insert: {
           club_id: string
           expires_at: string
+          last_heartbeat_at?: string | null
+          lock_token?: string | null
           locked_at?: string
           locked_by?: string
+          owner_id?: string | null
         }
         Update: {
           club_id?: string
           expires_at?: string
+          last_heartbeat_at?: string | null
+          lock_token?: string | null
           locked_at?: string
           locked_by?: string
+          owner_id?: string | null
         }
         Relationships: []
+      }
+      club_series_images: {
+        Row: {
+          caption: string | null
+          club_id: string
+          created_at: string
+          id: string
+          image_url: string
+          position: number
+        }
+        Insert: {
+          caption?: string | null
+          club_id: string
+          created_at?: string
+          id?: string
+          image_url: string
+          position?: number
+        }
+        Update: {
+          caption?: string | null
+          club_id?: string
+          created_at?: string
+          id?: string
+          image_url?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_series_images_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_series_images_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       club_settings: {
         Row: {
@@ -1225,6 +2101,9 @@ export type Database = {
           schedule: string | null
           schedule_sort_order: number
           status: Database["public"]["Enums"]["club_status"]
+          tv_bg_url: string | null
+          tv_brand_name: string | null
+          tv_logo_url: string | null
           updated_at: string
           weekly_schedule_image_url: string | null
         }
@@ -1247,6 +2126,9 @@ export type Database = {
           schedule?: string | null
           schedule_sort_order?: number
           status?: Database["public"]["Enums"]["club_status"]
+          tv_bg_url?: string | null
+          tv_brand_name?: string | null
+          tv_logo_url?: string | null
           updated_at?: string
           weekly_schedule_image_url?: string | null
         }
@@ -1269,10 +2151,202 @@ export type Database = {
           schedule?: string | null
           schedule_sort_order?: number
           status?: Database["public"]["Enums"]["club_status"]
+          tv_bg_url?: string | null
+          tv_brand_name?: string | null
+          tv_logo_url?: string | null
           updated_at?: string
           weekly_schedule_image_url?: string | null
         }
         Relationships: []
+      }
+      color_up_line: {
+        Row: {
+          club_id: string
+          count_after: number
+          count_before: number
+          created_at: string
+          denomination_id: string
+          id: string
+          operation_id: string
+          role: string
+        }
+        Insert: {
+          club_id: string
+          count_after: number
+          count_before: number
+          created_at?: string
+          denomination_id: string
+          id?: string
+          operation_id: string
+          role: string
+        }
+        Update: {
+          club_id?: string
+          count_after?: number
+          count_before?: number
+          created_at?: string
+          denomination_id?: string
+          id?: string
+          operation_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "color_up_line_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_line_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_line_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "color_up_operation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      color_up_operation: {
+        Row: {
+          club_id: string
+          confirmed_at: string
+          confirmed_by: string | null
+          denom_removed: string
+          denom_target: string
+          details: Json
+          id: string
+          idempotency_key: string | null
+          level_number: number
+          removed_count: number
+          reversed_at: string | null
+          reversed_by: string | null
+          rounding_delta: number
+          status: string
+          target_added: number
+          tournament_id: string
+          value_added: number
+          value_removed: number
+        }
+        Insert: {
+          club_id: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+          denom_removed: string
+          denom_target: string
+          details?: Json
+          id?: string
+          idempotency_key?: string | null
+          level_number?: number
+          removed_count: number
+          reversed_at?: string | null
+          reversed_by?: string | null
+          rounding_delta: number
+          status?: string
+          target_added: number
+          tournament_id: string
+          value_added: number
+          value_removed: number
+        }
+        Update: {
+          club_id?: string
+          confirmed_at?: string
+          confirmed_by?: string | null
+          denom_removed?: string
+          denom_target?: string
+          details?: Json
+          id?: string
+          idempotency_key?: string | null
+          level_number?: number
+          removed_count?: number
+          reversed_at?: string | null
+          reversed_by?: string | null
+          rounding_delta?: number
+          status?: string
+          target_added?: number
+          tournament_id?: string
+          value_added?: number
+          value_removed?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "color_up_operation_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_denom_removed_fkey"
+            columns: ["denom_removed"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_denom_removed_fkey"
+            columns: ["denom_removed"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_denom_target_fkey"
+            columns: ["denom_target"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_denom_target_fkey"
+            columns: ["denom_target"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "color_up_operation_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cron_execution_log: {
         Row: {
@@ -1339,6 +2413,95 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      day_close: {
+        Row: {
+          all_zero: boolean
+          club_id: string
+          counted_total_value: number
+          created_at: string
+          day_number: number
+          expected_total_value: number
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          signed_off: boolean
+          signoff_at: string | null
+          signoff_by: string | null
+          signoff_reason: string | null
+          status: string
+          tournament_id: string
+          variance_by_player: Json
+          version: number
+        }
+        Insert: {
+          all_zero?: boolean
+          club_id: string
+          counted_total_value?: number
+          created_at?: string
+          day_number: number
+          expected_total_value?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          signed_off?: boolean
+          signoff_at?: string | null
+          signoff_by?: string | null
+          signoff_reason?: string | null
+          status?: string
+          tournament_id: string
+          variance_by_player?: Json
+          version?: number
+        }
+        Update: {
+          all_zero?: boolean
+          club_id?: string
+          counted_total_value?: number
+          created_at?: string
+          day_number?: number
+          expected_total_value?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          signed_off?: boolean
+          signoff_at?: string | null
+          signoff_by?: string | null
+          signoff_reason?: string | null
+          status?: string
+          tournament_id?: string
+          variance_by_player?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "day_close_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_close_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_close_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "day_close_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       deal_ratings: {
         Row: {
@@ -2254,6 +3417,36 @@ export type Database = {
           },
         ]
       }
+      dealer_login_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          dealer_id: string | null
+          expires_at: string
+          telegram_user_id: number | null
+          used: boolean
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          dealer_id?: string | null
+          expires_at: string
+          telegram_user_id?: number | null
+          used?: boolean
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          dealer_id?: string | null
+          expires_at?: string
+          telegram_user_id?: number | null
+          used?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       dealer_meal_breaks: {
         Row: {
           attendance_id: string
@@ -2341,6 +3534,69 @@ export type Database = {
             columns: ["dealer_id"]
             isOneToOne: false
             referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dealer_override_claims: {
+        Row: {
+          attendance_id: string
+          created_at: string
+          dealer_id: string
+          id: string
+          table_id: string
+          txid: number
+        }
+        Insert: {
+          attendance_id: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          table_id: string
+          txid: number
+        }
+        Update: {
+          attendance_id?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          table_id?: string
+          txid?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_override_claims_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_override_claims_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_latest_attendance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_override_claims_attendance_id_fkey"
+            columns: ["attendance_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_shift_metrics"
+            referencedColumns: ["attendance_id"]
+          },
+          {
+            foreignKeyName: "dealer_override_claims_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_override_claims_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "game_tables"
             referencedColumns: ["id"]
           },
         ]
@@ -3342,6 +4598,123 @@ export type Database = {
         }
         Relationships: []
       }
+      dealer_table_pool_members: {
+        Row: {
+          club_id: string
+          created_at: string
+          dealer_id: string
+          id: string
+          is_primary: boolean
+          priority: number
+          table_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          dealer_id: string
+          id?: string
+          is_primary?: boolean
+          priority?: number
+          table_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          dealer_id?: string
+          id?: string
+          is_primary?: boolean
+          priority?: number
+          table_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_table_pool_members_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_table_pool_members_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_table_pool_members_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_table_pool_members_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "dealer_table_profiles"
+            referencedColumns: ["table_id"]
+          },
+        ]
+      }
+      dealer_table_profiles: {
+        Row: {
+          allow_override: boolean
+          club_id: string
+          created_at: string
+          display_label: string | null
+          id: string
+          is_final: boolean
+          table_id: string
+          table_mode: string
+          updated_at: string
+        }
+        Insert: {
+          allow_override?: boolean
+          club_id: string
+          created_at?: string
+          display_label?: string | null
+          id?: string
+          is_final?: boolean
+          table_id: string
+          table_mode?: string
+          updated_at?: string
+        }
+        Update: {
+          allow_override?: boolean
+          club_id?: string
+          created_at?: string
+          display_label?: string | null
+          id?: string
+          is_final?: boolean
+          table_id?: string
+          table_mode?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dealer_table_profiles_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_table_profiles_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_table_profiles_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: true
+            referencedRelation: "game_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dealers: {
         Row: {
           base_rate_vnd: number | null
@@ -3605,6 +4978,42 @@ export type Database = {
           title?: string
           updated_at?: string
           view_count?: number
+        }
+        Relationships: []
+      }
+      edge_idempotency_keys: {
+        Row: {
+          actor_id: string | null
+          club_id: string | null
+          created_at: string
+          expires_at: string
+          key: string
+          request_fingerprint: string | null
+          response: Json | null
+          scope: string
+          status: string
+        }
+        Insert: {
+          actor_id?: string | null
+          club_id?: string | null
+          created_at?: string
+          expires_at: string
+          key: string
+          request_fingerprint?: string | null
+          response?: Json | null
+          scope: string
+          status?: string
+        }
+        Update: {
+          actor_id?: string | null
+          club_id?: string | null
+          created_at?: string
+          expires_at?: string
+          key?: string
+          request_fingerprint?: string | null
+          response?: Json | null
+          scope?: string
+          status?: string
         }
         Relationships: []
       }
@@ -4211,6 +5620,186 @@ export type Database = {
           },
           {
             foreignKeyName: "leaderboard_entries_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_auto_jobs: {
+        Row: {
+          channels: Json
+          club_id: string
+          created_at: string
+          enabled: boolean
+          kinds: string[]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          channels?: Json
+          club_id: string
+          created_at?: string
+          enabled?: boolean
+          kinds?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          channels?: Json
+          club_id?: string
+          created_at?: string
+          enabled?: boolean
+          kinds?: string[]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_auto_jobs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_auto_jobs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_blocked_terms: {
+        Row: {
+          club_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          term: string
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          term: string
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          term?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_blocked_terms_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_blocked_terms_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_posts: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          body: string
+          channels: Json
+          claimed_at: string | null
+          client_request_id: string
+          club_id: string
+          compliance_flags: Json
+          compliance_status: Database["public"]["Enums"]["marketing_compliance_status"]
+          created_at: string
+          created_by: string | null
+          hashtags: string[]
+          id: string
+          media_urls: Json
+          reject_reason: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          source_kind: string
+          source_ref: Json | null
+          status: Database["public"]["Enums"]["marketing_post_status"]
+          title: string | null
+          updated_at: string
+          utm: Json
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body: string
+          channels?: Json
+          claimed_at?: string | null
+          client_request_id?: string
+          club_id: string
+          compliance_flags?: Json
+          compliance_status?: Database["public"]["Enums"]["marketing_compliance_status"]
+          created_at?: string
+          created_by?: string | null
+          hashtags?: string[]
+          id?: string
+          media_urls?: Json
+          reject_reason?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          source_kind?: string
+          source_ref?: Json | null
+          status?: Database["public"]["Enums"]["marketing_post_status"]
+          title?: string | null
+          updated_at?: string
+          utm?: Json
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body?: string
+          channels?: Json
+          claimed_at?: string | null
+          client_request_id?: string
+          club_id?: string
+          compliance_flags?: Json
+          compliance_status?: Database["public"]["Enums"]["marketing_compliance_status"]
+          created_at?: string
+          created_by?: string | null
+          hashtags?: string[]
+          id?: string
+          media_urls?: Json
+          reject_reason?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          source_kind?: string
+          source_ref?: Json | null
+          status?: Database["public"]["Enums"]["marketing_post_status"]
+          title?: string | null
+          updated_at?: string
+          utm?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_posts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_posts_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
@@ -4925,6 +6514,77 @@ export type Database = {
           },
         ]
       }
+      payment_settlements: {
+        Row: {
+          amount: number
+          bank_transaction_id: string | null
+          club_id: string | null
+          confirmed_by: string | null
+          created_at: string
+          expected_amount: number | null
+          id: string
+          outcome: string
+          reason: string | null
+          reference_code: string | null
+          tournament_registration_id: string | null
+        }
+        Insert: {
+          amount: number
+          bank_transaction_id?: string | null
+          club_id?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          expected_amount?: number | null
+          id?: string
+          outcome: string
+          reason?: string | null
+          reference_code?: string | null
+          tournament_registration_id?: string | null
+        }
+        Update: {
+          amount?: number
+          bank_transaction_id?: string | null
+          club_id?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          expected_amount?: number | null
+          id?: string
+          outcome?: string
+          reason?: string | null
+          reference_code?: string | null
+          tournament_registration_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_settlements_bank_transaction_id_fkey"
+            columns: ["bank_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_settlements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_settlements_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_settlements_tournament_registration_id_fkey"
+            columns: ["tournament_registration_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payout_recipients: {
         Row: {
           amount_vnd: number
@@ -5452,6 +7112,70 @@ export type Database = {
           venue?: string | null
         }
         Relationships: []
+      }
+      post_channel_status: {
+        Row: {
+          attempts: number
+          channel: Database["public"]["Enums"]["marketing_channel"]
+          club_id: string
+          created_at: string
+          error: string | null
+          external_message_id: string | null
+          id: string
+          post_id: string
+          sent_at: string | null
+          status: Database["public"]["Enums"]["marketing_channel_delivery_status"]
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          channel: Database["public"]["Enums"]["marketing_channel"]
+          club_id: string
+          created_at?: string
+          error?: string | null
+          external_message_id?: string | null
+          id?: string
+          post_id: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["marketing_channel_delivery_status"]
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: Database["public"]["Enums"]["marketing_channel"]
+          club_id?: string
+          created_at?: string
+          error?: string | null
+          external_message_id?: string | null
+          id?: string
+          post_id?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["marketing_channel_delivery_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_channel_status_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_channel_status_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_channel_status_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_posts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pre_announce_jobs: {
         Row: {
@@ -5987,6 +7711,199 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      stack_template: {
+        Row: {
+          chip_set_id: string
+          club_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          stack_value: number
+          tournament_id: string
+        }
+        Insert: {
+          chip_set_id: string
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          stack_value: number
+          tournament_id: string
+        }
+        Update: {
+          chip_set_id?: string
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          stack_value?: number
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "st_chipset_matches_binding"
+            columns: ["tournament_id", "chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_chip_set"
+            referencedColumns: ["tournament_id", "chip_set_id"]
+          },
+          {
+            foreignKeyName: "st_chipset_matches_binding"
+            columns: ["tournament_id", "chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_chip_set_v"
+            referencedColumns: ["tournament_id", "chip_set_id"]
+          },
+          {
+            foreignKeyName: "stack_template_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "stack_template_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stack_template_issuance: {
+        Row: {
+          club_id: string
+          issued_count: number
+          stack_template_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          club_id: string
+          issued_count?: number
+          stack_template_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          club_id?: string
+          issued_count?: number
+          stack_template_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stack_template_issuance_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_issuance_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_issuance_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: true
+            referencedRelation: "stack_template"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_issuance_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: true
+            referencedRelation: "stack_template_v"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stack_template_line: {
+        Row: {
+          count: number
+          denomination_id: string
+          id: string
+          stack_template_id: string
+        }
+        Insert: {
+          count: number
+          denomination_id: string
+          id?: string
+          stack_template_id: string
+        }
+        Update: {
+          count?: number
+          denomination_id?: string
+          id?: string
+          stack_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stack_template_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: false
+            referencedRelation: "stack_template"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: false
+            referencedRelation: "stack_template_v"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staking_audit_logs: {
         Row: {
@@ -6938,6 +8855,36 @@ export type Database = {
           },
         ]
       }
+      swing_run_metrics: {
+        Row: {
+          club_id: string | null
+          created_at: string
+          id: string
+          lock_token: string | null
+          pass_durations: Json | null
+          total_ms: number | null
+          trace_id: string
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          lock_token?: string | null
+          pass_durations?: Json | null
+          total_ms?: number | null
+          trace_id: string
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string
+          id?: string
+          lock_token?: string | null
+          pass_durations?: Json | null
+          total_ms?: number | null
+          trace_id?: string
+        }
+        Relationships: []
+      }
       sync_logs: {
         Row: {
           club_id: string
@@ -7026,6 +8973,73 @@ export type Database = {
             foreignKeyName: "tournament_chip_counts_tournament_id_fkey"
             columns: ["tournament_id"]
             isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_chip_set: {
+        Row: {
+          chip_set_id: string
+          club_id: string
+          created_at: string
+          created_by: string | null
+          tournament_id: string
+        }
+        Insert: {
+          chip_set_id: string
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          tournament_id: string
+        }
+        Update: {
+          chip_set_id?: string
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_chip_set_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
@@ -7223,6 +9237,163 @@ export type Database = {
           {
             foreignKeyName: "tournament_entries_tournament_id_fkey"
             columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_event_qualifiers: {
+        Row: {
+          advanced_at: string
+          advanced_by: string | null
+          carried_stack: number
+          club_id: string
+          event_id: string
+          final_tournament_id: string
+          flight_tournament_id: string
+          id: string
+          player_id: string
+        }
+        Insert: {
+          advanced_at?: string
+          advanced_by?: string | null
+          carried_stack?: number
+          club_id: string
+          event_id: string
+          final_tournament_id: string
+          flight_tournament_id: string
+          id?: string
+          player_id: string
+        }
+        Update: {
+          advanced_at?: string
+          advanced_by?: string | null
+          carried_stack?: number
+          club_id?: string
+          event_id?: string
+          final_tournament_id?: string
+          flight_tournament_id?: string
+          id?: string
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_event_qualifiers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_event_qualifiers_flight_tournament_id_fkey"
+            columns: ["flight_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_events: {
+        Row: {
+          buy_in: number | null
+          club_id: string
+          created_at: string
+          final_tournament_id: string | null
+          id: string
+          itm_percent: number
+          name: string
+          rake_amount: number | null
+          starting_stack: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          buy_in?: number | null
+          club_id: string
+          created_at?: string
+          final_tournament_id?: string | null
+          id?: string
+          itm_percent?: number
+          name: string
+          rake_amount?: number | null
+          starting_stack?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          buy_in?: number | null
+          club_id?: string
+          created_at?: string
+          final_tournament_id?: string | null
+          id?: string
+          itm_percent?: number
+          name?: string
+          rake_amount?: number | null
+          starting_stack?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_events_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_events_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_events_final_tournament_id_fkey"
+            columns: ["final_tournament_id"]
             isOneToOne: false
             referencedRelation: "tournaments"
             referencedColumns: ["id"]
@@ -7867,6 +10038,8 @@ export type Database = {
           current_players: number | null
           deleted_at: string | null
           description: string | null
+          event_id: string | null
+          flight_label: string | null
           free_rake_enabled: boolean | null
           free_rake_slots: number | null
           free_rake_used: number | null
@@ -7880,6 +10053,7 @@ export type Database = {
           minutes_per_level: number
           name: string
           pause_accumulated: number | null
+          phase: string | null
           players_remaining: number | null
           prize_pool: number | null
           rake_amount: number
@@ -7905,6 +10079,8 @@ export type Database = {
           current_players?: number | null
           deleted_at?: string | null
           description?: string | null
+          event_id?: string | null
+          flight_label?: string | null
           free_rake_enabled?: boolean | null
           free_rake_slots?: number | null
           free_rake_used?: number | null
@@ -7918,6 +10094,7 @@ export type Database = {
           minutes_per_level?: number
           name: string
           pause_accumulated?: number | null
+          phase?: string | null
           players_remaining?: number | null
           prize_pool?: number | null
           rake_amount?: number
@@ -7943,6 +10120,8 @@ export type Database = {
           current_players?: number | null
           deleted_at?: string | null
           description?: string | null
+          event_id?: string | null
+          flight_label?: string | null
           free_rake_enabled?: boolean | null
           free_rake_slots?: number | null
           free_rake_used?: number | null
@@ -7956,6 +10135,7 @@ export type Database = {
           minutes_per_level?: number
           name?: string
           pause_accumulated?: number | null
+          phase?: string | null
           players_remaining?: number | null
           prize_pool?: number | null
           rake_amount?: number
@@ -7980,6 +10160,13 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournaments_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_events"
             referencedColumns: ["id"]
           },
         ]
@@ -8180,6 +10367,107 @@ export type Database = {
       }
     }
     Views: {
+      chip_set_denomination_v: {
+        Row: {
+          chip_set_id: string | null
+          club_id: string | null
+          color: string | null
+          display_order: number | null
+          id: string | null
+          label: string | null
+          value: number | null
+        }
+        Insert: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          color?: string | null
+          display_order?: number | null
+          id?: string | null
+          label?: string | null
+          value?: number | null
+        }
+        Update: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          color?: string | null
+          display_order?: number | null
+          id?: string | null
+          label?: string | null
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_set_denomination_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_denomination_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chip_set_v: {
+        Row: {
+          club_id: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+        }
+        Insert: {
+          club_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+        }
+        Update: {
+          club_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clubs_public: {
         Row: {
           address: string | null
@@ -8456,6 +10744,197 @@ export type Database = {
         }
         Relationships: []
       }
+      stack_template_line_v: {
+        Row: {
+          count: number | null
+          denomination_color: string | null
+          denomination_id: string | null
+          denomination_value: number | null
+          id: string | null
+          stack_template_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stack_template_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_denomination_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: false
+            referencedRelation: "stack_template"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_line_stack_template_id_fkey"
+            columns: ["stack_template_id"]
+            isOneToOne: false
+            referencedRelation: "stack_template_v"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stack_template_v: {
+        Row: {
+          chip_set_id: string | null
+          club_id: string | null
+          created_at: string | null
+          id: string | null
+          name: string | null
+          stack_value: number | null
+          tournament_id: string | null
+        }
+        Insert: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          stack_value?: number | null
+          tournament_id?: string | null
+        }
+        Update: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          stack_value?: number | null
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "st_chipset_matches_binding"
+            columns: ["tournament_id", "chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_chip_set"
+            referencedColumns: ["tournament_id", "chip_set_id"]
+          },
+          {
+            foreignKeyName: "st_chipset_matches_binding"
+            columns: ["tournament_id", "chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_chip_set_v"
+            referencedColumns: ["tournament_id", "chip_set_id"]
+          },
+          {
+            foreignKeyName: "stack_template_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stack_template_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "stack_template_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_chip_set_v: {
+        Row: {
+          chip_set_id: string | null
+          club_id: string | null
+          created_at: string | null
+          tournament_id: string | null
+        }
+        Insert: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          created_at?: string | null
+          tournament_id?: string | null
+        }
+        Update: {
+          chip_set_id?: string | null
+          club_id?: string | null
+          created_at?: string | null
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_chip_set_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_chip_set_id_fkey"
+            columns: ["chip_set_id"]
+            isOneToOne: false
+            referencedRelation: "chip_set_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_chip_set_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_leaderboard_view: {
         Row: {
           chip_count: number | null
@@ -8608,6 +11087,14 @@ export type Database = {
       }
     }
     Functions: {
+      _assert_dealer_allowed_for_table: {
+        Args: { p_dealer_id: string; p_table_id: string }
+        Returns: boolean
+      }
+      _dealer_feature_can_manage: {
+        Args: { p_actor: string; p_club_id: string }
+        Returns: boolean
+      }
       _dealer_owns_assignment: {
         Args: { p_assignment_id: string }
         Returns: boolean
@@ -8649,6 +11136,10 @@ export type Database = {
             }
             Returns: Json
           }
+      advance_flight_qualifiers: {
+        Args: { p_flight_id: string; p_player_ids: string[] }
+        Returns: Json
+      }
       approve_verification: {
         Args: {
           p_action: string
@@ -8663,11 +11154,14 @@ export type Database = {
       }
       assign_dealer_to_table: {
         Args: {
+          p_actor?: string
           p_assigned_at?: string
           p_attendance_id: string
           p_club_id?: string
           p_force_replace?: boolean
           p_idempotency_key?: string
+          p_override?: boolean
+          p_override_reason?: string
           p_swing_due_at?: string
           p_table_id: string
         }
@@ -8721,6 +11215,157 @@ export type Database = {
         Returns: Json
       }
       cashier_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      chip_ops_add_denomination: {
+        Args: {
+          p_chip_set_id: string
+          p_color?: string
+          p_display_order?: number
+          p_label?: string
+          p_value: number
+        }
+        Returns: Json
+      }
+      chip_ops_bank_adjust: {
+        Args: {
+          p_club_id: string
+          p_count: number
+          p_denomination_id: string
+          p_direction: string
+          p_idempotency_key?: string
+          p_old_version?: number
+          p_tournament_id?: string
+        }
+        Returns: Json
+      }
+      chip_ops_bank_couple_apply: {
+        Args: {
+          p_club: string
+          p_count: number
+          p_denom: string
+          p_direction: string
+          p_idem: string
+          p_reason: string
+          p_ref_id: string
+          p_ref_type: string
+          p_tournament: string
+        }
+        Returns: undefined
+      }
+      chip_ops_bank_sync: {
+        Args: { p_club_id: string; p_totals: Json }
+        Returns: Json
+      }
+      chip_ops_bind_tournament_chip_set: {
+        Args: { p_chip_set_id: string; p_tournament_id: string }
+        Returns: Json
+      }
+      chip_ops_close_day: {
+        Args: {
+          p_day_number: number
+          p_force_signoff?: boolean
+          p_old_version?: number
+          p_signoff_reason?: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      chip_ops_color_up: {
+        Args: {
+          p_denom_removed: string
+          p_denom_target: string
+          p_idempotency_key?: string
+          p_level_number?: number
+          p_target_added: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      chip_ops_coupling_on: { Args: { p_club: string }; Returns: boolean }
+      chip_ops_create_chip_set: {
+        Args: { p_club_id: string; p_description?: string; p_name: string }
+        Returns: Json
+      }
+      chip_ops_current_denom_counts: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          color: string
+          current_count: number
+          denomination_id: string
+          issued_count: number
+          value: number
+        }[]
+      }
+      chip_ops_day_reconcile: {
+        Args: { p_day_number: number; p_tournament_id: string }
+        Returns: {
+          bag_code: string
+          counted: number
+          expected: number
+          player_id: string
+          player_name: string
+          sealed: boolean
+          seat_number: number
+          table_name: string
+          variance: number
+        }[]
+      }
+      chip_ops_delete_denomination: {
+        Args: { p_denomination_id: string }
+        Returns: Json
+      }
+      chip_ops_grant_chip_master: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: Json
+      }
+      chip_ops_record_bag: {
+        Args: {
+          p_bag_code: string
+          p_day_number: number
+          p_player_id: string
+          p_seal?: boolean
+          p_total_value: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      chip_ops_reopen_day: {
+        Args: {
+          p_day_number: number
+          p_old_version?: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      chip_ops_reverse_color_up: {
+        Args: { p_idempotency_key?: string; p_operation_id: string }
+        Returns: Json
+      }
+      chip_ops_revoke_chip_master: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: Json
+      }
+      chip_ops_save_stack_template: {
+        Args: {
+          p_lines: Json
+          p_name: string
+          p_stack_value: number
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
+      chip_ops_set_bank_coupling: {
+        Args: { p_club_id: string; p_enabled: boolean }
+        Returns: Json
+      }
+      chip_ops_set_issuance: {
+        Args: { p_issued_count: number; p_stack_template_id: string }
+        Returns: Json
+      }
+      chip_ops_stack_line_sum: {
+        Args: { p_template_id: string }
+        Returns: number
+      }
+      chip_ops_unseal_bag: { Args: { p_bag_id: string }; Returns: Json }
       ci_dataset_readiness: { Args: { _dataset_id: string }; Returns: Json }
       cleanup_expired_club_locks: { Args: never; Returns: undefined }
       cleanup_old_diagnostic_logs: { Args: never; Returns: undefined }
@@ -8778,6 +11423,24 @@ export type Database = {
           p_fee: number
           p_player_name: string
           p_tournament_id: string
+        }
+        Returns: Json
+      }
+      create_tournament_event_with_flights: {
+        Args: {
+          p_buy_in: number
+          p_club_id: string
+          p_final_start_time: string
+          p_flight_count: number
+          p_flight_start_times?: Json
+          p_game_type: string
+          p_itm_percent: number
+          p_late_reg_close_level: number
+          p_levels?: Json
+          p_minutes_per_level: number
+          p_name: string
+          p_rake_amount: number
+          p_starting_stack: number
         }
         Returns: Json
       }
@@ -8870,6 +11533,14 @@ export type Database = {
         }
         Returns: Json
       }
+      extend_club_lock_lease: {
+        Args: {
+          p_club_id: string
+          p_lock_token: string
+          p_timeout_seconds: number
+        }
+        Returns: boolean
+      }
       fill_dealer_id: {
         Args: {
           p_assignment_id: string
@@ -8903,6 +11574,11 @@ export type Database = {
           id: string
         }[]
       }
+      get_bag_tag_state: {
+        Args: { p_day_number: number; p_tournament_id: string }
+        Returns: Json
+      }
+      get_chip_bank: { Args: { p_club_id: string }; Returns: Json }
       get_club_finance_summary: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
@@ -8924,6 +11600,11 @@ export type Database = {
           unique_entries: number
         }[]
       }
+      get_color_up_history: { Args: { p_tournament_id: string }; Returns: Json }
+      get_current_chip_inventory: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       get_deal_purchase_breakdown: {
         Args: { _deal_ids: string[] }
         Returns: {
@@ -8933,6 +11614,10 @@ export type Database = {
           pending_count: number
           pending_pct: number
         }[]
+      }
+      get_dealer_availability_requests: {
+        Args: { p_club_ids: string[]; p_work_date: string }
+        Returns: Json
       }
       get_dealer_last_tables: {
         Args: { p_dealer_ids: string[] }
@@ -8965,6 +11650,7 @@ export type Database = {
         Args: { p_club_id: string; p_table_type?: string }
         Returns: Json
       }
+      get_dealer_swing_health: { Args: { p_club_ids: string[] }; Returns: Json }
       get_dealer_worked_times: {
         Args: { p_shift_date: string }
         Returns: {
@@ -9008,6 +11694,10 @@ export type Database = {
           valid: boolean
         }[]
       }
+      get_issued_chip_inventory: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       get_next_hand_number: {
         Args: { p_table_id: string; p_tournament_id: string }
         Returns: number
@@ -9041,6 +11731,7 @@ export type Database = {
           table_name: string
         }[]
       }
+      get_table_dealer_rules: { Args: { p_club_id: string }; Returns: Json }
       get_table_swing_duration: {
         Args: { p_table_id: string }
         Returns: number
@@ -9083,6 +11774,25 @@ export type Database = {
         Args: { p_hand_id: string; p_user_id?: string }
         Returns: Json
       }
+      idem_begin: {
+        Args: {
+          p_actor_id: string
+          p_club_id: string
+          p_fingerprint: string
+          p_key: string
+          p_scope: string
+          p_ttl_seconds?: number
+        }
+        Returns: Json
+      }
+      idem_complete: {
+        Args: { p_key: string; p_response: Json }
+        Returns: boolean
+      }
+      ignore_bank_transaction: {
+        Args: { p_bank_transaction_id: string; p_reason?: string }
+        Returns: Json
+      }
       import_blind_structure: {
         Args: { p_csv_data: string; p_tournament_id: string }
         Returns: Json
@@ -9096,7 +11806,15 @@ export type Database = {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
+      is_club_chip_master: {
+        Args: { _club_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_club_dealer_control: {
+        Args: { _club_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_club_marketer: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
@@ -9126,6 +11844,14 @@ export type Database = {
         Args: { p_schedule_id: string; p_schedule_version: number }
         Returns: Json
       }
+      manual_confirm_bank_transaction: {
+        Args: {
+          p_bank_transaction_id: string
+          p_reason?: string
+          p_registration_id: string
+        }
+        Returns: Json
+      }
       mark_payroll_paid: {
         Args: {
           p_note?: string
@@ -9135,6 +11861,166 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      marketer_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      marketing_add_blocked_term: {
+        Args: { p_club_id: string; p_note?: string; p_term: string }
+        Returns: Json
+      }
+      marketing_cancel_post: { Args: { p_post_id: string }; Returns: Json }
+      marketing_check_compliance: {
+        Args: { p_club_id: string; p_text: string }
+        Returns: Json
+      }
+      marketing_claim_due_posts: {
+        Args: { p_limit?: number }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          body: string
+          channels: Json
+          claimed_at: string | null
+          client_request_id: string
+          club_id: string
+          compliance_flags: Json
+          compliance_status: Database["public"]["Enums"]["marketing_compliance_status"]
+          created_at: string
+          created_by: string | null
+          hashtags: string[]
+          id: string
+          media_urls: Json
+          reject_reason: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          source_kind: string
+          source_ref: Json | null
+          status: Database["public"]["Enums"]["marketing_post_status"]
+          title: string | null
+          updated_at: string
+          utm: Json
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "marketing_posts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      marketing_create_auto_draft: {
+        Args: {
+          p_body: string
+          p_channels: Json
+          p_client_request_id: string
+          p_club_id: string
+          p_kind: string
+          p_source_ref: Json
+          p_title: string
+        }
+        Returns: Json
+      }
+      marketing_create_post: {
+        Args: {
+          p_body: string
+          p_channels?: Json
+          p_client_request_id?: string
+          p_club_id: string
+          p_hashtags?: string[]
+          p_media_urls?: Json
+          p_title: string
+          p_utm?: Json
+        }
+        Returns: Json
+      }
+      marketing_finalize_post: { Args: { p_post_id: string }; Returns: Json }
+      marketing_get_auto_job: { Args: { p_club_id: string }; Returns: Json }
+      marketing_get_facebook_config: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      marketing_get_facebook_dispatch: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      marketing_get_telegram_config: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      marketing_get_telegram_dispatch: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      marketing_grant_marketer: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: Json
+      }
+      marketing_list_club_members:
+        | { Args: { p_club_id: string }; Returns: Json }
+        | { Args: { p_club_id: string; p_query: string }; Returns: Json }
+      marketing_list_enabled_channels: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      marketing_my_clubs: { Args: never; Returns: Json }
+      marketing_record_channel_result: {
+        Args: {
+          p_channel: string
+          p_error?: string
+          p_external_id?: string
+          p_post_id: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      marketing_remove_blocked_term: {
+        Args: { p_club_id: string; p_term: string }
+        Returns: Json
+      }
+      marketing_revoke_marketer: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: Json
+      }
+      marketing_schedule_post: {
+        Args: { p_post_id: string; p_scheduled_at?: string }
+        Returns: Json
+      }
+      marketing_set_auto_job: {
+        Args: {
+          p_channels: Json
+          p_club_id: string
+          p_enabled: boolean
+          p_kinds: string[]
+        }
+        Returns: Json
+      }
+      marketing_set_facebook: {
+        Args: { p_club_id: string; p_page_id: string; p_page_token?: string }
+        Returns: Json
+      }
+      marketing_set_telegram: {
+        Args: { p_bot_token?: string; p_chat_id: string; p_club_id: string }
+        Returns: Json
+      }
+      marketing_update_draft: {
+        Args: {
+          p_body: string
+          p_channels?: Json
+          p_hashtags?: string[]
+          p_media_urls?: Json
+          p_post_id: string
+          p_title: string
+          p_utm?: Json
+        }
+        Returns: Json
+      }
+      marketing_upsert_channel_integration: {
+        Args: {
+          p_channel: string
+          p_club_id: string
+          p_enabled: boolean
+          p_secret_ref?: string
+          p_target_ref?: string
+        }
+        Returns: Json
       }
       move_player_seat: {
         Args: {
@@ -9412,6 +12298,10 @@ export type Database = {
       }
       refresh_dealer_pool_summary: { Args: never; Returns: undefined }
       release_club_lock: { Args: { p_club_id: string }; Returns: undefined }
+      release_club_lock_if_owner: {
+        Args: { p_club_id: string; p_lock_token: string }
+        Returns: boolean
+      }
       release_cron_lock: { Args: { p_lock_name: string }; Returns: undefined }
       release_dealer_assignments: {
         Args: {
@@ -9457,10 +12347,37 @@ export type Database = {
         }
         Returns: Json
       }
+      seat_day2_qualifiers: {
+        Args: { p_draw_mode?: string; p_final_id: string }
+        Returns: Json
+      }
       seed_swing_test_data: { Args: never; Returns: Json }
       select_dealer_for_update: {
         Args: { p_attendance_id: string }
         Returns: boolean
+      }
+      sepay_get_active_payment_clubs: {
+        Args: never
+        Returns: {
+          club_id: string
+          master_account_number: string
+        }[]
+      }
+      sepay_get_club_api_token: { Args: { p_club_id: string }; Returns: string }
+      sepay_get_club_payment_config: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      sepay_parse_reference_code: { Args: { p_text: string }; Returns: string }
+      sepay_set_club_payment_config: {
+        Args: {
+          p_api_token?: string
+          p_club_id: string
+          p_is_active?: boolean
+          p_master_account_number?: string
+          p_webhook_secret?: string
+        }
+        Returns: Json
       }
       set_rotation_slot_dealer: {
         Args: {
@@ -9469,6 +12386,23 @@ export type Database = {
           p_schedule_id: string
           p_schedule_version: number
         }
+        Returns: Json
+      }
+      set_table_dealer_mode: {
+        Args: {
+          p_allow_override?: boolean
+          p_is_final?: boolean
+          p_table_id: string
+          p_table_mode: string
+        }
+        Returns: Json
+      }
+      set_table_dealer_pool: {
+        Args: { p_members: Json; p_table_id: string }
+        Returns: Json
+      }
+      settle_bank_transaction: {
+        Args: { p_auto_confirm?: boolean; p_bank_transaction_id: string }
         Returns: Json
       }
       show_hole_cards: {
@@ -9535,6 +12469,14 @@ export type Database = {
             Args: { p_club_id: string; p_timeout_seconds?: number }
             Returns: Json
           }
+      try_acquire_club_lock_fenced: {
+        Args: {
+          p_club_id: string
+          p_owner_id?: string
+          p_timeout_seconds?: number
+        }
+        Returns: Json
+      }
       try_acquire_cron_lock: { Args: { p_lock_name: string }; Returns: boolean }
       tv_claim_display: {
         Args: {
@@ -9600,6 +12542,7 @@ export type Database = {
         | "club_cashier"
         | "dealer_control"
         | "tracker"
+        | "marketing"
       backing_interest_status: "pending" | "contacted" | "declined"
       backing_review_status: "off" | "pending" | "approved" | "rejected"
       ci_dataset_source: "native" | "csv" | "shadow"
@@ -9617,6 +12560,21 @@ export type Database = {
         | "platform_fee"
         | "refund"
       escrow_type: "manual_bank_vnd" | "smart_contract_usdt"
+      marketing_channel: "telegram" | "facebook" | "zalo"
+      marketing_channel_delivery_status:
+        | "pending"
+        | "processing"
+        | "sent"
+        | "failed"
+        | "skipped"
+      marketing_compliance_status: "clean" | "flagged" | "blocked"
+      marketing_post_status:
+        | "draft"
+        | "scheduled"
+        | "processing"
+        | "sent"
+        | "failed"
+        | "cancelled"
       notification_type:
         | "deal_committed"
         | "deal_funded"
@@ -9810,9 +12768,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: [
@@ -9824,6 +12779,7 @@ export const Constants = {
         "club_cashier",
         "dealer_control",
         "tracker",
+        "marketing",
       ],
       backing_interest_status: ["pending", "contacted", "declined"],
       backing_review_status: ["off", "pending", "approved", "rejected"],
@@ -9844,6 +12800,23 @@ export const Constants = {
         "refund",
       ],
       escrow_type: ["manual_bank_vnd", "smart_contract_usdt"],
+      marketing_channel: ["telegram", "facebook", "zalo"],
+      marketing_channel_delivery_status: [
+        "pending",
+        "processing",
+        "sent",
+        "failed",
+        "skipped",
+      ],
+      marketing_compliance_status: ["clean", "flagged", "blocked"],
+      marketing_post_status: [
+        "draft",
+        "scheduled",
+        "processing",
+        "sent",
+        "failed",
+        "cancelled",
+      ],
       notification_type: [
         "deal_committed",
         "deal_funded",
