@@ -393,7 +393,7 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     }
   };
 
-  const { user, isClubAdmin } = useAuth();
+  const { user, isClubAdmin, isAdmin, isClubOwner, isFloor } = useAuth();
 
   const isSubmitting = useRef(false);
 
@@ -1646,7 +1646,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
               onRetry={refetchBreakPool}
             />
-            {FEATURES.dealerFeatureTables && (
+            {FEATURES.dealerFeatureTables && (isAdmin || isClubAdmin || isClubOwner || isFloor) && (
               <FeatureTablePoolBox clubId={clubFilter ?? clubIds[0] ?? null} tables={tables ?? []} dealers={dealers ?? []} />
             )}
             <Collapsible>

@@ -273,15 +273,18 @@ export const FEATURES = {
    */
   dealerMobileApp: true,
   /**
-   * Dealer Swing Feature/Final table dealer pools (ADR 012). Feature/spotlight +
-   * final tables rotate only a selected dealer pool; a shortage is shown and a
-   * normal dealer is never silently substituted. Default **OFF**. While false: the
-   * table-mode badges, the config dialog, and the "Đội dealer tâm điểm" right-rail
-   * box do not render and the (mock, Patch 1) store is never read → zero change to
-   * the live swing. Patch 1 is UI-mock only; enforcement (RLS/RPC/solver) lands in
-   * later owner-gated patches.
+   * Dealer Swing Feature/Final table dealer pools (ADR 012) — CONFIG-UI flag.
+   * When true: the table-mode badges, the config dialog, and the "Đội dealer tâm điểm"
+   * right-rail box render and read live data via get_table_dealer_rules (Patch 6 wired the
+   * real RPCs — no longer a mock). This flag ONLY reveals the config UI; it is NOT the
+   * enforcement gate. Enforcement (the seat trigger + picker pool-filter blocking a non-pool
+   * dealer on a feature/final table) is a SEPARATE kill-switch,
+   * app_settings('dealer_feature_tables_enabled'), which stays OFF until owner-flipped
+   * post-UAT → so configuring a pool here is INERT (saved, not yet protecting; the UI shows
+   * an "enforcement OFF" banner). Reads are authz'd by get_table_dealer_rules
+   * (is_club_dealer_control OR super_admin); the box is also role-gated in DealerSwingTab.
    */
-  dealerFeatureTables: false,
+  dealerFeatureTables: true,
   /**
    * Dealer self-salary screen — "Lương của tôi" in the dealer app (/dealer/salary),
    * READ-ONLY. FT shows the saved monthly payslip (full breakdown); PT shows a live
