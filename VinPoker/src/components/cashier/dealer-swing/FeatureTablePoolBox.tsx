@@ -13,6 +13,7 @@ import { FeatureTableBadge } from "./FeatureTableBadge";
 import { FeatureTableConfigDialog, type PoolDealer } from "./FeatureTableConfigDialog";
 import {
   getProfile, isSpecial, matchesFilter, useFeatureTableVersion,
+  useFeatureTableRules, useFeatureEnforcementEnabled,
   type FeatureFilter,
 } from "./featureTableMock";
 
@@ -23,8 +24,10 @@ const FILTERS: { key: FeatureFilter; label: string }[] = [
   { key: "final", label: "Final" },
 ];
 
-export function FeatureTablePoolBox({ tables, dealers }: { tables: any[]; dealers: any[] }) {
+export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: string | null; tables: any[]; dealers: any[] }) {
   const ver = useFeatureTableVersion();
+  const { loading, error, refetch } = useFeatureTableRules(clubId); // P1-B: reads via get_table_dealer_rules
+  const { enabled: enforcementOn } = useFeatureEnforcementEnabled();
   const [filter, setFilter] = useState<FeatureFilter>("all");
   const [cfg, setCfg] = useState<{ tableId: string; tableName: string } | null>(null);
 
@@ -65,10 +68,22 @@ export function FeatureTablePoolBox({ tables, dealers }: { tables: any[]; dealer
 
   return (
     <Card className="p-3">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="font-display text-sm font-bold tracking-wide text-foreground">Đội dealer tâm điểm</span>
-        <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">MẪU</span>
+        {loading && <span className="text-[10px] text-muted-foreground">Đang tải…</span>}
       </div>
+
+      {enforcementOn === false && (
+        <div className="mb-2 rounded-md border border-warning/40 bg-warning/5 p-2 text-[11px] text-warning">
+          ℹ Cấu hình đã lưu nhưng <b>enforcement đang TẮT</b> — nhóm dealer chưa bảo vệ bàn (bật sau).
+        </div>
+      )}
+      {error && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-[11px] text-destructive">
+          <span className="min-w-0 flex-1 truncate">Lỗi tải cấu hình: {error}</span>
+          <button onClick={() => void refetch()} className="shrink-0 underline">Thử lại</button>
+        </div>
+      )}
 
       {/* counts */}
       <div className="mb-2 grid grid-cols-3 gap-1.5 text-center">
@@ -140,12 +155,13 @@ export function FeatureTablePoolBox({ tables, dealers }: { tables: any[]; dealer
         })}
       </div>
 
-      {cfg && (
+      {cfg && clubId && (
         <FeatureTableConfigDialog
           open={!!cfg}
           onOpenChange={(o) => { if (!o) setCfg(null); }}
           tableId={cfg.tableId}
           tableName={cfg.tableName}
+          clubId={clubId}
           dealers={poolDealers}
         />
       )}

@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { Star } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -13,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
-  getProfile, setProfile, type DealerTableMode, type FeatureTablePoolMember,
+  getProfile, saveProfileToDb, useFeatureEnforcementEnabled,
+  type DealerTableMode, type FeatureTablePoolMember,
 } from "./featureTableMock";
 
 export interface PoolDealer { id: string; name: string }
@@ -23,14 +25,17 @@ interface Props {
   onOpenChange: (o: boolean) => void;
   tableId: string;
   tableName: string;
+  clubId: string;
   dealers: PoolDealer[];
 }
 
-export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableName, dealers }: Props) {
+export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableName, clubId, dealers }: Props) {
   const [mode, setMode] = useState<DealerTableMode>("normal");
   const [isFinal, setIsFinal] = useState(false);
   const [allowOverride, setAllowOverride] = useState(false);
   const [pool, setPool] = useState<FeatureTablePoolMember[]>([]);
+  const [saving, setSaving] = useState(false);
+  const { enabled: enforcementOn } = useFeatureEnforcementEnabled();
 
   // hydrate from the mock store each time the dialog opens
   useEffect(() => {
@@ -54,9 +59,18 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
 
   const emptyPoolWarning = isSpecial && pool.length === 0;
 
-  const save = () => {
-    setProfile(tableId, { tableMode: mode, isFinal, allowOverride, pool });
-    onOpenChange(false);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await saveProfileToDb(tableId, clubId, { tableMode: mode, isFinal, allowOverride, pool });
+      toast.success("Đã lưu cấu hình bàn");
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(`Lưu thất bại: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -65,9 +79,15 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
         <DialogHeader>
           <DialogTitle>Cấu hình bàn — {tableName}</DialogTitle>
           <DialogDescription>
-            Chọn loại bàn và nhóm dealer được phép xoay vòng. (Bản xem trước — dữ liệu mẫu, chưa lưu DB.)
+            Chọn loại bàn và nhóm dealer được phép xoay vòng. Lưu sẽ ghi vào hệ thống.
           </DialogDescription>
         </DialogHeader>
+
+        {enforcementOn === false && (
+          <div className="rounded-md border border-warning/40 bg-warning/5 p-2 text-[11px] text-warning">
+            ℹ Cấu hình sẽ được lưu nhưng <b>enforcement đang TẮT</b> — nhóm dealer chưa bảo vệ bàn (sẽ bật sau).
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* Mode */}
@@ -110,6 +130,21 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
             >
               {allowOverride ? "Override: cho phép" : "Override: chặn"}
             </button>
+          </div>
+
+          {/* Scheduled start — disabled placeholder (Patch 7 C1: planned_start_at column not yet created) */}
+          <div>
+            <Label className="text-xs text-muted-foreground">Giờ bắt đầu dự kiến (bàn final)</Label>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="time"
+                disabled
+                className="flex-1 cursor-not-allowed rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground/60"
+                aria-label="Giờ bắt đầu dự kiến (sắp ra mắt)"
+              />
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Sắp ra mắt</span>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground/70">Lên lịch mở bàn final theo giờ — sẽ có ở bản cập nhật sau.</p>
           </div>
 
           {/* Pool */}
@@ -165,9 +200,9 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Huỷ</Button>
-          <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={save} disabled={emptyPoolWarning}>
-            Lưu (mẫu)
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Huỷ</Button>
+          <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={save} disabled={emptyPoolWarning || saving}>
+            {saving ? "Đang lưu…" : "Lưu"}
           </Button>
         </DialogFooter>
       </DialogContent>
