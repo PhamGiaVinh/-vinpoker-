@@ -67,7 +67,9 @@ BEGIN
 
   RETURN QUERY
   WITH acct AS (   -- account_number → exactly-one active club (same rule as settle)
-    SELECT pba.account_number, min(pba.club_id) AS club_id
+    -- (array_agg(DISTINCT …))[1], NOT min(): Postgres has no min/max aggregate for uuid. The HAVING
+    -- below guarantees exactly one distinct active club, so the 1-element array's [1] IS that club.
+    SELECT pba.account_number, (array_agg(DISTINCT pba.club_id))[1] AS club_id
     FROM public.platform_bank_accounts pba
     WHERE pba.is_active = true AND pba.club_id IS NOT NULL
     GROUP BY pba.account_number
