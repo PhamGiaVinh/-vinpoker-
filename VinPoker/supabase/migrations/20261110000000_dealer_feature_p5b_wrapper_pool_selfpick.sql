@@ -1,0 +1,212 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Patch 5b — WRAPPER perform_swing(8-arg) self-pick pool-gate. SOURCE-ONLY artifact.
+--
+-- Adds EXACTLY ONE predicate to the WRAPPER's self-pick query (the (c) fallback that auto-picks any
+-- club/shift dealer when no p_next_attendance_id and no pre-assign is given):
+--     AND public._assert_dealer_allowed_for_table(v_table_id, dat.dealer_id)
+-- This is the single chokepoint covering EVERY null-caller of the WRAPPER — the 5 process-swing
+-- OT-fallback sites AND the frontend manual-swing button (DealerSwingTab.tsx, which calls
+-- perform_swing({p_assignment_id}) with no dealer → WRAPPER self-pick). With this, a feature/final
+-- table's self-pick is restricted to its pool; if none eligible → no_dealer keep-seat (CLEAN
+-- shortage, OT accrual preserved) instead of seating a non-pool dealer that the 5a seat trigger
+-- would DT006-rollback (losing accrual).
+--
+-- INERT WHEN OFF: _assert_dealer_allowed_for_table returns true for every dealer while the kill-switch
+-- app_settings('dealer_feature_tables_enabled') is off → the WRAPPER behaves byte-identically to today.
+--
+-- BYTE-FAITHFUL: the body below is the live pg_get_functiondef output with that one line added; the
+-- live apply diff (Mgmt-API) was verified = exactly 1 line added, 0 removed; overload count stayed 3
+-- (CORE 8-arg + this WRAPPER + dead 5-arg untouched). CORE/dead/execute_pre_assigned NOT touched.
+--
+-- APPLIED LIVE via controlled Management-API (CREATE OR REPLACE; schema_migrations untouched). This
+-- file is the reviewable record. NO db push / deploy_db / migration up. NO REVOKE.
+-- ROLLBACK: re-apply the pre-patch WRAPPER body (docs/emergency_rollbacks/wrapper_before snapshot).
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.perform_swing(p_assignment_id uuid, p_duration_minutes integer DEFAULT 30, p_send_to_break boolean DEFAULT false, p_break_duration_minutes integer DEFAULT 15, p_max_break_minutes integer DEFAULT 60, p_expected_version integer DEFAULT NULL::integer, p_next_attendance_id uuid DEFAULT NULL::uuid, p_rest_deficit_minutes integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_old_attendance_id  UUID;
+  v_table_id           UUID;
+  v_club_id            UUID;
+  v_shift_id           UUID;
+  v_current_version    INT;
+  v_current_state      TEXT;
+  v_ot_started_at      TIMESTAMPTZ;
+  v_was_priority_break BOOLEAN;
+  v_pre_assigned_id    UUID;
+  v_next_attendance_id UUID;
+  v_next_dealer_state  TEXT;
+  v_swing_result       JSONB;
+BEGIN
+  SELECT da.version, da.table_id, da.attendance_id, da.pre_assigned_attendance_id,
+         da.overtime_started_at,
+         gt.club_id,
+         dat.shift_id, dat.current_state, dat.priority_break_flag
+  INTO   v_current_version, v_table_id, v_old_attendance_id, v_pre_assigned_id,
+         v_ot_started_at,
+         v_club_id,
+         v_shift_id, v_current_state, v_was_priority_break
+  FROM dealer_assignments da
+  JOIN game_tables gt ON gt.id = da.table_id
+  JOIN dealer_attendance dat ON dat.id = da.attendance_id
+  WHERE da.id = p_assignment_id
+    AND da.status = 'assigned'
+    AND da.swing_processed_at IS NULL
+  FOR UPDATE OF da;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'not_found', 'message', 'Assignment not found or already swung');
+  END IF;
+
+  IF p_expected_version IS NOT NULL AND v_current_version != p_expected_version THEN
+    RETURN jsonb_build_object(
+      'outcome', 'version_conflict',
+      'message', 'Assignment was modified by another process',
+      'expected_version', p_expected_version,
+      'actual_version', v_current_version
+    );
+  END IF;
+
+  IF v_current_state = 'in_transition' THEN
+    RETURN jsonb_build_object('outcome', 'already_in_transition', 'message', 'Dealer is already being swung');
+  END IF;
+
+  UPDATE dealer_attendance SET current_state = 'in_transition'
+  WHERE id = v_old_attendance_id AND current_state = 'assigned';
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'outcome', 'state_conflict',
+      'message', format('Dealer state changed concurrently (expected assigned, got %s)', v_current_state),
+      'current_state', v_current_state
+    );
+  END IF;
+
+  v_next_attendance_id := NULL;
+
+  IF p_next_attendance_id IS NOT NULL THEN
+    SELECT dat.id, dat.current_state
+    INTO   v_next_attendance_id, v_next_dealer_state
+    FROM dealer_attendance dat
+    WHERE dat.id = p_next_attendance_id
+      AND dat.status = 'checked_in'
+      AND dat.check_in_time IS NOT NULL
+      AND dat.check_out_time IS NULL
+      AND (
+        dat.current_state = 'available'
+        OR dat.current_state = 'on_break'
+        OR dat.current_state = 'pre_assigned'
+      )
+    FOR UPDATE OF dat;
+
+    IF NOT FOUND THEN
+      v_next_attendance_id := NULL;
+    END IF;
+  END IF;
+
+  IF v_next_attendance_id IS NULL AND v_pre_assigned_id IS NOT NULL THEN
+    SELECT dat.id INTO v_next_attendance_id
+    FROM dealer_attendance dat
+    WHERE dat.id = v_pre_assigned_id AND dat.current_state = 'pre_assigned'
+    FOR UPDATE OF dat;
+    IF NOT FOUND THEN v_next_attendance_id := NULL;
+    END IF;
+  END IF;
+
+  IF v_next_attendance_id IS NULL THEN
+    SELECT dat.id INTO v_next_attendance_id
+    FROM dealer_attendance dat
+    INNER JOIN dealers d ON d.id = dat.dealer_id
+    LEFT JOIN dealer_shift_metrics dsm ON dsm.attendance_id = dat.id
+    WHERE d.club_id = v_club_id
+      AND dat.id != v_old_attendance_id
+      AND (dat.shift_id = v_shift_id OR dat.shift_id IS NULL)
+      AND (
+        dat.current_state = 'available'
+        OR (dat.current_state = 'on_break' AND COALESCE(dsm.minutes_since_rest, 0) >= 10)
+      )
+      AND dat.status = 'checked_in'
+      AND dat.check_in_time IS NOT NULL
+      AND dat.check_out_time IS NULL
+      AND public._assert_dealer_allowed_for_table(v_table_id, dat.dealer_id)  -- Patch 5b: pool-gate WRAPPER self-pick (inert when kill-switch off via _assert)
+    ORDER BY
+      CASE WHEN dat.current_state = 'available' THEN 0 ELSE 1 END,
+      dat.shift_id IS NULL,
+      dat.priority_break_flag ASC,
+      COALESCE(dsm.worked_minutes_since_last_break, 0) ASC,
+      RANDOM()
+    LIMIT 1
+    FOR UPDATE OF dat SKIP LOCKED;
+
+    IF NOT FOUND THEN
+      UPDATE dealer_attendance SET current_state = 'assigned' WHERE id = v_old_attendance_id;
+
+      IF v_ot_started_at IS NULL THEN
+        UPDATE dealer_assignments SET overtime_started_at = NOW() WHERE id = p_assignment_id;
+      END IF;
+
+      RETURN jsonb_build_object(
+        'outcome', 'no_dealer',
+        'message', 'No dealers available in pool',
+        'table_id', v_table_id,
+        'is_new_overtime', (v_ot_started_at IS NULL),
+        'overtime_started_at', COALESCE(v_ot_started_at, NOW())
+      );
+    END IF;
+  END IF;
+
+  SELECT current_state INTO v_next_dealer_state
+  FROM dealer_attendance WHERE id = v_next_attendance_id;
+
+  IF v_next_dealer_state = 'on_break' THEN
+    UPDATE dealer_breaks
+    SET break_end = NOW()
+    WHERE assignment_id IN (
+      SELECT id FROM dealer_assignments
+      WHERE attendance_id = v_next_attendance_id
+        AND status = 'completed'
+      ORDER BY released_at DESC NULLS LAST
+      LIMIT 1
+    )
+    AND break_end IS NULL;
+
+    UPDATE dealer_breaks
+    SET break_end = NOW()
+    WHERE assignment_id IN (
+      SELECT id FROM dealer_assignments
+      WHERE attendance_id = v_next_attendance_id
+    )
+    AND break_end IS NULL;
+  END IF;
+
+  SELECT public.perform_swing(
+    p_assignment_id        := p_assignment_id,
+    p_version              := COALESCE(p_expected_version, v_current_version),
+    p_next_attendance_id   := v_next_attendance_id,
+    p_send_to_break        := p_send_to_break,
+    p_break_duration_minutes := p_break_duration_minutes,
+    p_swing_duration_minutes  := p_duration_minutes,
+    p_swing_due_at         := NULL,
+    p_rest_deficit_minutes := p_rest_deficit_minutes
+  ) INTO v_swing_result;
+
+  RETURN v_swing_result;
+END;
+$function$
+
+-- Overload guard: perform_swing must remain exactly 3 overloads (CORE + WRAPPER + dead 5-arg).
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM pg_proc
+      WHERE proname = 'perform_swing' AND pronamespace = 'public'::regnamespace) <> 3 THEN
+    RAISE EXCEPTION 'perform_swing overload count changed (expected 3) — WRAPPER patch must not add/drop overloads';
+  END IF;
+END $$;
+
+COMMENT ON FUNCTION public.perform_swing(uuid,integer,boolean,integer,integer,integer,uuid,integer) IS
+  'WRAPPER self-picking perform_swing. Patch 5b: self-pick (c) fallback gated by _assert_dealer_allowed_for_table(v_table_id, dat.dealer_id) → feature/final tables only self-pick from their pool (inert when kill-switch off). Delegates the seat write to the CORE perform_swing(uuid,integer,uuid,...) overload.';

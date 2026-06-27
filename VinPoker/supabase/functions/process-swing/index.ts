@@ -9,6 +9,7 @@ import {
   getTableIdsForClub,
 } from "../_shared/dealer-utils.ts";
 import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
+import { getFeatureTablePoolIds } from "../_shared/featureTableGate.ts"; // Patch 5b: feature/final pool gate
 import { scaleLockTimeoutSeconds } from "../_shared/lockTimeout.ts";
 import {
   sendTelegramNotification,
@@ -3572,20 +3573,34 @@ if (tier2Count > 0) {
             // NHƯNG: Thử tìm dealer đơn giản từ pool trước (giống perform_swing wrapper).
             // Nếu có → Emergency Pre-assign để báo trước X phút, tránh gấp gáp.
             // Nếu không → OT thật sự.
-            const { data: emergencyCandidates } = await admin
-              .from("dealer_attendance")
-              .select(`
-                id,
-                current_state,
-                dealer_id,
-                dealers!inner(id, full_name, telegram_username, club_id)
-              `)
-              .in("dealer_id", cidDealerIds)
-              .eq("status", "checked_in")
-              .is("check_out_time", null)
-              .neq("id", assignment.attendance_id)
-              .or("current_state.eq.available,current_state.eq.on_break")
-              .limit(1);
+            // Patch 5b: feature/final pool gate (điểm chọn thứ 3 — raw self-pick). When the gate is
+            // active, restrict to the table's pool; an empty intersection → skip the emergency pick →
+            // OT/no_dealer keep-seat (CLEAN shortage), never pre-assigning a non-pool dealer that the
+            // seat trigger would later DT006-rollback. Inert when kill-switch off (emPoolIds = null).
+            const emPoolIds = await getFeatureTablePoolIds(admin, assignment.table_id);
+            const emDealerIds = emPoolIds
+              ? cidDealerIds.filter((id: string) => emPoolIds.has(id))
+              : cidDealerIds;
+            let emergencyCandidates:
+              | { id: string; current_state: string; dealer_id: string; dealers: unknown }[]
+              | null = [];
+            if (emDealerIds.length > 0) {
+              const { data } = await admin
+                .from("dealer_attendance")
+                .select(`
+                  id,
+                  current_state,
+                  dealer_id,
+                  dealers!inner(id, full_name, telegram_username, club_id)
+                `)
+                .in("dealer_id", emDealerIds)
+                .eq("status", "checked_in")
+                .is("check_out_time", null)
+                .neq("id", assignment.attendance_id)
+                .or("current_state.eq.available,current_state.eq.on_break")
+                .limit(1);
+              emergencyCandidates = data as typeof emergencyCandidates;
+            }
 
             if (emergencyCandidates && emergencyCandidates.length > 0) {
               const nextDealer = emergencyCandidates[0];
@@ -3724,6 +3739,26 @@ if (tier2Count > 0) {
               }
             } else if (outcome === "no_dealer") {
               metrics.no_dealer++;
+              // Patch 5b clean-shortage alert: no_dealer on a feature/final table = no eligible pool
+              // relief (NOT a generic shortage). The seat is kept (OT) by this no_dealer path — the
+              // CLEAN backstop, never a trigger-rollback. Emit ONE diagnostic_logs row pointing to the
+              // remedy. emPoolIds non-null ⇒ gate active (kill-switch on + this table is feature/final).
+              if (emPoolIds) {
+                admin.from("diagnostic_logs").insert({
+                  club_id: cid,
+                  diagnostic_type: "feature_pool_shortage",
+                  result: {
+                    table_id: assignment.table_id,
+                    table_name: tableName,
+                    reason: "ineligible_no_pool_relief",
+                    pool_size: emPoolIds.size,
+                    remedy: "Add an eligible dealer to this table's pool, or floor manual override via assign_dealer_to_table (audited).",
+                  },
+                  metadata: { attendance_id: assignment.attendance_id },
+                }).then((r: { error?: { message?: string } | null }) => {
+                  if (r?.error) console.warn("[feature_pool_shortage] log failed:", r.error.message);
+                });
+              }
               console.warn(
                 `[process-swing] no_dealer for ${tableName}: ` +
                 `level=${isOtDealer ? (otMinutes >= 20 ? 3 : 2) : 1} ` +
