@@ -36,15 +36,16 @@ export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: strin
     const seen = new Set<string>();
     const out: PoolDealer[] = [];
     for (const d of dealers ?? []) {
-      const id = d?.dealers?.id;
-      if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: d.dealers.full_name ?? "—" }); }
+      // dealer_attendance row: dealer_id IS the dealers.id FK (the inner dealers join does not select id)
+      const id = d?.dealer_id;
+      if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: d?.dealers?.full_name ?? "—" }); }
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }, [dealers]);
 
   const stateByDealer = useMemo(() => {
     const m = new Map<string, string>();
-    for (const d of dealers ?? []) { if (d?.dealers?.id) m.set(d.dealers.id, d.current_state ?? "available"); }
+    for (const d of dealers ?? []) { if (d?.dealer_id) m.set(d.dealer_id, d.current_state ?? "available"); }
     return m;
   }, [dealers]);
 
