@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { CalendarPlus, Loader2 } from "lucide-react";
 import { NewTournamentDialog, TournamentCard } from "./TournamentManagerShared";
+import { BulkScheduleDialog } from "./BulkScheduleDialog";
 import type { FloorBoardProps } from "./useFloorTournaments";
 import { BoardEmpty, BoardError } from "./floorBoardStates";
 
@@ -23,19 +24,23 @@ export function DailyTournamentsBoard(p: FloorBoardProps) {
   const createBtn = p.clubIds.length > 0
     ? <NewTournamentDialog clubs={p.clubs} defaultClubId={p.clubIds[0]} multiClub={p.multiClub} onCreated={p.reload} lockMode="single" />
     : null;
+  const bulkBtn = p.clubIds.length > 0
+    ? <BulkScheduleDialog clubs={p.clubs} defaultClubId={p.clubIds[0]} multiClub={p.multiClub} onCreated={p.reload} />
+    : null;
+  const actions = <div className="flex flex-wrap items-center gap-2">{bulkBtn}{createBtn}</div>;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold">Giải thường <span className="text-muted-foreground">({daily.length})</span></span>
-        {createBtn}
+        {actions}
       </div>
       {p.loading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
       ) : p.error ? (
         <BoardError onRetry={p.reload} />
       ) : daily.length === 0 ? (
-        <BoardEmpty icon={<CalendarPlus className="w-8 h-8" />} title="Chưa có giải thường nào" sub="Tạo giải 1 ngày để bắt đầu vận hành." create={createBtn} />
+        <BoardEmpty icon={<CalendarPlus className="w-8 h-8" />} title="Chưa có giải thường nào" sub="Tạo từng giải, hoặc tạo hàng loạt từ ảnh lịch." create={actions} />
       ) : (
         <div className="max-h-[58vh] overflow-y-auto space-y-2 pr-1">
           {daily.map((tr) => (
