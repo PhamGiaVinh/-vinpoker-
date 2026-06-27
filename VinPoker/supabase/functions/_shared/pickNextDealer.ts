@@ -19,6 +19,7 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getFeatureTablePoolIds } from "./featureTableGate.ts"; // Patch 5b: feature/final pool gate
 import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -269,10 +270,32 @@ export async function buildDealerCandidates(
     .from("dealers")
     .select("id")
     .eq("club_id", clubId)
-    .eq("status", "active")) as unknown as { data: DealerIdRow[] | null };
+    .eq("status", "active")
+    .is("deleted_at", null)) as unknown as { data: DealerIdRow[] | null };  // Patch 5b A6: exclude soft-deleted dealers
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
   // Step 1 edge case: no dealers → return empty with null avgBreakRatio
   if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
+
+  // Patch 5b — feature/final pool gate (app_settings-gated; INERT when kill-switch off).
+  // When the gate is active (kill-switch ON + currentTableId is feature/final), restrict the
+  // candidate dealer set to that table's pool BEFORE the attendance query → the picker can only
+  // return a pool dealer (or null → caller's existing no_dealer keep-seat = CLEAN shortage, OT
+  // accrual preserved). Shared helper mirrors the SQL trigger/_assert + WRAPPER self-pick so the
+  // picker and DB enforcement never disagree. Gated on app_settings, NOT on FEATURES (UI-only).
+  if (currentTableId) {
+    const poolIds = await getFeatureTablePoolIds(admin, currentTableId);
+    if (poolIds) { // non-null = gate active (kill-switch on + special table)
+      const restricted = dealerIds.filter((id) => poolIds.has(id));
+      if (restricted.length === 0) {
+        // Special table with no eligible pool dealer → no candidate. The caller's existing
+        // null→no_dealer path keeps the seat (OT) — a CLEAN shortage, never a trigger-rollback.
+        console.warn(`[pickNextDealer] feature/final table ${currentTableId}: pool empty/none eligible → clean shortage (no candidate)`);
+        return { candidates: [], avgBreakRatio: null };
+      }
+      dealerIds.length = 0;
+      dealerIds.push(...restricted); // restrict candidate set to the pool (mutate in place; Step 2 reads dealerIds)
+    }
+  }
 
   // Step 1b: Check if requesting table has priority_swing_at set
 
