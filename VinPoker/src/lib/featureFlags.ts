@@ -33,6 +33,20 @@ export const FEATURES = {
    */
   registrationExtensions: false,
   /**
+   * SePay reconciliation — Cashier "Đối soát SePay" tab. Surfaces the reconcile worklist
+   * (SePay-API-verified transfers) via the read-only `sepay_cashier_settlement_worklist` RPC, so a
+   * cashier can confirm (→ `manual_confirm_bank_transaction`) or ignore (→ `ignore_bank_transaction`).
+   * Default **OFF**: hidden from regular cashiers (admins/club owners still see it for UAT). Flip true
+   * ONLY after the worklist RPC (`20261116000000`) + the reconcile chain (`20261113`–`20261115` + the
+   * sepay-reconcile edge fn) are applied live and owner UAT passes.
+   */
+  sepayReconcile: false,
+  /**
+   * SePay auto-confirm UI mirror — reserved status indicator for the server-side `SEPAY_AUTO_CONFIRM`
+   * env kill-switch. NOT used in v1 (Direction 1 is flag-only; the cashier confirms manually). Keep false.
+   */
+  sepayAutoConfirm: false,
+  /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
