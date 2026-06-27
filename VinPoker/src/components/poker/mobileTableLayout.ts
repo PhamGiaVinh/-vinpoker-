@@ -25,24 +25,24 @@ export const MOBILE_OPP_SLOTS_2MAX: SeatSlot[] = [
 // bottom-left hero — up the left, across the top, down the right, to the bottom-right. Side x
 // values sit on the GREEN felt edge (≈6/94), not the dark rail; bottom-right kept off the dock.
 export const MOBILE_OPP_SLOTS_6MAX: SeatSlot[] = [
-  { x: 6, y: 50, anchor: 'left' }, // left-mid
-  { x: 24, y: 13, anchor: 'center' }, // top-left
-  { x: 76, y: 13, anchor: 'center' }, // top-right
-  { x: 94, y: 50, anchor: 'right' }, // right-mid
-  { x: 80, y: 79, anchor: 'right' }, // bottom-right
+  { x: 6, y: 48, anchor: 'left' }, // left-mid
+  { x: 26, y: 14, anchor: 'center' }, // top-left
+  { x: 74, y: 14, anchor: 'center' }, // top-right
+  { x: 94, y: 48, anchor: 'right' }, // right-mid
+  { x: 50, y: 72, anchor: 'center' }, // bottom-centre (between hero HUD + dock, below the board)
 ];
 
 // 9-max compact (7–9 players): 8 opponents in a tighter ring; for 7–8 players the first m are
 // used. Tuned for readability at 360px (opponents may degrade to avatar+stack — see SeatRing).
 export const MOBILE_OPP_SLOTS_9MAX: SeatSlot[] = [
-  { x: 6, y: 60, anchor: 'left' }, // left-lower
-  { x: 7, y: 32, anchor: 'left' }, // left-upper
-  { x: 26, y: 10, anchor: 'center' }, // top-left
+  { x: 6, y: 53, anchor: 'left' }, // left-lower (above the hero HUD)
+  { x: 7, y: 31, anchor: 'left' }, // left-upper
+  { x: 27, y: 10, anchor: 'center' }, // top-left
   { x: 50, y: 7, anchor: 'center' }, // top-center
-  { x: 74, y: 10, anchor: 'center' }, // top-right
-  { x: 93, y: 32, anchor: 'right' }, // right-upper
-  { x: 94, y: 60, anchor: 'right' }, // right-lower
-  { x: 80, y: 80, anchor: 'right' }, // bottom-right
+  { x: 73, y: 10, anchor: 'center' }, // top-right
+  { x: 93, y: 31, anchor: 'right' }, // right-upper
+  { x: 94, y: 53, anchor: 'right' }, // right-lower (above the action dock)
+  { x: 50, y: 70, anchor: 'center' }, // bottom-centre (between hero HUD + dock, below the board)
 ];
 
 // Hero HUD anchor — bottom-left; kept only as the emanation point for the hero's committed-bet
@@ -55,8 +55,9 @@ export function oppSlots(n: number): SeatSlot[] {
   return n <= 6 ? MOBILE_OPP_SLOTS_6MAX : MOBILE_OPP_SLOTS_9MAX;
 }
 
-// Contained wide oval (the felt no longer fills the whole screen — seats hug a centred oval like
-// N8). ONE constant: widen/heighten here if the owner wants a larger table. ~92% wide, tall-oval
-// aspect (≈ owner's 1:1.36); desktop keeps its landscape oval.
+// FULL-FILL felt (owner-confirmed): the felt covers the whole screen — seats + hero sit ON the
+// green, no dark side margins (a contained oval read as "lệch khỏi bàn" / off the table). Mobile
+// fills the (relative) felt-area wrapper edge-to-edge; desktop (sm:) keeps the landscape oval.
+// ONE constant for felt extent.
 export const MOBILE_FELT_CLASS =
-  'relative mx-auto w-[92%] max-w-md aspect-[7/10] max-h-full sm:aspect-[16/10] sm:w-full sm:max-w-3xl';
+  'absolute inset-0 sm:relative sm:inset-auto sm:mx-auto sm:aspect-[16/10] sm:h-auto sm:w-full sm:max-w-3xl';

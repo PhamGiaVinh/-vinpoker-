@@ -83,7 +83,7 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
-function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center', compact = false }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor; compact?: boolean }) {
+function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center', cardSize = 'mc' }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor; cardSize?: 'sm' | 'mc' }) {
   const tcls = anchorTranslate(anchor);
   const empty = seat.status === 'empty';
   const folded = seat.status === 'folded';
@@ -111,17 +111,17 @@ function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center', co
     );
   }
 
-  // Cards float ABOVE the N8 name-plate. `mc` (md-compact) by default so hero / opponents /
-  // board read equal; on a CROWDED table (`compact`, 7–9 max) the opponents' FACE-DOWN backs
-  // shrink to `sm` so 8 sets of cards don't dominate the small felt (N8 shows small backs at
-  // 9-max). Readable cards — showdown reveals — stay `mc`. Folded / sitting-out show no cards.
+  // Cards float ABOVE the N8 name-plate. ONE uniform `cardSize` for EVERY in-play card (hero,
+  // opponents, board, showdown reveals) so they always read EQUAL — `mc` at ≤6 seats, stepping
+  // DOWN to `sm` together at 7–9 max so the crowded felt declutters without breaking equality.
+  // Folded / sitting-out seats show no cards.
   const cards = isMe
-    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal={!!c && c !== '?'} />)
+    ? (hole && hole.length ? hole : ['?', '?']).map((c, i) => <PlayingCard key={i} card={c} size={cardSize} reveal={!!c && c !== '?'} />)
     : folded || sittingOut
       ? null
       : seat.revealedCards?.length
-        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size="mc" reveal revealDelayMs={i * 130} />)
-        : <><PlayingCard size={compact ? 'sm' : 'mc'} /><PlayingCard size={compact ? 'sm' : 'mc'} /></>;
+        ? seat.revealedCards.map((c, i) => <PlayingCard key={i} card={c} size={cardSize} reveal revealDelayMs={i * 130} />)
+        : <><PlayingCard size={cardSize} /><PlayingCard size={cardSize} /></>;
 
   return (
     <div className={cn(
@@ -225,6 +225,9 @@ export function SeatRing({
   fill?: boolean;
 }) {
   const pos = seatPositions(hand.seats, hand.mySeat, heroAsHud);
+  // ONE card size for the whole table so board / hero / opponents stay EQUAL; steps down on a
+  // crowded 7–9-max felt so it declutters without breaking equality (HeroHud self-computes the same).
+  const cardSize: 'sm' | 'mc' = hand.seats.length >= 7 ? 'sm' : 'mc';
   // Legacy (non-HUD) layout — drop the hero into the bottom-LEFT corner. With heroAsHud the
   // hero leaves the ring entirely (rendered as a screen-corner <HeroHud>), so its natural
   // bottom-centre position is kept here ONLY for the committed-bet chip + deal target.
@@ -293,7 +296,7 @@ export function SeatRing({
               opens, the real board takes over. */}
           {hand.board.some(Boolean) ? (
             <div className="flex gap-1">
-              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size="mc" reveal={!!hand.board[i]} />)}
+              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size={cardSize} reveal={!!hand.board[i]} />)}
             </div>
           ) : (
             <DeckStack size="lg" />
@@ -345,7 +348,7 @@ export function SeatRing({
               isWinner={winnerSeats?.includes(s.seat)}
               onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}
               anchor={pos[s.seat]?.anchor ?? 'center'}
-              compact={hand.seats.length >= 7}
+              cardSize={cardSize}
             />
           </div>
         );
