@@ -20,6 +20,9 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
   if (!me || me.status === 'empty') return null;
 
   const cards = hand.myHoleCards && hand.myHoleCards.length ? hand.myHoleCards : ['?', '?'];
+  // Same uniform size as the board + opponents (SeatRing) so every in-play card reads EQUAL —
+  // `mc` at ≤6 seats, `sm` at 7–9 max so the crowded table declutters without breaking equality.
+  const cardSize: 'sm' | 'mc' = hand.seats.length >= 7 ? 'sm' : 'mc';
   const allin = me.status === 'allin';
   const folded = me.status === 'folded';
   const stack = bb && fmtBB(me.stack, bb) ? `${fmtBB(me.stack, bb)} BB` : fmtChips(me.stack);
@@ -32,10 +35,10 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
         folded && 'opacity-50',
       )}
     >
-      {/* the hero's two cards — same size as the board + opponents (mc), soft drop shadow */}
+      {/* the hero's two cards — same uniform size as the board + opponents, soft drop shadow */}
       <div className="flex items-end gap-0.5 origin-bottom-left [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))]">
         {cards.map((c, i) => (
-          <PlayingCard key={i} card={c} size="mc" reveal={!!c && c !== '?'} />
+          <PlayingCard key={i} card={c} size={cardSize} reveal={!!c && c !== '?'} />
         ))}
       </div>
 
