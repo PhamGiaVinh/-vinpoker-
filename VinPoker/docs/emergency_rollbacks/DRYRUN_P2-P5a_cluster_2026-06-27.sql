@@ -1031,294 +1031,335 @@ VALUES ('0d000000-0000-0000-0000-0000000000c1', '0d000000-0000-0000-0000-0000000
 
 DO $$ BEGIN RAISE NOTICE '=== fixtures ready (club, NT, X=feature, dealers P/N/R, pool={P}) — running functests ==='; END $$;
 
+-- ── results sink: rows (Management-API KHÔNG trả RAISE NOTICE — probe-verified) ──
+-- Pattern mỗi functest: chạy mutation trong inner BEGIN…EXCEPTION → tự rollback data (raise errcode
+-- 'DR000') hoặc bắt expected-exception → giữ verdict ở biến block-ngoài → INSERT 1 row vào bảng này.
+-- Cuối: SELECT bảng này TRƯỚC ROLLBACK ngoài cùng → endpoint trả bảng PASS/FAIL. ROLLBACK xoá sạch.
+CREATE TEMP TABLE _dryrun_results (seq serial, test text, status text, detail text);
+
 -- ════════════════════════════════ FUNCTESTS ════════════════════════════════
--- Mỗi functest: SAVEPOINT → attempt → RAISE NOTICE PASS/FAIL → ROLLBACK TO (cô lập).
 
 -- F1: pool dealer P → seat trên bàn feature X → OK (INSERT path)
-SAVEPOINT ft1;
-DO $$ BEGIN
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-  RAISE NOTICE 'PASS F1: pool dealer P seated on feature table X';
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F1: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft1;
-
--- F2 (P0-1 vá — chống PASS-giả): non-pool N → DT006, NHƯNG trước hết chứng minh CÙNG row đó
--- hợp lệ schema bằng cách seat khi kill-switch OFF (control); rồi bật ON seat lại y hệt → DT006.
--- => khác biệt DUY NHẤT giữa seat-được và bị-chặn là pool enforcement, KHÔNG phải cột thiếu/constraint.
-SAVEPOINT ft2;
-DO $$ DECLARE v_off_ok boolean := false; BEGIN
-  -- control: cùng row e2, enforcement OFF → PHẢI seat được (proves the row is schema-valid)
-  UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-  v_off_ok := true;
-  DELETE FROM public.dealer_assignments WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2';
-  UPDATE public.app_settings SET value='true'::jsonb WHERE key='dealer_feature_tables_enabled';
-  -- real: cùng row, enforcement ON, non-pool → DT006
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
   BEGIN
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
+    v_st:='PASS'; v_d:='pool dealer P seated on feature table X';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F1', v_st, v_d);
+END $$;
+
+-- F2 (P0-1 vá — chống PASS-giả): cùng row e2 seat được khi switch OFF (schema-valid) → bật ON → DT006.
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_off_ok boolean:=false; BEGIN
+  BEGIN
+    UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
     INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
     VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-    RAISE WARNING 'FAIL F2: non-pool N seated under enforcement (expected DT006)';
-  EXCEPTION WHEN sqlstate 'DT006' THEN
-    RAISE NOTICE 'PASS F2: identical row seats with switch OFF (schema-valid) but DT006 with switch ON → blocked PURELY by pool membership';
+    v_off_ok:=true;
+    DELETE FROM public.dealer_assignments WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2';
+    UPDATE public.app_settings SET value='true'::jsonb WHERE key='dealer_feature_tables_enabled';
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
+    v_st:='FAIL'; v_d:='non-pool N seated under enforcement (expected DT006)';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DT006' THEN
+      IF v_off_ok THEN v_st:='PASS'; v_d:='identical row seats with switch OFF (schema-valid) but DT006 with switch ON -> blocked PURELY by pool membership';
+      ELSE v_st:='FAIL'; v_d:='DT006 before the OFF control could seat (control failed?)'; END IF;
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN
+      IF v_off_ok THEN v_st:='FAIL'; v_d:='unexpected after control: '||SQLSTATE||' '||SQLERRM;
+      ELSE v_st:='FAIL'; v_d:='NOT pool logic - e2 row invalid even with enforcement OFF (missing column/constraint): '||SQLSTATE||' '||SQLERRM; END IF;
   END;
-EXCEPTION WHEN OTHERS THEN
-  IF v_off_ok THEN RAISE WARNING 'FAIL F2: unexpected after control: % %', SQLSTATE, SQLERRM;
-  ELSE RAISE WARNING 'FAIL F2 (NOT pool logic): the e2 row is invalid even with enforcement OFF — a missing column/constraint, not pool membership: % %', SQLSTATE, SQLERRM; END IF;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F2', v_st, v_d);
 END $$;
-ROLLBACK TO SAVEPOINT ft2;
 
--- F3: client (authenticated) INSERT thẳng dealer_override_claims → RLS-denied (claim unforgeable)
-SAVEPOINT ft3;
-SET LOCAL ROLE authenticated;
-DO $$ BEGIN
-  INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
-  VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
-  RAISE WARNING 'FAIL F3: authenticated wrote a claim (RLS should deny)';
-EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'PASS F3: authenticated claim INSERT denied (RLS no-write)';
-         WHEN OTHERS THEN RAISE WARNING 'FAIL F3: unexpected % %', SQLSTATE, SQLERRM; END $$;
-RESET ROLE;
-ROLLBACK TO SAVEPOINT ft3;
+-- F3: authenticated INSERT thẳng dealer_override_claims → RLS-denied (claim unforgeable)
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
+  BEGIN
+    SET LOCAL ROLE authenticated;
+    INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
+    VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
+    v_st:='FAIL'; v_d:='authenticated wrote a claim (RLS should deny)';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN insufficient_privilege THEN v_st:='PASS'; v_d:='authenticated claim INSERT denied (RLS no-write)';
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F3', v_st, v_d);
+END $$;
 
 -- F4: authorized override (full assign RPC) → claim written → seat allowed same-tx + đúng 1 audit_logs
-SAVEPOINT ft4;
-DO $$ DECLARE r jsonb; v_audit int; v_seat int; BEGIN
-  r := public.assign_dealer_to_table(
-    p_attendance_id => '0d000000-0000-0000-0000-0000000000e2',
-    p_table_id      => '0d000000-0000-0000-0000-0000000000a2',
-    p_override      => true,
-    p_override_reason => 'dryrun authorized override',
-    p_actor         => '2078287d-8692-4836-8783-425a64804e40',
-    p_force_replace => true);
-  SELECT count(*) INTO v_audit FROM public.audit_logs
-   WHERE action='dealer_feature_override_assign' AND entity_id='0d000000-0000-0000-0000-0000000000a2';
-  SELECT count(*) INTO v_seat FROM public.dealer_assignments
-   WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND status='assigned' AND released_at IS NULL;
-  IF coalesce(r->>'outcome','')='ok' AND v_audit=1 AND v_seat=1
-    THEN RAISE NOTICE 'PASS F4: authorized override seated non-pool N on X (outcome=ok, audit=1, seat=1)';
-    ELSE RAISE WARNING 'FAIL F4: outcome=% audit=% seat=%', r->>'outcome', v_audit, v_seat; END IF;
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F4: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft4;
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; r jsonb; v_audit int; v_seat int; BEGIN
+  BEGIN
+    r := public.assign_dealer_to_table(
+      p_attendance_id => '0d000000-0000-0000-0000-0000000000e2',
+      p_table_id      => '0d000000-0000-0000-0000-0000000000a2',
+      p_override      => true, p_override_reason => 'dryrun authorized override',
+      p_actor         => '2078287d-8692-4836-8783-425a64804e40', p_force_replace => true);
+    SELECT count(*) INTO v_audit FROM public.audit_logs
+     WHERE action='dealer_feature_override_assign' AND entity_id='0d000000-0000-0000-0000-0000000000a2';
+    SELECT count(*) INTO v_seat FROM public.dealer_assignments
+     WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND status='assigned' AND released_at IS NULL;
+    IF coalesce(r->>'outcome','')='ok' AND v_audit=1 AND v_seat=1
+      THEN v_st:='PASS'; v_d:='authorized override seated non-pool N on X (outcome=ok, audit=1, seat=1)';
+      ELSE v_st:='FAIL'; v_d:='outcome='||coalesce(r->>'outcome','?')||' audit='||v_audit||' seat='||v_seat; END IF;
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F4', v_st, v_d);
+END $$;
 
--- F5: claim với txid KHÁC (giả lập tx cũ) → không match → DT006 (replay-proof)
-SAVEPOINT ft5;
-DO $$ BEGIN
-  INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
-  VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint + 1);
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-  RAISE WARNING 'FAIL F5: seat allowed with a stale-txid claim';
-EXCEPTION WHEN sqlstate 'DT006' THEN RAISE NOTICE 'PASS F5: stale-txid claim did NOT match → DT006';
-         WHEN OTHERS THEN RAISE WARNING 'FAIL F5: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft5;
+-- F5: claim txid KHÁC (giả lập tx cũ) → không match → DT006 (replay-proof)
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
+  BEGIN
+    INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
+    VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint + 1);
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
+    v_st:='FAIL'; v_d:='seat allowed with a stale-txid claim';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DT006' THEN v_st:='PASS'; v_d:='stale-txid claim did NOT match -> DT006';
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F5', v_st, v_d);
+END $$;
 
--- F6: claim cho attendance e2 KHÔNG che được seat cho attendance e3 (neo attendance_id) → DT006
-SAVEPOINT ft6;
-DO $$ BEGIN
-  INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
-  VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e3','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-  RAISE WARNING 'FAIL F6: e2 claim covered a seat for e3';
-EXCEPTION WHEN sqlstate 'DT006' THEN RAISE NOTICE 'PASS F6: claim anchored on attendance_id — e2 claim did NOT cover e3 → DT006';
-         WHEN OTHERS THEN RAISE WARNING 'FAIL F6: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft6;
+-- F6: claim cho e2 KHÔNG che được seat cho e3 (neo attendance_id) → DT006
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
+  BEGIN
+    INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
+    VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e3','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
+    v_st:='FAIL'; v_d:='e2 claim covered a seat for e3';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DT006' THEN v_st:='PASS'; v_d:='claim anchored on attendance_id - e2 claim did NOT cover e3 -> DT006';
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F6', v_st, v_d);
+END $$;
 
 -- F7: single-use — một claim authorize đúng MỘT seat; seat thứ hai (sau release) → DT006
-SAVEPOINT ft7;
-DO $$ DECLARE v_left int; BEGIN
-  -- P1-B pre-assert: SAVEPOINT trước đã revert sạch → KHÔNG còn claim của e2 (else isolation broken)
-  IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
-    RAISE WARNING 'FAIL F7-pre: a leftover claim for e2 leaked from a prior test (SAVEPOINT isolation broken)'; RETURN;
-  END IF;
-  INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
-  VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');  -- seat 1: consume claim
-  SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
-  UPDATE public.dealer_assignments SET status='completed', released_at=now()
-   WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND released_at IS NULL;
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_left int; BEGIN
   BEGIN
+    IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
+      v_st:='FAIL'; v_d:='pre: leftover claim for e2 (SAVEPOINT/inner-block isolation broken)';
+      RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+    END IF;
+    INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
+    VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
     INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');  -- seat 2: claim gone
-    RAISE WARNING 'FAIL F7: second seat allowed (claim not single-use); left_after_first=%', v_left;
-  EXCEPTION WHEN sqlstate 'DT006' THEN
-    IF v_left=0 THEN RAISE NOTICE 'PASS F7: claim consumed once (0 left) + second seat blocked DT006';
-    ELSE RAISE WARNING 'FAIL F7: second seat blocked but % claim left', v_left; END IF;
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');  -- seat 1: consume
+    SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
+    UPDATE public.dealer_assignments SET status='completed', released_at=now()
+     WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND released_at IS NULL;
+    BEGIN
+      INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+      VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');  -- seat 2
+      v_st:='FAIL'; v_d:='second seat allowed (not single-use); left_after_first='||v_left;
+    EXCEPTION WHEN sqlstate 'DT006' THEN
+      IF v_left=0 THEN v_st:='PASS'; v_d:='claim consumed once (0 left) + second seat blocked DT006';
+      ELSE v_st:='FAIL'; v_d:='second blocked but '||v_left||' claim left'; END IF;
+    END;
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
   END;
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F7: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft7;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F7', v_st, v_d);
+END $$;
 
--- F8 (P0-1 vá — chống PASS-giả): reserved→assigned promote của NON-POOL N → DT006, NHƯNG trước hết
--- control: cùng chuỗi promote với switch OFF PHẢI chạy được (proves the promote row is schema-valid).
-SAVEPOINT ft8;
-DO $$ DECLARE v_id uuid; v_off_ok boolean := false; BEGIN
-  -- control (switch OFF): cùng reserved→assigned phải thành công
-  UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','reserved', now(), now()+interval '1 hour') RETURNING id INTO v_id;
-  UPDATE public.dealer_assignments SET status='assigned' WHERE id=v_id;
-  v_off_ok := true;
-  DELETE FROM public.dealer_assignments WHERE id=v_id;
-  UPDATE public.app_settings SET value='true'::jsonb WHERE key='dealer_feature_tables_enabled';
-  -- real (switch ON): reserved skip, promote enforce → DT006
+-- F8 (P0-1 vá — chống PASS-giả): cùng reserved→assigned promote chạy được khi switch OFF → bật ON → DT006.
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_id uuid; v_off_ok boolean:=false; BEGIN
   BEGIN
+    UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
     INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
     VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','reserved', now(), now()+interval '1 hour') RETURNING id INTO v_id;
     UPDATE public.dealer_assignments SET status='assigned' WHERE id=v_id;
-    RAISE WARNING 'FAIL F8: non-pool reserved→assigned promote allowed under enforcement (expected DT006)';
-  EXCEPTION WHEN sqlstate 'DT006' THEN
-    RAISE NOTICE 'PASS F8: identical promote succeeds with switch OFF (schema-valid) but DT006 with switch ON → blocked PURELY by pool membership (BEFORE UPDATE)';
+    v_off_ok:=true;
+    DELETE FROM public.dealer_assignments WHERE id=v_id;
+    UPDATE public.app_settings SET value='true'::jsonb WHERE key='dealer_feature_tables_enabled';
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','reserved', now(), now()+interval '1 hour') RETURNING id INTO v_id;
+    UPDATE public.dealer_assignments SET status='assigned' WHERE id=v_id;  -- expect DT006
+    v_st:='FAIL'; v_d:='non-pool reserved->assigned promote allowed under enforcement (expected DT006)';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DT006' THEN
+      IF v_off_ok THEN v_st:='PASS'; v_d:='identical promote succeeds with switch OFF (schema-valid) but DT006 with switch ON -> blocked PURELY by pool membership (BEFORE UPDATE)';
+      ELSE v_st:='FAIL'; v_d:='DT006 before OFF control completed (control failed?)'; END IF;
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN
+      IF v_off_ok THEN v_st:='FAIL'; v_d:='unexpected after control: '||SQLSTATE||' '||SQLERRM;
+      ELSE v_st:='FAIL'; v_d:='NOT pool logic - reserved->assigned invalid with switch OFF: '||SQLSTATE||' '||SQLERRM; END IF;
   END;
-EXCEPTION WHEN OTHERS THEN
-  IF v_off_ok THEN RAISE WARNING 'FAIL F8: unexpected after control: % %', SQLSTATE, SQLERRM;
-  ELSE RAISE WARNING 'FAIL F8 (NOT pool logic): the e2 reserved→assigned row is invalid even with switch OFF: % %', SQLSTATE, SQLERRM; END IF;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F8', v_st, v_d);
 END $$;
-ROLLBACK TO SAVEPOINT ft8;
 
 -- F9: race-restore completed→assigned (cùng attendance+table) → SKIP re-check → allowed
-SAVEPOINT ft9;
-DO $$ DECLARE v_id uuid; BEGIN
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour') RETURNING id INTO v_id;
-  UPDATE public.dealer_assignments SET status='completed', released_at=now() WHERE id=v_id;
-  UPDATE public.dealer_assignments SET status='assigned', released_at=NULL WHERE id=v_id;  -- race-restore (same seat)
-  RAISE NOTICE 'PASS F9: race-restore completed→assigned (same attendance+table) skipped re-check, allowed';
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F9: race-restore blocked: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft9;
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_id uuid; BEGIN
+  BEGIN
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour') RETURNING id INTO v_id;
+    UPDATE public.dealer_assignments SET status='completed', released_at=now() WHERE id=v_id;
+    UPDATE public.dealer_assignments SET status='assigned', released_at=NULL WHERE id=v_id;  -- race-restore
+    v_st:='PASS'; v_d:='race-restore completed->assigned (same attendance+table) skipped re-check, allowed';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='race-restore blocked: '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F9', v_st, v_d);
+END $$;
 
--- F10 (DEFENSIVE / FUTURE-PATH coverage — NOT the path assign currently produces; see F16):
---   FIRE-COUNT của đường override THẬT (đọc từ assign body ở trên): override-via-assign tạo ghế bằng
---   MỘT INSERT status='assigned' trực tiếp (STEP 7) → trigger fire ĐÚNG 1 lần (BEFORE INSERT) → consume
---   claim NGAY tại đó. STEP 8 ghi dealer_attendance (không fire). STEP 3/4/5 chạm dealer_assignments
---   nhưng status='completed'/same-seat → trigger short-circuit (không consume). => đường thật KHÔNG đi
---   qua reserved→promote. F10 dưới đây test đường reserved→promote như COVERAGE PHÒNG THỦ: chứng minh
---   trigger consume đúng NẾU một override-seat tương lai đi qua pre-assign lifecycle (hiện chưa có path
---   production nào như vậy). Single-use trên đường THẬT được test ở F16.
-SAVEPOINT ft10;
-DO $$ DECLARE v_id uuid; v_left int; BEGIN
-  -- P1-B pre-assert: clean slate (no leaked claim for e2)
-  IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
-    RAISE WARNING 'FAIL F10-pre: a leftover claim for e2 leaked from a prior test (SAVEPOINT isolation broken)'; RETURN;
-  END IF;
-  INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
-  VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','reserved', now(), now()+interval '1 hour') RETURNING id INTO v_id;  -- reserved: skip, claim NOT consumed
-  UPDATE public.dealer_assignments SET status='assigned' WHERE id=v_id;  -- promote: enforce, consume claim, ALLOW
-  SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
-  IF v_left=0 THEN RAISE NOTICE 'PASS F10 (defensive): claim survived the reserved INSERT + consumed exactly once at the promote fire (0 left), NOT blocked mid-promote';
-  ELSE RAISE WARNING 'FAIL F10: promote allowed but % claim left (consume wrong)', v_left; END IF;
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F10: % % (override blocked mid-promote?)', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft10;
+-- F10 (DEFENSIVE / FUTURE-PATH — NOT the path assign produces; real path = F16):
+--   FIRE-COUNT (đọc từ assign body): override-via-assign = STEP 7 INSERT status='assigned' trực tiếp →
+--   trigger fire ĐÚNG 1 lần, consume tại INSERT-assigned. F10 test đường reserved→promote như coverage
+--   phòng thủ (chứng minh trigger consume đúng NẾU một override-seat tương lai đi qua pre-assign).
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_id uuid; v_left int; BEGIN
+  BEGIN
+    IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
+      v_st:='FAIL'; v_d:='pre: leftover claim for e2 (inner-block isolation broken)';
+      RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+    END IF;
+    INSERT INTO public.dealer_override_claims (table_id, dealer_id, attendance_id, txid)
+    VALUES ('0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000d2','0d000000-0000-0000-0000-0000000000e2', pg_current_xact_id()::text::bigint);
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','reserved', now(), now()+interval '1 hour') RETURNING id INTO v_id;  -- skip, claim not consumed
+    UPDATE public.dealer_assignments SET status='assigned' WHERE id=v_id;  -- promote: enforce, consume, allow
+    SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
+    IF v_left=0 THEN v_st:='PASS'; v_d:='(defensive) claim survived reserved INSERT + consumed once at promote fire (0 left), not blocked mid-promote';
+    ELSE v_st:='FAIL'; v_d:='promote allowed but '||v_left||' claim left'; END IF;
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected (override blocked mid-promote?): '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F10', v_st, v_d);
+END $$;
 
--- F16 (P1-A — REAL override-via-assign path; the path production actually uses):
---   override qua assign → STEP 1.5 ghi claim → STEP 7 INSERT status='assigned' trực tiếp → trigger fire
---   ĐÚNG 1 lần, consume claim tại INSERT-assigned (fire-count phân tích ở F10). Test này chứng minh
---   single-use TRÊN ĐÚNG đường đó: sau khi ghế override tạo (claim đã consume), một ghế non-pool thứ hai
---   cho cùng e2 trong CÙNG tx (không claim mới) → DT006.
-SAVEPOINT ft16;
-DO $$ DECLARE r jsonb; v_left int; v_seat int; BEGIN
-  -- P1-B pre-assert: no leaked claim for e2
-  IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
-    RAISE WARNING 'FAIL F16-pre: a leftover claim for e2 leaked (SAVEPOINT isolation broken)'; RETURN;
-  END IF;
-  -- REAL path: override via assign → claim written (STEP 1.5) + consumed at the STEP-7 INSERT-assigned
-  r := public.assign_dealer_to_table(
-    p_attendance_id => '0d000000-0000-0000-0000-0000000000e2',
-    p_table_id      => '0d000000-0000-0000-0000-0000000000a2',
-    p_override      => true,
-    p_override_reason => 'dryrun real-path single-use',
-    p_actor         => '2078287d-8692-4836-8783-425a64804e40',
-    p_force_replace => true);
-  SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
-  SELECT count(*) INTO v_seat FROM public.dealer_assignments
-   WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND status='assigned' AND released_at IS NULL;
-  IF coalesce(r->>'outcome','')<>'ok' OR v_seat<>1 OR v_left<>0 THEN
-    RAISE WARNING 'FAIL F16: real-path override outcome=% seat=% claims_left=% (expect ok / 1 / 0 = exactly one fire, consumed once)', r->>'outcome', v_seat, v_left;
-  ELSE
-    -- single-use on the real path: release the override seat, then a SECOND non-pool seat for e2 in the
-    -- SAME tx (no fresh claim — the one assign wrote is already consumed) → must be DT006.
+-- F16 (P1-A — REAL override-via-assign path; the path production uses): assign override → STEP 7
+--   INSERT status='assigned' → trigger fire 1 lần, consume tại đó. Single-use trên đúng đường đó.
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; r jsonb; v_left int; v_seat int; BEGIN
+  BEGIN
+    IF EXISTS (SELECT 1 FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2') THEN
+      v_st:='FAIL'; v_d:='pre: leftover claim for e2 (inner-block isolation broken)';
+      RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+    END IF;
+    r := public.assign_dealer_to_table(
+      p_attendance_id => '0d000000-0000-0000-0000-0000000000e2',
+      p_table_id      => '0d000000-0000-0000-0000-0000000000a2',
+      p_override      => true, p_override_reason => 'dryrun real-path single-use',
+      p_actor         => '2078287d-8692-4836-8783-425a64804e40', p_force_replace => true);
+    SELECT count(*) INTO v_left FROM public.dealer_override_claims WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2';
+    SELECT count(*) INTO v_seat FROM public.dealer_assignments
+     WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND status='assigned' AND released_at IS NULL;
+    IF coalesce(r->>'outcome','')<>'ok' OR v_seat<>1 OR v_left<>0 THEN
+      v_st:='FAIL'; v_d:='real-path override outcome='||coalesce(r->>'outcome','?')||' seat='||v_seat||' claims_left='||v_left||' (expect ok/1/0 = 1 fire, consumed once)';
+      RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+    END IF;
     UPDATE public.dealer_assignments SET status='completed', released_at=now()
      WHERE attendance_id='0d000000-0000-0000-0000-0000000000e2' AND table_id='0d000000-0000-0000-0000-0000000000a2' AND released_at IS NULL;
     UPDATE public.dealer_attendance SET current_state='available' WHERE id='0d000000-0000-0000-0000-0000000000e2';
     BEGIN
       INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-      VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-      RAISE WARNING 'FAIL F16: a second non-pool seat for e2 was allowed after the override claim was consumed (single-use broken on the REAL path)';
+      VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');  -- 2nd seat, no fresh claim
+      v_st:='FAIL'; v_d:='second non-pool seat allowed after override claim consumed (single-use broken on real path)';
     EXCEPTION WHEN sqlstate 'DT006' THEN
-      RAISE NOTICE 'PASS F16: REAL override-via-assign path = 1 enforced fire at INSERT-assigned, claim consumed once (0 left, seat=1); a second e2 seat (no fresh claim) → DT006 → single-use proven on the path production uses';
+      v_st:='PASS'; v_d:='real assign path: 1 enforced fire at INSERT-assigned, claim consumed once (0 left, seat=1); 2nd e2 seat (no fresh claim) -> DT006 -> single-use on the path production uses';
     END;
-  END IF;
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F16: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft16;
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='unexpected '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F16', v_st, v_d);
+END $$;
 
--- F11 (config-vs-PROMOTE race) — KHÔNG chạy được trong 1 tx; ghi thủ tục manual 2-session
-DO $$ BEGIN RAISE NOTICE 'MANUAL F11 (config-vs-promote race, 2 sessions): A) BEGIN; promote a POOL seat on X (UPDATE …''assigned'') — trigger holds dealer_table_profiles FOR UPDATE; B) set_table_dealer_pool(X, …) waits on the profile lock; commit A → B proceeds. Expect: serialize, no deadlock, B does not mutate the pool under A. Run at the window in 2 psql sessions.'; END $$;
-
--- F12 (deadlock smoke) — 2-session manual
-DO $$ BEGIN RAISE NOTICE 'MANUAL F12 (deadlock smoke, 2 sessions): config-edit (set_table_dealer_pool on X) × seat (INSERT/UPDATE ''assigned'' on X) concurrently on the SAME table. Expect: no deadlock (one waits on profile FOR UPDATE, both complete). Cannot be tested in one tx.'; END $$;
+-- F11 / F12 — 2-session concurrency, KHÔNG chạy được trong 1 tx → ghi MANUAL row + thủ tục.
+INSERT INTO _dryrun_results(test,status,detail) VALUES
+  ('F11','MANUAL','config-vs-promote race (2 sessions): A) BEGIN; promote a POOL seat on X (UPDATE ''assigned'') holds dealer_table_profiles FOR UPDATE; B) set_table_dealer_pool(X,...) waits on the lock; commit A -> B proceeds. Expect serialize, no deadlock, B does not mutate pool under A.'),
+  ('F12','MANUAL','deadlock smoke (2 sessions): config-edit (set_table_dealer_pool on X) x seat (INSERT/UPDATE ''assigned'' on X) concurrently on the SAME table. Expect no deadlock (one waits on profile FOR UPDATE, both complete).');
 
 -- F13: kill-switch OFF → enforcement inert (non-pool seat on special table ALLOWED)
-SAVEPOINT ft13;
-DO $$ BEGIN
-  UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
-  RAISE NOTICE 'PASS F13: kill-switch OFF → non-pool seat on special table ALLOWED (enforcement inert)';
-EXCEPTION WHEN OTHERS THEN RAISE WARNING 'FAIL F13: switch OFF still blocked: % %', SQLSTATE, SQLERRM; END $$;
-ROLLBACK TO SAVEPOINT ft13;  -- restores app_settings to 'true'
-
--- F14: overload guard — đúng 1 proc assign_dealer_to_table
-SAVEPOINT ft14;
-DO $$ DECLARE v int; BEGIN
-  SELECT count(*) INTO v FROM pg_proc WHERE proname='assign_dealer_to_table' AND pronamespace='public'::regnamespace;
-  IF v=1 THEN RAISE NOTICE 'PASS F14: exactly 1 assign_dealer_to_table proc (overload guard)';
-  ELSE RAISE WARNING 'FAIL F14: % assign_dealer_to_table proc(s)', v; END IF;
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
+  BEGIN
+    UPDATE public.app_settings SET value='false'::jsonb WHERE key='dealer_feature_tables_enabled';
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e2','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now(), now()+interval '1 hour');
+    v_st:='PASS'; v_d:='kill-switch OFF -> non-pool seat on special table ALLOWED (enforcement inert)';
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN sqlstate 'DT006' THEN v_st:='FAIL'; v_d:='switch OFF still blocked with DT006 (kill-switch not honored)';
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='FAIL'; v_d:='switch OFF still blocked: '||SQLSTATE||' '||SQLERRM;
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F13', v_st, v_d);
 END $$;
-ROLLBACK TO SAVEPOINT ft14;
 
--- F15 (P0-1b + P1-B vá — no-REVOKE). release_dealer_from_table is SECURITY INVOKER (verified live),
--- signature (p_table_id, p_released_by DEFAULT NULL); under SET ROLE authenticated its UPDATE
--- dealer_assignments uses authenticated's grant — the exact thing the rejected REVOKE would have broken.
-SAVEPOINT ft15;
--- (a) DEFINITIVE no-REVOKE proof: read grants directly — authenticated must still hold INSERT/UPDATE/DELETE.
-DO $$ DECLARE v_missing text; BEGIN
+-- F14: overload guard — đúng 1 proc assign_dealer_to_table (read-only, no inner-block needed)
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v int; BEGIN
+  SELECT count(*) INTO v FROM pg_proc WHERE proname='assign_dealer_to_table' AND pronamespace='public'::regnamespace;
+  IF v=1 THEN v_st:='PASS'; v_d:='exactly 1 assign_dealer_to_table proc (overload guard)';
+  ELSE v_st:='FAIL'; v_d:=v||' assign_dealer_to_table proc(s)'; END IF;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F14', v_st, v_d);
+END $$;
+
+-- F15a (no-REVOKE, DEFINITIVE): read grants directly — authenticated must keep INSERT/UPDATE/DELETE.
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; v_missing text; BEGIN
   SELECT string_agg(p, ',') INTO v_missing FROM (
     SELECT unnest(array['INSERT','UPDATE','DELETE']) AS p
     EXCEPT
     SELECT privilege_type FROM information_schema.role_table_grants
      WHERE table_schema='public' AND table_name='dealer_assignments' AND grantee='authenticated'
   ) m;
-  IF v_missing IS NULL THEN RAISE NOTICE 'PASS F15a: authenticated retains INSERT/UPDATE/DELETE on dealer_assignments (no REVOKE)';
-  ELSE RAISE WARNING 'FAIL F15a: authenticated MISSING grant(s) on dealer_assignments: % (a REVOKE leaked in)', v_missing; END IF;
+  IF v_missing IS NULL THEN v_st:='PASS'; v_d:='authenticated retains INSERT/UPDATE/DELETE on dealer_assignments (no REVOKE)';
+  ELSE v_st:='FAIL'; v_d:='authenticated MISSING grant(s) on dealer_assignments: '||v_missing||' (a REVOKE leaked in)'; END IF;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F15a', v_st, v_d);
 END $$;
--- (b) the RPC must exist — else the smoke proves nothing (do NOT pretend pass).
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname='release_dealer_from_table' AND pronamespace='public'::regnamespace)
-    THEN RAISE WARNING 'FAIL F15b: release_dealer_from_table does NOT exist (cannot smoke the INVOKER write path)';
-    ELSE RAISE NOTICE 'F15b: release_dealer_from_table exists'; END IF;
+
+-- F15b: release_dealer_from_table must exist (else the smoke proves nothing).
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname='release_dealer_from_table' AND pronamespace='public'::regnamespace)
+    THEN v_st:='PASS'; v_d:='release_dealer_from_table exists';
+    ELSE v_st:='FAIL'; v_d:='release_dealer_from_table does NOT exist (cannot smoke the INVOKER write path)'; END IF;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F15b', v_st, v_d);
 END $$;
--- (c) runtime smoke: must EXECUTE + RETURN as authenticated. PASS ONLY from a clean return.
---     insufficient_privilege → FAIL (REVOKE leaked). undefined_function → FAIL. Any other exception →
---     NEUTRAL note (NOT a pass): it got past the grant to a business/fixture error. (No more WHEN OTHERS→PASS.)
-DO $$ BEGIN
-  INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at, swing_processed_at)
-  VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now()-interval '2 hour', now()-interval '1 hour', NULL);
+
+-- F15c: smoke — release_dealer_from_table (SECURITY INVOKER) RETURNS as authenticated → write grant intact.
+--   PASS chỉ từ đường trả-về-thật. insufficient_privilege/undefined_function → FAIL. Khác → NOTE (không pass).
+DO $$ DECLARE v_st text:='FAIL'; v_d text:=''; r jsonb; BEGIN
+  BEGIN
+    INSERT INTO public.dealer_assignments (attendance_id, table_id, club_id, status, assigned_at, swing_due_at, swing_processed_at)
+    VALUES ('0d000000-0000-0000-0000-0000000000e1','0d000000-0000-0000-0000-0000000000a2','0d000000-0000-0000-0000-0000000000c1','assigned', now()-interval '2 hour', now()-interval '1 hour', NULL);
+    SET LOCAL ROLE authenticated;
+    r := public.release_dealer_from_table('0d000000-0000-0000-0000-0000000000a2');  -- p_released_by defaults NULL
+    v_st:='PASS'; v_d:='release_dealer_from_table RETURNED as authenticated (INVOKER write grant intact, no-REVOKE) -> '||coalesce(r::text,'(void)');
+    RAISE EXCEPTION 'self-rollback' USING errcode='DR000';
+  EXCEPTION
+    WHEN insufficient_privilege THEN v_st:='FAIL'; v_d:='PERMISSION-DENIED as authenticated (a REVOKE leaked in?)';
+    WHEN undefined_function THEN v_st:='FAIL'; v_d:='undefined_function (name/signature mismatch) - smoke not proven';
+    WHEN sqlstate 'DR000' THEN NULL;
+    WHEN OTHERS THEN v_st:='NOTE'; v_d:='neutral (NOT a pass): RPC executed past grant but raised '||SQLSTATE||' '||SQLERRM||' - write grant likely intact, outcome not asserted';
+  END;
+  INSERT INTO _dryrun_results(test,status,detail) VALUES ('F15c', v_st, v_d);
 END $$;
-SET LOCAL ROLE authenticated;
-DO $$ DECLARE r jsonb; BEGIN
-  r := public.release_dealer_from_table('0d000000-0000-0000-0000-0000000000a2');  -- p_released_by defaults NULL
-  RAISE NOTICE 'PASS F15c: release_dealer_from_table RETURNED as authenticated (INVOKER write grant intact, no-REVOKE) → %', coalesce(r::text, '(void)');
-EXCEPTION
-  WHEN insufficient_privilege THEN RAISE WARNING 'FAIL F15c: PERMISSION-DENIED as authenticated (a REVOKE leaked in?)';
-  WHEN undefined_function THEN RAISE WARNING 'FAIL F15c: undefined_function (name/signature mismatch) — smoke not proven';
-  WHEN OTHERS THEN RAISE NOTICE 'NOTE F15c (neutral, NOT a pass): RPC executed past the grant but raised % % — write grant likely intact, business/fixture outcome not asserted', SQLSTATE, SQLERRM;
-END $$;
-RESET ROLE;
-ROLLBACK TO SAVEPOINT ft15;
+
+-- ════════════════════════════════ RESULTS ════════════════════════════════
+-- Bảng kết quả (rows) — Management-API trả về cái này. Đọc cột status: PASS / FAIL / MANUAL / NOTE.
+SELECT seq, test, status, detail FROM _dryrun_results ORDER BY seq;
 
 -- ════════════════════════════════ END ════════════════════════════════
-DO $$ BEGIN RAISE NOTICE '=== DRY-RUN COMPLETE — ROLLBACK now; NOTHING persisted (schema + fixtures + functests all reverted) ==='; END $$;
-ROLLBACK;  -- OUTER: undo EVERYTHING. This is a dry-run.
+ROLLBACK;  -- OUTER: undo EVERYTHING (schema + fixtures + functests + results table). This is a dry-run.
