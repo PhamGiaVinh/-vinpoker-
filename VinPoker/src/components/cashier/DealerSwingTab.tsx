@@ -1647,7 +1647,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onRetry={refetchBreakPool}
             />
             {FEATURES.dealerFeatureTables && (
-              <FeatureTablePoolBox tables={tables ?? []} dealers={dealers ?? []} />
+              <FeatureTablePoolBox clubId={clubFilter ?? clubIds[0] ?? null} tables={tables ?? []} dealers={dealers ?? []} />
             )}
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/70 px-3 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 [&[data-state=open]>svg]:rotate-180">
