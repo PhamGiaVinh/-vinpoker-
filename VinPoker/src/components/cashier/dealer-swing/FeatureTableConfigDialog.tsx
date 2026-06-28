@@ -57,10 +57,18 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
   const setPrimary = (id: string) =>
     setPool((prev) => prev.map((m) => ({ ...m, isPrimary: m.dealerId === id })));
 
-  const emptyPoolWarning = isSpecial && pool.length === 0;
+  // A feature/final table needs >=2 pool dealers so it can always self-relieve: a
+  // 1-dealer pool is the seated dealer themselves, so the rotation can never swing
+  // them out (the pgv/Bàn 1 lockup). Owner policy 2026-06-28: require >=2 for ALL
+  // special tables (feature + final), no auto-fallback to a normal dealer.
+  const minPoolWarning = isSpecial && pool.length < 2;
 
   const save = async () => {
     if (saving) return;
+    if (minPoolWarning) {
+      toast.error("Bàn tâm điểm/final cần ít nhất 2 dealer trong nhóm (để có người thay khi 1 người nghỉ).");
+      return;
+    }
     setSaving(true);
     try {
       await saveProfileToDb(tableId, clubId, { tableMode: mode, isFinal, allowOverride, pool });
@@ -193,15 +201,17 @@ export function FeatureTableConfigDialog({ open, onOpenChange, tableId, tableNam
                 );
               })}
             </div>
-            {emptyPoolWarning && (
-              <p className="mt-1 text-[11px] text-warning">⚠ Bàn tâm điểm/final cần ít nhất 1 dealer — nếu trống sẽ luôn báo thiếu.</p>
+            {minPoolWarning && (
+              <p className="mt-1 text-[11px] text-warning">
+                ⚠ Bàn tâm điểm/final cần ít nhất <b>2 dealer</b> — nếu chỉ 1 người thì khi tới giờ xoay sẽ không có ai thay (bàn kẹt).
+              </p>
             )}
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Huỷ</Button>
-          <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={save} disabled={emptyPoolWarning || saving}>
+          <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={save} disabled={minPoolWarning || saving}>
             {saving ? "Đang lưu…" : "Lưu"}
           </Button>
         </DialogFooter>
