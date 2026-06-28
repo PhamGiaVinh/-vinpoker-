@@ -35,6 +35,11 @@ const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
 const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
 // Marketing module (/marketing) — page self-gates on FEATURES.marketingModule + role.
 const Marketing = lazy(() => import("./pages/Marketing"));
+// F&B module (/fnb/*) — pages self-gate on FEATURES.fnb* + role. Ships dark (flags OFF).
+const FnbCounter = lazy(() => import("./pages/FnbCounter"));
+const FnbKitchenDisplay = lazy(() => import("./pages/FnbKitchenDisplay"));
+const FnbTableOrder = lazy(() => import("./pages/FnbTableOrder"));
+const FnbAdmin = lazy(() => import("./pages/FnbAdmin"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
@@ -162,6 +167,10 @@ const App = () => (
               {/* Online-poker TABLE — chrome-less full-viewport route (NO Layout nav), like
                   /poker-iq. The lobby /poker stays inside <Layout> below (keeps its nav). */}
               <Route path="/poker/table/:tableId" element={<OnlinePokerTable />} />
+              {/* F&B Kitchen Display + guest table ordering — chrome-less full-screen (no Layout
+                  nav), like /tv. Pages self-gate on FEATURES.fnbKitchen / fnbCounter. Ship dark. */}
+              <Route path="/fnb/kitchen" element={<FnbKitchenDisplay />} />
+              <Route path="/fnb/order" element={<FnbTableOrder />} />
               {/* DEV-ONLY visual harness (import.meta.env.DEV) — fixture-rendered poker table
                   for screenshots; not linked, stripped from the production build. */}
               {import.meta.env.DEV && DevTablePreview && (
@@ -221,6 +230,9 @@ const App = () => (
                 <Route path="/chip-ops" element={<ChipOpsInventory />} />
                 {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role. */}
                 <Route path="/marketing" element={<Marketing />} />
+                {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
+                <Route path="/fnb" element={<FnbCounter />} />
+                <Route path="/fnb/admin" element={<FnbAdmin />} />
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />
