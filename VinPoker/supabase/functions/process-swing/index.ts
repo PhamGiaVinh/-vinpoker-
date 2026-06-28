@@ -2163,7 +2163,7 @@ if (tier2Count > 0) {
           last_swing_attempted_at, pre_assigned_attendance_id, pre_assigned_at,
           planned_relief_at,
           overtime_started_at, last_ot_alert_at, swing_in_progress, is_emergency_pre_assign,
-          game_tables(table_name, table_type),
+          game_tables(table_name, table_type, status),
           dealer_attendance!attendance_id(dealers(full_name, telegram_username, telegram_user_id))
         `;
 
@@ -2409,6 +2409,32 @@ if (tier2Count > 0) {
         }
 
         for (const assignment of dueAssignments) {
+          // ── Orphan self-heal (root-cause fix) ─────────────────────────────────
+          // A due assignment whose table is no longer ACTIVE (closed/deactivated while occupied,
+          // or any orphan) must NOT be re-swung — re-seating would put a fresh dealer on a dead
+          // table every cron tick (the orphan that "changes occupant" + is invisible on the floor
+          // map). Release it + free the seated dealer (and any queued pre-assigned dealer) instead.
+          // Fail-safe: act ONLY when the table status is KNOWN and not 'active' (never on missing data).
+          if (assignment.game_tables?.status && assignment.game_tables.status !== "active") {
+            try {
+              await admin.from("dealer_assignments").update({
+                status: "completed",
+                released_at: new Date().toISOString(),
+                release_reason: "table_inactive_auto_release",
+              }).eq("id", assignment.id).eq("status", "assigned").is("released_at", null);
+              await admin.from("dealer_attendance").update({ current_state: "available" })
+                .eq("id", assignment.attendance_id).neq("current_state", "checked_out");
+              if (assignment.pre_assigned_attendance_id) {
+                await admin.from("dealer_attendance")
+                  .update({ current_state: "available", pre_assigned_table_id: null, pre_assigned_at: null })
+                  .eq("id", assignment.pre_assigned_attendance_id).eq("current_state", "pre_assigned");
+              }
+              console.warn(`[process-swing] orphan self-heal: released assignment ${assignment.id} on inactive table ${assignment.game_tables?.table_name ?? assignment.table_id} (no re-seat)`);
+            } catch (e) {
+              console.error(`[process-swing] orphan self-heal failed for ${assignment.id}:`, e instanceof Error ? e.message : e);
+            }
+            continue;
+          }
           metrics.total++;
           try {
           const tableName = assignment.game_tables?.table_name ?? assignment.table_id;
