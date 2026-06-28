@@ -19,7 +19,7 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getFeatureTablePoolIds } from "./featureTableGate.ts"; // Patch 5b: feature/final pool gate
+import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
 import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -282,8 +282,8 @@ export async function buildDealerCandidates(
   // return a pool dealer (or null → caller's existing no_dealer keep-seat = CLEAN shortage, OT
   // accrual preserved). Shared helper mirrors the SQL trigger/_assert + WRAPPER self-pick so the
   // picker and DB enforcement never disagree. Gated on app_settings, NOT on FEATURES (UI-only).
-  if (currentTableId) {
-    const poolIds = await getFeatureTablePoolIds(admin, currentTableId);
+  {
+    const poolIds = currentTableId ? await getFeatureTablePoolIds(admin, currentTableId) : null;
     if (poolIds) { // non-null = gate active (kill-switch on + special table)
       const restricted = dealerIds.filter((id) => poolIds.has(id));
       if (restricted.length === 0) {
@@ -294,6 +294,20 @@ export async function buildDealerCandidates(
       }
       dealerIds.length = 0;
       dealerIds.push(...restricted); // restrict candidate set to the pool (mutate in place; Step 2 reads dealerIds)
+    } else {
+      // Patch 5d — picking for a NORMAL table (or general pick): exclude dealers reserved
+      // to ANY feature/final pool. They are exclusive to their special table and must not
+      // be pulled to a normal table (else the in-pool A↔B rotation breaks). Gate-aware:
+      // empty Set when the kill-switch is off → no effect (pre-5d behavior).
+      const reserved = await getReservedDealerIds(admin);
+      if (reserved.size > 0) {
+        const kept = dealerIds.filter((id) => !reserved.has(id));
+        if (kept.length !== dealerIds.length) {
+          console.log(`[pickNextDealer] excluded ${dealerIds.length - kept.length} reserved feature/final pool dealer(s) from non-pool pick (table=${currentTableId ?? "none"})`);
+          dealerIds.length = 0;
+          dealerIds.push(...kept);
+        }
+      }
     }
   }
 

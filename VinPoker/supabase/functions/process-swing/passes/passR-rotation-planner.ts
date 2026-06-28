@@ -18,7 +18,7 @@
 
 import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
 import { solveRotationPlan } from "../../_shared/rotationSolver.ts";
-import { getFeatureTablePoolsByTable } from "../../_shared/featureTableGate.ts"; // Patch 5c: planner pool gate
+import { getFeatureTablePoolsByTable, getReservedDealerIds } from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
 import { tierForBuyIn } from "../../_shared/rotationTypes.ts";
 import type {
   DealerTier,
@@ -547,6 +547,8 @@ export async function passRRotationPlanner(
     // (parity with pickNextDealer's reactive gate) so it never announces a non-pool
     // dealer that the seat trigger would reject (DT006) → stuck table.
     const featurePoolMap = await getFeatureTablePoolsByTable(admin, assignments.map((a) => a.table_id));
+    // Patch 5d — reserved feature/final pool dealers are excluded from NORMAL tables.
+    const reservedDealerIds = [...await getReservedDealerIds(admin)];
     const plan = solveRotationPlan(
       buildSolverTables(assignments, tournamentInfo, ctx, featurePoolMap),
       candidates,
@@ -556,6 +558,7 @@ export async function passRRotationPlanner(
         preAnnounceMs: Math.max(ctx.preAnnounceMinutes, 3) * 60_000,
         restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
         forecastSlots: 2,
+        reservedDealerIds,
         solverVersion: SOLVER_VERSION,
       },
     );
@@ -666,6 +669,7 @@ export async function replanSingleTable(
 
     const tournamentInfo = await fetchTournamentInfo(admin, [a.table_id]);
     const featurePoolMap = await getFeatureTablePoolsByTable(admin, [a.table_id]); // Patch 5c
+    const reservedDealerIds = [...await getReservedDealerIds(admin)]; // Patch 5d
     const plan = solveRotationPlan(
       buildSolverTables([a as ActiveAssignmentRow], tournamentInfo, ctx, featurePoolMap),
       candidates,
@@ -675,6 +679,7 @@ export async function replanSingleTable(
         preAnnounceMs: ANNOUNCE_LEAD_MS, // emergency: 3-min lead
         restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
         forecastSlots: 0,
+        reservedDealerIds,
         solverVersion: SOLVER_VERSION,
       },
     );
