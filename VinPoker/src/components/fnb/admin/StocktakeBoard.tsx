@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { formatVND } from "@/lib/format";
 import { mapFnbError } from "@/lib/fnbErrors";
 import { useFnbMenu } from "@/hooks/useFnbMenu";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableFooter, TableRow } from "@/components/ui/table";
 import { Loader2, ClipboardCheck, Check } from "lucide-react";
 
 export function StocktakeBoard({ clubId }: { clubId: string }) {
@@ -109,6 +110,13 @@ export function StocktakeBoard({ clubId }: { clubId: string }) {
     );
   }
 
+  // C2: total stock-count variance in money = Σ(delta × avg_unit_cost) over counted lines.
+  const totalDeltaValue = ingredients.reduce((s, i) => {
+    const raw = counted[i.id];
+    if (raw == null || raw.trim() === "" || !Number.isFinite(Number(raw))) return s;
+    return s + (Number(raw) - i.on_hand) * i.avg_unit_cost;
+  }, 0);
+
   return (
     <Card className="p-5 space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -135,6 +143,7 @@ export function StocktakeBoard({ clubId }: { clubId: string }) {
                 <TableHead className="text-right">Sổ (hiện tại)</TableHead>
                 <TableHead className="text-right w-32">Đếm thực tế</TableHead>
                 <TableHead className="text-right w-24">Lệch</TableHead>
+                <TableHead className="text-right w-28">Lệch (₫)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -159,10 +168,21 @@ export function StocktakeBoard({ clubId }: { clubId: string }) {
                     <TableCell className={`text-right font-mono ${delta == null ? "text-muted-foreground" : delta === 0 ? "text-muted-foreground" : delta > 0 ? "text-success" : "text-destructive"}`}>
                       {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}`}
                     </TableCell>
+                    <TableCell className={`text-right font-mono ${delta == null || delta === 0 ? "text-muted-foreground" : delta > 0 ? "text-success" : "text-destructive"}`}>
+                      {delta == null ? "—" : (delta > 0 ? "+" : "") + formatVND(Math.round(delta * i.avg_unit_cost))}
+                    </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="text-right text-xs text-muted-foreground">Tổng lệch (₫)</TableCell>
+                <TableCell className={`text-right font-mono font-semibold ${totalDeltaValue === 0 ? "text-muted-foreground" : totalDeltaValue > 0 ? "text-success" : "text-destructive"}`}>
+                  {(totalDeltaValue > 0 ? "+" : "") + formatVND(Math.round(totalDeltaValue))}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
           </Table>
         </div>
       )}

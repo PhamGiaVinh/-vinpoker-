@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableFooter, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, Plus, Pencil, AlertTriangle } from "lucide-react";
 
@@ -26,6 +26,8 @@ export function IngredientManager({ clubId }: { clubId: string }) {
   const refresh = () => qc.invalidateQueries({ queryKey: ["fnb", "menu", clubId] });
   const ingredients = data?.ingredients ?? [];
   const lowCount = ingredients.filter(isLow).length;
+  // C1: total money tied up in stock = Σ(on_hand × avg_unit_cost). Display-only.
+  const totalValue = ingredients.reduce((s, i) => s + i.on_hand * i.avg_unit_cost, 0);
 
   return (
     <Card className="p-5 space-y-4">
@@ -65,6 +67,7 @@ export function IngredientManager({ clubId }: { clubId: string }) {
                 <TableHead>Đơn vị</TableHead>
                 <TableHead className="text-right">Tồn kho</TableHead>
                 <TableHead className="text-right">Giá vốn TB</TableHead>
+                <TableHead className="text-right">Giá trị tồn</TableHead>
                 <TableHead className="text-center w-24">Ngưỡng</TableHead>
                 <TableHead className="text-right w-12">—</TableHead>
               </TableRow>
@@ -84,6 +87,7 @@ export function IngredientManager({ clubId }: { clubId: string }) {
                     <span className={isLow(i) ? "text-warning font-semibold" : ""}>{i.on_hand}</span> <span className="text-muted-foreground text-xs">{i.stock_unit}</span>
                   </TableCell>
                   <TableCell className="text-right font-mono text-muted-foreground">{formatVND(Math.round(i.avg_unit_cost))}</TableCell>
+                  <TableCell className="text-right font-mono">{formatVND(Math.round(i.on_hand * i.avg_unit_cost))}</TableCell>
                   <TableCell className="text-center text-muted-foreground">{i.low_stock_threshold}</TableCell>
                   <TableCell className="text-right">
                     <Button size="sm" variant="ghost" onClick={() => { setEditing(i); setOpen(true); }}>
@@ -93,6 +97,13 @@ export function IngredientManager({ clubId }: { clubId: string }) {
                 </TableRow>
               ))}
             </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="text-right text-xs text-muted-foreground">Tổng giá trị kho</TableCell>
+                <TableCell className="text-right font-mono font-semibold">{formatVND(Math.round(totalValue))}</TableCell>
+                <TableCell colSpan={2} />
+              </TableRow>
+            </TableFooter>
           </Table>
         </div>
       )}
