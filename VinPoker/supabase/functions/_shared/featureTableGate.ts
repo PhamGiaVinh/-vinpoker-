@@ -109,3 +109,43 @@ export async function getFeatureTablePoolsByTable(
   }
   return out;
 }
+
+/**
+ * Patch 5d — RESERVED dealers: every dealer who is a member of ANY feature/final
+ * table's pool. These dealers are EXCLUSIVE to their special table and must NOT be
+ * assigned to any normal table (owner rule 2026-06-28: "các dealer được pick tại bàn
+ * tâm điểm và final sẽ không chia các bàn thường khác"). Callers exclude this set when
+ * picking for a NON-special table; the special table itself still restricts to its own
+ * pool via getFeatureTablePoolIds / poolDealerIds. Combined, a reserved dealer can only
+ * ever land on the special table they belong to → the closed in-pool rotation holds
+ * (2 dealers ping-pong; 3+ rotate among themselves) instead of leaking to normal tables.
+ *
+ * Gate-aware: empty Set when the kill-switch is OFF → no reservation (pre-5d behavior).
+ */
+export async function getReservedDealerIds(admin: SupabaseClient): Promise<Set<string>> {
+  const out = new Set<string>();
+
+  const { data: ksRow } = await admin
+    .from("app_settings")
+    .select("value")
+    .eq("key", "dealer_feature_tables_enabled")
+    .maybeSingle();
+  const killSwitchOn = (ksRow as { value?: unknown } | null)?.value === true
+    || (ksRow as { value?: unknown } | null)?.value === "true";
+  if (!killSwitchOn) return out; // inert when off
+
+  // Special tables only (push the predicate into the query).
+  const { data: profiles } = await admin
+    .from("dealer_table_profiles")
+    .select("table_id")
+    .or("table_mode.eq.feature,is_final.eq.true");
+  const specialIds = (profiles ?? []).map((p: { table_id: string }) => p.table_id);
+  if (specialIds.length === 0) return out;
+
+  const { data: members } = await admin
+    .from("dealer_table_pool_members")
+    .select("dealer_id")
+    .in("table_id", specialIds);
+  for (const m of (members ?? []) as Array<{ dealer_id: string }>) out.add(m.dealer_id);
+  return out;
+}

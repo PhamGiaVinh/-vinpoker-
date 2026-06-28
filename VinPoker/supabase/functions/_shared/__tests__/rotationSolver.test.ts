@@ -314,3 +314,37 @@ Deno.test("PG-4: empty pool (special table, no members) → shortage, never a no
   assertEq(row.inAttendanceId, null, "empty-pool special table never substitutes a non-pool dealer");
   assertEq(row.isShortage, true, "empty-pool special table is an honest shortage");
 });
+
+// ── Patch 5d — reserved pool dealers are EXCLUSIVE to their special table ─────
+// A dealer in any feature/final pool (reservedDealerIds) must never be planned onto a
+// NORMAL table, so the in-pool A↔B rotation can't leak. dealerId convention = dlr-<att>.
+
+Deno.test("PG-5: a reserved pool dealer is EXCLUDED from a normal table", () => {
+  const tables = [mkTable({ tableId: "T1", swingDueAtMs: NOW - 10 * MIN })]; // normal (ungated)
+  const dealers = [
+    mkDealer({ attendanceId: "dR", score: 999 }), // reserved (dlr-dR) — highest score, must be skipped
+    mkDealer({ attendanceId: "dN", score: 0 }),   // not reserved
+  ];
+  const plan = solveRotationPlan(tables, dealers, { ...OPTS, reservedDealerIds: ["dlr-dR"] });
+  const row = plan.rows.find((r) => r.tableId === "T1" && r.slotIndex === 0)!;
+  assertEq(row.inAttendanceId, "dN", "normal table must NOT take a reserved feature/final dealer (even higher-scored)");
+});
+
+Deno.test("PG-6: reserved dealer only goes to its OWN special table; the normal table gets a non-reserved dealer", () => {
+  const tables = [
+    // special X (pool A,B) — more overdue so it's planned first
+    mkTable({ tableId: "X", poolDealerIds: ["dlr-A", "dlr-B"], assignedAtMs: NOW - 80 * MIN, swingDueAtMs: NOW - 20 * MIN }),
+    // normal Y
+    mkTable({ tableId: "Y", assignedAtMs: NOW - 50 * MIN, swingDueAtMs: NOW - 8 * MIN }),
+  ];
+  const dealers = [
+    mkDealer({ attendanceId: "A" }), // reserved to X
+    mkDealer({ attendanceId: "B" }), // reserved to X
+    mkDealer({ attendanceId: "C" }), // free
+  ];
+  const plan = solveRotationPlan(tables, dealers, { ...OPTS, reservedDealerIds: ["dlr-A", "dlr-B"] });
+  const x = plan.rows.find((r) => r.tableId === "X" && r.slotIndex === 0)!;
+  const y = plan.rows.find((r) => r.tableId === "Y" && r.slotIndex === 0)!;
+  assert(x.inAttendanceId === "A" || x.inAttendanceId === "B", "special table X must be relieved by one of its pool dealers");
+  assertEq(y.inAttendanceId, "C", "normal table Y must get the non-reserved dealer, never A/B");
+});

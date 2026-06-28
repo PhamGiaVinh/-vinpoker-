@@ -210,6 +210,11 @@ export interface RotationPlanOptions {
   restMs: number;
   /** How many forecast slots beyond slot 0 (2 → slots 1..2). */
   forecastSlots: number;
+  /** Patch 5d — dealers reserved to a feature/final pool. They are EXCLUSIVE to their
+   *  special table and must NOT be planned onto any NORMAL table (poolDealerIds == null).
+   *  Empty/undefined = no reservation (kill-switch off). A reserved dealer is still
+   *  allowed on their own special table via that table's poolDealerIds. */
+  reservedDealerIds?: string[];
   solverVersion: string;
 }
 

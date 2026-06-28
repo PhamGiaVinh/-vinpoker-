@@ -190,6 +190,9 @@ export function solveRotationPlan(
   opts: RotationPlanOptions
 ): RotationPlan {
   const { nowMs, announceLeadMs, preAnnounceMs, restMs, forecastSlots } = opts;
+  // Patch 5d — dealers reserved to a feature/final pool: exclusive to their special
+  // table, never planned onto a normal table. Empty = no reservation (kill-switch off).
+  const reserved = new Set(opts.reservedDealerIds ?? []);
   const rows: RotationPlanRow[] = [];
   const lockedTableIds: string[] = [];
 
@@ -277,8 +280,16 @@ export function solveRotationPlan(
       // by the rule below) are not restricted: their real dealer_id is not carried, so
       // they can't be pool-checked, and they are never locked.
       const tablePool: Set<string> | null = t.poolDealerIds == null ? null : new Set(t.poolDealerIds);
+      // Patch 5c: a SPECIAL table only accepts its own pool. Patch 5d: a NORMAL table
+      // (tablePool === null) must EXCLUDE any dealer reserved to a feature/final pool
+      // → reserved dealers stay exclusive to their special table. Simulated forecast
+      // re-entrants (never locked at slot 0) carry no real dealer_id → unrestricted.
       const allowedByPool = (c: PoolEntry) =>
-        tablePool === null || c.simulated === true || tablePool.has(c.dealerId);
+        c.simulated === true
+          ? true
+          : tablePool === null
+            ? !reserved.has(c.dealerId)
+            : tablePool.has(c.dealerId);
 
       const eligible = pool.filter(
         (c) =>
