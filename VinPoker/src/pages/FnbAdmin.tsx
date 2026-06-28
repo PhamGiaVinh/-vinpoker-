@@ -12,6 +12,10 @@ import { ShieldAlert } from "lucide-react";
 import { CategoryManager } from "@/components/fnb/admin/CategoryManager";
 import { MenuManager } from "@/components/fnb/admin/MenuManager";
 import { FnbSettingsPanel } from "@/components/fnb/admin/FnbSettingsPanel";
+import { IngredientManager } from "@/components/fnb/admin/IngredientManager";
+import { RecipeEditor } from "@/components/fnb/admin/RecipeEditor";
+import { StockInForm } from "@/components/fnb/admin/StockInForm";
+import { StocktakeBoard } from "@/components/fnb/admin/StocktakeBoard";
 
 /**
  * F&B admin (/fnb/admin) — owner-only menu/inventory/settings management. Gate: FEATURES.fnbModule.
@@ -79,8 +83,8 @@ function FnbAdminInner() {
           <div className="w-full max-w-xs">
             <Label className="mb-1 block text-xs text-muted-foreground">Câu lạc bộ</Label>
             <Select value={activeClub} onValueChange={setClubId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="bg-card border-border text-foreground"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground">
                 {clubs.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.name ?? c.id}</SelectItem>
                 ))}
@@ -91,9 +95,13 @@ function FnbAdminInner() {
       </div>
 
       <Tabs defaultValue="menu" className="w-full">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="menu">Thực đơn</TabsTrigger>
           <TabsTrigger value="category">Danh mục</TabsTrigger>
+          {FEATURES.fnbInventory && <TabsTrigger value="ingredient">Nguyên liệu</TabsTrigger>}
+          {FEATURES.fnbInventory && <TabsTrigger value="recipe">Công thức</TabsTrigger>}
+          {FEATURES.fnbInventory && <TabsTrigger value="stockin">Nhập kho</TabsTrigger>}
+          {FEATURES.fnbInventory && <TabsTrigger value="stocktake">Kiểm kho</TabsTrigger>}
           <TabsTrigger value="settings">Cài đặt</TabsTrigger>
         </TabsList>
         <TabsContent value="menu" className="mt-4">
@@ -102,6 +110,18 @@ function FnbAdminInner() {
         <TabsContent value="category" className="mt-4">
           <CategoryManager clubId={activeClub} />
         </TabsContent>
+        {FEATURES.fnbInventory && (
+          <TabsContent value="ingredient" className="mt-4"><IngredientManager clubId={activeClub} /></TabsContent>
+        )}
+        {FEATURES.fnbInventory && (
+          <TabsContent value="recipe" className="mt-4"><RecipeEditor clubId={activeClub} /></TabsContent>
+        )}
+        {FEATURES.fnbInventory && (
+          <TabsContent value="stockin" className="mt-4"><StockInForm clubId={activeClub} /></TabsContent>
+        )}
+        {FEATURES.fnbInventory && (
+          <TabsContent value="stocktake" className="mt-4"><StocktakeBoard clubId={activeClub} /></TabsContent>
+        )}
         <TabsContent value="settings" className="mt-4">
           <FnbSettingsPanel clubId={activeClub} />
         </TabsContent>

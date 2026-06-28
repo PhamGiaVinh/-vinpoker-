@@ -11,7 +11,7 @@ export type FnbMenuItem = {
 export type FnbIngredient = {
   id: string; club_id: string; name: string; stock_unit: string; purchase_unit: string | null;
   units_per_purchase: number; on_hand: number; avg_unit_cost: number;
-  low_stock_threshold: number; is_active: boolean;
+  low_stock_threshold: number; is_active: boolean; version: number;
 };
 export type FnbMenuData = {
   categories: FnbCategory[]; items: FnbMenuItem[]; ingredients: FnbIngredient[];
