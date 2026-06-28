@@ -2426,6 +2426,7 @@
     "freeClubService": "무료 클럽 서비스",
     "totalPay": "총 결제 금액",
     "transferInfo": "이체 정보",
+    "vietqrHint": "은행 앱으로 스캔 — 금액과 내용 자동 입력",
     "bank": "은행",
     "accountHolder": "예금주",
     "accountNumber": "계좌번호",

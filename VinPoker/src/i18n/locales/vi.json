@@ -2676,6 +2676,7 @@
     "freeClubService": "Miễn phí dịch vụ CLB",
     "totalPay": "Tổng thanh toán",
     "transferInfo": "Thông tin chuyển khoản",
+    "vietqrHint": "Quét QR bằng app ngân hàng — tự điền số tiền & nội dung",
     "bank": "Ngân hàng",
     "accountHolder": "Chủ TK",
     "accountNumber": "Số TK",
