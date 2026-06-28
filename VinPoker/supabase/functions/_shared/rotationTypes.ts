@@ -175,6 +175,13 @@ export interface RotationPlanTable {
   /** Existing CHỐT: solver must NOT re-plan slot 0 for this table. */
   lockedInAttendanceId?: string | null;
   lockedPlannedReliefAtMs?: number | null;
+  /** Patch 5c — feature/final pool gate. When non-null, ONLY these dealer_ids may
+   *  be planned INTO this table at slot 0 (the real CHỐT). null/undefined = ungated
+   *  (normal table or kill-switch off). An EMPTY array = special table with no pool
+   *  member → clean shortage (never a non-pool substitution). Mirrors the SQL trigger
+   *  `_assert_dealer_allowed_for_table` so the planner cannot announce a dealer the
+   *  seat trigger would later reject with DT006. */
+  poolDealerIds?: string[] | null;
 }
 
 /** A dealer who is (or will become) available to take a table. */
