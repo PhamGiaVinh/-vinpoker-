@@ -1,4 +1,12 @@
 {
+  "fnb": {
+    "navCounter": "F&B · Counter",
+    "navKitchen": "F&B · Kitchen",
+    "navAdmin": "F&B · Admin",
+    "title": "F&B (Food & Beverage)",
+    "noClubs": "You aren't assigned to any F&B club yet.",
+    "selectClub": "Select club"
+  },
   "dealer": {
     "appTagline": "Dealer · Staff portal",
     "appEntry": "Dealer App",
