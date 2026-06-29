@@ -1,28 +1,19 @@
 -- ============================================================================
 -- PATCH 4 / STAGE B + C — Mode A CONTROLLED DRY-RUN  (BEGIN … ROLLBACK, ZERO COMMIT)
 -- ============================================================================
--- Assembled artifact — NOT a migration, NOT applied on merge. Run the WHOLE block at ONCE in a
--- controlled Supabase SQL Editor session (owner). It applies B + C inside ONE transaction, runs
--- structural asserts + the 9-case headless test, then ROLLBACKs everything. NOTHING persists.
---
--- Requires (already LIVE): STAGE A trigger, confirm_registration_and_assign_seat (P0-guard-v2),
---   sepay_parse_reference_code, is_club_cashier, sepay_system_settings, settle_bank_transaction
---   baseline 20261118000000, + at least one club + one non-super auth.users row (used as the bot).
--- Does NOT apply B/C for real, NOT deploy tournament-reentry, NOT flip dynamicReentry, NO COMMIT.
---
--- ⚠️  Do NOT add a COMMIT. Do NOT run piecemeal — the migrations MUST share the txn that ROLLBACKs.
--- Outputs three result grids: (1) STRUCTURAL ASSERTS, (2) 9-CASE HEADLESS TEST, (3) ROLLBACK PROOF.
+-- Run the WHOLE block at ONCE in the Supabase SQL Editor. Applies B + C inside ONE transaction, runs
+-- structural asserts + the 9-case headless test, returns ONE combined result grid, then ROLLBACKs
+-- everything (nothing persists). The Editor shows the LAST result grid, which is that combined grid.
+-- Rollback proof = the separate file patch4_bc_rollback_proof.sql (must run AFTER, post-rollback reads).
+-- Do NOT add a COMMIT. Do NOT run piecemeal.
 -- ============================================================================
 
 BEGIN;
 
--- ---- in-transaction result table for the structural asserts ----
 DROP TABLE IF EXISTS _dryrun_asserts;
 CREATE TEMP TABLE _dryrun_asserts(seq int, check_name text, result text);
 
--- ============================================================================
--- APPLY STAGE B  (20261122000000_treg_source_entry_id.sql)
--- ============================================================================
+-- ===== STAGE B (20261122000000) =====
 -- PATCH 4 / STAGE B — tournament_registrations.source_entry_id + re-entry-aware active uniques.
 --
 -- SOURCE-ONLY migration. NOT applied on merge. Apply in a controlled session (Supabase SQL Editor /
@@ -61,9 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_treg_source_entry
   ON public.tournament_registrations (source_entry_id)
   WHERE source_entry_id IS NOT NULL;
 
--- ============================================================================
--- APPLY STAGE C helper/confirm  (20261122000001_confirm_reentry_and_assign_seat.sql)
--- ============================================================================
+-- ===== STAGE C helper/confirm (20261122000001) =====
 -- PATCH 4 / STAGE C — shared re-entry seat helper + reenter refactor + confirm_reentry_and_assign_seat.
 --
 -- SOURCE-ONLY migration. NOT applied on merge. Apply in a controlled session (Supabase SQL Editor /
@@ -494,9 +483,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.confirm_reentry_and_assign_seat(uuid, uuid, text) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.confirm_reentry_and_assign_seat(uuid, uuid, text) TO authenticated, service_role;
 
--- ============================================================================
--- APPLY STAGE C settle  (20261123000000_sepay_settle_reentry_autoconfirm.sql)
--- ============================================================================
+-- ===== STAGE C settle (20261123000000) =====
 -- PATCH 4 / STAGE C — settle_bank_transaction: dispatch re-entry confirms to confirm_reentry_and_assign_seat.
 --
 -- SOURCE-ONLY migration. NOT applied on merge. Apply in a controlled session AFTER 20261122000000 (STAGE B,
@@ -715,53 +702,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_payment_settlements_autoconfirm_per_reg
   ON public.payment_settlements (tournament_registration_id)
   WHERE outcome = 'auto_confirmed';
 
--- ============================================================================
--- STRUCTURAL ASSERTS (after B + C applied in-txn)
--- ============================================================================
+-- ===== STRUCTURAL ASSERTS (after B + C applied in-txn) =====
 INSERT INTO _dryrun_asserts(seq, check_name, result) VALUES
- (1,  'B: tournament_registrations.source_entry_id column exists',
-   CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns
-     WHERE table_schema='public' AND table_name='tournament_registrations' AND column_name='source_entry_id')
-     THEN 'PASS' ELSE 'FAIL' END),
+ (1,  'B: source_entry_id column exists',
+   CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tournament_registrations' AND column_name='source_entry_id') THEN 'PASS' ELSE 'FAIL' END),
  (2,  'B: uniq_treg_active_initial exists',
-   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_active_initial')
-     THEN 'PASS' ELSE 'FAIL' END),
+   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_active_initial') THEN 'PASS' ELSE 'FAIL' END),
  (3,  'B: uniq_treg_pending_reentry_per_entry exists',
-   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_pending_reentry_per_entry')
-     THEN 'PASS' ELSE 'FAIL' END),
+   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_pending_reentry_per_entry') THEN 'PASS' ELSE 'FAIL' END),
  (4,  'B: old uniq_treg_active is GONE',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_active')
-     THEN 'PASS' ELSE 'FAIL' END),
- (5,  'C: _assign_reentry_seat helper exists',
-   CASE WHEN to_regprocedure('public._assign_reentry_seat(uuid,uuid,uuid,uuid,uuid,text,integer)') IS NOT NULL
-     THEN 'PASS' ELSE 'FAIL' END),
- (6,  'C: reenter_tournament_player calls the shared helper (_assign_reentry_seat)',
-   CASE WHEN to_regprocedure('public.reenter_tournament_player(uuid,bigint,bigint,text)') IS NOT NULL
-     AND pg_get_functiondef(to_regprocedure('public.reenter_tournament_player(uuid,bigint,bigint,text)')) ~ '_assign_reentry_seat'
-     THEN 'PASS' ELSE 'FAIL' END),
+   CASE WHEN NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_active') THEN 'PASS' ELSE 'FAIL' END),
+ (5,  'C: _assign_reentry_seat exists',
+   CASE WHEN to_regprocedure('public._assign_reentry_seat(uuid,uuid,uuid,uuid,uuid,text,integer)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END),
+ (6,  'C: reenter_tournament_player calls helper',
+   CASE WHEN to_regprocedure('public.reenter_tournament_player(uuid,bigint,bigint,text)') IS NOT NULL AND pg_get_functiondef(to_regprocedure('public.reenter_tournament_player(uuid,bigint,bigint,text)')) ~ '_assign_reentry_seat' THEN 'PASS' ELSE 'FAIL' END),
  (7,  'C: confirm_reentry_and_assign_seat exists',
-   CASE WHEN to_regprocedure('public.confirm_reentry_and_assign_seat(uuid,uuid,text)') IS NOT NULL
-     THEN 'PASS' ELSE 'FAIL' END),
- (8,  'C: settle_bank_transaction has the source_entry_id dispatch (calls confirm_reentry_and_assign_seat)',
-   CASE WHEN to_regprocedure('public.settle_bank_transaction(uuid,boolean)') IS NOT NULL
-     AND pg_get_functiondef(to_regprocedure('public.settle_bank_transaction(uuid,boolean)')) ~ 'confirm_reentry_and_assign_seat'
-     THEN 'PASS' ELSE 'FAIL' END),
- (9,  'C: settle registration-row SELECT includes FOR UPDATE (P1-2 lock)',
-   CASE WHEN to_regprocedure('public.settle_bank_transaction(uuid,boolean)') IS NOT NULL
-     AND pg_get_functiondef(to_regprocedure('public.settle_bank_transaction(uuid,boolean)')) ~ 'upper\(v_ref\)\s+LIMIT 1\s+FOR UPDATE'
-     THEN 'PASS' ELSE 'FAIL' END),
- (10, 'C: uniq_payment_settlements_autoconfirm_per_reg safeguard exists',
-   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_payment_settlements_autoconfirm_per_reg')
-     THEN 'PASS' ELSE 'FAIL' END);
+   CASE WHEN to_regprocedure('public.confirm_reentry_and_assign_seat(uuid,uuid,text)') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END),
+ (8,  'C: settle dispatches to re-entry confirm',
+   CASE WHEN to_regprocedure('public.settle_bank_transaction(uuid,boolean)') IS NOT NULL AND pg_get_functiondef(to_regprocedure('public.settle_bank_transaction(uuid,boolean)')) ~ 'confirm_reentry_and_assign_seat' THEN 'PASS' ELSE 'FAIL' END),
+ (9,  'C: settle reg-select has FOR UPDATE',
+   CASE WHEN to_regprocedure('public.settle_bank_transaction(uuid,boolean)') IS NOT NULL AND pg_get_functiondef(to_regprocedure('public.settle_bank_transaction(uuid,boolean)')) ~ 'upper\(v_ref\)\s+LIMIT 1\s+FOR UPDATE' THEN 'PASS' ELSE 'FAIL' END),
+ (10, 'C: uniq_payment_settlements_autoconfirm_per_reg exists',
+   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_payment_settlements_autoconfirm_per_reg') THEN 'PASS' ELSE 'FAIL' END);
 
-SELECT '=== (1) STRUCTURAL ASSERTS ===' AS section;
-SELECT seq, check_name, result FROM _dryrun_asserts ORDER BY seq;
-
--- ============================================================================
--- (2) 9-CASE HEADLESS TEST  (inlined from sepay_reentry_auto_confirm_sandbox_test.sql, sans its
---     own BEGIN/ROLLBACK so it shares THIS transaction)
--- ============================================================================
-SELECT '=== (2) 9-CASE HEADLESS TEST ===' AS section;
+-- ===== 9-CASE HEADLESS TEST (inlined; populates _re_results) =====
 DROP TABLE IF EXISTS _re_results;
 CREATE TEMP TABLE _re_results (case_no int, scenario text, expected text, actual text);
 
@@ -926,66 +890,22 @@ BEGIN
   PERFORM set_config('request.jwt.claims', '', true);
 END $$;
 
-SELECT case_no, scenario, expected, actual,
-  CASE
+-- ===== ONE COMBINED RESULT GRID (the Editor shows this — it is the last result before ROLLBACK) =====
+SELECT '(1) ASSERT' AS section, seq, check_name AS label, result AS actual, result AS verdict
+  FROM _dryrun_asserts
+UNION ALL
+SELECT '(2) CASE', case_no, scenario, actual,
+  (CASE
     WHEN case_no IN (1,7) AND actual = 'auto_confirmed + seats=1' THEN 'PASS'
     WHEN case_no = 5 AND actual = 'flagged_amount_mismatch' THEN 'PASS'
     WHEN case_no = 6 AND actual = 'seats=1 autoconf=1 bt2=flagged_not_pending' THEN 'PASS'
-    -- P1-4 (STAGE C review): assert the SPECIFIC reason, not just any flag. A flag raised for an unrelated
-    -- cause (parser miss → flagged_no_match, etc.) must NOT pass these — the reason proves the guard fired.
     WHEN case_no = 2 AND actual LIKE 'flagged_%' AND actual LIKE '%entry_not_reenterable%' THEN 'PASS'
     WHEN case_no = 3 AND actual LIKE 'flagged_%' AND actual LIKE '%player_already_active%' THEN 'PASS'
     WHEN case_no = 4 AND actual LIKE 'flagged_%' AND actual LIKE '%reentry_window_closed%' THEN 'PASS'
-    -- P1-5 (STAGE C review): confirm idempotency (no double-seat on re-run) + table-full seating-failed
-    -- (money recoverable, reg stays pending).
     WHEN case_no = 8 AND actual = 'idempotent=true same_entry=t seats=1' THEN 'PASS'
     WHEN case_no = 9 AND actual = 'flagged_seating_failed reg=pending' THEN 'PASS'
-    ELSE 'FAIL'
-  END AS verdict
-FROM _re_results ORDER BY case_no;
+    ELSE 'FAIL' END)
+  FROM _re_results
+ORDER BY 1, 2;
 
--- ============================================================================
--- END OF TRANSACTION — roll everything back. NOTHING above persists.
--- ============================================================================
 ROLLBACK;
-
--- ============================================================================
--- (3) ROLLBACK PROOF  (runs AFTER ROLLBACK — read-only; confirms the live DB is untouched)
--- ============================================================================
-SELECT '=== (3) ROLLBACK PROOF ===' AS section;
-SELECT 1 AS seq, 'source_entry_id column reverted' AS check_name,
-   CASE WHEN NOT EXISTS (SELECT 1 FROM information_schema.columns
-     WHERE table_schema='public' AND table_name='tournament_registrations' AND column_name='source_entry_id')
-     THEN 'PASS (gone)' ELSE 'FAIL (still present!)' END AS result
-UNION ALL SELECT 2, '_assign_reentry_seat reverted',
-   CASE WHEN to_regprocedure('public._assign_reentry_seat(uuid,uuid,uuid,uuid,uuid,text,integer)') IS NULL THEN 'PASS (gone)' ELSE 'FAIL' END
-UNION ALL SELECT 3, 'confirm_reentry_and_assign_seat reverted',
-   CASE WHEN to_regprocedure('public.confirm_reentry_and_assign_seat(uuid,uuid,text)') IS NULL THEN 'PASS (gone)' ELSE 'FAIL' END
-UNION ALL SELECT 4, 'settle_bank_transaction reverted to baseline (no re-entry dispatch)',
-   CASE WHEN pg_get_functiondef(to_regprocedure('public.settle_bank_transaction(uuid,boolean)')) !~ 'confirm_reentry_and_assign_seat'
-     THEN 'PASS (baseline)' ELSE 'FAIL' END
-UNION ALL SELECT 5, 'uniq_treg_active restored / re-entry uniques gone',
-   CASE WHEN EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_active')
-     AND NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_pending_reentry_per_entry')
-     THEN 'PASS (restored)' ELSE 'FAIL' END
-UNION ALL SELECT 6, 'no synthetic [RESBX] tournaments remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.tournaments WHERE id::text LIKE 'ae500000-%') THEN 'PASS (none)' ELSE 'FAIL' END
-UNION ALL SELECT 7, 'no synthetic re-entry/initial registrations remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.tournament_registrations
-     WHERE id::text LIKE 'ae500000-%' OR reference_code LIKE 'REENTRY-RE0%' OR reference_code='VINRegRE000007')
-     THEN 'PASS (none)' ELSE 'FAIL' END
-UNION ALL SELECT 8, 'no synthetic bank_transactions remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.bank_transactions WHERE id::text LIKE 'ae100000-%') THEN 'PASS (none)' ELSE 'FAIL' END
-UNION ALL SELECT 9, 'no payment_settlements residue',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.payment_settlements WHERE bank_transaction_id::text LIKE 'ae100000-%')
-     THEN 'PASS (none)' ELSE 'FAIL' END
-UNION ALL SELECT 10, 'no synthetic [RESBX] platform_bank_accounts remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.platform_bank_accounts WHERE account_number='RESBX-ACCT') THEN 'PASS (none)' ELSE 'FAIL' END
-ORDER BY seq;
-
--- schema_migrations untouched (the dry-run applied raw DDL, never the migration tool). Separate
--- statement: if your migrations ledger lives elsewhere, adjust/skip — it cannot have been written here.
-SELECT 'schema_migrations: B/C versions absent' AS check_name,
-   CASE WHEN NOT EXISTS (SELECT 1 FROM supabase_migrations.schema_migrations
-     WHERE version IN ('20261122000000','20261122000001','20261123000000'))
-     THEN 'PASS (absent)' ELSE 'FAIL (version row present!)' END AS result;
