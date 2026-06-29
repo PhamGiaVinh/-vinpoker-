@@ -583,20 +583,23 @@ export const FEATURES = {
   /**
    * Payout "Engine 3-neo" — server-authoritative tournament payout curve (auto N / min-cash floor /
    * smooth top-heavy-or-flat distribution / tiers / exact pool preservation), replacing the
-   * manual-rows Prizes panel. Default **OFF**: the pure-TS engine (`payoutEngine.ts`) + golden tests
-   * ship first with NO behaviour change; the engine only drives UI once the owner-gated backend
-   * (snapshot/apply RPCs + Edge `compute-payouts`) is applied and this flag is flipped after UAT.
-   * While false: the existing manual Prize Structure panel is unchanged. Official payouts are only
-   * ever written by the close-registration snapshot→apply flow — never recomputed live.
+   * manual-rows Prizes panel. This is the GLOBAL master switch; the actual per-club rollout is
+   * narrowed by `payoutEngineClubs` / `payoutEngineAllClubs` via `isPayoutEngineEnabledForClub`.
+   * **ON (staged) 2026-06-29** after backend (PR-2a) + Edge (PR-2b) went live, the per-club gate
+   * (#594) merged, and a full live UI write drill (Drill A) passed — but allow-listed to ONE club
+   * only (Hanoi Royal Poker `22222222`); every other club keeps the old manual panel UNCHANGED.
+   * Official payouts are only ever written by the close-registration snapshot→apply flow — never
+   * recomputed live. Kill-switch: set false (or empty the allowlist) → instant revert to the old
+   * panel for every club.
    */
-  payoutEngine: false,
+  payoutEngine: true,
   /**
    * Per-club allowlist for the Engine-3-neo payout panel (STAGED ROLLOUT). Only consulted
    * when `payoutEngine` is true. Add a club's UUID here to enable the new PayoutEnginePanel
    * for THAT club only — every other club keeps the old PrizeStructurePanel. Empty = no club
    * (safe default). Resolved by `isPayoutEngineEnabledForClub` below.
    */
-  payoutEngineClubs: [] as string[],
+  payoutEngineClubs: ['22222222-2222-2222-2222-222222222222'] as string[], // Hanoi Royal Poker — first club live
   /**
    * Wide-rollout switch for the payout panel: when true (and `payoutEngine` is true) EVERY
    * club gets the engine panel without listing each id. Keep false during staged rollout.
