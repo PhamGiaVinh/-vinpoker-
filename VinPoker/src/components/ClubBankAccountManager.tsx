@@ -6,13 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Image as ImageIcon, Save, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { compressImage } from "@/lib/compressImage";
+import { VN_BANKS } from "@/lib/vietnamBanks";
 
 type Account = {
   id: string;
   bank_name: string;
+  bank_bin: string | null;
   account_number: string;
   account_holder: string;
   qr_code_url: string | null;
@@ -32,7 +35,7 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
-    bank_name: "", account_number: "", account_holder: "",
+    bank_name: "", bank_bin: null as string | null, account_number: "", account_holder: "",
     qr_code_url: null as string | null, notes: "", is_active: true,
   });
 
@@ -50,6 +53,7 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
       setAcc(data as any);
       setForm({
         bank_name: data.bank_name,
+        bank_bin: (data as { bank_bin?: string | null }).bank_bin ?? null,
         account_number: data.account_number,
         account_holder: data.account_holder,
         qr_code_url: data.qr_code_url,
@@ -58,7 +62,7 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
       });
     } else {
       setAcc(null);
-      setForm({ bank_name: "", account_number: "", account_holder: "", qr_code_url: null, notes: "", is_active: true });
+      setForm({ bank_name: "", bank_bin: null, account_number: "", account_holder: "", qr_code_url: null, notes: "", is_active: true });
     }
     setLoading(false);
   };
@@ -108,16 +112,36 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
       account_type: "escrow",
       club_id: clubId,
     };
-    const res = acc
-      ? await supabase.from("platform_bank_accounts").update(payload).eq("id", acc.id)
-      : await supabase.from("platform_bank_accounts").insert(payload);
+    let savedId = acc?.id;
+    let saveErr: { message: string } | null = null;
+    if (acc) {
+      const { error } = await supabase.from("platform_bank_accounts").update(payload).eq("id", acc.id);
+      saveErr = error;
+    } else {
+      const { data, error } = await supabase.from("platform_bank_accounts").insert(payload).select("id").maybeSingle();
+      saveErr = error;
+      savedId = (data as { id?: string } | null)?.id;
+    }
+    if (saveErr) { setSaving(false); toast.error(saveErr.message); return; }
+    // bank_bin (VietQR Stage 2) is written SEPARATELY + best-effort so the base account save is
+    // unaffected if the bank_bin column hasn't been applied yet (the dynamic QR just falls back to the
+    // free-text bank-name map until then). Once the migration is live, re-saving persists the BIN.
+    if (savedId) {
+      const { error: binErr } = await supabase
+        .from("platform_bank_accounts")
+        .update({ bank_bin: form.bank_bin || null } as never)
+        .eq("id", savedId);
+      if (binErr) console.warn("bank_bin not saved (Stage-2 column may be unapplied):", binErr.message);
+    }
     setSaving(false);
-    if (res.error) { toast.error(res.error.message); return; }
     toast.success(acc ? "Đã cập nhật" : "Đã tạo tài khoản");
     load();
   };
 
   if (loading) return <Card className="p-4"><Loader2 className="w-5 h-5 animate-spin text-primary" /></Card>;
+
+  const knownBins = new Set(VN_BANKS.map((b) => b.bin));
+  const bankSelectValue = form.bank_bin && knownBins.has(form.bank_bin) ? form.bank_bin : "other";
 
   return (
     <Card className="p-4 space-y-3 border-primary/30">
@@ -131,8 +155,29 @@ export const ClubBankAccountManager = ({ clubId }: Props) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <Label>Tên ngân hàng *</Label>
-          <Input value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} placeholder="VD: Vietcombank" />
+          <Label>Ngân hàng *</Label>
+          <Select
+            value={bankSelectValue}
+            onValueChange={(v) => {
+              if (v === "other") { setForm({ ...form, bank_bin: null }); return; }
+              const b = VN_BANKS.find((x) => x.bin === v);
+              if (b) setForm({ ...form, bank_name: b.shortName, bank_bin: b.bin });
+            }}
+          >
+            <SelectTrigger><SelectValue placeholder="Chọn ngân hàng" /></SelectTrigger>
+            <SelectContent>
+              {VN_BANKS.map((b) => (
+                <SelectItem key={b.bin} value={b.bin}>{b.shortName} · {b.bin}</SelectItem>
+              ))}
+              <SelectItem value="other">Khác (tự nhập)</SelectItem>
+            </SelectContent>
+          </Select>
+          {bankSelectValue === "other" && (
+            <Input className="mt-2" value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} placeholder="VD: Vietcombank" />
+          )}
+          {bankSelectValue !== "other" && (
+            <p className="text-[10px] text-muted-foreground mt-1">Mã QR VietQR động sẽ dùng mã ngân hàng này.</p>
+          )}
         </div>
         <div>
           <Label>Số tài khoản *</Label>
