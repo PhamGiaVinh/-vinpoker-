@@ -57,7 +57,15 @@ export function PlayerActionSheet({
   const editAllowed = !!onEditChips && canMove;
 
   const close = (v: boolean) => { if (!v) setShowInfo(false); onOpenChange(v); };
-  const act = (fn?: () => void) => { if (fn) { fn(); onOpenChange(false); } };
+  // Close THIS sheet first, then open the next dialog on the NEXT frame. Opening it
+  // in the same commit as the close makes Radix unmount one modal layer and mount
+  // another at once — on touch that race leaves the new sheet with
+  // pointer-events:none, so its close (X) and content became untappable on mobile.
+  const act = (fn?: () => void) => {
+    if (!fn) return;
+    onOpenChange(false);
+    requestAnimationFrame(fn);
+  };
 
   return (
     <Sheet open={open} onOpenChange={close}>

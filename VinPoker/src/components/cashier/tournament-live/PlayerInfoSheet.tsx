@@ -28,7 +28,14 @@ export function PlayerInfoSheet({
   const name = seat.player_name || seat.player_id.slice(0, 8);
   const parts = name.trim().split(" ");
   const ini = ((parts[0]?.[0] ?? "?") + (parts[parts.length - 1]?.[0] ?? "")).toUpperCase();
-  const act = (fn?: () => void) => { if (fn) { fn(); onOpenChange(false); } };
+  // Close THIS sheet first, then open the next dialog on the NEXT frame — opening it
+  // in the same commit as the close makes Radix swap two modal layers at once, which
+  // on touch leaves the new sheet with pointer-events:none (its X became untappable).
+  const act = (fn?: () => void) => {
+    if (!fn) return;
+    onOpenChange(false);
+    requestAnimationFrame(fn);
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
