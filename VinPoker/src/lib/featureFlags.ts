@@ -570,7 +570,7 @@ export const FEATURES = {
   fnbCounter: true,
   fnbKitchen: false,
   fnbInventory: true,
-  fnbFinance: false,
+  fnbFinance: true,
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so

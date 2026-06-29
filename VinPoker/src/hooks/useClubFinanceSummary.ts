@@ -27,8 +27,9 @@ export interface ClubFinanceSummary {
     // service fee stream (phí dịch vụ) — CONFIGURED (service_fee_amount × paying entries), separate from rake
     serviceFee: number;
     total: number;
+    fnb: number;
   };
-  cost: { payrollNet: number; payrollGross: number; adjustments: number };
+  cost: { payrollNet: number; payrollGross: number; adjustments: number; fnbCogs: number };
   net: number;
   statusTotals: Record<PayrollStatusKey, number>;
   unpaidTotal: number;
@@ -51,7 +52,7 @@ const emptyAging = (): Record<AgingBucketKey, number> => ({ d0_30: 0, d31_60: 0,
 const emptyRevenue = (): ClubFinanceSummary["revenue"] => ({
   stakingFees: 0, stakingFixed: 0, stakingPercent: 0, stakingArchive: 0, payoutFees: 0,
   rake: 0, rakeActual: 0, rakeExpected: 0, rakeVariance: 0,
-  rakeOnline: 0, rakeOffline: 0, rakeReentry: 0, serviceFee: 0, total: 0,
+  rakeOnline: 0, rakeOffline: 0, rakeReentry: 0, serviceFee: 0, total: 0, fnb: 0,
 });
 
 // Normalize a server `revenue` object, defaulting fields the OLD (pre-v2) RPC body
@@ -79,12 +80,13 @@ const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
     rakeReentry: Number(r.rakeReentry ?? 0),
     serviceFee: Number(r.serviceFee ?? 0),
     total: Number(r.total ?? 0),
+    fnb: Number(r.fnb ?? 0),
   };
 };
 
 const emptySummary = (): ClubFinanceSummary => ({
   revenue: emptyRevenue(),
-  cost: { payrollNet: 0, payrollGross: 0, adjustments: 0 },
+  cost: { payrollNet: 0, payrollGross: 0, adjustments: 0, fnbCogs: 0 },
   net: 0,
   statusTotals: emptyStatusTotals(),
   unpaidTotal: 0,
@@ -126,7 +128,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         setClubs(Array.isArray(d.clubs) ? d.clubs : []);
         setSummary({
           revenue: normRevenue(d.revenue),
-          cost: d.cost,
+          cost: { payrollNet: Number(d.cost?.payrollNet ?? 0), payrollGross: Number(d.cost?.payrollGross ?? 0), adjustments: Number(d.cost?.adjustments ?? 0), fnbCogs: Number(d.cost?.fnbCogs ?? 0) },
           net: Number(d.net ?? 0),
           statusTotals: { ...emptyStatusTotals(), ...(d.statusTotals ?? {}) },
           unpaidTotal: Number(d.unpaidTotal ?? 0),
@@ -363,9 +365,9 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         revenue: {
           stakingFees, stakingFixed, stakingPercent, stakingArchive, payoutFees,
           rake, rakeActual, rakeExpected, rakeVariance: rakeActual - rake,
-          rakeOnline, rakeOffline, rakeReentry, serviceFee, total: revenueTotal,
+          rakeOnline, rakeOffline, rakeReentry, serviceFee, total: revenueTotal, fnb: 0,
         },
-        cost: { payrollNet, payrollGross, adjustments },
+        cost: { payrollNet, payrollGross, adjustments, fnbCogs: 0 },
         net: revenueTotal - payrollNet,
         statusTotals, unpaidTotal, reconciledTotal, aging, trend, perPeriod, perClub,
       });

@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { formatVND } from "@/lib/format";
 import { exportToExcel } from "@/lib/exportExcel";
 import { useClubFinanceSummary } from "@/hooks/useClubFinanceSummary";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   PAYROLL_STATUS_META, AGING_BUCKETS, margin, formatPct, formatVndShort,
   type PayrollStatusKey,
@@ -38,7 +39,7 @@ const monthStartISO = () => {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 };
 
-const REV_COLORS = { staking: "#00ff88", payout: "#1D9E75", rake: "#97C459" };
+const REV_COLORS = { staking: "#00ff88", payout: "#1D9E75", rake: "#97C459", fnb: "#A06BE0" };
 
 const tooltipStyle = {
   background: "#16191c",
@@ -184,9 +185,13 @@ const ClubFinanceDashboard = () => {
 
           {/* Net formula note */}
           <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
-            <span className="text-foreground/80">Net = Rake giải đấu + Phí staking + Phí chi trả staking − Lương đã lưu</span>
+            <span className="text-foreground/80">Net = Rake giải đấu + Phí staking + Phí chi trả staking{FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? " + F&B (doanh thu − giá vốn)" : ""} − Lương đã lưu</span>
             <span>·</span>
-            <span>buy-in, vốn staking, tiền mặt cashier &amp; F&amp;B KHÔNG tính vào Net</span>
+            {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? (
+              <span>buy-in, vốn staking, tiền mặt cashier KHÔNG tính vào Net</span>
+            ) : (
+              <span>buy-in, vốn staking, tiền mặt cashier &amp; F&amp;B KHÔNG tính vào Net</span>
+            )}
           </div>
 
           {/* Revenue breakdown — two SEPARATE streams: Giải đấu (rake) vs Staking (phí) */}
@@ -203,10 +208,14 @@ const ClubFinanceDashboard = () => {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
               <LegendDot color={REV_COLORS.rake} label="Giải đấu (rake)" value={formatVND(summary.revenue.rake)} />
               <LegendDot color={REV_COLORS.staking} label="Staking (phí)" value={formatVND(summary.revenue.stakingFees + summary.revenue.payoutFees)} />
-              <span className="flex items-center gap-1 text-muted-foreground/70">
-                <span className="inline-block w-2 h-2 rounded-[2px] border border-dashed border-muted-foreground/60" />
-                Đồ ăn / F&amp;B — module riêng, chưa tích hợp
-              </span>
+              {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? (
+                <LegendDot color={REV_COLORS.fnb} label="F&amp;B (doanh thu)" value={formatVND(summary.revenue.fnb)} />
+              ) : (
+                <span className="flex items-center gap-1 text-muted-foreground/70">
+                  <span className="inline-block w-2 h-2 rounded-[2px] border border-dashed border-muted-foreground/60" />
+                  Đồ ăn / F&amp;B — module riêng, chưa tích hợp
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
@@ -240,6 +249,18 @@ const ClubFinanceDashboard = () => {
                 <Line label="Phí lưu trữ" value={formatVND(summary.revenue.stakingArchive)} />
                 <Line label="Phí chi trả / ITM / cash-out" value={formatVND(summary.revenue.payoutFees)} />
               </div>
+              {/* F&B — shown only when fnbFinance ON and the viewed scope has F&B in Net */}
+              {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) && (
+                <div className="rounded-lg border border-border/60 bg-card/40 p-3 space-y-1.5">
+                  <div className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5">
+                    <Coins className="w-3.5 h-3.5" style={{ color: REV_COLORS.fnb }} /> F&amp;B (Đồ ăn / thức uống)
+                  </div>
+                  <Line label="Doanh thu (sau hoàn)" value={formatVND(summary.revenue.fnb)} strong />
+                  <Line label="Giá vốn (COGS)" value={formatVND(summary.cost.fnbCogs)} tone="#f0997b" />
+                  <div className="h-px bg-border/50 my-1" />
+                  <Line label="Lãi gộp F&amp;B" value={formatVND(summary.revenue.fnb - summary.cost.fnbCogs)} strong tone={REV_COLORS.fnb} />
+                </div>
+              )}
             </div>
 
             <div className="text-[10px] text-muted-foreground/80 pt-0.5">
