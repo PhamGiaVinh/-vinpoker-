@@ -4,10 +4,15 @@
 -- source_entry_id) + 20261122000001 (confirm_reentry_and_assign_seat). schema_migrations untouched.
 --
 -- BYTE-BASELINE = 20261118000000_sepay_settle_auto_confirm_system_actor.sql (the production-validated body).
--- The ONLY behavioural change vs that baseline is inside the exact-match auto-confirm block: the single
--- confirm call becomes a dispatch on v_reg.source_entry_id —
---     source_entry_id IS NULL  → confirm_registration_and_assign_seat   (INITIAL path, BYTE-UNCHANGED)
---     source_entry_id NOT NULL → confirm_reentry_and_assign_seat        (pay-first re-entry)
+-- TWO deliberate changes vs that baseline, NOTHING else:
+--   (1) The single exact-match confirm call becomes a dispatch on v_reg.source_entry_id —
+--         source_entry_id IS NULL  → confirm_registration_and_assign_seat   (INITIAL path, BYTE-UNCHANGED)
+--         source_entry_id NOT NULL → confirm_reentry_and_assign_seat        (pay-first re-entry)
+--   (2) P1-2 (STAGE C review) — the matched-registration SELECT (step 6) gains `FOR UPDATE` so two settlement
+--       workers carrying the same reference_code (a double-pay) serialize on the reg row: the 2nd blocks, then
+--       sees status='confirmed' → flagged_not_pending, instead of racing into confirm and RAISEing on the
+--       per-reg auto_confirmed unique index. This is the only expansion beyond the dispatch; it hardens BOTH
+--       paths and changes neither path's single-payment behaviour (confirm_* re-locks the same row anyway).
 -- Everything else (lock order, idempotency, fraud gate, club resolution, exact-match gate, the 3 system-actor
 -- gates, bot impersonation save/restore, outcome mapping incl. raw error → reason, the settlement INSERT) is
 -- IDENTICAL. A re-entry confirm failure (entry_not_reenterable / reentry_window_closed / no_table / etc.) flows
@@ -89,8 +94,19 @@ BEGIN
     SELECT count(*) INTO v_reg_count
     FROM public.tournament_registrations tr WHERE upper(tr.reference_code) = upper(v_ref);
     IF v_reg_count = 1 THEN
+      -- P1-2 (STAGE C review): lock the matched registration row HERE, before the status/pending gate below.
+      -- This is the ONLY intentional behavioural change beyond the source_entry_id dispatch block. Two
+      -- settlement workers carrying the SAME reference_code (a double-pay = two bank txns) now SERIALIZE on
+      -- this row: the 2nd blocks until the 1st commits, then re-reads status='confirmed' → falls to
+      -- flagged_not_pending at the status gate, instead of both passing the pending gate, racing into confirm,
+      -- and the 2nd RAISEing on the uniq_payment_settlements_autoconfirm_per_reg belt (which would roll back
+      -- and leave its bank txn unmatched for ~5 min). Deterministic result: exactly 1 auto_confirmed + 1 seat;
+      -- the 2nd payment is cleanly flagged for cashier refund. Hardens BOTH paths' concurrent double-pay; the
+      -- single-payment behaviour of each path is unchanged (confirm_*_and_assign_seat re-locks the same row
+      -- inside its own body, so this is a no-op there).
       SELECT * INTO v_reg
-      FROM public.tournament_registrations tr WHERE upper(tr.reference_code) = upper(v_ref) LIMIT 1;
+      FROM public.tournament_registrations tr WHERE upper(tr.reference_code) = upper(v_ref) LIMIT 1
+      FOR UPDATE;
       v_settle_reg_id := v_reg.id;
       v_expected      := v_reg.total_pay;
     END IF;

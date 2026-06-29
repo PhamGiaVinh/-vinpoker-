@@ -3,7 +3,13 @@
 -- One-paste, self-contained, BEGIN…ROLLBACK → NOTHING saved. Requires migrations
 -- 20261122000000 + 20261122000001 + 20261123000000 applied. Simulates the cron: auth.uid()=NULL.
 -- Uses a REAL non-super auth.users row as the SePay system "bot" (the seat-draw audit chain FKs auth.users).
--- Verdict must be PASS on every row.
+-- Verdict must be PASS on every row. 9 cases: 1 happy · 2/3/4 guard flags (reason asserted, P1-4) · 5 amount
+-- mismatch · 6 sequential double-pay · 7 INITIAL regression · 8 confirm idempotency · 9 table-full seating-failed.
+--
+-- NOTE (P1-2 / concurrency): this is a single-session SEQUENTIAL harness, so it CANNOT exercise the concurrent
+-- double-pay interleave that the settle `FOR UPDATE` belt protects against — case 6 only proves the sequential
+-- pending→confirmed flip blocks the 2nd pay. The concurrent path must be reasoned about (the 2nd worker blocks
+-- on the reg lock, then reads status='confirmed' → flagged_not_pending) or checked with two real connections.
 --
 -- ⚠️ Paste and run the WHOLE block at once so the final ROLLBACK executes (runs on the production DB; fake
 --    ids re5…/re6…/re7… do not collide with real rows).
@@ -21,6 +27,7 @@ DECLARE
   v_seats int;
   v_autoconf int;
   v_st text;
+  v_e1 uuid;
 BEGIN
   SELECT id INTO v_club FROM public.clubs ORDER BY created_at, id LIMIT 1;
   IF v_club IS NULL THEN RAISE EXCEPTION 'RE-SBX: no club'; END IF;
@@ -128,6 +135,48 @@ BEGIN
   INSERT INTO _re_results VALUES (7, 'INITIAL path still auto_confirms (regression)',
     'auto_confirmed + seats=1', format('%s + seats=%s', v_ret->>'outcome', v_seats));
 
+  -- CASE 8 (P1-5) — direct confirm idempotency: re-calling confirm_reentry_and_assign_seat on the
+  -- ALREADY-confirmed re-entry reg r1 (confirmed in case 1) returns idempotent:true with the SAME entry, and
+  -- the active-seat count stays exactly 1 (no double-seat on a confirm re-run). Impersonate the bot because
+  -- guard 2.4 requires p_actor = auth.uid(); restore the headless empty claim right after.
+  SELECT id INTO v_e1 FROM public.tournament_entries
+    WHERE registration_id='re500000-0000-0000-0000-0000000000r1' ORDER BY created_at ASC LIMIT 1;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_bot::text)::text, true);
+  v_ret := public.confirm_reentry_and_assign_seat('re500000-0000-0000-0000-0000000000r1', v_bot, 'random_balanced');
+  PERFORM set_config('request.jwt.claims', '', true);
+  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='re600000-0000-0000-0000-000000000001' AND is_active=true;
+  INSERT INTO _re_results VALUES (8, 'confirm idempotency → idempotent, same entry, seats stay 1',
+    'idempotent=true same_entry=t seats=1',
+    format('idempotent=%s same_entry=%s seats=%s',
+           coalesce(v_ret->>'idempotent','false'), ((v_ret->>'entry_id') = v_e1::text), v_seats));
+
+  -- CASE 9 (P1-5) — table FULL at re-seat → flagged_seating_failed AND the re-entry reg STAYS pending
+  -- (money recoverable, NO fake confirmed reg). Dedicated tournament re…00b: a single 1-seat table already
+  -- filled by a filler player, plus a busted source entry + pending re-entry reg + api-verified bank txn for
+  -- the re-entrant. The shared helper finds no table with free capacity → no_table_available → settle maps it
+  -- to flagged_seating_failed; confirm_reentry returns BEFORE flipping the reg, so it remains 'pending'.
+  INSERT INTO public.tournaments (id, club_id, name, status, starting_stack, buy_in, start_time, current_level, late_reg_close_level) VALUES
+    ('re500000-0000-0000-0000-00000000000b', v_club, '[RESBX] full', 'active', 10000, 100000, now()+interval '1 day', 1, 6);
+  INSERT INTO public.game_tables (id, club_id, table_name) VALUES
+    ('re500000-0000-0000-0000-0000000000ab', v_club, '[RESBX] gtb');
+  INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, max_seats, status) VALUES
+    ('re500000-0000-0000-0000-0000000000cb','re500000-0000-0000-0000-00000000000b','re500000-0000-0000-0000-0000000000ab',1,1,'active');
+  INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack) VALUES
+    ('re500000-0000-0000-0000-0000000000eb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000b',1,'seated',10000),  -- filler, occupies the only seat
+    ('re500000-0000-0000-0000-0000000000ea','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000a',1,'busted',0);     -- re-entrant's busted source
+  -- filler seat: table_id = tournament_tables.id (cb) so the helper's capacity count sees it (matches the
+  -- production seat-draw contract; NOT game_tables.id)
+  INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, status, entry_id) VALUES
+    ('re500000-0000-0000-0000-0000000000fb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000b',1,'re500000-0000-0000-0000-0000000000cb',1,10000,true,'active','re500000-0000-0000-0000-0000000000eb');
+  INSERT INTO public.tournament_registrations (id, tournament_id, player_id, club_id, buy_in, total_pay, reference_code, status, source_entry_id) VALUES
+    ('re500000-0000-0000-0000-0000000000rb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000a', v_club,100000,100000,'REENTRY-RE00000B','pending','re500000-0000-0000-0000-0000000000ea');
+  INSERT INTO public.bank_transactions (id, provider, provider_txn_id, account_number, amount, transfer_type, content, status, api_verified_at) VALUES
+    ('re100000-0000-0000-0000-00000000000b','sepay','RE-0B','RESBX-ACCT',100000,'in','re REENTRY-RE00000B','unmatched', now());
+  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-00000000000b', true);
+  SELECT status INTO v_st FROM public.tournament_registrations WHERE id='re500000-0000-0000-0000-0000000000rb';
+  INSERT INTO _re_results VALUES (9, 'table full → flagged_seating_failed, reg stays pending',
+    'flagged_seating_failed reg=pending', format('%s reg=%s', v_ret->>'outcome', v_st));
+
   PERFORM set_config('request.jwt.claims', '', true);
 END $$;
 
@@ -136,7 +185,15 @@ SELECT case_no, scenario, expected, actual,
     WHEN case_no IN (1,7) AND actual = 'auto_confirmed + seats=1' THEN 'PASS'
     WHEN case_no = 5 AND actual = 'flagged_amount_mismatch' THEN 'PASS'
     WHEN case_no = 6 AND actual = 'seats=1 autoconf=1 bt2=flagged_not_pending' THEN 'PASS'
-    WHEN case_no IN (2,3,4) AND actual LIKE 'flagged_%' THEN 'PASS'
+    -- P1-4 (STAGE C review): assert the SPECIFIC reason, not just any flag. A flag raised for an unrelated
+    -- cause (parser miss → flagged_no_match, etc.) must NOT pass these — the reason proves the guard fired.
+    WHEN case_no = 2 AND actual LIKE 'flagged_%' AND actual LIKE '%entry_not_reenterable%' THEN 'PASS'
+    WHEN case_no = 3 AND actual LIKE 'flagged_%' AND actual LIKE '%player_already_active%' THEN 'PASS'
+    WHEN case_no = 4 AND actual LIKE 'flagged_%' AND actual LIKE '%reentry_window_closed%' THEN 'PASS'
+    -- P1-5 (STAGE C review): confirm idempotency (no double-seat on re-run) + table-full seating-failed
+    -- (money recoverable, reg stays pending).
+    WHEN case_no = 8 AND actual = 'idempotent=true same_entry=t seats=1' THEN 'PASS'
+    WHEN case_no = 9 AND actual = 'flagged_seating_failed reg=pending' THEN 'PASS'
     ELSE 'FAIL'
   END AS verdict
 FROM _re_results ORDER BY case_no;
