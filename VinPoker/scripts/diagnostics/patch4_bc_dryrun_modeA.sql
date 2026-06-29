@@ -788,14 +788,14 @@ BEGIN
 
   -- seatable tournament (window OPEN: current_level 1 <= late_reg_close_level 6) + a closed-window one
   INSERT INTO public.tournaments (id, club_id, name, status, starting_stack, buy_in, start_time, current_level, late_reg_close_level) VALUES
-    ('re500000-0000-0000-0000-000000000001', v_club, '[RESBX] open',   'active', 10000, 100000, now()+interval '1 day', 1, 6),
-    ('re500000-0000-0000-0000-000000000009', v_club, '[RESBX] closed', 'active', 10000, 100000, now()+interval '1 day', 7, 6);
+    ('ae500000-0000-0000-0000-000000000001', v_club, '[RESBX] open',   'active', 10000, 100000, now()+interval '1 day', 1, 6),
+    ('ae500000-0000-0000-0000-000000000009', v_club, '[RESBX] closed', 'active', 10000, 100000, now()+interval '1 day', 7, 6);
   INSERT INTO public.game_tables (id, club_id, table_name) VALUES
-    ('re500000-0000-0000-0000-0000000000a1', v_club, '[RESBX] gt1'),
-    ('re500000-0000-0000-0000-0000000000a9', v_club, '[RESBX] gt9');
+    ('ae500000-0000-0000-0000-0000000000a1', v_club, '[RESBX] gt1'),
+    ('ae500000-0000-0000-0000-0000000000a9', v_club, '[RESBX] gt9');
   INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, max_seats, status) VALUES
-    ('re500000-0000-0000-0000-0000000000c1','re500000-0000-0000-0000-000000000001','re500000-0000-0000-0000-0000000000a1',1,9,'active'),
-    ('re500000-0000-0000-0000-0000000000c9','re500000-0000-0000-0000-000000000009','re500000-0000-0000-0000-0000000000a9',1,9,'active');
+    ('ae500000-0000-0000-0000-0000000000c1','ae500000-0000-0000-0000-000000000001','ae500000-0000-0000-0000-0000000000a1',1,9,'active'),
+    ('ae500000-0000-0000-0000-0000000000c9','ae500000-0000-0000-0000-000000000009','ae500000-0000-0000-0000-0000000000a9',1,9,'active');
   INSERT INTO public.platform_bank_accounts (bank_name, account_number, account_holder, account_type, is_active, club_id) VALUES
     ('[RESBX] bank','RESBX-ACCT','[RESBX] holder','escrow', true, v_club);
 
@@ -803,81 +803,81 @@ BEGIN
   -- (source_entry_id set), and an api-verified REENTRY bank txn. Tournament = open unless noted.
   -- entries (busted source) for cases 1,2(seated),3,4,6 ; case 7 uses an INITIAL pending reg (no source).
   INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack) VALUES
-    ('re500000-0000-0000-0000-0000000000e1','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000001',1,'busted',0),
-    ('re500000-0000-0000-0000-0000000000e2','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000002',1,'seated',10000),  -- NOT busted
-    ('re500000-0000-0000-0000-0000000000e3','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000003',1,'busted',0),
-    ('re500000-0000-0000-0000-0000000000e4','re500000-0000-0000-0000-000000000009','re600000-0000-0000-0000-000000000004',1,'busted',0),  -- closed tour
-    ('re500000-0000-0000-0000-0000000000e6','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000006',1,'busted',0);
+    ('ae500000-0000-0000-0000-0000000000e1','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000001',1,'busted',0),
+    ('ae500000-0000-0000-0000-0000000000e2','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000002',1,'seated',10000),  -- NOT busted
+    ('ae500000-0000-0000-0000-0000000000e3','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000003',1,'busted',0),
+    ('ae500000-0000-0000-0000-0000000000e4','ae500000-0000-0000-0000-000000000009','ae600000-0000-0000-0000-000000000004',1,'busted',0),  -- closed tour
+    ('ae500000-0000-0000-0000-0000000000e6','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000006',1,'busted',0);
   -- case 3: player 3 ALSO holds an ACTIVE seat (contradiction we force to test the 8b guard)
   INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, status, entry_id) VALUES
-    ('re500000-0000-0000-0000-0000000000f3','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000003',1,'re500000-0000-0000-0000-0000000000a1',8,10000,true,'active','re500000-0000-0000-0000-0000000000e3');
+    ('ae500000-0000-0000-0000-0000000000f3','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000003',1,'ae500000-0000-0000-0000-0000000000c1',8,10000,true,'active','ae500000-0000-0000-0000-0000000000e3');
 
   -- pending re-entry regs (source_entry_id set) + an INITIAL pending reg for case 7
   INSERT INTO public.tournament_registrations (id, tournament_id, player_id, club_id, buy_in, total_pay, reference_code, status, source_entry_id) VALUES
-    ('re500000-0000-0000-0000-0000000000r1','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000001', v_club,100000,100000,'REENTRY-RE000001','pending','re500000-0000-0000-0000-0000000000e1'),
-    ('re500000-0000-0000-0000-0000000000r2','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000002', v_club,100000,100000,'REENTRY-RE000002','pending','re500000-0000-0000-0000-0000000000e2'),
-    ('re500000-0000-0000-0000-0000000000r3','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000003', v_club,100000,100000,'REENTRY-RE000003','pending','re500000-0000-0000-0000-0000000000e3'),
-    ('re500000-0000-0000-0000-0000000000r4','re500000-0000-0000-0000-000000000009','re600000-0000-0000-0000-000000000004', v_club,100000,100000,'REENTRY-RE000004','pending','re500000-0000-0000-0000-0000000000e4'),
-    ('re500000-0000-0000-0000-0000000000r6','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000006', v_club,100000,100000,'REENTRY-RE000006','pending','re500000-0000-0000-0000-0000000000e6'),
-    ('re500000-0000-0000-0000-0000000000r7','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000007', v_club,100000,100000,'VINRegRE000007','pending',NULL);  -- INITIAL (regression)
+    ('ae500000-0000-0000-0000-0000000000b1','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000001', v_club,100000,100000,'REENTRY-RE000001','pending','ae500000-0000-0000-0000-0000000000e1'),
+    ('ae500000-0000-0000-0000-0000000000b2','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000002', v_club,100000,100000,'REENTRY-RE000002','pending','ae500000-0000-0000-0000-0000000000e2'),
+    ('ae500000-0000-0000-0000-0000000000b3','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000003', v_club,100000,100000,'REENTRY-RE000003','pending','ae500000-0000-0000-0000-0000000000e3'),
+    ('ae500000-0000-0000-0000-0000000000b4','ae500000-0000-0000-0000-000000000009','ae600000-0000-0000-0000-000000000004', v_club,100000,100000,'REENTRY-RE000004','pending','ae500000-0000-0000-0000-0000000000e4'),
+    ('ae500000-0000-0000-0000-0000000000b6','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000006', v_club,100000,100000,'REENTRY-RE000006','pending','ae500000-0000-0000-0000-0000000000e6'),
+    ('ae500000-0000-0000-0000-0000000000b7','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000007', v_club,100000,100000,'VINRegRE000007','pending',NULL);  -- INITIAL (regression)
 
   INSERT INTO public.bank_transactions (id, provider, provider_txn_id, account_number, amount, transfer_type, content, status, api_verified_at) VALUES
-    ('re100000-0000-0000-0000-000000000001','sepay','RE-01','RESBX-ACCT',100000,'in','re REENTRY-RE000001','unmatched', now()),
-    ('re100000-0000-0000-0000-000000000002','sepay','RE-02','RESBX-ACCT',100000,'in','re REENTRY-RE000002','unmatched', now()),
-    ('re100000-0000-0000-0000-000000000003','sepay','RE-03','RESBX-ACCT',100000,'in','re REENTRY-RE000003','unmatched', now()),
-    ('re100000-0000-0000-0000-000000000004','sepay','RE-04','RESBX-ACCT',100000,'in','re REENTRY-RE000004','unmatched', now()),
-    ('re100000-0000-0000-0000-000000000005','sepay','RE-05','RESBX-ACCT',555000,'in','re REENTRY-RE000001','unmatched', now()),  -- amount != total_pay; reg already used by case 1? no — see case 5 note
-    ('re100000-0000-0000-0000-0000000000d2','sepay','RE-06b','RESBX-ACCT',100000,'in','re REENTRY-RE000006','unmatched', now()),  -- double-pay bt #2 for reg r6
-    ('re100000-0000-0000-0000-000000000006','sepay','RE-06','RESBX-ACCT',100000,'in','re REENTRY-RE000006','unmatched', now()),  -- double-pay bt #1 for reg r6
-    ('re100000-0000-0000-0000-000000000007','sepay','RE-07','RESBX-ACCT',100000,'in','re VINRegRE000007','unmatched', now());
+    ('ae100000-0000-0000-0000-000000000001','sepay','RE-01','RESBX-ACCT',100000,'in','re REENTRY-RE000001','unmatched', now()),
+    ('ae100000-0000-0000-0000-000000000002','sepay','RE-02','RESBX-ACCT',100000,'in','re REENTRY-RE000002','unmatched', now()),
+    ('ae100000-0000-0000-0000-000000000003','sepay','RE-03','RESBX-ACCT',100000,'in','re REENTRY-RE000003','unmatched', now()),
+    ('ae100000-0000-0000-0000-000000000004','sepay','RE-04','RESBX-ACCT',100000,'in','re REENTRY-RE000004','unmatched', now()),
+    ('ae100000-0000-0000-0000-000000000005','sepay','RE-05','RESBX-ACCT',555000,'in','re REENTRY-RE000001','unmatched', now()),  -- amount != total_pay; reg already used by case 1? no — see case 5 note
+    ('ae100000-0000-0000-0000-0000000000d2','sepay','RE-06b','RESBX-ACCT',100000,'in','re REENTRY-RE000006','unmatched', now()),  -- double-pay bt #2 for reg r6
+    ('ae100000-0000-0000-0000-000000000006','sepay','RE-06','RESBX-ACCT',100000,'in','re REENTRY-RE000006','unmatched', now()),  -- double-pay bt #1 for reg r6
+    ('ae100000-0000-0000-0000-000000000007','sepay','RE-07','RESBX-ACCT',100000,'in','re VINRegRE000007','unmatched', now());
 
   -- ════════ HEADLESS: auth.uid() = NULL (service-role cron) ════════
   PERFORM set_config('request.jwt.claims', '', true);
 
   -- CASE 1 — re-entry pending + exact pay → auto_confirmed + seated + entry_no incremented + confirmed_by=bot
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000001', true);
-  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='re600000-0000-0000-0000-000000000001' AND is_active=true;
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000001', true);
+  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='ae600000-0000-0000-0000-000000000001' AND is_active=true;
   INSERT INTO _re_results VALUES (1, 're-entry exact pay → auto_confirmed + 1 active seat',
     'auto_confirmed + seats=1', format('%s + seats=%s', v_ret->>'outcome', v_seats));
 
   -- CASE 2 — source entry NOT busted (seated) → flag, no seat
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000002', true);
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000002', true);
   INSERT INTO _re_results VALUES (2, 'source entry not busted → flag',
-    'flagged_* (entry_not_reenterable)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='re100000-0000-0000-0000-000000000002')));
+    'flagged_* (entry_not_reenterable)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='ae100000-0000-0000-0000-000000000002')));
 
   -- CASE 3 — player already holds an active seat → flag (player_already_active)
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000003', true);
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000003', true);
   INSERT INTO _re_results VALUES (3, 'active seat exists → flag',
-    'flagged_* (player_already_active)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='re100000-0000-0000-0000-000000000003')));
+    'flagged_* (player_already_active)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='ae100000-0000-0000-0000-000000000003')));
 
   -- CASE 4 — late-reg window closed (current_level 7 > late_reg_close_level 6) → flag
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000004', true);
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000004', true);
   INSERT INTO _re_results VALUES (4, 'window closed → flag',
-    'flagged_* (reentry_window_closed)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='re100000-0000-0000-0000-000000000004')));
+    'flagged_* (reentry_window_closed)', format('%s / %s', v_ret->>'outcome', (SELECT reason FROM public.payment_settlements WHERE bank_transaction_id='ae100000-0000-0000-0000-000000000004')));
 
   -- CASE 5 — amount mismatch (555000 != 100000) → flagged_amount_mismatch (settle gate, before confirm)
   -- NB: bt RE-05 carries REENTRY-RE000001, whose reg r1 is now 'confirmed' (case 1) → settle flags as
   -- not_pending BEFORE the amount check. To test amount-mismatch cleanly we use a fresh pending reg:
   INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack) VALUES
-    ('re500000-0000-0000-0000-0000000000e5','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000005',1,'busted',0);
+    ('ae500000-0000-0000-0000-0000000000e5','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000005',1,'busted',0);
   INSERT INTO public.tournament_registrations (id, tournament_id, player_id, club_id, buy_in, total_pay, reference_code, status, source_entry_id) VALUES
-    ('re500000-0000-0000-0000-0000000000r5','re500000-0000-0000-0000-000000000001','re600000-0000-0000-0000-000000000005', v_club,100000,100000,'REENTRY-RE000005','pending','re500000-0000-0000-0000-0000000000e5');
-  UPDATE public.bank_transactions SET content='re REENTRY-RE000005' WHERE id='re100000-0000-0000-0000-000000000005';
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000005', true);
+    ('ae500000-0000-0000-0000-0000000000b5','ae500000-0000-0000-0000-000000000001','ae600000-0000-0000-0000-000000000005', v_club,100000,100000,'REENTRY-RE000005','pending','ae500000-0000-0000-0000-0000000000e5');
+  UPDATE public.bank_transactions SET content='re REENTRY-RE000005' WHERE id='ae100000-0000-0000-0000-000000000005';
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000005', true);
   INSERT INTO _re_results VALUES (5, 'amount mismatch → flag', 'flagged_amount_mismatch', v_ret->>'outcome');
 
   -- CASE 6 — DOUBLE-PAY same reg (two bt, same REENTRY code): exactly 1 seat + 1 auto_confirmed; 2nd → flag.
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000006', true);  -- bt #1 → auto_confirmed
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-0000000000d2', true);  -- bt #2 → flag (reg confirmed)
-  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='re600000-0000-0000-0000-000000000006' AND is_active=true;
-  SELECT count(*) INTO v_autoconf FROM public.payment_settlements WHERE tournament_registration_id='re500000-0000-0000-0000-0000000000r6' AND outcome='auto_confirmed';
-  SELECT outcome INTO v_st FROM public.payment_settlements WHERE bank_transaction_id='re100000-0000-0000-0000-0000000000d2';
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000006', true);  -- bt #1 → auto_confirmed
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-0000000000d2', true);  -- bt #2 → flag (reg confirmed)
+  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='ae600000-0000-0000-0000-000000000006' AND is_active=true;
+  SELECT count(*) INTO v_autoconf FROM public.payment_settlements WHERE tournament_registration_id='ae500000-0000-0000-0000-0000000000b6' AND outcome='auto_confirmed';
+  SELECT outcome INTO v_st FROM public.payment_settlements WHERE bank_transaction_id='ae100000-0000-0000-0000-0000000000d2';
   INSERT INTO _re_results VALUES (6, 'double-pay → 1 seat + 1 auto_confirmed + 2nd flagged',
     'seats=1 autoconf=1 bt2=flagged_not_pending', format('seats=%s autoconf=%s bt2=%s', v_seats, v_autoconf, v_st));
 
   -- CASE 7 — INITIAL path regression: source_entry_id NULL → confirm_registration_and_assign_seat (UNCHANGED)
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-000000000007', true);
-  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='re600000-0000-0000-0000-000000000007' AND is_active=true;
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-000000000007', true);
+  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='ae600000-0000-0000-0000-000000000007' AND is_active=true;
   INSERT INTO _re_results VALUES (7, 'INITIAL path still auto_confirms (regression)',
     'auto_confirmed + seats=1', format('%s + seats=%s', v_ret->>'outcome', v_seats));
 
@@ -886,11 +886,11 @@ BEGIN
   -- the active-seat count stays exactly 1 (no double-seat on a confirm re-run). Impersonate the bot because
   -- guard 2.4 requires p_actor = auth.uid(); restore the headless empty claim right after.
   SELECT id INTO v_e1 FROM public.tournament_entries
-    WHERE registration_id='re500000-0000-0000-0000-0000000000r1' ORDER BY created_at ASC LIMIT 1;
+    WHERE registration_id='ae500000-0000-0000-0000-0000000000b1' ORDER BY created_at ASC LIMIT 1;
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_bot::text)::text, true);
-  v_ret := public.confirm_reentry_and_assign_seat('re500000-0000-0000-0000-0000000000r1', v_bot, 'random_balanced');
+  v_ret := public.confirm_reentry_and_assign_seat('ae500000-0000-0000-0000-0000000000b1', v_bot, 'random_balanced');
   PERFORM set_config('request.jwt.claims', '', true);
-  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='re600000-0000-0000-0000-000000000001' AND is_active=true;
+  SELECT count(*) INTO v_seats FROM public.tournament_seats WHERE player_id='ae600000-0000-0000-0000-000000000001' AND is_active=true;
   INSERT INTO _re_results VALUES (8, 'confirm idempotency → idempotent, same entry, seats stay 1',
     'idempotent=true same_entry=t seats=1',
     format('idempotent=%s same_entry=%s seats=%s',
@@ -902,24 +902,24 @@ BEGIN
   -- the re-entrant. The shared helper finds no table with free capacity → no_table_available → settle maps it
   -- to flagged_seating_failed; confirm_reentry returns BEFORE flipping the reg, so it remains 'pending'.
   INSERT INTO public.tournaments (id, club_id, name, status, starting_stack, buy_in, start_time, current_level, late_reg_close_level) VALUES
-    ('re500000-0000-0000-0000-00000000000b', v_club, '[RESBX] full', 'active', 10000, 100000, now()+interval '1 day', 1, 6);
+    ('ae500000-0000-0000-0000-00000000000b', v_club, '[RESBX] full', 'active', 10000, 100000, now()+interval '1 day', 1, 6);
   INSERT INTO public.game_tables (id, club_id, table_name) VALUES
-    ('re500000-0000-0000-0000-0000000000ab', v_club, '[RESBX] gtb');
+    ('ae500000-0000-0000-0000-0000000000ab', v_club, '[RESBX] gtb');
   INSERT INTO public.tournament_tables (id, tournament_id, table_id, table_number, max_seats, status) VALUES
-    ('re500000-0000-0000-0000-0000000000cb','re500000-0000-0000-0000-00000000000b','re500000-0000-0000-0000-0000000000ab',1,1,'active');
+    ('ae500000-0000-0000-0000-0000000000cb','ae500000-0000-0000-0000-00000000000b','ae500000-0000-0000-0000-0000000000ab',1,1,'active');
   INSERT INTO public.tournament_entries (id, tournament_id, player_id, entry_no, status, current_stack) VALUES
-    ('re500000-0000-0000-0000-0000000000eb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000b',1,'seated',10000),  -- filler, occupies the only seat
-    ('re500000-0000-0000-0000-0000000000ea','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000a',1,'busted',0);     -- re-entrant's busted source
+    ('ae500000-0000-0000-0000-0000000000eb','ae500000-0000-0000-0000-00000000000b','ae600000-0000-0000-0000-00000000000b',1,'seated',10000),  -- filler, occupies the only seat
+    ('ae500000-0000-0000-0000-0000000000ea','ae500000-0000-0000-0000-00000000000b','ae600000-0000-0000-0000-00000000000a',1,'busted',0);     -- re-entrant's busted source
   -- filler seat: table_id = tournament_tables.id (cb) so the helper's capacity count sees it (matches the
   -- production seat-draw contract; NOT game_tables.id)
   INSERT INTO public.tournament_seats (id, tournament_id, player_id, entry_number, table_id, seat_number, chip_count, is_active, status, entry_id) VALUES
-    ('re500000-0000-0000-0000-0000000000fb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000b',1,'re500000-0000-0000-0000-0000000000cb',1,10000,true,'active','re500000-0000-0000-0000-0000000000eb');
+    ('ae500000-0000-0000-0000-0000000000fb','ae500000-0000-0000-0000-00000000000b','ae600000-0000-0000-0000-00000000000b',1,'ae500000-0000-0000-0000-0000000000cb',1,10000,true,'active','ae500000-0000-0000-0000-0000000000eb');
   INSERT INTO public.tournament_registrations (id, tournament_id, player_id, club_id, buy_in, total_pay, reference_code, status, source_entry_id) VALUES
-    ('re500000-0000-0000-0000-0000000000rb','re500000-0000-0000-0000-00000000000b','re600000-0000-0000-0000-00000000000a', v_club,100000,100000,'REENTRY-RE00000B','pending','re500000-0000-0000-0000-0000000000ea');
+    ('ae500000-0000-0000-0000-0000000000bb','ae500000-0000-0000-0000-00000000000b','ae600000-0000-0000-0000-00000000000a', v_club,100000,100000,'REENTRY-RE00000B','pending','ae500000-0000-0000-0000-0000000000ea');
   INSERT INTO public.bank_transactions (id, provider, provider_txn_id, account_number, amount, transfer_type, content, status, api_verified_at) VALUES
-    ('re100000-0000-0000-0000-00000000000b','sepay','RE-0B','RESBX-ACCT',100000,'in','re REENTRY-RE00000B','unmatched', now());
-  v_ret := public.settle_bank_transaction('re100000-0000-0000-0000-00000000000b', true);
-  SELECT status INTO v_st FROM public.tournament_registrations WHERE id='re500000-0000-0000-0000-0000000000rb';
+    ('ae100000-0000-0000-0000-00000000000b','sepay','RE-0B','RESBX-ACCT',100000,'in','re REENTRY-RE00000B','unmatched', now());
+  v_ret := public.settle_bank_transaction('ae100000-0000-0000-0000-00000000000b', true);
+  SELECT status INTO v_st FROM public.tournament_registrations WHERE id='ae500000-0000-0000-0000-0000000000bb';
   INSERT INTO _re_results VALUES (9, 'table full → flagged_seating_failed, reg stays pending',
     'flagged_seating_failed reg=pending', format('%s reg=%s', v_ret->>'outcome', v_st));
 
@@ -969,15 +969,15 @@ UNION ALL SELECT 5, 'uniq_treg_active restored / re-entry uniques gone',
      AND NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='uniq_treg_pending_reentry_per_entry')
      THEN 'PASS (restored)' ELSE 'FAIL' END
 UNION ALL SELECT 6, 'no synthetic [RESBX] tournaments remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.tournaments WHERE id::text LIKE 're500000-%') THEN 'PASS (none)' ELSE 'FAIL' END
+   CASE WHEN NOT EXISTS (SELECT 1 FROM public.tournaments WHERE id::text LIKE 'ae500000-%') THEN 'PASS (none)' ELSE 'FAIL' END
 UNION ALL SELECT 7, 'no synthetic re-entry/initial registrations remain',
    CASE WHEN NOT EXISTS (SELECT 1 FROM public.tournament_registrations
-     WHERE id::text LIKE 're500000-%' OR reference_code LIKE 'REENTRY-RE0%' OR reference_code='VINRegRE000007')
+     WHERE id::text LIKE 'ae500000-%' OR reference_code LIKE 'REENTRY-RE0%' OR reference_code='VINRegRE000007')
      THEN 'PASS (none)' ELSE 'FAIL' END
 UNION ALL SELECT 8, 'no synthetic bank_transactions remain',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.bank_transactions WHERE id::text LIKE 're100000-%') THEN 'PASS (none)' ELSE 'FAIL' END
+   CASE WHEN NOT EXISTS (SELECT 1 FROM public.bank_transactions WHERE id::text LIKE 'ae100000-%') THEN 'PASS (none)' ELSE 'FAIL' END
 UNION ALL SELECT 9, 'no payment_settlements residue',
-   CASE WHEN NOT EXISTS (SELECT 1 FROM public.payment_settlements WHERE bank_transaction_id::text LIKE 're100000-%')
+   CASE WHEN NOT EXISTS (SELECT 1 FROM public.payment_settlements WHERE bank_transaction_id::text LIKE 'ae100000-%')
      THEN 'PASS (none)' ELSE 'FAIL' END
 UNION ALL SELECT 10, 'no synthetic [RESBX] platform_bank_accounts remain',
    CASE WHEN NOT EXISTS (SELECT 1 FROM public.platform_bank_accounts WHERE account_number='RESBX-ACCT') THEN 'PASS (none)' ELSE 'FAIL' END
