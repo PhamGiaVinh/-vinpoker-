@@ -16,6 +16,7 @@ import { IngredientManager } from "@/components/fnb/admin/IngredientManager";
 import { RecipeEditor } from "@/components/fnb/admin/RecipeEditor";
 import { StockInForm } from "@/components/fnb/admin/StockInForm";
 import { StocktakeBoard } from "@/components/fnb/admin/StocktakeBoard";
+import { FnbStaffManager } from "@/components/fnb/admin/FnbStaffManager";
 
 /**
  * F&B admin (/fnb/admin) — owner-only menu/inventory/settings management. Gate: FEATURES.fnbModule.
@@ -102,6 +103,7 @@ function FnbAdminInner() {
           {FEATURES.fnbInventory && <TabsTrigger value="recipe">Công thức</TabsTrigger>}
           {FEATURES.fnbInventory && <TabsTrigger value="stockin">Nhập kho</TabsTrigger>}
           {FEATURES.fnbInventory && <TabsTrigger value="stocktake">Kiểm kho</TabsTrigger>}
+          <TabsTrigger value="staff">Nhân sự</TabsTrigger>
           <TabsTrigger value="settings">Cài đặt</TabsTrigger>
         </TabsList>
         <TabsContent value="menu" className="mt-4">
@@ -122,6 +124,9 @@ function FnbAdminInner() {
         {FEATURES.fnbInventory && (
           <TabsContent value="stocktake" className="mt-4"><StocktakeBoard clubId={activeClub} /></TabsContent>
         )}
+        <TabsContent value="staff" className="mt-4">
+          <FnbStaffManager clubId={activeClub} />
+        </TabsContent>
         <TabsContent value="settings" className="mt-4">
           <FnbSettingsPanel clubId={activeClub} />
         </TabsContent>
