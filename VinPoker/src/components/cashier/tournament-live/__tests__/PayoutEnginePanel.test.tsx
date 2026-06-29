@@ -151,3 +151,40 @@ describe("PayoutEnginePanel — backend error codes surface as friendly messages
     await waitFor(() => expect((toast.error as any).mock.calls.some((c: any[]) => /SUM_MISMATCH/.test(c[0]))).toBe(true));
   });
 });
+
+describe("PayoutEnginePanel — multi-day is blocked in the UI", () => {
+  it("event-linked tournament disables preview + official and shows a warning", async () => {
+    h.tour.event_id = "ev-1";
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    expect(screen.getByText(/Giải nhiều ngày/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Xem trước/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Đóng đăng ký & tạo payout/ })).toBeDisabled();
+  });
+});
+
+describe("PayoutEnginePanel — manual edit blocks a sum that ≠ the locked pool", () => {
+  it("save stays disabled when Σ ≠ locked pool even with a reason", async () => {
+    officialState();
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/PAYOUT CHÍNH THỨC/);
+    fireEvent.click(screen.getByRole("button", { name: /Chỉnh tay/ }));
+    // break the sum: rank 1 7.6M → 9.6M (Σ = 12M ≠ locked 10M)
+    const editInput = screen.getAllByRole("spinbutton").find((el) => (el as HTMLInputElement).value === "7600000");
+    fireEvent.change(editInput!, { target: { value: "9600000" } });
+    fireEvent.change(screen.getByPlaceholderText(/Lý do chỉnh tay/), { target: { value: "có lý do nhưng tổng sai" } });
+    // reason is present but Σ (12M) ≠ locked pool (10M) → save must stay disabled
+    expect(screen.getByRole("button", { name: /Lưu chỉnh tay/ })).toBeDisabled();
+  });
+});
+
+describe("PayoutEnginePanel — official does not auto-run from preview", () => {
+  it("running preview never triggers prepare or official compute", async () => {
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    fireEvent.click(screen.getByText(/Xem trước/));
+    await waitFor(() => expect(h.invoke).toHaveBeenCalled());
+    expect(h.rpc.mock.calls.some((c) => c[0] === "prepare_payout_snapshot")).toBe(false);
+    expect(h.invoke.mock.calls.some((c) => c[1]?.body?.mode === "official")).toBe(false);
+  });
+});
