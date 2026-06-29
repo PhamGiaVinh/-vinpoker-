@@ -28,6 +28,15 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return j({ error: "Missing auth" }, 401);
 
+    // SERVER-SIDE KILL-SWITCH (default OFF). The endpoint is disabled until REENTRY_ENABLED='true' is set in
+    // this function's env. Returns a safe error BEFORE getUser / body-parse / any DB write or QR payload — so a
+    // direct authenticated API call cannot create a re-entry registration while the feature is dark.
+    // (dynamicReentry only hides the UI button; this gate disables the endpoint itself.) Flip on for the
+    // Stage-D smoke; remove/keep per launch. Unauthorized requests still hit the 401 above first.
+    if ((Deno.env.get("REENTRY_ENABLED") ?? "").trim().toLowerCase() !== "true") {
+      return j({ error: "REENTRY_DISABLED" }, 403);
+    }
+
     const userClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
