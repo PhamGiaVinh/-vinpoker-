@@ -35,6 +35,8 @@ const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
 const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
 // Marketing module (/marketing) — page self-gates on FEATURES.marketingModule + role.
 const Marketing = lazy(() => import("./pages/Marketing"));
+// F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
+const FnbDemo = lazy(() => import("./pages/FnbDemo"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
 const DealerControlBoard = lazy(() => import("./pages/DealerControlBoard"));
@@ -221,6 +223,8 @@ const App = () => (
                 <Route path="/chip-ops" element={<ChipOpsInventory />} />
                 {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role. */}
                 <Route path="/marketing" element={<Marketing />} />
+                {/* F&B public DEMO — static showcase, keeps Layout chrome. Self-gates on FEATURES.fnbDemo. */}
+                <Route path="/fnb/demo" element={<FnbDemo />} />
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />

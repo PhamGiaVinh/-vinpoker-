@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -223,7 +223,7 @@ export const Layout = () => {
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier + dealer).
                 Each destination guards itself; this is a UI entry only. A pure dealer
                 (no operator role) sees this menu with ONLY the Dealer App item. */}
-            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing)) && (
+            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing) || (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -284,6 +284,13 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/marketing")} className="gap-2.5 cursor-pointer">
                       <Megaphone className="w-4 h-4" />
                       {t("marketing.navTitle")}
+                    </DropdownMenuItem>
+                  )}
+                  {/* F&B public DEMO — static showcase (no RPC); visible to owners/admins. */}
+                  {FEATURES.fnbDemo && (isClubOwner || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/fnb/demo")} className="gap-2.5 cursor-pointer">
+                      <UtensilsCrossed className="w-4 h-4" />
+                      F&amp;B (Xem thử)
                     </DropdownMenuItem>
                   )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
