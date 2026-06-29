@@ -590,4 +590,40 @@ export const FEATURES = {
    * ever written by the close-registration snapshot→apply flow — never recomputed live.
    */
   payoutEngine: false,
+  /**
+   * Per-club allowlist for the Engine-3-neo payout panel (STAGED ROLLOUT). Only consulted
+   * when `payoutEngine` is true. Add a club's UUID here to enable the new PayoutEnginePanel
+   * for THAT club only — every other club keeps the old PrizeStructurePanel. Empty = no club
+   * (safe default). Resolved by `isPayoutEngineEnabledForClub` below.
+   */
+  payoutEngineClubs: [] as string[],
+  /**
+   * Wide-rollout switch for the payout panel: when true (and `payoutEngine` is true) EVERY
+   * club gets the engine panel without listing each id. Keep false during staged rollout.
+   */
+  payoutEngineAllClubs: false,
 } as const;
+
+/**
+ * Per-club gate for the Engine-3-neo PayoutEnginePanel. `FEATURES.payoutEngine` stays the
+ * GLOBAL master switch; this narrows it per club so the new panel can go live for ONE club
+ * first while every other club keeps the old PrizeStructurePanel. Resolution order:
+ *   1. master `payoutEngine` off → never on (whatever the allowlist says);
+ *   2. `payoutEngineAllClubs` true → every club (wide rollout);
+ *   3. otherwise → only club ids present in `payoutEngineClubs`.
+ * No clubId (or not allow-listed) → false → caller renders the old manual panel. The
+ * `features` arg is injectable for tests; production callers pass just the clubId.
+ */
+export function isPayoutEngineEnabledForClub(
+  clubId?: string | null,
+  features: {
+    payoutEngine: boolean;
+    payoutEngineAllClubs: boolean;
+    payoutEngineClubs: readonly string[];
+  } = FEATURES,
+): boolean {
+  if (!features.payoutEngine) return false;
+  if (features.payoutEngineAllClubs) return true;
+  if (!clubId) return false;
+  return features.payoutEngineClubs.includes(clubId);
+}
