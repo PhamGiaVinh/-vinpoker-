@@ -614,6 +614,14 @@ export const FEATURES = {
    * and the backend CUSTOM path is never invoked.
    */
   payoutCustomMode: false,
+  /**
+   * Banded payout preset `LIVE_STANDARD` (PR-D) — final table (ranks 1–9) per rank, places 10+ grouped
+   * into equal-amount bands. Default **OFF** (kill-switch). Only meaningful where `payoutEngine` is
+   * already enabled for the club. Flip true ONLY after the banded migration (20261124000000) is applied
+   * live and the compute-payouts Edge with the LIVE_STANDARD path is deployed; while false the option is
+   * hidden and the backend never receives a `LIVE_STANDARD` archetype.
+   */
+  payoutBandedMode: false,
 } as const;
 
 /**
