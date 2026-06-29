@@ -60,6 +60,16 @@ export const FEATURES = {
    */
   dynamicVietQr: true,
   /**
+   * Player-facing online RE-ENTRY (PATCH 4): a busted player whom the floor removed can self-buy back in —
+   * tap "Mua lại" → REENTRY dynamic VietQR → pay → SePay full-auto re-seats. Default **OFF**. While false,
+   * TournamentDetail behaves EXACTLY as before (no re-entry queries run, no source_entry_id reference — safe
+   * even before the STAGE-B migration is applied) and the "Mua lại" button is hidden. Flip to true ONLY after
+   * STAGE A/B/C migrations are applied live, the headless tests pass, the tournament-reentry edge fn is
+   * deployed, and the club is opted in (same as the initial full-auto). Kill-switch: set false to hide the
+   * re-entry path instantly.
+   */
+  dynamicReentry: false,
+  /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
