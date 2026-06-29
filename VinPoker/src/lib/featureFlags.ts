@@ -568,7 +568,7 @@ export const FEATURES = {
    */
   fnbModule: true,
   fnbCounter: true,
-  fnbKitchen: false,
+  fnbKitchen: true,
   fnbInventory: true,
   fnbFinance: true,
   /**
