@@ -551,4 +551,14 @@ export const FEATURES = {
    * branch behind its own flags and is unaffected by this demo.
    */
   fnbDemo: true,
+  /**
+   * Payout "Engine 3-neo" — server-authoritative tournament payout curve (auto N / min-cash floor /
+   * smooth top-heavy-or-flat distribution / tiers / exact pool preservation), replacing the
+   * manual-rows Prizes panel. Default **OFF**: the pure-TS engine (`payoutEngine.ts`) + golden tests
+   * ship first with NO behaviour change; the engine only drives UI once the owner-gated backend
+   * (snapshot/apply RPCs + Edge `compute-payouts`) is applied and this flag is flipped after UAT.
+   * While false: the existing manual Prize Structure panel is unchanged. Official payouts are only
+   * ever written by the close-registration snapshot→apply flow — never recomputed live.
+   */
+  payoutEngine: false,
 } as const;
