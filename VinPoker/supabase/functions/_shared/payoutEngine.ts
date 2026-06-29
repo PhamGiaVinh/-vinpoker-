@@ -74,7 +74,7 @@ export interface PayoutResult {
   /** The floor actually used (= input.floor, or = prizePool when POOL_BELOW_MIN_CASH). */
   effectiveFloor: number;
   alpha: number;
-  archetype: PayoutArchetype;
+  archetype: PayoutArchetype | "CUSTOM";
   warnings: PayoutWarning[];
   engineVersion: string;
   alphaVersion: string;
@@ -251,4 +251,92 @@ export function computePayouts(input: PayoutInput): PayoutResult {
 
   const a = roundAndBalance(raw, prizePool, floor, roundingUnit, warnings);
   return finalize(a, prizePool, N, floor, alpha, archetype, warnings);
+}
+
+// ---- CUSTOM mode (native server-authoritative; club-specified basis points) -------------------
+
+export const CUSTOM_ENGINE_VERSION = "custom3neo-v1";
+
+export interface CustomPayoutPercent {
+  position: number;
+  /** Basis points (1/100 of a percent). Σ over all ranks MUST equal 10000 (= 100%). */
+  percentBp: number;
+}
+
+export interface CustomPayoutInput {
+  /** Locked distributable prize pool in VND. */
+  prizePool: number;
+  /** One entry per paid rank, in basis points; Σ = 10000, non-increasing, each > 0. */
+  percents: CustomPayoutPercent[];
+  roundingUnit: number;
+}
+
+/**
+ * Native CUSTOM payout: distribute the (locked) prize pool by club-specified basis points.
+ * Deterministic; throws on invalid input (caught by callers). BYPASSES the min-cash floor
+ * (effectiveFloor = 0) — protection is purely structural: each bp > 0, non-increasing, Σ bp =
+ * 10000, every computed amount > 0, amounts non-increasing, Σ amount = prizePool EXACTLY. The DB
+ * `apply_payout_run` CUSTOM branch re-verifies the amounts; this is the source, not the only guard.
+ * Same rounding discipline as the α engine: ranks 2..K rounded to the unit, rank 1 absorbs the
+ * residual; if rank1 < rank2, re-round 2..K DOWN (ROUNDING_ADJUSTED) so Σ stays exact + ordered.
+ */
+export function computeCustomPayouts(input: CustomPayoutInput): PayoutResult {
+  const { prizePool, roundingUnit } = input;
+  const percents = [...input.percents].sort((a, b) => a.position - b.position);
+  const K = percents.length;
+  const warnings: PayoutWarning[] = [];
+
+  if (K < 1) throw new Error("CUSTOM_EMPTY");
+  if (!Number.isFinite(prizePool) || prizePool <= 0) throw new Error("CUSTOM_BAD_POOL");
+  if (!Number.isFinite(roundingUnit) || roundingUnit <= 0) throw new Error("CUSTOM_BAD_UNIT");
+
+  let bpSum = 0;
+  for (let i = 0; i < K; i++) {
+    const p = percents[i];
+    if (p.position !== i + 1) throw new Error("CUSTOM_RANK_GAP");
+    if (!Number.isInteger(p.percentBp) || p.percentBp <= 0) throw new Error("CUSTOM_BP_NONPOS");
+    if (i > 0 && p.percentBp > percents[i - 1].percentBp) throw new Error("CUSTOM_BP_NOT_DESC");
+    bpSum += p.percentBp;
+  }
+  if (bpSum !== 10000) throw new Error("CUSTOM_BP_SUM");
+
+  const nearest = (x: number) => Math.round(x / roundingUnit) * roundingUnit;
+  const down = (x: number) => Math.floor(x / roundingUnit) * roundingUnit;
+  const rawAt = (i: number) => (prizePool * percents[i].percentBp) / 10000;
+
+  const build = (roundFn: (x: number) => number): number[] => {
+    const a = new Array<number>(K);
+    for (let i = 1; i < K; i++) a[i] = roundFn(rawAt(i)); // ranks 2..K
+    let rest = 0;
+    for (let i = 1; i < K; i++) rest += a[i];
+    a[0] = prizePool - rest; // rank 1 absorbs the residual so Σ = pool exactly
+    return a;
+  };
+
+  let a = build(nearest);
+  if (K >= 2 && a[0] < a[1]) {
+    a = build(down);
+    warnings.push("ROUNDING_ADJUSTED");
+  }
+
+  for (let i = 0; i < K; i++) if (!(a[i] > 0)) throw new Error("CUSTOM_ZERO_AMOUNT");
+  for (let i = 0; i < K - 1; i++) if (a[i] < a[i + 1]) throw new Error("CUSTOM_INVARIANT_MONOTONE");
+  let sum = 0;
+  for (const x of a) sum += x;
+  if (sum !== prizePool) throw new Error("CUSTOM_INVARIANT_SUM");
+
+  const rows = a.map((amt, i) => makeRow(i + 1, amt, prizePool));
+  return {
+    rows,
+    tiers: buildTiers(rows),
+    prizePool,
+    itmPlaces: K,
+    effectiveFloor: 0,
+    alpha: 0,
+    archetype: "CUSTOM",
+    warnings,
+    engineVersion: CUSTOM_ENGINE_VERSION,
+    alphaVersion: ALPHA_VERSION,
+    sumCheck: sum === prizePool,
+  };
 }

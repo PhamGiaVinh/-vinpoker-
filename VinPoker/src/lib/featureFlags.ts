@@ -605,6 +605,15 @@ export const FEATURES = {
    * club gets the engine panel without listing each id. Keep false during staged rollout.
    */
   payoutEngineAllClubs: false,
+  /**
+   * Native CUSTOM payout mode (PR-C) — adds a `CUSTOM — CLB tự cấu hình` style to the payout panel
+   * where the club dictates the exact split as percentages (server stores basis points, Σ=10000).
+   * Default **OFF** (kill-switch). Only meaningful where `payoutEngine` is already enabled for the
+   * club. Flip true ONLY after the CUSTOM migration (20261123000000) is applied live and the
+   * compute-payouts Edge with the CUSTOM path is deployed; while false the CUSTOM option is hidden
+   * and the backend CUSTOM path is never invoked.
+   */
+  payoutCustomMode: false,
 } as const;
 
 /**

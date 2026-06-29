@@ -12,16 +12,17 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw } from "lucide-react";
+import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2 } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
 // (PR-2a RPCs + PR-2b compute-payouts Edge). Forecast preview (no persist) · one-way close-and-
 // generate official · guarded manual edit. Renders ONLY when payoutEngine is ON; otherwise the
 // old PrizeStructurePanel is shown unchanged (see PrizesTab).
 
-type Archetype = "DAILY" | "INTL" | "MULTI" | "TRITON";
-const ARCHE_LABEL: Record<Archetype, string> = { DAILY: "DAILY (top nặng · 2×)", INTL: "INTL (phẳng · 2×)", MULTI: "MULTI (phẳng · 1.5×)", TRITON: "TRITON (tham khảo)" };
-const DEFAULT_MINCASH: Record<Archetype, number> = { DAILY: 2, INTL: 2, MULTI: 1.5, TRITON: 1.6 };
+type Archetype = "DAILY" | "INTL" | "MULTI" | "TRITON" | "CUSTOM";
+const ARCHE_LABEL: Record<Archetype, string> = { DAILY: "DAILY (top nặng · 2×)", INTL: "INTL (phẳng · 2×)", MULTI: "MULTI (phẳng · 1.5×)", TRITON: "TRITON (tham khảo)", CUSTOM: "CUSTOM — CLB tự cấu hình" };
+const DEFAULT_MINCASH: Record<Archetype, number> = { DAILY: 2, INTL: 2, MULTI: 1.5, TRITON: 1.6, CUSTOM: 2 };
 
 interface PayoutRow { position: number; amount: number; percentage: number; }
 interface EngineResult { rows: PayoutRow[]; itmPlaces: number; effectiveFloor: number; prizePool?: number; archetype: Archetype; warnings: string[]; }
@@ -36,6 +37,7 @@ const ERR_VI: Record<string, string> = {
   MANUAL_EDIT_REASON_REQUIRED: "Cần nhập lý do khi chỉnh tay.",
   PRIZE_POOL_OVERRIDE_REASON_REQUIRED: "Cần lý do khi sửa prize pool.",
   MULTIDAY_UNSUPPORTED: "Giải nhiều ngày chưa hỗ trợ payout tự động.",
+  CUSTOM_SCHEMA_NOT_READY: "Chế độ CUSTOM chưa sẵn sàng (DB chưa được cập nhật).",
   NO_PAID_ENTRIES: "Chưa có entry đã trả tiền.",
   NO_APPLIED_RUN: "Chưa có payout chính thức để chỉnh tay.",
   PAYOUT_AMOUNT_EXCEEDS_COLUMN_LIMIT: "Một suất vượt giới hạn lưu trữ (>10 tỉ).",
@@ -71,6 +73,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const [roundingUnit, setRoundingUnit] = useState<number>(100000);
   const [poolOverride, setPoolOverride] = useState<string>(""); // empty = auto
   const [overrideReason, setOverrideReason] = useState<string>("");
+  // CUSTOM mode (gated by FEATURES.payoutCustomMode): club enters its own % per rank.
+  const customMode = FEATURES.payoutCustomMode;
+  const [customRows, setCustomRows] = useState<{ position: number; percent: number }[]>([
+    { position: 1, percent: 50 }, { position: 2, percent: 30 }, { position: 3, percent: 20 },
+  ]);
 
   const [preview, setPreview] = useState<EngineResult | null>(null);
   const [busy, setBusy] = useState<"" | "preview" | "official">("");
@@ -85,6 +92,22 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const hasOfficial = officialRows.length > 0;
   const isMultiDay = !!tour?.event_id;
   const editedManually = appliedRun?.source === "manual_edit";
+  const isCustom = archetype === "CUSTOM";
+
+  const customBp = useCallback(
+    () => customRows.map((r, i) => ({ position: i + 1, percent_bp: Math.round((Number(r.percent) || 0) * 100) })),
+    [customRows],
+  );
+  const customBpTotal = useMemo(() => customBp().reduce((s, r) => s + r.percent_bp, 0), [customBp]);
+  const customValid = useMemo(() => {
+    const bp = customBp();
+    if (bp.length < 1) return false;
+    for (let i = 0; i < bp.length; i++) {
+      if (!(bp[i].percent_bp > 0)) return false;
+      if (i > 0 && bp[i].percent_bp > bp[i - 1].percent_bp) return false;
+    }
+    return customBpTotal === 10000;
+  }, [customBp, customBpTotal]);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(null);
@@ -120,9 +143,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
 
   function reqBody() {
     const body: Record<string, unknown> = {
-      mode: "preview", tournament_id: tournamentId, itm_percent: itmPct / 100, archetype,
+      mode: "preview", tournament_id: tournamentId, archetype,
       min_cash_x: minCashX, rounding_unit: roundingUnit, entries_override: entries,
     };
+    if (isCustom) body.custom_percents = customBp();
+    else body.itm_percent = itmPct / 100;
     const ov = poolOverride.trim() ? Number(poolOverride) : null;
     if (ov != null && ov !== defaultPool) body.prize_pool_override = ov;
     return body;
@@ -130,6 +155,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
 
   const runPreview = useCallback(async () => {
     if (!(entries > 0)) { toast.error("Nhập số entry > 0 để xem trước"); return; }
+    if (isCustom && !customValid) { toast.error("Cấu hình % chưa hợp lệ — Σ phải = 100%, giảm dần, mỗi hạng > 0"); return; }
     setBusy("preview");
     try {
       const { data, error } = await supabase.functions.invoke("compute-payouts", { body: reqBody() });
@@ -137,10 +163,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       if (error || res?.error) { toast.error(friendly(res?.error || error?.message)); return; }
       setPreview({ rows: res.result.rows, itmPlaces: res.result.itmPlaces, effectiveFloor: res.result.effectiveFloor, prizePool: res.prizePool, archetype: res.result.archetype, warnings: res.result.warnings ?? [] });
     } catch (e: any) { toast.error(friendly(e?.message)); } finally { setBusy(""); }
-  }, [entries, itmPct, archetype, minCashX, roundingUnit, poolOverride, defaultPool, tournamentId]);
+  }, [entries, itmPct, archetype, minCashX, roundingUnit, poolOverride, defaultPool, tournamentId, isCustom, customValid, customBp]);
 
   // Official: close registration (one-way) via prepare_payout_snapshot, then compute-payouts official.
   const runOfficial = useCallback(async () => {
+    if (isCustom && !customValid) { toast.error("Cấu hình % chưa hợp lệ — Σ phải = 100%, giảm dần, mỗi hạng > 0"); return; }
     setBusy("official");
     try {
       const ov = poolOverride.trim() ? Number(poolOverride) : null;
@@ -149,6 +176,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
         p_min_cash_x: minCashX, p_rounding_unit: roundingUnit,
         p_prize_pool_override: ov != null && ov !== defaultPool ? ov : null,
         p_override_reason: overrideReason.trim() || null, p_regenerate: false, p_reason: null,
+        p_custom_percents: isCustom ? customBp() : null,
       });
       if (prep.error) { toast.error(friendly(prep.error.message)); return; }
       const runId = (prep.data as any)?.run_id;
@@ -160,7 +188,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       setPreview(null);
       await load();
     } catch (e: any) { toast.error(friendly(e?.message)); } finally { setBusy(""); }
-  }, [tournamentId, itmPct, archetype, minCashX, roundingUnit, poolOverride, overrideReason, defaultPool, load]);
+  }, [tournamentId, itmPct, archetype, minCashX, roundingUnit, poolOverride, overrideReason, defaultPool, load, isCustom, customValid, customBp]);
 
   const startEdit = () => { setEditRows(officialRows.map((r) => ({ ...r }))); setEditReason(""); setEditing(true); };
   const editSum = useMemo(() => editRows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [editRows]);
@@ -244,16 +272,18 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             <Input type="number" value={entries} onChange={(e) => setEntries(Number(e.target.value))} />
             <p className="text-[11px] text-muted-foreground">đang có {liveEntries} (đã trả tiền)</p>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">ITM %</Label>
-            <Input type="number" step="0.5" value={itmPct} onChange={(e) => setItmPct(Number(e.target.value))} />
-          </div>
+          {!isCustom && (
+            <div className="space-y-1">
+              <Label className="text-xs">ITM %</Label>
+              <Input type="number" step="0.5" value={itmPct} onChange={(e) => setItmPct(Number(e.target.value))} />
+            </div>
+          )}
           <div className="space-y-1">
             <Label className="text-xs">Kiểu giải</Label>
             <Select value={archetype} onValueChange={(v) => setArchetype(v as Archetype)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(["DAILY", "MULTI", "INTL"] as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
+                {((customMode ? ["DAILY", "MULTI", "INTL", "CUSTOM"] : ["DAILY", "MULTI", "INTL"]) as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -270,11 +300,42 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             <Input type="number" placeholder={`auto = ${vnd(defaultPool)}`} value={poolOverride} onChange={(e) => setPoolOverride(e.target.value)} />
           </div>
         </div>
+        {isCustom && (
+          <div className="space-y-2 rounded border border-primary/30 bg-primary/5 p-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Cơ cấu % tự cấu hình (giảm dần · Σ = 100%)</Label>
+              <span className={`text-xs font-mono ${customBpTotal === 10000 ? "text-primary" : "text-destructive"}`}>
+                Σ {(customBpTotal / 100).toFixed(2)}% {customBpTotal === 10000 ? "✓" : "✗ phải = 100%"}
+              </span>
+            </div>
+            <div className="max-h-[34vh] overflow-y-auto space-y-1 pr-1">
+              {customRows.map((r, i) => {
+                const pool = poolOverride.trim() && Number(poolOverride) !== defaultPool ? Number(poolOverride) : defaultPool;
+                const amt = Math.round((pool * Math.round((Number(r.percent) || 0) * 100)) / 10000);
+                return (
+                  <div key={i} className="grid grid-cols-[2.5rem_1fr_7rem_2rem] gap-2 items-center">
+                    <span className="text-xs text-muted-foreground text-right">#{i + 1}</span>
+                    <Input type="number" step="0.5" value={r.percent} aria-label={`percent rank ${i + 1}`}
+                      onChange={(e) => setCustomRows((prev) => prev.map((x, j) => (j === i ? { ...x, percent: Number(e.target.value) } : x)))} />
+                    <span className="text-xs font-mono tabular-nums text-muted-foreground text-right">{vnd(amt)}đ</span>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" disabled={customRows.length <= 1} aria-label={`remove rank ${i + 1}`}
+                      onClick={() => setCustomRows((prev) => prev.filter((_, j) => j !== i).map((x, j) => ({ ...x, position: j + 1 })))}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setCustomRows((prev) => [...prev, { position: prev.length + 1, percent: 0 }])}>
+              <Plus className="w-3.5 h-3.5 mr-1" /> Thêm hạng
+            </Button>
+          </div>
+        )}
         {poolOverride.trim() && Number(poolOverride) !== defaultPool && (
           <Input placeholder="Lý do sửa prize pool (bắt buộc)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={runPreview} disabled={busy !== "" || isMultiDay}>
+          <Button size="sm" variant="outline" onClick={runPreview} disabled={busy !== "" || isMultiDay || (isCustom && !customValid)}>
             {busy === "preview" ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Calculator className="w-3.5 h-3.5 mr-1" />} Xem trước (Dự kiến)
           </Button>
 
@@ -282,7 +343,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
           {!hasOfficial && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" className="gap-1" disabled={busy !== "" || isMultiDay || !(entries > 0)}>
+                <Button size="sm" className="gap-1" disabled={busy !== "" || isMultiDay || !(entries > 0) || (isCustom && !customValid)}>
                   <Lock className="w-3.5 h-3.5" /> {isClosed ? "Tạo payout chính thức" : "Đóng đăng ký & tạo payout"}
                 </Button>
               </AlertDialogTrigger>
@@ -291,7 +352,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
                   <AlertDialogTitle className="flex items-center gap-2"><Lock className="w-4 h-4 text-warning" /> {isClosed ? "Tạo payout chính thức?" : "Đóng đăng ký & chốt payout?"}</AlertDialogTitle>
                   <AlertDialogDescription className="space-y-2">
                     {!isClosed && <span className="block font-medium text-warning">⚠️ Đóng đăng ký là MỘT CHIỀU — không mở lại được.</span>}
-                    <span className="block">Hệ thống sẽ chốt {entries} entry (snapshot), prize pool {vnd(poolOverride.trim() && Number(poolOverride) !== defaultPool ? Number(poolOverride) : defaultPool)}đ, rồi tạo bảng payout chính thức ({archetype}, ITM {itmPct}%). Sau đó vẫn chỉnh tay được (có ghi audit).</span>
+                    <span className="block">Hệ thống sẽ chốt {entries} entry (snapshot), prize pool {vnd(poolOverride.trim() && Number(poolOverride) !== defaultPool ? Number(poolOverride) : defaultPool)}đ, rồi tạo bảng payout chính thức ({isCustom ? `CUSTOM · ${customRows.length} suất` : `${archetype}, ITM ${itmPct}%`}). Sau đó vẫn chỉnh tay được (có ghi audit).</span>
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -308,8 +369,15 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       {preview && !hasOfficial && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
-            <AlertTriangle className="w-3.5 h-3.5" /> <span>DỰ KIẾN — chưa đóng đăng ký, chưa lưu. Số liệu thay đổi theo entry.</span>
+            <AlertTriangle className="w-3.5 h-3.5" /> <span>DỰ KIẾN{isCustom ? " — custom" : ""} — chưa đóng đăng ký, chưa lưu. Số liệu thay đổi theo entry.</span>
           </div>
+          {isCustom && preview.rows.length > 0 && (() => {
+            const floor = minCashX * ((tour?.buy_in ?? 0) + (tour?.rake_amount ?? 0));
+            const last = preview.rows[preview.rows.length - 1].amount;
+            return last < floor ? (
+              <p className="text-[11px] text-warning">Lưu ý: hạng cuối ({vnd(last)}đ) thấp hơn min-cash tham khảo ({vnd(floor)}đ). CUSTOM bỏ qua sàn min-cash — vẫn cho phép.</p>
+            ) : null;
+          })()}
           {preview.warnings.length > 0 && <p className="text-[11px] text-muted-foreground">Cảnh báo: {preview.warnings.join(", ")}</p>}
           <RowsTable rows={preview.rows} pool={preview.prizePool ?? defaultPool} />
         </div>

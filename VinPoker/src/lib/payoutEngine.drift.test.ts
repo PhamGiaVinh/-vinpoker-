@@ -107,4 +107,31 @@ describe("payout engine drift guard — Edge _shared copy vs canonical client", 
     }
     expect(matrix.length).toBeGreaterThan(150);
   });
+
+  it("both engines return IDENTICAL CUSTOM output + same CUSTOM_ENGINE_VERSION", () => {
+    const M = 1_000_000;
+    const bp = (arr: number[]) => arr.map((percentBp, i) => ({ position: i + 1, percentBp }));
+    const cases: clientEngine.CustomPayoutInput[] = [];
+    for (const pool of [10 * M, 12_345_678, 82 * M, 7 * M, 33_300_000]) {
+      for (const pcts of [[5000, 3000, 2000], [4000, 3000, 2000, 1000], [7600, 2400], [3334, 3333, 3333], [10000], [4000, 2500, 1800, 1000, 700]]) {
+        for (const unit of [100_000, 1_000_000]) cases.push({ prizePool: pool, percents: bp(pcts), roundingUnit: unit });
+      }
+    }
+    for (const input of cases) {
+      let c: ReturnType<typeof clientEngine.computeCustomPayouts> | null = null;
+      let s: typeof c = null;
+      let cErr: string | null = null, sErr: string | null = null;
+      try { c = clientEngine.computeCustomPayouts(input); } catch (e) { cErr = (e as Error).message; }
+      try { s = (sharedEngine as typeof clientEngine).computeCustomPayouts(input); } catch (e) { sErr = (e as Error).message; }
+      expect(sErr).toBe(cErr); // identical throw or both succeed
+      if (c && s) {
+        expect(s.rows).toEqual(c.rows);
+        expect(s.warnings).toEqual(c.warnings);
+        expect(s.itmPlaces).toBe(c.itmPlaces);
+        expect(s.engineVersion).toBe(c.engineVersion);
+      }
+    }
+    expect((sharedEngine as typeof clientEngine).CUSTOM_ENGINE_VERSION).toBe(clientEngine.CUSTOM_ENGINE_VERSION);
+    expect(cases.length).toBeGreaterThan(40);
+  });
 });
