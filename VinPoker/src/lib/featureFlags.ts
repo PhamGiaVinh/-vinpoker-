@@ -68,7 +68,7 @@ export const FEATURES = {
    * deployed, and the club is opted in (same as the initial full-auto). Kill-switch: set false to hide the
    * re-entry path instantly.
    */
-  dynamicReentry: false,
+  dynamicReentry: true,
   /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
