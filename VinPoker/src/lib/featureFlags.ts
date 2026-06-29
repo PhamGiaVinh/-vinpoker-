@@ -566,10 +566,10 @@ export const FEATURES = {
    * yet, so every F&B page redirects / shows a placeholder and nothing queries the absent fnb_*
    * tables. Flip each ONLY after the matching backend is applied in a controlled DB session + UAT.
    */
-  fnbModule: false,
-  fnbCounter: false,
+  fnbModule: true,
+  fnbCounter: true,
   fnbKitchen: false,
-  fnbInventory: false,
+  fnbInventory: true,
   fnbFinance: false,
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
