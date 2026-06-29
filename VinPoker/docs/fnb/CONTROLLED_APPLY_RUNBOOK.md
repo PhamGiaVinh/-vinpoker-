@@ -171,3 +171,59 @@ P5 (`ALTER PUBLICATION … DROP TABLE`) → P4 fns → P3 fns → P2 tables (CAS
 P1 fns + `club_fnb_staff` + `fnb_role_kind` → P0 enum values stay (harmless, can't be dropped).
 Frontend: set every `FEATURES.fnb*` back to `false` (instant dark).
 ```
+
+---
+
+## Addendum — follow-up gates `…0008` / `…0010` / `…0011` (added 2026-06-29)
+
+Apply order: **`…0008` → `…0010` → `…0011`** (each its own gate; run that file's `BEGIN…ROLLBACK`
+test + the verify queries before moving on). All source-only, dark, owner-applied in SQL Editor.
+`…0008` unblocks F4 (staff). `…0010` unblocks F5 real-money UAT. `…0011` (+ golden-diff) unblocks
+`fnbFinance` flip + F6.
+
+### Clarification 1 — `…0010` drops the 8-arg `fnb_upsert_menu_item`; is that safe pre-UAT?
+**Yes — safe to apply before any UI change.** Two independent reasons:
+1. **Only one caller exists:** `src/components/fnb/admin/MenuManager.tsx` (line ~123), and it passes
+   the **8 original named args** (`p_club_id,p_id,p_category_id,p_name,p_price_vnd,p_is_active,
+   p_image_url,p_sort_order`) — it does **not** pass `p_tracks_inventory`. After `…0010` that exact
+   call **resolves to the new 9-arg function** (Postgres fills `p_tracks_inventory` from its `DEFAULT
+   NULL` → update keeps existing / insert defaults true). PostgREST supports default args, so the call
+   keeps working with **no breakage**, even if the flag were ON.
+2. **F&B admin is flag-OFF on prod** (`fnbModule=false`) → there is **no live caller at all** today.
+The owner-only "Không trừ kho (COGS=0)" checkbox that *sets* `tracks_inventory` is a separate additive
+UI tie-in; it can land any time after `…0010` is applied (F&B admin UAT happens post-`…0010` anyway).
+**No caller change is required before applying `…0010`.**
+
+### Clarification 2 — `…0011` rollback safety: snapshot the LIVE bodies FIRST
+Before running the `…0011` apply block, capture the current live definitions and save them verbatim as
+rollback snapshots (do NOT rely only on the in-repo `000004`/`000006` bodies):
+```sql
+SELECT pg_get_functiondef('public.get_club_finance_summary(timestamptz,timestamptz,uuid)'::regprocedure);  -- save -> rollback_get_club_finance_summary.sql
+SELECT pg_get_functiondef('public.fnb_get_report(timestamptz,timestamptz,uuid)'::regprocedure);            -- save -> rollback_fnb_get_report.sql
+```
+Rollback = re-run those two saved snapshots (plus `live_finance_rpc.sql` remains the canonical pre-F&B
+finance body).
+
+### Clarification 3 — `…0011` golden-diff must prove net/trend/perClub unchanged too
+With every club `fnb_in_club_net=false`, BOTH legs of `fnb_rows` are empty → the output must equal the
+current live output **except** the two new zero keys. Verify that EXPLICITLY (not just `fnb=0`):
+```sql
+-- capture OLD (current live) BEFORE apply, NEW (this) AFTER apply, same club/range, then:
+WITH o AS (SELECT '<OLD jsonb>'::jsonb j), n AS (SELECT '<NEW jsonb>'::jsonb j)
+SELECT
+  n.j #> '{revenue,fnb}'  AS fnb,                                   -- expect 0
+  n.j #> '{cost,fnbCogs}' AS fnbcogs,                               -- expect 0
+  (o.j #> '{net}')     = (n.j #> '{net}')     AS net_same,          -- expect t
+  (o.j #> '{trend}')   = (n.j #> '{trend}')   AS trend_same,        -- expect t
+  (o.j #> '{perClub}') = (n.j #> '{perClub}') AS perclub_same,      -- expect t
+  (o.j #- '{revenue,fnb}' #- '{cost,fnbCogs}')
+    = (n.j #- '{revenue,fnb}' #- '{cost,fnbCogs}') AS all_identical -- expect t (whole rest byte-identical)
+FROM o, n;
+```
+Then keep the **3 event-time cases** in a `BEGIN…ROLLBACK` on a fixture club with
+`fnb_settings.fnb_in_club_net=true` (scenario is in the `…0011` file):
+1. **paid → shipped** (same month) → revenue + COGS still present (the bug: previously vanished).
+2. **paid → cancel-before-ship** → revenue `+` and refund `−` net to 0; COGS also reverses
+   (`shipped_at IS NULL`); stock restored.
+3. **shipped → cancel** → revenue 0 (`-subtotal` at `cancelled_at`) but **COGS stays** (`shipped_at`
+   not null → `else 0`, no reversal) — the served goods are a real cost.
