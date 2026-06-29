@@ -532,4 +532,13 @@ export const FEATURES = {
    * RPCs are added in a later phase.
    */
   marketingRequireApproval: false,
+  /**
+   * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
+   * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
+   * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in
+   * the VẬN HÀNH menu for owners/admins. Kill-switch: set false to hide the demo entirely. The real
+   * F&B module (orders / inventory / finance) is NOT on production — it lives on the agent/fnb-module
+   * branch behind its own flags and is unaffected by this demo.
+   */
+  fnbDemo: true,
 } as const;
