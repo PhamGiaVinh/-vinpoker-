@@ -50,12 +50,15 @@ export const FEATURES = {
    * Dynamic VietQR on the tournament buy-in screen (TournamentRegisterModal). When ON, the payment
    * card renders a NAPAS VietQR (built locally) that pre-fills the receiving account + exact amount +
    * the bare reference_code memo, so the customer can't mistype them → reliable SePay auto-confirm.
-   * Frontend-only; does NOT touch settle/confirm. Default **OFF** until a real bank-app scan + a small
-   * real transfer pass. The QR carries no data settle trusts — it is a convenience pre-fill; the static
-   * QR + manual fields stay as fallback. For production the BIN must come from an explicit
-   * platform_bank_accounts.bank_bin (Stage 2); the free-text name map is a legacy/UAT fallback only.
+   * Frontend-only; does NOT touch settle/confirm. The QR carries no data settle trusts — it is a
+   * convenience pre-fill; the static QR + manual fields stay as fallback. For production the BIN comes
+   * from an explicit platform_bank_accounts.bank_bin (Stage 2 #577); the free-text name map is a
+   * legacy/UAT fallback only.
+   * **ON 2026-06-29** after the owner's real MB bank-app scan passed (account + amount + memo pre-filled
+   * correctly) and the receiving account's explicit bank_bin (MB 970422) was set via the picker.
+   * Kill-switch: set false to instantly revert to the static QR (no other change needed).
    */
-  dynamicVietQr: false,
+  dynamicVietQr: true,
   /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
