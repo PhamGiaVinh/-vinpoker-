@@ -110,6 +110,16 @@ serve(async (req) => {
     if (!run) return json({ error: "RUN_NOT_FOUND" }, 404);
     if (run.status !== "draft_snapshot") return json({ error: "RUN_NOT_DRAFT", status: run.status }, 409);
 
+    // Authorize the caller for this tournament's club BEFORE computing/applying, so an unauthorized
+    // caller cannot compute from — or learn — the frozen snapshot economics. `club_id` is immutable
+    // metadata read ONLY for this auth gate; ALL economic inputs still come from the frozen snapshot.
+    // (apply_payout_run independently re-checks the role via the forwarded JWT — defence in depth.)
+    const { data: tourRow, error: tourLookupErr } = await service
+      .from("tournaments").select("club_id").eq("id", run.tournament_id).maybeSingle();
+    if (tourLookupErr) return json({ error: tourLookupErr.message }, 400);
+    if (!tourRow) return json({ error: "TOURNAMENT_NOT_FOUND" }, 404);
+    if (!(await canManageClub(tourRow.club_id))) return json({ error: "NOT_AUTHORIZED" }, 403);
+
     // Compute STRICTLY from the frozen snapshot — never recount, never read live tournament state.
     let result;
     try {
