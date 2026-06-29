@@ -320,7 +320,7 @@ export const FEATURES = {
    * ONLY after that. The /dealer/salary route is ALSO flag-gated — it redirects to
    * /dealer when off (not just nav-hidden), so direct navigation can't reach it.
    */
-  dealerSelfSalary: false,
+  dealerSelfSalary: true,
   /**
    * Scheduled pool entry for dealer self check-in (app + Telegram). UI-only mirror
    * of the server flag `dealer_selfcheckin_config.scheduled_pool_enabled`. When ON,
