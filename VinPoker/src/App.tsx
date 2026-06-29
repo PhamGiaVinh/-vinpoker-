@@ -40,6 +40,7 @@ const FnbCounter = lazy(() => import("./pages/FnbCounter"));
 const FnbKitchenDisplay = lazy(() => import("./pages/FnbKitchenDisplay"));
 const FnbTableOrder = lazy(() => import("./pages/FnbTableOrder"));
 const FnbAdmin = lazy(() => import("./pages/FnbAdmin"));
+// F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
 const FnbDemo = lazy(() => import("./pages/FnbDemo"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
 const CashierDashboard = lazy(() => import("./pages/CashierDashboard"));
@@ -234,6 +235,7 @@ const App = () => (
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
                 <Route path="/fnb" element={<FnbCounter />} />
                 <Route path="/fnb/admin" element={<FnbAdmin />} />
+                {/* F&B public DEMO — static showcase, keeps Layout chrome. Self-gates on FEATURES.fnbDemo. */}
                 <Route path="/fnb/demo" element={<FnbDemo />} />
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}

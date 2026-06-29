@@ -95,6 +95,19 @@ Deno.serve(async (req) => {
     }
     if (!bank) return j({ error: "CLB chưa cấu hình tài khoản nhận tiền." }, 400);
 
+    // bank_bin (VietQR acquirer BIN) — GUARDED separate select so this fn is safe to deploy whether or
+    // not the Stage-2 `bank_bin` column has been applied yet (absent → null → the app falls back to the
+    // free-text bank-name map). Mirrors the service_fee_amount guard pattern below.
+    let bankBin: string | null = null;
+    {
+      const { data: bb, error: bbErr } = await admin
+        .from("platform_bank_accounts")
+        .select("bank_bin")
+        .eq("id", bank.id)
+        .maybeSingle();
+      if (!bbErr && bb) bankBin = (bb as { bank_bin?: string | null }).bank_bin ?? null;
+    }
+
     if (existing) {
       return j({
         success: true,
@@ -114,6 +127,7 @@ Deno.serve(async (req) => {
         account_number: bank.account_number,
         account_holder: bank.account_holder,
         qr_code_url: bank.qr_code_url,
+        bank_bin: bankBin,
         transfer_proof_url: existing.transfer_proof_image_url,
         transfer_proof_submitted: existing.transfer_proof_submitted,
         committed_at: existing.committed_at,
@@ -190,6 +204,7 @@ Deno.serve(async (req) => {
       account_number: bank.account_number,
       account_holder: bank.account_holder,
       qr_code_url: bank.qr_code_url,
+      bank_bin: bankBin,
       committed_at: new Date().toISOString(),
       free_rake_applied: freeRakeApplied,
       savings: freeRakeApplied ? rakeAmount : 0,

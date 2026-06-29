@@ -56,11 +56,17 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
+        {/* Pinned close. The wrapper is a zero-height `sticky` bar so the X stays at
+            the sheet's top-right even when the content scrolls — on overflow-y-auto
+            sheets the old `absolute` X scrolled out of reach on short / keyboard-
+            reduced mobile viewports, so it couldn't be tapped to close. */}
+        <div className="pointer-events-none sticky top-0 z-20 h-0">
+          <SheetPrimitive.Close className="pointer-events-auto absolute right-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground shadow-md ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+            <X className="h-6 w-6" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        </div>
         {children}
-        <SheetPrimitive.Close className="absolute right-3 top-3 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground shadow-md ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-          <X className="h-6 w-6" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>
   ),

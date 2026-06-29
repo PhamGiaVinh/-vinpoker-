@@ -190,6 +190,9 @@ export function solveRotationPlan(
   opts: RotationPlanOptions
 ): RotationPlan {
   const { nowMs, announceLeadMs, preAnnounceMs, restMs, forecastSlots } = opts;
+  // Patch 5d — dealers reserved to a feature/final pool: exclusive to their special
+  // table, never planned onto a normal table. Empty = no reservation (kill-switch off).
+  const reserved = new Set(opts.reservedDealerIds ?? []);
   const rows: RotationPlanRow[] = [];
   const lockedTableIds: string[] = [];
 
@@ -270,6 +273,24 @@ export function solveRotationPlan(
       // The ideal relief if a fully-rested dealer existed right now.
       const idealReliefMs = Math.max(needAtMs, nowMs + announceLeadMs);
 
+      // Patch 5c — feature/final pool gate. A special table (poolDealerIds non-null)
+      // may only be relieved by a pool dealer; a non-pool dealer would be rejected by
+      // the seat trigger (DT006) → the proactive planner must never propose one. null
+      // = ungated. Simulated re-entrants (forecast rounds only — excluded from slot 0
+      // by the rule below) are not restricted: their real dealer_id is not carried, so
+      // they can't be pool-checked, and they are never locked.
+      const tablePool: Set<string> | null = t.poolDealerIds == null ? null : new Set(t.poolDealerIds);
+      // Patch 5c: a SPECIAL table only accepts its own pool. Patch 5d: a NORMAL table
+      // (tablePool === null) must EXCLUDE any dealer reserved to a feature/final pool
+      // → reserved dealers stay exclusive to their special table. Simulated forecast
+      // re-entrants (never locked at slot 0) carry no real dealer_id → unrestricted.
+      const allowedByPool = (c: PoolEntry) =>
+        c.simulated === true
+          ? true
+          : tablePool === null
+            ? !reserved.has(c.dealerId)
+            : tablePool.has(c.dealerId);
+
       const eligible = pool.filter(
         (c) =>
           !usedThisRound.has(c.attendanceId) &&
@@ -277,6 +298,7 @@ export function solveRotationPlan(
           // Slot 0 becomes a real CHỐT — a dealer not yet released in reality
           // (simulation re-entry) can never be locked; forecast rounds may use them.
           (!isSlot0 || !c.simulated) &&
+          allowedByPool(c) &&
           skillsMatch(t, c)
       );
 
@@ -292,6 +314,7 @@ export function solveRotationPlan(
             (c) =>
               !usedThisRound.has(c.attendanceId) &&
               c.attendanceId !== sim.simOutAttendanceId &&
+              allowedByPool(c) &&
               skillsMatch(t, c)
           )
           .map((c) => Math.max(c.eligibleAtMs, nowMs) + announceLeadMs);

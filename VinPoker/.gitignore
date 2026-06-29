@@ -40,3 +40,6 @@ e2e/.out/
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# TS incremental build cache
+*.tsbuildinfo

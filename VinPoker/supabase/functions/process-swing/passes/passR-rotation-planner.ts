@@ -18,6 +18,7 @@
 
 import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
 import { solveRotationPlan } from "../../_shared/rotationSolver.ts";
+import { getFeatureTablePoolsByTable, getReservedDealerIds } from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
 import { tierForBuyIn } from "../../_shared/rotationTypes.ts";
 import type {
   DealerTier,
@@ -332,12 +333,16 @@ function buildSolverTables(
   assignments: ActiveAssignmentRow[],
   tournamentInfo: Map<string, { tournamentId: string; tournamentName: string | null; buyIn: number | null }>,
   ctx: PassRContext,
+  featurePoolMap?: Map<string, Set<string>>,
 ): RotationPlanTable[] {
   return assignments.map((a) => {
     const tinfo = tournamentInfo.get(a.table_id);
     const requiredTier =
       tierForBuyIn(tinfo?.buyIn, ctx.tierAMinBuyin, ctx.tierBMinBuyin) ??
       tourTierFallback(a.game_tables?.tour_tier);
+    // Patch 5c — feature/final pool gate: only present for special tables when the
+    // kill-switch is ON (the map is empty otherwise) → ungated (null) for normal tables.
+    const pool = featurePoolMap?.get(a.table_id);
     return {
       tableId: a.table_id,
       tableName: a.game_tables?.table_name ?? a.table_id,
@@ -353,6 +358,7 @@ function buildSolverTables(
       gameTypes: a.game_tables?.game_type ? [a.game_tables.game_type] : [],
       lockedInAttendanceId: a.pre_assigned_attendance_id,
       lockedPlannedReliefAtMs: a.planned_relief_at ? new Date(a.planned_relief_at).getTime() : null,
+      poolDealerIds: pool ? [...pool] : null,
     };
   });
 }
@@ -537,9 +543,14 @@ export async function passRRotationPlanner(
       }])
     );
 
-    // Phase C — solve (pure)
+    // Phase C — solve (pure). Patch 5c: gate the planner to each special table's pool
+    // (parity with pickNextDealer's reactive gate) so it never announces a non-pool
+    // dealer that the seat trigger would reject (DT006) → stuck table.
+    const featurePoolMap = await getFeatureTablePoolsByTable(admin, assignments.map((a) => a.table_id));
+    // Patch 5d — reserved feature/final pool dealers are excluded from NORMAL tables.
+    const reservedDealerIds = [...await getReservedDealerIds(admin)];
     const plan = solveRotationPlan(
-      buildSolverTables(assignments, tournamentInfo, ctx),
+      buildSolverTables(assignments, tournamentInfo, ctx, featurePoolMap),
       candidates,
       {
         nowMs: Date.now(),
@@ -547,6 +558,7 @@ export async function passRRotationPlanner(
         preAnnounceMs: Math.max(ctx.preAnnounceMinutes, 3) * 60_000,
         restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
         forecastSlots: 2,
+        reservedDealerIds,
         solverVersion: SOLVER_VERSION,
       },
     );
@@ -656,8 +668,10 @@ export async function replanSingleTable(
       }));
 
     const tournamentInfo = await fetchTournamentInfo(admin, [a.table_id]);
+    const featurePoolMap = await getFeatureTablePoolsByTable(admin, [a.table_id]); // Patch 5c
+    const reservedDealerIds = [...await getReservedDealerIds(admin)]; // Patch 5d
     const plan = solveRotationPlan(
-      buildSolverTables([a as ActiveAssignmentRow], tournamentInfo, ctx),
+      buildSolverTables([a as ActiveAssignmentRow], tournamentInfo, ctx, featurePoolMap),
       candidates,
       {
         nowMs: Date.now(),
@@ -665,6 +679,7 @@ export async function replanSingleTable(
         preAnnounceMs: ANNOUNCE_LEAD_MS, // emergency: 3-min lead
         restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
         forecastSlots: 0,
+        reservedDealerIds,
         solverVersion: SOLVER_VERSION,
       },
     );

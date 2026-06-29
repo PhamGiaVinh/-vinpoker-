@@ -33,6 +33,33 @@ export const FEATURES = {
    */
   registrationExtensions: false,
   /**
+   * SePay reconciliation — Cashier "Đối soát SePay" tab. Surfaces the reconcile worklist
+   * (SePay-API-verified transfers) via the read-only `sepay_cashier_settlement_worklist` RPC, so a
+   * cashier can confirm (→ `manual_confirm_bank_transaction`) or ignore (→ `ignore_bank_transaction`).
+   * Default **OFF**: hidden from regular cashiers (admins/club owners still see it for UAT). Flip true
+   * ONLY after the worklist RPC (`20261116000000`) + the reconcile chain (`20261113`–`20261115` + the
+   * sepay-reconcile edge fn) are applied live and owner UAT passes.
+   */
+  sepayReconcile: false,
+  /**
+   * SePay auto-confirm UI mirror — reserved status indicator for the server-side `SEPAY_AUTO_CONFIRM`
+   * env kill-switch. NOT used in v1 (Direction 1 is flag-only; the cashier confirms manually). Keep false.
+   */
+  sepayAutoConfirm: false,
+  /**
+   * Dynamic VietQR on the tournament buy-in screen (TournamentRegisterModal). When ON, the payment
+   * card renders a NAPAS VietQR (built locally) that pre-fills the receiving account + exact amount +
+   * the bare reference_code memo, so the customer can't mistype them → reliable SePay auto-confirm.
+   * Frontend-only; does NOT touch settle/confirm. The QR carries no data settle trusts — it is a
+   * convenience pre-fill; the static QR + manual fields stay as fallback. For production the BIN comes
+   * from an explicit platform_bank_accounts.bank_bin (Stage 2 #577); the free-text name map is a
+   * legacy/UAT fallback only.
+   * **ON 2026-06-29** after the owner's real MB bank-app scan passed (account + amount + memo pre-filled
+   * correctly) and the receiving account's explicit bank_bin (MB 970422) was set via the picker.
+   * Kill-switch: set false to instantly revert to the static QR (no other change needed).
+   */
+  dynamicVietQr: true,
+  /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —
@@ -296,7 +323,7 @@ export const FEATURES = {
    * ONLY after that. The /dealer/salary route is ALSO flag-gated — it redirects to
    * /dealer when off (not just nav-hidden), so direct navigation can't reach it.
    */
-  dealerSelfSalary: false,
+  dealerSelfSalary: true,
   /**
    * Scheduled pool entry for dealer self check-in (app + Telegram). UI-only mirror
    * of the server flag `dealer_selfcheckin_config.scheduled_pool_enabled`. When ON,
@@ -537,9 +564,20 @@ export const FEATURES = {
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
-   * it can never read or mutate real data — SAFE to ship even while the real `fnbModule` stays OFF.
-   * Intentionally **ON** so the "F&B (Xem thử)" item shows in the VẬN HÀNH menu for owners/admins
-   * once this branch is deployed. Kill-switch: set false to hide the demo entirely.
+   * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in
+   * the VẬN HÀNH menu for owners/admins. Kill-switch: set false to hide the demo entirely. The real
+   * F&B module (orders / inventory / finance) is NOT on production — it lives on the agent/fnb-module
+   * branch behind its own flags and is unaffected by this demo.
    */
   fnbDemo: true,
+  /**
+   * Payout "Engine 3-neo" — server-authoritative tournament payout curve (auto N / min-cash floor /
+   * smooth top-heavy-or-flat distribution / tiers / exact pool preservation), replacing the
+   * manual-rows Prizes panel. Default **OFF**: the pure-TS engine (`payoutEngine.ts`) + golden tests
+   * ship first with NO behaviour change; the engine only drives UI once the owner-gated backend
+   * (snapshot/apply RPCs + Edge `compute-payouts`) is applied and this flag is flipped after UAT.
+   * While false: the existing manual Prize Structure panel is unchanged. Official payouts are only
+   * ever written by the close-registration snapshot→apply flow — never recomputed live.
+   */
+  payoutEngine: false,
 } as const;

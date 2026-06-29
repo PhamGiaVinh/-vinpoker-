@@ -2438,6 +2438,7 @@
     "freeClubService": "無料クラブサービス",
     "totalPay": "お支払い総額",
     "transferInfo": "振込情報",
+    "vietqrHint": "銀行アプリでスキャン — 金額と内容を自動入力",
     "bank": "銀行",
     "accountHolder": "口座名義",
     "accountNumber": "口座番号",

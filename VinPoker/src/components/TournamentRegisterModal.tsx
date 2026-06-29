@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -8,6 +8,10 @@ import { toast } from "sonner";
 import { formatVND, formatStack } from "@/lib/format";
 import { compressImage } from "@/lib/compressImage";
 import { CheckCircle2, Copy, Loader2, Upload, Sparkles } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { buildVietQrPayload } from "@/lib/vietqr";
+import { normalizeBankNameToBin } from "@/lib/vietnamBanks";
+import { FEATURES } from "@/lib/featureFlags";
 
 interface RegInfo {
   registration_id: string;
@@ -18,6 +22,7 @@ interface RegInfo {
   account_number: string;
   account_holder: string;
   qr_code_url?: string | null;
+  bank_bin?: string | null;
   committed_at?: string;
   status?: string;
   transfer_proof_url?: string | null;
@@ -95,6 +100,29 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
 
 
   const transferContent = info ? `VINPoker ${info.reference_code}` : "";
+
+  // Dynamic VietQR (NAPAS): prefer the explicit bank_bin (Stage 2), else the name map (legacy/UAT).
+  // Memo = the BARE reference_code (uppercased) so SePay's \y(VINREG…|REENTRY…)\y match is unambiguous.
+  // Built client-side from data the modal already has; any bad input → null → static QR fallback.
+  // Deterministic (no nonce/timestamp) so the QR is stable across re-renders.
+  const vietqrPayload = useMemo(() => {
+    if (!info) return null;
+    // Prefer an explicit bank_bin (Stage 2); treat blank/empty as absent so it falls through to the
+    // name map (legacy/UAT) rather than hard-skipping the dynamic QR.
+    const bin = (info.bank_bin && info.bank_bin.trim()) || normalizeBankNameToBin(info.bank_name);
+    if (!bin) return null;
+    try {
+      return buildVietQrPayload({
+        bin,
+        accountNumber: info.account_number,
+        amount: info.total_pay,
+        memo: info.reference_code.toUpperCase(),
+      });
+    } catch {
+      return null;
+    }
+  }, [info?.account_number, info?.total_pay, info?.reference_code, info?.bank_name, info?.bank_bin]);
+
   const copy = (txt: string, lbl: string) => {
     navigator.clipboard.writeText(txt);
     toast.success(t("tournamentRegister.copied", { label: lbl }));
@@ -223,8 +251,18 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
                   <Button size="icon" variant="ghost" onClick={() => copy(info.account_number, t("tournamentRegister.labelAccountNumber"))}><Copy className="w-4 h-4" /></Button>
                 </div>
               </div>
-              {info.qr_code_url && (
-                <img src={info.qr_code_url} alt="QR" className="w-full max-w-[200px] mx-auto rounded border" />
+              {FEATURES.dynamicVietQr && vietqrPayload ? (
+                <div className="flex flex-col items-center gap-1.5">
+                  {/* QR needs a light tile + quiet zone (includeMargin) to scan on the dark theme. */}
+                  <div className="bg-white p-3 rounded-lg">
+                    <QRCodeSVG value={vietqrPayload} size={200} level="M" marginSize={4} />
+                  </div>
+                  <div className="text-[10px] text-muted-foreground text-center">{t("tournamentRegister.vietqrHint")}</div>
+                </div>
+              ) : (
+                info.qr_code_url && (
+                  <img src={info.qr_code_url} alt="QR" className="w-full max-w-[200px] mx-auto rounded border" />
+                )
               )}
             </div>
 
