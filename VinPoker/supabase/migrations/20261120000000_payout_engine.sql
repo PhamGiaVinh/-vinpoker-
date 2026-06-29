@@ -27,11 +27,15 @@
 --   FUNC   save_tournament_prizes_v2(...)— guarded manual edit after close
 --   RLS    on the two new tables (read = owner/admin/cashier/floor; writes deny-direct via DEFINER fns)
 --
--- CLOSE-GUARD — every path that can add a paid entry is covered by ONE choke point ------------
---   Instead of editing each live cashier RPC (regression risk), a BEFORE INSERT trigger on
---   public.tournament_entries rejects inserts once registration_closed_at IS NOT NULL, and takes a
---   `FOR SHARE` lock on the parent tournament row so it serialises against prepare_payout_snapshot's
---   `FOR UPDATE` (no count race). This single trigger guards ALL known writers of tournament_entries:
+-- CLOSE-GUARD — every path that can add/revive a paid entry is covered by ONE choke point ------
+--   Instead of editing each live cashier RPC (regression risk), a BEFORE INSERT OR UPDATE trigger on
+--   public.tournament_entries (a) rejects INSERTs once registration_closed_at IS NOT NULL, and (b) on
+--   UPDATE rejects reviving a cancelled/void entry back into the counted set after close (grep found
+--   no such path today — future-proofing). It takes a `FOR SHARE` lock on the parent tournament row
+--   so it serialises against prepare_payout_snapshot's `FOR UPDATE` (no count race). Lock ordering:
+--   any entry write that also locks the tournament does so FIRST (FOR UPDATE/SHARE) then writes the
+--   entry, so prepare either counts a committed entry or rejects a later one — never an uncounted
+--   paid entry. This single trigger guards ALL known writers of tournament_entries:
 --     - confirm_registration_and_assign_seat   (20260807000001 / 20260811000000)
 --     - create_offline_buyin_and_seat           (20260826000002 / 20260826000003)
 --     - reenter_tournament_player / re-entry     (20260901000001)   [add_player_with_reentry too]
@@ -160,27 +164,46 @@ $$;
 -- -------------------------------------------------------------------------------------------
 -- 5. Close-guard trigger on tournament_entries (single choke point for ALL insert paths)
 -- -------------------------------------------------------------------------------------------
+-- Covers BOTH directions of "entry drift after close":
+--   INSERT — no new paid entry once the snapshot is frozen (the main guard).
+--   UPDATE — block REVIVING a non-counted (cancelled/void/...) entry back into the counted set after
+--            close. Other post-close updates (seat move, bust, re-cancel) are allowed. Grep of
+--            origin/main found NO unvoid/reactivate path on tournament_entries today, so this is a
+--            future-proof belt-and-suspenders guard. The excluded set MUST match the count in
+--            prepare_payout_snapshot (void sets tournament_entries.status='cancelled').
 CREATE OR REPLACE FUNCTION public.assert_tournament_registration_open()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_closed timestamptz;
+  v_closed   timestamptz;
+  v_excluded text[] := ARRAY['void','voided','cancelled','canceled','refunded','rejected'];
 BEGIN
   -- FOR SHARE serialises against prepare_payout_snapshot's FOR UPDATE => no snapshot-count race.
   SELECT registration_closed_at INTO v_closed
     FROM public.tournaments WHERE id = NEW.tournament_id FOR SHARE;
-  IF v_closed IS NOT NULL THEN
+
+  IF v_closed IS NULL THEN
+    RETURN NEW;  -- registration open: no restriction
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
     RAISE EXCEPTION 'REGISTRATION_CLOSED: tournament % payout is finalized — no new entries', NEW.tournament_id
       USING ERRCODE = 'check_violation';
+  ELSE  -- UPDATE
+    IF lower(COALESCE(OLD.status, '')) = ANY (v_excluded)
+       AND lower(COALESCE(NEW.status, '')) <> ALL (v_excluded) THEN
+      RAISE EXCEPTION 'REGISTRATION_CLOSED: cannot reactivate a cancelled entry after payout close (tournament %)', NEW.tournament_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
   END IF;
-  RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_entries_registration_open ON public.tournament_entries;
 CREATE TRIGGER trg_entries_registration_open
-  BEFORE INSERT ON public.tournament_entries
+  BEFORE INSERT OR UPDATE ON public.tournament_entries
   FOR EACH ROW EXECUTE FUNCTION public.assert_tournament_registration_open();
 
 -- -------------------------------------------------------------------------------------------
@@ -340,6 +363,7 @@ DECLARE
   v_nonneg     boolean;
   v_monotone   boolean;
   v_last       numeric;
+  v_max        numeric;
   v_pool_below boolean := (p_warnings @> '["POOL_BELOW_MIN_CASH"]'::jsonb);
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED'; END IF;
@@ -379,11 +403,12 @@ BEGIN
   )
   SELECT count(*),
          COALESCE(sum(amount), 0),
+         COALESCE(max(amount), 0),
          COALESCE(bool_and(position = rn), true),
          COALESCE(bool_and(amount >= 0), true),
          COALESCE(bool_and(prev_amt IS NULL OR amount <= prev_amt), true),
          (SELECT amount FROM ord WHERE rn = (SELECT max(rn) FROM ord))
-    INTO v_count, v_sum, v_contig, v_nonneg, v_monotone, v_last
+    INTO v_count, v_sum, v_max, v_contig, v_nonneg, v_monotone, v_last
   FROM ord;
 
   IF v_count < 1                       THEN RAISE EXCEPTION 'EMPTY_ROWS'; END IF;
@@ -392,6 +417,9 @@ BEGIN
   IF NOT v_nonneg                      THEN RAISE EXCEPTION 'NEGATIVE_AMOUNT'; END IF;
   IF NOT v_monotone                    THEN RAISE EXCEPTION 'NOT_MONOTONE'; END IF;
   IF v_sum <> v_run.prize_pool_snapshot THEN RAISE EXCEPTION 'SUM_MISMATCH'; END IF;
+  -- tournament_prizes.amount is NUMERIC(12,2) (max 9,999,999,999.99). Fail loudly instead of a
+  -- cryptic numeric overflow if a single payout would exceed the existing column width.
+  IF v_max > 9999999999.99             THEN RAISE EXCEPTION 'PAYOUT_AMOUNT_EXCEEDS_COLUMN_LIMIT'; END IF;
 
   -- min-cash invariant (N>=2: last = floor; N=1: winner takes whole pool)
   IF v_count >= 2 AND NOT v_pool_below THEN
@@ -449,6 +477,7 @@ DECLARE
   v_applied  public.tournament_payout_runs%ROWTYPE;
   v_count    integer;
   v_sum      numeric;
+  v_max      numeric;
   v_contig   boolean;
   v_nonneg   boolean;
   v_monotone boolean;
@@ -480,11 +509,11 @@ BEGIN
            lag(amount) OVER (ORDER BY position) AS prev_amt
     FROM r
   )
-  SELECT count(*), COALESCE(sum(amount),0),
+  SELECT count(*), COALESCE(sum(amount),0), COALESCE(max(amount),0),
          COALESCE(bool_and(position = rn), true),
          COALESCE(bool_and(amount >= 0), true),
          COALESCE(bool_and(prev_amt IS NULL OR amount <= prev_amt), true)
-    INTO v_count, v_sum, v_contig, v_nonneg, v_monotone
+    INTO v_count, v_sum, v_max, v_contig, v_nonneg, v_monotone
   FROM ord;
 
   IF v_count < 1                          THEN RAISE EXCEPTION 'EMPTY_ROWS'; END IF;
@@ -492,6 +521,7 @@ BEGIN
   IF NOT v_nonneg                         THEN RAISE EXCEPTION 'NEGATIVE_AMOUNT'; END IF;
   IF NOT v_monotone                       THEN RAISE EXCEPTION 'NOT_MONOTONE'; END IF;
   IF v_sum <> v_applied.prize_pool_snapshot THEN RAISE EXCEPTION 'SUM_MISMATCH'; END IF;  -- pool stays locked
+  IF v_max > 9999999999.99                THEN RAISE EXCEPTION 'PAYOUT_AMOUNT_EXCEEDS_COLUMN_LIMIT'; END IF;
 
   DELETE FROM public.tournament_prizes WHERE tournament_id = p_tournament_id;
   INSERT INTO public.tournament_prizes (tournament_id, position, percentage, amount)

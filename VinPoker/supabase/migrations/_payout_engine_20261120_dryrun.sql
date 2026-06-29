@@ -20,6 +20,21 @@
 
 BEGIN;
 
+-- 0) PREFLIGHT: live role helpers the new RLS + functions depend on. These are referenced inside
+--    plpgsql bodies (not validated at CREATE time, only at runtime), so verify the exact
+--    (uuid,uuid) signatures exist on the live DB BEFORE trusting a COMMIT. to_regprocedure returns
+--    NULL (no error) when the function is absent. Standalone form for preflight is in the review doc.
+DO $$
+BEGIN
+  IF to_regprocedure('public.is_club_owner(uuid,uuid)')   IS NULL
+  OR to_regprocedure('public.is_club_admin(uuid,uuid)')   IS NULL
+  OR to_regprocedure('public.is_club_cashier(uuid,uuid)') IS NULL
+  OR to_regprocedure('public.is_club_floor(uuid,uuid)')   IS NULL THEN
+    RAISE EXCEPTION 'PREFLIGHT_FAIL: a required is_club_*(uuid,uuid) helper is missing on this DB';
+  END IF;
+  RAISE NOTICE 'OK 0 — is_club_owner/admin/cashier/floor(uuid,uuid) all present';
+END$$;
+
 -- 1) object existence -----------------------------------------------------------------------
 DO $$
 DECLARE n int;
@@ -132,5 +147,5 @@ END$$;
 
 ROLLBACK;
 -- ============================================================================================
--- Expected output: four "OK n/4" NOTICEs and NO error. Nothing persisted (ROLLBACK).
+-- Expected output: "OK 0" (helpers) + "OK 1/4".."OK 4/4" NOTICEs and NO error. Nothing persisted.
 -- ============================================================================================
