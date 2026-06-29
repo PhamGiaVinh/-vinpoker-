@@ -1,10 +1,13 @@
 -- ============================================================================================
 -- Migration: 20261120000000_payout_engine.sql   (PR-2a — Payout "Engine 3-neo" backend)
 -- ============================================================================================
--- STATUS: SOURCE-ONLY. NOT APPLIED. No db push. schema_migrations NOT touched. Nothing deployed.
---         To be applied later ONLY via the owner-approved controlled Management-API runbook
---         (preflight -> dry-run BEGIN..ROLLBACK using the companion *_dryrun.sql -> owner phrase ->
---         BEGIN..COMMIT -> verify). The safety hook must stay enabled.
+-- STATUS: APPLIED LIVE 2026-06-29 (Option B) via the owner-approved controlled Management-API runbook
+--         (preflight -> dry-run BEGIN..ROLLBACK -> owner phrase -> BEGIN..COMMIT -> verify).
+--         schema_migrations NOT written · no db push · nothing deployed. THIS FILE IS THE LIVE VERSION
+--         (gate Owner/Admin/Cashier; is_club_floor removed because is_club_floor/club_floors are absent
+--         on the live DB). It is idempotent (IF NOT EXISTS / CREATE OR REPLACE / DROP..IF EXISTS), so a
+--         future db push would be a safe no-op. This commit only SYNCS main's source to live — the #580
+--         squash merged the pre-Option-B version by mistake; no DB action is taken here.
 --
 -- WHY ----------------------------------------------------------------------------------------
 --   The Prizes panel today stores manual rows with no computation. PR-1 shipped the pure-TS payout
@@ -25,7 +28,7 @@
 --   FUNC   prepare_payout_snapshot(...)  — locks + freezes the snapshot (the "close & generate" step)
 --   FUNC   apply_payout_run(...)         — re-verifies invariants + writes the official payout
 --   FUNC   save_tournament_prizes_v2(...)— guarded manual edit after close
---   RLS    on the two new tables (read = owner/admin/cashier/floor; writes deny-direct via DEFINER fns)
+--   RLS    on the two new tables (read = owner/admin/cashier; writes deny-direct via DEFINER fns)
 --
 -- CLOSE-GUARD — every path that can add/revive a paid entry is covered by ONE choke point ------
 --   Instead of editing each live cashier RPC (regression risk), a BEFORE INSERT OR UPDATE trigger on
@@ -66,7 +69,7 @@
 --   * Concurrent finalize: two prepares resume the SAME draft (no duplicate); the partial unique
 --     index makes a second apply fail cleanly -> exactly one applied run per tournament.
 --   * Manual edit creates a NEW applied run that supersedes the old in the same transaction.
---   * All write functions are SECURITY DEFINER, auth.uid()-gated to owner/admin/cashier/floor of the
+--   * All write functions are SECURITY DEFINER, auth.uid()-gated to owner/admin/cashier of the
 --     tournament's club (a non-admin cannot apply even with a run_id). The Edge forwards the caller
 --     JWT; it does NOT use the service role to bypass these checks.
 --
@@ -247,8 +250,7 @@ BEGIN
 
   IF NOT (public.is_club_owner(v_uid, v_t.club_id)
        OR public.is_club_admin(v_uid, v_t.club_id)
-       OR public.is_club_cashier(v_uid, v_t.club_id)
-       OR public.is_club_floor(v_uid, v_t.club_id)) THEN
+       OR public.is_club_cashier(v_uid, v_t.club_id)) THEN
     RAISE EXCEPTION 'NOT_AUTHORIZED';
   END IF;
 
@@ -377,8 +379,7 @@ BEGIN
 
   IF NOT (public.is_club_owner(v_uid, v_t.club_id)
        OR public.is_club_admin(v_uid, v_t.club_id)
-       OR public.is_club_cashier(v_uid, v_t.club_id)
-       OR public.is_club_floor(v_uid, v_t.club_id)) THEN
+       OR public.is_club_cashier(v_uid, v_t.club_id)) THEN
     RAISE EXCEPTION 'NOT_AUTHORIZED';
   END IF;
 
@@ -490,8 +491,7 @@ BEGIN
 
   IF NOT (public.is_club_owner(v_uid, v_t.club_id)
        OR public.is_club_admin(v_uid, v_t.club_id)
-       OR public.is_club_cashier(v_uid, v_t.club_id)
-       OR public.is_club_floor(v_uid, v_t.club_id)) THEN
+       OR public.is_club_cashier(v_uid, v_t.club_id)) THEN
     RAISE EXCEPTION 'NOT_AUTHORIZED';
   END IF;
 
@@ -552,9 +552,13 @@ $$;
 -- -------------------------------------------------------------------------------------------
 -- 9. GRANTS / RLS
 --    Write functions: authenticated only (they self-check club role); anon/public revoked.
---    Tables: RLS ON; SELECT = owner/admin/cashier/floor; NO insert/update/delete policies on
+--    Tables: RLS ON; SELECT = owner/admin/cashier; NO insert/update/delete policies on
 --    tournament_payout_runs (writes only via the SECURITY DEFINER functions, which bypass RLS as
 --    the table owner). payout_templates allows owner/admin direct CRUD (low-risk config).
+--    NOTE: the gate is Owner/Admin/Cashier only — `is_club_floor`/`club_floors` do NOT exist on the
+--    live DB (the floor-role subsystem was never applied), so referencing it would fail. If a
+--    floor-specific payout permission is needed later, add it in a SEPARATE role-system PR after
+--    `club_floors` + `is_club_floor` exist live. Until then: give that user the cashier/admin role.
 -- -------------------------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public.prepare_payout_snapshot(uuid,numeric,text,numeric,bigint,bigint,text,boolean,text) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.prepare_payout_snapshot(uuid,numeric,text,numeric,bigint,bigint,text,boolean,text) TO authenticated;
@@ -573,16 +577,14 @@ CREATE POLICY payout_runs_select ON public.tournament_payout_runs FOR SELECT TO 
     WHERE t.id = tournament_payout_runs.tournament_id
       AND (public.is_club_owner(auth.uid(), t.club_id)
         OR public.is_club_admin(auth.uid(), t.club_id)
-        OR public.is_club_cashier(auth.uid(), t.club_id)
-        OR public.is_club_floor(auth.uid(), t.club_id))));
+        OR public.is_club_cashier(auth.uid(), t.club_id))));
 
 ALTER TABLE public.payout_templates ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS payout_templates_select ON public.payout_templates;
 CREATE POLICY payout_templates_select ON public.payout_templates FOR SELECT TO authenticated
   USING (public.is_club_owner(auth.uid(), club_id)
       OR public.is_club_admin(auth.uid(), club_id)
-      OR public.is_club_cashier(auth.uid(), club_id)
-      OR public.is_club_floor(auth.uid(), club_id));
+      OR public.is_club_cashier(auth.uid(), club_id));
 DROP POLICY IF EXISTS payout_templates_write ON public.payout_templates;
 CREATE POLICY payout_templates_write ON public.payout_templates FOR ALL TO authenticated
   USING (public.is_club_owner(auth.uid(), club_id) OR public.is_club_admin(auth.uid(), club_id))

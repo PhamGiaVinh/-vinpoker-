@@ -117,9 +117,10 @@ reject cases are:
 ```sql
 SELECT oid::regprocedure
 FROM   pg_proc
-WHERE  proname IN ('is_club_owner','is_club_admin','is_club_cashier','is_club_floor')
+WHERE  proname IN ('is_club_owner','is_club_admin','is_club_cashier')
 ORDER  BY 1;
--- Expect exactly the four (uuid,uuid) signatures. The dry-run's section 0 also asserts this.
+-- Expect exactly the three (uuid,uuid) signatures. The dry-run's section 0 also asserts this.
+-- (is_club_floor is intentionally NOT required — it/`club_floors` are absent on live; see below.)
 ```
 
 ## DB / deploy safety — proof
@@ -129,7 +130,10 @@ ORDER  BY 1;
 
 ## Owner questions — status
 RESOLVED this round:
-1. **Finalize permission** → owner/admin/cashier/floor (kept; matches the functions' role check). ✔
+1. **Finalize permission** → **Owner/Admin/Cashier** (the controlled dry-run found `is_club_floor` /
+   `club_floors` absent on the live DB, so `is_club_floor` was removed from PR-2a; floor-specific
+   payout permission, if ever needed, is a separate role-system PR after `club_floors` exists live —
+   meanwhile give that user the cashier/admin role). ✔
 2. **Manual-edit monotonicity** → enforced monotone non-increasing (kept). ✔
 3. **Void entry counting** → count `tournament_entries` excluding cancelled/void statuses; void sets
    `status='cancelled'` (confirmed via `void_registration`), so the exclusion is correct. Final value
@@ -139,8 +143,9 @@ STILL OPEN (no code change needed; verified at controlled apply):
 4. **`tournament_prizes.amount NUMERIC(12,2)`** (~10^10 VND ceiling) is a pre-existing schema limit.
    Handled now by `PAYOUT_AMOUNT_EXCEEDS_COLUMN_LIMIT` (fails loudly). A later migration may widen it
    to `NUMERIC(18,2)`/BIGINT if a single payout could exceed ~10 billion VND.
-5. **`is_club_*(uuid,uuid)` on LIVE** — required by the new RLS + functions; the dry-run section 0
-   preflight (and the standalone query above) confirm presence before COMMIT.
+5. **`is_club_*(uuid,uuid)` on LIVE** → **RESOLVED by the dry-run.** Live has
+   `is_club_owner/admin/cashier(uuid,uuid)` but **not** `is_club_floor` (nor its `club_floors` table).
+   PR-2a now gates **Owner/Admin/Cashier only**; floor is intentionally out of scope. ✔
 6. **Min-cash flooring** — `effective_floor = floor(min_cash_x × (buy_in + rake))` (whole VND, ≤1 VND
    effect). Confirm flooring (vs rounding) is acceptable.
 

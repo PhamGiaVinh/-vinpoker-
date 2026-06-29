@@ -28,11 +28,10 @@ DO $$
 BEGIN
   IF to_regprocedure('public.is_club_owner(uuid,uuid)')   IS NULL
   OR to_regprocedure('public.is_club_admin(uuid,uuid)')   IS NULL
-  OR to_regprocedure('public.is_club_cashier(uuid,uuid)') IS NULL
-  OR to_regprocedure('public.is_club_floor(uuid,uuid)')   IS NULL THEN
+  OR to_regprocedure('public.is_club_cashier(uuid,uuid)') IS NULL THEN
     RAISE EXCEPTION 'PREFLIGHT_FAIL: a required is_club_*(uuid,uuid) helper is missing on this DB';
   END IF;
-  RAISE NOTICE 'OK 0 — is_club_owner/admin/cashier/floor(uuid,uuid) all present';
+  RAISE NOTICE 'OK 0 — is_club_owner/admin/cashier(uuid,uuid) all present';
 END$$;
 
 -- 1) object existence -----------------------------------------------------------------------
