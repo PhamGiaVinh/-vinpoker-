@@ -2676,6 +2676,7 @@
     "freeClubService": "Free club service",
     "totalPay": "Total payment",
     "transferInfo": "Transfer information",
+    "vietqrHint": "Scan with your banking app — auto-fills amount & memo",
     "bank": "Bank",
     "accountHolder": "Account holder",
     "accountNumber": "Account number",

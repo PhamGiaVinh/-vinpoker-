@@ -47,6 +47,16 @@ export const FEATURES = {
    */
   sepayAutoConfirm: false,
   /**
+   * Dynamic VietQR on the tournament buy-in screen (TournamentRegisterModal). When ON, the payment
+   * card renders a NAPAS VietQR (built locally) that pre-fills the receiving account + exact amount +
+   * the bare reference_code memo, so the customer can't mistype them → reliable SePay auto-confirm.
+   * Frontend-only; does NOT touch settle/confirm. Default **OFF** until a real bank-app scan + a small
+   * real transfer pass. The QR carries no data settle trusts — it is a convenience pre-fill; the static
+   * QR + manual fields stay as fallback. For production the BIN must come from an explicit
+   * platform_bank_accounts.bank_bin (Stage 2); the free-text name map is a legacy/UAT fallback only.
+   */
+  dynamicVietQr: false,
+  /**
    * Move-player dialog + System-A row locking (used by the floor map "Sơ đồ bàn"
    * + the registration queue; the standalone Table Draw tab was removed 2026-06-15).
    * Enabled 2026-06-13: guard v2 (20260818000000) APPLIED LIVE and verified —

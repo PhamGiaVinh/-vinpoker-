@@ -2430,6 +2430,7 @@
     "freeClubService": "免费俱乐部服务",
     "totalPay": "应付总额",
     "transferInfo": "转账信息",
+    "vietqrHint": "用银行App扫描 — 自动填入金额和备注",
     "bank": "银行",
     "accountHolder": "账户持有人",
     "accountNumber": "账号",
