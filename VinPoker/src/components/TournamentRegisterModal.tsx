@@ -38,6 +38,9 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCompleted?: () => void;
+  /** 'register' (default) calls tournament-register; 'reentry' calls tournament-reentry. Same response
+   *  shape + same VietQR/bank UI either way — only the edge fn (and thus the REENTRY code) differs. */
+  mode?: "register" | "reentry";
 }
 
 const TIMEOUT_MS = 30 * 60 * 1000;
@@ -53,7 +56,7 @@ const useCountdown = (deadline: number) => {
   return { label: `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`, expired: remaining <= 0 };
 };
 
-export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, onClose, onCompleted }: Props) => {
+export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, onClose, onCompleted, mode = "register" }: Props) => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -70,9 +73,10 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
     let mounted = true;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase.functions.invoke("tournament-register", {
-        body: { tournament_id: tournamentId },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        mode === "reentry" ? "tournament-reentry" : "tournament-register",
+        { body: { tournament_id: tournamentId } },
+      );
       if (!mounted) return;
       setLoading(false);
       if (error || (data as any)?.error) {
@@ -96,7 +100,7 @@ export const TournamentRegisterModal = ({ tournamentId, tournamentName, open, on
       window.dispatchEvent(new Event("vinpoker:registration-changed"));
     })();
     return () => { mounted = false; };
-  }, [open, tournamentId, user?.id]);
+  }, [open, tournamentId, user?.id, mode]);
 
 
   const transferContent = info ? `VINPoker ${info.reference_code}` : "";

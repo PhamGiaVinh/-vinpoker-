@@ -13,6 +13,7 @@ import { getTournamentPrice } from "@/lib/tournament";
 import { LiveStateBanner } from "@/components/LiveStateBanner";
 import { TournamentRegisterModal } from "@/components/TournamentRegisterModal";
 import { LivestreamPlayer } from "@/components/LivestreamPlayer";
+import { FEATURES } from "@/lib/featureFlags";
 
 
 const TournamentDetail = () => {
@@ -29,6 +30,9 @@ const TournamentDetail = () => {
   const [submitting] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [myReg2, setMyReg2] = useState<any>(null);
+  const [myReentry, setMyReentry] = useState<any>(null);   // pending re-entry reg (flag-gated)
+  const [myEliminated, setMyEliminated] = useState(false); // latest entry busted + no active seat
+  const [registerMode, setRegisterMode] = useState<"register" | "reentry">("register");
 
   const load = async () => {
     setLoading(true);
@@ -44,12 +48,34 @@ const TournamentDetail = () => {
       const { data: r } = await supabase.from("stack_registrations")
         .select("*").eq("tournament_id", id!).eq("user_id", user.id).maybeSingle();
       setMyReg(r);
-      const { data: r2 } = await supabase.from("tournament_registrations")
-        .select("id, status, reference_code, total_pay")
-        .eq("tournament_id", id!).eq("player_id", user.id)
-        .in("status", ["pending", "confirmed"])
-        .maybeSingle();
-      setMyReg2(r2);
+      if (FEATURES.dynamicReentry) {
+        // Re-entry ON: a player can hold a confirmed INITIAL reg AND a pending re-entry → scope each
+        // (and only reference source_entry_id here, where STAGE B's column is guaranteed applied).
+        const { data: r2 } = await supabase.from("tournament_registrations")
+          .select("id, status, reference_code, total_pay")
+          .eq("tournament_id", id!).eq("player_id", user.id)
+          .is("source_entry_id", null)
+          .in("status", ["pending", "confirmed"]).maybeSingle();
+        setMyReg2(r2);
+        const { data: rr } = await supabase.from("tournament_registrations")
+          .select("id, status").eq("tournament_id", id!).eq("player_id", user.id)
+          .not("source_entry_id", "is", null).eq("status", "pending")
+          .order("committed_at", { ascending: false }).limit(1).maybeSingle();
+        setMyReentry(rr);
+        const { data: en } = await supabase.from("tournament_entries")
+          .select("status").eq("tournament_id", id!).eq("player_id", user.id)
+          .order("entry_no", { ascending: false }).limit(1).maybeSingle();
+        const { data: seat } = await supabase.from("tournament_seats")
+          .select("id").eq("tournament_id", id!).eq("player_id", user.id).eq("is_active", true).limit(1).maybeSingle();
+        setMyEliminated(en?.status === "busted" && !seat);
+      } else {
+        const { data: r2 } = await supabase.from("tournament_registrations")
+          .select("id, status, reference_code, total_pay")
+          .eq("tournament_id", id!).eq("player_id", user.id)
+          .in("status", ["pending", "confirmed"])
+          .maybeSingle();
+        setMyReg2(r2);
+      }
     }
     setLoading(false);
   };
@@ -151,12 +177,22 @@ const TournamentDetail = () => {
       {!livestreamMode && (
         <div className="fixed inset-x-0 z-30 px-4 pb-3 pt-2 bg-gradient-to-t from-background via-background/95 to-transparent bottom-[calc(88px+env(safe-area-inset-bottom))] md:bottom-4">
           <div className="mx-auto max-w-3xl space-y-2">
-            {myReg2?.status === "confirmed" ? (
+            {FEATURES.dynamicReentry && (myReentry || myEliminated)
+              && (t.current_level == null || Number(t.current_level) <= Number(t.late_reg_close_level ?? 6)) ? (
+              <>
+                {t.current_level != null && Number(t.current_level) === Number(t.late_reg_close_level ?? 6) && (
+                  <div className="text-[11px] text-warning text-center">Cửa đăng ký sắp đóng — thanh toán ngay.</div>
+                )}
+                <Button onClick={() => { setRegisterMode("reentry"); setRegisterOpen(true); }} size="lg" className="w-full gradient-gold text-primary-foreground border-0">
+                  {myReentry ? "⏳ Tiếp tục thanh toán (mua lại)" : "Mua lại"}
+                </Button>
+              </>
+            ) : myReg2?.status === "confirmed" ? (
               <Button disabled size="lg" className="w-full" variant="secondary">
                 ✅ {tr("tournamentDetailPage.registeredCheckin")}
               </Button>
             ) : myReg2?.status === "pending" ? (
-              <Button onClick={() => setRegisterOpen(true)} size="lg" className="w-full gradient-gold text-primary-foreground border-0">
+              <Button onClick={() => { setRegisterMode("register"); setRegisterOpen(true); }} size="lg" className="w-full gradient-gold text-primary-foreground border-0">
                 ⏳ {tr("tournamentDetailPage.continuePayment")}
               </Button>
             ) : (
@@ -164,7 +200,7 @@ const TournamentDetail = () => {
                 <Button onClick={openChat} variant="outline" size="lg">
                   💬 {tr("tournamentDetailPage.chatWithClub")}
                 </Button>
-                <Button onClick={() => { user ? setRegisterOpen(true) : nav("/auth"); }} disabled={submitting} size="lg" className="gradient-gold text-primary-foreground border-0 shadow-gold">
+                <Button onClick={() => { if (user) { setRegisterMode("register"); setRegisterOpen(true); } else { nav("/auth"); } }} disabled={submitting} size="lg" className="gradient-gold text-primary-foreground border-0 shadow-gold">
                   {tr("tournamentDetailPage.registerTournament")}
                 </Button>
               </div>
@@ -177,7 +213,8 @@ const TournamentDetail = () => {
         tournamentId={t.id}
         tournamentName={t.name}
         open={registerOpen}
-        onClose={() => { setRegisterOpen(false); load(); }}
+        mode={registerMode}
+        onClose={() => { setRegisterOpen(false); setRegisterMode("register"); load(); }}
         onCompleted={() => load()}
       />
     </div>
