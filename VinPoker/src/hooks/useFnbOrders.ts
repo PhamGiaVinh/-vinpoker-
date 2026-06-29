@@ -1,0 +1,47 @@
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+export type FnbOrderStatus = "pending" | "paid" | "shipped" | "cancelled" | "expired";
+
+export type FnbOrderItem = {
+  id: string; order_id: string; menu_item_id: string; name_snapshot: string;
+  qty: number; unit_price_snapshot: number; line_status: FnbOrderStatus;
+};
+export type FnbOrder = {
+  id: string; club_id: string; status: FnbOrderStatus; source: string;
+  table_label: string | null; customer_name: string | null; note: string | null;
+  subtotal_vnd: number; cogs_vnd: number;
+  created_at: string; paid_at: string | null;
+  items: FnbOrderItem[];
+};
+
+/**
+ * Counter order list (RLS-scoped direct reads — no RPC). Two reads (orders in `statuses` + their
+ * items) grouped client-side. Light 15s poll so the pending/paid tabs stay fresh without realtime
+ * (the live Kitchen Display gets realtime in F6). Counter mutations invalidate
+ * `['fnb','orders',clubId]`. `fnb_*` is untyped → `supabase as any`.
+ */
+export function useFnbOrders(clubId: string | undefined, statuses: FnbOrderStatus[]) {
+  return useQuery({
+    queryKey: ["fnb", "orders", clubId, statuses],
+    enabled: !!clubId && statuses.length > 0,
+    refetchInterval: 15000,
+    queryFn: async (): Promise<FnbOrder[]> => {
+      const sb = supabase as any;
+      const { data: orders, error } = await sb.from("fnb_orders")
+        .select("*").eq("club_id", clubId).in("status", statuses)
+        .order("created_at", { ascending: false }).limit(100);
+      if (error) throw error;
+      const list = (orders ?? []) as FnbOrder[];
+      if (list.length === 0) return [];
+      const ids = list.map((o) => o.id);
+      const { data: items, error: e2 } = await sb.from("fnb_order_items").select("*").in("order_id", ids);
+      if (e2) throw e2;
+      const byOrder: Record<string, FnbOrderItem[]> = {};
+      for (const it of (items ?? []) as FnbOrderItem[]) {
+        (byOrder[it.order_id] ??= []).push(it);
+      }
+      return list.map((o) => ({ ...o, items: byOrder[o.id] ?? [] }));
+    },
+  });
+}

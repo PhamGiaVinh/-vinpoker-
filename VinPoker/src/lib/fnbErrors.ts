@@ -28,6 +28,7 @@ const VI: Record<string, string> = {
   DUPLICATE_NAME:      "Tên này đã tồn tại.",
   NOT_FOUND:           "Không tìm thấy bản ghi.",
   INSUFFICIENT_STOCK:  "Không đủ nguyên liệu để bán.",
+  RECIPE_REQUIRED:     "Có món chưa khai báo công thức — không thể thu tiền.",
 };
 
 type SupaErr = { message?: string; details?: string; detail?: string; hint?: string; code?: string } | null | undefined;
@@ -58,6 +59,15 @@ export function mapFnbError(input: string | SupaErr): string {
   if (typeof input !== "string") {
     const msg = input.message ?? "";
     const detail = input.details ?? input.detail; // pg RAISE ... USING DETAIL surfaces as `details`
+    // RECIPE_REQUIRED (fnb_mark_paid, …0010): DETAIL = [{menu_item_id,name,qty}] of items that track
+    // inventory but have no recipe → block PAID. Same thrown-exception shape as INSUFFICIENT_STOCK.
+    if (msg.includes("RECIPE_REQUIRED")) {
+      const items = parseShortages(detail);
+      const list = items.map((s) => s.name).filter(Boolean).join(", ");
+      return list
+        ? `Chưa có công thức cho: ${list}. Thêm công thức hoặc đánh dấu “không trừ kho”.`
+        : VI.RECIPE_REQUIRED;
+    }
     if (msg.includes("INSUFFICIENT_STOCK")) {
       const short = parseShortages(detail);
       if (short.length) {
