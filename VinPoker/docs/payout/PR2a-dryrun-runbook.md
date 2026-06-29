@@ -40,25 +40,26 @@ A `ROLLBACK` ends every path — **no COMMIT anywhere in this package**.
 ```sql
 SELECT oid::regprocedure
 FROM   pg_proc
-WHERE  proname IN ('is_club_owner','is_club_admin','is_club_cashier','is_club_floor')
+WHERE  proname IN ('is_club_owner','is_club_admin','is_club_cashier')
 ORDER  BY 1;
 ```
-**Expected (PASS):** exactly these four rows —
+**Expected (PASS):** exactly these three rows —
 ```
 is_club_admin(uuid,uuid)
 is_club_cashier(uuid,uuid)
-is_club_floor(uuid,uuid)
 is_club_owner(uuid,uuid)
 ```
 **FAIL:** any missing / a different signature → STOP. The migration's RLS + functions depend on
-`is_club_*(uuid,uuid)`; a mismatch would only surface at runtime, so it must be confirmed before apply.
-(The structural dry-run's section 0 re-asserts this inside the txn.)
+`is_club_owner/admin/cashier(uuid,uuid)`; a mismatch would only surface at runtime, so it must be
+confirmed before apply. (The structural dry-run's section 0 re-asserts this inside the txn.)
+**Note:** `is_club_floor` is intentionally NOT required — the first dry-run found it (and `club_floors`)
+absent on the live DB, so PR-2a gates **Owner/Admin/Cashier only**.
 
 ## (2) Structural dry-run — `_payout_engine_20261120_dryrun.sql`
 Runs without auth/data. **Expected NOTICEs, in order (PASS):**
 | Step | NOTICE | Asserts |
 |---|---|---|
-| 0 | `OK 0 — is_club_owner/admin/cashier/floor(uuid,uuid) all present` | live role helpers exist |
+| 0 | `OK 0 — is_club_owner/admin/cashier(uuid,uuid) all present` | live role helpers exist |
 | 1 | `OK 1/4 — all objects present` | 5 columns, 2 tables, `uq_payout_applied`, 5 functions, trigger, RLS policies |
 | 2 | `OK 2/4 — is_tournament_registration_closed(unknown)=false` | closed-helper returns false for an unknown id |
 | 3 | `OK 3/4 — write-function guards fire (parse + early checks)` | prepare/apply/save raise `AUTH_REQUIRED`/`*_NOT_FOUND`/`MANUAL_EDIT_REASON_REQUIRED` |
@@ -100,12 +101,12 @@ functions, which the table owner runs, can write). Reads are role-scoped. Verify
 session **as an authenticated principal** (app session or `SET LOCAL ROLE authenticated` + JWT claims):
 | Principal | Action | Expected |
 |---|---|---|
-| club owner/admin/cashier/floor | `SELECT * FROM tournament_payout_runs` (their club) | rows visible |
+| club owner/admin/cashier | `SELECT * FROM tournament_payout_runs` (their club) | rows visible |
 | outsider (not in the club) | `SELECT * FROM tournament_payout_runs` | **0 rows** (RLS) |
 | any authenticated | `INSERT INTO tournament_payout_runs …` directly | **denied** (no write policy) |
 | any authenticated | `UPDATE tournament_payout_runs …` directly | **denied** |
 | club owner/admin | `INSERT INTO payout_templates …` | allowed |
-| cashier/floor | `INSERT INTO payout_templates …` | **denied** (read-only) |
+| cashier | `INSERT INTO payout_templates …` | **denied** (read-only) |
 | outsider | `SELECT * FROM payout_templates` | **0 rows** |
 The functional dry-run's **A1** (non-owner `NOT_AUTHORIZED`) already proves the function-level role gate
 that mirrors this; the table-level checks above are the RLS layer.
