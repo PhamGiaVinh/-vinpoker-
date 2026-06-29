@@ -27,20 +27,20 @@ SEPAY_AUTO_CONFIRM env · DB `auto_confirm_enabled` · bot ∈ `club_cashiers` o
 source entry busted (floor-removed) + no active seat + window open** — re-validated AT CONFIRM time.
 
 ## Stages (each source-only, owner-gated apply, own review)
-- **A (PREREQUISITE):** `20261120000000_floor_bust_syncs_entry.sql` — AFTER-UPDATE-OF-is_active trigger on
+- **A (PREREQUISITE):** `20261121000000_floor_bust_syncs_entry.sql` — AFTER-UPDATE-OF-is_active trigger on
   tournament_seats; WHEN `OLD.is_active AND NOT NEW.is_active AND NEW.status='busted'`; body (EXCEPTION WHEN
   OTHERS THEN NULL — never blocks the seat UPDATE) sets the entry busted iff no surviving active seat (move-proof
   via status='busted' + no-active-seat). Test `floor_bust_syncs_entry_test.sql`.
-- **B:** `20261121000000_treg_source_entry_id.sql` — add `tournament_registrations.source_entry_id uuid` +
+- **B:** `20261122000000_treg_source_entry_id.sql` — add `tournament_registrations.source_entry_id uuid` +
   replace `uniq_treg_active` with `uniq_treg_active_initial` (WHERE source_entry_id IS NULL) +
   `uniq_treg_pending_reentry_per_entry` (WHERE source_entry_id IS NOT NULL). New edge fn
   `functions/tournament-reentry/index.ts` (clone of tournament-register): gate (eliminated + no active seat +
   window open + no existing pending REENTRY) → PENDING reg (REENTRY code, total_pay=buy_in+rake+service_fee,
   source_entry_id set, NO free-rake) → returns the same shape as tournament-register (modal + VietQR unchanged).
 - **C:** extract `reenter_tournament_player` seat steps 8-14 into a SHARED helper `_assign_reentry_seat(...)`
-  (both the cashier RPC and the new confirm CALL it — no paste). `20261121000001_confirm_reentry_and_assign_seat.sql`
+  (both the cashier RPC and the new confirm CALL it — no paste). `20261122000001_confirm_reentry_and_assign_seat.sql`
   mirrors confirm (guards 2.4/2.5) for the pay-first shape, re-validates the gate, calls the helper, flips the
-  pending reg → confirmed. `20261122000000_sepay_settle_reentry_autoconfirm.sql` = CREATE OR REPLACE
+  pending reg → confirmed. `20261123000000_sepay_settle_reentry_autoconfirm.sql` = CREATE OR REPLACE
   settle_bank_transaction off the `20261118000000` byte-baseline; ONLY the exact-match confirm dispatch changes
   (`source_entry_id IS NULL → confirm_registration_and_assign_seat` UNCHANGED, else `confirm_reentry_and_assign_seat`).
   Add safeguard partial unique `payment_settlements (tournament_registration_id) WHERE outcome='auto_confirmed'`.
@@ -48,7 +48,8 @@ source entry busted (floor-removed) + no active seat + window open** — re-vali
   no active seat + window open; near-threshold warning) + TournamentRegisterModal `mode='reentry'`.
 
 ## Migration order
-A `20261120000000` → B `20261121000000` → C `20261121000001` + `20261122000000`. All controlled-apply (no db push).
+A `20261121000000` → B `20261122000000` → C `20261122000001` + `20261123000000`. (PATCH-4 block moved up to
+clear payout #580's `20261120000000_payout_engine.sql`.) All controlled-apply (no db push).
 
 ## Verification (owner-run)
 A: `floor_bust_syncs_entry_test.sql` (bust→busted, move→seated, null→fallback, no-raise).
