@@ -69,6 +69,40 @@ supabase functions deploy tournament-reentry
 ```
 Do NOT execute it here; owner runs it as step 5.
 
+## Production apply (COMMIT) — packaged scripts + emergency notes
+
+The B+C controlled **dry-run** (`patch4_bc_dryrun_modeA.sql`, BEGIN…ROLLBACK) is **FULL PASS** (10/10 structural
+asserts · 9/9 headless cases · 11/11 rollback proof, zero COMMIT). The real apply re-uses the SAME DDL with a
+COMMIT instead of a rollback. Three packaged scripts (under `scripts/diagnostics/`):
+
+- **`patch4_bc_preflight.sql`** — READ-ONLY pre-state probe. Run FIRST. Expect every row `PASS …`. Any `STOP`
+  row = B/C already (partly) live → do NOT apply; investigate.
+- **`patch4_bc_apply_prod.sql`** — the REAL apply (the **only** script that COMMITs). `BEGIN` → apply B →
+  C-confirm → C-settle → a `DO` **gate** that `RAISE`s if any of the 10 objects is missing (aborts the txn →
+  the trailing `COMMIT` becomes a rollback → **nothing applied**) → `COMMIT` → a read-only 10-row PASS proof.
+  Exactly **1 BEGIN / 1 COMMIT / 0 ROLLBACK**.
+- **`sepay_reentry_auto_confirm_sandbox_test.sql`** — optional post-apply behaviour check (BEGIN…ROLLBACK, run
+  AFTER COMMIT) → expect **9/9 PASS**. Safe (rolls back) even though B/C are now live.
+
+**Order:** preflight (all PASS) → run `patch4_bc_apply_prod.sql` (gate passes → COMMITs → proof shows 10/10) →
+run the 9-case test (9/9) → and only THEN the post-apply gates below.
+
+### Emergency / failure handling
+- **Pre-apply snapshot (recommended).** Before applying, take a restore point — Supabase **PITR** (note the
+  timestamp), and/or capture the current baseline so it can be restored fast:
+  `SELECT pg_get_functiondef('public.settle_bank_transaction(uuid,boolean)'::regprocedure);` (save the output —
+  that is the `20261118000000` body the Rollback section restores to).
+- **B applies but C fails before COMMIT.** B, C-confirm and C-settle are all inside the **one** `BEGIN…COMMIT`,
+  so any failure (incl. the gate `RAISE`) aborts the WHOLE transaction → **B is rolled back too; nothing is left
+  half-applied.** Read the error, fix the cause, re-run `patch4_bc_apply_prod.sql` from the top. No partial state.
+- **Post-COMMIT proof shows any FAIL** (should be impossible — the gate `RAISE`s before COMMIT). If it ever does:
+  the apply committed but an object is missing → immediately run the **Rollback** section below (restore settle to
+  the `20261118000000` body, drop the new fns + indexes, restore `uniq_treg_active`, drop `source_entry_id` once
+  no re-entry rows exist), and do **NOT** proceed to Edge deploy / flag.
+- **Do NOT deploy `tournament-reentry` or flip `dynamicReentry` until BOTH the post-COMMIT proof (10/10) AND the
+  9-case test (9/9) pass.** Until then a deployed edge fn that could create pending re-entry regs is the
+  guard-bypass window described in the Apply-order section.
+
 ## Rollback (separate from apply — never run during apply)
 - **settle** (`20261123000000`): `CREATE OR REPLACE` `settle_bank_transaction` back to the `20261118000000`
   body (instant, no DDL) → re-entry dispatch gone, initial path unaffected; then
