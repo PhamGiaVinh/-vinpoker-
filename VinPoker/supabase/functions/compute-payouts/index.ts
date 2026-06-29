@@ -103,7 +103,7 @@ serve(async (req) => {
     const { data: run, error: runErr } = await service
       .from("tournament_payout_runs")
       .select(
-        "id, tournament_id, status, entries_snapshot, prize_pool_snapshot, effective_floor, itm_percent, archetype, rounding_unit, custom_percents",
+        "id, tournament_id, status, entries_snapshot, prize_pool_snapshot, effective_floor, itm_percent, archetype, rounding_unit",
       )
       .eq("id", runId)
       .maybeSingle();
@@ -127,7 +127,18 @@ serve(async (req) => {
     let result;
     try {
       if (run.archetype === "CUSTOM") {
-        const percents = ((run.custom_percents ?? []) as Array<Record<string, unknown>>).map((p) => ({
+        // CUSTOM stores its frozen percents in `custom_percents`, a column added by the 20261123
+        // migration. Fetch it in a SEPARATE query so the preset path above (which never selects
+        // this column) keeps working on a pre-migration schema. Fail SAFE if the column is absent:
+        // this branch is only reachable for a CUSTOM run, which can't exist until the migration is
+        // applied anyway, but the guard means a stray call can never crash the preset path.
+        const { data: cp, error: cpErr } = await service
+          .from("tournament_payout_runs")
+          .select("custom_percents")
+          .eq("id", runId)
+          .maybeSingle();
+        if (cpErr) return json({ error: "CUSTOM_SCHEMA_NOT_READY", detail: cpErr.message }, 400);
+        const percents = ((cp?.custom_percents ?? []) as Array<Record<string, unknown>>).map((p) => ({
           position: Number(p.position),
           percentBp: Number(p.percent_bp),
         }));

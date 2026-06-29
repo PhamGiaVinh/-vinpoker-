@@ -37,6 +37,7 @@ const ERR_VI: Record<string, string> = {
   MANUAL_EDIT_REASON_REQUIRED: "Cần nhập lý do khi chỉnh tay.",
   PRIZE_POOL_OVERRIDE_REASON_REQUIRED: "Cần lý do khi sửa prize pool.",
   MULTIDAY_UNSUPPORTED: "Giải nhiều ngày chưa hỗ trợ payout tự động.",
+  CUSTOM_SCHEMA_NOT_READY: "Chế độ CUSTOM chưa sẵn sàng (DB chưa được cập nhật).",
   NO_PAID_ENTRIES: "Chưa có entry đã trả tiền.",
   NO_APPLIED_RUN: "Chưa có payout chính thức để chỉnh tay.",
   PAYOUT_AMOUNT_EXCEEDS_COLUMN_LIMIT: "Một suất vượt giới hạn lưu trữ (>10 tỉ).",
