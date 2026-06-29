@@ -64,6 +64,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (tErr || !tour) return j({ error: "Tournament not found" }, 404);
 
+    // PER-CLUB GATE: online re-entry is available ONLY for clubs opted into SePay auto-confirm (the system bot
+    // is a cashier of the club). This ties re-entry to the per-club opt-in, so it neither runs nor falls to the
+    // (re-entry-unaware) cashier manual-confirm path for clubs that haven't been launched. dynamicReentry (UI)
+    // is a GLOBAL flag; THIS is the real per-club switch. Opt a club in by adding the bot to its club_cashiers.
+    {
+      const { data: ss } = await admin.from("sepay_system_settings").select("system_actor_id").limit(1).maybeSingle();
+      const botId = (ss as { system_actor_id?: string | null } | null)?.system_actor_id ?? null;
+      let clubEnabled = false;
+      if (botId && tour.club_id) {
+        const { data: cc } = await admin.from("club_cashiers").select("user_id")
+          .eq("club_id", tour.club_id).eq("user_id", botId).limit(1).maybeSingle();
+        clubEnabled = !!cc;
+      }
+      if (!clubEnabled) return j({ error: "Giải này chưa mở mua lại online." }, 403);
+    }
+
     // Gate 2 — re-entry window open (before registration closes).
     if (["completed", "cancelled"].includes(String(tour.status))) {
       return j({ error: "Giải đã kết thúc — không thể mua lại." }, 400);
