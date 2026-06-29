@@ -26,6 +26,9 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// Mutable feature flags — the panel reads FEATURES.payoutCustomMode for the CUSTOM gate.
+const flags = vi.hoisted(() => ({ payoutCustomMode: false }));
+vi.mock("@/lib/featureFlags", () => ({ FEATURES: flags }));
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
     const chain: any = {};
@@ -52,7 +55,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null;
-  h.prizes = []; h.appliedRun = null; h.entriesCount = 10;
+  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
   h.invoke.mockImplementation(async () => ({ data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 }, error: null }));
@@ -149,5 +152,29 @@ describe("PayoutEnginePanel — backend error codes surface as friendly messages
     fireEvent.change(reason, { target: { value: "test" } });
     fireEvent.click(screen.getByRole("button", { name: /Lưu chỉnh tay/ }));
     await waitFor(() => expect((toast.error as any).mock.calls.some((c: any[]) => /SUM_MISMATCH/.test(c[0]))).toBe(true));
+  });
+});
+
+describe("PayoutEnginePanel — native CUSTOM mode is gated by FEATURES.payoutCustomMode", () => {
+  const openStyleSelect = () => {
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown", code: "ArrowDown" });
+  };
+
+  it("CUSTOM style is HIDDEN when payoutCustomMode = false", async () => {
+    flags.payoutCustomMode = false;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    openStyleSelect();
+    expect(screen.queryByText(/CUSTOM — CLB tự cấu hình/)).not.toBeInTheDocument();
+  });
+
+  it("CUSTOM style is VISIBLE when payoutCustomMode = true", async () => {
+    flags.payoutCustomMode = true;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    openStyleSelect();
+    expect(await screen.findByText(/CUSTOM — CLB tự cấu hình/)).toBeInTheDocument();
   });
 });

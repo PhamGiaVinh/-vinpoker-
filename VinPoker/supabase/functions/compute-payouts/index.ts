@@ -26,6 +26,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import {
   computePayouts,
+  computeCustomPayouts,
   floorFor,
   defaultRoundingUnit,
   MIN_CASH_X,
@@ -102,7 +103,7 @@ serve(async (req) => {
     const { data: run, error: runErr } = await service
       .from("tournament_payout_runs")
       .select(
-        "id, tournament_id, status, entries_snapshot, prize_pool_snapshot, effective_floor, itm_percent, archetype, rounding_unit",
+        "id, tournament_id, status, entries_snapshot, prize_pool_snapshot, effective_floor, itm_percent, archetype, rounding_unit, custom_percents",
       )
       .eq("id", runId)
       .maybeSingle();
@@ -121,16 +122,30 @@ serve(async (req) => {
     if (!(await canManageClub(tourRow.club_id))) return json({ error: "NOT_AUTHORIZED" }, 403);
 
     // Compute STRICTLY from the frozen snapshot — never recount, never read live tournament state.
+    // CUSTOM uses the frozen `custom_percents`; presets use the α engine. Both go through
+    // apply_payout_run, whose CUSTOM branch skips the α-only min-cash-floor checks.
     let result;
     try {
-      result = computePayouts({
-        entries: Number(run.entries_snapshot),
-        prizePool: Number(run.prize_pool_snapshot),
-        floor: Number(run.effective_floor),
-        itmPercent: Number(run.itm_percent),
-        archetype: run.archetype as PayoutArchetype,
-        roundingUnit: Number(run.rounding_unit),
-      });
+      if (run.archetype === "CUSTOM") {
+        const percents = ((run.custom_percents ?? []) as Array<Record<string, unknown>>).map((p) => ({
+          position: Number(p.position),
+          percentBp: Number(p.percent_bp),
+        }));
+        result = computeCustomPayouts({
+          prizePool: Number(run.prize_pool_snapshot),
+          percents,
+          roundingUnit: Number(run.rounding_unit),
+        });
+      } else {
+        result = computePayouts({
+          entries: Number(run.entries_snapshot),
+          prizePool: Number(run.prize_pool_snapshot),
+          floor: Number(run.effective_floor),
+          itmPercent: Number(run.itm_percent),
+          archetype: run.archetype as PayoutArchetype,
+          roundingUnit: Number(run.rounding_unit),
+        });
+      }
     } catch (e) {
       return json({ error: "ENGINE_ERROR", detail: String((e as Error).message) }, 400);
     }
@@ -172,10 +187,11 @@ serve(async (req) => {
   // ------------------------------------------------------------------------------------ PREVIEW
   const tournamentId = body.tournament_id;
   if (typeof tournamentId !== "string" || !tournamentId) return json({ error: "TOURNAMENT_ID_REQUIRED" }, 400);
-  const archetype = body.archetype as PayoutArchetype;
-  if (!ARCHETYPES.includes(archetype)) return json({ error: "BAD_ARCHETYPE" }, 400);
+  const archetype = body.archetype as PayoutArchetype | "CUSTOM";
+  const isCustom = archetype === "CUSTOM";
+  if (!isCustom && !ARCHETYPES.includes(archetype as PayoutArchetype)) return json({ error: "BAD_ARCHETYPE" }, 400);
   const itmPercent = Number(body.itm_percent);
-  if (!(itmPercent > 0 && itmPercent < 1)) return json({ error: "BAD_ITM_PERCENT", hint: "0..1 fraction" }, 400);
+  if (!isCustom && !(itmPercent > 0 && itmPercent < 1)) return json({ error: "BAD_ITM_PERCENT", hint: "0..1 fraction" }, 400);
 
   const { data: tour, error: tourErr } = await userClient
     .from("tournaments")
@@ -207,14 +223,22 @@ serve(async (req) => {
 
   const buyIn = Number(tour.buy_in);
   const rake = Number(tour.rake_amount ?? 0);
-  const minCashX = body.min_cash_x != null ? Number(body.min_cash_x) : MIN_CASH_X[archetype];
+  const minCashX = body.min_cash_x != null ? Number(body.min_cash_x) : MIN_CASH_X[archetype as PayoutArchetype];
   const roundingUnit = body.rounding_unit != null ? Number(body.rounding_unit) : defaultRoundingUnit(buyIn);
   const prizePool = body.prize_pool_override != null ? Number(body.prize_pool_override) : entries * buyIn;
   const floor = floorFor(minCashX, buyIn, rake);
 
   let result;
   try {
-    result = computePayouts({ entries, prizePool, floor, itmPercent, archetype, roundingUnit });
+    if (isCustom) {
+      const percents = ((body.custom_percents ?? []) as Array<Record<string, unknown>>).map((p) => ({
+        position: Number(p.position),
+        percentBp: Number(p.percent_bp),
+      }));
+      result = computeCustomPayouts({ prizePool, percents, roundingUnit });
+    } else {
+      result = computePayouts({ entries, prizePool, floor, itmPercent, archetype: archetype as PayoutArchetype, roundingUnit });
+    }
   } catch (e) {
     return json({ error: "ENGINE_ERROR", detail: String((e as Error).message) }, 400);
   }
