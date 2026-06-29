@@ -534,4 +534,12 @@ export const FEATURES = {
   fnbKitchen: false,
   fnbInventory: false,
   fnbFinance: false,
+  /**
+   * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
+   * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
+   * it can never read or mutate real data — SAFE to ship even while the real `fnbModule` stays OFF.
+   * Intentionally **ON** so the "F&B (Xem thử)" item shows in the VẬN HÀNH menu for owners/admins
+   * once this branch is deployed. Kill-switch: set false to hide the demo entirely.
+   */
+  fnbDemo: true,
 } as const;
