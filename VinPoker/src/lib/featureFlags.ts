@@ -546,6 +546,22 @@ export const FEATURES = {
    */
   marketingRequireApproval: false,
   /**
+   * F&B (Food & Beverage) module — pre-paid food/drink sales + mandatory inventory & COGS.
+   * `fnbModule` is the MASTER switch; it ALSO gates the useAuth `club_fnb_staff` lookup (see
+   * lib/fnbStaff.ts) so it can never 42P01 before that table exists live. The sub-flags gate each
+   * surface: `fnbCounter` (quầy + table ordering), `fnbKitchen` (live Kitchen Display),
+   * `fnbInventory` (ingredients/recipes/stock-in/stocktake admin tabs), `fnbFinance` (the F&B line
+   * in the Owner Finance dashboard — additionally needs the per-club fnb_settings.fnb_in_club_net).
+   * ALL default **OFF** (dark): the source-only migrations 20261111000000..07 are NOT applied live
+   * yet, so every F&B page redirects / shows a placeholder and nothing queries the absent fnb_*
+   * tables. Flip each ONLY after the matching backend is applied in a controlled DB session + UAT.
+   */
+  fnbModule: false,
+  fnbCounter: false,
+  fnbKitchen: false,
+  fnbInventory: false,
+  fnbFinance: false,
+  /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
    * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in

@@ -1,4 +1,12 @@
 {
+  "fnb": {
+    "navCounter": "F&B · Quầy",
+    "navKitchen": "F&B · Bếp",
+    "navAdmin": "F&B · Quản trị",
+    "title": "F&B (Đồ ăn & thức uống)",
+    "noClubs": "Bạn chưa được phân công câu lạc bộ F&B nào.",
+    "selectClub": "Chọn câu lạc bộ"
+  },
   "dealer": {
     "appTagline": "Dealer · Cổng nhân viên",
     "appEntry": "Dealer App",

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -74,7 +74,7 @@ const desktopTabsData = tabsData.filter((t) => !DESKTOP_HIDDEN_ROUTES.has(t.to))
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, isFnb, isFnbCashier, isFnbKitchen, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -223,7 +223,7 @@ export const Layout = () => {
             {/* Operator entry (mobile + desktop) — role-aware menu (TD + cashier + dealer).
                 Each destination guards itself; this is a UI entry only. A pure dealer
                 (no operator role) sees this menu with ONLY the Dealer App item. */}
-            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing) || (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
+            {(isCashier || isTracker || isAdmin || isClubAdmin || isClubOwner || isDealer || (FEATURES.chipOps && isChipMaster) || (FEATURES.marketingModule && isMarketing) || (FEATURES.fnbModule && isFnb) || (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -286,11 +286,30 @@ export const Layout = () => {
                       {t("marketing.navTitle")}
                     </DropdownMenuItem>
                   )}
-                  {/* F&B public DEMO — static showcase (no RPC); visible to owners/admins. */}
+                  {/* F&B — each link gated on its TARGET page's flag (no dead links); all OFF by default. */}
+                  {/* F&B public DEMO — static showcase (no RPC); intentionally visible to owners/admins. */}
                   {FEATURES.fnbDemo && (isClubOwner || isAdmin) && (
                     <DropdownMenuItem onClick={() => nav("/fnb/demo")} className="gap-2.5 cursor-pointer">
                       <UtensilsCrossed className="w-4 h-4" />
                       F&amp;B (Xem thử)
+                    </DropdownMenuItem>
+                  )}
+                  {FEATURES.fnbCounter && (isFnbCashier || isClubOwner || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/fnb")} className="gap-2.5 cursor-pointer">
+                      <UtensilsCrossed className="w-4 h-4" />
+                      {t("fnb.navCounter")}
+                    </DropdownMenuItem>
+                  )}
+                  {FEATURES.fnbKitchen && (isFnbKitchen || isClubOwner || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/fnb/kitchen")} className="gap-2.5 cursor-pointer">
+                      <ChefHat className="w-4 h-4" />
+                      {t("fnb.navKitchen")}
+                    </DropdownMenuItem>
+                  )}
+                  {FEATURES.fnbModule && (isClubOwner || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/fnb/admin")} className="gap-2.5 cursor-pointer">
+                      <Settings2 className="w-4 h-4" />
+                      {t("fnb.navAdmin")}
                     </DropdownMenuItem>
                   )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
