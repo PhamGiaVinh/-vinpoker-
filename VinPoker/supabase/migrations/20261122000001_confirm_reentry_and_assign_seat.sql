@@ -264,6 +264,17 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'player_already_active');
   END IF;
 
+  -- P1-1 (STAGE C review): if a LIVE (pending/confirmed) re-entry reg already exists for THIS busted entry,
+  -- return a clean structured error instead of letting the reg INSERT below collide on STAGE B's
+  -- uniq_treg_pending_reentry_per_entry. The reg LOOP only re-rolls v_ref_code (not source_entry_id), so a
+  -- source_entry_id collision would exhaust all 5 retries and RAISE a raw unique_violation to the cashier UI.
+  -- Fail closed, cleanly — no double-seat, no duplicate reg either way; this just makes the error structured.
+  PERFORM 1 FROM public.tournament_registrations
+  WHERE source_entry_id = p_entry_id AND status IN ('pending', 'confirmed');
+  IF FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'reentry_already_pending');
+  END IF;
+
   v_starting_stack := COALESCE(v_tour.starting_stack, 0);
 
   -- new confirmed cash registration (re-entry payment → revenue + audit); retry ref on collision
