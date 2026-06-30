@@ -32,6 +32,7 @@ const ClubAdmin = lazy(() => import("./pages/ClubAdmin"));
 const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
 const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
+const SeriesDecisionLogAdmin = lazy(() => import("./pages/SeriesDecisionLogAdmin"));
 const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
 // Marketing module (/marketing) — page self-gates on FEATURES.marketingModule + role.
 const Marketing = lazy(() => import("./pages/Marketing"));
@@ -228,6 +229,8 @@ const App = () => (
                 <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
+                {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
+                <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
                 {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
                 <Route path="/chip-ops" element={<ChipOpsInventory />} />
                 {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role. */}

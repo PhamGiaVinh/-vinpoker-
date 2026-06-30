@@ -461,6 +461,15 @@ export const FEATURES = {
    */
   forwardLayerMonteCarlo: true,
   /**
+   * Series Intelligence — CAPTURE v0 Decision Log admin. When ON, the route
+   * `/club/admin/series-decision-log` shows a club-owner skeleton to read + manually log decisions into
+   * `series_decision_logs` (recommended vs decision vs public action). DATA CAPTURE ONLY — no model, no
+   * prediction. Requires the source-only migration `20261125000000_series_capture_v0.sql` to be applied
+   * live first (the 4 capture tables); until then the writes have no target. Default **OFF** (dark): the
+   * route redirects home when off. Kill-switch: set false to hide the admin skeleton.
+   */
+  seriesDecisionLog: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
