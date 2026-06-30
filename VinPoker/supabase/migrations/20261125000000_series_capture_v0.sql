@@ -184,7 +184,7 @@ SET search_path = public
 AS $$
   SELECT EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = _event AND t.club_id = _club)
 $$;
-REVOKE ALL ON FUNCTION public.series_event_in_club(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.series_event_in_club(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.series_event_in_club(uuid, uuid) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.series_snapshot_in_club(_snapshot uuid, _club uuid)
@@ -196,7 +196,7 @@ SET search_path = public
 AS $$
   SELECT EXISTS (SELECT 1 FROM public.series_forecast_snapshots s WHERE s.id = _snapshot AND s.club_id = _club)
 $$;
-REVOKE ALL ON FUNCTION public.series_snapshot_in_club(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.series_snapshot_in_club(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.series_snapshot_in_club(uuid, uuid) TO authenticated;
 
 -- 2.1 series_forecast_snapshots — SELECT + INSERT (owner + event/club).
