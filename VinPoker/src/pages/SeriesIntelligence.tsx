@@ -18,6 +18,7 @@ import { ScheduleGeneratorPanel } from "@/components/series-intelligence/Schedul
 import { FestivalEvPanel } from "@/components/series-intelligence/FestivalEvPanel";
 import { ScheduleExportPanel } from "@/components/series-intelligence/ScheduleExportPanel";
 import { ScenarioSimulatorPanel } from "@/components/series-intelligence/ScenarioSimulatorPanel";
+import { TurnoutForecastPanel } from "@/components/series-intelligence/TurnoutForecastPanel";
 import { Stepper, type StepperItem } from "@/components/series-intelligence/Stepper";
 import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
@@ -253,6 +254,7 @@ export default function SeriesIntelligence() {
           subtitle="Soi rủi ro trước, EV sau. Mô phỏng overlay GTD & EV (Monte Carlo) — kịch bản, không phải dự báo."
           icon={<Dice5 className="h-4 w-4 text-primary" />}
         >
+          {FEATURES.turnoutForecast && <TurnoutForecastPanel csvEvents={lib.activeEvents} />}
           <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
           <FestivalEvPanel draft={draft} />
         </StepSection>
