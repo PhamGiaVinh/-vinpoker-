@@ -630,7 +630,7 @@ export const FEATURES = {
    * live and the compute-payouts Edge with the LIVE_STANDARD path is deployed; while false the option is
    * hidden and the backend never receives a `LIVE_STANDARD` archetype.
    */
-  payoutBandedMode: false,
+  payoutBandedMode: true,
   /**
    * CUSTOM payout extras (import an Excel/CSV payout sheet · save & reload the club's own CUSTOM
    * structures as named templates). Default **OFF** (kill-switch). Only meaningful where
