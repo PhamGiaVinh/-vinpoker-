@@ -29,7 +29,7 @@ export interface ClubFinanceSummary {
     total: number;
     fnb: number;
   };
-  cost: { payrollNet: number; payrollGross: number; adjustments: number; fnbCogs: number };
+  cost: { payrollNet: number; payrollGross: number; adjustments: number; fnbCogs: number; compCogs: number };
   net: number;
   statusTotals: Record<PayrollStatusKey, number>;
   unpaidTotal: number;
@@ -86,7 +86,7 @@ const normRevenue = (rev: any): ClubFinanceSummary["revenue"] => {
 
 const emptySummary = (): ClubFinanceSummary => ({
   revenue: emptyRevenue(),
-  cost: { payrollNet: 0, payrollGross: 0, adjustments: 0, fnbCogs: 0 },
+  cost: { payrollNet: 0, payrollGross: 0, adjustments: 0, fnbCogs: 0, compCogs: 0 },
   net: 0,
   statusTotals: emptyStatusTotals(),
   unpaidTotal: 0,
@@ -128,7 +128,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
         setClubs(Array.isArray(d.clubs) ? d.clubs : []);
         setSummary({
           revenue: normRevenue(d.revenue),
-          cost: { payrollNet: Number(d.cost?.payrollNet ?? 0), payrollGross: Number(d.cost?.payrollGross ?? 0), adjustments: Number(d.cost?.adjustments ?? 0), fnbCogs: Number(d.cost?.fnbCogs ?? 0) },
+          cost: { payrollNet: Number(d.cost?.payrollNet ?? 0), payrollGross: Number(d.cost?.payrollGross ?? 0), adjustments: Number(d.cost?.adjustments ?? 0), fnbCogs: Number(d.cost?.fnbCogs ?? 0), compCogs: Number(d.cost?.compCogs ?? 0) },
           net: Number(d.net ?? 0),
           statusTotals: { ...emptyStatusTotals(), ...(d.statusTotals ?? {}) },
           unpaidTotal: Number(d.unpaidTotal ?? 0),
@@ -367,7 +367,7 @@ export function useClubFinanceSummary({ from, to, clubFilter }: FinanceQuery) {
           rake, rakeActual, rakeExpected, rakeVariance: rakeActual - rake,
           rakeOnline, rakeOffline, rakeReentry, serviceFee, total: revenueTotal, fnb: 0,
         },
-        cost: { payrollNet, payrollGross, adjustments, fnbCogs: 0 },
+        cost: { payrollNet, payrollGross, adjustments, fnbCogs: 0, compCogs: 0 },
         net: revenueTotal - payrollNet,
         statusTotals, unpaidTotal, reconciledTotal, aging, trend, perPeriod, perClub,
       });

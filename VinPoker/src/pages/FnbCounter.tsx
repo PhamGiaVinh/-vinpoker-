@@ -13,6 +13,8 @@ import { OrderEntryPanel, type NewOrder } from "@/components/fnb/OrderEntryPanel
 import { FnbConfirmPaymentDialog, type PayableOrder } from "@/components/fnb/FnbConfirmPaymentDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,6 +47,10 @@ function FnbCounterInner() {
   const [payOpen, setPayOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [compOpen, setCompOpen] = useState(false);
+  const [compOrder, setCompOrder] = useState<NewOrder | null>(null);
+  const [compReason, setCompReason] = useState("");
+  const [comping, setComping] = useState(false);
 
   if (authLoading || clubs === null) {
     return (
@@ -108,6 +114,32 @@ function FnbCounterInner() {
     invalidate();
   };
 
+  const handleCompClick = (o: NewOrder) => {
+    setCompOrder(o); setCompReason(""); setCompOpen(true);
+  };
+
+  const doComp = async () => {
+    if (!compOrder) return;
+    setComping(true);
+    const { data, error } = await (supabase.rpc as any)("fnb_create_comp_order", {
+      p_club_id: activeClub,
+      p_source: "counter",
+      p_table_label: compOrder.table_label,
+      p_customer_name: compOrder.customer_name,
+      p_note: compOrder.note,
+      p_lines: compOrder.items.map((it) => ({ menu_item_id: it.menu_item_id, qty: it.qty })),
+      p_comp_reason: compReason.trim() || null,
+      p_client_request_id: compOrder.client_request_id,
+    });
+    setComping(false);
+    const res = data as any;
+    if (error || res?.error) { toast.error(mapFnbError(res?.error ?? error)); return; }
+    toast.success(res?.idempotent ? "Đơn comp đã ghi trước đó." : "Đã ghi COMP — kho đã trừ.");
+    setCompOpen(false); setCompOrder(null); setCompReason("");
+    setResetKey((k) => k + 1);
+    invalidate();
+  };
+
   const payPending = (ord: FnbOrder) => {
     setPayOrder({ id: ord.id, table_label: ord.table_label, customer_name: ord.customer_name, subtotal_vnd: ord.subtotal_vnd, items: ord.items });
     setPayOpen(true);
@@ -157,7 +189,7 @@ function FnbCounterInner() {
         </TabsList>
 
         <TabsContent value="new" className="mt-4">
-          <OrderEntryPanel clubId={activeClub} submitting={creating} resetKey={resetKey} onSubmit={createOrder} />
+          <OrderEntryPanel clubId={activeClub} submitting={creating} resetKey={resetKey} onSubmit={createOrder} onSubmitComp={canPay ? handleCompClick : undefined} />
         </TabsContent>
 
         <TabsContent value="pending" className="mt-4">
@@ -187,6 +219,37 @@ function FnbCounterInner() {
       </Tabs>
 
       <FnbConfirmPaymentDialog order={payOrder} open={payOpen} onOpenChange={setPayOpen} confirming={paying} onConfirm={doPay} />
+
+      {FEATURES.fnbComp && (
+        <Dialog open={compOpen} onOpenChange={setCompOpen}>
+          <DialogContent className="bg-card border-border text-foreground max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Comp / Miễn phí</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Xác nhận miễn phí đơn này — tiền không thu, nhưng nguyên liệu vẫn trừ kho và COGS được ghi nhận.
+            </p>
+            {compOrder && (
+              <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2 leading-relaxed">
+                {compOrder.items.map((it) => `${it.qty}× ${it.name_snapshot}`).join(" · ")}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Lý do (tuỳ chọn)</Label>
+              <Input value={compReason} onChange={(e) => setCompReason(e.target.value)}
+                placeholder="vd: Khách VIP, Sự kiện…"
+                className="bg-card border-border text-foreground" />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" className="border-border" onClick={() => setCompOpen(false)}>Huỷ bỏ</Button>
+              <Button disabled={comping} onClick={doComp}>
+                {comping && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+                Xác nhận COMP
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
