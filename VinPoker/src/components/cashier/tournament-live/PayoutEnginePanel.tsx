@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,8 +12,9 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2 } from "lucide-react";
+import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2, Upload } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
+import { parseFileToCustomRows } from "@/lib/customPayoutImport";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
 // (PR-2a RPCs + PR-2b compute-payouts Edge). Forecast preview (no persist) · one-way close-and-
@@ -26,6 +27,7 @@ const DEFAULT_MINCASH: Record<Archetype, number> = { DAILY: 2, INTL: 2, MULTI: 1
 
 interface PayoutRow { position: number; amount: number; percentage: number; }
 interface EngineResult { rows: PayoutRow[]; itmPlaces: number; effectiveFloor: number; prizePool?: number; archetype: Archetype; warnings: string[]; }
+interface PayoutTemplateRow { id: string; name: string; custom_percents: { position: number; percent_bp: number }[] | null; rounding_unit: number | null; min_cash_x: number | null; }
 
 const ERR_VI: Record<string, string> = {
   REGISTRATION_CLOSED: "Đăng ký đã đóng — không thể tạo entry mới.",
@@ -79,6 +81,13 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const [customRows, setCustomRows] = useState<{ position: number; percent: number }[]>([
     { position: 1, percent: 50 }, { position: 2, percent: 30 }, { position: 3, percent: 20 },
   ]);
+  // CUSTOM extras (gated by FEATURES.payoutCustomTemplates): import Excel/CSV + save/load templates.
+  const customTemplates = FEATURES.payoutCustomTemplates;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [templates, setTemplates] = useState<PayoutTemplateRow[]>([]);
+  const [templateName, setTemplateName] = useState("");
+  const [savingTpl, setSavingTpl] = useState(false);
 
   const [preview, setPreview] = useState<EngineResult | null>(null);
   const [busy, setBusy] = useState<"" | "preview" | "official">("");
@@ -139,6 +148,70 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setMinCashX(DEFAULT_MINCASH[archetype]); }, [archetype]);
+
+  // ---- CUSTOM templates + file import (gated by FEATURES.payoutCustomTemplates) ----
+  const loadTemplates = useCallback(async () => {
+    if (!customTemplates || !tour?.club_id) return;
+    const { data, error } = await (supabase as any)
+      .from("payout_templates").select("id, name, custom_percents, rounding_unit, min_cash_x")
+      .eq("club_id", tour.club_id).eq("archetype", "CUSTOM").order("created_at", { ascending: false });
+    if (!error) setTemplates((data ?? []) as PayoutTemplateRow[]);
+  }, [customTemplates, tour?.club_id]);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const handleFile = useCallback(async (file: File | null | undefined) => {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const res = await parseFileToCustomRows(file);
+      setArchetype("CUSTOM");
+      setCustomRows(res.rows.map((r, i) => ({ position: i + 1, percent: r.percent })));
+      toast.success(`Đã nạp ${res.rows.length} hạng từ file${res.warnings.length ? ` (${res.warnings.join(" ")})` : ""}`);
+    } catch (e: any) {
+      const map: Record<string, string> = {
+        FILE_EMPTY: "File rỗng.", FILE_NO_NUMBERS: "Không tìm thấy số trong file.",
+        FILE_SUM_ZERO: "Tổng bằng 0 — không hợp lệ.", FILE_TOO_MANY_ROWS: "File quá nhiều dòng.",
+      };
+      toast.error(map[e?.message] ?? `Không đọc được file: ${e?.message ?? ""}`);
+    } finally { setImporting(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
+  }, []);
+
+  const saveTemplate = useCallback(async () => {
+    const name = templateName.trim();
+    if (!name) { toast.error("Nhập tên mẫu"); return; }
+    if (!customValid) { toast.error("Cấu hình % chưa hợp lệ — Σ phải = 100%, giảm dần, mỗi hạng > 0"); return; }
+    if (!tour?.club_id) return;
+    setSavingTpl(true);
+    try {
+      const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+      const { error } = await (supabase as any).from("payout_templates").insert({
+        club_id: tour.club_id, name, archetype: "CUSTOM", custom_percents: customBp(),
+        itm_percent: 0, min_cash_x: minCashX, rounding_unit: roundingUnit, created_by: uid,
+      });
+      if (error) { toast.error(/row-level security|permission|policy|denied/i.test(error.message) ? "Chỉ Chủ CLB/Admin mới lưu được mẫu." : friendly(error.message)); return; }
+      toast.success(`Đã lưu mẫu "${name}"`);
+      setTemplateName("");
+      await loadTemplates();
+    } catch (e: any) { toast.error(friendly(e?.message)); } finally { setSavingTpl(false); }
+  }, [templateName, customValid, tour?.club_id, customBp, minCashX, roundingUnit, loadTemplates]);
+
+  const loadTemplate = useCallback((id: string) => {
+    const tpl = templates.find((t) => t.id === id);
+    if (!tpl) return;
+    const cps = (tpl.custom_percents ?? []).slice().sort((a, b) => a.position - b.position);
+    if (!cps.length) { toast.error("Mẫu không có dữ liệu %"); return; }
+    setArchetype("CUSTOM");
+    setCustomRows(cps.map((c, i) => ({ position: i + 1, percent: c.percent_bp / 100 })));
+    if (tpl.rounding_unit) setRoundingUnit(Number(tpl.rounding_unit));
+    toast.success(`Đã nạp mẫu "${tpl.name}"`);
+  }, [templates]);
+
+  const deleteTemplate = useCallback(async (id: string) => {
+    const { error } = await (supabase as any).from("payout_templates").delete().eq("id", id);
+    if (error) { toast.error(/row-level security|permission|policy|denied/i.test(error.message) ? "Chỉ Chủ CLB/Admin mới xoá được mẫu." : friendly(error.message)); return; }
+    toast.success("Đã xoá mẫu");
+    await loadTemplates();
+  }, [loadTemplates]);
 
   const defaultPool = useMemo(() => entries * (tour?.buy_in ?? 0), [entries, tour]);
 
@@ -330,6 +403,33 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             <Button size="sm" variant="outline" onClick={() => setCustomRows((prev) => [...prev, { position: prev.length + 1, percent: 0 }])}>
               <Plus className="w-3.5 h-3.5 mr-1" /> Thêm hạng
             </Button>
+            {customTemplates && (
+              <div className="space-y-2 border-t border-primary/20 pt-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+                    onChange={(e) => handleFile(e.target.files?.[0])} aria-label="Tải file payout" />
+                  <Button size="sm" variant="outline" disabled={importing} onClick={() => fileInputRef.current?.click()}>
+                    {importing ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1" />} Tải file (Excel/CSV)
+                  </Button>
+                  <Input className="h-8 max-w-[11rem]" placeholder="Tên mẫu" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
+                  <Button size="sm" variant="outline" disabled={savingTpl || !customValid || !templateName.trim()} onClick={saveTemplate}>
+                    {savingTpl ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />} Lưu mẫu
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">File ghi % hoặc số tiền mỗi hạng — hệ tự nhận diện và quy ra %.</p>
+                {templates.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">Mẫu đã lưu:</span>
+                    {templates.map((t) => (
+                      <span key={t.id} className="inline-flex items-center gap-1 rounded border border-border bg-secondary/40 px-2 py-0.5 text-[11px]">
+                        <button type="button" className="hover:text-primary" onClick={() => loadTemplate(t.id)}>{t.name}</button>
+                        <button type="button" className="text-muted-foreground hover:text-destructive" aria-label={`xoá mẫu ${t.name}`} onClick={() => deleteTemplate(t.id)}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {poolOverride.trim() && Number(poolOverride) !== defaultPool && (
