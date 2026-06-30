@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ClipboardList, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
@@ -208,6 +208,20 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to="/club/admin/series-intelligence">
                   <Sparkles className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
+          {activeClub && (isClubAdmin || isClubOwner) && FEATURES.seriesDecisionLog && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><ClipboardList className="w-4 h-4 text-primary" /> Nhật ký quyết định Series</h3>
+                <p className="text-xs text-muted-foreground">Ghi quyết định vận hành series + kết quả sau giải. Tầng GHI DỮ LIỆU — không model, không dự đoán.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/series-decision-log">
+                  <ClipboardList className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>
