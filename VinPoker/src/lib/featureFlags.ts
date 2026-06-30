@@ -620,7 +620,7 @@ export const FEATURES = {
    * Wide-rollout switch for the payout panel: when true (and `payoutEngine` is true) EVERY
    * club gets the engine panel without listing each id. Keep false during staged rollout.
    */
-  payoutEngineAllClubs: false,
+  payoutEngineAllClubs: true,
   /**
    * Native CUSTOM payout mode (PR-C) — adds a `CUSTOM — CLB tự cấu hình` style to the payout panel
    * where the club dictates the exact split as percentages (server stores basis points, Σ=10000).
