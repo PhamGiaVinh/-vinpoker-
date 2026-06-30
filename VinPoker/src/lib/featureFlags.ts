@@ -339,6 +339,16 @@ export const FEATURES = {
    */
   scenarioSimulator: false,
   /**
+   * Series Intelligence — Turnout Forecast (RESEARCH preview of the gated Phase-5 predictive tier). When ON,
+   * Step ④ shows a TurnoutForecastPanel: a TRANSPARENT ridge log-linear model predicts entries for an upcoming
+   * event + band + confidence tier + walk-forward CV error vs a median baseline, and feeds the prediction into
+   * the EXISTING overlay engine (read-only, forecast-centered). Output is labeled **Hypothesis** only — NEVER
+   * `Model Estimate` (that tier stays gated behind ≥12 events + a backtest that beats the baseline + owner
+   * sign-off). Pure client-side, no DB/RPC/Edge, no new deps. Default **OFF** (dark) — flip only after the
+   * backtest gate + owner UAT. Kill-switch: set false to hide the panel.
+   */
+  turnoutForecast: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
