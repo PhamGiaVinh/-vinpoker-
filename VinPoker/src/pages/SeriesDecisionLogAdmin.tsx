@@ -10,11 +10,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { supabase } from "@/integrations/supabase/client";
 
-// The CAPTURE v0 tables are NOT in the generated Database types yet (the migration is source-only;
-// types.ts is regenerated only AFTER the owner applies it). Cast the client until then.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sdb = supabase as any;
-
 const HORIZONS = ["T-21", "T-7", "T-1", "T-0", "post"] as const;
 
 interface DecisionLogRow {
@@ -51,7 +46,7 @@ export default function SeriesDecisionLogAdmin() {
     if (!canRead) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await sdb
+      const { data, error } = await supabase
         .from("series_decision_logs")
         .select("id,event_id,decision_horizon,recommended_action,owner_decision,public_action,decision_reason,created_at")
         .order("created_at", { ascending: false })
@@ -82,7 +77,7 @@ export default function SeriesDecisionLogAdmin() {
       return;
     }
     setBusy(true);
-    const { error } = await sdb.from("series_decision_logs").insert({ club_id: clubId.trim(), ...form });
+    const { error } = await supabase.from("series_decision_logs").insert({ club_id: clubId.trim(), ...form });
     setBusy(false);
     if (error) {
       toast.error("Lưu lỗi: " + (error.message ?? "unknown"));
