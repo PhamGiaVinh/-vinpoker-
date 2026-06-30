@@ -134,4 +134,26 @@ describe("payout engine drift guard — Edge _shared copy vs canonical client", 
     expect((sharedEngine as typeof clientEngine).CUSTOM_ENGINE_VERSION).toBe(clientEngine.CUSTOM_ENGINE_VERSION);
     expect(cases.length).toBeGreaterThan(40);
   });
+
+  it("both engines return IDENTICAL BANDED output + same BANDED_ENGINE_VERSION", () => {
+    const M = 1_000_000;
+    const inputs: clientEngine.BandedPayoutInput[] = [];
+    for (const entries of [50, 120, 190, 300, 777]) {
+      for (const itm of [0.1, 0.12, 0.15, 0.18]) {
+        for (const unit of [100_000, 1_000_000]) {
+          inputs.push({ entries, prizePool: entries * M, floor: 2.4 * M, itmPercent: itm, roundingUnit: unit });
+        }
+      }
+    }
+    for (const input of inputs) {
+      const c = clientEngine.computeBandedPayouts(input);
+      const s = (sharedEngine as typeof clientEngine).computeBandedPayouts(input);
+      expect(s.rows).toEqual(c.rows);
+      expect(s.warnings).toEqual(c.warnings);
+      expect(s.itmPlaces).toBe(c.itmPlaces);
+      expect(s.engineVersion).toBe(c.engineVersion);
+    }
+    expect((sharedEngine as typeof clientEngine).BANDED_ENGINE_VERSION).toBe(clientEngine.BANDED_ENGINE_VERSION);
+    expect(inputs.length).toBeGreaterThan(30);
+  });
 });

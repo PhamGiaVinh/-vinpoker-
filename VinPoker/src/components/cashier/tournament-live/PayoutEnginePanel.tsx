@@ -20,9 +20,9 @@ import { FEATURES } from "@/lib/featureFlags";
 // generate official · guarded manual edit. Renders ONLY when payoutEngine is ON; otherwise the
 // old PrizeStructurePanel is shown unchanged (see PrizesTab).
 
-type Archetype = "DAILY" | "INTL" | "MULTI" | "TRITON" | "CUSTOM";
-const ARCHE_LABEL: Record<Archetype, string> = { DAILY: "DAILY (top nặng · 2×)", INTL: "INTL (phẳng · 2×)", MULTI: "MULTI (phẳng · 1.5×)", TRITON: "TRITON (tham khảo)", CUSTOM: "CUSTOM — CLB tự cấu hình" };
-const DEFAULT_MINCASH: Record<Archetype, number> = { DAILY: 2, INTL: 2, MULTI: 1.5, TRITON: 1.6, CUSTOM: 2 };
+type Archetype = "DAILY" | "INTL" | "MULTI" | "TRITON" | "CUSTOM" | "LIVE_STANDARD";
+const ARCHE_LABEL: Record<Archetype, string> = { DAILY: "DAILY (top nặng · 2×)", INTL: "INTL (phẳng · 2×)", MULTI: "MULTI (phẳng · 1.5×)", TRITON: "TRITON (tham khảo)", CUSTOM: "CUSTOM — CLB tự cấu hình", LIVE_STANDARD: "LIVE STANDARD (final table riêng · ngoài FT theo nhóm)" };
+const DEFAULT_MINCASH: Record<Archetype, number> = { DAILY: 2, INTL: 2, MULTI: 1.5, TRITON: 1.6, CUSTOM: 2, LIVE_STANDARD: 2 };
 
 interface PayoutRow { position: number; amount: number; percentage: number; }
 interface EngineResult { rows: PayoutRow[]; itmPlaces: number; effectiveFloor: number; prizePool?: number; archetype: Archetype; warnings: string[]; }
@@ -75,6 +75,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const [overrideReason, setOverrideReason] = useState<string>("");
   // CUSTOM mode (gated by FEATURES.payoutCustomMode): club enters its own % per rank.
   const customMode = FEATURES.payoutCustomMode;
+  const bandedMode = FEATURES.payoutBandedMode;
   const [customRows, setCustomRows] = useState<{ position: number; percent: number }[]>([
     { position: 1, percent: 50 }, { position: 2, percent: 30 }, { position: 3, percent: 20 },
   ]);
@@ -283,7 +284,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             <Select value={archetype} onValueChange={(v) => setArchetype(v as Archetype)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {((customMode ? ["DAILY", "MULTI", "INTL", "CUSTOM"] : ["DAILY", "MULTI", "INTL"]) as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
+                {(["DAILY", "MULTI", "INTL", ...(bandedMode ? ["LIVE_STANDARD"] : []), ...(customMode ? ["CUSTOM"] : [])] as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

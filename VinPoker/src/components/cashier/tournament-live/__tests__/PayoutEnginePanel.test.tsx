@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Mutable feature flags — the panel reads FEATURES.payoutCustomMode for the CUSTOM gate.
-const flags = vi.hoisted(() => ({ payoutCustomMode: false }));
+const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutBandedMode: false }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: flags }));
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
@@ -55,7 +55,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null;
-  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false;
+  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false; flags.payoutBandedMode = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
   h.invoke.mockImplementation(async () => ({ data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 }, error: null }));
@@ -176,5 +176,29 @@ describe("PayoutEnginePanel — native CUSTOM mode is gated by FEATURES.payoutCu
     await screen.findByText(/Cơ cấu giải thưởng/);
     openStyleSelect();
     expect(await screen.findByText(/CUSTOM — CLB tự cấu hình/)).toBeInTheDocument();
+  });
+});
+
+describe("PayoutEnginePanel — banded LIVE_STANDARD is gated by FEATURES.payoutBandedMode", () => {
+  const openStyleSelect = () => {
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown", code: "ArrowDown" });
+  };
+
+  it("LIVE STANDARD is HIDDEN when payoutBandedMode = false", async () => {
+    flags.payoutBandedMode = false;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    openStyleSelect();
+    expect(screen.queryByText(/LIVE STANDARD/)).not.toBeInTheDocument();
+  });
+
+  it("LIVE STANDARD is VISIBLE when payoutBandedMode = true", async () => {
+    flags.payoutBandedMode = true;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    openStyleSelect();
+    expect(await screen.findByText(/LIVE STANDARD/)).toBeInTheDocument();
   });
 });

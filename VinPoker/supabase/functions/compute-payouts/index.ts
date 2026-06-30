@@ -27,6 +27,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import {
   computePayouts,
   computeCustomPayouts,
+  computeBandedPayouts,
   floorFor,
   defaultRoundingUnit,
   MIN_CASH_X,
@@ -147,6 +148,16 @@ serve(async (req) => {
           percents,
           roundingUnit: Number(run.rounding_unit),
         });
+      } else if (run.archetype === "LIVE_STANDARD") {
+        // Banded preset: computes from the SAME frozen columns as presets (effective_floor is the real
+        // min-cash floor) — no new DB column → merge-safe. apply skips only LAST_NOT_FLOOR for it.
+        result = computeBandedPayouts({
+          entries: Number(run.entries_snapshot),
+          prizePool: Number(run.prize_pool_snapshot),
+          floor: Number(run.effective_floor),
+          itmPercent: Number(run.itm_percent),
+          roundingUnit: Number(run.rounding_unit),
+        });
       } else {
         result = computePayouts({
           entries: Number(run.entries_snapshot),
@@ -198,9 +209,10 @@ serve(async (req) => {
   // ------------------------------------------------------------------------------------ PREVIEW
   const tournamentId = body.tournament_id;
   if (typeof tournamentId !== "string" || !tournamentId) return json({ error: "TOURNAMENT_ID_REQUIRED" }, 400);
-  const archetype = body.archetype as PayoutArchetype | "CUSTOM";
+  const archetype = body.archetype as PayoutArchetype | "CUSTOM" | "LIVE_STANDARD";
   const isCustom = archetype === "CUSTOM";
-  if (!isCustom && !ARCHETYPES.includes(archetype as PayoutArchetype)) return json({ error: "BAD_ARCHETYPE" }, 400);
+  const isBanded = archetype === "LIVE_STANDARD";
+  if (!isCustom && !isBanded && !ARCHETYPES.includes(archetype as PayoutArchetype)) return json({ error: "BAD_ARCHETYPE" }, 400);
   const itmPercent = Number(body.itm_percent);
   if (!isCustom && !(itmPercent > 0 && itmPercent < 1)) return json({ error: "BAD_ITM_PERCENT", hint: "0..1 fraction" }, 400);
 
@@ -247,6 +259,8 @@ serve(async (req) => {
         percentBp: Number(p.percent_bp),
       }));
       result = computeCustomPayouts({ prizePool, percents, roundingUnit });
+    } else if (isBanded) {
+      result = computeBandedPayouts({ entries, prizePool, floor, itmPercent, roundingUnit });
     } else {
       result = computePayouts({ entries, prizePool, floor, itmPercent, archetype: archetype as PayoutArchetype, roundingUnit });
     }
