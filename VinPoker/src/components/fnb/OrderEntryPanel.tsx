@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFnbMenu } from "@/hooks/useFnbMenu";
 import { formatVND } from "@/lib/format";
+import { FEATURES } from "@/lib/featureFlags";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Minus, Receipt } from "lucide-react";
+import { Gift, Loader2, Plus, Minus, Receipt } from "lucide-react";
 
 export type NewOrder = {
   table_label: string | null;
@@ -24,9 +25,10 @@ export type NewOrder = {
  * `resetKey` ONLY after a successful create → the cart clears + a fresh crid is minted for the next
  * order. A failed create keeps the same crid (the retry is idempotent on fnb_orders UNIQUE).
  */
-export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit }: {
+export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit, onSubmitComp }: {
   clubId: string; submitting: boolean; resetKey: number;
   onSubmit: (o: NewOrder) => void;
+  onSubmitComp?: (o: NewOrder) => void;
 }) {
   const { data, isLoading } = useFnbMenu(clubId);
   const cats = data?.categories ?? [];
@@ -53,19 +55,19 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit }: {
   const subtotal = lines.reduce((s, m) => s + m.price_vnd * cart[m.id], 0);
   const shown = activeCat === "all" ? items : items.filter((m) => m.category_id === activeCat);
 
-  const submit = () => {
-    if (lines.length === 0 || submitting) return;
-    onSubmit({
-      table_label: table.trim() || null,
-      customer_name: customer.trim() || null,
-      note: null,
-      client_request_id: crid.current,
-      items: lines.map((m) => ({
-        menu_item_id: m.id, qty: cart[m.id], name_snapshot: m.name, unit_price_snapshot: m.price_vnd,
-      })),
-      subtotal_vnd: subtotal,
-    });
-  };
+  const buildOrder = (): NewOrder => ({
+    table_label: table.trim() || null,
+    customer_name: customer.trim() || null,
+    note: null,
+    client_request_id: crid.current,
+    items: lines.map((m) => ({
+      menu_item_id: m.id, qty: cart[m.id], name_snapshot: m.name, unit_price_snapshot: m.price_vnd,
+    })),
+    subtotal_vnd: subtotal,
+  });
+
+  const submit = () => { if (lines.length === 0 || submitting) return; onSubmit(buildOrder()); };
+  const submitComp = () => { if (lines.length === 0 || submitting) return; onSubmitComp?.(buildOrder()); };
 
   if (isLoading) {
     return <Card className="p-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải thực đơn…</div></Card>;
@@ -133,6 +135,11 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit }: {
             {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Receipt className="w-4 h-4 mr-1" />}
             Tạo đơn &amp; thu tiền
           </Button>
+          {FEATURES.fnbComp && onSubmitComp && (
+            <Button variant="outline" className="w-full border-border text-muted-foreground hover:text-foreground" disabled={lines.length === 0 || submitting} onClick={submitComp}>
+              <Gift className="w-4 h-4 mr-1" /> Comp / Miễn phí
+            </Button>
+          )}
         </div>
       </Card>
     </div>

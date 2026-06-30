@@ -581,6 +581,13 @@ export const FEATURES = {
   fnbInventory: true,
   fnbFinance: true,
   /**
+   * F&B A1 — COMP (đồ miễn phí): cashier/owner authorises a free order (subtotal=0, stock still
+   * decrements, COGS snapshotted). Requires migration 20261111000012 (schema + fnb_create_comp_order)
+   * AND 20261111000013 (comp split in finance/report) to be applied live first.
+   * Default OFF. Flip after migrations applied + preview UAT.
+   */
+  fnbComp: false,
+  /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
    * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in

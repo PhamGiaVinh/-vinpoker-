@@ -250,13 +250,16 @@ const ClubFinanceDashboard = () => {
                 <Line label="Phí chi trả / ITM / cash-out" value={formatVND(summary.revenue.payoutFees)} />
               </div>
               {/* F&B — shown only when fnbFinance ON and the viewed scope has F&B in Net */}
-              {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) && (
+              {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0 || summary.cost.compCogs > 0) && (
                 <div className="rounded-lg border border-border/60 bg-card/40 p-3 space-y-1.5">
                   <div className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5">
                     <Coins className="w-3.5 h-3.5" style={{ color: REV_COLORS.fnb }} /> F&amp;B (Đồ ăn / thức uống)
                   </div>
                   <Line label="Doanh thu (sau hoàn)" value={formatVND(summary.revenue.fnb)} strong />
                   <Line label="Giá vốn (COGS)" value={formatVND(summary.cost.fnbCogs)} tone="#f0997b" />
+                  {FEATURES.fnbComp && summary.cost.compCogs > 0 && (
+                    <Line label="Giá vốn COMP (miễn phí)" value={formatVND(summary.cost.compCogs)} tone="#f0997b" />
+                  )}
                   <div className="h-px bg-border/50 my-1" />
                   <Line label="Lãi gộp F&amp;B" value={formatVND(summary.revenue.fnb - summary.cost.fnbCogs)} strong tone={REV_COLORS.fnb} />
                 </div>
