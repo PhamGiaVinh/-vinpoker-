@@ -631,6 +631,14 @@ export const FEATURES = {
    * hidden and the backend never receives a `LIVE_STANDARD` archetype.
    */
   payoutBandedMode: false,
+  /**
+   * CUSTOM payout extras (import an Excel/CSV payout sheet · save & reload the club's own CUSTOM
+   * structures as named templates). Default **OFF** (kill-switch). Only meaningful where
+   * `payoutCustomMode` is already on. Flip true ONLY after the templates migration
+   * (20261126000000) is applied live; while false the import/save UI is hidden and
+   * payout_templates is never read/written for CUSTOM.
+   */
+  payoutCustomTemplates: false,
 } as const;
 
 /**

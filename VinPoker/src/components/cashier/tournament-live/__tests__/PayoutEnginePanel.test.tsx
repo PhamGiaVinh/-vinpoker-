@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Mutable feature flags — the panel reads FEATURES.payoutCustomMode for the CUSTOM gate.
-const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutBandedMode: false }));
+const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutBandedMode: false, payoutCustomTemplates: false }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: flags }));
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
@@ -37,10 +37,13 @@ vi.mock("@/integrations/supabase/client", () => {
     chain.neq = vi.fn(() => chain);
     chain.single = vi.fn(async () => (table === "tournaments" ? { data: h.tour, error: null } : { data: null, error: null }));
     chain.maybeSingle = vi.fn(async () => (table === "tournament_payout_runs" ? { data: h.appliedRun, error: null } : { data: null, error: null }));
-    chain.then = (resolve: any) => resolve({ data: [], count: h.entriesCount, error: null }); // tournament_entries awaited directly
+    chain.order = vi.fn(() => chain);
+    chain.insert = vi.fn(async () => ({ data: null, error: null }));
+    chain.delete = vi.fn(() => chain);
+    chain.then = (resolve: any) => resolve({ data: [], count: h.entriesCount, error: null }); // entries/templates awaited directly
     return chain;
   };
-  return { supabase: { from: vi.fn((t: string) => makeChain(t)), rpc: h.rpc, functions: { invoke: h.invoke } } };
+  return { supabase: { from: vi.fn((t: string) => makeChain(t)), rpc: h.rpc, functions: { invoke: h.invoke }, auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null })) } } };
 });
 
 import { PayoutEnginePanel } from "../PayoutEnginePanel";
@@ -55,7 +58,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null;
-  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false; flags.payoutBandedMode = false;
+  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false; flags.payoutBandedMode = false; flags.payoutCustomTemplates = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
   h.invoke.mockImplementation(async () => ({ data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 }, error: null }));
@@ -176,6 +179,34 @@ describe("PayoutEnginePanel — native CUSTOM mode is gated by FEATURES.payoutCu
     await screen.findByText(/Cơ cấu giải thưởng/);
     openStyleSelect();
     expect(await screen.findByText(/CUSTOM — CLB tự cấu hình/)).toBeInTheDocument();
+  });
+});
+
+describe("PayoutEnginePanel — CUSTOM import/templates gated by FEATURES.payoutCustomTemplates", () => {
+  const selectCustom = async () => {
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown", code: "ArrowDown" });
+    fireEvent.click(await screen.findByText(/CUSTOM — CLB tự cấu hình/));
+    await screen.findByText(/Cơ cấu % tự cấu hình/); // CUSTOM builder is now visible
+  };
+
+  it("import + save-template UI is HIDDEN when payoutCustomTemplates = false (even in CUSTOM)", async () => {
+    flags.payoutCustomMode = true; flags.payoutCustomTemplates = false;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    await selectCustom();
+    expect(screen.queryByRole("button", { name: /Tải file/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Lưu mẫu/ })).not.toBeInTheDocument();
+  });
+
+  it("import + save-template UI is VISIBLE when payoutCustomTemplates = true", async () => {
+    flags.payoutCustomMode = true; flags.payoutCustomTemplates = true;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    await selectCustom();
+    expect(await screen.findByRole("button", { name: /Tải file/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Lưu mẫu/ })).toBeInTheDocument();
   });
 });
 
