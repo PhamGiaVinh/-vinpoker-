@@ -468,7 +468,7 @@ export const FEATURES = {
    * live first (the 4 capture tables); until then the writes have no target. Default **OFF** (dark): the
    * route redirects home when off. Kill-switch: set false to hide the admin skeleton.
    */
-  seriesDecisionLog: false,
+  seriesDecisionLog: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
