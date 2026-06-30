@@ -638,7 +638,7 @@ export const FEATURES = {
    * (20261126000000) is applied live; while false the import/save UI is hidden and
    * payout_templates is never read/written for CUSTOM.
    */
-  payoutCustomTemplates: false,
+  payoutCustomTemplates: true,
 } as const;
 
 /**
