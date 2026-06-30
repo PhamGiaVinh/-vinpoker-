@@ -622,7 +622,7 @@ export const FEATURES = {
    * compute-payouts Edge with the CUSTOM path is deployed; while false the CUSTOM option is hidden
    * and the backend CUSTOM path is never invoked.
    */
-  payoutCustomMode: false,
+  payoutCustomMode: true,
   /**
    * Banded payout preset `LIVE_STANDARD` (PR-D) — final table (ranks 1–9) per rank, places 10+ grouped
    * into equal-amount bands. Default **OFF** (kill-switch). Only meaningful where `payoutEngine` is
