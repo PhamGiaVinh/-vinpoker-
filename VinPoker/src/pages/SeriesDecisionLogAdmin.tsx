@@ -45,8 +45,10 @@ export default function SeriesDecisionLogAdmin() {
   const [busy, setBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Read only when allowed — flag OFF or unauthorized ⇒ NO DB call fires at all.
+  const canRead = !loading && FEATURES.seriesDecisionLog && (isClubAdmin || isClubOwner || isAdmin);
   useEffect(() => {
-    if (loading) return;
+    if (!canRead) return;
     let cancelled = false;
     (async () => {
       const { data, error } = await sdb
@@ -66,7 +68,7 @@ export default function SeriesDecisionLogAdmin() {
     return () => {
       cancelled = true;
     };
-  }, [loading, reloadKey]);
+  }, [canRead, reloadKey]);
 
   if (loading) return null;
   if (!FEATURES.seriesDecisionLog) return <Navigate to="/" replace />;
