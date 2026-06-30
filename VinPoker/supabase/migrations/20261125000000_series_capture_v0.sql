@@ -10,9 +10,10 @@
 --   campaign logs (marketing spend/segment), and registration events (funnel + unique/re-entry source).
 --   THIS IS INFRASTRUCTURE ONLY — there is NO model, NO prediction, NO calculation here.
 --
--- SCOPE: 4 tables, owner-scoped RLS. No RPC, no Edge, no trigger, no cross-module FK beyond public.clubs /
---   public.tournaments. The forecast layer that WRITES series_forecast_snapshots is a separate (unmerged)
---   concern — this PR only creates the schema; there is no write path to snapshots in this PR.
+-- SCOPE: 4 tables, owner-scoped RLS + 2 SECURITY DEFINER boolean helpers used only by the policies
+--   (series_event_in_club / series_snapshot_in_club — see section 2b). No Edge, no trigger, no cross-module
+--   FK beyond public.clubs / public.tournaments. The forecast layer that WRITES series_forecast_snapshots is
+--   a separate (unmerged) concern — this PR only creates the schema; there is no write path to snapshots here.
 --
 -- PRIVACY (locked): series_registration_events.player_ref_hash MUST be a hashed/opaque identifier. NEVER
 --   store a raw phone, name, Telegram/Facebook handle, ID card, or any personal identifier. player_ref_type
@@ -21,8 +22,13 @@
 -- LEAKAGE RULE (locked): the post-event columns on series_decision_logs (actual_*) are captured for SCORING
 --   only. They are RESULTS, never to be fed back as forecast inputs. See the data dictionary.
 --
--- Idempotent: CREATE TABLE/INDEX IF NOT EXISTS, DROP POLICY IF EXISTS before CREATE POLICY. A future gated
---   re-apply is a safe no-op. Auth helper public.is_club_owner(uuid, uuid) (owner + super_admin) already exists.
+-- Idempotent: CREATE TABLE/INDEX IF NOT EXISTS, DROP POLICY IF EXISTS before CREATE POLICY, CREATE OR REPLACE
+--   FUNCTION for the helpers. A future gated re-apply is a safe no-op. Auth helper public.is_club_owner(uuid,
+--   uuid) (owner + super_admin) already exists; the 2 new helpers are created by this migration (section 2b).
+--
+-- RLS NOTE: write policies guard event/snapshot↔club via the SECURITY DEFINER helpers, NOT an inline EXISTS.
+--   An inline EXISTS(... FROM an RLS-protected table ...) inside a WITH CHECK evaluates FALSE for a legitimate
+--   owner under PostgREST (the inner table's RLS is applied to the subquery), which would block every write.
 
 -- ===========================================================================================
 -- 1. TABLES (4) — each carries a denormalized club_id (owner-scoped, join-free RLS).
@@ -159,6 +165,40 @@ GRANT SELECT, INSERT, UPDATE ON public.series_decision_logs       TO authenticat
 GRANT SELECT, INSERT, UPDATE ON public.series_campaign_logs       TO authenticated;
 GRANT SELECT, INSERT         ON public.series_registration_events TO authenticated;
 
+-- ===========================================================================================
+-- 2b. RLS HELPERS (SECURITY DEFINER) — evaluate event/snapshot ↔ club membership as a BOOLEAN.
+--   WHY: a nested EXISTS(SELECT ... FROM public.tournaments / public.series_forecast_snapshots ...)
+--   placed inline in a policy WITH CHECK evaluates FALSE for a legitimate owner under the
+--   authenticated role (PostgREST), because the inner table's own RLS is applied to that subquery
+--   during INSERT/UPDATE enforcement — which blocks every valid write. These helpers mirror
+--   public.is_club_owner: SECURITY DEFINER runs the membership probe as the definer (bypassing the
+--   inner table's RLS) and returns ONLY a boolean — no row data is exposed (and the event↔club fact
+--   is already public via the permissive tournaments read policy). search_path is pinned to public.
+-- ===========================================================================================
+CREATE OR REPLACE FUNCTION public.series_event_in_club(_event uuid, _club uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = _event AND t.club_id = _club)
+$$;
+REVOKE ALL ON FUNCTION public.series_event_in_club(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.series_event_in_club(uuid, uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.series_snapshot_in_club(_snapshot uuid, _club uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.series_forecast_snapshots s WHERE s.id = _snapshot AND s.club_id = _club)
+$$;
+REVOKE ALL ON FUNCTION public.series_snapshot_in_club(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.series_snapshot_in_club(uuid, uuid) TO authenticated;
+
 -- 2.1 series_forecast_snapshots — SELECT + INSERT (owner + event/club).
 DROP POLICY IF EXISTS sfs_select ON public.series_forecast_snapshots;
 CREATE POLICY sfs_select ON public.series_forecast_snapshots
@@ -171,7 +211,7 @@ CREATE POLICY sfs_insert ON public.series_forecast_snapshots
   WITH CHECK (
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
-    AND EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_id AND t.club_id = club_id)
+    AND public.series_event_in_club(event_id, club_id)
   );
 
 -- 2.2 series_decision_logs — SELECT + INSERT + UPDATE (owner + event/club + snapshot-club match).
@@ -186,9 +226,9 @@ CREATE POLICY sdl_insert ON public.series_decision_logs
   WITH CHECK (
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
-    AND EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_id AND t.club_id = club_id)
+    AND public.series_event_in_club(event_id, club_id)
     AND (forecast_snapshot_id IS NULL
-         OR EXISTS (SELECT 1 FROM public.series_forecast_snapshots s WHERE s.id = forecast_snapshot_id AND s.club_id = club_id))
+         OR public.series_snapshot_in_club(forecast_snapshot_id, club_id))
   );
 
 DROP POLICY IF EXISTS sdl_update ON public.series_decision_logs;
@@ -198,9 +238,9 @@ CREATE POLICY sdl_update ON public.series_decision_logs
   WITH CHECK (
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
-    AND EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_id AND t.club_id = club_id)
+    AND public.series_event_in_club(event_id, club_id)
     AND (forecast_snapshot_id IS NULL
-         OR EXISTS (SELECT 1 FROM public.series_forecast_snapshots s WHERE s.id = forecast_snapshot_id AND s.club_id = club_id))
+         OR public.series_snapshot_in_club(forecast_snapshot_id, club_id))
   );
 
 -- 2.3 series_campaign_logs — SELECT + INSERT + UPDATE (owner + optional event/club).
@@ -216,7 +256,7 @@ CREATE POLICY scl_insert ON public.series_campaign_logs
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
     AND (event_linked IS NULL
-         OR EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_linked AND t.club_id = club_id))
+         OR public.series_event_in_club(event_linked, club_id))
   );
 
 DROP POLICY IF EXISTS scl_update ON public.series_campaign_logs;
@@ -227,7 +267,7 @@ CREATE POLICY scl_update ON public.series_campaign_logs
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
     AND (event_linked IS NULL
-         OR EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_linked AND t.club_id = club_id))
+         OR public.series_event_in_club(event_linked, club_id))
   );
 
 -- 2.4 series_registration_events — SELECT + INSERT (owner + event/club).
@@ -242,7 +282,7 @@ CREATE POLICY sre_insert ON public.series_registration_events
   WITH CHECK (
     club_id IS NOT NULL
     AND public.is_club_owner(auth.uid(), club_id)
-    AND EXISTS (SELECT 1 FROM public.tournaments t WHERE t.id = event_id AND t.club_id = club_id)
+    AND public.series_event_in_club(event_id, club_id)
   );
 
 -- ===========================================================================================
