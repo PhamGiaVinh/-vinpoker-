@@ -294,21 +294,30 @@ export async function buildDealerCandidates(
       }
       dealerIds.length = 0;
       dealerIds.push(...restricted); // restrict candidate set to the pool (mutate in place; Step 2 reads dealerIds)
-    } else {
-      // Patch 5d — picking for a NORMAL table (or general pick): exclude dealers reserved
-      // to ANY feature/final pool. They are exclusive to their special table and must not
-      // be pulled to a normal table (else the in-pool A↔B rotation breaks). Gate-aware:
-      // empty Set when the kill-switch is off → no effect (pre-5d behavior).
+    } else if (currentTableId) {
+      // Patch 5d — picking for a REAL NORMAL table (poolIds resolved to null because the
+      // table isn't special): exclude dealers reserved to ANY feature/final pool. They are
+      // exclusive to their special table and must not be pulled to a normal table (else the
+      // in-pool A↔B rotation breaks). Gate-aware: empty Set when kill-switch off → no effect.
       const reserved = await getReservedDealerIds(admin);
       if (reserved.size > 0) {
         const kept = dealerIds.filter((id) => !reserved.has(id));
         if (kept.length !== dealerIds.length) {
-          console.log(`[pickNextDealer] excluded ${dealerIds.length - kept.length} reserved feature/final pool dealer(s) from non-pool pick (table=${currentTableId ?? "none"})`);
+          console.log(`[pickNextDealer] excluded ${dealerIds.length - kept.length} reserved feature/final pool dealer(s) from non-pool pick (table=${currentTableId})`);
           dealerIds.length = 0;
           dealerIds.push(...kept);
         }
       }
     }
+    // else: currentTableId is undefined — this is a GLOBAL/shared candidate build (e.g.
+    // buildRotationSupply for Pass R, which computes ONE supply for ALL tables — special
+    // AND normal — at once). Do NOT reserved-exclude here: that would strip a special
+    // table's own pool dealers out of the supply BEFORE the per-table solver ever sees
+    // them, so the special table could never be relieved by its own pool (the exact
+    // regression this fixes — a feature/final table's pool dealer, once released, vanished
+    // from Pass R's candidate list entirely and the table sat in indefinite shortage/OT).
+    // The authoritative per-table gate for this path is solveRotationPlan's allowedByPool
+    // (poolDealerIds / reservedDealerIds), applied downstream once each table is known.
   }
 
   // Step 1b: Check if requesting table has priority_swing_at set

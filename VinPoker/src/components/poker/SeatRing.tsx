@@ -296,7 +296,11 @@ export function SeatRing({
               opens, the real board takes over. */}
           {hand.board.some(Boolean) ? (
             <div className="flex gap-1">
-              {[0, 1, 2, 3, 4].map((i) => <PlayingCard key={i} card={hand.board[i]} size={cardSize} reveal={!!hand.board[i]} />)}
+              {[0, 1, 2, 3, 4].map((i) => (
+                // flop's 3 cards land together → cascade them (matches the showdown reveal
+                // stagger below); turn/river arrive alone so they flip in immediately.
+                <PlayingCard key={i} card={hand.board[i]} size={cardSize} reveal={!!hand.board[i]} revealDelayMs={i < 3 ? i * 130 : undefined} />
+              ))}
             </div>
           ) : (
             <DeckStack size="lg" />

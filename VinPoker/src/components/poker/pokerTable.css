@@ -75,6 +75,14 @@
    unmounts the cards when the real hole cards take over. */
 .op-deal-card { transition: left 0.42s cubic-bezier(0.2,0.7,0.2,1), top 0.42s cubic-bezier(0.2,0.7,0.2,1); }
 
+/* Showdown result panel — a soft rise+fade so the winner announcement feels delivered
+   rather than snapped into the DOM (mounts once, alongside the table's winner glow). */
+@keyframes op-result-reveal {
+  0%   { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.op-result-reveal { animation: op-result-reveal 0.38s ease-out both; }
+
 /* UI-3 — tactile press: a quick squash on tap so the big action buttons feel physical
    under the thumb. Transform-only (GPU-cheap); never squashes a disabled control. */
 .op-press { transition: transform 0.09s ease; }
@@ -87,7 +95,8 @@
   .op-winner-glow,
   .op-allin-banner,
   .op-card-sheen,
-  .op-deck-stack { animation: none !important; }
+  .op-deck-stack,
+  .op-result-reveal { animation: none !important; }
   .op-card-sheen { opacity: 0 !important; }
   .op-chip,
   .op-deal-card { transition: none !important; }

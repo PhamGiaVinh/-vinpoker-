@@ -29,6 +29,12 @@ function makeAdmin(fix: {
   // checked-out lookup stays []).
   busyAssignments?: Row[];     // rows the Step-5b dealer_assignments cross-check returns
   checkedOutAttIds?: string[]; // attendance ids whose check_out_time IS NOT NULL (positively gone)
+  // Patch 5b/5d (feature/final pool gate + reserved exclusivity) fixtures — optional,
+  // default OFF so every pre-existing test is byte-identical (kill-switch off → both
+  // getFeatureTablePoolIds and getReservedDealerIds are inert, matching pre-5b/5d).
+  killSwitchOn?: boolean;
+  specialTableIds?: string[];                    // feature/final tables
+  poolMembersByTable?: Record<string, string[]>; // table_id -> dealer_ids in that table's pool
 }) {
   const CHAIN_METHODS = [
     "select", "eq", "in", "is", "or", "not", "gt", "gte", "lt", "lte", "neq", "order", "limit",
@@ -36,13 +42,22 @@ function makeAdmin(fix: {
   function builder(table: string) {
     const ops: { method: string; args: unknown[] }[] = [];
     const sel = () => (ops.find((o) => o.method === "select")?.args[0] as string | undefined) ?? "";
+    const eqArg = (col: string) => ops.find((o) => o.method === "eq" && o.args[0] === col)?.args[1] as string | undefined;
+    const inArg = (col: string) => ops.find((o) => o.method === "in" && o.args[0] === col)?.args[1] as string[] | undefined;
     const resolve = (): { data: unknown; error: null } => {
       if (table === "dealers") {
         return { data: fix.dealerIds.map((id) => ({ id })), error: null };
       }
       if (table === "dealer_attendance") {
         // Only the candidate-pool query uses `.or(available/on_break)`.
-        if (ops.some((o) => o.method === "or")) return { data: fix.poolRows, error: null };
+        if (ops.some((o) => o.method === "or")) {
+          // Mirrors the real `.in("dealer_id", dealerIds)` filter so a pool-gate/reserved
+          // narrowing of dealerIds (Patch 5b/5d) is actually reflected in the rows returned,
+          // not just in the pre-query dealerIds array.
+          const allowed = inArg("dealer_id");
+          const rows = allowed ? fix.poolRows.filter((r) => allowed.includes(r.dealer_id as string)) : fix.poolRows;
+          return { data: rows, error: null };
+        }
         // Step-5b checked-out lookup: `.select("id").not("check_out_time","is",null)`.
         // Distinguished from the rest-guard (`.not("last_released_at",…)`) by the .not column.
         if (ops.some((o) => o.method === "not" && o.args[0] === "check_out_time")) {
@@ -61,14 +76,46 @@ function makeAdmin(fix: {
         }
         return { data: [], error: null };
       }
+      if (table === "dealer_table_profiles") {
+        // getReservedDealerIds: `.select("table_id").or("table_mode.eq.feature,is_final.eq.true")`
+        // (no .maybeSingle() → resolved here, not in maybeSingleImpl).
+        return { data: (fix.specialTableIds ?? []).map((id) => ({ table_id: id })), error: null };
+      }
+      if (table === "dealer_table_pool_members") {
+        // getFeatureTablePoolIds: `.select("dealer_id").eq("table_id", tableId)`.
+        const eqTid = eqArg("table_id");
+        if (eqTid !== undefined) {
+          return { data: (fix.poolMembersByTable?.[eqTid] ?? []).map((d) => ({ dealer_id: d })), error: null };
+        }
+        // getReservedDealerIds: `.select("dealer_id").in("table_id", specialIds)`.
+        const inTids = inArg("table_id");
+        if (inTids) {
+          const all = inTids.flatMap((t) => fix.poolMembersByTable?.[t] ?? []);
+          return { data: all.map((d) => ({ dealer_id: d })), error: null };
+        }
+        return { data: [], error: null };
+      }
       return { data: [], error: null }; // dealer_breaks / dealer_meal_breaks / etc.
+    };
+    const maybeSingleImpl = (): { data: unknown; error: null } => {
+      if (table === "app_settings") {
+        // `.eq("key","dealer_feature_tables_enabled").maybeSingle()`.
+        return { data: fix.killSwitchOn ? { value: true } : null, error: null };
+      }
+      if (table === "dealer_table_profiles") {
+        // getFeatureTablePoolIds: `.eq("table_id", tableId).maybeSingle()` -> {table_mode,is_final}.
+        const tid = eqArg("table_id");
+        const isSpecial = tid !== undefined && (fix.specialTableIds ?? []).includes(tid);
+        return { data: isSpecial ? { table_mode: "feature", is_final: true } : null, error: null };
+      }
+      return { data: null, error: null };
     };
     // deno-lint-ignore no-explicit-any
     const chain: any = {};
     for (const m of CHAIN_METHODS) {
       chain[m] = (...args: unknown[]) => { ops.push({ method: m, args }); return chain; };
     }
-    chain.maybeSingle = () => Promise.resolve({ data: null, error: null });
+    chain.maybeSingle = () => Promise.resolve(maybeSingleImpl());
     // deno-lint-ignore no-explicit-any
     chain.then = (onF: (v: any) => unknown, onR?: (e: unknown) => unknown) =>
       Promise.resolve(resolve()).then(onF, onR);
@@ -249,4 +296,55 @@ Deno.test("INV-2c: orphan + real row together → dealer STILL excluded (skip is
   const { candidates, diag } = await buildDealerCandidates(admin, "club", {});
   assertEquals(candidates.length, 0);            // the real row keeps d1 busy
   assertEquals(diag!.busy_excluded, 1);
+});
+
+// ── PN (regression fix, root cause of the 2026-07-02 Bàn 1 stall) ────────────
+// Patch 5d's reserved-exclusion wrongly fired whenever currentTableId was omitted,
+// which is exactly how Pass R's buildRotationSupply calls buildDealerCandidates (it
+// builds ONE shared candidate list for ALL tables — special AND normal — before the
+// per-table solver runs). That silently stripped a special table's OWN pool dealers
+// out of Pass R's supply, so the table could never be relieved (indefinite shortage/
+// OT) even though its pool member was checked-in and available. Fix: only reserved-
+// exclude when currentTableId is a REAL table that resolves to non-special (poolIds
+// null AND currentTableId truthy) — never when currentTableId is simply omitted.
+
+Deno.test("PN-1 (regression): reserved pool dealer STAYS in the candidate list when currentTableId is omitted (Pass R global-supply build)", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["dR"],
+    poolRows: [poolRow("aR", "dR")],
+    metricsRows: [metric("aR", 30)],
+    killSwitchOn: true,
+    specialTableIds: ["T1"],
+    poolMembersByTable: { T1: ["dR"] },
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", {}); // no currentTableId
+  assertEquals(candidates.length, 1, "reserved dealer must NOT be stripped from the global/shared supply");
+  assertEquals(candidates[0].dealer_id, "dR");
+});
+
+Deno.test("PN-2: reserved pool dealer is EXCLUDED when picking for a REAL normal table", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["dR"],
+    poolRows: [poolRow("aR", "dR")],
+    metricsRows: [metric("aR", 30)],
+    killSwitchOn: true,
+    specialTableIds: ["T1"],
+    poolMembersByTable: { T1: ["dR"] },
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T2" }); // T2 = ordinary table
+  assertEquals(candidates.length, 0, "reserved dealer must not be pulled onto a normal table");
+});
+
+Deno.test("PN-3: the pool dealer is still selectable for ITS OWN special table (Patch 5c unaffected)", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["dR"],
+    poolRows: [poolRow("aR", "dR")],
+    metricsRows: [metric("aR", 30)],
+    killSwitchOn: true,
+    specialTableIds: ["T1"],
+    poolMembersByTable: { T1: ["dR"] },
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T1" }); // T1 = its own special table
+  assertEquals(candidates.length, 1, "the pool dealer stays selectable for the special table it belongs to");
+  assertEquals(candidates[0].dealer_id, "dR");
 });
