@@ -582,11 +582,11 @@ export const FEATURES = {
   fnbFinance: true,
   /**
    * F&B A1 — COMP (đồ miễn phí): cashier/owner authorises a free order (subtotal=0, stock still
-   * decrements, COGS snapshotted). Requires migration 20261111000012 (schema + fnb_create_comp_order)
-   * AND 20261111000013 (comp split in finance/report) to be applied live first.
-   * Default OFF. Flip after migrations applied + preview UAT.
+   * decrements, COGS snapshotted). Migrations 20261111000012 (schema + fnb_create_comp_order) AND
+   * 20261111000013 (comp split in finance/report) applied live 2026-07-02; owner golden-diffed the
+   * Owner Finance Dashboard before/after — numbers matched. LIVE.
    */
-  fnbComp: false,
+  fnbComp: true,
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
