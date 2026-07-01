@@ -35,6 +35,10 @@ function makeAdmin(fix: {
   killSwitchOn?: boolean;
   specialTableIds?: string[];                    // feature/final tables
   poolMembersByTable?: Record<string, string[]>; // table_id -> dealer_ids in that table's pool
+  // P2 hardening (full-system audit, 2026-07-02) fail-safe fixtures — optional, default off
+  // so every pre-existing test is byte-identical.
+  poolCooldownError?: boolean;         // inject an error into the pool-cooldown query
+  reservedPoolMembersError?: boolean;  // inject an error into getReservedDealerIds's own pool_members query
 }) {
   const CHAIN_METHODS = [
     "select", "eq", "in", "is", "or", "not", "gt", "gte", "lt", "lte", "neq", "order", "limit",
@@ -44,7 +48,7 @@ function makeAdmin(fix: {
     const sel = () => (ops.find((o) => o.method === "select")?.args[0] as string | undefined) ?? "";
     const eqArg = (col: string) => ops.find((o) => o.method === "eq" && o.args[0] === col)?.args[1] as string | undefined;
     const inArg = (col: string) => ops.find((o) => o.method === "in" && o.args[0] === col)?.args[1] as string[] | undefined;
-    const resolve = (): { data: unknown; error: null } => {
+    const resolve = (): { data: unknown; error: { message: string } | null } => {
       if (table === "dealers") {
         return { data: fix.dealerIds.map((id) => ({ id })), error: null };
       }
@@ -63,7 +67,12 @@ function makeAdmin(fix: {
         if (ops.some((o) => o.method === "not" && o.args[0] === "check_out_time")) {
           return { data: (fix.checkedOutAttIds ?? []).map((id) => ({ id })), error: null };
         }
-        return { data: [], error: null }; // busy / restGuard / poolCooldown / step5c → empty
+        // Pool cooldown guard: `.not("pool_entered_at","is",null)`. Optional error injection
+        // for the P2 hardening fail-safe test.
+        if (fix.poolCooldownError && ops.some((o) => o.method === "not" && o.args[0] === "pool_entered_at")) {
+          return { data: null, error: { message: "simulated pool cooldown query error" } };
+        }
+        return { data: [], error: null }; // busy / restGuard / poolCooldown (no error) / step5c → empty
       }
       if (table === "dealer_shift_metrics") return { data: fix.metricsRows, error: null };
       if (table === "dealer_assignments") {
@@ -90,6 +99,9 @@ function makeAdmin(fix: {
         // getReservedDealerIds: `.select("dealer_id").in("table_id", specialIds)`.
         const inTids = inArg("table_id");
         if (inTids) {
+          if (fix.reservedPoolMembersError) {
+            return { data: null, error: { message: "simulated reserved-lookup pool_members error" } };
+          }
           const all = inTids.flatMap((t) => fix.poolMembersByTable?.[t] ?? []);
           return { data: all.map((d) => ({ dealer_id: d })), error: null };
         }
@@ -347,4 +359,57 @@ Deno.test("PN-3: the pool dealer is still selectable for ITS OWN special table (
   const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T1" }); // T1 = its own special table
   assertEquals(candidates.length, 1, "the pool dealer stays selectable for the special table it belongs to");
   assertEquals(candidates[0].dealer_id, "dR");
+});
+
+// ── P2 hardening (full-system audit, 2026-07-02) — fail-safe on a transient DB error ─────
+// A query error inside a guard used to just log and silently skip the exclusion, risking a
+// dealer being picked the guard couldn't actually verify. Both guards now mirror Step 2's
+// existing pattern: bail with { candidates: [], avgBreakRatio: null } rather than proceed.
+
+Deno.test("P2 fix: pool-cooldown query error → fails safe (no candidates), not silently skipped", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    poolCooldownError: true,
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", {});
+  assertEquals(candidates.length, 0, "a pool-cooldown query error must bail, not silently admit d1");
+});
+
+Deno.test("P2 fix: happy path unaffected when the pool-cooldown query succeeds (no error flag)", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", {});
+  assertEquals(candidates.length, 1, "normal path is unchanged when there is no query error");
+});
+
+Deno.test("P2 fix: reserved-dealer lookup query error (normal-table pick) → fails safe (no candidates)", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    killSwitchOn: true,
+    specialTableIds: ["T1"],           // some OTHER table is special (T1), d1 is not its member
+    poolMembersByTable: { T1: ["dOther"] },
+    reservedPoolMembersError: true,    // getReservedDealerIds's own pool_members query fails
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T2" }); // T2 = normal table
+  assertEquals(candidates.length, 0, "an unverifiable reserved-dealer set must bail, not silently admit d1");
+});
+
+Deno.test("P2 fix: normal-table pick unaffected when the reserved-dealer lookup succeeds (no error flag)", async () => {
+  const admin = makeAdmin({
+    dealerIds: ["d1"],
+    poolRows: [poolRow("a1", "d1")],
+    metricsRows: [metric("a1", 30)],
+    killSwitchOn: true,
+    specialTableIds: ["T1"],
+    poolMembersByTable: { T1: ["dOther"] }, // d1 is NOT reserved
+  });
+  const { candidates } = await buildDealerCandidates(admin, "club", { currentTableId: "T2" });
+  assertEquals(candidates.length, 1, "normal path is unchanged when the reserved-dealer lookup succeeds");
 });
