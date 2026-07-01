@@ -57,6 +57,8 @@ const vnd = (n: number) => Math.round(n).toLocaleString("vi-VN");
 interface TournamentRow {
   id: string; buy_in: number; rake_amount: number | null; prize_pool: number | null; itm_places: number | null;
   registration_closed_at: string | null; live_status: string | null; event_id: string | null; club_id: string;
+  planned_itm_percent?: number | null; planned_payout_archetype?: string | null;
+  planned_min_cash_x?: number | null; planned_rounding_unit?: number | null;
 }
 
 export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
@@ -88,6 +90,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const [templates, setTemplates] = useState<PayoutTemplateRow[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [savingTpl, setSavingTpl] = useState(false);
+  // Planned settings (gated by FEATURES.payoutPlannedSettings): pre-fill from tournaments.planned_*
+  // once per tournament (before any official payout), then a "save default" button writes them back.
+  const plannedAppliedRef = useRef(false);
+  const plannedMinCashRef = useRef<number | null>(null);
+  const [savingPlanned, setSavingPlanned] = useState(false);
 
   const [preview, setPreview] = useState<EngineResult | null>(null);
   const [busy, setBusy] = useState<"" | "preview" | "official">("");
@@ -125,7 +132,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       const [{ data: t, error: te }, prizesRes, runRes, cntRes] = await Promise.all([
         // (supabase as any): registration_closed_at + planned_* are live (PR-2a) but not in the
         // generated types.ts (no regen) — treat tournaments as any here, same as the rows/entries reads.
-        (supabase as any).from("tournaments").select("id, buy_in, rake_amount, prize_pool, itm_places, registration_closed_at, live_status, event_id, club_id").eq("id", tournamentId).single(),
+        (supabase as any).from("tournaments").select("id, buy_in, rake_amount, prize_pool, itm_places, registration_closed_at, live_status, event_id, club_id, planned_itm_percent, planned_payout_archetype, planned_min_cash_x, planned_rounding_unit").eq("id", tournamentId).single(),
         (supabase.rpc as any)("get_tournament_prizes", { p_tournament_id: tournamentId }),
         (supabase as any).from("tournament_payout_runs").select("*").eq("tournament_id", tournamentId).eq("status", "applied").maybeSingle(),
         (supabase as any).from("tournament_entries").select("id", { count: "exact", head: true }).eq("tournament_id", tournamentId).neq("status", "cancelled"),
@@ -139,6 +146,25 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       setLiveEntries(cnt);
       setEntries((prev) => (prev > 0 ? prev : cnt));
       setRoundingUnit((t as TournamentRow).buy_in < 2_000_000 ? 100_000 : 1_000_000);
+
+      // PR-4: pre-fill the generator from tournaments.planned_* — ONCE per tournament, and only
+      // before any official payout exists (a closed/edited tournament's real settings shouldn't
+      // be silently overwritten by an old planned default).
+      if (FEATURES.payoutPlannedSettings && !plannedAppliedRef.current && prizes.length === 0) {
+        plannedAppliedRef.current = true;
+        const pt = t as TournamentRow;
+        const arche = pt.planned_payout_archetype as Archetype | null;
+        const archeAllowed = !!arche && (
+          ["DAILY", "INTL", "MULTI", "TRITON"].includes(arche)
+          || (arche === "CUSTOM" && FEATURES.payoutCustomMode)
+          || (arche === "LIVE_STANDARD" && FEATURES.payoutBandedMode)
+        );
+        if (pt.planned_min_cash_x != null) plannedMinCashRef.current = Number(pt.planned_min_cash_x);
+        if (archeAllowed) setArchetype(arche as Archetype);
+        else if (pt.planned_min_cash_x != null) setMinCashX(Number(pt.planned_min_cash_x));
+        if (pt.planned_itm_percent != null) setItmPct(Number(pt.planned_itm_percent) * 100);
+        if (pt.planned_rounding_unit != null) setRoundingUnit(Number(pt.planned_rounding_unit));
+      }
     } catch (e: any) {
       setLoadError(e?.message || "Không tải được dữ liệu payout");
     } finally {
@@ -146,8 +172,27 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
     }
   }, [tournamentId]);
 
+  useEffect(() => { plannedAppliedRef.current = false; }, [tournamentId]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setMinCashX(DEFAULT_MINCASH[archetype]); }, [archetype]);
+  // DEFAULT_MINCASH resets min-cash whenever the style changes; a pending planned_min_cash_x
+  // (set just before setArchetype during PR-4 pre-fill, above) wins ONCE then is consumed, so a
+  // later MANUAL style change still falls back to the archetype's normal default.
+  useEffect(() => {
+    setMinCashX(plannedMinCashRef.current ?? DEFAULT_MINCASH[archetype]);
+    plannedMinCashRef.current = null;
+  }, [archetype]);
+
+  const savePlanned = useCallback(async () => {
+    setSavingPlanned(true);
+    try {
+      const { error } = await (supabase as any).from("tournaments").update({
+        planned_itm_percent: itmPct / 100, planned_payout_archetype: archetype,
+        planned_min_cash_x: minCashX, planned_rounding_unit: roundingUnit,
+      }).eq("id", tournamentId);
+      if (error) { toast.error(/row-level security|permission|policy|denied/i.test(error.message) ? "Bạn không có quyền lưu mặc định cho giải này (cần TD/Chủ CLB)." : friendly(error.message)); return; }
+      toast.success("Đã lưu mặc định payout cho giải này");
+    } catch (e: any) { toast.error(friendly(e?.message)); } finally { setSavingPlanned(false); }
+  }, [tournamentId, archetype, itmPct, minCashX, roundingUnit]);
 
   // ---- CUSTOM templates + file import (gated by FEATURES.payoutCustomTemplates) ----
   const loadTemplates = useCallback(async () => {
@@ -349,7 +394,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
           {!isCustom && (
             <div className="space-y-1">
               <Label className="text-xs">ITM %</Label>
-              <Input type="number" step="0.5" value={itmPct} onChange={(e) => setItmPct(Number(e.target.value))} />
+              <Input type="number" step="0.5" aria-label="ITM %" value={itmPct} onChange={(e) => setItmPct(Number(e.target.value))} />
             </div>
           )}
           <div className="space-y-1">
@@ -363,17 +408,25 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Min-cash ×</Label>
-            <Input type="number" step="0.5" value={minCashX} onChange={(e) => setMinCashX(Number(e.target.value))} />
+            <Input type="number" step="0.5" aria-label="Min-cash ×" value={minCashX} onChange={(e) => setMinCashX(Number(e.target.value))} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Làm tròn (đ)</Label>
-            <Input type="number" step="100000" value={roundingUnit} onChange={(e) => setRoundingUnit(Number(e.target.value))} />
+            <Input type="number" step="100000" aria-label="Làm tròn (đ)" value={roundingUnit} onChange={(e) => setRoundingUnit(Number(e.target.value))} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Prize pool (sửa tay)</Label>
             <Input type="number" placeholder={`auto = ${vnd(defaultPool)}`} value={poolOverride} onChange={(e) => setPoolOverride(e.target.value)} />
           </div>
         </div>
+        {FEATURES.payoutPlannedSettings && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" disabled={savingPlanned} onClick={savePlanned}>
+              {savingPlanned ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />} Lưu mặc định cho giải này
+            </Button>
+            <p className="text-[11px] text-muted-foreground">Lần sau mở lại giải này sẽ tự điền kiểu giải/ITM%/min-cash/làm tròn.</p>
+          </div>
+        )}
         {isCustom && (
           <div className="space-y-2 rounded border border-primary/30 bg-primary/5 p-2">
             <div className="flex items-center justify-between">
