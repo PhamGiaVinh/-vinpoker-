@@ -35,16 +35,22 @@ Client (dark, flag OFF): `src/lib/normalizePhone.ts` (byte-mirror of the SQL) + 
 - **Re-entry / late-reg / concurrent bust safe:** official place = `final_field − bust_order + 1`
   computed at finalize over DISTINCT players by their last bullet; `bust_order` is a dense atomic counter.
 - **Self-contained:** does NOT depend on the unapplied `20261121000000` floor-bust migration.
+- **Finalize refuses to run early or twice-with-a-shifted-field:** `finalize_tournament_results` errors
+  with `tournament_not_finished` while >1 survivor remain, and with `no_bust_order_captured` if the club
+  never had the flag on during play — so it can never silently write a partial or shifting result.
 
 ## Proof already done (source-only)
 - `normalizePhone` unit tests: **6/6 pass**.
 - Controlled `BEGIN…ROLLBACK` dry-run against the LIVE schema (club 22222222 fixture, driving
-  `auth.uid()` via `request.jwt.claims`): **18/18 assertions green**, transaction rolled back — migrations
+  `auth.uid()` via `request.jwt.claims`): **20/20 assertions green**, transaction rolled back — migrations
   apply cleanly in order; dedup across phone formats; name-conflict no-overwrite; no-anchor → no junk;
-  user-path idempotent; authz reject; masked minimal lookup; dense bust_order; finalize places
-  (3/2/1); derive-on-read prize; re-entry supersede + late-order; `re_entered` label; RLS blocks
-  non-staff; flag-off inertness; online-trigger auto-link; single 6-arg offline RPC (no overload).
-- Read-only auditors: `db-safety` + `rls-security` (see PR).
+  user-path idempotent; authz reject; masked minimal lookup; dense bust_order; finalize guards refuse
+  mid-tournament / no-bust-order; finalize places (3/2/1); derive-on-read prize; re-entry supersede +
+  late-order; `re_entered` label; RLS blocks non-staff; flag-off inertness; online-trigger auto-link;
+  single 6-arg offline RPC (no overload).
+- Read-only auditors: `db-safety` + `rls-security` — both **GO** (see PR). db-safety's 1 P1 + 2 P2
+  findings (finalize-guard gap, reentry silent-swallow, unasserted grant) were fixed in a follow-up
+  commit and re-verified by the dry-run above; rls-security found no P0/P1.
 
 ## Owner-gated APPLY (do NOT run without the owner phrase)
 Controlled Management-API apply — NOT `supabase db push`; `schema_migrations` is not written.
