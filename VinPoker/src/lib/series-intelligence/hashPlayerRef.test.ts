@@ -24,6 +24,16 @@ describe("hashPlayerRef", () => {
     const raw = "vip-nguyen";
     expect(await hashPlayerRef(raw)).not.toContain(raw);
   });
+
+  // SHARED CLIENT/SERVER TEST VECTOR — the autosync migration hashes player_id server-side as
+  // encode(extensions.digest(lower(trim(player_id::text)),'sha256'),'hex'). This asserts the CLIENT produces the
+  // identical hex for the same uuid, so auto-captured and manually-captured rows reconcile as the same person.
+  // The identical constant is asserted in _dryrun_series_capture_autosync.sql (H1_hash_parity) and the migration header.
+  it("matches the server (pgcrypto) hash for the shared app_user_id vector", async () => {
+    expect(await hashPlayerRef("11111111-1111-1111-1111-111111111111")).toBe(
+      "bafde89c041e1756082b933aaf16cad8e65dec48de748479352f657e89dd6da5",
+    );
+  });
 });
 
 describe("shortHash", () => {

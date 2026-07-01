@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -10,6 +11,8 @@ import {
   CONFIDENCE_LABEL,
   type ForecastSnapshotInsert,
 } from "@/lib/series-intelligence/captureTypes";
+import { forecastSuggest } from "@/lib/series-intelligence/forecastSuggest";
+import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { Field, EnumSelect, toNum } from "../formBits";
 
 type InsertFn = (p: Omit<ForecastSnapshotInsert, "club_id">) => Promise<boolean>;
@@ -22,18 +25,37 @@ export function ForecastDialog({
   eventId,
   saving,
   insertForecast,
+  history = [],
+  targetBuyIn = null,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   eventId: string;
   saving: boolean;
   insertForecast: InsertFn;
+  /** The club's own past events (for the history-based suggestion). */
+  history?: SeriesEvent[];
+  /** This event's buy-in (drives the comparable band). */
+  targetBuyIn?: number | null;
 }) {
   const [f, setF] = useState({ ...EMPTY });
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const set = (k: keyof typeof EMPTY, v: string) => setF((p) => ({ ...p, [k]: v }));
   useEffect(() => {
-    if (open) setF({ ...EMPTY });
+    if (open) {
+      setF({ ...EMPTY });
+      setSuggestNote(null);
+    }
   }, [open]);
+
+  // Prefill low/base/high from comparable past turnouts (editable; never auto-saved). Observed Pattern, not a model.
+  const applySuggestion = () => {
+    const s = forecastSuggest(eventId, targetBuyIn, history);
+    setSuggestNote(s.reason);
+    if (s.status === "ok") {
+      setF((p) => ({ ...p, low: String(s.low ?? ""), base: String(s.base ?? ""), high: String(s.high ?? "") }));
+    }
+  };
 
   const submit = async () => {
     const low = toNum(f.low);
@@ -66,6 +88,14 @@ export function ForecastDialog({
           <DialogTitle>Ghi dự đoán trước giải</DialogTitle>
           <DialogDescription>Bạn nghĩ sẽ có bao nhiêu người tham gia? Ghi lại để sau giải đối chiếu.</DialogDescription>
         </DialogHeader>
+        <div className="rounded-md border border-primary/25 bg-primary/5 p-2">
+          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={applySuggestion}>
+            <Lightbulb className="h-3.5 w-3.5 text-primary" /> Gợi ý từ lịch sử
+          </Button>
+          <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+            {suggestNote ?? "Điền sẵn ít/chính/nhiều từ các giải cùng tầm buy-in đã có kết quả. Bạn cứ chỉnh lại tuỳ ý."}
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Ghi ở thời điểm">
             <EnumSelect value={f.horizon} onChange={(v) => set("horizon", v)} options={HORIZONS} labels={HORIZON_LABEL} />

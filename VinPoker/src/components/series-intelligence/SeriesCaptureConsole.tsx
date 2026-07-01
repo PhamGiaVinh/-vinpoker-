@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck, RefreshCw, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { formatShortDate } from "@/lib/format";
 import { useSeriesCapture } from "@/lib/series-intelligence/useSeriesCapture";
+import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
+import { useCaptureAutosync } from "@/lib/series-intelligence/useCaptureAutosync";
 import { CaptureOverview } from "./capture/CaptureOverview";
 import { EventLoopPanel } from "./capture/EventLoopPanel";
 
@@ -16,6 +19,10 @@ import { EventLoopPanel } from "./capture/EventLoopPanel";
 export function SeriesCaptureConsole() {
   const hook = useSeriesCapture();
   const [eventId, setEventId] = useState("");
+  // The club's own past events (buy-in + real entry counts) drive the forecast suggestion.
+  const native = useNativeSeriesEvents(hook.clubId ? { clubId: hook.clubId } : undefined);
+  // Auto-capture status + auto-recorded actuals (gracefully "unavailable" until the migration is applied).
+  const autosync = useCaptureAutosync(hook.clubId);
 
   // Keep a valid event selected as the club / event list changes.
   useEffect(() => {
@@ -31,12 +38,34 @@ export function SeriesCaptureConsole() {
   }
 
   const selectedEvent = hook.events.find((e) => e.id === eventId) ?? null;
+  const autoActuals = selectedEvent ? autosync.actualsByEvent.get(selectedEvent.id) ?? null : null;
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
-        Tầng GHI DỮ LIỆU — ghi quyết định + kết quả sau giải. Không model, không dự đoán.
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+          Tầng GHI DỮ LIỆU — ghi quyết định + kết quả sau giải. Không model, không dự đoán.
+        </div>
+        {autosync.available && (
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/20 px-3 py-1 text-[11px]">
+            <Zap className={autosync.enabled ? "h-3.5 w-3.5 text-primary" : "h-3.5 w-3.5 text-muted-foreground"} aria-hidden />
+            <span className="text-muted-foreground">
+              Tự động ghi: <strong className={autosync.enabled ? "text-primary" : "text-foreground"}>{autosync.enabled ? "BẬT" : "TẮT"}</strong>
+              {autosync.lastRun && <span className="ml-1 text-muted-foreground/70">· đồng bộ {formatShortDate(autosync.lastRun.run_at)}</span>}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-2 text-[11px]"
+              onClick={autosync.syncNow}
+              disabled={autosync.syncing}
+              aria-label="Đồng bộ ngay"
+            >
+              <RefreshCw className={autosync.syncing ? "h-3 w-3 animate-spin" : "h-3 w-3"} /> Sync ngay
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -87,7 +116,7 @@ export function SeriesCaptureConsole() {
               <p className="text-[11px] text-muted-foreground">{formatShortDate(selectedEvent.start_time)}</p>
             )}
           </div>
-          <EventLoopPanel eventId={selectedEvent.id} hook={hook} />
+          <EventLoopPanel eventId={selectedEvent.id} hook={hook} history={native.events} autoActuals={autoActuals} />
         </Card>
       )}
     </div>
