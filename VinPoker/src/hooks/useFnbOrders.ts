@@ -12,6 +12,8 @@ export type FnbOrder = {
   table_label: string | null; customer_name: string | null; note: string | null;
   subtotal_vnd: number; cogs_vnd: number;
   created_at: string; paid_at: string | null;
+  // A2 — soft links (reporting-only); undefined until migration 20261111000014 is applied live.
+  table_ref?: string | null; player_ref?: string | null;
   items: FnbOrderItem[];
 };
 
