@@ -295,7 +295,16 @@ BEGIN
       UPDATE public.tournament_entries SET member_id = v_src.member_id
         WHERE id = (v_res->>'entry_id')::uuid AND member_id IS NULL;
     END IF;
-  EXCEPTION WHEN OTHERS THEN NULL; END;
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO public.player_history_link_errors (club_id, context, detail)
+    VALUES (v_tour.club_id, 'reenter_tournament_player', left(SQLERRM, 500));
+  END;
 
   RETURN v_res || jsonb_build_object('registration_id', v_reg_id, 'reference_code', v_ref_code);
 END; $function$;
+
+-- Re-assert grants explicitly (post-audit P2-5): CREATE OR REPLACE preserves existing grants on an
+-- unchanged signature, but re-stating them here removes any dependency on unverified live state.
+REVOKE ALL ON FUNCTION public.reenter_tournament_player(uuid, bigint, bigint, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.reenter_tournament_player(uuid, bigint, bigint, text) FROM anon;
+GRANT EXECUTE ON FUNCTION public.reenter_tournament_player(uuid, bigint, bigint, text) TO authenticated, service_role;

@@ -52,11 +52,12 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  v_caller    uuid := auth.uid();
-  v_club      uuid;
-  v_field     integer;
-  v_survivors integer;
-  v_set       integer := 0;
+  v_caller         uuid := auth.uid();
+  v_club           uuid;
+  v_field          integer;
+  v_survivors      integer;
+  v_set            integer := 0;
+  v_any_bust_order boolean;
 BEGIN
   IF v_caller IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'unauthorized'); END IF;
   SELECT club_id INTO v_club FROM public.tournaments WHERE id = p_tournament_id;
@@ -64,6 +65,26 @@ BEGIN
   IF NOT (public.is_club_cashier(v_caller, v_club) OR public.is_club_admin(v_caller, v_club)
        OR public.is_club_owner(v_caller, v_club) OR public.has_role(v_caller, 'super_admin'::app_role)) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'actor_not_allowed');
+  END IF;
+
+  -- Guard (post-audit P1): only rank once the field is truly down to a winner. Calling this earlier —
+  -- or again later after late-registration/further busts changed the distinct-player count — would
+  -- silently SHIFT already-assigned places for earlier-out players (field size moves, dense_rank doesn't).
+  -- Refuse instead of doing a partial/shifting pass; the caller retries once the tournament is closed.
+  SELECT count(*) INTO v_survivors FROM public.tournament_entries
+    WHERE tournament_id = p_tournament_id AND COALESCE(status, '') <> 'busted';
+  IF v_survivors > 1 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'tournament_not_finished', 'survivors', v_survivors);
+  END IF;
+
+  -- Guard (post-audit P2): finished_place is only meaningful if bust_order was actually captured during
+  -- play (club_settings.player_history_enabled was on). Otherwise only the winner could ever be ranked —
+  -- a silent, misleading partial result. Refuse explicitly rather than writing a 1-place-only outcome.
+  SELECT EXISTS (
+    SELECT 1 FROM public.tournament_entries WHERE tournament_id = p_tournament_id AND bust_order IS NOT NULL
+  ) INTO v_any_bust_order;
+  IF NOT v_any_bust_order THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'no_bust_order_captured');
   END IF;
 
   -- (a) Clear any finished_place on superseded bullets (a later bullet exists for the same player).
@@ -103,9 +124,7 @@ BEGIN
     FROM public.tournament_entries WHERE tournament_id = p_tournament_id
   ) x;
 
-  -- (c) Winner = the single survivor's last bullet -> place 1 (only when the field is down to one).
-  SELECT count(*) INTO v_survivors FROM public.tournament_entries
-    WHERE tournament_id = p_tournament_id AND COALESCE(status, '') <> 'busted';
+  -- (c) Winner = the single survivor's last bullet -> place 1. v_survivors already checked <= 1 above.
   IF v_survivors <= 1 THEN
     WITH last_bullets AS (
       SELECT e.id, e.bust_order,
