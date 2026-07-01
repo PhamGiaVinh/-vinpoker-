@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText, BarChart3, CalendarRange, Dice5, FileImage } from "lucide-react";
+import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText, BarChart3, CalendarRange, Dice5, FileImage, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { ScheduleExportPanel } from "@/components/series-intelligence/ScheduleEx
 import { Stepper, type StepperItem } from "@/components/series-intelligence/Stepper";
 import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
+import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
@@ -60,6 +61,7 @@ export default function SeriesIntelligence() {
           { n: 5, label: "Xuất", targetId: "step-export" },
         ]
       : []),
+    ...(FEATURES.seriesDecisionLog ? [{ n: 6, label: "Ghi quyết định", targetId: "step-capture" }] : []),
   ];
 
   if (loading) return null;
@@ -266,6 +268,19 @@ export default function SeriesIntelligence() {
           icon={<FileImage className="h-4 w-4 text-primary" />}
         >
           <ScheduleExportPanel draft={draft} />
+        </StepSection>
+      )}
+
+      {/* ⑥ Ghi quyết định & Kết quả — CAPTURE console (owner-scoped DB write, flag-gated) */}
+      {FEATURES.seriesDecisionLog && (
+        <StepSection
+          id="step-capture"
+          n={6}
+          title="Ghi quyết định & Kết quả"
+          subtitle="Ghi quyết định vận hành + kết quả sau giải cho từng giải (chủ CLB). Tầng ghi dữ liệu — không model, không dự đoán."
+          icon={<ClipboardList className="h-4 w-4 text-primary" />}
+        >
+          <SeriesCaptureConsole />
         </StepSection>
       )}
     </div>
