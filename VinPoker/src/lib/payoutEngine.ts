@@ -19,7 +19,7 @@ import {
   type PayoutArchetype,
 } from "./payoutEngineAlpha";
 
-export const ENGINE_VERSION = "engine3neo-v1";
+export const ENGINE_VERSION = "engine3neo-v1.1";
 export { ALPHA_VERSION };
 export type { PayoutArchetype };
 
@@ -249,8 +249,65 @@ export function computePayouts(input: PayoutInput): PayoutResult {
   const distributable = prizePool - N * floor;
   const raw = v.map((vi) => floor + (sumV > 0 ? distributable * (vi / sumV) : 0));
 
-  const a = roundAndBalance(raw, prizePool, floor, roundingUnit, warnings);
+  const rounded = roundAndBalance(raw, prizePool, floor, roundingUnit, warnings);
+  const a = applyBanding(rounded, N, prizePool, floor, roundingUnit, warnings);
   return finalize(a, prizePool, N, floor, alpha, archetype, warnings);
+}
+
+/**
+ * Group payout — DEFAULT behavior since engine v1.1: ranks 1–9 stay individual (each archetype's
+ * own curve); ranks 10+ (if any) are grouped into equal-amount bands (see `bandBoundaries`), every
+ * rank in a band paid the band's average, FLOORED to the rounding unit (so it never exceeds the
+ * base individual curve there) but CLAMPED to never go below the min-cash `floor` — flooring a
+ * band average to the rounding unit can undershoot the true floor whenever `floor` itself isn't an
+ * exact multiple of `roundingUnit` (common: e.g. floor=4.8M with a 1M unit), so the clamp is
+ * required, not optional. The clamp can only ever raise (never lower) an amount, and only up to
+ * the band's own raw average (which is always ≥ floor — the mean of several already-≥-floor
+ * amounts), so it can never invert descending order (each band's raw average is itself
+ * non-increasing across the field, and `max(x, floor)` preserves that ordering) and never pushes
+ * `banded` above the true base total for that range (so the flooring residual stays ≥ 0). The
+ * residual is absorbed by **rank 1 only** — bands are never touched ("band equality is sacred")
+ * and rank 1 only ever rises. No-op for N ≤ 9 (`bandBoundaries` returns only singleton bands
+ * there, so every rank is its own "band" of size 1). Reused by `computeBandedPayouts` below (the
+ * `LIVE_STANDARD` archetype now just relabels this same computation — single source of truth).
+ */
+function applyBanding(
+  amounts: number[],
+  N: number,
+  prizePool: number,
+  floor: number,
+  roundingUnit: number,
+  warnings: PayoutWarning[],
+): number[] {
+  if (N <= 9) return amounts;
+  const down = (x: number) => Math.floor(x / roundingUnit) * roundingUnit;
+  const out = new Array<number>(N);
+  let banded = 0;
+  for (const [from, to] of bandBoundaries(N)) {
+    if (from <= 9) {
+      for (let r = from; r <= to; r++) out[r - 1] = amounts[r - 1];
+    } else {
+      let s = 0;
+      for (let r = from; r <= to; r++) s += amounts[r - 1];
+      const band = Math.max(down(s / (to - from + 1)), floor);
+      for (let r = from; r <= to; r++) out[r - 1] = band;
+      banded += band * (to - from + 1);
+    }
+  }
+  let top9 = 0;
+  for (let r = 1; r <= 9; r++) top9 += out[r - 1];
+  const residual = prizePool - top9 - banded;
+  if (residual > 0) {
+    out[0] += residual;
+    if (warnings.indexOf("ROUNDING_ADJUSTED") < 0) warnings.push("ROUNDING_ADJUSTED");
+  }
+
+  for (let i = 0; i < N; i++) if (!(out[i] > 0)) throw new Error("BANDED_ZERO_AMOUNT");
+  for (let i = 0; i < N - 1; i++) if (out[i] < out[i + 1]) throw new Error("BANDED_INVARIANT_MONOTONE");
+  let sum = 0;
+  for (const x of out) sum += x;
+  if (sum !== prizePool) throw new Error("BANDED_INVARIANT_SUM");
+  return out;
 }
 
 // ---- CUSTOM mode (native server-authoritative; club-specified basis points) -------------------
@@ -377,69 +434,20 @@ export function bandBoundaries(itmPlaces: number): Array<[number, number]> {
 }
 
 /**
- * `LIVE_STANDARD` banded payout. Computes a base INTL curve, then for places 10+ pays every rank in a
- * band the SAME amount = the band's base average FLOORED to the rounding unit. Because flooring only
- * ever lowers the banded total, the residual is ≥ 0 and is absorbed by **rank 1 only** — bands are
- * never touched (band equality is sacred) and rank 1 only rises (descending preserved). The last band
- * sits at/above the min-cash floor, so it is NOT pinned to floor (apply skips LAST_NOT_FLOOR for
- * LIVE_STANDARD but keeps every other invariant). ITM ≤ 10 → individual (no banding).
- * Deterministic; throws on impossible inputs (caught by callers; DB re-verifies).
+ * `LIVE_STANDARD` banded payout: the base INTL curve, banded for places 10+ (final table 1–9 stays
+ * individual). ITM ≤ 10 → individual (no banding). Deterministic; throws on impossible inputs
+ * (caught by callers; DB re-verifies). The last band sits at/above the min-cash floor, so it is
+ * NOT pinned to floor (apply skips LAST_NOT_FLOOR whenever banding actually applies).
+ *
+ * Since engine v1.1, `computePayouts` applies this exact banding (`applyBanding`) internally for
+ * EVERY archetype, using each archetype's OWN curve for ranks 1–9 rather than a hardcoded INTL
+ * base. This function is now a thin, single-source-of-truth wrapper: compute the INTL curve
+ * (already banded internally) and relabel it as `LIVE_STANDARD` for its DB/Edge code path — kept
+ * for backward compatibility (hidden from the UI dropdown, but still fully functional) and for the
+ * one already-applied real `LIVE_STANDARD` close. No duplicate banding logic to keep in sync.
  */
 export function computeBandedPayouts(input: BandedPayoutInput): PayoutResult {
   const { entries, prizePool, floor, itmPercent, roundingUnit } = input;
   const base = computePayouts({ entries, prizePool, floor, itmPercent, archetype: "INTL", roundingUnit });
-  const N = base.itmPlaces;
-  const warnings: PayoutWarning[] = [...base.warnings];
-
-  // ITM ≤ 10: final-table only → keep individual (just relabel as LIVE_STANDARD).
-  if (N <= 10) {
-    return { ...base, archetype: "LIVE_STANDARD", engineVersion: BANDED_ENGINE_VERSION };
-  }
-
-  const baseAmt = base.rows.map((r) => r.amount); // index 0 = rank 1
-  const down = (x: number) => Math.floor(x / roundingUnit) * roundingUnit;
-  const amounts = new Array<number>(N);
-  let banded = 0;
-
-  for (const [from, to] of bandBoundaries(N)) {
-    if (from <= 9) {
-      for (let r = from; r <= to; r++) amounts[r - 1] = baseAmt[r - 1]; // individual ranks 1..9
-    } else {
-      let s = 0;
-      for (let r = from; r <= to; r++) s += baseAmt[r - 1];
-      const a = down(s / (to - from + 1)); // equal, floored → ≤ each base ⇒ ≤ rank 9 ⇒ descending
-      for (let r = from; r <= to; r++) amounts[r - 1] = a; // EVERY rank in the band identical
-      banded += a * (to - from + 1);
-    }
-  }
-
-  // residual repair: ONLY rank 1 (residual ≥ 0 from flooring; bands untouched; rank 1 only rises).
-  let top9 = 0;
-  for (let r = 1; r <= 9; r++) top9 += amounts[r - 1];
-  const residual = prizePool - top9 - banded;
-  if (residual > 0) {
-    amounts[0] += residual;
-    if (warnings.indexOf("ROUNDING_ADJUSTED") < 0) warnings.push("ROUNDING_ADJUSTED");
-  }
-
-  for (let i = 0; i < N; i++) if (!(amounts[i] > 0)) throw new Error("BANDED_ZERO_AMOUNT");
-  for (let i = 0; i < N - 1; i++) if (amounts[i] < amounts[i + 1]) throw new Error("BANDED_INVARIANT_MONOTONE");
-  let sum = 0;
-  for (const x of amounts) sum += x;
-  if (sum !== prizePool) throw new Error("BANDED_INVARIANT_SUM");
-
-  const rows = amounts.map((amt, i) => makeRow(i + 1, amt, prizePool));
-  return {
-    rows,
-    tiers: buildTiers(rows),
-    prizePool,
-    itmPlaces: N,
-    effectiveFloor: base.effectiveFloor, // real min-cash floor (apply keeps FLOOR_MISMATCH for LIVE_STANDARD)
-    alpha: base.alpha,
-    archetype: "LIVE_STANDARD",
-    warnings,
-    engineVersion: BANDED_ENGINE_VERSION,
-    alphaVersion: base.alphaVersion,
-    sumCheck: sum === prizePool,
-  };
+  return { ...base, archetype: "LIVE_STANDARD", engineVersion: BANDED_ENGINE_VERSION };
 }

@@ -60,10 +60,13 @@ describe("computeBandedPayouts (LIVE_STANDARD)", () => {
     }
   });
 
-  it("6) base INTL output is UNCHANGED (banding only post-processes; INTL still pins rank N to floor)", () => {
-    const intl = computePayouts({ entries: 190, prizePool: 190 * M, itmPercent: 0.1, ...base, archetype: "INTL" });
-    expect(intl.archetype).toBe("INTL");
-    expect(intl.rows[intl.rows.length - 1].amount).toBe(2.4 * M); // INTL min-cash invariant intact
+  it("6) since engine v1.1, computeBandedPayouts(LIVE_STANDARD) is IDENTICAL to computePayouts(INTL) — both band by default now, single source of truth", () => {
+    const input = { entries: 190, prizePool: 190 * M, itmPercent: 0.1, ...base };
+    const intl = computePayouts({ ...input, archetype: "INTL" });
+    const live = computeBandedPayouts(input);
+    expect(intl.rows.map((x) => x.amount)).toEqual(live.rows.map((x) => x.amount));
     expect(intl.rows.reduce((s, x) => s + x.amount, 0)).toBe(190 * M);
+    // both still band ranks 10+ (not "unchanged individual" — that invariant no longer holds by design)
+    expect(intl.rows[9].amount).toBe(intl.rows[10].amount);
   });
 });
