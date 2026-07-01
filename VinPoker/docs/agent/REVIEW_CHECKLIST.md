@@ -19,6 +19,15 @@ recurse.
       safety · Next Step).
 - [ ] **Verdict:** SAFE TO MERGE / NEEDS OWNER DECISION / BLOCKED.
 
+### Money changes (🔴 RED / CRITICAL) — extra bar
+
+- [ ] Attack-test evidence attached: **concurrency** (two people at once), **idempotency** (double
+      click / retry never pays twice), **rounding** (no drift over many repeats), **conservation**
+      (total in = total out). Report PASS/FAIL per case in plain language.
+- [ ] Money code (payroll / cashier / settlement / staking) flagged for **independent human technical
+      review** before real money flows in production — the one place Claude-only carries real risk.
+- [ ] Feature flag default **OFF**; stop before production; owner approves ("OK đẩy lên") to proceed.
+
 ## Auditor output format (all auditors)
 
 ```

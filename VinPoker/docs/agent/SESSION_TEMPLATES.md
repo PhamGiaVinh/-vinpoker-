@@ -2,6 +2,9 @@
 
 Copy-paste prompts so each session starts disciplined and ends with a clean checkpoint.
 
+> **Owner (non-technical) prompts:** the plain-Vietnamese 🟢 GREEN / 🔴 RED copy-paste prompts live in
+> `OWNER_LOOP.md`. Use those for owner-driven tasks; the templates below are the session-level scaffolding.
+
 ## A. Session contract (paste at the start of every session)
 
 ```

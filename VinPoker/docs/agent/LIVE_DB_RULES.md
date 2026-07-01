@@ -42,6 +42,17 @@ Runtime copy used by the global registration: `%USERPROFILE%\.claude\hooks\vinpo
 Registration: `~/.claude/settings.json` → `hooks.PreToolUse` (matchers `Bash`, `PowerShell`,
 absolute path — never `${CLAUDE_PROJECT_DIR}`).
 
+## Tokens (Supabase / Vercel)
+
+- Tokens live **only** in environment variables / GitHub Secrets — **never** in files, chat, logs,
+  commit messages, or code. A token appearing anywhere is treated as compromised → rotate it.
+- A token may be used to run an **owner-approved additive NEW migration** (a single
+  `supabase db query --linked` apply inside the controlled model below). It does **not** authorize
+  `supabase db push` or `deploy_db=true` — those stay forbidden (migrations are unreconciled; a blind
+  push would apply broken history). The safety hook denies them regardless.
+- Automation = *who types the SQL*; the RED/CRITICAL gate = *is the SQL correct*. Having a token does
+  **not** remove the owner-approval gate. Never print or echo a token.
+
 ## Controlled apply model (CRITICAL mode)
 
 When an apply is genuinely required and the owner has approved with the exact phrase, every step is
