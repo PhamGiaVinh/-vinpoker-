@@ -65,3 +65,12 @@ export const PLAYER_REF_TYPE_LABEL: Record<string, string> = {
 
 /** Funnel display order for commitment stages. */
 export const STAGE_ORDER = COMMITMENT_STAGES;
+
+/** Short plain-Vietnamese horizon labels for the timeline nodes (no "T-minus" jargon). */
+export const HORIZON_SHORT: Record<string, string> = {
+  "T-21": "3 tuần",
+  "T-7": "1 tuần",
+  "T-1": "1 ngày",
+  "T-0": "Ngày giải",
+  post: "Sau giải",
+};
