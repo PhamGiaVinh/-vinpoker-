@@ -11,9 +11,10 @@ import { Loader2, Trash2, ImagePlus, Wand2, CheckCircle2, AlertCircle, Images } 
 import type { ClubRow } from "./TournamentManagerShared";
 
 // Bulk-create regular tournaments from a schedule IMAGE (by day / by week) on the Floor.
-// Reuses the deployed `parse-tournament-schedule` edge function (Lovable Gemini vision)
-// + the batch insert pattern from BulkCreateTournaments. Created rows are plain tournaments
-// → fully editable afterwards (tên/giờ/buy-in + cấu trúc blind) via the normal TournamentCard.
+// Reuses the deployed `parse-tournament-schedule` edge function (Google Gemini vision, direct —
+// self-owned GEMINI_API_KEY, no Lovable gateway) + the batch insert pattern from
+// BulkCreateTournaments. Created rows are plain tournaments → fully editable afterwards
+// (tên/giờ/buy-in + cấu trúc blind) via the normal TournamentCard.
 
 type Status = "pending" | "processing" | "done" | "error";
 interface ParsedTour {
