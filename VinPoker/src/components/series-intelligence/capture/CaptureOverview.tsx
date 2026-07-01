@@ -1,7 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { summarizeCapture } from "@/lib/series-intelligence/captureScoring";
 import type { DecisionLog, ForecastSnapshot } from "@/lib/series-intelligence/captureTypes";
-import { InsightLabelBadge } from "@/components/series-intelligence/InsightLabelBadge";
 
 /** Descriptive dashboard across the whole club's capture — measured counts only (Observed Pattern). */
 export function CaptureOverview({
@@ -15,14 +14,13 @@ export function CaptureOverview({
   const stats: { label: string; value: string | number }[] = [
     { label: "Giải đã ghi", value: s.events },
     { label: "Quyết định", value: s.decisions },
-    { label: "Đã chấm", value: s.scoredEvents },
-    { label: "Phủ GTD", value: s.scoredEvents ? `${s.gtdCoveredEvents}/${s.scoredEvents}` : "—" },
+    { label: "Đã có kết quả", value: s.scoredEvents },
+    { label: "Đủ GTD", value: s.scoredEvents ? `${s.gtdCoveredEvents}/${s.scoredEvents}` : "—" },
   ];
   return (
     <Card className="gradient-card border-primary/30 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Tổng quan capture</span>
-        <InsightLabelBadge label="Observed Pattern" />
+      <div className="mb-2">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Tổng quan</span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {stats.map((st) => (

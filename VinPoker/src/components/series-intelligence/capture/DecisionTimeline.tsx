@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { DECISION_HORIZONS } from "@/lib/series-intelligence/captureTypes";
+import { DECISION_HORIZONS, HORIZON_SHORT } from "@/lib/series-intelligence/captureTypes";
 import type { DecisionLog, ForecastSnapshot } from "@/lib/series-intelligence/captureTypes";
 
 /**
@@ -23,7 +23,7 @@ export function DecisionTimeline({
   return (
     <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
       <div className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        Dòng thời gian quyết định
+        Diễn tiến theo mốc
       </div>
       <div className="relative flex items-start justify-between gap-1">
         <div className="absolute left-4 right-4 top-[11px] h-px bg-border" aria-hidden />
@@ -46,12 +46,12 @@ export function DecisionTimeline({
                 {active ? total : ""}
               </div>
               <span className={cn("text-center text-[10px] leading-tight", active ? "text-foreground" : "text-muted-foreground")}>
-                {n.h}
+                {HORIZON_SHORT[n.h] ?? n.h}
               </span>
               {active && (
                 <div className="flex flex-col items-center gap-0.5 text-[9px] text-muted-foreground">
-                  {n.forecasts > 0 && <span>{n.forecasts} dự báo</span>}
-                  {n.decisions > 0 && <span>{n.decisions} QĐ</span>}
+                  {n.forecasts > 0 && <span>{n.forecasts} dự đoán</span>}
+                  {n.decisions > 0 && <span>{n.decisions} quyết định</span>}
                 </div>
               )}
             </div>
