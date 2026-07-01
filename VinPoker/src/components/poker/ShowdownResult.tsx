@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy } from 'lucide-react';
 import type { PublicHandResult, PublicSeatView } from '@/lib/onlinePoker/types';
 import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
+import './pokerTable.css';
 
 /** "12,345 (3 BB)" when bb is known, else the raw chip count. */
 function chipLabel(chips: string, bb?: string): string {
@@ -41,7 +42,7 @@ export function ShowdownResult({
   const isShowdown = result.endedBy === 'showdown';
 
   return (
-    <Card className="border-amber-300/40 bg-amber-300/[0.06] p-3 sm:p-4">
+    <Card className="op-result-reveal border-amber-300/40 bg-amber-300/[0.06] p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge className="gap-1 bg-amber-400 text-black hover:bg-amber-400">
           <Trophy className="h-3.5 w-3.5" /> Kết quả ván #{handNo}
