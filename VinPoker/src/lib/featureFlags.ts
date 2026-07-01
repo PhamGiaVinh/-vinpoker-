@@ -588,6 +588,15 @@ export const FEATURES = {
    */
   fnbComp: true,
   /**
+   * F&B A2 — link a regular counter order to a REAL table (game_tables) and/or a seated player
+   * (tournament_seats.player_id) for "F&B theo bàn / theo player" reporting — knowing/reporting ONLY,
+   * never a player tab/balance/debt. Gates the table/player pickers on the counter AND the new F&B
+   * report view. Requires migration 20261111000014 (table_ref/player_ref cols + fnb_create_order 9-arg
+   * + fnb_list_link_targets read RPC + fnb_get_report byTable/byPlayer) applied live first.
+   * Default OFF (dark). Flip after migration applied + preview UAT.
+   */
+  fnbTableLink: false,
+  /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
    * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in
