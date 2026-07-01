@@ -149,7 +149,10 @@ export default function BulkCreateTournaments() {
     if (invalid) { toast.error(t("bulkCreate.rowValidation")); return; }
 
     setCreating(true);
-    const scheduleUploadId = crypto.randomUUID();
+    // NOTE: no `schedule_upload_id` — that column does not exist on public.tournaments (nothing
+    // reads it either), and inserting it made the whole batch INSERT fail with "column
+    // schedule_upload_id does not exist", so no tournaments were created. `status` is intentionally
+    // omitted so it takes the table default ('active'), matching the normal single-create flow.
     const payload = rows.map(r => ({
       name: r.name.trim(),
       start_time: new Date(r.start_time).toISOString(),
@@ -158,7 +161,6 @@ export default function BulkCreateTournaments() {
       game_type: r.game_type,
       location: r.venue ?? null,
       club_id: r.club_id,
-      schedule_upload_id: scheduleUploadId,
     }));
     const { error } = await (supabase as any).from("tournaments").insert(payload as any);
     setCreating(false);

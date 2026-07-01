@@ -108,7 +108,11 @@ export function BulkScheduleDialog({ clubs, defaultClubId, multiClub, onCreated 
     if (rows.find((r) => !r.name.trim() || !r.start_time)) return toast.error("Mỗi giải cần có tên + thời gian");
     setCreating(true);
     try {
-      const scheduleUploadId = crypto.randomUUID();
+      // NOTE: no `schedule_upload_id` — that column does not exist on public.tournaments (nothing
+      // reads it either), and inserting it made the whole batch INSERT fail with "column
+      // schedule_upload_id does not exist", so no tournaments were created. `status` is intentionally
+      // omitted so it takes the table default ('active'), matching the normal single-create flow →
+      // the new rows show up in the operate (Vận hành) list.
       const payload = rows.map((r) => ({
         name: r.name.trim(),
         start_time: new Date(r.start_time).toISOString(),
@@ -117,7 +121,6 @@ export function BulkScheduleDialog({ clubs, defaultClubId, multiClub, onCreated 
         game_type: r.game_type,
         location: r.venue ?? null,
         club_id: clubId,
-        schedule_upload_id: scheduleUploadId,
       }));
       const { error } = await (supabase as any).from("tournaments").insert(payload as any);
       if (error) { toast.error(error.message); return; }
