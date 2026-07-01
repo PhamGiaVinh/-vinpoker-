@@ -299,14 +299,27 @@ export async function buildDealerCandidates(
       // table isn't special): exclude dealers reserved to ANY feature/final pool. They are
       // exclusive to their special table and must not be pulled to a normal table (else the
       // in-pool A↔B rotation breaks). Gate-aware: empty Set when kill-switch off → no effect.
-      const reserved = await getReservedDealerIds(admin);
-      if (reserved.size > 0) {
-        const kept = dealerIds.filter((id) => !reserved.has(id));
-        if (kept.length !== dealerIds.length) {
-          console.log(`[pickNextDealer] excluded ${dealerIds.length - kept.length} reserved feature/final pool dealer(s) from non-pool pick (table=${currentTableId})`);
-          dealerIds.length = 0;
-          dealerIds.push(...kept);
+      try {
+        const reserved = await getReservedDealerIds(admin);
+        if (reserved.size > 0) {
+          const kept = dealerIds.filter((id) => !reserved.has(id));
+          if (kept.length !== dealerIds.length) {
+            console.log(`[pickNextDealer] excluded ${dealerIds.length - kept.length} reserved feature/final pool dealer(s) from non-pool pick (table=${currentTableId})`);
+            dealerIds.length = 0;
+            dealerIds.push(...kept);
+          }
         }
+      } catch (reservedErr) {
+        // Fail-SAFE (P2 hardening, audit 2026-07-02): getReservedDealerIds throws on a query
+        // error — it has no data-only way to signal "reserved set unknown" without risking a
+        // false-empty Set, which would let a special-pool dealer leak onto this normal table
+        // (the exact leak Patch 5d closed). Mirror Step 2 above: bail with no candidates for
+        // this pick rather than proceed with an unverifiable reserved-dealer set.
+        console.error(
+          `[pickNextDealer] Reserved-dealer lookup failed — failing safe (no candidates) for table=${currentTableId}:`,
+          reservedErr instanceof Error ? reservedErr.message : reservedErr
+        );
+        return { candidates: [], avgBreakRatio: null };
       }
     }
     // else: currentTableId is undefined — this is a GLOBAL/shared candidate build (e.g.
@@ -529,8 +542,15 @@ export async function buildDealerCandidates(
           error: { message: string } | null;
         };
       if (poolErr) {
-        console.error(`[pickNextDealer] Pool cooldown query error: ${poolErr.message}`);
-      } else if (poolDealers && poolDealers.length > 0) {
+        // Fail-SAFE (P2 hardening, audit 2026-07-02): this used to just log and continue,
+        // silently skipping the cooldown exclusion — a dealer still inside their 1-min
+        // pool-entry grace (before Telegram can send the pre-assign notice) could then be
+        // picked. Mirror Step 2's error handling above: bail with no candidates rather than
+        // proceed on data this guard couldn't verify.
+        console.error(`[pickNextDealer] Pool cooldown query error — failing safe (no candidates): ${poolErr.message}`);
+        return { candidates: [], avgBreakRatio: null };
+      }
+      if (poolDealers && poolDealers.length > 0) {
         for (const pd of poolDealers) {
           restGuardExcludedIds.add(pd.id);
         }
@@ -540,7 +560,9 @@ export async function buildDealerCandidates(
         );
       }
     } catch (poolCatchErr) {
-      console.error(`[pickNextDealer] Pool cooldown exception:`, poolCatchErr);
+      // Same fail-safe as above — an exception here must not silently skip the exclusion.
+      console.error(`[pickNextDealer] Pool cooldown exception — failing safe (no candidates):`, poolCatchErr);
+      return { candidates: [], avgBreakRatio: null };
     }
   }
 
