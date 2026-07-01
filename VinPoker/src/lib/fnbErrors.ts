@@ -29,6 +29,8 @@ const VI: Record<string, string> = {
   NOT_FOUND:           "Không tìm thấy bản ghi.",
   INSUFFICIENT_STOCK:  "Không đủ nguyên liệu để bán.",
   RECIPE_REQUIRED:     "Có món chưa khai báo công thức — không thể thu tiền.",
+  INVALID_TABLE_REF:   "Bàn đã chọn không hợp lệ — chọn lại hoặc dùng gõ tay.",
+  INVALID_PLAYER_REF:  "Người chơi đã chọn không hợp lệ — chọn lại hoặc bỏ chọn.",
 };
 
 type SupaErr = { message?: string; details?: string; detail?: string; hint?: string; code?: string } | null | undefined;

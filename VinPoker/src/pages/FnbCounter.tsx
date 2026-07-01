@@ -9,6 +9,7 @@ import { mapFnbError } from "@/lib/fnbErrors";
 import { useAuth } from "@/hooks/useAuth";
 import { useFnbClubs } from "@/hooks/useFnbClubs";
 import { useFnbOrders, type FnbOrder } from "@/hooks/useFnbOrders";
+import { useFnbLinkTargets, type FnbLinkTargets } from "@/hooks/useFnbLinkTargets";
 import { OrderEntryPanel, type NewOrder } from "@/components/fnb/OrderEntryPanel";
 import { FnbConfirmPaymentDialog, type PayableOrder } from "@/components/fnb/FnbConfirmPaymentDialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -79,6 +80,8 @@ function FnbCounterInner() {
       p_note: o.note,
       p_lines: o.items.map((it) => ({ menu_item_id: it.menu_item_id, qty: it.qty })),
       p_client_request_id: o.client_request_id,
+      p_table_ref: o.table_ref ?? null,
+      p_player_ref: o.player_ref ?? null,
     });
     setCreating(false);
     const res = data as any;
@@ -254,11 +257,23 @@ function FnbCounterInner() {
   );
 }
 
+// A2 — prefer a resolved REAL table/player name over the free-text fallback when a ref is present
+// (a ref may point at a table/player no longer in `linkTargets`, e.g. the tournament ended — falls
+// back to the free-text label in that case, never shows a blank).
+function orderDisplayLabel(o: FnbOrder, linkTargets: FnbLinkTargets | undefined): string {
+  const tableName = o.table_ref ? linkTargets?.tables.find((t) => t.id === o.table_ref)?.table_name : undefined;
+  const playerName = o.player_ref ? linkTargets?.players.find((p) => p.player_id === o.player_ref)?.name : undefined;
+  const place = tableName ?? (o.table_label ? `Bàn ${o.table_label}` : "Khách lẻ");
+  const who = playerName ?? o.customer_name;
+  return who ? `${place} · ${who}` : place;
+}
+
 function OrdersTab({ clubId, status, emptyText, children }: {
   clubId: string; status: "pending" | "paid"; emptyText: string;
   children: (o: FnbOrder) => React.ReactNode;
 }) {
   const { data, isLoading } = useFnbOrders(clubId, [status]);
+  const { data: linkTargets } = useFnbLinkTargets(clubId);
   if (isLoading) return <Skeleton className="h-24 w-full" />;
   const orders = data ?? [];
   if (orders.length === 0) {
@@ -269,9 +284,7 @@ function OrdersTab({ clubId, status, emptyText, children }: {
       {orders.map((o) => (
         <Card key={o.id} className="p-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold truncate">
-              {o.table_label ? `Bàn ${o.table_label}` : "Khách lẻ"}{o.customer_name ? ` · ${o.customer_name}` : ""}
-            </div>
+            <div className="text-sm font-semibold truncate">{orderDisplayLabel(o, linkTargets)}</div>
             <div className="font-mono font-semibold shrink-0">{formatVND(o.subtotal_vnd)}</div>
           </div>
           <div className="text-xs text-muted-foreground">

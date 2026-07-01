@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFnbMenu } from "@/hooks/useFnbMenu";
+import { useFnbLinkTargets } from "@/hooks/useFnbLinkTargets";
 import { formatVND } from "@/lib/format";
 import { FEATURES } from "@/lib/featureFlags";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Gift, Loader2, Plus, Minus, Receipt } from "lucide-react";
+
+// A2 picker sentinels — Radix Select needs a non-empty item value, so "walk-in" / "no player" get
+// their own tokens rather than "" (which Select reserves internally in some versions).
+const WALKIN = "__walkin__";
+const NO_PLAYER = "__none__";
 
 export type NewOrder = {
   table_label: string | null;
@@ -16,6 +23,10 @@ export type NewOrder = {
   // resolved lines: menu_item_id + qty drive the RPC; name/price drive the confirm dialog preview.
   items: { menu_item_id: string; qty: number; name_snapshot: string; unit_price_snapshot: number }[];
   subtotal_vnd: number;
+  // A2 — soft links (reporting-only). Exactly one of {table_ref, table_label} is meaningful: a real
+  // pick clears the free-text label; walk-in leaves table_ref null and keeps the free-text label.
+  table_ref?: string | null;
+  player_ref?: string | null;
 };
 
 /**
@@ -34,17 +45,33 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit, onSubm
   const cats = data?.categories ?? [];
   const items = useMemo(() => (data?.items ?? []).filter((m) => m.is_active), [data]);
 
+  // A2 — real table/player picker data (empty when the flag is off or the RPC hasn't been applied yet).
+  const { data: linkTargets } = useFnbLinkTargets(clubId);
+  const tables = linkTargets?.tables ?? [];
+  const players = linkTargets?.players ?? [];
+
   const [activeCat, setActiveCat] = useState<string>("all");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [table, setTable] = useState("");
   const [customer, setCustomer] = useState("");
+  const [tablePick, setTablePick] = useState<string>(WALKIN);
+  const [playerPick, setPlayerPick] = useState<string>(NO_PLAYER);
   const crid = useRef<string>(crypto.randomUUID());
 
   // parent bumps resetKey after a successful create → clear cart + mint a new idempotency key.
   useEffect(() => {
     if (resetKey === 0) return;
     setCart({}); setTable(""); setCustomer(""); crid.current = crypto.randomUUID();
+    setTablePick(WALKIN); setPlayerPick(NO_PLAYER);
   }, [resetKey]);
+
+  // picking a seated player auto-fills their current table (the player IS at that table already).
+  const pickPlayer = (playerId: string) => {
+    setPlayerPick(playerId);
+    if (playerId === NO_PLAYER) return;
+    const p = players.find((pl) => pl.player_id === playerId);
+    if (p?.table_id) setTablePick(p.table_id);
+  };
 
   const add = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
   const dec = (id: string) => setCart((c) => {
@@ -55,8 +82,11 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit, onSubm
   const subtotal = lines.reduce((s, m) => s + m.price_vnd * cart[m.id], 0);
   const shown = activeCat === "all" ? items : items.filter((m) => m.category_id === activeCat);
 
+  const hasRealTable = FEATURES.fnbTableLink && tablePick !== WALKIN;
+  const hasRealPlayer = FEATURES.fnbTableLink && playerPick !== NO_PLAYER;
+
   const buildOrder = (): NewOrder => ({
-    table_label: table.trim() || null,
+    table_label: hasRealTable ? null : (table.trim() || null),
     customer_name: customer.trim() || null,
     note: null,
     client_request_id: crid.current,
@@ -64,6 +94,8 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit, onSubm
       menu_item_id: m.id, qty: cart[m.id], name_snapshot: m.name, unit_price_snapshot: m.price_vnd,
     })),
     subtotal_vnd: subtotal,
+    table_ref: hasRealTable ? tablePick : null,
+    player_ref: hasRealPlayer ? playerPick : null,
   });
 
   const submit = () => { if (lines.length === 0 || submitting) return; onSubmit(buildOrder()); };
@@ -105,12 +137,52 @@ export function OrderEntryPanel({ clubId, submitting, resetKey, onSubmit, onSubm
       <Card className="p-4 flex flex-col">
         <div className="text-sm font-semibold mb-2">Đơn hàng</div>
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <div><Label className="text-xs text-muted-foreground">Bàn</Label>
-            <Input value={table} onChange={(e) => setTable(e.target.value)} placeholder="vd: Bàn 3"
-              className="bg-card border-border text-foreground h-8" /></div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Bàn</Label>
+            {FEATURES.fnbTableLink ? (
+              <>
+                <Select value={tablePick} onValueChange={setTablePick}>
+                  <SelectTrigger className="bg-card border-border text-foreground h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border text-foreground">
+                    <SelectItem value={WALKIN}>Khách lẻ / gõ tay</SelectItem>
+                    {tables.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.table_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {tablePick === WALKIN && (
+                  <Input value={table} onChange={(e) => setTable(e.target.value)} placeholder="vd: Bàn 3"
+                    className="bg-card border-border text-foreground h-8 mt-1" />
+                )}
+              </>
+            ) : (
+              <Input value={table} onChange={(e) => setTable(e.target.value)} placeholder="vd: Bàn 3"
+                className="bg-card border-border text-foreground h-8" />
+            )}
+          </div>
           <div><Label className="text-xs text-muted-foreground">Khách</Label>
             <Input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="(tuỳ chọn)"
               className="bg-card border-border text-foreground h-8" /></div>
+          {FEATURES.fnbTableLink && players.length > 0 && (
+            <div className="col-span-2">
+              <Label className="text-xs text-muted-foreground">Người chơi (đang ngồi)</Label>
+              <Select value={playerPick} onValueChange={pickPlayer}>
+                <SelectTrigger className="bg-card border-border text-foreground h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border text-foreground">
+                  <SelectItem value={NO_PLAYER}>— Không chọn —</SelectItem>
+                  {players.map((p) => (
+                    <SelectItem key={p.player_id} value={p.player_id}>
+                      {p.name}{p.table_name ? ` · ${p.table_name}${p.seat_number ? ` #${p.seat_number}` : ""}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <div className="flex-1 space-y-2 min-h-[60px]">
           {lines.length === 0 ? (
