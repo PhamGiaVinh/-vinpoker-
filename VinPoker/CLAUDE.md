@@ -36,6 +36,14 @@ Supabase project ref: `orlesggcjamwuknxwcpk`. Environment: Windows + PowerShell.
 State which mode you chose and why. Do not escalate to CRITICAL unless the task touches real money,
 permissions, the database, game correctness, or live operations.
 
+**Owner lens (🟢 GREEN / 🔴 RED).** The non-technical owner decides in 5 seconds: *does this touch
+money, cards, or game results?* 🟢 **GREEN** (no) → run FAST or SAFE, full automation; owner approves a
+1-line Vietnamese plan, you do everything, report + how-to-test. 🔴 **RED** (yes — payroll / cashier /
+withdrawal / staking split / chip count / who-wins / settlement / price-fee) → run CRITICAL: explain
+the **money flow in plain Vietnamese** for approval BEFORE writing, then run adversarial **attack
+tests** (concurrency, idempotency, rounding, sum-in=sum-out), then **STOP before production**. **Not
+sure → treat as RED.** Full protocol + copy-paste prompts: `docs/agent/OWNER_LOOP.md`.
+
 ## Agent Model: Solo Writer + Read-Only Auditors
 
 VinPoker uses a SOLO-BY-DEFAULT working model.
@@ -130,6 +138,7 @@ used / secrets exposed — expected all NO) · Next Step.** Then stop.
 
 ## Detailed rules (load on demand — path only, no `@`-embed)
 
+- `docs/agent/OWNER_LOOP.md` — 🟢/🔴 owner loop (money-vs-not decision) + copy-paste Vietnamese prompts.
 - `docs/agent/OPERATING_RULES.md` — session/git/parallel discipline, load control, secrets.
 - `docs/agent/LIVE_DB_RULES.md` — controlled DB apply model + the mandatory safety hook.
 - `docs/agent/MODULE_MAP.md` — module ownership, key concerns, allowed/forbidden files.
