@@ -29,6 +29,10 @@ const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
 
 describe("Engine 3-neo — golden (CALCULATOR sheet)", () => {
   it("82 entries · 12.5% · DAILY · buy-in 1m+200k → exact 11-row table, Σ = 82M", () => {
+    // Since engine v1.1, ranks 10+ band by default: N=11 → ranks 1-9 individual (unchanged from
+    // the pre-banding sheet), ranks 10-11 (the original 2.7M/2.4M) become ONE equal band = 2.5M
+    // each (floor((2.7M+2.4M)/2 / 100k)*100k), with the 0.1M flooring residual absorbed by rank 1
+    // (27.0M -> 27.1M) so Σ stays exactly 82M. Verified by running the updated engine, not guessed.
     const r = computePayouts({
       entries: 82,
       prizePool: 82 * M,
@@ -40,38 +44,43 @@ describe("Engine 3-neo — golden (CALCULATOR sheet)", () => {
     expect(r.itmPlaces).toBe(11);
     expect(r.alpha).toBeCloseTo(0.972004, 6);
     expect(amounts(r)).toEqual([
-      27.0 * M, 13.7 * M, 9.1 * M, 6.8 * M, 5.5 * M, 4.5 * M, 3.9 * M, 3.4 * M, 3.0 * M, 2.7 * M, 2.4 * M,
+      27.1 * M, 13.7 * M, 9.1 * M, 6.8 * M, 5.5 * M, 4.5 * M, 3.9 * M, 3.4 * M, 3.0 * M, 2.5 * M, 2.5 * M,
     ]);
     expect(sum(amounts(r))).toBe(82 * M);
     expect(r.sumCheck).toBe(true);
-    // rank N is exactly the min-cash floor (the affine-shift invariant)
-    expect(r.rows[r.rows.length - 1].amount).toBe(2.4 * M);
-    expect(r.warnings).toEqual([]);
+    // ranks 10-11 form ONE band (equal amounts) — the banding differentiator for this golden case
+    expect(r.rows[9].amount).toBe(r.rows[10].amount);
+    expect(r.warnings).toEqual(["ROUNDING_ADJUSTED"]);
   });
 });
 
 describe("Engine 3-neo — REF tables (field 200 @ 15% ITM)", () => {
   it("REF_DAILY: ranks 1..15 + N=30 + min-cash 2.4M + Σ=200M", () => {
+    // Ranks 10-12 and 13-15 are now equal-amount bands (engine v1.1 default banding); rank1
+    // absorbs the small flooring residual (55 -> 55.7M). Verified by running the updated engine.
     const r = computePayouts(ref(200, 0.15, "DAILY", 2));
     expect(r.itmPlaces).toBe(30);
-    const expectTop = [55, 23.6, 14.7, 10.7, 8.5, 7.1, 6.1, 5.4, 4.9, 4.5, 4.2, 3.9, 3.7, 3.5, 3.4].map((x) => x * M);
+    const expectTop = [55.7, 23.6, 14.7, 10.7, 8.5, 7.1, 6.1, 5.4, 4.9, 4.2, 4.2, 4.2, 3.5, 3.5, 3.5].map((x) => x * M);
     expect(amounts(r).slice(0, 15)).toEqual(expectTop);
-    expect(r.rows[29].amount).toBe(2.4 * M); // min-cash exactly 2×
+    expect(r.rows[9].amount).toBe(r.rows[11].amount); // 10-12 banded equal
+    expect(r.rows[12].amount).toBe(r.rows[14].amount); // 13-15 banded equal
+    expect(r.rows[29].amount).toBe(2.4 * M); // last band still sits AT the min-cash floor here
     expect(sum(amounts(r))).toBe(200 * M);
   });
 
-  it("REF_MULTI: rank1 38.7M + N=30 + min-cash 1.8M (1.5×) + Σ=200M", () => {
+  it("REF_MULTI: N=30 + min-cash 1.8M (1.5×) floor-clamped last band + Σ=200M", () => {
     const r = computePayouts(ref(200, 0.15, "MULTI", 1.5));
     expect(r.itmPlaces).toBe(30);
-    expect(r.rows[0].amount).toBe(38.7 * M);
-    expect(r.rows[29].amount).toBe(1.8 * M);
+    expect(r.rows[0].amount).toBe(39.2 * M); // rank1 absorbs the banding residual (was 38.7M pre-v1.1)
+    expect(r.rows[29].amount).toBe(1.9 * M); // last band sits AT/ABOVE the 1.8M floor (never below)
+    expect(r.rows[29].amount).toBeGreaterThanOrEqual(1.8 * M);
     expect(sum(amounts(r))).toBe(200 * M);
   });
 
-  it("REF_INTL: rank1 41.1M + N=30 + min-cash 2.4M (2×) + Σ=200M", () => {
+  it("REF_INTL: N=30 + min-cash 2.4M (2×) + Σ=200M", () => {
     const r = computePayouts(ref(200, 0.15, "INTL", 2));
     expect(r.itmPlaces).toBe(30);
-    expect(r.rows[0].amount).toBe(41.1 * M);
+    expect(r.rows[0].amount).toBe(41.5 * M); // rank1 absorbs the banding residual (was 41.1M pre-v1.1)
     expect(r.rows[29].amount).toBe(2.4 * M);
     expect(sum(amounts(r))).toBe(200 * M);
   });
@@ -132,12 +141,16 @@ describe("Engine 3-neo — edge cases", () => {
     expect(r.rows[2].amount).toBe(r.effectiveFloor);
   });
 
-  it("N > 450 (huge field) → ALPHA_CLAMP_450, still exact sum + monotone + last = floor", () => {
+  it("N > 450 (huge field) → ALPHA_CLAMP_450, still exact sum + monotone + last ≥ floor (banded)", () => {
     const r = computePayouts({ entries: 4000, prizePool: 4000 * M, floor: 2.4 * M, itmPercent: 0.15, archetype: "DAILY", roundingUnit: 1_000_000 });
     expect(r.itmPlaces).toBe(600);
     expect(r.warnings).toContain("ALPHA_CLAMP_450");
     expect(sum(amounts(r))).toBe(4000 * M);
-    expect(r.rows[r.rows.length - 1].amount).toBe(2.4 * M);
+    // last rank is now part of a band (N=600 » 10); the floor-clamp in applyBanding guarantees it
+    // never sits BELOW the true min-cash floor, even though 2.4M isn't a multiple of the 1M
+    // rounding unit here (this exact combination surfaced a real floor-undershoot bug during
+    // implementation — this assertion locks the fix in).
+    expect(r.rows[r.rows.length - 1].amount).toBeGreaterThanOrEqual(2.4 * M);
     for (let i = 0; i < r.rows.length - 1; i++) expect(r.rows[i].amount).toBeGreaterThanOrEqual(r.rows[i + 1].amount);
   });
 });
@@ -164,12 +177,16 @@ describe("Engine 3-neo — invariants over a sweep (monotone, Σ=pool, min-cash 
             expect(sum(a)).toBe(r.prizePool);
             // monotone non-increasing
             for (let i = 0; i < a.length - 1; i++) expect(a[i]).toBeGreaterThanOrEqual(a[i + 1]);
-            // last paid place: with ≥2 places it lands exactly on the floor (affine-shift invariant);
-            // with a single place the winner takes the whole pool (≥ floor). (Drives the PR-2a DB
-            // invariant: `last == floor` only when N ≥ 2 and not POOL_BELOW_MIN_CASH.)
-            if (r.itmPlaces >= 2) expect(a[a.length - 1]).toBe(r.effectiveFloor);
-            else expect(a[0]).toBe(r.prizePool);
-            // no paid place is ever below the floor
+            // last paid place: for N in 2..9 (never banded) it lands exactly on the floor
+            // (affine-shift invariant, unchanged since engine v1.1); for N > 9 the last rank is
+            // part of a band and only guaranteed to be AT/ABOVE the floor (never pinned exactly —
+            // this is the whole point of banding); with a single place the winner takes the whole
+            // pool. (Drives the DB invariant: `LAST_NOT_FLOOR` is now bypassed whenever N > 9.)
+            if (r.itmPlaces >= 2 && r.itmPlaces <= 9) expect(a[a.length - 1]).toBe(r.effectiveFloor);
+            else if (r.itmPlaces === 1) expect(a[0]).toBe(r.prizePool);
+            // no paid place is ever below the floor — true for both individual AND banded ranks
+            // (the floor-clamp in applyBanding guarantees this even when `floor` isn't an exact
+            // multiple of the rounding unit; this sweep caught a real undershoot bug pre-fix).
             if (!r.warnings.includes("POOL_BELOW_MIN_CASH")) expect(a[a.length - 1]).toBeGreaterThanOrEqual(r.effectiveFloor);
             if (r.warnings.includes("ROUNDING_ADJUSTED")) adjusted++;
           }

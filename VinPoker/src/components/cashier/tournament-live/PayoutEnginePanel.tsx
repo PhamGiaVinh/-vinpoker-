@@ -79,7 +79,6 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const [overrideReason, setOverrideReason] = useState<string>("");
   // CUSTOM mode (gated by FEATURES.payoutCustomMode): club enters its own % per rank.
   const customMode = FEATURES.payoutCustomMode;
-  const bandedMode = FEATURES.payoutBandedMode;
   const [customRows, setCustomRows] = useState<{ position: number; percent: number }[]>([
     { position: 1, percent: 50 }, { position: 2, percent: 30 }, { position: 3, percent: 20 },
   ]);
@@ -154,10 +153,12 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
         plannedAppliedRef.current = true;
         const pt = t as TournamentRow;
         const arche = pt.planned_payout_archetype as Archetype | null;
+        // LIVE_STANDARD is no longer a selectable style (superseded — every preset now bands ranks
+        // 10+ by default) so a stale planned_payout_archetype='LIVE_STANDARD' falls through to the
+        // "else" branch below (only min-cash is pre-filled; archetype stays at its default).
         const archeAllowed = !!arche && (
           ["DAILY", "INTL", "MULTI", "TRITON"].includes(arche)
           || (arche === "CUSTOM" && FEATURES.payoutCustomMode)
-          || (arche === "LIVE_STANDARD" && FEATURES.payoutBandedMode)
         );
         if (pt.planned_min_cash_x != null) plannedMinCashRef.current = Number(pt.planned_min_cash_x);
         if (archeAllowed) setArchetype(arche as Archetype);
@@ -402,7 +403,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             <Select value={archetype} onValueChange={(v) => setArchetype(v as Archetype)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(["DAILY", "MULTI", "INTL", ...(bandedMode ? ["LIVE_STANDARD"] : []), ...(customMode ? ["CUSTOM"] : [])] as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
+                {/* LIVE_STANDARD is no longer offered — every preset here now bands ranks 10+ by
+                    default (see computePayouts/applyBanding), so INTL alone covers what LIVE_STANDARD
+                    used to be a separate choice for. The archetype/engine path stays functional
+                    (hidden, not deleted) for the historical LIVE_STANDARD run + defensive back-compat. */}
+                {(["DAILY", "MULTI", "INTL", ...(customMode ? ["CUSTOM"] : [])] as Archetype[]).map((a) => <SelectItem key={a} value={a}>{ARCHE_LABEL[a]}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
