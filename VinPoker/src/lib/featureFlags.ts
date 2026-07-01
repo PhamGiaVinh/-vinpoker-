@@ -646,6 +646,24 @@ export const FEATURES = {
    * payout_templates is never read/written for CUSTOM.
    */
   payoutCustomTemplates: true,
+  /**
+   * Planned payout settings (PR-4) — pre-fills the payout generator (kiểu giải/ITM%/min-cash/
+   * làm tròn) from `tournaments.planned_*` (columns already live since 20261120000000, previously
+   * unused) and adds a "Lưu mặc định cho giải này" button that writes them back. Uses the
+   * EXISTING `tournaments` UPDATE RLS (`is_club_dealer_control` — club owner or TD/floor-control) —
+   * no new RPC or migration. Default **OFF** (kill-switch); while false the panel behaves exactly
+   * as before (hardcoded DAILY/15%/2×/rounding-by-buy-in defaults, no save button).
+   */
+  payoutPlannedSettings: false,
+  /**
+   * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
+   * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
+   * shown-rows cap (grouped, so a 19-ITM LIVE_STANDARD run now fits without truncation). Pure
+   * client-side render change over the SAME `tournament_prizes` data the TV already reads — no
+   * new fetch/RPC/migration. Default **OFF**; while false `TvPayoutsScreen` is byte-identical to
+   * before (first 12 ranks, one row per rank, no band grouping).
+   */
+  tvPayoutBandedDisplay: false,
 } as const;
 
 /**

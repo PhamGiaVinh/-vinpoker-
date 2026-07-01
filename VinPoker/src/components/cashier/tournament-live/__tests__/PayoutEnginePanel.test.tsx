@@ -9,10 +9,14 @@ const h = vi.hoisted(() => ({
     id: "t1", buy_in: 1_000_000, rake_amount: 200_000, prize_pool: null as number | null,
     itm_places: null as number | null, registration_closed_at: null as string | null,
     live_status: null as string | null, event_id: null as string | null, club_id: "c1",
+    planned_itm_percent: null as number | null, planned_payout_archetype: null as string | null,
+    planned_min_cash_x: null as number | null, planned_rounding_unit: null as number | null,
   },
   prizes: [] as any[],
   appliedRun: null as any,
   entriesCount: 10,
+  tournamentsUpdateError: null as { message: string } | null,
+  lastTournamentsUpdatePayload: null as any,
   invoke: vi.fn(async (_n: string, _o: any): Promise<any> => ({
     data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 },
     error: null,
@@ -27,11 +31,12 @@ const h = vi.hoisted(() => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Mutable feature flags — the panel reads FEATURES.payoutCustomMode for the CUSTOM gate.
-const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutBandedMode: false, payoutCustomTemplates: false }));
+const flags = vi.hoisted(() => ({ payoutCustomMode: false, payoutBandedMode: false, payoutCustomTemplates: false, payoutPlannedSettings: false }));
 vi.mock("@/lib/featureFlags", () => ({ FEATURES: flags }));
 vi.mock("@/integrations/supabase/client", () => {
   const makeChain = (table: string) => {
     const chain: any = {};
+    let isUpdate = false;
     chain.select = vi.fn(() => chain);
     chain.eq = vi.fn(() => chain);
     chain.neq = vi.fn(() => chain);
@@ -39,8 +44,11 @@ vi.mock("@/integrations/supabase/client", () => {
     chain.maybeSingle = vi.fn(async () => (table === "tournament_payout_runs" ? { data: h.appliedRun, error: null } : { data: null, error: null }));
     chain.order = vi.fn(() => chain);
     chain.insert = vi.fn(async () => ({ data: null, error: null }));
+    chain.update = vi.fn((payload: any) => { isUpdate = true; if (table === "tournaments") h.lastTournamentsUpdatePayload = payload; return chain; });
     chain.delete = vi.fn(() => chain);
-    chain.then = (resolve: any) => resolve({ data: [], count: h.entriesCount, error: null }); // entries/templates awaited directly
+    chain.then = (resolve: any) => resolve(
+      table === "tournaments" && isUpdate ? { data: null, error: h.tournamentsUpdateError } : { data: [], count: h.entriesCount, error: null },
+    ); // entries/templates/planned-save awaited directly
     return chain;
   };
   return { supabase: { from: vi.fn((t: string) => makeChain(t)), rpc: h.rpc, functions: { invoke: h.invoke }, auth: { getUser: vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null })) } } };
@@ -58,7 +66,10 @@ beforeAll(() => {
 
 beforeEach(() => {
   h.tour.registration_closed_at = null; h.tour.live_status = null; h.tour.event_id = null;
-  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; flags.payoutCustomMode = false; flags.payoutBandedMode = false; flags.payoutCustomTemplates = false;
+  h.tour.planned_itm_percent = null; h.tour.planned_payout_archetype = null;
+  h.tour.planned_min_cash_x = null; h.tour.planned_rounding_unit = null;
+  h.prizes = []; h.appliedRun = null; h.entriesCount = 10; h.tournamentsUpdateError = null;
+  flags.payoutCustomMode = false; flags.payoutBandedMode = false; flags.payoutCustomTemplates = false; flags.payoutPlannedSettings = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
   h.invoke.mockImplementation(async () => ({ data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 }, error: null }));
@@ -231,5 +242,57 @@ describe("PayoutEnginePanel — banded LIVE_STANDARD is gated by FEATURES.payout
     await screen.findByText(/Cơ cấu giải thưởng/);
     openStyleSelect();
     expect(await screen.findByText(/LIVE STANDARD/)).toBeInTheDocument();
+  });
+});
+
+describe("PayoutEnginePanel — planned settings gated by FEATURES.payoutPlannedSettings", () => {
+  it("save-default button HIDDEN when payoutPlannedSettings = false", async () => {
+    flags.payoutPlannedSettings = false;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    expect(screen.queryByRole("button", { name: /Lưu mặc định cho giải này/ })).not.toBeInTheDocument();
+  });
+
+  it("OFF: does NOT pre-fill from planned_* even when the tournament has them saved", async () => {
+    flags.payoutPlannedSettings = false;
+    h.tour.planned_payout_archetype = "INTL"; h.tour.planned_itm_percent = 0.3;
+    h.tour.planned_min_cash_x = 1.5; h.tour.planned_rounding_unit = 1_000_000;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    expect((screen.getByRole("spinbutton", { name: "ITM %" }) as HTMLInputElement).value).toBe("15"); // untouched default
+  });
+
+  it("ON: pre-fills kiểu giải/ITM%/min-cash/làm tròn from planned_*", async () => {
+    flags.payoutPlannedSettings = true;
+    h.tour.planned_payout_archetype = "INTL"; h.tour.planned_itm_percent = 0.3;
+    h.tour.planned_min_cash_x = 1.5; h.tour.planned_rounding_unit = 1_000_000;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    await waitFor(() => expect((screen.getByRole("spinbutton", { name: "ITM %" }) as HTMLInputElement).value).toBe("30"));
+    expect((screen.getByRole("spinbutton", { name: "Min-cash ×" }) as HTMLInputElement).value).toBe("1.5");
+    expect((screen.getByRole("spinbutton", { name: "Làm tròn (đ)" }) as HTMLInputElement).value).toBe("1000000");
+    expect(screen.getByRole("combobox")).toHaveTextContent(/INTL/);
+  });
+
+  it("save-default button VISIBLE when ON, writes planned_* via tournaments.update", async () => {
+    flags.payoutPlannedSettings = true;
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    const btn = screen.getByRole("button", { name: /Lưu mặc định cho giải này/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(h.lastTournamentsUpdatePayload).toEqual({
+      planned_itm_percent: 0.15, planned_payout_archetype: "DAILY", planned_min_cash_x: 2, planned_rounding_unit: 100000,
+    });
+  });
+
+  it("RLS-denied save surfaces a friendly message (not the raw Postgres error)", async () => {
+    flags.payoutPlannedSettings = true;
+    h.tournamentsUpdateError = { message: "new row violates row-level security policy for table tournaments" };
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    fireEvent.click(screen.getByRole("button", { name: /Lưu mặc định cho giải này/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect((toast.error as any).mock.calls.at(-1)[0]).toMatch(/không có quyền lưu mặc định/);
   });
 });
