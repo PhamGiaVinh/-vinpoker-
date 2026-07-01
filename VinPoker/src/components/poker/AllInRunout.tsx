@@ -150,7 +150,7 @@ export function AllInRunout({
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${pct}%` }} />
+                    <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="w-10 text-right text-xs font-bold tabular-nums text-primary">{pct}%</span>
                 </div>
