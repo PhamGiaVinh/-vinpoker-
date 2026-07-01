@@ -597,6 +597,16 @@ export const FEATURES = {
    */
   fnbTableLink: false,
   /**
+   * F&B A3 — per-shift cash reconciliation (chốt ca): the counter cashier opens a cash shift, takes
+   * F&B orders during it, then closes it by counting the drawer and seeing the variance (khớp/thiếu/
+   * thừa) vs the system-expected cash. Time-window design — a shift owns every order whose paid_at
+   * falls in [opened_at, closed_at]; the live money RPCs (fnb_mark_paid / fnb_create_order /
+   * fnb_create_comp_order) are NOT touched. Requires migrations 20261111000015 (fnb_cashier_shifts) +
+   * 20261111000016 (open/close/report RPCs) applied live first. Gates the "Chốt ca" tab on the
+   * counter. Default OFF (dark). Flip after migration applied + preview UAT.
+   */
+  fnbShifts: false,
+  /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
    * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in
