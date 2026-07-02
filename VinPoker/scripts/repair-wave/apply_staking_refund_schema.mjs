@@ -57,15 +57,24 @@ function lint(sql, which) {
 const Q_STATE = `select
   (select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e
      join pg_type t on t.oid = e.enumtypid where t.typname = 'staking_deal_status') as labels,
+  (select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e
+     join pg_type t on t.oid = e.enumtypid where t.typname = 'staking_audit_action') as audit_labels,
+  (select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e
+     join pg_type t on t.oid = e.enumtypid where t.typname = 'notification_type') as notif_labels,
   (select count(*) from information_schema.columns
      where table_schema='public' and table_name='staking_deals'
        and column_name in ('refund_status','refund_reason','refunded_by','refunded_at')) as refund_cols`;
 
 async function state() {
   const r = rowsOf(await mgmt(Q_STATE))[0];
-  log(`enum labels: ${r.labels}`);
+  log(`deal-status labels: ${r.labels}`);
   log(`refund columns present: ${r.refund_cols}/4`);
-  return { hasEnum: String(r.labels).includes("deal_refunded"), cols: Number(r.refund_cols) };
+  const hasEnum = String(r.labels).includes("deal_refunded") &&
+    String(r.audit_labels).includes("refunded") &&
+    String(r.audit_labels).includes("release_cosign_state_mismatch") &&
+    String(r.notif_labels).includes("deal_refunded");
+  log(`all 4 enum values present: ${hasEnum}`);
+  return { hasEnum, cols: Number(r.refund_cols) };
 }
 
 const mode = process.argv[2];
@@ -81,7 +90,7 @@ if (mode === "--preflight") {
   log(`${which} applied (own Management-API call).`);
 } else if (mode === "--verify") {
   const s = await state();
-  if (!s.hasEnum) fail("enum 'deal_refunded' still missing");
+  if (!s.hasEnum) fail("one or more of the 4 enum values still missing (deal_refunded / refunded / release_cosign_state_mismatch / notification deal_refunded)");
   if (s.cols !== 4) fail(`only ${s.cols}/4 refund columns present`);
-  log("VERIFY PASS: enum + 4 columns live.");
+  log("VERIFY PASS: 4 enum values + 4 columns live.");
 } else fail("usage: --preflight | --apply-enum | --apply-schema | --verify");
