@@ -312,6 +312,67 @@ export function computeQuarterlySummary(events: SeriesEvent[]): QuarterlySummary
 }
 
 // ----------------------------------------------------------------------------
+// F&B club-level window ("F&B toàn CLB trong kỳ series")
+// ----------------------------------------------------------------------------
+//
+// F&B revenue CANNOT be attributed per-tournament: an `fnb_orders` row carries only club_id +
+// paid_at, never a tournament_id (F&B is sold at a shared counter). So the only honest way to bring
+// F&B into Series Intelligence is a CLUB-LEVEL total over the series' calendar window, shown as a
+// SEPARATE line — never folded into the per-event contribution margin. This helper derives that
+// window (club + from/to instants) from the loaded native events; the actual F&B numbers come from
+// the live read-only `fnb_get_report(from,to,club)` RPC in the component.
+
+export interface SeriesDateWindow {
+  clubId: string;
+  /** Start-of-day (local) of the earliest event, as an ISO instant for the timestamptz RPC. */
+  fromIso: string;
+  /** End-of-day (local) of the latest event, as an ISO instant. */
+  toIso: string;
+  fromLabel: string; // dd/mm/yyyy of the earliest event (local)
+  toLabel: string; // dd/mm/yyyy of the latest event (local)
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+const dmyLabel = (d: Date): string => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+const dayStartIso = (d: Date): string => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString();
+};
+const dayEndIso = (d: Date): string => {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x.toISOString();
+};
+
+/**
+ * Compute the club + calendar window spanned by the loaded native events, for the club-level F&B read.
+ * Returns null when no event has a usable club id + parseable date (never guesses a window). Uses the
+ * FIRST event's club id (native mode is single-club). Window = [start of earliest day, end of latest day].
+ */
+export function seriesDateWindow(events: SeriesEvent[]): SeriesDateWindow | null {
+  const clubId = events.find((e) => e.clubId)?.clubId ?? null;
+  if (!clubId) return null;
+  const dated = events
+    .map((e) => (e.event_date ? new Date(e.event_date) : null))
+    .filter((d): d is Date => d !== null && !Number.isNaN(d.getTime()));
+  if (dated.length === 0) return null;
+  let min = dated[0];
+  let max = dated[0];
+  for (const d of dated) {
+    if (d.getTime() < min.getTime()) min = d;
+    if (d.getTime() > max.getTime()) max = d;
+  }
+  return {
+    clubId,
+    fromIso: dayStartIso(min),
+    toIso: dayEndIso(max),
+    fromLabel: dmyLabel(min),
+    toLabel: dmyLabel(max),
+  };
+}
+
+// ----------------------------------------------------------------------------
 // Data readiness
 // ----------------------------------------------------------------------------
 

@@ -13,8 +13,10 @@ import {
   computeQuarterlySummary,
   computeReadiness,
   computeRiskFlags,
+  seriesDateWindow,
   toEventEconomicsRows,
 } from "@/lib/series-intelligence/commandCenter";
+import { useFnbReport } from "@/hooks/useFnbReport";
 import {
   computeScenarioActions,
   computeScenarioOutlook,
@@ -24,6 +26,7 @@ import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePo
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
 import { ContributionByTypeCard } from "./ContributionByTypeCard";
+import { FnbClubContributionCard } from "./FnbClubContributionCard";
 import { QuarterlyBreakdownCard } from "./QuarterlyBreakdownCard";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
@@ -90,6 +93,13 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
     return sum.observedRows + sum.estimatedRows > 0 ? sum : null;
   }, [view, truePrizeByEvent]);
 
+  // F&B club-level line (native/live only): F&B has NO per-tournament link, so the honest surface is a
+  // club-wide total over the series' calendar window, read from the live read-only fnb_get_report RPC.
+  // Gated on the SI margin flag + the F&B master flag; disabled in CSV mode. Hook order: BEFORE returns.
+  const fnbWindow = useMemo(() => (isCsv ? null : seriesDateWindow(events)), [isCsv, events]);
+  const fnbEnabled = FEATURES.seriesMarginByType && FEATURES.fnbModule && !isCsv && fnbWindow !== null;
+  const fnbReport = useFnbReport(fnbEnabled ? fnbWindow!.clubId : undefined, fnbWindow?.fromIso ?? "", fnbWindow?.toIso ?? "");
+
   if (!isCsv && native.status === "loading") return <LoadingState />;
   if (!isCsv && native.status === "unavailable") return <UnavailableState reason={native.reason} />;
   if (!view) return <EmptyState />;
@@ -134,6 +144,14 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
             if (resolved.length === 0) return null;
             return (resolved.filter((r) => r.covered === false).length / resolved.length) * 100;
           })()}
+        />
+      )}
+      {fnbEnabled && fnbWindow && (
+        <FnbClubContributionCard
+          window={fnbWindow}
+          report={fnbReport.data}
+          loading={fnbReport.isLoading}
+          error={fnbReport.isError}
         />
       )}
       <RiskInsightCards risks={view.risks} />
