@@ -648,9 +648,10 @@ export const FEATURES = {
    * never a player tab/balance/debt. Gates the table/player pickers on the counter AND the new F&B
    * report view. Requires migration 20261111000014 (table_ref/player_ref cols + fnb_create_order 9-arg
    * + fnb_list_link_targets read RPC + fnb_get_report byTable/byPlayer) applied live first.
-   * Default OFF (dark). Flip after migration applied + preview UAT.
+   * Migration 20261111000014 applied live 2026-07-02 (owner controlled-apply; pronargs=9 verified).
+   * ON.
    */
-  fnbTableLink: false,
+  fnbTableLink: true,
   /**
    * F&B A3 — per-shift cash reconciliation (chốt ca): the counter cashier opens a cash shift, takes
    * F&B orders during it, then closes it by counting the drawer and seeing the variance (khớp/thiếu/
