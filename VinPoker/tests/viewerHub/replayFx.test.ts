@@ -21,6 +21,10 @@ describe("deriveReplayPlaybackFx — forward-only", () => {
     expect(deriveReplayPlaybackFx({ ...base, prevIndex: 3, index: 3, actionType: "bet", seatNumber: 1 }))
       .toEqual({ deal: null, action: null, chipClink: false, chipPush: false });
   });
+  it("B1: a multi-frame forward JUMP (scrub / jump-to-end) is navigation → silent", () => {
+    expect(deriveReplayPlaybackFx({ ...base, prevIndex: 2, index: 9, actionType: "all_in", board: 5, prevBoard: 0, seatNumber: 4 }))
+      .toEqual({ deal: null, action: null, chipClink: false, chipPush: false });
+  });
 });
 
 describe("deriveReplayPlaybackFx — actions", () => {

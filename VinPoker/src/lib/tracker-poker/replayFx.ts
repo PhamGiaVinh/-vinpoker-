@@ -39,8 +39,11 @@ export function deriveReplayPlaybackFx(args: {
   actionType: string | null;
   seatNumber: number;
 }): ReplayPlaybackFx {
-  // Forward-only.
+  // Forward-only, single-step-only: a jump of more than one frame (slider scrub,
+  // street tab, jump-to-end) is navigation, not playback — it fires nothing, so
+  // jumping to the showdown never machine-guns sounds.
   if (args.prevIndex === null || args.index <= args.prevIndex) return NONE;
+  if (args.index - args.prevIndex > 1) return NONE;
 
   const deal: PokerLiveSound | null =
     args.board > args.prevBoard
