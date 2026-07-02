@@ -15,10 +15,12 @@
 
 import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { FEATURES } from "@/lib/featureFlags";
 import { displayCard, type Card } from "@/components/shared/CardSlotPicker";
 import { LiveFelt } from "../LiveFelt";
 import { InputTableMap } from "./InputTableMap";
 import { SetupHandPanel } from "./SetupHandPanel";
+import { ChipQuickEditPanel } from "./ChipQuickEditPanel";
 import { BlindSetupPanel } from "./BlindSetupPanel";
 import { BoardEntryPanel } from "./BoardEntryPanel";
 import { ShowdownInputPanel } from "./ShowdownInputPanel";
@@ -88,6 +90,18 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           submitting={hook.submitting}
           lastHandId={hook.lastHandId}
           onVoid={hook.handleVoid}
+          // A3: between-hands chip quick-edit — flag OFF → prop absent (byte-identical).
+          chipEditor={
+            FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
+              <ChipQuickEditPanel
+                tournamentId={hook.tournamentId}
+                tableId={hook.tableId}
+                players={hook.players}
+                disabled={hook.submitting}
+                onUpdated={hook.handleChipQuickEdit}
+              />
+            ) : undefined
+          }
         />
       );
     }
@@ -106,6 +120,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onSubmit={hook.handleSubmitHand}
           onBack={() => hook.setEndingStacks({})}
           submitting={hook.submitting}
+          rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
         />
       );
     }
@@ -259,7 +274,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
             <button
               type="button"
               disabled={hook.submitting}
-              onClick={hook.handleContinueOrphan}
+              onClick={() => hook.handleContinueOrphan()}
               className="rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 disabled:opacity-40"
             >
               Tiếp tục

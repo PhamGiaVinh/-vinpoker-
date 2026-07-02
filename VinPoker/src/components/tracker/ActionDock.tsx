@@ -27,7 +27,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative flex min-h-[62px] flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-base font-bold text-[hsl(var(--foreground))] transition-transform active:scale-95"
+      className="relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-base font-bold text-[hsl(var(--foreground))] transition-transform active:scale-95 max-lg:landscape:min-h-[46px]"
       style={{ borderColor: color, background: filled ? `${color}24` : 'transparent' }}
     >
       <span className={`absolute right-2 top-1.5 text-[9px] opacity-50 ${NUM}`}>{hotkey}</span>
@@ -130,8 +130,9 @@ export function ActionDock({ actingSeat, toCall, bigBlind, onIntent, onUndo }: A
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="grid grid-cols-4 gap-2.5">
+      {/* Action buttons — 2 cols under 380px (avoids squeeze on small phones), 4 in a
+          row from 380px up. Pure responsive reflow: same buttons/handlers either way. */}
+      <div className="grid grid-cols-2 min-[380px]:grid-cols-4 gap-2 min-[380px]:gap-2.5">
         <ActionButton label="BỎ BÀI" hotkey="F" color={GTO_COLORS.fold} onClick={onFold} />
         <ActionButton
           label={isCheck ? 'CHECK' : 'THEO'}
@@ -169,20 +170,21 @@ export function ActionDock({ actingSeat, toCall, bigBlind, onIntent, onUndo }: A
         />
       )}
 
-      {/* Undo */}
-      <div className="mt-2.5 flex items-center justify-between text-[11px] text-[hsl(var(--muted-foreground))]">
-        <div>
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">F</kbd> Bỏ{' '}
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">C</kbd> Theo{' '}
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">R</kbd> Tố{' '}
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">A</kbd> All-in{' '}
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">↵</kbd> Xác nhận{' '}
-          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">⌫</kbd> Undo
+      {/* Undo — hotkey hints are desktop-only clutter on a touch screen; Undo itself
+          always stays reachable at a real touch-target size on every width. */}
+      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-[hsl(var(--muted-foreground))]">
+        <div className="hidden flex-wrap sm:flex">
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">F</kbd>&nbsp;Bỏ{' '}
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">C</kbd>&nbsp;Theo{' '}
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">R</kbd>&nbsp;Tố{' '}
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">A</kbd>&nbsp;All-in{' '}
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">↵</kbd>&nbsp;Xác nhận{' '}
+          <kbd className="rounded bg-[hsl(var(--secondary))] px-1.5 py-px">⌫</kbd>&nbsp;Undo
         </div>
         <button
           type="button"
           onClick={onUndo}
-          className="rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 font-semibold hover:border-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))]"
+          className="min-h-[44px] flex-1 rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 font-semibold hover:border-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] sm:min-h-0 sm:flex-none max-lg:landscape:min-h-[38px]"
         >
           ↶ Hoàn tác
         </button>

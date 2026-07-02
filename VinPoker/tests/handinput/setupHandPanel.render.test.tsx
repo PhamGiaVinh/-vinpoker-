@@ -73,4 +73,25 @@ describe("SetupHandPanel (engine setup step)", () => {
     );
     expect(disabled).toContain('disabled=""');
   });
+
+  // A3 (trackerChipQuickEdit) — additive chipEditor slot. Absent → byte-identical.
+  it("chipEditor absent → nothing extra renders (flag-OFF operator path)", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel {...base} handNumber={5} buttonConfirmed={true} lastHandId={null} />
+    );
+    expect(html).not.toContain("chip-quick-edit-marker");
+  });
+
+  it("chipEditor present → it renders below the start button", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel
+        {...base}
+        handNumber={5}
+        buttonConfirmed={true}
+        lastHandId={null}
+        chipEditor={<div data-testid="x">chip-quick-edit-marker</div>}
+      />
+    );
+    expect(html).toContain("chip-quick-edit-marker");
+  });
 });
