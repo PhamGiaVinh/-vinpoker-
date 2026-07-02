@@ -46,6 +46,7 @@ import {
 } from "@/lib/tracker-poker/trackerEngine";
 import { FEATURES } from "@/lib/featureFlags";
 import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
+import { computeRankShifts } from "@/lib/tracker-poker/rankShift";
 import { survivorsAfterHand } from "./postHand";
 import {
   deriveTrackerWorkflowState,
@@ -180,6 +181,15 @@ export function useStandaloneHandInput(tournamentId: string) {
   >([]);
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
   const [persistedBoardCount, setPersistedBoardCount] = useState(0);
+  // A5 resilience: the orphan hand id armed to auto-resume once its table's seats
+  // have loaded (self-clears after firing once — see the effect near handleVoidOrphan).
+  const [autoResumeArmed, setAutoResumeArmed] = useState<string | null>(null);
+  // A3 preview: tournament-wide leaderboard snapshot fetched when Review is reached,
+  // used ONLY to compute the "rank after this hand" strip (never persisted, never
+  // blocks submit — best-effort decoration, see `rankShifts` below).
+  const [leaderboardBefore, setLeaderboardBefore] = useState<{ player_id: string; chip_count: number }[] | null>(
+    null
+  );
 
   // ----- URL params -------------------------------------------------------
   // `table` is authoritative (drives the resume-on-return flow). hand/street/actor
@@ -317,6 +327,16 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   }, [tableId, tournamentId]);
 
+  // A3: apply the server-confirmed stack from ChipQuickEditPanel. It becomes the base
+  // for the NEXT hand too (this only ever runs between hands), so both starting_stack
+  // and current_stack move together — no optimistic write happens before this; the
+  // panel calls it only after `update_seats` succeeds and it re-fetched the row.
+  const handleChipQuickEdit = useCallback((playerId: string, newStack: number) => {
+    setPlayers((prev) =>
+      prev.map((p) => (p.player_id === playerId ? { ...p, current_stack: newStack, starting_stack: newStack } : p))
+    );
+  }, []);
+
   // ----- Table select -----------------------------------------------------
   const handleTableChange = useCallback(
     async (newTableId: string) => {
@@ -326,6 +346,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       // suggestion (operator sets the button); subsequent hands auto-suggest.
       setLastBbSeat(null);
       setButtonOverridden(false);
+      // A5: a stale orphan from the PREVIOUS table must never leak into this one —
+      // re-armed below only if the NEW table actually has one in progress.
+      setOrphanHand(null);
+      setAutoResumeArmed(null);
       const tbl = availableTables.find((t) => t.id === newTableId);
       setTableName(tbl?.name || newTableId.slice(0, 8));
       if (!newTableId) {
@@ -417,7 +441,10 @@ export function useStandaloneHandInput(tournamentId: string) {
         .eq("status", "in_progress")
         .limit(1)
         .maybeSingle();
-      if (orphan) setOrphanHand(orphan);
+      if (orphan) {
+        setOrphanHand(orphan);
+        setAutoResumeArmed(orphan.id); // A5: fires once seats for THIS table have loaded
+      }
     },
     [availableTables, tournamentId, resetHand]
   );
@@ -749,7 +776,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
-  const handleContinueOrphan = async () => {
+  const handleContinueOrphan = async (opts?: { silent?: boolean }) => {
     if (!orphanHand) return;
     setSubmitting(true);
     try {
@@ -804,13 +831,34 @@ export function useStandaloneHandInput(tournamentId: string) {
       setHandId(orphanHand.id);
       setHandStarted(true);
       setOrphanHand(null);
-      toast.success("Resuming hand #" + orphanHand.hand_number);
+      if (!opts?.silent) toast.success("Resuming hand #" + orphanHand.hand_number);
     } catch (e: any) {
       toast.error(e.message || "Không thể tiếp tục hand");
     } finally {
       setSubmitting(false);
     }
   };
+
+  // A5 resilience: an orphan hand on this table resumes AUTOMATICALLY once its seats
+  // are loaded — no manual "Tiếp tục" tap for the overwhelmingly common case. The
+  // inline banner (console JSX) stays mounted as a fallback for the rare miss (e.g.
+  // an empty table whose `players` never populates), and a toast confirms what
+  // happened with a "Huỷ ván treo" secondary via a ref so it always calls the LATEST
+  // handleVoid — never a stale closure captured back when this effect fired.
+  useEffect(() => {
+    if (!autoResumeArmed) return;
+    if (!orphanHand || orphanHand.id !== autoResumeArmed) return;
+    if (!players.length) return;
+    const orphanNumber = orphanHand.hand_number;
+    setAutoResumeArmed(null);
+    void handleContinueOrphan({ silent: true }).then(() => {
+      toast.success(`Đã tự động tiếp tục Hand #${orphanNumber}`, {
+        duration: 8000,
+        action: { label: "Huỷ ván treo", onClick: () => handleVoidRef.current() },
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoResumeArmed, orphanHand, players]);
 
   const handleVoidOrphan = async () => {
     if (!orphanHand) return;
@@ -1488,6 +1536,43 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  // A5: always call the LATEST handleVoid, never one captured by an effect/toast
+  // closure from an earlier render (same stale-closure class as the A1 blind fix).
+  const handleVoidRef = useRef(handleVoid);
+  handleVoidRef.current = handleVoid;
+
+  // A3: tournament-wide leaderboard snapshot, fetched once Review is reached — purely
+  // to compute `rankShifts` below. Best-effort: a failed/slow fetch just means the
+  // strip stays empty; it never blocks or affects conservationOk/canSubmit.
+  useEffect(() => {
+    if (!FEATURES.trackerChipQuickEdit || !isSummary || !tournamentId) {
+      setLeaderboardBefore(null);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .rpc("get_tournament_leaderboard", { p_tournament_id: tournamentId })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const lb = (data as any)?.players;
+        if (Array.isArray(lb)) {
+          setLeaderboardBefore(lb.map((p: any) => ({ player_id: p.player_id, chip_count: p.chip_count })));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSummary, tournamentId]);
+
+  // A3: seats whose projected RANK (not just stack) changes once this hand's
+  // endingStacks are applied — the "sau ván này" strip. Pure math lives in
+  // rankShift.ts (unit-tested there); ranks come from the same leaderboard ordering
+  // LeaderboardPanel uses (chip_count desc).
+  const rankShifts = useMemo(() => {
+    if (!leaderboardBefore || !isSummary) return [];
+    return computeRankShifts(leaderboardBefore, players, endingStacks);
+  }, [leaderboardBefore, players, endingStacks, isSummary]);
+
   // ----- Engine auto-advance (local state only; viewer driven by persisted path) --
   useEffect(() => {
     if (!handStarted || isSummary || isReadOnly) return;
@@ -1598,6 +1683,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     conservationOk,
     winnerDetermined,
     reviewValid,
+    rankShifts,
     // undo
     canUndo: undoStack.length > 0,
     // helpers
@@ -1627,6 +1713,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleEndingStackChange,
     handleSubmitHand,
     handleVoid,
+    handleChipQuickEdit,
     resetHand,
   };
 }

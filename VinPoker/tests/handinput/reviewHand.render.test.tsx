@@ -42,3 +42,43 @@ describe("ReviewHandPanel — chip-conservation gated submit", () => {
     expect(html).not.toContain('disabled=""'); // submit enabled
   });
 });
+
+// A3 (trackerChipQuickEdit) — additive rankShifts strip. Absent/empty → byte-identical.
+describe("ReviewHandPanel — rankShifts strip (A3)", () => {
+  const endingStacks = { p1: 140, p2: 60 };
+
+  it("rankShifts absent → no strip (flag-OFF operator path)", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel {...common} endingStacks={endingStacks} conservationOk winnerDetermined canSubmit />
+    );
+    expect(html).not.toContain("Thứ hạng sau ván này");
+  });
+
+  it("rankShifts=[] → no strip", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel {...common} endingStacks={endingStacks} conservationOk winnerDetermined canSubmit rankShifts={[]} />
+    );
+    expect(html).not.toContain("Thứ hạng sau ván này");
+  });
+
+  it("rankShifts present → renders a row per shift with before → after and a direction arrow", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel
+        {...common}
+        endingStacks={endingStacks}
+        conservationOk
+        winnerDetermined
+        canSubmit
+        rankShifts={[
+          { player_id: "p1", seat_number: 1, display_name: "An", before: 4, after: 1 },
+          { player_id: "p2", seat_number: 2, display_name: "Binh", before: 2, after: 5 },
+        ]}
+      />
+    );
+    expect(html).toContain("Thứ hạng sau ván này");
+    expect(html).toContain("#4 → #1");
+    expect(html).toContain("▲"); // An moved up
+    expect(html).toContain("#2 → #5");
+    expect(html).toContain("▼"); // Binh moved down
+  });
+});

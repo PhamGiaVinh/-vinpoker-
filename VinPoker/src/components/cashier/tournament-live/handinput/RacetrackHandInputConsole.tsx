@@ -22,6 +22,7 @@ import { ActionDock } from "@/components/tracker/ActionDock";
 import type { ActionIntent, SeatVM } from "@/components/tracker/types";
 import { InputTableMap } from "./InputTableMap";
 import { SetupHandPanel } from "./SetupHandPanel";
+import { ChipQuickEditPanel } from "./ChipQuickEditPanel";
 import { BlindSetupPanel } from "./BlindSetupPanel";
 import { BoardEntryPanel } from "./BoardEntryPanel";
 import { ShowdownInputPanel } from "./ShowdownInputPanel";
@@ -125,6 +126,18 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
               ? `⚡ Ván tiếp theo — Hand #${Number(hook.handNumber)}`
               : undefined
           }
+          // A3: between-hands chip quick-edit — flag OFF → prop absent (byte-identical).
+          chipEditor={
+            FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
+              <ChipQuickEditPanel
+                tournamentId={hook.tournamentId}
+                tableId={hook.tableId}
+                players={hook.players}
+                disabled={hook.submitting}
+                onUpdated={hook.handleChipQuickEdit}
+              />
+            ) : undefined
+          }
         />
       );
     }
@@ -143,6 +156,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           onSubmit={hook.handleSubmitHand}
           onBack={() => hook.setEndingStacks({})}
           submitting={hook.submitting}
+          rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
         />
       );
     }
@@ -293,7 +307,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             <button
               type="button"
               disabled={hook.submitting}
-              onClick={hook.handleContinueOrphan}
+              onClick={() => hook.handleContinueOrphan()}
               className="rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 disabled:opacity-40"
             >
               Tiếp tục

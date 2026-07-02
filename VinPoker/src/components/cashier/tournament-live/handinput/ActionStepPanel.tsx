@@ -52,7 +52,7 @@ function ActBtn({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex flex-col items-center justify-center min-h-[52px] rounded-xl border ${tones[tone]} font-medium transition active:scale-[0.98] disabled:opacity-35 disabled:active:scale-100`}
+      className={`flex flex-col items-center justify-center min-h-[52px] max-lg:landscape:min-h-[46px] rounded-xl border ${tones[tone]} font-medium transition active:scale-[0.98] disabled:opacity-35 disabled:active:scale-100`}
     >
       <span className="text-[15px] tracking-wide">{label}</span>
       {sub && <span className="text-[11px] font-mono opacity-85">{sub}</span>}
@@ -130,7 +130,7 @@ export function ActionStepPanel({
                 type="button"
                 disabled={disabled || betNum <= 0}
                 onClick={() => onAction(needsPostSB ? "post_sb" : "post_bb")}
-                className="flex-1 min-h-[112px] rounded-xl border border-amber-500/60 bg-amber-500/15 text-amber-200 font-medium text-base flex flex-col items-center justify-center gap-1 transition active:scale-[0.98] disabled:opacity-35"
+                className="flex-1 min-h-[112px] max-lg:landscape:min-h-[64px] rounded-xl border border-amber-500/60 bg-amber-500/15 text-amber-200 font-medium text-base flex flex-col items-center justify-center gap-1 transition active:scale-[0.98] disabled:opacity-35"
               >
                 <span>Post {needsPostSB ? "SB" : "BB"}</span>
                 <span className="font-mono text-sm">{formatStack(betNum)}</span>

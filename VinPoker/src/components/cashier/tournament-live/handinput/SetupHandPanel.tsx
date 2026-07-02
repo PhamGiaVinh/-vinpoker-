@@ -4,6 +4,7 @@
 // dealer-button seat (mandatory confirm), then starts the hand. Behaviour matches
 // the original inline block exactly — this is a presentation-only extraction.
 
+import type { ReactNode } from "react";
 import { Play, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card as UiCard } from "@/components/ui/card";
@@ -28,6 +29,13 @@ interface SetupHandPanelProps {
    * the start button becomes the express CTA (e.g. "⚡ Ván tiếp theo — Hand #12").
    */
   expressLabel?: string | null;
+  /**
+   * A3 (trackerChipQuickEdit) — ADDITIVE; absent → panel byte-identical. When set,
+   * rendered below the seat rail — this is the ONLY place chip quick-edit can be
+   * slotted, so it inherits the "between hands, no orphan" gate for free (this panel
+   * only mounts when `!handStarted && !orphanHand`).
+   */
+  chipEditor?: ReactNode;
 }
 
 export function SetupHandPanel({
@@ -43,6 +51,7 @@ export function SetupHandPanel({
   lastHandId,
   onVoid,
   expressLabel,
+  chipEditor,
 }: SetupHandPanelProps) {
   return (
     <UiCard className="p-6 text-center space-y-4 border-dashed">
@@ -91,6 +100,7 @@ export function SetupHandPanel({
           </Button>
         </div>
       )}
+      {chipEditor && <div className="pt-1 text-left">{chipEditor}</div>}
     </UiCard>
   );
 }

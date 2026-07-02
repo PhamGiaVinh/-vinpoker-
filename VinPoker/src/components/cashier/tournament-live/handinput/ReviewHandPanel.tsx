@@ -34,6 +34,11 @@ interface ReviewHandPanelProps {
   onSubmit: () => void;
   onBack: () => void;
   submitting?: boolean;
+  /**
+   * A3 (trackerChipQuickEdit) — ADDITIVE; absent/empty → panel byte-identical. Seats
+   * whose tournament-wide RANK would change once this hand's ending stacks apply.
+   */
+  rankShifts?: { player_id: string; seat_number: number; display_name: string; before: number; after: number }[];
 }
 
 export function ReviewHandPanel({
@@ -49,6 +54,7 @@ export function ReviewHandPanel({
   onSubmit,
   onBack,
   submitting,
+  rankShifts,
 }: ReviewHandPanelProps) {
   const startTotal = players.reduce((s, p) => s + p.starting_stack, 0);
   const endTotal = players.reduce((s, p) => s + (endingStacks[p.player_id] ?? p.current_stack), 0);
@@ -104,6 +110,20 @@ export function ReviewHandPanel({
       </div>
       {!canSubmit && (
         <div className="text-[10px] text-amber-300">Chưa thể gửi hand — cần bảo toàn chip và xác định người thắng trước.</div>
+      )}
+
+      {rankShifts && rankShifts.length > 0 && (
+        <div className="space-y-0.5 rounded-lg border border-indigo-500/30 bg-indigo-950/10 p-2 text-[11px]">
+          <div className="font-bold uppercase tracking-wide text-indigo-300">Thứ hạng sau ván này</div>
+          {rankShifts.map((r) => (
+            <div key={r.player_id} className="flex items-center justify-between text-muted-foreground">
+              <span className="truncate">Ghế {r.seat_number} · {r.display_name}</span>
+              <span className={r.after < r.before ? "text-emerald-400" : "text-rose-400"}>
+                #{r.before} → #{r.after} {r.after < r.before ? "▲" : "▼"}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-2 border-t border-border/20 pt-2">
