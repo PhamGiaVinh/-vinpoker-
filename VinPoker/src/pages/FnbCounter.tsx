@@ -73,7 +73,11 @@ function FnbCounterInner() {
 
   const createOrder = async (o: NewOrder) => {
     setCreating(true);
-    const { data, error } = await (supabase.rpc as any)("fnb_create_order", {
+    // Base = the ORIGINAL 7-arg call. The A2 link params (p_table_ref/p_player_ref) are only sent when
+    // fnbTableLink is on — their 9-arg fnb_create_order (migration …0014) is the precondition for that
+    // flag. With the flag OFF this is the plain 7-arg call, so it works whether or not …0014 is applied
+    // (avoids a "could not find function" failure when the migration hasn't been applied to the DB yet).
+    const params: any = {
       p_club_id: activeClub,
       p_source: "counter",
       p_table_label: o.table_label,
@@ -81,9 +85,12 @@ function FnbCounterInner() {
       p_note: o.note,
       p_lines: o.items.map((it) => ({ menu_item_id: it.menu_item_id, qty: it.qty })),
       p_client_request_id: o.client_request_id,
-      p_table_ref: o.table_ref ?? null,
-      p_player_ref: o.player_ref ?? null,
-    });
+    };
+    if (FEATURES.fnbTableLink) {
+      params.p_table_ref = o.table_ref ?? null;
+      params.p_player_ref = o.player_ref ?? null;
+    }
+    const { data, error } = await (supabase.rpc as any)("fnb_create_order", params);
     setCreating(false);
     const res = data as any;
     if (error || res?.error) { toast.error(mapFnbError(res?.error ?? error)); return; }
