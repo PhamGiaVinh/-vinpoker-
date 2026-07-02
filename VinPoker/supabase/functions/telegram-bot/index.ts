@@ -996,10 +996,61 @@ async function handleLinkCode(
 // setMyCommands is global + idempotent; the list is hardcoded here so it can only set the
 // standard dealer menu (no injection). Lets the owner refresh the menu (e.g. to show /code)
 // from Telegram without curl or pasting the token.
+// /lich — the dealer's own upcoming published shifts from the Shift Planner layer
+// (dealer_shift_assignments, next 7 days). READ-ONLY: never touches the live
+// swing/attendance tables — this is the planner schedule, not the rotation pool.
+async function handleSchedule(
+  admin: any,
+  botToken: string,
+  chatId: number,
+  dealer: { id: string; full_name: string },
+) {
+  const now = new Date();
+  const highIso = new Date(now.getTime() + 7 * 86_400_000).toISOString();
+  const { data: rows, error } = await admin
+    .from("dealer_shift_assignments")
+    .select("work_date, scheduled_start_at, scheduled_end_at, status, role")
+    .eq("dealer_id", dealer.id)
+    .in("status", ["published", "confirmed", "checked_in"])
+    .gte("scheduled_end_at", now.toISOString())
+    .lte("scheduled_start_at", highIso)
+    .order("scheduled_start_at", { ascending: true })
+    .limit(10);
+
+  if (error) {
+    await sendDM(botToken, chatId, "❌ Không đọc được lịch. Vui lòng thử lại sau.");
+    return;
+  }
+  if (!rows || rows.length === 0) {
+    await sendDM(
+      botToken,
+      chatId,
+      `🗓️ *Lịch của ${dealer.full_name}*\n\nChưa có ca nào được xếp trong 7 ngày tới. Khi floor phát hành lịch, ca của bạn sẽ hiện ở đây và trong app.`,
+    );
+    return;
+  }
+
+  const VN_TZ_MS = 7 * 3_600_000;
+  const fmtTime = (iso: string) => new Date(Date.parse(iso) + VN_TZ_MS).toISOString().slice(11, 16);
+  const fmtDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  const marker = (s: string) => (s === "confirmed" ? "✅ đã xác nhận" : s === "checked_in" ? "🟢 đang trong ca" : "🕐 chờ xác nhận");
+
+  const lines = rows.map(
+    (r: any) =>
+      `• ${fmtDate(r.work_date)} — *${fmtTime(r.scheduled_start_at)}–${fmtTime(r.scheduled_end_at)}*${r.role === "Lead" ? " (Lead)" : ""} — ${marker(r.status)}`,
+  );
+  await sendDM(
+    botToken,
+    chatId,
+    `🗓️ *Lịch của ${dealer.full_name}* (7 ngày tới)\n\n${lines.join("\n")}\n\n👉 Xác nhận / check-in ca trong app dealer.`,
+  );
+}
+
 async function syncBotCommands(botToken: string): Promise<boolean> {
   const commands = [
     { command: "setup", description: "Liên kết tài khoản dealer" },
     { command: "checkin", description: "Vào ca (vào pool sẵn sàng)" },
+    { command: "lich", description: "Xem lịch ca sắp tới của bạn" },
     { command: "code", description: "Lấy mã đăng nhập app dealer" },
     { command: "status", description: "Xem trạng thái hiện tại" },
     { command: "break", description: "Nghỉ ăn cơm" },
@@ -1037,6 +1088,7 @@ async function handleCommand(
         `Lệnh:\n` +
         `• /setup <Tên> — Liên kết tài khoản\n` +
         `• /checkin — Vào ca (vào pool sẵn sàng)\n` +
+        `• /lich — Xem lịch ca sắp tới của bạn\n` +
         `• /status — Xem trạng thái hiện tại\n` +
         `• /code — Lấy mã đăng nhập app dealer (login code)\n` +
         `• /break — Nghỉ ăn cơm (1 lần/7 tiếng, +15p bonus)\n` +
@@ -1068,6 +1120,12 @@ async function handleCommand(
     normalizedText === "/trangthai"
   ) {
     await handleStatus(admin, botToken, chatId, dealer);
+    return;
+  }
+
+  // /lich (aliases /lichca, /schedule) — the dealer's upcoming planner shifts.
+  if (["/lich", "lich", "/lichca", "/schedule"].includes(normalizedText)) {
+    await handleSchedule(admin, botToken, chatId, dealer);
     return;
   }
 
