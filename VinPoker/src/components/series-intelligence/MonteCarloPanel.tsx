@@ -7,6 +7,7 @@ import { groupEvents, computeGroupStats } from "@/lib/series-intelligence/refere
 import { simulateOverlayRisk, simulateOverlayFromForecast } from "@/lib/series-intelligence/overlayRiskEngine";
 import type { ForecastOverlayFeed } from "@/lib/series-intelligence/turnoutForecast";
 import { ExplainHint } from "./ExplainHint";
+import { RegimeNotice } from "./RegimeNotice";
 
 // Green poker-felt palette SCOPED to this panel (vars on the wrapper only → global maroon theme untouched).
 const FELT_VARS = {
@@ -327,6 +328,7 @@ export function MonteCarloPanel({
             SD={sd.toFixed(2)} là <b className="text-[#5fa8bf]">giả định</b> (N nhỏ chưa ước được). <b className="text-[var(--gold2)]">Không phải dự báo.</b></>
             )}
             {client && <span className="block mt-1.5 text-[var(--bad)]">Chỉ là kịch bản tham khảo — đừng quyết định tài chính chỉ dựa trên số này.</span>}
+            <RegimeNotice tone="felt" className="mt-1.5" />
             <ExplainHint tone="felt" term="hai lớp bất định" className="mt-1.5 block">
               Lớp 1 (<b className="text-[var(--cream)]">epistemic</b>): phần chưa chắc <b className="text-[var(--cream)]">vì ít dữ liệu</b> —
               có thêm giải thì phần này co lại (theo √n). Lớp 2 (<b className="text-[var(--cream)]">aleatoric</b>): phần

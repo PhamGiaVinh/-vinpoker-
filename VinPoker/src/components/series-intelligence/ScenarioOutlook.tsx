@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
 import { InsightLabelBadge } from "./InsightLabelBadge";
+import { RegimeNotice } from "./RegimeNotice";
 import type {
   Range,
   Scenario,
@@ -105,6 +106,7 @@ export function ScenarioOutlook({
         <p className="text-[11px] text-muted-foreground">
           Theo các event tương tự đã ghi nhận — khoảng cho MỘT event, không phải tổng series.
         </p>
+        <RegimeNotice className="mt-1" />
       </div>
 
       {!outlook.available ? (

@@ -9,6 +9,7 @@ import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator"
 import { simulateFestival, type SimResult } from "@/lib/series-intelligence/monteCarloEngine";
 import { scheduleToSimEvents } from "@/lib/series-intelligence/scheduleToMonteCarlo";
 import { ExplainHint } from "./ExplainHint";
+import { RegimeNotice } from "./RegimeNotice";
 
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
 
@@ -104,6 +105,7 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
               <p className="text-[10px] text-warning/90 flex items-start gap-1 border border-warning/40 bg-warning/5 rounded-md p-1.5">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> Lịch generated + giả thuyết → dải rất rộng. Đừng quyết định tài chính chỉ dựa trên số này.
               </p>
+              <RegimeNotice />
             </div>
           )}
         </>

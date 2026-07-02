@@ -10,6 +10,7 @@ import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeries
 import { forecastTurnout, forecastToOverlayFeed, type ForecastConfidence, type ForecastOverlayFeed } from "@/lib/series-intelligence/turnoutForecast";
 import { simulateOverlayFromForecast } from "@/lib/series-intelligence/overlayRiskEngine";
 import { ExplainHint } from "./ExplainHint";
+import { RegimeNotice } from "./RegimeNotice";
 
 /** What this panel emits upward so the group-history overlay simulator can offer a forecast center. */
 export type ForecastFeedWithFee = ForecastOverlayFeed & { fee: number };
@@ -126,6 +127,7 @@ export function TurnoutForecastPanel({
               )}
             </div>
             <p className="text-[10px] text-warning/90 border border-warning/40 bg-warning/5 rounded-md p-1.5">{fc.disclaimer}</p>
+            <RegimeNotice />
             <ExplainHint term="sai số kiểm chứng (walk-forward)">
               Máy <b>thử đoán lại từng giải trong quá khứ</b> — mỗi lần CHỈ dùng các giải diễn ra trước nó — rồi chấm
               điểm đoán sai bao nhiêu %. "Baseline (median)" = cách đoán ngây thơ nhất (lấy số giữa của các giải trước).
