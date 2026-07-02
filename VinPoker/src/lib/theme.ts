@@ -1,5 +1,5 @@
 // Lightweight, additive theme switcher.
-// Default ("default") keeps VinPoker's existing dark theme untouched.
+// Default ("default") is the Midnight Sakura dark theme.
 // "vinpoker-warm" applies the optional deep-parchment/terracotta light theme via
 // the [data-theme="vinpoker-warm"] CSS block in index.css.
 //
