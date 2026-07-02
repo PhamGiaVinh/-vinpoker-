@@ -12,9 +12,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ['AppDigits', 'Playfair Display', 'Georgia', 'serif'],
-        sans: ['Inter', 'AppDigits', 'Playfair Display', 'Georgia', 'serif'],
-        mono: ['Inter', 'AppDigits', 'Playfair Display', 'Georgia', 'serif'],
+        display: ['Playfair Display', 'Georgia', 'serif'],
+        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
         bebas: ['Bebas Neue', 'sans-serif'],
         jetbrains: ['JetBrains Mono', 'monospace'],
       },

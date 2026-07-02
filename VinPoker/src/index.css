@@ -2,47 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-/* PokerVN — Stitch dark design system. All colors HSL. */
+/* VinPoker — Midnight Sakura design foundation. All shadcn colors are HSL. */
 
 @layer base {
   :root {
-    /* Surfaces (#111417 base, layered) */
-    --background: 0 0% 4%;           /* #0A0A0A */
-    --foreground: 220 11% 89%;       /* #e1e2e7 */
+    /* Midnight Sakura primitives from the reference direction. */
+    --vp-bg: #07050A;
+    --vp-bg-2: #0B0710;
+    --vp-panel: #120C18;
+    --vp-panel-2: #0D0912;
+    --vp-gold: #C9A86A;
+    --vp-gold-deep: #B8923F;
+    --vp-sakura: #F4A6C0;
+    --vp-sakura-deep: #E2718F;
+    --vp-ivory: #F2ECE6;
+    --vp-muted: #9B8E97;
+    --vp-border: rgba(201, 168, 106, 0.18);
+    --vp-gold-rgb: 201 168 106;
+    --vp-sakura-rgb: 226 113 143;
 
-    --card: 213 9% 12%;              /* #1d2023 */
-    --card-foreground: 220 11% 89%;
+    /* Surfaces (#07050A base, dark plum elevation). */
+    --background: 270 33% 3%;        /* #07050A */
+    --foreground: 27 32% 93%;        /* #F2ECE6 */
 
-    --popover: 210 12% 10%;
-    --popover-foreground: 220 11% 89%;
+    --card: 282 33% 7%;              /* #120C18 */
+    --card-foreground: 27 32% 93%;
 
-    /* Neon green = primary (#00ff88) */
-    --primary: 152 100% 50%;         /* #00ff88 */
-    --primary-foreground: 210 20% 6%;
-    --primary-glow: 152 100% 60%;
+    --popover: 276 33% 5%;           /* #0D0912 */
+    --popover-foreground: 27 32% 93%;
 
-    /* Secondary surface */
-    --secondary: 213 9% 16%;         /* surface-container-high */
-    --secondary-foreground: 220 11% 89%;
+    /* Brand accents: gold is primary, sakura is secondary/accent. */
+    --primary: 39 46% 60%;           /* #C9A86A */
+    --primary-foreground: 270 33% 5%;
+    --primary-glow: 42 52% 68%;
 
-    --muted: 213 9% 14%;             /* surface-container-low */
-    --muted-foreground: 90 6% 65%;
+    --secondary: 282 26% 10%;
+    --secondary-foreground: 27 32% 93%;
 
-    --accent: 152 100% 50%;
-    --accent-foreground: 210 20% 6%;
+    --muted: 280 22% 8%;
+    --muted-foreground: 318 7% 58%;  /* #9B8E97 */
 
-    --destructive: 6 100% 70%;
-    --destructive-foreground: 358 100% 21%;
+    --accent: 345 66% 66%;           /* #E2718F */
+    --accent-foreground: 270 33% 5%;
 
-    --success: 152 100% 50%;
-    --success-foreground: 210 20% 6%;
+    /* Operational status colors stay semantic, not gold/pink. */
+    --destructive: 0 72% 62%;
+    --destructive-foreground: 27 32% 96%;
 
-    --warning: 38 92% 65%;
-    --warning-foreground: 210 20% 6%;
+    --success: 145 52% 46%;
+    --success-foreground: 270 33% 5%;
 
-    --border: 213 9% 22%;
-    --input: 213 9% 16%;
-    --ring: 152 100% 50%;
+    --warning: 38 85% 60%;
+    --warning-foreground: 270 33% 5%;
+
+    --border: 39 32% 24%;
+    --input: 282 24% 11%;
+    --ring: 39 46% 60%;
 
     /* Poker table identity — burgundy felt + gold rim/cards + cyan stack.
        Kept constant across themes so the felt stays a poker table (NOT cream). */
@@ -63,22 +78,25 @@
     --poker-card-medallion: #3b0b17;
     --poker-card-text: #f4d58a;
 
-    --radius: 0.875rem;
+    --radius: 0.5rem;
 
-    --gradient-neon: linear-gradient(135deg, hsl(152 100% 50%), hsl(152 100% 40%));
-    --gradient-felt: linear-gradient(180deg, hsl(210 13% 7%), hsl(210 13% 4%));
-    --gradient-card: linear-gradient(150deg, hsl(213 9% 13%) 0%, hsl(213 9% 9%) 100%);
-    --shadow-neon: 0 0 24px -4px hsl(152 100% 50% / 0.55);
-    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.55);
+    --gradient-neon: linear-gradient(135deg, hsl(var(--primary)), hsl(39 42% 48%));
+    --gradient-felt:
+      radial-gradient(110% 85% at 85% 0%, rgb(var(--vp-sakura-rgb) / 0.075), transparent 42%),
+      radial-gradient(90% 72% at 15% -10%, rgb(var(--vp-gold-rgb) / 0.08), transparent 46%),
+      linear-gradient(180deg, var(--vp-bg) 0%, var(--vp-bg-2) 46%, var(--vp-bg) 100%);
+    --gradient-card: linear-gradient(150deg, hsl(282 33% 8%) 0%, hsl(276 33% 5%) 100%);
+    --shadow-neon: 0 0 0 1px hsl(var(--primary) / 0.18), 0 10px 34px -22px hsl(var(--primary) / 0.7);
+    --shadow-card: 0 1px 0 hsl(var(--primary) / 0.08), 0 18px 44px -32px rgb(0 0 0 / 0.95);
 
-    --sidebar-background: 213 9% 11%;
-    --sidebar-foreground: 220 11% 89%;
-    --sidebar-primary: 152 100% 50%;
-    --sidebar-primary-foreground: 210 20% 6%;
-    --sidebar-accent: 213 9% 16%;
-    --sidebar-accent-foreground: 220 11% 89%;
-    --sidebar-border: 213 9% 22%;
-    --sidebar-ring: 152 100% 50%;
+    --sidebar-background: 270 33% 3%;
+    --sidebar-foreground: 27 32% 93%;
+    --sidebar-primary: 39 46% 60%;
+    --sidebar-primary-foreground: 270 33% 5%;
+    --sidebar-accent: 282 26% 10%;
+    --sidebar-accent-foreground: 27 32% 93%;
+    --sidebar-border: 39 32% 24%;
+    --sidebar-ring: 39 46% 60%;
 
     /* GTO action palette */
     --gto-fold: 217 91% 60%;   /* blue */
@@ -89,9 +107,9 @@
     /* Dealer Swing "pre-assigned / in-transition" status (theme-aware).
        due→warning, overdue/none→destructive, break/available→success,
        assigned→muted/border are reused from the semantic tokens above. */
-    --ds-preassign: 271 81% 66%; /* purple (default dark look) */
-    --ds-active: 217 91% 60%;    /* blue — dealer currently at table */
-    --ds-rest: 258 35% 62%;      /* soft violet — dealer on a rest break */
+    --ds-preassign: 345 66% 66%; /* sakura — pre-assigned/in transition */
+    --ds-active: 207 82% 62%;    /* blue — dealer currently at table */
+    --ds-rest: 318 18% 58%;      /* muted mauve — dealer on a rest break */
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -283,30 +301,34 @@
   html { color-scheme: dark; }
   body {
     @apply bg-background text-foreground;
-    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--gradient-felt);
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'kern' 1;
   }
   :lang(zh), :lang(zh-CN) {
     word-break: keep-all;
     line-break: strict;
   }
   h1, h2, h3 {
-    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
-    letter-spacing: -0.01em;
+    font-family: 'Playfair Display', Georgia, serif;
+    letter-spacing: 0;
     font-weight: 700;
   }
   h4, h5, h6 {
-    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
     font-weight: 600;
   }
   .font-display {
-    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif !important;
-    letter-spacing: -0.01em;
+    font-family: 'Playfair Display', Georgia, serif !important;
+    letter-spacing: 0;
   }
   input, textarea, select, button, table {
-    font-family: 'AppDigits', 'Playfair Display', 'Noto Sans SC', Georgia, serif;
+    font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  }
+  table {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -321,22 +343,22 @@
   .shadow-gold { box-shadow: var(--shadow-neon); }
   .shadow-neon { box-shadow: var(--shadow-neon); }
   .shadow-card { box-shadow: var(--shadow-card); }
-  .neon-glow { box-shadow: 0 0 12px 0 hsl(121 100% 70% / 0.4); }
+  .neon-glow { box-shadow: 0 0 18px -8px hsl(var(--primary) / 0.65); }
 
-  /* ── Package-specific utilities ── */
+  /* Package-specific utilities */
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold transition-all duration-200;
-    background: linear-gradient(135deg, #10B981, #059669);
-    color: #fff;
-    box-shadow: 0 2px 12px rgba(16, 185, 129, 0.4);
+    background: var(--gradient-neon);
+    color: hsl(var(--primary-foreground));
+    box-shadow: var(--shadow-neon);
   }
   .btn-primary:hover {
-    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.55);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.26), 0 16px 34px -22px hsl(var(--primary) / 0.9);
     transform: translateY(-1px);
   }
   .btn-primary:active {
     transform: translateY(0);
-    box-shadow: 0 1px 6px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.18);
   }
   .btn-primary:disabled {
     opacity: 0.5;
@@ -346,8 +368,8 @@
   }
   .card-premium {
     background: var(--gradient-card);
-    border: 1px solid hsl(var(--border));
-    border-radius: 1rem;
+    border: 1px solid hsl(var(--primary) / 0.18);
+    border-radius: var(--radius);
     box-shadow: var(--shadow-card);
   }
   .badge-early-bird {
@@ -359,12 +381,13 @@
     font-size: 0.75rem;
     font-weight: 600;
     line-height: 1;
-    background: linear-gradient(135deg, #10B981, #059669);
-    color: #fff;
+    background: hsl(var(--primary) / 0.14);
+    color: hsl(var(--primary));
+    border: 1px solid hsl(var(--primary) / 0.24);
   }
   .text-strikethrough {
     text-decoration: line-through;
-    text-decoration-color: hsl(0 100% 60%);
+    text-decoration-color: hsl(var(--destructive));
     text-decoration-thickness: 1.5px;
   }
   .animate-fade-in-up {
@@ -377,9 +400,9 @@
   }
 }
 
-/* Staking scope: kept for backward compat, now inherits primary (neon green) from theme */
+/* Staking scope: kept for backward compat, now inherits the brand primary from theme. */
 .staking-scope {
-  /* No override — uses global primary (neon green) for visual consistency */
+  /* No override — uses global primary for visual consistency. */
 }
 
 /* ── Timer / Countdown badges ──────────────────────────────── */
