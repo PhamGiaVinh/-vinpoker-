@@ -13,22 +13,34 @@ import { RegimeNotice } from "./RegimeNotice";
 
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
 
+/** ρ-extremes for the "read the tail" comparison box (same seed/params — only correlation moves). */
+const TAIL_RHO_LO = 0;
+const TAIL_RHO_HI = 0.85;
+
+interface EvState {
+  result: SimResult;
+  usedCount: number;
+  skippedCount: number;
+  /** Same festival at ρ=0 vs ρ=0.85 (same seed) — shows correlation's tail effect with REAL numbers. */
+  tail: { lo: SimResult; hi: SimResult } | null;
+}
+
 /**
- * FestivalEvPanel — Step ④ (after the overlay-risk Monte Carlo). The EV scenario for a GENERATED festival
- * schedule (B.2), lifted out of ScheduleGeneratorPanel so risk is reviewed before EV. Reads the lifted `draft`
- * via props; the simulation (`scheduleToSimEvents` + `simulateFestival`) is IDENTICAL — only the data source
- * moved. A new/changed draft clears the previous EV (replicates the old generate()→setEv(null) invalidation).
+ * FestivalEvPanel — "Kịch bản EV — cả festival" (quant-mockup layout: ρ/α sliders → 6 stat cards → a
+ * "đọc đuôi, không đọc trung bình" box computed from two REAL sims at ρ=0 vs ρ=0.85). The festival is a
+ * correlated portfolio of events; the schedule is GENERATED → Hypothesis; scenario, never a commitment.
  */
 export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
   const [rho, setRho] = useState(0.3);
   const [alpha, setAlpha] = useState(1.0);
   const [cost, setCost] = useState<number | null>(null);
   const [bankroll, setBankroll] = useState<number | null>(null);
-  const [ev, setEv] = useState<{ result: SimResult; usedCount: number; skippedCount: number } | null>(null);
+  const [ev, setEv] = useState<EvState | null>(null);
 
   useEffect(() => setEv(null), [draft]); // a new/changed draft invalidates the previous EV scenario
 
-  // B.2: map the generated schedule → engine input (Hypothesis) → simulate EV. (logic unchanged)
+  // Map the generated schedule → engine input (Hypothesis) → simulate EV (logic unchanged), plus two
+  // extra fixed-seed sims at ρ extremes for the tail-comparison box.
   const computeEv = (): void => {
     if (!draft) return;
     const { events, skipped } = scheduleToSimEvents(draft);
@@ -36,72 +48,115 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
       setEv(null);
       return;
     }
-    const result = simulateFestival(events, {
-      rho,
-      alpha,
-      cost: cost && cost > 0 ? cost : undefined,
-      bankroll: bankroll ?? undefined,
-      nSims: 20000,
-      seed: Math.floor(Math.random() * 0x7fffffff),
-    });
-    setEv({ result, usedCount: events.length, skippedCount: skipped.length });
+    const seed = Math.floor(Math.random() * 0x7fffffff);
+    const opts = { alpha, cost: cost && cost > 0 ? cost : undefined, bankroll: bankroll ?? undefined, nSims: 20000, seed };
+    const result = simulateFestival(events, { ...opts, rho });
+    const tail =
+      bankroll !== null && bankroll > 0
+        ? { lo: simulateFestival(events, { ...opts, rho: TAIL_RHO_LO }), hi: simulateFestival(events, { ...opts, rho: TAIL_RHO_HI }) }
+        : null;
+    setEv({ result, usedCount: events.length, skippedCount: skipped.length, tail });
   };
 
+  const r = ev?.result ?? null;
+  const headline = r ? (r.mode === "profit" ? r.eEV ?? 0 : r.eGross) : 0;
+
   return (
-    <Card className="p-3 border-primary/40 gradient-card space-y-2 text-xs">
-      <div className="flex items-center gap-1.5 font-medium">
-        <Calculator className="h-3.5 w-3.5 text-primary" /> EV cả festival
-        <span className="inline-flex items-center gap-0.5 rounded-full border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[9px] text-warning"><FlaskConical className="h-2.5 w-2.5" /> Giả thuyết</span>
+    <Card className="p-4 border-primary/40 gradient-card space-y-3 text-xs">
+      <div>
+        <div className="flex flex-wrap items-center gap-1.5 font-display text-base">
+          <Calculator className="h-4 w-4 text-primary" /> Kịch bản EV — cả festival
+          <span className="inline-flex items-center gap-0.5 rounded-full border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[9px] text-warning">
+            <FlaskConical className="h-2.5 w-2.5" /> Giả thuyết
+          </span>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Coi festival như MỘT danh mục giải có tương quan · lịch là GENERATED (chưa quan sát) → kịch bản thuần giả
+          định, không phải cam kết.
+        </p>
       </div>
-      <p className="text-[10px] text-muted-foreground">Kịch bản EV (Monte Carlo) cho cả lịch. Lịch là GENERATED (chưa quan sát) → mỗi event là giả thuyết (σ rộng, tier Giả thuyết). Số EV là KỊCH BẢN thuần giả định, KHÔNG phải dự báo.</p>
+
       {!draft ? (
         <p className="text-[11px] text-muted-foreground border border-dashed border-border rounded-md p-3">
           Hãy <strong>Sinh lịch</strong> ở Bước ③ trước, rồi quay lại đây để tính EV cho cả festival.
         </p>
       ) : (
         <>
-          <div className="grid sm:grid-cols-2 gap-2">
-            <RangeRow label={`ρ — đồng biến động: ${rho.toFixed(2)}`} value={rho} min={0} max={1} step={0.05} onChange={setRho} />
-            <RangeRow label={`α — GTD: ×${alpha.toFixed(1)}`} value={alpha} min={0} max={2} step={0.1} onChange={setAlpha} />
+          <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2">
+            <div className="space-y-0.5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[10px] text-muted-foreground">ρ — tương quan giữa các giải</span>
+                <span className="tabular-nums text-primary font-medium">{rho.toFixed(2)}</span>
+              </div>
+              <input type="range" min={0} max={1} step={0.05} value={rho} onChange={(e) => setRho(Number(e.target.value))} className="w-full accent-primary" />
+              <div className="text-[9.5px] text-muted-foreground/80">0 = độc lập · 1 = đông cùng đông, vắng cùng vắng</div>
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[10px] text-muted-foreground">α — mức hung hăng đặt GTD</span>
+                <span className="tabular-nums text-primary font-medium">×{alpha.toFixed(2)}</span>
+              </div>
+              <input type="range" min={0} max={2} step={0.1} value={alpha} onChange={(e) => setAlpha(Number(e.target.value))} className="w-full accent-primary" />
+              <div className="text-[9.5px] text-muted-foreground/80">cao = GTD sát/vượt kỳ vọng · rủi ro cao hơn</div>
+            </div>
             <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Chi phí festival (tổng, tùy chọn)</span><Input type="number" className="h-7" placeholder="(trống → chỉ gross)" value={cost ?? ""} onChange={(e) => setCost(numOrNull(e.target.value))} /></label>
-            <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Bankroll (cho Risk-of-Ruin)</span><Input type="number" className="h-7" placeholder="(trống)" value={bankroll ?? ""} onChange={(e) => setBankroll(numOrNull(e.target.value))} /></label>
+            <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Vốn dự phòng (cho Risk-of-Ruin)</span><Input type="number" className="h-7" placeholder="(trống)" value={bankroll ?? ""} onChange={(e) => setBankroll(numOrNull(e.target.value))} /></label>
           </div>
-          <ExplainHint term="ρ và α">
-            <b>ρ (đồng biến động)</b>: mức các giải trong festival <b>cùng vắng / cùng đông một mùa</b> — ρ cao thì lời
-            kỳ vọng gần như không đổi nhưng rủi ro đuôi (lỗ nặng cả loạt) tăng mạnh. <b>α</b>: hệ số phóng to–thu nhỏ
-            toàn bộ GTD để thử độ hung hăng cam kết ("nếu tôi hứa GTD gấp rưỡi thì sao?").
-          </ExplainHint>
           <Button size="sm" variant="outline" className="gap-1.5" onClick={computeEv}>
             <Calculator className="h-4 w-4" /> Tính EV kịch bản
           </Button>
-          {ev && (
-            <div className="space-y-1.5 border-t border-border/60 pt-2">
-              <div className="text-[10px] text-muted-foreground">{ev.usedCount} event vào mô phỏng{ev.skippedCount > 0 ? ` · ${ev.skippedCount} bỏ (không GTD)` : ""}</div>
-              <div>
-                <div className="text-[11px] text-muted-foreground">
-                  {ev.result.mode === "profit" ? "E[EV] (kịch bản)" : "Gross trước chi phí (E)"}
-                  {ev.result.mode === "gross" && <span className="text-warning"> · chưa tính được profit (thiếu cost)</span>}
+          <ExplainHint term="ρ và α">
+            <b>ρ (tương quan)</b>: mức các giải trong festival <b>cùng vắng / cùng đông một mùa</b> — ρ cao thì lời
+            kỳ vọng gần như không đổi nhưng rủi ro đuôi (lỗ nặng cả loạt) tăng mạnh. <b>α</b>: hệ số phóng to–thu nhỏ
+            toàn bộ GTD để thử độ hung hăng cam kết.
+          </ExplainHint>
+
+          {ev && r && (
+            <div className="space-y-2 border-t border-border/60 pt-2.5">
+              <div className="text-[10px] text-muted-foreground">
+                {ev.usedCount} giải vào mô phỏng{ev.skippedCount > 0 ? ` · ${ev.skippedCount} bỏ (không GTD)` : ""}
+                {r.mode === "gross" && <span className="text-warning"> · chưa tính được lời/lỗ ròng (thiếu chi phí)</span>}
+              </div>
+
+              {/* 6 stat cards (mockup grid) */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <StatCard
+                  label={r.mode === "profit" ? "Lời kỳ vọng E[EV]" : "Gross trước chi phí (E)"}
+                  value={`${headline >= 0 ? "+" : ""}${formatVndShort(headline)}`}
+                  strong
+                  danger={headline < 0}
+                />
+                <StatCard label="Lời · P5 / P50 / P95" value={`${formatVndShort(r.p5)} / ${formatVndShort(r.p50)} / ${formatVndShort(r.p95)}`} danger={r.p5 < 0} />
+                <StatCard label="Xác suất lỗ P(lỗ)" value={`${(r.pLoss * 100).toFixed(0)}%`} danger={r.pLoss > 0.3} />
+                <StatCard label="Risk-of-Ruin (cháy vốn)" value={r.ruin === null ? "— (nhập vốn dự phòng)" : `${(r.ruin * 100).toFixed(0)}%`} danger={(r.ruin ?? 0) > 0.1} />
+                <StatCard label="P(overlay) — TB các giải" value={`${(r.pOverlayAny * 100).toFixed(0)}%`} />
+                <StatCard label="Số giải trong festival" value={String(ev.usedCount)} />
+              </div>
+
+              {/* Đọc đuôi, không đọc trung bình — REAL numbers from two sims at ρ extremes */}
+              {ev.tail && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-2 text-[10px] leading-relaxed">
+                  <b className="text-primary">Đọc đuôi, không đọc trung bình:</b> cùng lịch này, kéo ρ từ{" "}
+                  {TAIL_RHO_LO} → {TAIL_RHO_HI}: lời kỳ vọng gần như không đổi (
+                  <span className="tabular-nums">{formatVndShort(ev.tail.lo.mode === "profit" ? ev.tail.lo.eEV ?? 0 : ev.tail.lo.eGross)}</span> →{" "}
+                  <span className="tabular-nums">{formatVndShort(ev.tail.hi.mode === "profit" ? ev.tail.hi.eEV ?? 0 : ev.tail.hi.eGross)}</span>
+                  ), nhưng Risk-of-Ruin{" "}
+                  <b className="text-destructive tabular-nums">
+                    {ev.tail.lo.ruin !== null ? `${(ev.tail.lo.ruin * 100).toFixed(0)}%` : "—"} → {ev.tail.hi.ruin !== null ? `${(ev.tail.hi.ruin * 100).toFixed(0)}%` : "—"}
+                  </b>{" "}
+                  và mức xấu P5 từ <span className="tabular-nums">{formatVndShort(ev.tail.lo.p5)}</span> →{" "}
+                  <span className="tabular-nums">{formatVndShort(ev.tail.hi.p5)}</span>. Tương quan vô hình trong
+                  trung bình, chỉ mạnh ở đuôi.
                 </div>
-                <div className={cn("text-lg font-semibold tabular-nums", (ev.result.mode === "profit" ? ev.result.eEV ?? 0 : ev.result.eGross) < 0 ? "text-warning" : "text-primary")}>
-                  {formatVndShort(ev.result.mode === "profit" ? ev.result.eEV ?? 0 : ev.result.eGross)}
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <EvCell label="P5" v={formatVndShort(ev.result.p5)} danger={ev.result.p5 < 0} />
-                <EvCell label="P50" v={formatVndShort(ev.result.p50)} />
-                <EvCell label="P95" v={formatVndShort(ev.result.p95)} />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <EvCell label="P(lỗ)" v={`${(ev.result.pLoss * 100).toFixed(1)}%`} />
-                <EvCell label="Risk-of-Ruin (Giả thuyết)" v={ev.result.ruin === null ? "—" : `${(ev.result.ruin * 100).toFixed(1)}%`} danger />
-                <EvCell label="P(overlay)" v={`${(ev.result.pOverlayAny * 100).toFixed(1)}%`} />
-              </div>
+              )}
+
               <ExplainHint term="P5/P50/P95 · P(lỗ) · Risk-of-Ruin">
                 <b>P5 · P50 · P95</b>: kịch bản 5% xấu nhất · điển hình · 5% tốt nhất (90% kịch bản nằm giữa P5–P95).
                 <b> P(lỗ)</b>: khả năng cả festival kết thúc âm. <b>Risk-of-Ruin</b>: khả năng thua lũy kế vượt quá
-                <b> vốn dự phòng</b> bạn nhập — tức là "cụt vốn giữa chừng", cái thật sự giết doanh nghiệp, khác với
-                chỉ lỗ nhẹ. <b>P(overlay)</b>: khả năng có ÍT NHẤT một giải phải bù GTD.
+                <b> vốn dự phòng</b> bạn nhập — "cụt vốn giữa chừng", cái thật sự giết doanh nghiệp, khác với lỗ nhẹ.
+                <b> P(overlay)</b>: khả năng có ÍT NHẤT một giải phải bù GTD.
               </ExplainHint>
+
               <p className="text-[10px] text-warning/90 flex items-start gap-1 border border-warning/40 bg-warning/5 rounded-md p-1.5">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> Lịch generated + giả thuyết → dải rất rộng. Đừng quyết định tài chính chỉ dựa trên số này.
               </p>
@@ -114,20 +169,11 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
   );
 }
 
-function RangeRow({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void }) {
+function StatCard({ label, value, strong, danger }: { label: string; value: string; strong?: boolean; danger?: boolean }) {
   return (
-    <div className="space-y-0.5">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-primary" />
-    </div>
-  );
-}
-
-function EvCell({ label, v, danger }: { label: string; v: string; danger?: boolean }) {
-  return (
-    <div className={cn("rounded-md border p-1.5", danger ? "border-warning/40 bg-warning/5" : "border-border/60")}>
+    <div className={cn("rounded-md border p-2", danger ? "border-destructive/40 bg-destructive/5" : "border-border/60 bg-card/40")}>
       <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={cn("font-medium tabular-nums", danger && v !== "—" ? "text-warning" : "")}>{v}</div>
+      <div className={cn("tabular-nums font-semibold", strong ? "font-display text-lg" : "text-[13px]", danger ? "text-destructive" : strong ? "text-primary" : "")}>{value}</div>
     </div>
   );
 }

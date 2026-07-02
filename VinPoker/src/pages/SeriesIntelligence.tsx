@@ -46,6 +46,13 @@ export default function SeriesIntelligence() {
   // Forecast → overlay feed (lifted like `draft`): TurnoutForecastPanel emits it; MonteCarloPanel offers it
   // as an OPT-IN center source (default stays group history). Only exists while the forecast flag is on.
   const [forecastFeed, setForecastFeed] = useState<ForecastFeedWithFee | null>(null);
+  // CTA "Xem rủi ro overlay với dự đoán này": bump the signal → the simulator switches source + we scroll to it.
+  const [forecastSignal, setForecastSignal] = useState(0);
+  const viewOverlayWithForecast = () => {
+    setForecastSignal((s) => s + 1);
+    // scroll after the state flush so the panel has re-rendered in forecast mode
+    setTimeout(() => document.getElementById("mc-overlay-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
 
   const hasData = lib.count > 0;
   const scrollToLoad = (): void => document.getElementById("step-load")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -259,13 +266,18 @@ export default function SeriesIntelligence() {
         >
           {/* forecast FIRST (reading order = data flow: dự báo → rủi ro overlay → EV) */}
           {FEATURES.seriesTurnoutForecast && (
-            <TurnoutForecastPanel csvEvents={lib.activeEvents} onForecastFeed={setForecastFeed} />
+            <TurnoutForecastPanel
+              csvEvents={lib.activeEvents}
+              onForecastFeed={setForecastFeed}
+              onViewOverlayWithForecast={viewOverlayWithForecast}
+            />
           )}
           <MonteCarloPanel
             series={lib.series}
             overrideLabels={grouping.overrideLabels}
             audience="internal"
             forecastFeed={FEATURES.seriesTurnoutForecast ? forecastFeed : undefined}
+            forecastSourceSignal={forecastSignal}
           />
           <FestivalEvPanel draft={draft} />
         </StepSection>

@@ -46,6 +46,7 @@ export function MonteCarloPanel({
   overrideLabels,
   audience = "internal",
   forecastFeed,
+  forecastSourceSignal = 0,
 }: {
   series: Series[];
   overrideLabels?: Record<string, string>;
@@ -53,6 +54,8 @@ export function MonteCarloPanel({
   /** Optional forecast center from TurnoutForecastPanel (flag-gated). `undefined` = feature absent (no
    *  toggle rendered at all); `null` = panel mounted but no usable forecast yet (toggle shown disabled). */
   forecastFeed?: (ForecastOverlayFeed & { fee: number }) | null;
+  /** Increment to request switching the center source to the forecast (the forecast panel's CTA). */
+  forecastSourceSignal?: number;
 }) {
   const items = useMemo<RiskItem[]>(() => {
     return groupEvents(series, overrideLabels).map((g) => {
@@ -92,6 +95,12 @@ export function MonteCarloPanel({
   useEffect(() => {
     if (centerSource === "forecast" && forecastFeed == null) setCenterSource("history");
   }, [centerSource, forecastFeed]);
+
+  // CTA từ màn Dự báo: "Xem rủi ro overlay với dự đoán này" → switch the center source (feed must exist).
+  useEffect(() => {
+    if (forecastSourceSignal > 0 && forecastFeed != null) setCenterSource("forecast");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to the signal itself
+  }, [forecastSourceSignal]);
 
   // geomean prize → adaptive GTD slider bounds + default (forecast mode centers on the forecast's prize)
   const meanLog = selected && selected.observedEntries.length
@@ -146,11 +155,12 @@ export function MonteCarloPanel({
   }
 
   return (
-    <section style={FELT_VARS} className="rounded-xl p-4 bg-[var(--felt)] text-[var(--cream)] border border-[var(--line)] space-y-3 font-jetbrains">
+    <section id="mc-overlay-panel" style={FELT_VARS} className="scroll-mt-20 rounded-xl p-4 bg-[var(--felt)] text-[var(--cream)] border border-[var(--line)] space-y-3 font-jetbrains">
       {/* header */}
       <div>
-        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--gold2)]">
-          <Scale className="h-4 w-4" /> Rủi ro overlay — kịch bản 1 giải
+        <div className="text-[10px] uppercase tracking-wide text-[var(--mut)] font-sans">Rủi ro overlay — kịch bản 1 giải</div>
+        <div className="flex items-center gap-2 text-base font-semibold text-[var(--gold2)]">
+          <Scale className="h-4 w-4" /> Cam kết GTD này có an toàn không?
         </div>
         <p className="text-[11px] text-[var(--mut)] font-sans">
           {usingForecast ? (
@@ -235,7 +245,10 @@ export function MonteCarloPanel({
               onChange={(e) => setGtd(Number(e.target.value))}
               className="w-full accent-[var(--gold)]"
             />
-            <div className="text-[10px] text-[var(--mut)] font-sans">Cần <b className="text-[var(--cream)]">{Math.ceil(result.thresholdEntries).toLocaleString("vi-VN")}</b> entry để đủ GTD (không phải bù).</div>
+            <div className="text-[10px] text-[var(--mut)] font-sans">
+              Cần <b className="text-[var(--cream)]">~{Math.ceil(result.thresholdEntries).toLocaleString("vi-VN")}</b> khách để đủ GTD (không phải bù)
+              {usingForecast && <> · dự đoán turnout: <b className="text-[var(--gold2)]">{Math.round(forecastFeed!.base)}</b> (từ màn Dự báo)</>}.
+            </div>
           </div>
 
           {/* n-toggle (HONEST) — history mode only: in forecast mode there is NO observation count to
@@ -264,19 +277,19 @@ export function MonteCarloPanel({
           {/* output cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="rounded-lg border border-[var(--bad)]/40 bg-[var(--bad)]/8 p-3">
-              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">P(overlay) {isWhatIf && <span className="text-[var(--bad)]">· giả lập</span>}</div>
+              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Khả năng phải bù (overlay) {isWhatIf && <span className="text-[var(--bad)]">· giả lập</span>}</div>
               <div className="text-2xl font-bold tabular-nums text-[var(--bad)]">{(result.pOverlay * 100).toFixed(0)}%</div>
               <div className="text-[10px] text-[var(--mut)] font-sans">chi phí kỳ vọng: <b className="text-[var(--cream)]">{formatVndShort(result.eOverlay)}</b></div>
             </div>
             <div className="rounded-lg border border-[var(--line)] bg-[var(--card)] p-3">
-              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Entries P5·P50·P95</div>
+              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Khách · P5 · P50 · P95</div>
               <div className="text-base font-bold tabular-nums text-[var(--cream)]">
                 {Math.round(result.entP5)} · <span className="text-[var(--gold2)]">{Math.round(result.entP50)}</span> · {Math.round(result.entP95)}
               </div>
               <div className="text-[10px] text-[var(--mut)] font-sans">{usingForecast ? "trung tâm = dự báo (Hypothesis)" : "trung tâm = trung bình hình học"}</div>
             </div>
             <div className="rounded-lg border border-[var(--line)] bg-[var(--card)] p-3">
-              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Rake (P5–P95)</div>
+              <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Rake thu · P5–P95</div>
               <div className="text-base font-bold tabular-nums text-[var(--ok)]">{formatVndShort(result.rakeP5)} – {formatVndShort(result.rakeP95)}</div>
               <div className="text-[10px] text-[var(--mut)] font-sans">doanh thu fee mô phỏng</div>
             </div>
