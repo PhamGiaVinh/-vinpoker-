@@ -2,7 +2,7 @@ import { Layers } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
-import type { ContributionByTypeResult } from "@/lib/series-intelligence/commandCenter";
+import { avgContributionPerEvent, type ContributionByTypeResult } from "@/lib/series-intelligence/commandCenter";
 import { InsightLabelBadge } from "./InsightLabelBadge";
 import { ExplainHint } from "./ExplainHint";
 
@@ -25,8 +25,7 @@ export function ContributionByTypeCard({
 
   const measured = result.rows.filter((r) => r.margin !== null);
   const maxAbs = Math.max(1, ...measured.map((r) => Math.abs(r.margin as number)));
-  const eventCount = measured.reduce((a, r) => a + r.feeRevenue.contributingCount, 0);
-  const avgMargin = eventCount > 0 ? measured.reduce((a, r) => a + (r.margin as number), 0) / eventCount : null;
+  const avgMargin = avgContributionPerEvent(result).value;
 
   return (
     <Card className="p-4 gradient-card border-primary/40 space-y-3">

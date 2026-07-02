@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
 import { FEATURES } from "@/lib/featureFlags";
 import {
+  avgContributionPerEvent,
   computeContributionByType,
   computeEconomicsSummary,
   computeOwnerActionChecklist,
+  computeQuarterlySummary,
   computeReadiness,
   computeRiskFlags,
   toEventEconomicsRows,
@@ -22,6 +24,7 @@ import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePo
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
 import { ContributionByTypeCard } from "./ContributionByTypeCard";
+import { QuarterlyBreakdownCard } from "./QuarterlyBreakdownCard";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
 import { RiskInsightCards } from "./RiskInsightCards";
@@ -64,6 +67,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
       gtdOverlay: computeGtdOverlay(events),
       actions: computeOwnerActionChecklist(events, risks),
       contributionByType: FEATURES.seriesMarginByType ? computeContributionByType(events) : null,
+      quarterly: FEATURES.seriesMarginByType ? computeQuarterlySummary(events) : null,
     };
   }, [events]);
 
@@ -106,12 +110,17 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
         <h3 className="font-display text-base flex items-center gap-2">
           <Database className="h-4 w-4 text-primary" /> Tổng quan
         </h3>
-        <OverviewCards economics={view.economics} overlayCost={overlayCost} />
+        <OverviewCards
+          economics={view.economics}
+          overlayCost={overlayCost}
+          avgContribution={view.contributionByType ? avgContributionPerEvent(view.contributionByType) : null}
+        />
         <p className="text-[10px] text-muted-foreground/80">
           Prize pool là số ĐÃ NHẬP trong giải, chưa cập nhật tự động từ buy-in — không phải prize pool thực thu.
         </p>
       </section>
 
+      {view.quarterly && <QuarterlyBreakdownCard summary={view.quarterly} />}
       <DataQualityCard readiness={view.readiness} />
       <EconomicsTable rows={view.rows} />
       {view.contributionByType && (

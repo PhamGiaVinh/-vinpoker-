@@ -1,4 +1,4 @@
-import { CalendarDays, Users, UserCheck, RefreshCw, Coins, Receipt, Trophy, ShieldAlert } from "lucide-react";
+import { CalendarDays, Users, UserCheck, RefreshCw, Coins, Receipt, Trophy, ShieldAlert, Scale } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatVndShort } from "@/lib/clubFinance";
 import type { MetricTotal, SeriesEconomics } from "@/lib/series-intelligence/commandCenter";
@@ -84,9 +84,12 @@ function Kpi({
 export function OverviewCards({
   economics,
   overlayCost = null,
+  avgContribution = null,
 }: {
   economics: SeriesEconomics;
   overlayCost?: OverlayCostSummary | null;
+  /** Biên đóng góp TB / giải đã đo (từ computeContributionByType via avgContributionPerEvent) — flag-gated. */
+  avgContribution?: { value: number | null; measuredCount: number } | null;
 }) {
   const e = economics;
   return (
@@ -99,6 +102,15 @@ export function OverviewCards({
         sub="tiền CLB thật sự giữ lại"
         hero
       />
+      {avgContribution && avgContribution.value !== null && (
+        <Kpi
+          icon={Scale}
+          label="Biên đóng góp TB / giải"
+          value={formatVndShort(Math.round(avgContribution.value))}
+          sub={`fee − bù GTD ước tính · ${avgContribution.measuredCount} giải đo được · CHƯA gồm F&B (chưa nối dữ liệu), nhân sự, vận hành — chưa phải lợi nhuận`}
+          danger={avgContribution.value < 0}
+        />
+      )}
       <Kpi icon={CalendarDays} label="Tổng sự kiện" value={countFmt.format(e.events)} />
       <Kpi icon={Users} label="Tổng lượt entry" value={countFmt.format(e.totalEntries.value)} metric={e.totalEntries} />
       <Kpi icon={UserCheck} label="Người chơi (unique)" value={countFmt.format(e.uniquePlayers.value)} metric={e.uniquePlayers} />
