@@ -30,6 +30,8 @@ import { RegistrationQueuePanel } from "./tournament-live/RegistrationQueuePanel
 import { TvDisplaysPanel } from "./tournament-live/TvDisplaysPanel";
 import { TdAiTabPanel } from "@/components/td-ai/TdAiTabPanel";
 import { FloorTournamentsLanding } from "@/components/floor/FloorTournamentsLanding";
+import { FEATURES } from "@/lib/featureFlags";
+import CloseReportDialog from "./tournament-live/CloseReportDialog";
 
 const STATUS_STYLES: Record<string, string> = {
   upcoming: "bg-muted text-muted-foreground border-border",
@@ -92,6 +94,7 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [closeReportOpen, setCloseReportOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -322,6 +325,11 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
               <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
               Làm mới
             </Button>
+            {FEATURES.closeReport && selectedTournament && (
+              <Button size="sm" onClick={() => setCloseReportOpen(true)}>
+                Chốt giải
+              </Button>
+            )}
           </div>
           {selectedTournament && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -336,6 +344,16 @@ export default function TournamentLivePanel({ clubIds, clubs, mode = "full" }: {
           )}
         </div>
       </Card>
+
+      {selectedTournament && FEATURES.closeReport && (
+        <CloseReportDialog
+          open={closeReportOpen}
+          onOpenChange={setCloseReportOpen}
+          tournamentId={selectedTournament.id}
+          tournamentName={selectedTournament.name}
+          onClosed={loadTournaments}
+        />
+      )}
 
       {selectedTournament ? (
         (() => {
