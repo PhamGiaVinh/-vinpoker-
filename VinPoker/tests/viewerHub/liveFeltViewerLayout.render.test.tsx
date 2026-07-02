@@ -92,30 +92,31 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
   });
 });
 
-// RPT committed-chip pill: viewerLayout shows ONE colored pill (red all-in / emerald
-// regular) and merges the standalone ALL IN label; the operator (viewerLayout off) shows
-// NO pill even with current_bet populated (byte-identical) but keeps the ALL IN label.
-describe("LiveFelt RPT committed-chip pill (viewerLayout)", () => {
-  it("all-in → a red pill, and the standalone text-red-400 ALL IN label is gone", () => {
+// RPT committed-bet indicator: viewerLayout shows the on-felt chip STACK (red all-in /
+// emerald-labelled regular) and drops the standalone ALL IN label; the operator
+// (viewerLayout off) shows NO stack even with current_bet populated (byte-identical) but
+// keeps the ALL IN label. (Stack geometry is pinned in liveFeltChipStack.render.test.tsx.)
+describe("LiveFelt RPT committed-bet chip stack colors (viewerLayout)", () => {
+  it("all-in → red (rgb(184,31,31)) + ALL IN, and the standalone text-red-400 label is gone", () => {
     const s = [seat({ player_id: "a", seat_number: 1, is_all_in: true, current_bet: 12100000 })];
     const html = renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} portrait viewerLayout />);
-    expect(html).toContain("rgb(184,31,31)"); // the red all-in pill
+    expect(html).toContain("rgb(184,31,31)"); // the red all-in label
     expect(html).toContain("ALL IN");
-    expect(html).not.toContain("text-red-400"); // merged in → no standalone label
+    expect(html).not.toContain("text-red-400"); // moved to the felt stack → no standalone label
   });
 
-  it("regular committed bet → an emerald pill (not red)", () => {
+  it("regular committed bet → emerald label (not red)", () => {
     const s = [seat({ player_id: "a", seat_number: 1, current_bet: 200000 })];
     const html = renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} viewerLayout />);
     expect(html).toContain("146 62% 56%"); // emerald text/border
     expect(html).not.toContain("rgb(184,31,31)");
   });
 
-  it("operator path (viewerLayout off) renders NO bet pill even with current_bet, keeps ALL IN label", () => {
+  it("operator path (viewerLayout off) renders NO chip stack even with current_bet, keeps ALL IN label", () => {
     const s = [seat({ player_id: "a", seat_number: 1, is_all_in: true, current_bet: 999000 })];
     const html = renderToStaticMarkup(<LiveFelt seats={s} {...baseProps} />);
-    expect(html).not.toContain("rgb(184,31,31)"); // no red pill
-    expect(html).not.toContain("146 62% 56%"); // no emerald pill
+    expect(html).not.toContain("rgb(184,31,31)"); // no red stack
+    expect(html).not.toContain("146 62% 56%"); // no emerald stack
     expect(html).toContain("text-red-400"); // the standalone ALL IN label stays (as today)
   });
 });
