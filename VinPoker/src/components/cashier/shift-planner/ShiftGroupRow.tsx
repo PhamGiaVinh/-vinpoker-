@@ -15,9 +15,11 @@ interface Props {
   dealersById: Map<string, SchedulerDealer>;
   /** When provided, each assigned dealer row gets a remove (✕) control. */
   onRemove?: (templateId: string, dealerId: string) => void;
+  /** When provided (V2), the group header gets a "＋ Thêm dealer" button. */
+  onAddToTemplate?: (templateId: string) => void;
 }
 
-export default function ShiftGroupRow({ group, dealersById, onRemove }: Props) {
+export default function ShiftGroupRow({ group, dealersById, onRemove, onAddToTemplate }: Props) {
   const { template, assignments } = group;
   const short = assignments.length < template.needCount;
   const initials = (name: string) => name.trim().slice(0, 1).toUpperCase();
@@ -43,6 +45,15 @@ export default function ShiftGroupRow({ group, dealersById, onRemove }: Props) {
             <Badge variant="outline" className="bg-[hsl(var(--ds-preassign)_/_0.15)] text-[hsl(var(--ds-preassign))] border-[hsl(var(--ds-preassign)_/_0.3)] text-[10px]">
               Lead
             </Badge>
+          )}
+          {onAddToTemplate && (
+            <button
+              type="button"
+              onClick={() => onAddToTemplate(template.id)}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <UserPlus className="w-3 h-3" /> Thêm dealer
+            </button>
           )}
         </div>
       </div>
@@ -109,11 +120,20 @@ export default function ShiftGroupRow({ group, dealersById, onRemove }: Props) {
         );
       })}
 
-      {/* Shortage hint (read-only in Phase 1) */}
+      {/* Shortage hint — actionable when the V2 add handler is wired */}
       {short && (
         <div className="flex items-center gap-2 px-3 py-2 border-t border-dashed border-warning/30 text-[12px] text-warning/90">
           <UserPlus className="w-3.5 h-3.5" />
           Cần thêm {template.needCount - assignments.length} dealer cho khung {template.label}
+          {onAddToTemplate && (
+            <button
+              type="button"
+              onClick={() => onAddToTemplate(template.id)}
+              className="ml-auto rounded-md border border-warning/40 px-2 py-0.5 text-[11px] text-warning hover:bg-warning/10 transition-colors"
+            >
+              ＋ Thêm ngay
+            </button>
+          )}
         </div>
       )}
     </div>

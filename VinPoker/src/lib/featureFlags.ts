@@ -168,6 +168,16 @@ export const FEATURES = {
    */
   dealerShiftPlanner: true,
   /**
+   * Dealer Shift Planner V2 — guided 4-step redesign of the "Xếp lịch dealer"
+   * tab (owner-approved mockups 2026-07-02): week strip + Tạo lịch → Thêm thủ
+   * công (pick-from-list) → Rà soát → Phát hành & báo dealer (one action =
+   * save + publish + Telegram + app), actionable dealer requests, day/week
+   * image exports. Same RPCs as V1 (save_shift_run / publish_shift_run /
+   * send-shift-schedule) — pure UI/flow change. OFF until owner UAT; while
+   * false, the V1 ShiftPlannerTab renders unchanged (instant kill-switch).
+   */
+  shiftPlannerV2: false,
+  /**
    * Tracker Live Action Engine MVP — live per-action playback on the public
    * tournament viewer (/live/:id). While a hand is in_progress, the viewer
    * fast-polls so spectators see each recorded action in near-real-time
