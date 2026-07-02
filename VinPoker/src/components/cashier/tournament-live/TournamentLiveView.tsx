@@ -1053,7 +1053,7 @@ export function TournamentLiveView({
             chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
           />
           {isReplay && replayHand && (
-            <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} />
+            <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} hud={spectator && FEATURES.liveReplayHud} />
           )}
 
           {/* Public spectator-only broadcast action breakdown. Spectator-gated →
