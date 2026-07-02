@@ -69,12 +69,6 @@ Deno.serve(async (req) => {
       .eq("id", purchaseId)
       .maybeSingle();
     if (!purchase) return j({ error: "Purchase not found" }, 404);
-    if (purchase.status === "funded") {
-      return j({ success: true, already: true, purchase_id: purchase.id, purchase_status: "funded" });
-    }
-    if (purchase.status !== "committed") {
-      return j({ error: `Purchase status is ${purchase.status}, expected committed` }, 409);
-    }
 
     const { data: deal } = await admin
       .from("staking_deals")
@@ -83,10 +77,76 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!deal) return j({ error: "Deal not found" }, 404);
 
+    // Scope check FIRST — before any status information is returned (no cross-club probing).
     if (!isSuperAdmin && isCashier) {
       if (!deal.club_id) return j({ error: "Forbidden: deal không gắn CLB" }, 403);
       const { data: ok } = await admin.rpc("is_club_cashier", { _user_id: uid, _club_id: deal.club_id });
       if (!ok) return j({ error: "Forbidden: bạn không được gán cashier cho CLB này" }, 403);
+    }
+
+    // Recompute-and-flip helper so an idempotent retry can self-heal a deal left mid-flow.
+    async function recomputeDeal(): Promise<{ totalCommitted: number; totalFunded: number; newDealStatus: string | null }> {
+      const { data: rows } = await admin
+        .from("staking_purchases")
+        .select("status, percent")
+        .eq("deal_id", deal.id)
+        .limit(1000);
+      const live = (rows ?? []).filter((r: any) => r.status === "committed" || r.status === "funded");
+      const totalCommitted = live.filter((r: any) => r.status === "committed").reduce((s, r: any) => s + Number(r.percent), 0);
+      const totalFunded = live.filter((r: any) => r.status === "funded").reduce((s, r: any) => s + Number(r.percent), 0);
+      let newDealStatus: string | null = null;
+      // Flip to funded only when nothing is pending AND the offered percentage is fully funded
+      // (partial fills are closed via the explicit staking-close-early flow, not silently here).
+      if (totalCommitted === 0 && totalFunded > 0 && totalFunded >= Number(deal.percentage_sold)) {
+        newDealStatus = "funded";
+      }
+      if (newDealStatus) {
+        const { error: dUpd } = await admin
+          .from("staking_deals")
+          .update({
+            status: newDealStatus,
+            escrow_locked_at: new Date().toISOString(),
+            filled_percent: totalFunded,
+          })
+          .eq("id", deal.id)
+          .in("status", ["committing", "committed"]);
+        if (dUpd) throw new Error(dUpd.message);
+      }
+      return { totalCommitted, totalFunded, newDealStatus };
+    }
+
+    if (purchase.status === "funded") {
+      // Idempotent retry: also self-heal the deal flip if a prior call died mid-flow.
+      try { await recomputeDeal(); } catch (e: any) { console.error("self-heal recompute failed:", e?.message); }
+      return j({ success: true, already: true, purchase_id: purchase.id, purchase_status: "funded" });
+    }
+    if (purchase.status !== "committed") {
+      return j({ error: `Purchase status is ${purchase.status}, expected committed` }, 409);
+    }
+    // Deal must still be raising — no confirming money onto a dead/cancelled/locked deal.
+    if (!["committing", "committed"].includes(deal.status)) {
+      return j({ error: `Deal status is ${deal.status} — cannot confirm funding` }, 409);
+    }
+
+    // Compare-and-swap FIRST: only the caller that wins the committed→funded transition writes the
+    // ledger row (kills double-click / retryFetch-replay duplicate fund_lock entries).
+    const { data: won, error: pErr } = await admin
+      .from("staking_purchases")
+      .update({
+        status: "funded",
+        funded_at: new Date().toISOString(),
+      })
+      .eq("id", purchase.id)
+      .eq("status", "committed")
+      .select("id");
+    if (pErr) return j({ error: pErr.message }, 500);
+    if (!won || won.length === 0) {
+      // Lost the race (concurrent confirm or the 30-min auto-cancel cron). Report the truth.
+      const { data: pNow } = await admin.from("staking_purchases").select("status").eq("id", purchase.id).maybeSingle();
+      if (pNow?.status === "funded") {
+        return j({ success: true, already: true, purchase_id: purchase.id, purchase_status: "funded" });
+      }
+      return j({ error: `Purchase became ${pNow?.status ?? "unknown"} — funding NOT confirmed` }, 409);
     }
 
     const { error: txErr } = await admin.from("escrow_transactions").insert({
@@ -97,46 +157,25 @@ Deno.serve(async (req) => {
       performed_by_admin_id: uid,
       note: body?.note ?? `VND funded purchase ${purchase.reference_code}`,
     });
-    if (txErr) return j({ error: `Ledger write failed: ${txErr.message}` }, 500);
-
-    const { error: pErr } = await admin
-      .from("staking_purchases")
-      .update({
-        status: "funded",
-        funded_at: new Date().toISOString(),
-      })
-      .eq("id", purchase.id)
-      .eq("status", "committed");
-    if (pErr) return j({ error: pErr.message }, 500);
-
-    const { data: rows } = await admin
-      .from("staking_purchases")
-      .select("status, percent")
-      .eq("deal_id", deal.id)
-      .limit(500);
-    const live = (rows ?? []).filter((r: any) => r.status === "committed" || r.status === "funded");
-    const totalCommitted = live.filter((r: any) => r.status === "committed").reduce((s, r: any) => s + Number(r.percent), 0);
-    const totalFunded = live.filter((r: any) => r.status === "funded").reduce((s, r: any) => s + Number(r.percent), 0);
-
-    let newDealStatus: string | null = null;
-    if (totalCommitted === 0 && totalFunded > 0) {
-      newDealStatus = "funded";
+    if (txErr) {
+      // Ledger is the money truth — if it cannot be written, revert the transition (best effort).
+      const { error: revertErr } = await admin
+        .from("staking_purchases")
+        .update({ status: "committed", funded_at: null })
+        .eq("id", purchase.id)
+        .eq("status", "funded");
+      if (revertErr) console.error("CRITICAL: ledger failed AND revert failed:", revertErr.message);
+      return j({ error: `Ledger write failed: ${txErr.message}` }, 500);
     }
 
-    if (newDealStatus) {
-      const { error: dUpd } = await admin
-        .from("staking_deals")
-        .update({
-          status: newDealStatus,
-          escrow_locked_at: new Date().toISOString(),
-          filled_percent: totalFunded,
-        })
-        .eq("id", deal.id)
-        .in("status", ["committing", "committed"]);
-      if (dUpd) return j({ error: dUpd.message }, 500);
+    let totalCommitted = 0, totalFunded = 0, newDealStatus: string | null = null;
+    try {
+      ({ totalCommitted, totalFunded, newDealStatus } = await recomputeDeal());
+    } catch (e: any) {
+      return j({ error: e?.message ?? "deal recompute failed" }, 500);
     }
 
-    await admin.from("staking_audit_logs").insert({
+    const { error: auditErr } = await admin.from("staking_audit_logs").insert({
       deal_id: deal.id,
       action: "admin_confirmed_funded",
       performed_by: uid,
@@ -152,6 +191,7 @@ Deno.serve(async (req) => {
         total_committed_percent: totalCommitted,
       },
     });
+    if (auditErr) console.error("admin-confirm-funded: audit insert FAILED:", auditErr.message);
 
     // === IN-APP NOTIFICATIONS ===
     try {

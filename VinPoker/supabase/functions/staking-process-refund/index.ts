@@ -48,24 +48,20 @@ Deno.serve(async (req) => {
       return json({ error: `Deal status is ${deal.status}, cannot refund` }, 400);
     }
 
-    // Cashier scope check
-    if (!isSuper && deal.club_id) {
+    // Cashier scope check. Club-less deals are super_admin-only (mirrors admin-confirm-funded) —
+    // otherwise a cashier of ANY club could refund deals with no club binding.
+    if (!isSuper) {
+      if (!deal.club_id) return json({ error: "Forbidden: deal không gắn CLB — cần super admin" }, 403);
       const { data: ok } = await admin.rpc("is_club_cashier", { _user_id: uid, _club_id: deal.club_id });
       if (!ok) return json({ error: "Not cashier for this club" }, 403);
     }
 
-    // Get all funded backers
-    const { data: purchases } = await admin
-      .from("staking_purchases")
-      .select("id, backer_id, percent, amount_vnd")
-      .eq("deal_id", deal.id)
-      .eq("status", "funded")
-      .limit(500);
-    const backers = purchases ?? [];
     const label = deal.custom_event_name ?? `Deal #${String(deal.id).slice(0, 6)}`;
 
-    // Update deal status
-    await admin.from("staking_deals")
+    // 1) Compare-and-swap the deal FIRST — the single authority switch. 0 rows = someone else got
+    //    there first (concurrent refund, or a release path moved the deal on) → do NOTHING.
+    //    This is the refund/release mutual-exclusion point.
+    const { data: dealWon, error: dCasErr } = await admin.from("staking_deals")
       .update({
         status: "deal_refunded",
         refund_status: "completed",
@@ -73,28 +69,56 @@ Deno.serve(async (req) => {
         refunded_by: uid,
         refunded_at: new Date().toISOString(),
       })
-      .eq("id", deal.id);
+      .eq("id", deal.id)
+      .in("status", ["funded", "locked", "result_entered", "result_verified"])
+      .select("id");
+    if (dCasErr) return json({ error: dCasErr.message }, 500);
+    if (!dealWon || dealWon.length === 0) {
+      const { data: dNow } = await admin.from("staking_deals").select("status").eq("id", deal.id).maybeSingle();
+      return json({ error: `Deal is now ${dNow?.status ?? "unknown"} — refund NOT performed` }, 409);
+    }
 
-    // Record escrow transactions (refund)
+    // 2) Flip funded purchases → refunded and use the UPDATE's returned rows as the authoritative
+    //    refund set (no read-then-write gap, no silent .limit() truncation). execute-release pays
+    //    only status='funded' rows, so this also starves any in-flight release of payees.
+    const { data: refunded, error: pErr } = await admin
+      .from("staking_purchases")
+      .update({ status: "refunded" })
+      .eq("deal_id", deal.id)
+      .eq("status", "funded")
+      .select("id, backer_id, percent, amount_vnd");
+    if (pErr) {
+      console.error("staking-process-refund: purchase flip FAILED after deal CAS:", pErr.message);
+      return json({ error: `Deal marked refunded but purchases not flipped: ${pErr.message} — needs admin attention` }, 500);
+    }
+    const backers = refunded ?? [];
+
+    // 3) Ledger rows — error-checked; failures are collected and surfaced, never swallowed.
+    const ledgerFailures: string[] = [];
     for (const p of backers) {
-      await admin.from("escrow_transactions").insert({
+      const { error: txErr } = await admin.from("escrow_transactions").insert({
         deal_id: deal.id,
         transaction_type: "refund",
         amount_vnd: p.amount_vnd,
         performed_by_admin_id: uid,
         note: `Refund to backer ${p.backer_id} (${p.percent}%) — ${reason}`,
-      }).then(() => undefined, () => undefined);
+      });
+      if (txErr) {
+        ledgerFailures.push(`${p.id}: ${txErr.message}`);
+        console.error(`staking-process-refund: LEDGER WRITE FAILED for purchase ${p.id}:`, txErr.message);
+      }
     }
 
     // Audit
-    await admin.from("staking_audit_logs").insert({
+    const { error: auditErr } = await admin.from("staking_audit_logs").insert({
       deal_id: deal.id,
       action: "refunded",
       performed_by: uid,
       old_status: deal.status,
       new_status: "deal_refunded",
-      metadata: { reason, backer_count: backers.length },
+      metadata: { reason, backer_count: backers.length, ledger_failures: ledgerFailures.length },
     });
+    if (auditErr) console.error("staking-process-refund: audit insert FAILED:", auditErr.message);
 
     // === IN-APP NOTIFICATIONS ===
     try {
@@ -156,7 +180,13 @@ Deno.serve(async (req) => {
       }
     } catch (_) { /* non-critical */ }
 
-    return json({ success: true, refunded_backers: backers.length, deal_id: deal.id });
+    return json({
+      success: true,
+      refunded_backers: backers.length,
+      deal_id: deal.id,
+      ledger_failures: ledgerFailures.length,
+      ...(ledgerFailures.length ? { warning: "một số dòng sổ quỹ ghi lỗi — cần đối chiếu thủ công", failed_purchases: ledgerFailures } : {}),
+    });
   } catch (e: any) {
     return json({ error: e.message ?? "internal" }, 500);
   }
