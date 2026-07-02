@@ -42,7 +42,9 @@ import {
   isRunout,
   type EngineState,
   type BlindLevelSnapshot,
+  type ClockLevel,
 } from "@/lib/tracker-poker/trackerEngine";
+import { FEATURES } from "@/lib/featureFlags";
 import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
 import { survivorsAfterHand } from "./postHand";
 import {
@@ -154,6 +156,12 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [sbAmount, setSbAmount] = useState(0);
   const [bbAmount, setBbAmount] = useState(0);
   const [liveLevelNumber, setLiveLevelNumber] = useState<number | null>(null);
+  // A1 (trackerBlindAutoSeed): the FULL live level from the 25s poll (amounts, not just
+  // the number) so the stale-level banner can show next-hand SB/BB, + when the blind
+  // snapshot was fetched (provenance shown in BlindSetupPanel). Both are inert extra
+  // state unless the flag-gated UI consumes them.
+  const [liveLevel, setLiveLevel] = useState<ClockLevel | null>(null);
+  const [blindFetchedAt, setBlindFetchedAt] = useState<Date | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [syncPhase, setSyncPhase] = useState<SyncPhase>("idle");
   const [syncLabel, setSyncLabel] = useState<string | null>(null);
@@ -561,8 +569,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       const snap = snapshotBlindLevel((data as any)?.current_level ?? null);
       setBlindLevelSnapshot(snap);
       setLiveLevelNumber(snap.level_number);
-      setSbAmount(snap.small_blind);
-      setBbAmount(snap.big_blind);
+      setBlindFetchedAt(new Date());
+      // A1 zero-guard (flag ON): a failed/empty clock (BB 0) must NOT auto-fill —
+      // leave the inputs manual (the levelMissing warning shows) instead of seeding 0.
+      // Flag OFF → today's exact behavior (set whatever the snapshot holds).
+      if (!FEATURES.trackerBlindAutoSeed || snap.big_blind > 0) {
+        setSbAmount(snap.small_blind);
+        setBbAmount(snap.big_blind);
+      }
     })();
     return () => {
       cancelled = true;
@@ -573,7 +587,9 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (!handStarted) return;
     const id = setInterval(async () => {
       const { data } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
-      setLiveLevelNumber((data as any)?.current_level?.level_number ?? null);
+      const cl = ((data as any)?.current_level ?? null) as ClockLevel | null;
+      setLiveLevelNumber(cl?.level_number ?? null);
+      setLiveLevel(cl); // A1: keep the full level so the banner can show next-hand SB/BB
     }, 25000);
     return () => clearInterval(id);
   }, [handStarted, tournamentId]);
@@ -680,7 +696,12 @@ export function useStandaloneHandInput(tournamentId: string) {
   }, [handStarted, handNumber, currentStreet, actorPlayer?.seat_number]);
 
   // ----- Handlers ---------------------------------------------------------
+  // A2 re-entry guard: `submitting` disables the button, but a fast double-tap can fire
+  // twice before React flushes state — the ref blocks the second call synchronously so a
+  // duplicate/orphan hand can never be started.
+  const startingRef = useRef(false);
   const handleStartHand = async () => {
+    if (startingRef.current) return;
     if (!tableId || !handNumber || !user?.id) return;
     if (!buttonConfirmed) {
       toast.error("Chọn ghế nút chia bài (BTN) trước khi bắt đầu hand");
@@ -698,6 +719,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       );
       return;
     }
+    startingRef.current = true; // set AFTER every early-return guard (released in finally)
     setSubmitting(true);
     markSync("sending", `Bắt đầu Hand #${Number(handNumber)}`);
     try {
@@ -722,6 +744,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       markSync("error");
       if (orphanHand) setOrphanHand(null);
     } finally {
+      startingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -806,28 +829,31 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  // Returns whether the action was ACCEPTED (recorded locally + not rejected by the
+  // server). Existing callers ignore the return; the A1 one-tap blind flow uses it so a
+  // rejected SB stops the sequence instead of blindly posting the BB + confirming.
   const handleAction = async (
     playerId: string,
     actionType: string,
     amountOverride?: number,
     betToOverride?: number, // racetrack ActionDock forwards the "bet to" street TOTAL directly
-  ) => {
+  ): Promise<boolean> => {
     const player = players.find((p) => p.player_id === playerId);
-    if (!player) return;
+    if (!player) return false;
     if (isReadOnly) {
       toast.error("Phiên làm việc đã hết hạn");
-      return;
+      return false;
     }
     // Workflow v2 HARD-GATE: blind posts only during setup_blinds; betting actions
     // only during an action state. Never bypass the state machine.
     const isPost = actionType.startsWith("post_");
     if (isPost && workflowState !== "setup_blinds") {
       toast.error("Chưa tới bước đặt blind");
-      return;
+      return false;
     }
     if (!isPost && !isActionState(workflowState)) {
       toast.error("Chưa tới bước hành động của vòng này");
-      return;
+      return false;
     }
 
     // amountOverride is post-only (Guard 3): never reaches bet/raise sizing.
@@ -873,7 +899,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         const { added, allIn } = betToAdded(betTo, player.current_bet, player.current_stack);
         if (added <= 0) {
           toast.error("Mức cược phải lớn hơn cược hiện tại của ghế");
-          return;
+          return false;
         }
         amount = added;
         newPlayers[idx] = {
@@ -900,7 +926,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         amount = postOverride ?? (parseInt(betAmount) || 0);
         if (amount <= 0) {
           toast.error("Nhập SB");
-          return;
+          return false;
         }
         const actual = Math.min(amount, player.current_stack);
         const allIn = actual >= player.current_stack;
@@ -918,7 +944,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         amount = postOverride ?? (parseInt(betAmount) || 0);
         if (amount <= 0) {
           toast.error("Nhập BB");
-          return;
+          return false;
         }
         const actual = Math.min(amount, player.current_stack);
         const allIn = actual >= player.current_stack;
@@ -994,9 +1020,11 @@ export function useStandaloneHandInput(tournamentId: string) {
         setSelectedActorId(null);
         toast.error(friendlyValidationError(rejCode, rejMsg), { description: `Mã lỗi: ${rejCode}` });
         markSync("error");
+        return false;
       } else if (rejMsg) {
         toast.error(rejMsg);
         markSync("error");
+        return false;
       } else {
         if ((data as any)?.validation?.code) {
           toast.warning(
@@ -1017,6 +1045,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         );
       }
     }
+    return true;
   };
 
   const handleDockAction = (type: string, betTo?: number) => {
@@ -1049,6 +1078,67 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
     setBlindsConfirmedLocal(true);
   };
+  // A1 (trackerBlindAutoSeed) one-tap blind posting: post SB (unless dead) + BB with the
+  // CONFIRMED on-screen amounts, then confirm — 3 taps → 1. A confirm assist, never a
+  // silent mutate: the operator sees (and can edit) the amounts before tapping, and the
+  // zero-guard blocks posting a 0 blind.
+  //
+  // IMPORTANT: the two posts must NOT run as sequential awaits in one closure —
+  // handleAction reads players/actions/nextActionOrder from ITS render's closure, so a
+  // second call before a re-render would reuse the same action_order and overwrite the
+  // SB's setPlayers update. Instead this is a tiny step machine: the tap posts the SB;
+  // an effect posts the BB on the NEXT render (fresh closure); a second step confirms.
+  // A rejected step stops the chain (an accepted SB stays — it WAS recorded).
+  const [autoBlindStep, setAutoBlindStep] = useState<null | "bb" | "confirm">(null);
+  const handlePostBothBlinds = async () => {
+    if (isReadOnly) {
+      toast.error("Phiên làm việc đã hết hạn");
+      return;
+    }
+    if (autoBlindStep !== null) return; // chain already running (double-tap guard)
+    const sbPlayer = players.find((p) => p.seat_number === blindSbSeat);
+    const bbPlayer = players.find((p) => p.seat_number === blindBbSeat);
+    if (!bbPlayer || bbAmount <= 0 || (!effectiveDeadSb && (!sbPlayer || sbAmount <= 0))) {
+      toast.error("Chưa đủ thông tin blind (ghế/số tiền) — kiểm tra lại SB/BB");
+      return;
+    }
+    if (effectiveDeadSb || sbPosted || !sbPlayer) {
+      setAutoBlindStep("bb"); // nothing to post for SB → go straight to the BB step
+      return;
+    }
+    const ok = await handleAction(sbPlayer.player_id, "post_sb", sbAmount);
+    if (ok) setAutoBlindStep("bb");
+  };
+  // Step "bb": runs on the render AFTER the SB post flushed → fresh closure.
+  useEffect(() => {
+    if (autoBlindStep !== "bb") return;
+    if (bbPosted) {
+      setAutoBlindStep("confirm");
+      return;
+    }
+    const bbPlayer = players.find((p) => p.seat_number === blindBbSeat);
+    if (!bbPlayer || bbAmount <= 0) {
+      setAutoBlindStep(null);
+      return;
+    }
+    let cancelled = false;
+    void handleAction(bbPlayer.player_id, "post_bb", bbAmount).then((ok) => {
+      if (!cancelled) setAutoBlindStep(ok ? "confirm" : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // players/blindBbSeat/bbAmount/bbPosted are read from THIS render's fresh closure;
+    // the effect only fires on step changes by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBlindStep]);
+  // Step "confirm": both blinds accepted → confirm (the derived sbPosted/bbPosted are
+  // fresh here, but confirm directly — this step only runs after accepted posts).
+  useEffect(() => {
+    if (autoBlindStep !== "confirm") return;
+    setBlindsConfirmedLocal(true);
+    setAutoBlindStep(null);
+  }, [autoBlindStep]);
   // P2-3: toggle "dead small blind" (no SB this hand). Clearing it after an SB was
   // already posted is harmless — sbPosted then drives the normal requirement again.
   const handleToggleDeadSb = () => setDeadSb((v) => !v);
@@ -1488,6 +1578,9 @@ export function useStandaloneHandInput(tournamentId: string) {
     bbAmount,
     setBbAmount,
     liveLevelNumber,
+    liveLevel,
+    blindFetchedAt,
+    handlePostBothBlinds,
     sbPosted,
     bbPosted,
     blindsConfirmed,

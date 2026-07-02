@@ -73,3 +73,41 @@ describe("BlindSetupPanel (engine-mode blind setup phase)", () => {
     expect(html).toContain("manual override");
   });
 });
+
+// A1 (trackerBlindAutoSeed) — the additive provenance + one-tap props. Absent →
+// byte-identical to today (the flag-OFF operator path never passes them).
+describe("BlindSetupPanel A1 blind auto-seed (additive props)", () => {
+  it("without the new props the panel renders no one-tap button and no provenance line", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} />);
+    expect(html).not.toContain("Đăng blind &amp; xác nhận");
+    expect(html).not.toContain("Tự lấy từ clock giải");
+  });
+
+  it("with provenance + onPostBoth it shows the source line and the one-tap button with amounts", () => {
+    const html = renderToStaticMarkup(
+      <BlindSetupPanel {...baseProps} provenance="SB 100 · BB 200 · lấy 14:05" onPostBoth={() => {}} />
+    );
+    expect(html).toContain("Tự lấy từ clock giải");
+    expect(html).toContain("SB 100 · BB 200 · lấy 14:05");
+    expect(html).toContain("Đăng blind &amp; xác nhận");
+    expect(html).toContain("SB 100 / BB 200"); // the operator SEES what will be posted
+  });
+
+  it("zero-guard: a 0 BB never shows the one-tap button (manual entry only)", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} bbAmount={0} onPostBoth={() => {}} />);
+    expect(html).not.toContain("Đăng blind &amp; xác nhận");
+  });
+
+  it("already posted → no one-tap button (nothing to double-post)", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} sbPosted bbPosted onPostBoth={() => {}} />);
+    expect(html).not.toContain("Đăng blind &amp; xác nhận");
+  });
+
+  it("dead SB: the one-tap button works with only a valid BB and says SB chết", () => {
+    const html = renderToStaticMarkup(
+      <BlindSetupPanel {...baseProps} deadSb onToggleDeadSb={() => {}} sbAmount={0} onPostBoth={() => {}} />
+    );
+    expect(html).toContain("Đăng blind &amp; xác nhận");
+    expect(html).toContain("SB chết");
+  });
+});

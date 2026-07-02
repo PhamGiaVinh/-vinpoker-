@@ -45,4 +45,32 @@ describe("SetupHandPanel (engine setup step)", () => {
     );
     expect(withLast).toContain("Void Last Hand (abcdef12)");
   });
+
+  // A2 (trackerNextHandExpress) — additive expressLabel. Absent → byte-identical button.
+  it("expressLabel absent → the button reads 'Bắt đầu Hand' (flag-OFF operator path)", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel {...base} handNumber={5} buttonConfirmed={true} lastHandId={null} />
+    );
+    expect(html).toContain("Bắt đầu Hand");
+    expect(html).not.toContain("Ván tiếp theo");
+  });
+
+  it("expressLabel present → the button becomes the express CTA (same disabled rules)", () => {
+    const html = renderToStaticMarkup(
+      <SetupHandPanel
+        {...base}
+        handNumber={12}
+        buttonConfirmed={true}
+        lastHandId="abcdef1234567890"
+        expressLabel="⚡ Ván tiếp theo — Hand #12"
+      />
+    );
+    expect(html).toContain("Ván tiếp theo — Hand #12");
+    expect(html).not.toContain(">Bắt đầu Hand<");
+    // still disabled without confirmation
+    const disabled = renderToStaticMarkup(
+      <SetupHandPanel {...base} handNumber={12} buttonConfirmed={false} lastHandId="x" expressLabel="⚡ Ván tiếp theo — Hand #12" />
+    );
+    expect(disabled).toContain('disabled=""');
+  });
 });
