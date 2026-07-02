@@ -675,6 +675,17 @@ export const FEATURES = {
    * before (first 12 ranks, one row per rank, no band grouping).
    */
   tvPayoutBandedDisplay: false,
+  /**
+   * Player History (Phase 1 — data foundation). When ON, the cashier offline buy-in form shows an
+   * optional "Số điện thoại" field with a member lookup, so walk-ins are anchored to ONE per-club
+   * `club_members` row and their entries/results accumulate. Default **OFF** (kill-switch). It is a
+   * UI gate ONLY — the real server-side switch is the per-club `club_settings.player_history_enabled`
+   * flag: with that false, the linking trigger + offline RPC do nothing and no member rows are created,
+   * so the DB stays fully inert. Flip this true (and enable the per-club flag) ONLY after the three
+   * source-only migrations (20261208/09/10) are applied live in a controlled session and UAT passes.
+   * While false the cashier form is byte-identical to today (no phone field, no lookup).
+   */
+  playerHistory: false,
 } as const;
 
 /**
