@@ -78,7 +78,9 @@ looks; a dashboard review is a money-definition review first, a design review se
 ## Example 3 — Forecast review: entries for a 500M GTD event
 
 Forecast presented: **median 87 entries, P5–P95 [61, 118]** (ridge model, walk-forward).
-Overlay break-even at the proposed structure: **95 entries**.
+Overlay break-even at the proposed structure: **95 entries** (net prize contribution
+5,300,000/entry; this simplified example assumes direct_costs − other_revenue = 0 — real
+direct costs raise it, e.g. 41M of direct costs → ceil(541M / 5.3M) = 103 entries).
 
 - **Baseline comparison:** last similar event (same weekday/buy-in tier) = 82 entries; trailing
   median of 6 similar events = 84. Model median 87 is close to baseline — expected, not a flaw.

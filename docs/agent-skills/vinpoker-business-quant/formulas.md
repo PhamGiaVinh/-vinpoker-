@@ -158,7 +158,10 @@ Overlay Break-even Entries =
 **Inputs**
 - *Guarantee* — the GTD amount.
 - *direct_costs* — event direct costs (wages, marketing, comped F&B COGS, other).
-- *other_revenue* — non-fee event revenue offsetting costs.
+- *other_revenue* — **club-retained** other event revenue only (same definition as
+  other_event_revenue in formula 4); exclude the prize pool, staking escrow, liabilities, and
+  all pass-through funds. "Non-fee" here means club income that is not the entry fee — never
+  the pass-through pool portion of a buy-in.
 - *net_prize_contribution_per_entry* — the prize-pool portion of one entry (buy-in minus
   retained fee), i.e. what each entry adds toward covering the guarantee.
 
