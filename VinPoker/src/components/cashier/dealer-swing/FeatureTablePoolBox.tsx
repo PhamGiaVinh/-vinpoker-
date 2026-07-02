@@ -1,66 +1,62 @@
 /**
- * FeatureTablePoolBox — Patch 1 (UI mock). Right-rail "Đội dealer tâm điểm" box
- * for the Dealer Swing operator panel: per-mode counts, a mode filter, and a
- * per-table list with a "Cấu hình" entry to the config dialog + a pool preview
- * (member names, primary star, live availability from the in-shift dealers).
- * Mock/local store only (no DB/RPC). Rendered only when FEATURES.dealerFeatureTables.
+ * FeatureTablePoolBox — right-rail "Bàn tâm điểm / Final" LEAN SUMMARY
+ * (Dealer Swing UI declutter, 2026-07-02).
+ *
+ * Shows ONLY special (feature/final) tables + their reserved pool — the one thing the
+ * battle map does NOT already show. The old full per-table list (EVERY table + a mode
+ * filter + a per-table config gear) used to render here and re-listed all ~100 tables,
+ * duplicating the map and towering over the right rail. That full CONFIG surface moved
+ * into FeatureTableManageDialog, opened on demand via the "Cấu hình…" header button, so
+ * the always-on rail now holds a read-only summary of just the special tables.
+ *
+ * NO logic/RPC change: same store (getProfile/isSpecial), same enforcement banner, same
+ * FeatureTableConfigDialog (now reached through the manage dialog). Only WHICH rows render
+ * in the rail changed (special-only) + WHERE editing lives (a dialog). Rendered only when
+ * FEATURES.dealerFeatureTables (gated at the call site).
  */
 import { useMemo, useState } from "react";
-import { Settings2, Star } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { FeatureTableBadge } from "./FeatureTableBadge";
-import { FeatureTableConfigDialog, type PoolDealer } from "./FeatureTableConfigDialog";
+import { FeatureTableManageDialog } from "./FeatureTableManageDialog";
 import {
-  getProfile, isSpecial, matchesFilter, useFeatureTableVersion,
+  getProfile, isSpecial, useFeatureTableVersion,
   useFeatureTableRules, useFeatureEnforcementEnabled,
-  type FeatureFilter,
 } from "./featureTableMock";
-
-const FILTERS: { key: FeatureFilter; label: string }[] = [
-  { key: "all", label: "Tất cả" },
-  { key: "normal", label: "Thường" },
-  { key: "feature", label: "Tâm điểm" },
-  { key: "final", label: "Final" },
-];
 
 export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: string | null; tables: any[]; dealers: any[] }) {
   const ver = useFeatureTableVersion();
   const { loading, error, refetch } = useFeatureTableRules(clubId); // P1-B: reads via get_table_dealer_rules
   const { enabled: enforcementOn } = useFeatureEnforcementEnabled();
-  const [filter, setFilter] = useState<FeatureFilter>("all");
-  const [cfg, setCfg] = useState<{ tableId: string; tableName: string } | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
 
-  // dealers in shift → {id,name} for the pool picker; + a state lookup for availability
-  const poolDealers: PoolDealer[] = useMemo(() => {
-    const seen = new Set<string>();
-    const out: PoolDealer[] = [];
-    for (const d of dealers ?? []) {
-      // dealer_attendance row: dealer_id IS the dealers.id FK (the inner dealers join does not select id)
-      const id = d?.dealer_id;
-      if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: d?.dealers?.full_name ?? "—" }); }
-    }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
-  }, [dealers]);
-
+  // in-shift dealer → live state, for the pool availability label
   const stateByDealer = useMemo(() => {
     const m = new Map<string, string>();
     for (const d of dealers ?? []) { if (d?.dealer_id) m.set(d.dealer_id, d.current_state ?? "available"); }
     return m;
   }, [dealers]);
 
-  const counts = useMemo(() => {
-    let normal = 0, feature = 0, final = 0;
-    for (const t of tables ?? []) {
-      const p = getProfile(t.id);
-      if (p.isFinal) final++;
-      else if (p.tableMode === "feature") feature++;
-      else normal++;
-    }
-    return { normal, feature, final };
-  }, [tables, ver]);
+  // ONLY special tables — never the normal ones (the battle map is the source of truth for those).
+  const special = useMemo(
+    () => (tables ?? []).filter((t) => isSpecial(getProfile(t.id))),
+    [tables, ver],
+  );
 
-  const shown = (tables ?? []).filter((t) => matchesFilter(getProfile(t.id), filter));
+  const counts = useMemo(() => {
+    let feature = 0, final = 0;
+    for (const t of special) {
+      if (getProfile(t.id).isFinal) final++;
+      else feature++;
+    }
+    return { feature, final };
+  }, [special, ver]);
+
+  const emptyPoolCount = useMemo(
+    () => special.filter((t) => getProfile(t.id).pool.length === 0).length,
+    [special, ver],
+  );
 
   const availLabel = (st: string | undefined) =>
     st === "on_break" ? { t: "nghỉ", c: "text-[hsl(var(--ds-active))]" }
@@ -70,8 +66,16 @@ export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: strin
   return (
     <Card className="p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="font-display text-sm font-bold tracking-wide text-foreground">Đội dealer tâm điểm</span>
-        {loading && <span className="text-[10px] text-muted-foreground">Đang tải…</span>}
+        <span className="font-display text-sm font-bold tracking-wide text-foreground">Bàn tâm điểm / Final</span>
+        <div className="flex items-center gap-2">
+          {loading && <span className="text-[10px] text-muted-foreground">Đang tải…</span>}
+          <button
+            onClick={() => setManageOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Settings2 className="h-3 w-3" aria-hidden="true" /> Cấu hình…
+          </button>
+        </div>
       </div>
 
       {enforcementOn === false && (
@@ -86,56 +90,34 @@ export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: strin
         </div>
       )}
 
-      {/* counts */}
-      <div className="mb-2 grid grid-cols-3 gap-1.5 text-center">
-        {[["Thường", counts.normal, "text-foreground"], ["Tâm điểm", counts.feature, "text-success"], ["Final", counts.final, "text-amber-400"]].map(
-          ([label, n, c]) => (
-            <div key={label as string} className="rounded-md border border-border bg-muted/30 py-1">
-              <div className={cn("font-mono text-sm font-bold", c as string)}>{n as number}</div>
-              <div className="text-[10px] text-muted-foreground">{label as string}</div>
-            </div>
-          ),
-        )}
+      {/* compact summary line (special-only) */}
+      <div className="mb-2 text-[11px] text-muted-foreground">
+        Tâm điểm <b className="text-success">{counts.feature}</b> · Final <b className="text-amber-400">{counts.final}</b>
       </div>
 
-      {/* filter */}
-      <div className="mb-2 flex flex-wrap gap-1">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-              filter === f.key ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-muted/50",
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {emptyPoolCount > 0 && (
+        <button
+          onClick={() => setManageOpen(true)}
+          className="mb-2 flex w-full items-center gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-2 py-1.5 text-left text-[11px] text-warning transition-colors hover:bg-warning/10"
+        >
+          ⚠ {emptyPoolCount} bàn chưa có đội — bấm để cấu hình
+        </button>
+      )}
 
-      {/* table list */}
-      <div className="max-h-72 space-y-1 overflow-auto">
-        {shown.length === 0 && (
-          <div className="px-2 py-4 text-center text-[11px] text-muted-foreground">Không có bàn phù hợp</div>
-        )}
-        {shown.map((t) => {
-          const p = getProfile(t.id);
-          return (
-            <div key={t.id} className="rounded-md border border-border bg-muted/20 p-2">
-              <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{t.table_name}</span>
-                <FeatureTableBadge tableId={t.id} />
-                <button
-                  onClick={() => setCfg({ tableId: t.id, tableName: t.table_name ?? "Bàn" })}
-                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  title="Cấu hình bàn"
-                  aria-label="Cấu hình bàn"
-                >
-                  <Settings2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              {isSpecial(p) && (
+      {special.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border px-2 py-3 text-center text-[11px] text-muted-foreground">
+          Chưa có bàn tâm điểm — nhấn <b className="text-foreground">Cấu hình…</b> để đặt
+        </div>
+      ) : (
+        <div className="max-h-72 space-y-1 overflow-auto">
+          {special.map((t) => {
+            const p = getProfile(t.id);
+            return (
+              <div key={t.id} className="rounded-md border border-border bg-muted/20 p-2">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{t.table_name}</span>
+                  <FeatureTableBadge tableId={t.id} />
+                </div>
                 <div className="mt-1 space-y-0.5">
                   {p.pool.length === 0 ? (
                     <div className="text-[11px] text-warning">⚠ Chưa có dealer — sẽ báo thiếu</div>
@@ -143,27 +125,26 @@ export function FeatureTablePoolBox({ clubId, tables, dealers }: { clubId: strin
                     const av = availLabel(stateByDealer.get(m.dealerId));
                     return (
                       <div key={m.dealerId} className="flex items-center gap-1.5 text-[11px]">
-                        {m.isPrimary && <Star className="h-2.5 w-2.5 shrink-0 text-amber-400" aria-hidden="true" />}
+                        {m.isPrimary && <span className="shrink-0 text-amber-400" aria-hidden="true">★</span>}
                         <span className="min-w-0 flex-1 truncate text-muted-foreground">{m.name}</span>
                         <span className={cn("shrink-0", av.c)}>{av.t}</span>
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {cfg && clubId && (
-        <FeatureTableConfigDialog
-          open={!!cfg}
-          onOpenChange={(o) => { if (!o) setCfg(null); }}
-          tableId={cfg.tableId}
-          tableName={cfg.tableName}
+      {clubId && (
+        <FeatureTableManageDialog
+          open={manageOpen}
+          onOpenChange={setManageOpen}
           clubId={clubId}
-          dealers={poolDealers}
+          tables={tables}
+          dealers={dealers}
         />
       )}
     </Card>
