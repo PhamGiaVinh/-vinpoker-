@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SeriesEvent } from "./nativeData";
-import { forecastTurnout, OVERLAY_FEED_N, type UpcomingEvent } from "./turnoutForecast";
+import { forecastTurnout, forecastToOverlayFeed, FEED_LOG_SD_FALLBACK, type UpcomingEvent } from "./turnoutForecast";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -122,7 +122,43 @@ describe("forecastTurnout — robustness", () => {
     expect(Number.isFinite(r.low!) && Number.isFinite(r.high!)).toBe(true);
     expect(r.coefContributions.every((c) => Number.isFinite(c.impactPct))).toBe(true);
   });
-  it("OVERLAY_FEED_N is the documented constant", () => {
-    expect(OVERLAY_FEED_N).toBe(10000);
+});
+
+describe("forecastToOverlayFeed (explicit forecast→overlay adapter feed)", () => {
+  it("recovers logSd from the band and round-trips: exp(ln(base) ± Z·logSd) ≈ low/high", () => {
+    const fc = forecastTurnout(exactSet([1, 2, 3, 4, 5, 6, 7, 8]), future(1_500_000, null));
+    expect(fc.available).toBe(true);
+    const feed = forecastToOverlayFeed(fc, 1_500_000);
+    expect(feed).not.toBeNull();
+    const Z = 1.2816;
+    // band was rounded to integers → allow a loose tolerance on the round-trip
+    expect(Math.exp(Math.log(feed!.base) + Z * feed!.logSd)).toBeGreaterThan(fc.base! * 0.9);
+    expect(feed!.logSd).toBeGreaterThan(0);
+    expect(feed!.buyIn).toBe(1_500_000);
+    expect(feed!.label).toContain("Hypothesis");
+  });
+
+  it("owner override replaces the center and is labeled as edited", () => {
+    const fc = forecastTurnout(exactSet([1, 2, 3, 4, 5, 6, 7, 8]), future(1_500_000, null));
+    const feed = forecastToOverlayFeed(fc, 1_500_000, 123);
+    expect(feed!.base).toBe(123);
+    expect(feed!.label).toContain("sửa tay");
+  });
+
+  it("returns null when the forecast is unavailable or inputs unusable", () => {
+    const unavailable = forecastTurnout(exactSet([1]), future(1_500_000, null)); // N ≤ 1 → gated
+    expect(forecastToOverlayFeed(unavailable, 1_500_000)).toBeNull();
+    const fc = forecastTurnout(exactSet([1, 2, 3, 4, 5, 6, 7, 8]), future(1_500_000, null));
+    expect(forecastToOverlayFeed(fc, null)).toBeNull();
+    expect(forecastToOverlayFeed(fc, 0)).toBeNull();
+    expect(forecastToOverlayFeed(fc, 1_500_000, 0)).toBeNull(); // degenerate override
+    expect(forecastToOverlayFeed(null, 1_500_000)).toBeNull();
+  });
+
+  it("falls back to FEED_LOG_SD_FALLBACK on a degenerate band", () => {
+    const fc = forecastTurnout(exactSet([1, 2, 3, 4, 5, 6, 7, 8]), future(1_500_000, null));
+    const degenerate = { ...fc, low: fc.base, high: fc.base }; // no width to invert
+    const feed = forecastToOverlayFeed(degenerate, 1_500_000);
+    expect(feed!.logSd).toBe(FEED_LOG_SD_FALLBACK);
   });
 });

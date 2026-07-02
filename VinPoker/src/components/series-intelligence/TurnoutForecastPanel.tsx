@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TrendingUp, FlaskConical, AlertTriangle, Dice5 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,13 @@ import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
-import { forecastTurnout, OVERLAY_FEED_N, type ForecastConfidence } from "@/lib/series-intelligence/turnoutForecast";
-import { simulateOverlayRisk } from "@/lib/series-intelligence/overlayRiskEngine";
+import { forecastTurnout, forecastToOverlayFeed, type ForecastConfidence, type ForecastOverlayFeed } from "@/lib/series-intelligence/turnoutForecast";
+import { simulateOverlayFromForecast } from "@/lib/series-intelligence/overlayRiskEngine";
 import { ExplainHint } from "./ExplainHint";
 
-const Z = 1.2816; // mirrors the band z in turnoutForecast → recover σ_pred from low/high
+/** What this panel emits upward so the group-history overlay simulator can offer a forecast center. */
+export type ForecastFeedWithFee = ForecastOverlayFeed & { fee: number };
+
 const CONF: Record<ForecastConfidence, { label: string; cls: string }> = {
   low: { label: "Thấp — ít dữ liệu", cls: "border-destructive/50 text-destructive" },
   medium: { label: "Trung bình", cls: "border-warning/50 text-warning" },
@@ -31,7 +33,15 @@ const median = (v: Array<number | null>): number | null => {
  * sits next to its band, tier, error, and the "chưa backtest" disclaimer. Feeds the EXISTING overlay engine
  * read-only (forecast-centered). Labeled Hypothesis — never Model Estimate. Resolves events like OCC.
  */
-export function TurnoutForecastPanel({ csvEvents }: { csvEvents?: SeriesEvent[] | null }) {
+export function TurnoutForecastPanel({
+  csvEvents,
+  onForecastFeed,
+}: {
+  csvEvents?: SeriesEvent[] | null;
+  /** Fires whenever the usable forecast feed changes (null when nothing usable) — lets the page offer
+   *  the forecast as a center source to the group-history overlay simulator below. */
+  onForecastFeed?: (feed: ForecastFeedWithFee | null) => void;
+}) {
   const native = useNativeSeriesEvents();
   // csvEvents is null in native mode (mirrors OwnerCommandCenter's handling) — never .length on null.
   const events: SeriesEvent[] = csvEvents && csvEvents.length > 0 ? csvEvents : native.events;
@@ -51,11 +61,17 @@ export function TurnoutForecastPanel({ csvEvents }: { csvEvents?: SeriesEvent[] 
   const medianFee = useMemo(() => median(events.map((e) => e.fee)) ?? 0, [events]);
 
   const ownerBase = override ?? fc?.base ?? null;
+  // Explicit forecast→overlay adapter feed (σ recovered from the forecast band; NO synthetic n anywhere).
+  const feed = useMemo(() => forecastToOverlayFeed(fc, buyIn, override), [fc, buyIn, override]);
   const overlay = useMemo(() => {
-    if (!showOverlay || !fc?.available || ownerBase === null || ownerBase <= 0 || gtd === null || gtd <= 0 || !buyIn) return null;
-    const sd = fc.low && fc.high && fc.low > 0 ? (Math.log(fc.high) - Math.log(fc.low)) / (2 * Z) : 0.4;
-    return simulateOverlayRisk({ observedEntries: [ownerBase], buyinPrize: buyIn, fee: medianFee, gtd, n: OVERLAY_FEED_N, sd, seed: 42 });
-  }, [showOverlay, fc, ownerBase, gtd, buyIn, medianFee]);
+    if (!showOverlay || !feed || gtd === null || gtd <= 0) return null;
+    return simulateOverlayFromForecast({ baseEntries: feed.base, logSd: feed.logSd, buyinPrize: feed.buyIn, fee: medianFee, gtd, seed: 42 });
+  }, [showOverlay, feed, gtd, medianFee]);
+
+  // Bubble the feed up so the group-history simulator below can offer "Dự báo" as a center source.
+  useEffect(() => {
+    onForecastFeed?.(feed ? { ...feed, fee: medianFee } : null);
+  }, [feed, medianFee, onForecastFeed]);
 
   const showCoef = fc?.available && fc.confidence !== "low" && fc.coefContributions.length > 0;
 
@@ -149,8 +165,8 @@ export function TurnoutForecastPanel({ csvEvents }: { csvEvents?: SeriesEvent[] 
             </div>
             <p className="text-[10px] text-muted-foreground/80">
               Mô phỏng overlay <strong>TỪ DỰ ĐOÁN</strong> (forecast-centered), không phải phân phối quan sát lịch sử.
-              Máy tính "Rủi ro overlay — kịch bản 1 giải" bên dưới vẫn chạy theo lịch sử nhóm và <strong>CHƯA nhận
-              dự báo này</strong> (sẽ nối ở bản cập nhật sau).
+              Máy tính "Rủi ro overlay — kịch bản 1 giải" bên dưới mặc định vẫn chạy theo lịch sử nhóm — muốn dùng
+              dự báo này làm tâm, chọn nguồn <strong>"Dự báo"</strong> ở đó.
             </p>
             {showOverlay && (gtd === null || gtd <= 0 ? (
               <p className="text-[10px] text-warning">Đặt GTD ở trên để tính overlay.</p>

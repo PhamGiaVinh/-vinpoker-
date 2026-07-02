@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { simulateOverlayRisk, type OverlayRiskInput } from "./overlayRiskEngine";
+import { simulateOverlayRisk, simulateOverlayFromForecast, type OverlayRiskInput } from "./overlayRiskEngine";
 
 const DEMO = { observedEntries: [795, 2350], buyinPrize: 31_428_571, fee: 4_571_428, sd: 0.55, nSims: 20000, seed: 42 };
 const inp = (over: Partial<OverlayRiskInput>): OverlayRiskInput => ({ ...DEMO, gtd: 25e9, n: 2, ...over });
@@ -72,6 +72,50 @@ describe("simulateOverlayRisk — bins + guards + determinism", () => {
   });
 
   it("demo sanity: obs [795,2350], GTD 25b, n=6 → P(overlay) in 0.14–0.22", () => {
+    const r = simulateOverlayRisk(inp({ gtd: 25e9, n: 6 }));
+    expect(r.pOverlay).toBeGreaterThan(0.14);
+    expect(r.pOverlay).toBeLessThan(0.22);
+  });
+});
+
+describe("simulateOverlayFromForecast — explicit forecast-centered adapter (no synthetic n)", () => {
+  const FC = { baseEntries: 1200, logSd: 0.3, buyinPrize: 10_000_000, fee: 1_500_000, gtd: 10e9, seed: 42, nSims: 20000 };
+
+  it("centers on the forecast base: entP50 ≈ baseEntries (geometric center)", () => {
+    const r = simulateOverlayFromForecast(FC);
+    expect(r.usable).toBe(true);
+    expect(r.entP50).toBeGreaterThan(FC.baseEntries * 0.95);
+    expect(r.entP50).toBeLessThan(FC.baseEntries * 1.05);
+    expect(r.meanLog).toBeCloseTo(Math.log(FC.baseEntries), 6);
+  });
+
+  it("band width follows the forecast logSd (p10–p90 log-width ≈ 2·z90·logSd) — ONE layer, no √n term", () => {
+    const r = simulateOverlayFromForecast(FC);
+    // p5–p95 in log space should be ≈ 2·1.645·logSd (normal quantiles) — tolerate MC noise
+    const logWidth = Math.log(r.entP95) - Math.log(r.entP5);
+    expect(logWidth).toBeGreaterThan(2 * 1.645 * FC.logSd * 0.9);
+    expect(logWidth).toBeLessThan(2 * 1.645 * FC.logSd * 1.1);
+  });
+
+  it("deterministic for a fixed seed; different seeds differ", () => {
+    const a = simulateOverlayFromForecast(FC);
+    const b = simulateOverlayFromForecast(FC);
+    const c = simulateOverlayFromForecast({ ...FC, seed: 43 });
+    expect(a.pOverlay).toBe(b.pOverlay);
+    expect(a.entP50).toBe(b.entP50);
+    expect(a.entP50).not.toBe(c.entP50);
+  });
+
+  it("P(overlay) rises with GTD; unusable on degenerate inputs", () => {
+    const lo = simulateOverlayFromForecast({ ...FC, gtd: 5e9 }).pOverlay;
+    const hi = simulateOverlayFromForecast({ ...FC, gtd: 20e9 }).pOverlay;
+    expect(lo).toBeLessThanOrEqual(hi);
+    expect(simulateOverlayFromForecast({ ...FC, baseEntries: 0 }).usable).toBe(false);
+    expect(simulateOverlayFromForecast({ ...FC, logSd: 0 }).usable).toBe(false);
+    expect(simulateOverlayFromForecast({ ...FC, buyinPrize: 0 }).usable).toBe(false);
+  });
+
+  it("existing two-layer engine is untouched: same demo call returns the same numbers as before", () => {
     const r = simulateOverlayRisk(inp({ gtd: 25e9, n: 6 }));
     expect(r.pOverlay).toBeGreaterThan(0.14);
     expect(r.pOverlay).toBeLessThan(0.22);
