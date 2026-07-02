@@ -159,7 +159,7 @@ export interface ReadinessResult {
   fields: ReadinessField[];
   /** Plain-VN "what is still missing before stronger analysis". */
   missingSummary: string[];
-  /** GTD has no native column yet → a structural gap, reported separately from the owner-fillable score. */
+  /** Some events have no committed GTD (tournaments.guarantee_amount) — reported separately from the coverage score. */
   gtdStructuralGap: boolean;
 }
 
@@ -182,9 +182,10 @@ export function computeReadiness(events: SeriesEvent[]): ReadinessResult {
       missingSummary.push(`${f.missingCount}/${n} giải thiếu ${f.label}`);
     }
   }
-  const gtdStructuralGap = events.some((e) => e.gtd === null);
+  const gtdMissingCount = events.filter((e) => e.gtd === null).length;
+  const gtdStructuralGap = gtdMissingCount > 0;
   if (gtdStructuralGap) {
-    missingSummary.push("GTD chưa có cột dữ liệu (sẽ bổ sung ở Phase 3) — không suy ra từ prize pool");
+    missingSummary.push(`${gtdMissingCount}/${n} giải chưa đặt GTD — không suy ra từ prize pool`);
   }
 
   return { score, label: "Observed Pattern", fields, missingSummary, gtdStructuralGap };

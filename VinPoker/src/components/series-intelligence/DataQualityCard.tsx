@@ -18,12 +18,13 @@ export function DataQualityCard({ readiness }: { readiness: ReadinessResult }) {
 
       <div className="space-y-1">
         <div className="flex items-baseline justify-between text-sm">
-          <span className="text-muted-foreground">Mức độ sẵn sàng</span>
+          <span className="text-muted-foreground">Độ phủ dữ liệu</span>
           <span className="font-display text-lg tabular-nums">{r.score}%</span>
         </div>
         <Progress value={r.score} className="h-2" />
         <p className="text-[11px] text-muted-foreground">
-          Tính trên các trường owner có thể điền (GTD chưa có cột nên không tính vào điểm).
+          Đo phần trăm ô dữ liệu đã điền — KHÔNG phải điểm sức khỏe hay chất lượng vận hành của CLB.
+          (GTD báo riêng bên dưới, không tính vào độ phủ.)
         </p>
       </div>
 

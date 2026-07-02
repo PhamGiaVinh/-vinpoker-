@@ -15,10 +15,10 @@ import {
   computeScenarioActions,
   computeScenarioOutlook,
 } from "@/lib/series-intelligence/scenarioOutlook";
-import { computeGtdOverlay } from "@/lib/series-intelligence/gtdOverlay";
+import { computeGtdOverlay, resolveOverlay } from "@/lib/series-intelligence/gtdOverlay";
 import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePool";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
-import { OverviewCards } from "./OverviewCards";
+import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
 import { RiskInsightCards } from "./RiskInsightCards";
@@ -63,6 +63,25 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
     };
   }, [events]);
 
+  // Overlay COST totals for the overview tiles, split by source (thực thu vs ước tính — never summed
+  // together). Sums the same per-row resolution GtdOverlayCard already shows; descriptive only.
+  const overlayCost = useMemo<OverlayCostSummary | null>(() => {
+    if (!view || !view.gtdOverlay.available) return null;
+    const sum: OverlayCostSummary = { observed: 0, observedRows: 0, estimated: 0, estimatedRows: 0 };
+    for (const row of view.gtdOverlay.rows) {
+      const r = resolveOverlay(row, truePrizeByEvent?.get(row.event_id) ?? null);
+      if (r.overlay === null) continue;
+      if (r.source === "true") {
+        sum.observed += r.overlay;
+        sum.observedRows += 1;
+      } else {
+        sum.estimated += r.overlay;
+        sum.estimatedRows += 1;
+      }
+    }
+    return sum.observedRows + sum.estimatedRows > 0 ? sum : null;
+  }, [view, truePrizeByEvent]);
+
   if (!isCsv && native.status === "loading") return <LoadingState />;
   if (!isCsv && native.status === "unavailable") return <UnavailableState reason={native.reason} />;
   if (!view) return <EmptyState />;
@@ -83,7 +102,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
         <h3 className="font-display text-base flex items-center gap-2">
           <Database className="h-4 w-4 text-primary" /> Tổng quan
         </h3>
-        <OverviewCards economics={view.economics} />
+        <OverviewCards economics={view.economics} overlayCost={overlayCost} />
         <p className="text-[10px] text-muted-foreground/80">
           Prize pool là số ĐÃ NHẬP trong giải, chưa cập nhật tự động từ buy-in — không phải prize pool thực thu.
         </p>

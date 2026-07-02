@@ -141,9 +141,9 @@ export function ReferenceDistributionPanel({
                 {e.base === null ? (
                   <span className="text-muted-foreground">Chưa có dữ liệu entries.</span>
                 ) : isHypothesis ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Giả thuyết (N=1)</span>
-                    <span className="tabular-nums">{e.base} entry</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">1 quan sát — chỉ là giả thuyết, không phải dự báo</span>
+                    <span className="tabular-nums shrink-0">{e.base} entry</span>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-2">
