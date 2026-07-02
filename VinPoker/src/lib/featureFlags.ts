@@ -225,6 +225,61 @@ export const FEATURES = {
    */
   liveEventTabs: true,
   /**
+   * ── Tracker Ops + Viewer UX upgrade program (RPT parity, plan 2026-07-02) ──
+   * PR-F0 flag bootstrap: ALL program flags land here FIRST (default OFF) so the
+   * parallel batch PRs never touch this file again (no rebase conflicts). Each flag
+   * flips ON individually after its batch passes owner UAT — one-line commits.
+   */
+  /**
+   * PR-O1 (A1): operator blind auto-seed — SB/BB/ante auto-fill from the live
+   * `get_tournament_clock` level on every new hand (with provenance "Level N ·
+   * SB/BB · fetched at HH:MM"), stale-level banner shows next-hand amounts, one-tap
+   * blind posting. Clock fetch failure → manual entry (NEVER auto-fill zero).
+   * Amounts stay editable — a confirm assist, not a silent mutate. Frontend-only.
+   */
+  trackerBlindAutoSeed: false,
+  /**
+   * PR-O1 (A2): "Ván tiếp theo →" express CTA after record_hand — carries hand
+   * number + button suggestion + blinds (A1) to start-confirm in one step, with a
+   * double-click guard (no duplicate/orphan hands). Frontend-only.
+   */
+  trackerNextHandExpress: false,
+  /**
+   * PR-O2 (A3): in-console chip quick-edit (same `update_seats` Edge call as
+   * EditChipsDialog — no new backend) + pre-submit projected-stack preview in
+   * review. Chip-integrity guards: between-hands only, reason required, server-
+   * confirmed base, re-fetch after update (no optimistic drift). Frontend-only.
+   */
+  trackerChipQuickEdit: false,
+  /**
+   * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
+   * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
+   * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;
+   * unreliable frame data → field hidden (best-effort, never fake). Frontend-only.
+   */
+  liveReplayHud: false,
+  /**
+   * PR-V2 (B2): compact-wide RPT-style felt on portrait phones (felt ≈ ⅓ of the
+   * viewport, pods around the rim, stacks in BB, controls+summary below). Viewer-only
+   * variant — operator/TV byte-identical is a hard merge gate (full-render equality
+   * test + before/after screenshots + DOM diff). HIGHEST-RISK visual flag.
+   */
+  liveFeltCompact: false,
+  /**
+   * PR-V3 (B3): viewer "moments" — pot-collect sweep at street end, elimination
+   * moment, level-up toast, header Reload. Reduced-motion guarded; no auto-sound;
+   * animations never block state updates. Frontend-only.
+   */
+  liveMoments: false,
+  /**
+   * PR-N1 (B5): SPOTLIGHT editorial posts (staff commentary + photo on the public
+   * feed). TWO-TIER GATE: while false the UI NEVER queries `tournament_posts`; if
+   * flipped true before the source-only migration is owner-applied, the UI catches
+   * the missing table (42P01) and renders a disabled "chưa áp dụng" state — never a
+   * crash. Flip ONLY after the owner applies the migration in a controlled session.
+   */
+  liveSpotlightPosts: false,
+  /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
    * sizing every card with the felt's own width (CSS container query + clamp), and
