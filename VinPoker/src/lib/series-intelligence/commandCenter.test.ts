@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { mapTournamentToEvent, type NativeTournamentRow, type SeriesEvent } from "./nativeData";
 import {
+  avgContributionPerEvent,
   computeEconomicsSummary,
   computeOwnerActionChecklist,
+  computeQuarterlySummary,
   computeReadiness,
   computeRiskFlags,
   toEventEconomicsRow,
@@ -371,5 +373,126 @@ describe("computeContributionByType (Biên đóng góp theo loại giải)", () 
     ]);
     expect(r.rows[0].type).toBe("turbo");
     expect(r.rows[r.rows.length - 1].margin).toBeNull();
+  });
+});
+
+describe("avgContributionPerEvent", () => {
+  const cev = (
+    name: string,
+    over: { buy_in?: number | null; fee?: number | null; entries?: number | null; gtd?: number | null },
+  ): SeriesEvent =>
+    mapTournamentToEvent(
+      {
+        id: name,
+        name,
+        start_time: "2026-05-01T11:00:00Z",
+        buy_in: over.buy_in === undefined ? 1_000_000 : over.buy_in,
+        rake_amount: over.fee === undefined ? 100_000 : over.fee,
+        service_fee_amount: 0,
+        prize_pool: null,
+        club_id: "club-A",
+      },
+      { totalEntries: over.entries === undefined ? 100 : over.entries, uniqueEntries: null, reentries: null },
+      over.gtd ?? null,
+    );
+
+  it("averages Σ margin over MEASURED events only (data holes don't dilute)", () => {
+    const r = computeContributionByType([
+      cev("Main A", { fee: 200_000, entries: 100 }), // margin 20M
+      cev("Turbo B", { fee: 100_000, entries: 50, gtd: 100_000_000, buy_in: 1_000_000 }), // 5M − 50M = −45M
+      cev("Mystery broken", { fee: null, entries: null }), // unmeasured — must NOT enter denominator
+    ]);
+    const avg = avgContributionPerEvent(r);
+    expect(avg.measuredCount).toBe(2);
+    expect(avg.value).toBe((20_000_000 - 45_000_000) / 2);
+  });
+
+  it("returns null when nothing is measured", () => {
+    const avg = avgContributionPerEvent(computeContributionByType([cev("X", { fee: null, entries: null })]));
+    expect(avg.value).toBeNull();
+    expect(avg.measuredCount).toBe(0);
+  });
+
+  it("empty input → null", () => {
+    expect(avgContributionPerEvent(computeContributionByType([])).value).toBeNull();
+  });
+});
+
+describe("computeQuarterlySummary (Giải đã chạy theo quý)", () => {
+  const qev = (
+    id: string,
+    iso: string | null,
+    over: { buy_in?: number | null; fee?: number | null; entries?: number | null; gtd?: number | null } = {},
+  ): SeriesEvent =>
+    mapTournamentToEvent(
+      {
+        id,
+        name: id,
+        start_time: iso,
+        buy_in: over.buy_in === undefined ? 1_000_000 : over.buy_in,
+        rake_amount: over.fee === undefined ? 100_000 : over.fee,
+        service_fee_amount: 0,
+        prize_pool: null,
+        club_id: "club-A",
+      },
+      { totalEntries: over.entries === undefined ? 100 : over.entries, uniqueEntries: null, reentries: null },
+      over.gtd ?? null,
+    );
+
+  // Mid-quarter dates so the local-time quarter is stable in any timezone (±1 day can't cross a quarter).
+  it("groups by quarter+year, newest first, and sums events/entries/fee revenue", () => {
+    const s = computeQuarterlySummary([
+      qev("a", "2025-11-10T11:00:00Z", { fee: 100_000, entries: 50 }), // Quý 4/2025
+      qev("b", "2026-02-15T11:00:00Z", { fee: 200_000, entries: 100 }), // Quý 1/2026
+      qev("c", "2026-02-20T11:00:00Z", { fee: 100_000, entries: 60 }), // Quý 1/2026
+    ]);
+    expect(s.available).toBe(true);
+    expect(s.label).toBe("Observed Pattern");
+    expect(s.rows.map((r) => r.label)).toEqual(["Quý 1/2026", "Quý 4/2025"]);
+    const q1 = s.rows[0];
+    expect(q1.eventCount).toBe(2);
+    expect(q1.entries.value).toBe(160);
+    expect(q1.feeRevenue.value).toBe(200_000 * 100 + 100_000 * 60);
+    expect(s.rows[1].eventCount).toBe(1);
+    expect(s.undatedCount).toBe(0);
+  });
+
+  it("cross-year sort is chronological (Quý 4/2025 < Quý 1/2026)", () => {
+    const s = computeQuarterlySummary([
+      qev("new", "2026-02-15T11:00:00Z"),
+      qev("old", "2025-05-15T11:00:00Z"),
+    ]);
+    expect(s.rows[0].label).toBe("Quý 1/2026"); // newest first
+    expect(s.rows[1].label).toBe("Quý 2/2025");
+  });
+
+  it("undated or unparseable dates are counted, never guessed into a quarter", () => {
+    const s = computeQuarterlySummary([
+      qev("ok", "2026-02-15T11:00:00Z"),
+      qev("none", null),
+      qev("garbage", "not-a-date"),
+    ]);
+    expect(s.rows.reduce((a, r) => a + r.eventCount, 0)).toBe(1);
+    expect(s.undatedCount).toBe(2);
+  });
+
+  it("overlay is estimate-only for events WITH a GTD; missing GTD counted, not guessed; fee holes → partial", () => {
+    const s = computeQuarterlySummary([
+      qev("gtd-loss", "2026-02-15T11:00:00Z", { gtd: 100_000_000, buy_in: 1_000_000, entries: 50 }), // bù 50M
+      qev("no-gtd", "2026-02-16T11:00:00Z", { gtd: null }),
+      qev("no-fee", "2026-02-17T11:00:00Z", { fee: null }),
+    ]);
+    const q = s.rows[0];
+    expect(q.overlayCost.value).toBe(50_000_000);
+    expect(q.gtdMissingCount).toBe(2);
+    expect(q.feeRevenue.partial).toBe(true);
+    expect(q.feeRevenue.contributingCount).toBe(2);
+  });
+
+  it("empty input → unavailable", () => {
+    const s = computeQuarterlySummary([]);
+    expect(s.available).toBe(false);
+    expect(s.rows).toHaveLength(0);
+    expect(s.undatedCount).toBe(0);
   });
 });

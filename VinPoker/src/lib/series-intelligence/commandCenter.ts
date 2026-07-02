@@ -219,6 +219,98 @@ export function computeContributionByType(events: SeriesEvent[]): ContributionBy
   };
 }
 
+/**
+ * Average contribution margin per MEASURED event, derived from an existing
+ * `ContributionByTypeResult` so the overview KPI and the by-type card can never disagree.
+ * Denominator = events whose fee×entries actually contributed (same rule the card uses) —
+ * NOT the raw event count, so data holes can't dilute the average. F&B / staff / marketing /
+ * operations are NOT in this number (per-event F&B is not linked into the series data yet).
+ */
+export function avgContributionPerEvent(result: ContributionByTypeResult): {
+  value: number | null;
+  measuredCount: number;
+} {
+  const measured = result.rows.filter((r) => r.margin !== null);
+  const measuredCount = measured.reduce((a, r) => a + r.feeRevenue.contributingCount, 0);
+  if (measuredCount === 0) return { value: null, measuredCount: 0 };
+  const sum = measured.reduce((a, r) => a + (r.margin as number), 0);
+  return { value: sum / measuredCount, measuredCount };
+}
+
+// ----------------------------------------------------------------------------
+// Quarterly breakdown ("Giải đã chạy theo quý")
+// ----------------------------------------------------------------------------
+//
+// Descriptive counting only (Observed Pattern): events / entries / fee revenue / estimated GTD
+// overlay per calendar quarter. Quarter comes from event_date in LOCAL time — same convention as
+// turnoutForecast's quarter feature. Events with no (or unparseable) date are NEVER guessed into
+// a quarter; they are counted separately in `undatedCount`.
+
+export interface QuarterlyRow {
+  /** Sort key, e.g. "2026-q0" — lexicographic order == chronological order. */
+  key: string;
+  /** Display label, e.g. "Quý 1/2026". */
+  label: string;
+  eventCount: number;
+  entries: MetricTotal;
+  feeRevenue: MetricTotal; // Σ fee × total_entries (buy-in never enters revenue)
+  overlayCost: MetricTotal; // Σ max(0, gtd − buy_in × entries), estimate — only events WITH a GTD
+  gtdMissingCount: number;
+}
+
+export interface QuarterlySummary {
+  available: boolean;
+  label: InsightLabel; // Observed Pattern — measured facts only
+  /** Newest quarter first. */
+  rows: QuarterlyRow[];
+  undatedCount: number;
+}
+
+function quarterOf(iso: string | null): { key: string; label: string } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const q = Math.floor(d.getMonth() / 3);
+  return { key: `${d.getFullYear()}-q${q}`, label: `Quý ${q + 1}/${d.getFullYear()}` };
+}
+
+export function computeQuarterlySummary(events: SeriesEvent[]): QuarterlySummary {
+  const byQuarter = new Map<string, { label: string; list: SeriesEvent[] }>();
+  let undatedCount = 0;
+  for (const e of events) {
+    const qk = quarterOf(e.event_date);
+    if (!qk) {
+      undatedCount += 1;
+      continue;
+    }
+    const cur = byQuarter.get(qk.key);
+    if (cur) cur.list.push(e);
+    else byQuarter.set(qk.key, { label: qk.label, list: [e] });
+  }
+
+  const rows: QuarterlyRow[] = [...byQuarter.entries()].map(([key, { label, list }]) => {
+    const withGtd = list.filter((e) => e.gtd !== null);
+    return {
+      key,
+      label,
+      eventCount: list.length,
+      entries: total(list.map((e) => e.total_entries)),
+      feeRevenue: productTotal(list, (e) => e.fee, (e) => e.total_entries),
+      overlayCost: total(
+        withGtd.map((e) =>
+          e.buy_in !== null && e.total_entries !== null
+            ? Math.max(0, (e.gtd as number) - e.buy_in * e.total_entries)
+            : null,
+        ),
+      ),
+      gtdMissingCount: list.length - withGtd.length,
+    };
+  });
+  rows.sort((a, b) => (a.key < b.key ? 1 : -1)); // newest first
+
+  return { available: rows.length > 0, label: "Observed Pattern", rows, undatedCount };
+}
+
 // ----------------------------------------------------------------------------
 // Data readiness
 // ----------------------------------------------------------------------------
