@@ -26,13 +26,15 @@ export interface SaveRunArgs {
 export function buildSaveRunPayload(
   clubId: string,
   workDate: string,
-  draft: GenerateDailyDraftResult
+  draft: GenerateDailyDraftResult,
+  /** Extra run params persisted alongside (e.g. V2 demand overrides). */
+  paramsExtra?: Record<string, unknown>
 ): SaveRunArgs {
   return {
     p_club_id: clubId,
     p_work_date: workDate,
     p_solver_version: draft.runMeta.solverVersion,
-    p_params: {},
+    p_params: paramsExtra ?? {},
     p_assignments: draft.assignments.map((a) => ({
       dealer_id: a.dealerId,
       template_id: a.templateId,

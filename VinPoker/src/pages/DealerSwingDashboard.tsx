@@ -10,6 +10,7 @@ import SwingPanel from "@/components/cashier/DealerSwingTab";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import DealerPayrollTabV2 from "@/components/cashier/DealerPayrollTabV2";
 import ShiftPlannerTab from "@/components/cashier/ShiftPlannerTab";
+import ShiftPlannerV2Tab from "@/components/cashier/shift-planner-v2/ShiftPlannerV2Tab";
 import { FEATURES } from "@/lib/featureFlags";
 
 /**
@@ -55,6 +56,10 @@ export default function DealerSwingDashboard() {
   // for live UAT. Flip FEATURES.dealerShiftPlanner ON after UAT to expose it to all
   // dealer-control staff. Live mode reads the dealer_shift_* tables (Phase 2A applied).
   const showShiftPlanner = FEATURES.dealerShiftPlanner || isAdmin || isClubAdmin || isClubOwner;
+  // V2 preview gate (same pattern as Phase 2B above): while FEATURES.shiftPlannerV2
+  // is OFF, owner / club-admin / super-admin see the V2 planner for live UAT;
+  // everyone else keeps V1 unchanged. Flip the flag ON after UAT for all staff.
+  const showPlannerV2 = FEATURES.shiftPlannerV2 || isAdmin || isClubAdmin || isClubOwner;
 
   return (
     <div className="container mx-auto p-3 md:p-6">
@@ -86,7 +91,10 @@ export default function DealerSwingDashboard() {
         </TabsContent>
         {showShiftPlanner && (
           <TabsContent value="shift_planner" className="mt-4">
-            <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} mode="live" />
+            {/* V2 = guided 4-step flow (owner-approved redesign); non-preview roles keep V1. */}
+            {showPlannerV2
+              ? <ShiftPlannerV2Tab clubIds={scopedIds} clubs={clubs} mode="live" />
+              : <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} mode="live" />}
           </TabsContent>
         )}
       </Tabs>
