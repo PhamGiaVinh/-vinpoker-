@@ -184,8 +184,6 @@ export interface ForecastOverlayInput {
  * shape so histograms/cards work unchanged. SCENARIO, not a forecast guarantee.
  */
 export function simulateOverlayFromForecast(input: ForecastOverlayInput): OverlayRiskResult {
-  const lo = input.clampLo ?? LO_DEFAULT;
-  const hi = input.clampHi ?? HI_DEFAULT;
   const binCount = Math.max(1, Math.floor(input.bins ?? BINS_DEFAULT));
   const nSims = Math.min(Math.max(1, Math.floor(input.nSims ?? N_SIMS_DEFAULT)), MAX_SIMS);
   const buyin = input.buyinPrize;
@@ -197,6 +195,12 @@ export function simulateOverlayFromForecast(input: ForecastOverlayInput): Overla
   if (!(input.baseEntries > 0) || !(buyin > 0) || !(sd > 0)) {
     return { pOverlay: 0, eOverlay: 0, entP5: 0, entP50: 0, entP95: 0, rakeP5: 0, rakeP95: 0, bins: [], thresholdEntries, usable: false, meanLog: 0 };
   }
+
+  // Clamp bounds scale WITH the forecast (base·e^±4σ ≈ beyond p99.99), NOT the group engine's fixed
+  // festival-scale [150, 4600] — a small-club forecast (e.g. 80 entries) must not be silently pinned to a
+  // 150-entry floor, which would hide near-certain overlay as ~0%.
+  const lo = input.clampLo ?? Math.max(1, Math.floor(input.baseEntries * Math.exp(-4 * sd)));
+  const hi = input.clampHi ?? Math.max(lo + 1, Math.ceil(input.baseEntries * Math.exp(4 * sd)));
 
   const meanLog = Math.log(input.baseEntries);
   const rng = mulberry32(input.seed ?? deriveSeed());

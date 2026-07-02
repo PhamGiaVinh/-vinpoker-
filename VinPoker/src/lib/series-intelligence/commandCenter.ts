@@ -12,12 +12,12 @@
 //  - Nothing is fabricated: any missing field stays null and is reported. Totals
 //    that drew on incomplete data are flagged `partial`.
 //  - These are descriptive, NON-AUTHORITATIVE numbers (not an accounting report,
-//    not profit/P&L). GTD has no native column yet (Phase 3) → always reported
-//    missing, never faked from prize_pool.
+//    not profit/P&L). A missing GTD stays missing — never faked from prize_pool.
 //  - ITM / Final Table / finish positions / blind structure are NOT in the RPC
 //    payload and are intentionally absent here (no fabrication, no new RPC).
 
 import type { SeriesEvent } from "./nativeData";
+import { typeOf, TYPE_LABEL, type SeriesEventType } from "./seriesEventType";
 
 /** The only labels this BI surface may emit. `Model Estimate`/`Tested Finding` are never produced. */
 export type InsightLabel = "Known Rule" | "Observed Pattern" | "Hypothesis";
@@ -62,7 +62,7 @@ export interface EventEconomicsRow {
   unique_entries: number | null;
   reentries: number | null;
   prize_pool_actual: number | null;
-  gtd: number | null; // always null until a native GTD column exists (Phase 3)
+  gtd: number | null; // committed guarantee (tournaments.guarantee_amount); null when the event has none
   rakeYieldPct: number | null; // fee / buy_in × 100, only when buy_in > 0 and both present
   missingFields: string[];
 }
@@ -127,6 +127,96 @@ export function toEventEconomicsRow(e: SeriesEvent): EventEconomicsRow {
 
 export function toEventEconomicsRows(events: SeriesEvent[]): EventEconomicsRow[] {
   return events.map(toEventEconomicsRow);
+}
+
+// ----------------------------------------------------------------------------
+// Contribution margin by event type ("Biên đóng góp theo loại giải")
+// ----------------------------------------------------------------------------
+//
+// DELIBERATELY NOT "profit"/"gross margin": it is fee revenue kept − observed GTD overlay cost, and it
+// EXCLUDES staff/marketing/venue/operations. Grouping axis = event TYPE (main/turbo/bounty/… via the
+// shared seriesEventType helper), NOT referenceDistribution's same-name axis. Money rules (locked):
+//  - revenue = fee (rake) ONLY; buy-in is pass-through and never enters revenue;
+//  - entries factor = total_entries (all bullets incl. re-entries) — NEVER unique_players;
+//  - overlay cost only for events WITH a committed GTD and a derivable estimate; missing GTD is
+//    counted + noted, never guessed.
+
+export interface ContributionByTypeRow {
+  type: SeriesEventType;
+  typeLabel: string;
+  eventCount: number;
+  feeRevenue: MetricTotal; // Σ fee × total_entries over this type
+  overlayCost: MetricTotal; // Σ max(0, gtd − buy_in × total_entries) over events with gtd + estimate
+  gtdMissingCount: number; // events in this type with NO committed GTD (no cost charged — noted)
+  /** feeRevenue − overlayCost; null when no event in the type had fee+entries (nothing measured). */
+  margin: number | null;
+  notes: string[];
+}
+
+export interface ContributionByTypeResult {
+  available: boolean;
+  label: InsightLabel; // Observed Pattern — measured facts only
+  rows: ContributionByTypeRow[];
+  disclaimer: string;
+}
+
+const CONTRIBUTION_DISCLAIMER =
+  "Biên đóng góp = fee giữ lại − chi phí bù GTD (ước tính entry × buy-in). CHƯA gồm nhân sự, marketing, " +
+  "mặt bằng, vận hành — KHÔNG phải lợi nhuận. Buy-in là tiền chạy qua, không nằm trong doanh thu.";
+
+export function computeContributionByType(events: SeriesEvent[]): ContributionByTypeResult {
+  const byType = new Map<SeriesEventType, SeriesEvent[]>();
+  for (const e of events) {
+    const t = typeOf(e.event_name);
+    const list = byType.get(t);
+    if (list) list.push(e);
+    else byType.set(t, [e]);
+  }
+
+  const rows: ContributionByTypeRow[] = [];
+  for (const [type, list] of byType) {
+    const feeRevenue = productTotal(list, (e) => e.fee, (e) => e.total_entries);
+    // overlay estimate per event: only when a GTD is committed AND entry×buy-in is derivable
+    const withGtd = list.filter((e) => e.gtd !== null);
+    const overlayCost = total(
+      withGtd.map((e) =>
+        e.buy_in !== null && e.total_entries !== null
+          ? Math.max(0, (e.gtd as number) - e.buy_in * e.total_entries)
+          : null,
+      ),
+    );
+    const gtdMissingCount = list.length - withGtd.length;
+
+    const notes: string[] = [];
+    if (gtdMissingCount > 0) notes.push(`${gtdMissingCount} giải không đặt GTD — không tính chi phí bù (không đoán)`);
+    if (feeRevenue.partial)
+      notes.push(`${feeRevenue.totalCount - feeRevenue.contributingCount}/${feeRevenue.totalCount} giải thiếu fee hoặc entries — không tính vào doanh thu`);
+    if (overlayCost.partial)
+      notes.push(`${overlayCost.totalCount - overlayCost.contributingCount} giải có GTD nhưng thiếu buy-in/entries — chưa ước được chi phí bù`);
+    // Asymmetric-missing-data artifact: an event can contribute overlay COST while its fee revenue was
+    // uncountable (fee missing) — a negative margin may then be a data hole, not a real bleed. Say so.
+    if (feeRevenue.partial && overlayCost.value > 0)
+      notes.push("⚠ có giải bị tính chi phí bù nhưng thiếu fee — biên có thể ÂM GIẢ TẠO do thiếu dữ liệu, kiểm tra trước khi kết luận");
+
+    rows.push({
+      type,
+      typeLabel: TYPE_LABEL[type],
+      eventCount: list.length,
+      feeRevenue,
+      overlayCost,
+      gtdMissingCount,
+      margin: feeRevenue.contributingCount > 0 ? feeRevenue.value - overlayCost.value : null,
+      notes,
+    });
+  }
+
+  rows.sort((a, b) => (b.margin ?? Number.NEGATIVE_INFINITY) - (a.margin ?? Number.NEGATIVE_INFINITY));
+  return {
+    available: rows.some((r) => r.margin !== null),
+    label: "Observed Pattern",
+    rows,
+    disclaimer: CONTRIBUTION_DISCLAIMER,
+  };
 }
 
 // ----------------------------------------------------------------------------

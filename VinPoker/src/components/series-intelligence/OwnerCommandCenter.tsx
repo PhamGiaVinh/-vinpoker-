@@ -4,7 +4,9 @@ import { Database, Inbox, WifiOff, FlaskConical } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
+import { FEATURES } from "@/lib/featureFlags";
 import {
+  computeContributionByType,
   computeEconomicsSummary,
   computeOwnerActionChecklist,
   computeReadiness,
@@ -19,6 +21,7 @@ import { computeGtdOverlay, resolveOverlay } from "@/lib/series-intelligence/gtd
 import { useGtdTruePrizePool } from "@/lib/series-intelligence/useGtdTruePrizePool";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
+import { ContributionByTypeCard } from "./ContributionByTypeCard";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
 import { RiskInsightCards } from "./RiskInsightCards";
@@ -60,6 +63,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
       scenarioActions: computeScenarioActions(scenarios.scenarios, risks),
       gtdOverlay: computeGtdOverlay(events),
       actions: computeOwnerActionChecklist(events, risks),
+      contributionByType: FEATURES.seriesMarginByType ? computeContributionByType(events) : null,
     };
   }, [events]);
 
@@ -110,6 +114,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
 
       <DataQualityCard readiness={view.readiness} />
       <EconomicsTable rows={view.rows} />
+      {view.contributionByType && <ContributionByTypeCard result={view.contributionByType} />}
       <RiskInsightCards risks={view.risks} />
       <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />
       <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />

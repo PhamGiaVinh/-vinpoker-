@@ -6,6 +6,7 @@ import {
   computeReadiness,
   computeRiskFlags,
   toEventEconomicsRow,
+  computeContributionByType,
   type InsightLabel,
 } from "./commandCenter";
 import {
@@ -288,5 +289,87 @@ describe("computeScenarioOutlook", () => {
     expect(actions.length).toBeGreaterThan(0);
     expect(actions.length).toBeLessThanOrEqual(5);
     for (const a of actions) expect(ALLOWED_LABELS).toContain(a.label);
+  });
+});
+
+describe("computeContributionByType (Biên đóng góp theo loại giải)", () => {
+  const cev = (
+    name: string,
+    over: { buy_in?: number | null; fee?: number | null; entries?: number | null; gtd?: number | null },
+  ): SeriesEvent =>
+    mapTournamentToEvent(
+      {
+        id: name,
+        name,
+        start_time: "2026-05-01T11:00:00Z",
+        buy_in: over.buy_in === undefined ? 1_000_000 : over.buy_in,
+        rake_amount: over.fee === undefined ? 100_000 : over.fee,
+        service_fee_amount: 0,
+        prize_pool: null,
+        club_id: "club-A",
+      },
+      { totalEntries: over.entries === undefined ? 100 : over.entries, uniqueEntries: null, reentries: null },
+      over.gtd ?? null,
+    );
+
+  it("groups by event TYPE and computes fee revenue − observed overlay cost", () => {
+    const r = computeContributionByType([
+      cev("Main Event", { fee: 200_000, entries: 100, gtd: 80_000_000, buy_in: 1_000_000 }), // overlay 0 (100M ≥ 80M)
+      cev("Turbo 500", { fee: 100_000, entries: 50, gtd: 100_000_000, buy_in: 1_000_000 }), // overlay 50M
+    ]);
+    expect(r.available).toBe(true);
+    expect(r.label).toBe("Observed Pattern");
+    const main = r.rows.find((x) => x.type === "main")!;
+    const turbo = r.rows.find((x) => x.type === "turbo")!;
+    expect(main.feeRevenue.value).toBe(200_000 * 100);
+    expect(main.overlayCost.value).toBe(0);
+    expect(main.margin).toBe(20_000_000);
+    expect(turbo.feeRevenue.value).toBe(100_000 * 50);
+    expect(turbo.overlayCost.value).toBe(50_000_000);
+    expect(turbo.margin).toBe(5_000_000 - 50_000_000); // negative → đỏ
+    expect(turbo.margin!).toBeLessThan(0);
+  });
+
+  it("buy-in NEVER enters revenue: same fee/entries ⇒ same feeRevenue regardless of buy-in size", () => {
+    const small = computeContributionByType([cev("Main A", { buy_in: 1_000_000, fee: 100_000, entries: 100 })]);
+    const huge = computeContributionByType([cev("Main B", { buy_in: 500_000_000, fee: 100_000, entries: 100 })]);
+    expect(small.rows[0].feeRevenue.value).toBe(huge.rows[0].feeRevenue.value);
+    expect(small.rows[0].margin).toBe(huge.rows[0].margin); // no GTD → no overlay path either
+  });
+
+  it("missing fee/entries → excluded from revenue with an honest note", () => {
+    const r = computeContributionByType([
+      cev("Bounty ok", { fee: 100_000, entries: 80 }),
+      cev("Bounty broken", { fee: null, entries: 80 }),
+    ]);
+    const row = r.rows.find((x) => x.type === "bounty")!;
+    expect(row.feeRevenue.contributingCount).toBe(1);
+    expect(row.feeRevenue.partial).toBe(true);
+    expect(row.notes.some((n) => n.includes("thiếu fee"))).toBe(true);
+  });
+
+  it("no GTD → no overlay cost charged, counted + noted (never guessed)", () => {
+    const r = computeContributionByType([cev("Deepstack", { fee: 100_000, entries: 60, gtd: null })]);
+    const row = r.rows.find((x) => x.type === "deepstack")!;
+    expect(row.overlayCost.value).toBe(0);
+    expect(row.gtdMissingCount).toBe(1);
+    expect(row.notes.some((n) => n.includes("không đặt GTD"))).toBe(true);
+    expect(row.margin).toBe(100_000 * 60);
+  });
+
+  it("empty input → unavailable, no rows", () => {
+    const r = computeContributionByType([]);
+    expect(r.available).toBe(false);
+    expect(r.rows).toHaveLength(0);
+  });
+
+  it("rows sorted by margin desc; unmeasurable types (no fee anywhere) sort last with margin null", () => {
+    const r = computeContributionByType([
+      cev("Turbo win", { fee: 300_000, entries: 100 }),
+      cev("Main loss", { fee: 100_000, entries: 10, gtd: 500_000_000, buy_in: 1_000_000 }),
+      cev("Mystery broken", { fee: null, entries: null }),
+    ]);
+    expect(r.rows[0].type).toBe("turbo");
+    expect(r.rows[r.rows.length - 1].margin).toBeNull();
   });
 });
