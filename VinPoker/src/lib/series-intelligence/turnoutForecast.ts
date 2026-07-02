@@ -16,9 +16,42 @@ import { typeOf } from "./seriesEventType";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
-/** n passed to the existing overlay engine so its epistemic √n shrink → ~0; the band comes from the
- *  forecast's own σ_pred, not from the engine. Keeps the overlay a pure forecast-centered simulation. */
-export const OVERLAY_FEED_N = 10000;
+/** Fallback log-SD for the overlay feed when the forecast band cannot be inverted (degenerate low/high). */
+export const FEED_LOG_SD_FALLBACK = 0.4;
+
+/** What the forecast hands to the overlay simulator (simulateOverlayFromForecast — the explicit
+ *  forecast-centered adapter; no synthetic observation count involved). */
+export interface ForecastOverlayFeed {
+  base: number; // central entries (forecast base, or the owner's override)
+  logSd: number; // the forecast's own log-space uncertainty, recovered from its p10–p90 band
+  buyIn: number; // prize contribution per entry of the event being forecast
+  label: string; // honest source description for the UI
+}
+
+/**
+ * Convert a forecast (+ optional owner override of the center) into an overlay-simulation feed.
+ * σ is recovered from the band: logSd = (ln high − ln low) / (2·Z) with Z the band's z-score; falls back
+ * to FEED_LOG_SD_FALLBACK when the band is degenerate. Returns null when there is nothing usable to feed.
+ */
+export function forecastToOverlayFeed(
+  fc: TurnoutForecast | null,
+  buyIn: number | null,
+  ownerBase?: number | null,
+): ForecastOverlayFeed | null {
+  if (!fc || !fc.available || buyIn === null || !(buyIn > 0)) return null;
+  const base = ownerBase ?? fc.base;
+  if (base === null || !(base > 0)) return null;
+  const logSd =
+    fc.low !== null && fc.high !== null && fc.low > 0 && fc.high > fc.low
+      ? (Math.log(fc.high) - Math.log(fc.low)) / (2 * Z)
+      : FEED_LOG_SD_FALLBACK;
+  return {
+    base,
+    logSd,
+    buyIn,
+    label: ownerBase != null ? "dự báo (đã sửa tay) · Hypothesis" : "dự báo thống kê · Hypothesis",
+  };
+}
 
 const MIN_FULL = 8; // ≥ this → full ridge with one-hot; below → intercept + log(buy-in) fallback
 const HIGH_N = 12; // ≥ this → "high" tier (also the Phase-5 data gate)

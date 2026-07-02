@@ -14,7 +14,7 @@ import { CsvImportPanel } from "@/components/series-intelligence/CsvImportPanel"
 import { SeriesLibraryPanel } from "@/components/series-intelligence/SeriesLibraryPanel";
 import { ReferenceDistributionPanel } from "@/components/series-intelligence/ReferenceDistributionPanel";
 import { MonteCarloPanel } from "@/components/series-intelligence/MonteCarloPanel";
-import { TurnoutForecastPanel } from "@/components/series-intelligence/TurnoutForecastPanel";
+import { TurnoutForecastPanel, type ForecastFeedWithFee } from "@/components/series-intelligence/TurnoutForecastPanel";
 import { ScheduleGeneratorPanel } from "@/components/series-intelligence/ScheduleGeneratorPanel";
 import { FestivalEvPanel } from "@/components/series-intelligence/FestivalEvPanel";
 import { ScheduleExportPanel } from "@/components/series-intelligence/ScheduleExportPanel";
@@ -43,6 +43,9 @@ export default function SeriesIntelligence() {
   const grouping = useGroupingOverrides(lib.series);
   // Generated festival schedule — LIFTED here so the EV (④) and Export (⑤) panels share it with the generator (③).
   const [draft, setDraft] = useState<ScheduleEvent[] | null>(null);
+  // Forecast → overlay feed (lifted like `draft`): TurnoutForecastPanel emits it; MonteCarloPanel offers it
+  // as an OPT-IN center source (default stays group history). Only exists while the forecast flag is on.
+  const [forecastFeed, setForecastFeed] = useState<ForecastFeedWithFee | null>(null);
 
   const hasData = lib.count > 0;
   const scrollToLoad = (): void => document.getElementById("step-load")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -255,8 +258,15 @@ export default function SeriesIntelligence() {
           icon={<Dice5 className="h-4 w-4 text-primary" />}
         >
           {/* forecast FIRST (reading order = data flow: dự báo → rủi ro overlay → EV) */}
-          {FEATURES.seriesTurnoutForecast && <TurnoutForecastPanel csvEvents={lib.activeEvents} />}
-          <MonteCarloPanel series={lib.series} overrideLabels={grouping.overrideLabels} audience="internal" />
+          {FEATURES.seriesTurnoutForecast && (
+            <TurnoutForecastPanel csvEvents={lib.activeEvents} onForecastFeed={setForecastFeed} />
+          )}
+          <MonteCarloPanel
+            series={lib.series}
+            overrideLabels={grouping.overrideLabels}
+            audience="internal"
+            forecastFeed={FEATURES.seriesTurnoutForecast ? forecastFeed : undefined}
+          />
           <FestivalEvPanel draft={draft} />
         </StepSection>
       )}

@@ -157,3 +157,89 @@ export function simulateOverlayRisk(input: OverlayRiskInput): OverlayRiskResult 
     meanLog,
   };
 }
+
+// ----------------------------------------------------------------------------
+// Forecast-centered overlay (explicit adapter — NO synthetic n).
+// ----------------------------------------------------------------------------
+
+export interface ForecastOverlayInput {
+  baseEntries: number; // the forecast's (or owner-overridden) central entries — becomes exp(meanLog)
+  logSd: number; // the FORECAST's own log-space uncertainty (recovered from its band) — NOT the group sd
+  buyinPrize: number; // prize contribution per entry of the event being forecast
+  fee: number; // rake per entry (>= 0)
+  gtd: number; // committed guarantee (VND)
+  nSims?: number;
+  seed?: number;
+  clampLo?: number;
+  clampHi?: number;
+  bins?: number;
+}
+
+/**
+ * Simulate overlay risk CENTERED ON A FORECAST instead of an observed-entries group. ONE layer only:
+ * `ent = clamp(exp(ln(base) + N(0,1)·logSd))`. There is NO epistemic √n term here — a forecast is not
+ * "n observations"; its uncertainty already arrives whole in `logSd` (recovered from the forecast band).
+ * This replaces the earlier trick of feeding the two-layer engine a synthetic huge n to zero-out the
+ * epistemic layer — same math, honest name, nothing fake to display. Returns the same OverlayRiskResult
+ * shape so histograms/cards work unchanged. SCENARIO, not a forecast guarantee.
+ */
+export function simulateOverlayFromForecast(input: ForecastOverlayInput): OverlayRiskResult {
+  const lo = input.clampLo ?? LO_DEFAULT;
+  const hi = input.clampHi ?? HI_DEFAULT;
+  const binCount = Math.max(1, Math.floor(input.bins ?? BINS_DEFAULT));
+  const nSims = Math.min(Math.max(1, Math.floor(input.nSims ?? N_SIMS_DEFAULT)), MAX_SIMS);
+  const buyin = input.buyinPrize;
+  const fee = input.fee;
+  const gtd = input.gtd;
+  const sd = input.logSd;
+
+  const thresholdEntries = buyin > 0 ? gtd / buyin : 0;
+  if (!(input.baseEntries > 0) || !(buyin > 0) || !(sd > 0)) {
+    return { pOverlay: 0, eOverlay: 0, entP5: 0, entP50: 0, entP95: 0, rakeP5: 0, rakeP95: 0, bins: [], thresholdEntries, usable: false, meanLog: 0 };
+  }
+
+  const meanLog = Math.log(input.baseEntries);
+  const rng = mulberry32(input.seed ?? deriveSeed());
+  const normal = makeNormal(rng);
+
+  const ents = new Float64Array(nSims);
+  const rakes = new Float64Array(nSims);
+  const bw = (hi - lo) / binCount;
+  const bins: OverlayBin[] = [];
+  for (let i = 0; i < binCount; i++) bins.push({ lo: lo + i * bw, hi: lo + (i + 1) * bw, count: 0, overlayCount: 0 });
+
+  let ovSum = 0;
+  let ovCnt = 0;
+  for (let i = 0; i < nSims; i++) {
+    const ent = clamp(Math.exp(meanLog + normal() * sd), lo, hi);
+    ents[i] = ent;
+    rakes[i] = ent * fee;
+    const prize = ent * buyin;
+    const overlay = gtd - prize;
+    if (overlay > 0) {
+      ovSum += overlay;
+      ovCnt++;
+    }
+    let bi = Math.floor((ent - lo) / bw);
+    if (bi < 0) bi = 0;
+    else if (bi >= binCount) bi = binCount - 1;
+    bins[bi].count++;
+    if (prize < gtd) bins[bi].overlayCount++;
+  }
+
+  const sortedE = Float64Array.from(ents).sort();
+  const sortedR = Float64Array.from(rakes).sort();
+  return {
+    pOverlay: ovCnt / nSims,
+    eOverlay: ovSum / nSims,
+    entP5: percentileSorted(sortedE, 5),
+    entP50: percentileSorted(sortedE, 50),
+    entP95: percentileSorted(sortedE, 95),
+    rakeP5: percentileSorted(sortedR, 5),
+    rakeP95: percentileSorted(sortedR, 95),
+    bins,
+    thresholdEntries,
+    usable: true,
+    meanLog,
+  };
+}
