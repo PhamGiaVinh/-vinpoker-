@@ -525,6 +525,39 @@ export const FEATURES = {
    */
   seriesDecisionLog: true,
   /**
+   * Series Intelligence — turnout forecast (transparent ridge log-linear, RESEARCH tier). When ON, step ④
+   * of the SI page shows the TurnoutForecastPanel: predicts entries for an upcoming event from the club's
+   * OWN past events with a confidence band + tier + walk-forward CV error vs a median baseline. Labeled
+   * Hypothesis ("dự báo thống kê — chưa backtest đủ") — NEVER "Model Estimate". Pure client-side, leakage
+   * discipline locked (actuals are targets only). Default **OFF** (dark). Flip conditions: ≥12 events with
+   * entries + walk-forward CV beats the baseline + owner sign-off. Kill-switch: set false to hide.
+   */
+  seriesTurnoutForecast: false,
+  /**
+   * Series Intelligence — regime caveat (lớp chế độ, static). When ON, every forward-looking number
+   * (scenario outlook, Monte Carlo overlay, festival EV, turnout forecast) carries a one-line caveat:
+   * "Giả định: chế độ thị trường/pháp lý hiện tại còn giữ…". Text-only honesty layer per the framework's
+   * regime principle — no state, no interactivity (the local-only owner switch is a SEPARATE deferred
+   * increment). Default **OFF** (dark); kill-switch: set false to hide the caveat lines.
+   */
+  seriesRegimeNotice: false,
+  /**
+   * Series Intelligence — "Biên đóng góp theo loại giải" (contribution margin by event type). When ON,
+   * the Owner Command Center shows per-type rows: fee revenue kept − observed GTD overlay cost (only for
+   * events WITH a GTD; missing-GTD events are counted + noted, never guessed). Explicitly NOT full
+   * profit: subtitle states it excludes staff/marketing/operations. Buy-in is never treated as revenue.
+   * Pure client-side descriptive math (Observed Pattern). Default **OFF** (dark); kill-switch: false.
+   */
+  seriesMarginByType: false,
+  /**
+   * Series Intelligence — fractional-Kelly GTD commitment hint (quant spec §3.5, OPTIONAL/deferred).
+   * When ON, the festival EV panel shows a one-line "Gợi ý tham khảo theo Kelly phân đoạn (¼–½)" that
+   * requires the owner to ENTER a bankroll (never inferred from data); σ approximated from P5–P95 and
+   * stated as such; Hypothesis-labeled, not financial advice. Default **OFF**; build only after PR0–6
+   * UAT passes and the owner explicitly asks. Kill-switch: set false to hide.
+   */
+  seriesKellyHint: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
