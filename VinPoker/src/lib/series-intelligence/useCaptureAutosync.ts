@@ -3,15 +3,13 @@
 // series_capture_autosync_club(uuid) RPC. Everything degrades gracefully to `available:false` when the autosync
 // migration is not applied yet, so this ships safely in the same PR as the (unapplied) source-only migration.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { SeriesEventActuals, SeriesCaptureRun, AutosyncClubResult } from "./captureAutosyncTypes";
 
-// The autosync tables/RPC are created by 20261126000000_series_capture_autosync.sql, applied ONLY in the
-// owner-gated session where types.ts is regenerated. Until then they are not in the generated schema, so read
-// them through an untyped view of the SAME client — a single, contained boundary (drop it once types regen).
-const db = supabase as unknown as SupabaseClient;
+// The autosync tables/RPC (series_capture_settings / series_event_actuals / series_capture_runs /
+// series_capture_autosync_club) are now in the generated schema, so the typed client resolves them directly.
+const db = supabase;
 
 // PostgREST/pg codes that mean "the object isn't there yet" (migration unapplied) → treat as gracefully absent.
 const NOT_APPLIED = new Set(["42P01", "PGRST202", "PGRST205", "PGRST203", "404"]);
@@ -95,7 +93,7 @@ export function useCaptureAutosync(clubId: string | null): CaptureAutosync {
       );
       return;
     }
-    const res = data as AutosyncClubResult | null;
+    const res = data as unknown as AutosyncClubResult | null; // RPC returns jsonb (Json)
     if (res && res.ok === false && res.busy) {
       toast.info("Đang đồng bộ nền, thử lại sau giây lát.");
       return;

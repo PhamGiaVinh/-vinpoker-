@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       all_time_money_list: {
@@ -5561,10 +5586,13 @@ export type Database = {
           client_request_id: string
           club_id: string
           cogs_vnd: number
+          comp_authorized_by: string | null
+          comp_reason: string | null
           created_at: string
           created_by: string | null
           customer_name: string | null
           id: string
+          is_comp: boolean
           note: string | null
           paid_at: string | null
           paid_by: string | null
@@ -5582,10 +5610,13 @@ export type Database = {
           client_request_id?: string
           club_id: string
           cogs_vnd?: number
+          comp_authorized_by?: string | null
+          comp_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
           id?: string
+          is_comp?: boolean
           note?: string | null
           paid_at?: string | null
           paid_by?: string | null
@@ -5603,10 +5634,13 @@ export type Database = {
           client_request_id?: string
           club_id?: string
           cogs_vnd?: number
+          comp_authorized_by?: string | null
+          comp_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
           id?: string
+          is_comp?: boolean
           note?: string | null
           paid_at?: string | null
           paid_by?: string | null
@@ -8463,6 +8497,75 @@ export type Database = {
           },
         ]
       }
+      series_capture_runs: {
+        Row: {
+          club_id: string | null
+          error_sample: string | null
+          id: string
+          rows_actuals_upserted: number
+          rows_errored: number
+          rows_reg_captured: number
+          run_at: string
+          scope: string
+        }
+        Insert: {
+          club_id?: string | null
+          error_sample?: string | null
+          id?: string
+          rows_actuals_upserted?: number
+          rows_errored?: number
+          rows_reg_captured?: number
+          run_at?: string
+          scope: string
+        }
+        Update: {
+          club_id?: string | null
+          error_sample?: string | null
+          id?: string
+          rows_actuals_upserted?: number
+          rows_errored?: number
+          rows_reg_captured?: number
+          run_at?: string
+          scope?: string
+        }
+        Relationships: []
+      }
+      series_capture_settings: {
+        Row: {
+          autosync_enabled: boolean
+          club_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          autosync_enabled?: boolean
+          club_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          autosync_enabled?: boolean
+          club_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_capture_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_capture_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       series_decision_logs: {
         Row: {
           actual_entries: number | null
@@ -8558,6 +8661,71 @@ export type Database = {
             columns: ["forecast_snapshot_id"]
             isOneToOne: false
             referencedRelation: "series_forecast_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_event_actuals: {
+        Row: {
+          actual_entries: number
+          actual_overlay_amount: number
+          actual_prize_pool: number
+          actual_reentries: number
+          actual_unique_players: number
+          captured_at: string
+          club_id: string
+          event_id: string
+          source: string
+        }
+        Insert: {
+          actual_entries?: number
+          actual_overlay_amount?: number
+          actual_prize_pool?: number
+          actual_reentries?: number
+          actual_unique_players?: number
+          captured_at?: string
+          club_id: string
+          event_id: string
+          source?: string
+        }
+        Update: {
+          actual_entries?: number
+          actual_overlay_amount?: number
+          actual_prize_pool?: number
+          actual_reentries?: number
+          actual_unique_players?: number
+          captured_at?: string
+          club_id?: string
+          event_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_event_actuals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -8700,6 +8868,7 @@ export type Database = {
           player_ref_hash: string | null
           player_ref_type: string | null
           registered_at: string
+          source_entry_id: string | null
         }
         Insert: {
           bullet?: number | null
@@ -8714,6 +8883,7 @@ export type Database = {
           player_ref_hash?: string | null
           player_ref_type?: string | null
           registered_at?: string
+          source_entry_id?: string | null
         }
         Update: {
           bullet?: number | null
@@ -8728,6 +8898,7 @@ export type Database = {
           player_ref_hash?: string | null
           player_ref_type?: string | null
           registered_at?: string
+          source_entry_id?: string | null
         }
         Relationships: [
           {
@@ -12920,6 +13091,19 @@ export type Database = {
       }
       fnb_club_ids: { Args: { _user_id: string }; Returns: string[] }
       fnb_commit_stocktake: { Args: { p_stocktake_id: string }; Returns: Json }
+      fnb_create_comp_order: {
+        Args: {
+          p_client_request_id?: string
+          p_club_id: string
+          p_comp_reason?: string
+          p_customer_name?: string
+          p_lines?: Json
+          p_note?: string
+          p_source: Database["public"]["Enums"]["fnb_order_source"]
+          p_table_label?: string
+        }
+        Returns: Json
+      }
       fnb_create_order: {
         Args: {
           p_client_request_id?: string
@@ -13956,6 +14140,15 @@ export type Database = {
         Returns: Json
       }
       sepay_set_system_actor: { Args: { p_actor_id: string }; Returns: Json }
+      series_capture_autosync: { Args: never; Returns: undefined }
+      series_capture_autosync_club: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      series_capture_sync_one_club: {
+        Args: { p_club_id: string; p_limit?: number }
+        Returns: Record<string, unknown>
+      }
       series_event_in_club: {
         Args: { _club: string; _event: string }
         Returns: boolean
@@ -14365,6 +14558,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: [
