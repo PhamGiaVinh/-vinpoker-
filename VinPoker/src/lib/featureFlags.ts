@@ -273,8 +273,10 @@ export const FEATURES = {
    * viewport, pods around the rim, stacks in BB, controls+summary below). Viewer-only
    * variant — operator/TV byte-identical is a hard merge gate (full-render equality
    * test + before/after screenshots + DOM diff). HIGHEST-RISK visual flag.
+   * PR-A1 (#666) merged the implementation dark; flipped ON here for OWNER VISUAL UAT
+   * (no external users → owner-only preview). Rollback: set back to false.
    */
-  liveFeltCompact: false,
+  liveFeltCompact: true,
   /**
    * PR-V3 (B3): viewer "moments" — pot-collect sweep at street end, elimination
    * moment, level-up toast, header Reload. Reduced-motion guarded; no auto-sound;
