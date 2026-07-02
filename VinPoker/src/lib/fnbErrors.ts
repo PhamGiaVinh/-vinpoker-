@@ -32,6 +32,11 @@ const VI: Record<string, string> = {
   INVALID_TABLE_REF:   "Bàn đã chọn không hợp lệ — chọn lại hoặc dùng gõ tay.",
   INVALID_PLAYER_REF:  "Người chơi đã chọn không hợp lệ — chọn lại hoặc bỏ chọn.",
   SHIFT_NOT_FOUND:     "Không tìm thấy ca làm việc.",
+  TOKEN_INVALID:       "Mã QR không hợp lệ hoặc đã hết hạn — vui lòng quét lại mã trên bàn.",
+  GUEST_ORDER_DISABLED:"Câu lạc bộ chưa mở gọi món qua QR.",
+  BANK_UNAVAILABLE:    "Chưa hỗ trợ chuyển khoản — vui lòng chọn tiền mặt.",
+  TABLE_PENDING_LIMIT: "Bàn đang có quá nhiều đơn chờ — vui lòng đợi phục vụ xử lý.",
+  RATE_LIMITED:        "Bạn thao tác quá nhanh — vui lòng thử lại sau ít phút.",
 };
 
 type SupaErr = { message?: string; details?: string; detail?: string; hint?: string; code?: string } | null | undefined;
