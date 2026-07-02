@@ -41,8 +41,13 @@ Overlay Break-even Entries =
   event cost, not a disappearing item. Recognition rules: [[FNB_FINANCE_RECOGNITION]].
 - **Wages are direct costs** — dealer/floor/cashier hours attributable to the event, per
   [[PAYROLL_AND_WAGES]]; saved payroll values never recompute.
-- **Provisional during the event, final only at close** — while the event runs, every
-  number is Tạm tính (forecast-live); only event close stamps Đã chốt (freeze-at-close).
+- **Three states, never conflated — Forecast / Tạm tính / Đã chốt:**
+  - **Forecast** — pre-event projection (entries, overlay); always carries an interval and
+    is never presented as an actual.
+  - **Tạm tính (provisional actual)** — real operational records exist mid-event but are
+    not yet reconciled or closed.
+  - **Đã chốt (final)** — finalized and reconciled at event close; the Accounting Control
+    truth that downstream consumers ([[SERIES_PNL]], owner reports) may use.
 - **Contribution ≠ profit.** Event Contribution is a CONTRIBUTION margin. Never label it
   "profit" (lợi nhuận) when operating/overhead costs (rent, utilities, admin) are excluded.
 - Series-level roll-up and cross-event allocation live in [[SERIES_PNL]] — do not bury
