@@ -31,6 +31,7 @@ const VI: Record<string, string> = {
   RECIPE_REQUIRED:     "Có món chưa khai báo công thức — không thể thu tiền.",
   INVALID_TABLE_REF:   "Bàn đã chọn không hợp lệ — chọn lại hoặc dùng gõ tay.",
   INVALID_PLAYER_REF:  "Người chơi đã chọn không hợp lệ — chọn lại hoặc bỏ chọn.",
+  SHIFT_NOT_FOUND:     "Không tìm thấy ca làm việc.",
 };
 
 type SupaErr = { message?: string; details?: string; detail?: string; hint?: string; code?: string } | null | undefined;

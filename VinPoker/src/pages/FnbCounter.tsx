@@ -12,6 +12,7 @@ import { useFnbOrders, type FnbOrder } from "@/hooks/useFnbOrders";
 import { useFnbLinkTargets, type FnbLinkTargets } from "@/hooks/useFnbLinkTargets";
 import { OrderEntryPanel, type NewOrder } from "@/components/fnb/OrderEntryPanel";
 import { FnbConfirmPaymentDialog, type PayableOrder } from "@/components/fnb/FnbConfirmPaymentDialog";
+import { ShiftReconciliationPanel } from "@/components/fnb/ShiftReconciliationPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -189,6 +190,7 @@ function FnbCounterInner() {
           <TabsTrigger value="new">Tạo đơn</TabsTrigger>
           <TabsTrigger value="pending">Chờ thanh toán</TabsTrigger>
           <TabsTrigger value="paid">Đã thu</TabsTrigger>
+          {FEATURES.fnbShifts && <TabsTrigger value="shift">Chốt ca</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="new" className="mt-4">
@@ -219,6 +221,12 @@ function FnbCounterInner() {
             )}
           </OrdersTab>
         </TabsContent>
+
+        {FEATURES.fnbShifts && (
+          <TabsContent value="shift" className="mt-4">
+            <ShiftReconciliationPanel clubId={activeClub} canClose={canPay} />
+          </TabsContent>
+        )}
       </Tabs>
 
       <FnbConfirmPaymentDialog order={payOrder} open={payOpen} onOpenChange={setPayOpen} confirming={paying} onConfirm={doPay} />
