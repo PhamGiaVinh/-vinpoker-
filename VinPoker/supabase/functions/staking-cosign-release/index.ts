@@ -39,6 +39,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!rr) return json({ error: "Release request not found" }, 404);
     if (rr.status === "approved") {
+      // Idempotent retry — but self-heal first: a crash between the request update and the deal
+      // update can leave request=approved while the deal is still release_requested (stuck).
+      const { error: healErr } = await admin
+        .from("staking_deals")
+        .update({ status: "cosigned" })
+        .eq("id", rr.deal_id)
+        .eq("status", "release_requested");
+      if (healErr) console.error("cosign-release: self-heal deal flip failed:", healErr.message);
       return json({ success: true, release_request_id: rr.id, status: "cosigned", existing: true });
     }
     if (rr.status !== "pending_cosign") return json({ error: `Already ${rr.status}` }, 400);

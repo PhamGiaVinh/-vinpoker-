@@ -95,9 +95,12 @@ Deno.serve(async (req) => {
       const totalCommitted = live.filter((r: any) => r.status === "committed").reduce((s, r: any) => s + Number(r.percent), 0);
       const totalFunded = live.filter((r: any) => r.status === "funded").reduce((s, r: any) => s + Number(r.percent), 0);
       let newDealStatus: string | null = null;
-      // Flip to funded only when nothing is pending AND the offered percentage is fully funded
-      // (partial fills are closed via the explicit staking-close-early flow, not silently here).
-      if (totalCommitted === 0 && totalFunded > 0 && totalFunded >= Number(deal.percentage_sold)) {
+      // Flip to funded only when nothing is pending AND the offered percentage is fully funded.
+      // Exception: early-closed deals (staking-close-early button OR the every-minute
+      // auto_close_expired_deals cron) are legitimately partial — they flip once nothing is pending,
+      // otherwise every deadline-auto-closed deal would be stranded in committing forever.
+      if (totalCommitted === 0 && totalFunded > 0 &&
+          (totalFunded >= Number(deal.percentage_sold) || deal.early_closed === true)) {
         newDealStatus = "funded";
       }
       if (newDealStatus) {

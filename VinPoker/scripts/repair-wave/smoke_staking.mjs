@@ -82,7 +82,7 @@ async function countLedger(dealId, type) {
 async function makeDeal(club, player, backer, status = "committing") {
   const { data: deal, error } = await admin.from("staking_deals").insert({
     player_id: player.id, club_id: club, status,
-    percentage_sold: 20, markup: 1.0, buy_in_amount_vnd: 5_000_000,
+    percentage_sold: 20, buy_in_amount_vnd: 5_000_000,
     custom_event_name: `${TAG} fixture`,
   }).select("id").single();
   if (error) throw new Error(`deal insert: ${error.message}`);
@@ -180,21 +180,36 @@ async function main() {
 }
 
 async function cleanupAll() {
+  // escrow_transactions + staking_audit_logs are APPEND-ONLY by design (trg_block_mutation blocks
+  // UPDATE/DELETE, and a deal delete would cascade into them and be blocked too). So: delete what
+  // is deletable, NEUTRALIZE + tag what is not, and report the residue honestly.
   console.log("[smoke] cleanup…");
   for (const dealId of cleanup.deals) {
     await admin.from("staking_release_requests").delete().eq("deal_id", dealId);
-    await admin.from("staking_audit_logs").delete().eq("deal_id", dealId);
-    await admin.from("escrow_transactions").delete().eq("deal_id", dealId);
     await admin.from("staking_purchases").delete().eq("deal_id", dealId);
-    await admin.from("staking_deals").delete().eq("id", dealId);
+    // deals with ledger rows cannot be deleted → park them terminally, clearly tagged
+    const { error: delErr } = await admin.from("staking_deals").delete().eq("id", dealId);
+    if (delErr) {
+      await admin.from("staking_deals").update({
+        status: "cancelled",
+        custom_event_name: `[SMOKE-CLEANED ${TAG}] do not use`,
+      }).eq("id", dealId);
+    }
   }
   for (const uid of cleanup.users) {
     await admin.from("notifications").delete().eq("user_id", uid);
     await admin.from("user_roles").delete().eq("user_id", uid);
   }
-  for (const clubId of cleanup.clubs) await admin.from("clubs").delete().eq("id", clubId);
-  for (const uid of cleanup.users) await admin.auth.admin.deleteUser(uid).catch(() => {});
-  console.log(`[smoke] cleanup done: ${cleanup.deals.length} deals, ${cleanup.clubs.length} clubs, ${cleanup.users.length} users removed.`);
+  let usersDeleted = 0, usersKept = 0;
+  for (const uid of cleanup.users) {
+    const { error } = await admin.auth.admin.deleteUser(uid).then((r) => ({ error: r.error ?? null })).catch((e) => ({ error: e }));
+    if (error) usersKept++; else usersDeleted++;
+  }
+  for (const clubId of cleanup.clubs) {
+    const { error } = await admin.from("clubs").delete().eq("id", clubId);
+    if (error) await admin.from("clubs").update({ name: `[SMOKE-CLEANED ${TAG}]`, status: "rejected" }).eq("id", clubId);
+  }
+  console.log(`[smoke] cleanup done. Residue (by design, tagged '${TAG}'): append-only ledger/audit rows for ${cleanup.deals.length} fixture deal(s); ${usersKept} user(s) kept due to FK refs (${usersDeleted} deleted).`);
 }
 
 try {
