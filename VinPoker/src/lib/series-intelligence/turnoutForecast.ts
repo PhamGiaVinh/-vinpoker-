@@ -12,7 +12,7 @@
 // fold train ONLY on events strictly before the target date. Deterministic (closed-form ridge, no random).
 
 import type { SeriesEvent } from "./nativeData";
-import { typeOf } from "./seriesEventType";
+import { typeOf, TYPE_LABEL } from "./seriesEventType";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -74,6 +74,36 @@ export interface CoefContribution {
   feature: string;
   beta: number; // log-space coefficient
   impactPct: number; // (exp(beta) − 1) × 100 — a model adjustment / correlation, NOT a causal claim
+}
+
+// Plain-Vietnamese display names for the model's raw feature codes (owner-facing; "wd6" means nothing to a TD).
+const WEEKDAY_VN = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+const HOUR_SLOT_VN = ["Khung đêm–sáng (0–6h)", "Khung sáng (6–12h)", "Khung chiều (12–18h)", "Khung tối (18–24h)"];
+
+/** Translate a raw feature code ("weekday:wd6", "type:main", "logBuyin"…) into plain Vietnamese. */
+export function describeFeature(feature: string): string {
+  const [group, level] = feature.includes(":") ? feature.split(":") : [feature, ""];
+  switch (group) {
+    case "logBuyin":
+      return "Buy-in cao";
+    case "logGtd":
+      return "GTD cao";
+    case "gtdMissing":
+      return "Không đặt GTD";
+    case "weekday": {
+      const d = Number(level.replace("wd", ""));
+      const name = WEEKDAY_VN[d] ?? level;
+      return d === 0 || d === 6 ? `Cuối tuần (${name})` : name;
+    }
+    case "quarter":
+      return `Quý ${Number(level.replace("q", "")) + 1}`;
+    case "hourSlot":
+      return HOUR_SLOT_VN[Number(level.replace("hs", ""))] ?? level;
+    case "type":
+      return `Loại ${(TYPE_LABEL as Record<string, string>)[level] ?? level}`;
+    default:
+      return feature;
+  }
 }
 
 export interface TurnoutForecast {

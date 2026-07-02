@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SeriesEvent } from "./nativeData";
-import { forecastTurnout, forecastToOverlayFeed, FEED_LOG_SD_FALLBACK, type UpcomingEvent } from "./turnoutForecast";
+import { forecastTurnout, forecastToOverlayFeed, describeFeature, FEED_LOG_SD_FALLBACK, type UpcomingEvent } from "./turnoutForecast";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -160,5 +160,21 @@ describe("forecastToOverlayFeed (explicit forecast→overlay adapter feed)", () 
     const degenerate = { ...fc, low: fc.base, high: fc.base }; // no width to invert
     const feed = forecastToOverlayFeed(degenerate, 1_500_000);
     expect(feed!.logSd).toBe(FEED_LOG_SD_FALLBACK);
+  });
+});
+
+describe("describeFeature (plain-VN factor names for the owner)", () => {
+  it("translates weekday/quarter/hour-slot/type/numeric codes", () => {
+    expect(describeFeature("weekday:wd6")).toBe("Cuối tuần (Thứ 7)");
+    expect(describeFeature("weekday:wd0")).toBe("Cuối tuần (Chủ nhật)");
+    expect(describeFeature("weekday:wd3")).toBe("Thứ 4");
+    expect(describeFeature("quarter:q2")).toBe("Quý 3");
+    expect(describeFeature("hourSlot:hs3")).toBe("Khung tối (18–24h)");
+    expect(describeFeature("type:main")).toBe("Loại Main Event");
+    expect(describeFeature("logBuyin")).toBe("Buy-in cao");
+    expect(describeFeature("gtdMissing")).toBe("Không đặt GTD");
+  });
+  it("falls back to the raw code for unknown features", () => {
+    expect(describeFeature("mystery-col")).toBe("mystery-col");
   });
 });

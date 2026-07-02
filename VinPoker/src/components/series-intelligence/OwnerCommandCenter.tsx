@@ -114,7 +114,19 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
 
       <DataQualityCard readiness={view.readiness} />
       <EconomicsTable rows={view.rows} />
-      {view.contributionByType && <ContributionByTypeCard result={view.contributionByType} />}
+      {view.contributionByType && (
+        <ContributionByTypeCard
+          result={view.contributionByType}
+          overlayRatePct={(() => {
+            // % giải CÓ GTD bị overlay — from the per-row resolution already shown in GtdOverlayCard.
+            const resolved = view.gtdOverlay.rows
+              .map((row) => resolveOverlay(row, truePrizeByEvent?.get(row.event_id) ?? null))
+              .filter((r) => r.covered !== null);
+            if (resolved.length === 0) return null;
+            return (resolved.filter((r) => r.covered === false).length / resolved.length) * 100;
+          })()}
+        />
+      )}
       <RiskInsightCards risks={view.risks} />
       <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />
       <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />
