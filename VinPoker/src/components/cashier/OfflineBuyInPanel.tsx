@@ -52,6 +52,12 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<SeatReceiptData | null>(null);
 
+  // Player History (Phase 1): optional phone lookup, gated by FEATURES.playerHistory. Best-effort —
+  // a lookup failure never blocks the buy-in; the RPC's own linking is best-effort server-side too.
+  const [phone, setPhone] = useState("");
+  const [lookupMatch, setLookupMatch] = useState<{ full_name: string | null; member_card_id: string } | null>(null);
+  const [looking, setLooking] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     let q = supabase.from("tournaments").select("*").in("status", ACTIVE_STATUSES).order("created_at", { ascending: false });
@@ -76,7 +82,32 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     // Default fee = rake (+ service fee when the feature is live). Player pays buy_in + rake + service.
     const svc = FEATURES.tournamentServiceFee ? (Number((t as any).service_fee_amount) || 0) : 0;
     setFee((Number((t as any).rake_amount) || 0) + svc);
+    setPhone("");
+    setLookupMatch(null);
   };
+
+  // Debounced phone lookup — read-only, never creates a member. Best-effort: any error just clears
+  // the match hint (never blocks the form). Only active when the feature flag is on.
+  useEffect(() => {
+    if (!FEATURES.playerHistory || !selected || phone.trim().length < 6) { setLookupMatch(null); return; }
+    let cancelled = false;
+    setLooking(true);
+    const h = setTimeout(async () => {
+      try {
+        const { data } = await (supabase as any).rpc("lookup_member_for_buyin", {
+          p_club_id: (selected as any).club_id,
+          p_phone: phone.trim(),
+        });
+        if (cancelled) return;
+        setLookupMatch(data?.ok && data?.found ? { full_name: data.full_name, member_card_id: data.member_card_id } : null);
+      } catch {
+        if (!cancelled) setLookupMatch(null);
+      } finally {
+        if (!cancelled) setLooking(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(h); };
+  }, [phone, selected]);
 
   const total = (Number(buyIn) || 0) + (Number(fee) || 0);
   const formValid = !!selected && playerName.trim().length >= 2 && Number(buyIn) > 0 && Number(fee) >= 0;
@@ -85,12 +116,13 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
     if (!BUYIN_LIVE || !selected) return; // defence-in-depth: never call a missing RPC
     setBusy(true);
     try {
-      const { data, error } = await supabase.rpc("create_offline_buyin_and_seat", {
+      const { data, error } = await (supabase as any).rpc("create_offline_buyin_and_seat", {
         p_tournament_id: selected.id,
         p_player_name: playerName.trim(),
         p_buy_in: Number(buyIn),
         p_fee: Number(fee),
         p_draw_mode: drawMode,
+        ...(FEATURES.playerHistory && phone.trim() ? { p_phone: phone.trim() } : {}),
       });
       const res = data as any;
       if (error || !res?.ok) { toast.error(mapErr(res, error?.message)); return; }
@@ -188,6 +220,24 @@ export function OfflineBuyInPanel({ clubIds }: { clubIds: string[] }) {
               <Label className="text-xs">Tên người chơi *</Label>
               <Input className="h-11" placeholder="VD: Nguyễn Văn A" value={playerName} onChange={(e) => setPlayerName(e.target.value)} />
             </div>
+            {FEATURES.playerHistory && (
+              <div className="space-y-1">
+                <Label className="text-xs">Số điện thoại (không bắt buộc)</Label>
+                <Input
+                  className="h-11 font-mono"
+                  type="tel"
+                  placeholder="VD: 0912345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                {looking && <div className="text-[11px] text-muted-foreground">Đang tra…</div>}
+                {!looking && lookupMatch && (
+                  <div className="text-[11px] text-primary">
+                    Khớp hội viên: <span className="font-medium">{lookupMatch.full_name || lookupMatch.member_card_id}</span> — lịch sử sẽ được cộng dồn vào người này.
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Buy-in</Label>
