@@ -5,6 +5,7 @@ import { formatVndShort } from "@/lib/clubFinance";
 import type { Series } from "@/lib/series-intelligence/seriesLibrary";
 import { groupEvents, computeGroupStats } from "@/lib/series-intelligence/referenceDistribution";
 import { simulateOverlayRisk } from "@/lib/series-intelligence/overlayRiskEngine";
+import { ExplainHint } from "./ExplainHint";
 
 // Green poker-felt palette SCOPED to this panel (vars on the wrapper only → global maroon theme untouched).
 const FELT_VARS = {
@@ -204,6 +205,11 @@ export function MonteCarloPanel({
               <div className="text-[10px] text-[var(--mut)] font-sans">doanh thu fee mô phỏng</div>
             </div>
           </div>
+          <ExplainHint tone="felt" term="P(overlay) · P5 · P50 · P95">
+            <b className="text-[var(--cream)]">P(overlay)</b> = khả năng phải bù tiền túi cho GTD (trong 100 lần tổ chức
+            "giống hệt", bao nhiêu lần thu không đủ). <b className="text-[var(--cream)]">P5 · P50 · P95</b> = kịch bản
+            5% xấu nhất · điển hình · 5% tốt nhất — tức là 90% kịch bản mô phỏng nằm giữa P5 và P95.
+          </ExplainHint>
 
           {/* histogram */}
           <div>
@@ -228,6 +234,11 @@ export function MonteCarloPanel({
               <span className="text-[var(--gold2)] tabular-nums">{sd.toFixed(2)}</span>
             </div>
             <input type="range" min={0.3} max={0.9} step={0.05} value={sd} onChange={(e) => setSd(Number(e.target.value))} className="w-full accent-[var(--gold)]" />
+            <ExplainHint tone="felt" term="SD">
+              SD = mức <b className="text-[var(--cream)]">dao động lượng khách giữa các lần tổ chức</b> cùng một giải.
+              Vì CLB mới có ít giải nên chưa đo được từ dữ liệu — đây đang là <b className="text-[var(--cream)]">giả định</b>;
+              kéo thử để xem rủi ro nhạy thế nào với mức dao động.
+            </ExplainHint>
           </div>
 
           <button onClick={() => setSeed((s) => s + 1)} className="rounded-md border border-[var(--line)] px-2.5 py-1 text-[11px] font-sans text-[var(--mut)] inline-flex items-center gap-1.5">
@@ -241,6 +252,12 @@ export function MonteCarloPanel({
             Dải rộng vì <b className="text-[#5fa8bf]">N={nReal}</b> (kỳ vọng không chắc — co theo √n); phần KHÔNG co được = turnout dao động (aleatoric, không bao giờ về 0).
             SD={sd.toFixed(2)} là <b className="text-[#5fa8bf]">giả định</b> (N nhỏ chưa ước được). <b className="text-[var(--gold2)]">Không phải dự báo.</b>
             {client && <span className="block mt-1.5 text-[var(--bad)]">Chỉ là kịch bản tham khảo — đừng quyết định tài chính chỉ dựa trên số này.</span>}
+            <ExplainHint tone="felt" term="hai lớp bất định" className="mt-1.5 block">
+              Lớp 1 (<b className="text-[var(--cream)]">epistemic</b>): phần chưa chắc <b className="text-[var(--cream)]">vì ít dữ liệu</b> —
+              có thêm giải thì phần này co lại (theo √n). Lớp 2 (<b className="text-[var(--cream)]">aleatoric</b>): phần
+              <b className="text-[var(--cream)]"> dao động tự nhiên</b> của lượng khách — không bao giờ hết, thêm bao nhiêu
+              dữ liệu cũng vậy. Vì thế "thêm data" giúp thu hẹp dải, nhưng không bao giờ cho con số chắc chắn.
+            </ExplainHint>
           </div>
         </>
       )}

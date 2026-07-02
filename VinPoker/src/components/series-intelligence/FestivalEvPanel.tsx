@@ -8,6 +8,7 @@ import { formatVndShort } from "@/lib/clubFinance";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { simulateFestival, type SimResult } from "@/lib/series-intelligence/monteCarloEngine";
 import { scheduleToSimEvents } from "@/lib/series-intelligence/scheduleToMonteCarlo";
+import { ExplainHint } from "./ExplainHint";
 
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
 
@@ -64,6 +65,11 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
             <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Chi phí festival (tổng, tùy chọn)</span><Input type="number" className="h-7" placeholder="(trống → chỉ gross)" value={cost ?? ""} onChange={(e) => setCost(numOrNull(e.target.value))} /></label>
             <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Bankroll (cho Risk-of-Ruin)</span><Input type="number" className="h-7" placeholder="(trống)" value={bankroll ?? ""} onChange={(e) => setBankroll(numOrNull(e.target.value))} /></label>
           </div>
+          <ExplainHint term="ρ và α">
+            <b>ρ (đồng biến động)</b>: mức các giải trong festival <b>cùng vắng / cùng đông một mùa</b> — ρ cao thì lời
+            kỳ vọng gần như không đổi nhưng rủi ro đuôi (lỗ nặng cả loạt) tăng mạnh. <b>α</b>: hệ số phóng to–thu nhỏ
+            toàn bộ GTD để thử độ hung hăng cam kết ("nếu tôi hứa GTD gấp rưỡi thì sao?").
+          </ExplainHint>
           <Button size="sm" variant="outline" className="gap-1.5" onClick={computeEv}>
             <Calculator className="h-4 w-4" /> Tính EV kịch bản
           </Button>
@@ -89,6 +95,12 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
                 <EvCell label="Risk-of-Ruin (Giả thuyết)" v={ev.result.ruin === null ? "—" : `${(ev.result.ruin * 100).toFixed(1)}%`} danger />
                 <EvCell label="P(overlay)" v={`${(ev.result.pOverlayAny * 100).toFixed(1)}%`} />
               </div>
+              <ExplainHint term="P5/P50/P95 · P(lỗ) · Risk-of-Ruin">
+                <b>P5 · P50 · P95</b>: kịch bản 5% xấu nhất · điển hình · 5% tốt nhất (90% kịch bản nằm giữa P5–P95).
+                <b> P(lỗ)</b>: khả năng cả festival kết thúc âm. <b>Risk-of-Ruin</b>: khả năng thua lũy kế vượt quá
+                <b> vốn dự phòng</b> bạn nhập — tức là "cụt vốn giữa chừng", cái thật sự giết doanh nghiệp, khác với
+                chỉ lỗ nhẹ. <b>P(overlay)</b>: khả năng có ÍT NHẤT một giải phải bù GTD.
+              </ExplainHint>
               <p className="text-[10px] text-warning/90 flex items-start gap-1 border border-warning/40 bg-warning/5 rounded-md p-1.5">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> Lịch generated + giả thuyết → dải rất rộng. Đừng quyết định tài chính chỉ dựa trên số này.
               </p>
