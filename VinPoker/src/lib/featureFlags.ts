@@ -658,9 +658,10 @@ export const FEATURES = {
    * falls in [opened_at, closed_at]; the live money RPCs (fnb_mark_paid / fnb_create_order /
    * fnb_create_comp_order) are NOT touched. Requires migrations 20261111000015 (fnb_cashier_shifts) +
    * 20261111000016 (open/close/report RPCs) applied live first. Gates the "Chốt ca" tab on the
-   * counter. Default OFF (dark). Flip after migration applied + preview UAT.
+   * counter. Migrations 20261111000015/16 applied live 2026-07-02 (owner controlled-apply, PASS).
+   * ON after preview UAT.
    */
-  fnbShifts: false,
+  fnbShifts: true,
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
