@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import { ChipStack } from "./ChipStack";
+import { FeltStatusBar } from "./FeltStatusBar";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
 
 export interface SeatInfo {
@@ -146,6 +147,31 @@ const GEO_V2 = {
   landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS_V2, centerTop: "44%", centerW: "36%", vSize: "clamp(22px,4vw,36px)", maxW: "880px" },
 };
 
+// PR-A1 (liveFeltCompact): RPT-style COMPACT-WIDE stadium for PORTRAIT phones —
+// felt ≈2.2:1 so felt+pods stay ≈30% of a 390px viewport instead of the tall 5/7
+// racetrack. Pods straddle the rim (top/bottom rows sit half outside the oval, like a
+// broadcast table). Used ONLY when viewerLayout && compact && portrait; every other
+// path (operator/TV/replay-without-flag, landscape) keeps GEO/GEO_V2 byte-identical.
+const PORTRAIT_SEATS_COMPACT: Record<number, Pt> = {
+  1: { l: 36, t: 97 },
+  2: { l: 12, t: 84 },
+  3: { l: 8, t: 38 }, // side ends stay ≥8% — at 4% half the 58px pod fell off a 390px viewport
+  4: { l: 22, t: 3 },
+  5: { l: 50, t: 0 },
+  6: { l: 78, t: 3 },
+  7: { l: 92, t: 38 },
+  8: { l: 88, t: 84 },
+  9: { l: 64, t: 97 },
+};
+const GEO_COMPACT_PORTRAIT = {
+  aspect: "2.2 / 1",
+  seats: PORTRAIT_SEATS_COMPACT,
+  centerTop: "50%",
+  centerW: "44%",
+  vSize: "clamp(26px,9vw,40px)", // unused in compact (V renders as a watermark instead)
+  maxW: "480px",
+};
+
 export interface LiveFeltProps {
   /** Active seats already positioned for the table on view. */
   seats: SeatInfo[];
@@ -222,6 +248,25 @@ export interface LiveFeltProps {
    * the public viewer (TournamentLiveView when `spectator && liveViewerFeltV2`).
    */
   viewerLayout?: boolean;
+  /**
+   * PR-A1 (liveFeltCompact): RPT-style compact PUBLIC-VIEWER layout. ADDITIVE — inert
+   * unless `viewerLayout` is also on (operator/TV/replay-without-V2 stay byte-identical
+   * even if this is passed). When active:
+   *  • portrait felt becomes a 2.2:1 wide stadium (≈30% of a phone viewport incl. pods)
+   *    with rim-straddling seat anchors; landscape geometry is unchanged;
+   *  • seat nameplates show the stack BB-FIRST (chips demoted to the secondary line);
+   *    when `formatBB` returns null the chips line renders alone — never a fake BB;
+   *  • a persistent one-row status bar (blinds/ante · to-act · pot) renders directly
+   *    under the oval (both orientations). Set only by the public viewer
+   *    (TournamentLiveView when `spectator && liveFeltCompact`).
+   */
+  compact?: boolean;
+  /**
+   * Blind level for the status bar (compact only; ignored otherwise). null/absent or
+   * bb<=0 → the blinds segment is hidden (never fabricated). Live passes the clock
+   * level; replay passes the HAND's own detected blinds.
+   */
+  blinds?: { sb: number; bb: number; ante: number } | null;
 }
 
 export function LiveFelt({
@@ -244,11 +289,16 @@ export function LiveFelt({
   tableFx = false,
   chipPush = null,
   viewerLayout = false,
+  compact = false,
+  blinds = null,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
+  // PR-A1 compact is DOUBLE-gated on viewerLayout so it can never touch operator/TV even
+  // if the prop leaks; geometry only changes in portrait (landscape 13/6 is already wide).
+  const compactActive = viewerLayout && compact;
   const geoSet = viewerLayout ? GEO_V2 : GEO;
-  const geo = portrait ? geoSet.portrait : geoSet.landscape;
+  const geo = compactActive && portrait ? GEO_COMPACT_PORTRAIT : portrait ? geoSet.portrait : geoSet.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
 
   // Viewer Felt V2 — cards size with the FELT's own width (cqi resolves to the
@@ -351,7 +401,18 @@ export function LiveFelt({
       {/* When fit: a real height-reserver box clips the oversized design-width felt.
           When NOT fit: display:contents → this wrapper vanishes, so operator/TV/portrait
           render the oval exactly as before (byte-identical). */}
-      <div style={fit ? { position: "relative", height: fit.h, overflow: "hidden" } : { display: "contents" }}>
+      <div
+        style={
+          fit
+            ? { position: "relative", height: fit.h, overflow: "hidden" }
+            : compactActive && portrait
+              ? // Compact stadium: rim-straddling pods extend ~44px above/below the short
+                // oval — reserve that space so nothing above (headers) or below (status
+                // bar) ever overlaps a pod. Non-compact keeps display:contents (identical).
+                { paddingTop: 44, paddingBottom: 44 }
+              : { display: "contents" }
+        }
+      >
       <div
         className={fit ? "overflow-visible" : "relative mx-auto w-full overflow-visible"}
         style={
@@ -415,6 +476,19 @@ export function LiveFelt({
           className="pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
           style={{ top: geo.centerTop, width: geo.centerW, maxWidth: "244px" }}
         >
+          {compactActive && portrait ? (
+            // Compact stadium: no vertical room to STACK the V above the board — it
+            // becomes a faint centered watermark BEHIND the board instead (RPT puts its
+            // brand the same way), so the short felt fits board + pot without clipping.
+            <div
+              data-testid="felt-v"
+              aria-hidden="true"
+              className="tracker-display absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 font-black leading-none"
+              style={{ fontSize: "clamp(44px,20cqi,72px)", color: "hsl(var(--primary) / 0.10)" }}
+            >
+              V
+            </div>
+          ) : (
           <div
             data-testid="felt-v"
             className="tracker-display mb-2 font-black leading-none"
@@ -422,6 +496,7 @@ export function LiveFelt({
           >
             V
           </div>
+          )}
           {/* Board — revealed cards face up; unrevealed slots = premium V-logo backs. */}
           <div data-testid="board-cards" className="flex items-center justify-center gap-1.5">
             {displayCards.map((card, i) =>
@@ -445,7 +520,9 @@ export function LiveFelt({
               )
             )}
           </div>
-          {potSize > 0 && (
+          {/* Compact portrait: the pot lives in the STATUS BAR below (RPT pattern) — the
+              short felt keeps only the board centered, so 9-max pods never collide. */}
+          {potSize > 0 && !(compactActive && portrait) && (
             <div className="mt-2.5 flex flex-col items-center">
               <div
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
@@ -607,6 +684,9 @@ export function LiveFelt({
                 {viewerLayout ? (
                   // V2: a CoinPoker-style "nameplate" capsule — name + stack grouped in one
                   // dark, neon-bordered pill so each seat reads as a tight unit.
+                  // PR-A1 compact: the stack goes BB-FIRST (RPT pattern — meaningful at any
+                  // level) with chips demoted to a smaller secondary line. formatBB null
+                  // (no blind level) → chips render alone exactly as today: never a fake BB.
                   <div
                     className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
                     style={{ background: "rgba(8,12,10,0.82)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}
@@ -614,9 +694,20 @@ export function LiveFelt({
                     <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
                       {seat.display_name}
                     </div>
-                    <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
-                      {formatStack(seat.chip_count)}
-                    </div>
+                    {compactActive && formatBB(seat.chip_count) ? (
+                      <>
+                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
+                          {formatBB(seat.chip_count)}
+                        </div>
+                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[8px] font-semibold leading-none text-white/60">
+                          {formatStack(seat.chip_count)}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
+                        {formatStack(seat.chip_count)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -649,6 +740,10 @@ export function LiveFelt({
                 {!seat.is_folded && !seat.is_all_in && seat.last_action && (
                   <div className="mt-0.5 max-w-full truncate text-[8px] text-amber-300/90" style={nameShadow}>{seat.last_action}</div>
                 )}
+                {/* Compact: face-DOWN backs are dropped entirely (RPT pods carry no cards
+                    until a reveal) — the short felt can't afford the extra pod height.
+                    Revealed cards (showdown/all-in) still render. Non-compact unchanged. */}
+                {(!compactActive || (seat.hole_cards && seat.hole_cards.length === 2)) && (
                 <div
                   data-testid="seat-holecards"
                   className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
@@ -659,6 +754,7 @@ export function LiveFelt({
                     [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   )}
                 </div>
+                )}
               </div>
             </div>
           );
@@ -780,6 +876,19 @@ export function LiveFelt({
         )}
       </div>
       </div>
+
+      {/* PR-A1 compact: persistent status bar docked right under the oval (RPT pattern).
+          compactActive-gated → operator/TV/replay-without-flag emit nothing new. */}
+      {compactActive && (
+        <FeltStatusBar
+          blinds={blinds}
+          toActName={
+            toActId ? seats.find((s) => s.player_id === toActId)?.display_name ?? null : null
+          }
+          potSize={potSize}
+          formatBB={formatBB}
+        />
+      )}
 
       {/* Action rail — OUTSIDE the felt so it never collides with the table. */}
       {latestAction && (
