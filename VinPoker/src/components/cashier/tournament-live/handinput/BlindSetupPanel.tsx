@@ -47,6 +47,15 @@ interface BlindSetupPanelProps {
    */
   deadSb?: boolean;
   onToggleDeadSb?: () => void;
+  /**
+   * A1 (trackerBlindAutoSeed) — both ADDITIVE; absent → render byte-identical.
+   * `provenance`: preformatted source line ("SB 300 · BB 600 · lấy 14:05") shown next
+   * to the Level header so the operator sees WHERE the auto-filled amounts came from.
+   * `onPostBoth`: one-tap "post SB + BB & confirm" assist — shown only while nothing
+   * is posted yet and the on-screen amounts are valid (never posts a 0 blind).
+   */
+  provenance?: string | null;
+  onPostBoth?: (() => void) | null;
 }
 
 function seatLabel(players: BlindSetupPlayer[], seat: number | null): string {
@@ -132,10 +141,15 @@ export function BlindSetupPanel({
   disabled,
   deadSb,
   onToggleDeadSb,
+  provenance,
+  onPostBoth,
 }: BlindSetupPanelProps) {
   const sbPlayer = players.find((p) => p.seat_number === sbSeat);
   const bbPlayer = players.find((p) => p.seat_number === bbSeat);
   const canConfirm = bbPosted && (deadSb || sbPosted);
+  // One-tap eligibility: nothing posted yet + valid on-screen amounts (0 never posts).
+  const canPostBoth =
+    !!onPostBoth && !sbPosted && !bbPosted && !!bbPlayer && bbAmount > 0 && (deadSb || (!!sbPlayer && sbAmount > 0));
 
   return (
     <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-card p-3.5">
@@ -146,6 +160,23 @@ export function BlindSetupPanel({
           {ante > 0 && <span className="ml-2">· Ante {formatStack(ante)}</span>}
         </div>
       </div>
+
+      {provenance && (
+        <div className="text-[10px] text-muted-foreground">
+          Tự lấy từ clock giải: <span className="text-emerald-300">{provenance}</span> — có thể sửa số trước khi post.
+        </div>
+      )}
+
+      {canPostBoth && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onPostBoth?.()}
+          className="w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-black transition active:scale-[0.99] disabled:opacity-40"
+        >
+          ⚡ Đăng blind & xác nhận (1 chạm{deadSb ? " · SB chết" : ""}) — SB {deadSb ? "—" : formatStack(sbAmount)} / BB {formatStack(bbAmount)}
+        </button>
+      )}
 
       {levelMissing && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">

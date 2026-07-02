@@ -31,6 +31,7 @@ import { ViewerSyncStatus } from "./ViewerSyncStatus";
 import { WorkflowProgressRail } from "./WorkflowProgressRail";
 import { HandGuideDrawer } from "./HandGuideDrawer";
 import { OperatorActionLog } from "./OperatorActionLog";
+import { formatStack } from "./format";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
 
 // players → racetrack SeatVM (display-only view-model). The `rich` extras (avatar +
@@ -117,6 +118,13 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           submitting={hook.submitting}
           lastHandId={hook.lastHandId}
           onVoid={hook.handleVoid}
+          // A2 express: right after a recorded hand (number + button pre-seeded) the
+          // start button becomes the one-tap "Ván tiếp theo". Flag OFF → prop absent.
+          expressLabel={
+            FEATURES.trackerNextHandExpress && hook.lastHandId && hook.handNumber && hook.buttonConfirmed
+              ? `⚡ Ván tiếp theo — Hand #${Number(hook.handNumber)}`
+              : undefined
+          }
         />
       );
     }
@@ -161,6 +169,15 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           disabled={disabled}
           deadSb={hook.deadSb}
           onToggleDeadSb={hook.handleToggleDeadSb}
+          // A1: provenance + one-tap posting — flag OFF → props absent (byte-identical).
+          provenance={
+            FEATURES.trackerBlindAutoSeed && hook.blindLevelSnapshot && !hook.blindLevelMissing
+              ? `SB ${formatStack(hook.blindLevelSnapshot.small_blind)} · BB ${formatStack(hook.blindLevelSnapshot.big_blind)}${
+                  hook.blindLevelSnapshot.ante > 0 ? ` · Ante ${formatStack(hook.blindLevelSnapshot.ante)}` : ""
+                }${hook.blindFetchedAt ? ` · lấy ${hook.blindFetchedAt.toTimeString().slice(0, 5)}` : ""}`
+              : undefined
+          }
+          onPostBoth={FEATURES.trackerBlindAutoSeed ? hook.handlePostBothBlinds : undefined}
         />
       );
     }
@@ -335,8 +352,21 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         )}
         {hook.handStarted && !hook.isSummary && hook.blindLevelChanged && (
           <div className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-300">
-            Level mới đã bắt đầu. Ván này vẫn dùng Level {hook.blindLevelSnapshot?.level_number}; ván tiếp theo dùng
-            Level {hook.liveLevelNumber}.
+            {FEATURES.trackerBlindAutoSeed && hook.liveLevel && (hook.liveLevel.big_blind ?? 0) > 0 ? (
+              // A1: show the NEXT hand's amounts so the operator never has to remember them —
+              // the next hand auto-seeds this level.
+              <>
+                Level mới đã bắt đầu. Ván này vẫn dùng Level {hook.blindLevelSnapshot?.level_number}; ván sau tự lấy
+                Level {hook.liveLevelNumber}: SB {formatStack(hook.liveLevel.small_blind ?? 0)} · BB{" "}
+                {formatStack(hook.liveLevel.big_blind ?? 0)}
+                {(hook.liveLevel.ante ?? 0) > 0 ? <> · Ante {formatStack(hook.liveLevel.ante ?? 0)}</> : null}.
+              </>
+            ) : (
+              <>
+                Level mới đã bắt đầu. Ván này vẫn dùng Level {hook.blindLevelSnapshot?.level_number}; ván tiếp theo dùng
+                Level {hook.liveLevelNumber}.
+              </>
+            )}
           </div>
         )}
       </div>

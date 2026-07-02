@@ -22,6 +22,12 @@ interface SetupHandPanelProps {
   submitting: boolean;
   lastHandId: string | null;
   onVoid: () => void;
+  /**
+   * A2 (trackerNextHandExpress) — ADDITIVE; absent → button reads "Bắt đầu Hand"
+   * byte-identical. When set (a hand was just recorded + number/button pre-seeded),
+   * the start button becomes the express CTA (e.g. "⚡ Ván tiếp theo — Hand #12").
+   */
+  expressLabel?: string | null;
 }
 
 export function SetupHandPanel({
@@ -36,6 +42,7 @@ export function SetupHandPanel({
   submitting,
   lastHandId,
   onVoid,
+  expressLabel,
 }: SetupHandPanelProps) {
   return (
     <UiCard className="p-6 text-center space-y-4 border-dashed">
@@ -69,9 +76,13 @@ export function SetupHandPanel({
       <Button
         onClick={onStartHand}
         disabled={submitting || !handNumber || !buttonConfirmed}
-        className="bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20"
+        className={
+          expressLabel
+            ? "bg-emerald-500 hover:bg-emerald-600 text-black font-bold shadow-lg shadow-emerald-500/20"
+            : "bg-amber-500 hover:bg-amber-600 text-black font-bold shadow-lg shadow-amber-500/20"
+        }
       >
-        <Play className="w-4 h-4 mr-2" /> Bắt đầu Hand
+        <Play className="w-4 h-4 mr-2" /> {expressLabel || "Bắt đầu Hand"}
       </Button>
       {lastHandId && (
         <div className="pt-2">
