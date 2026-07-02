@@ -14,7 +14,7 @@ const ageMins = (paidAt: string | null): number =>
  * xong" ships the whole order via `fnb_mark_shipped` (live, mig …0003). Realtime refetch is the source
  * of truth — when every line ships the order flips to `shipped` and drops off the board.
  */
-export function KitchenTicket({ order, onChanged }: { order: FnbOrder; onChanged: () => void }) {
+export function KitchenTicket({ order, onChanged, label }: { order: FnbOrder; onChanged: () => void; label?: string | null }) {
   const [busy, setBusy] = useState(false);
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 30000); return () => clearInterval(t); }, []);
@@ -35,7 +35,9 @@ export function KitchenTicket({ order, onChanged }: { order: FnbOrder; onChanged
   return (
     <div className="flex flex-col gap-[1vmin] rounded-[1.4vmin] border border-border bg-card p-[1.6vmin]">
       <div className="flex items-center justify-between gap-[1vmin]">
-        <div className="text-[2.4vmin] font-bold leading-none text-foreground">{order.table_label || "Khách lẻ"}</div>
+        <div className="text-[2.4vmin] font-bold leading-none text-foreground">
+          {label || order.table_label || "Khách lẻ"}{order.guest_seat ? ` · Ghế ${order.guest_seat}` : ""}
+        </div>
         <div className={`flex items-center gap-[0.5vmin] text-[1.8vmin] tabular-nums ${ageColor}`}>
           <Clock className="h-[1.8vmin] w-[1.8vmin]" /> {mins}′
         </div>

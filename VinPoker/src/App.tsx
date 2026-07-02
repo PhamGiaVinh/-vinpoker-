@@ -40,6 +40,7 @@ const Marketing = lazy(() => import("./pages/Marketing"));
 const FnbCounter = lazy(() => import("./pages/FnbCounter"));
 const FnbKitchenDisplay = lazy(() => import("./pages/FnbKitchenDisplay"));
 const FnbTableOrder = lazy(() => import("./pages/FnbTableOrder"));
+const FnbServe = lazy(() => import("./pages/FnbServe"));
 const FnbAdmin = lazy(() => import("./pages/FnbAdmin"));
 // F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
 const FnbDemo = lazy(() => import("./pages/FnbDemo"));
@@ -237,6 +238,7 @@ const App = () => (
                 <Route path="/marketing" element={<Marketing />} />
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
                 <Route path="/fnb" element={<FnbCounter />} />
+                <Route path="/fnb/serve" element={<FnbServe />} />
                 <Route path="/fnb/admin" element={<FnbAdmin />} />
                 {/* F&B public DEMO — static showcase, keeps Layout chrome. Self-gates on FEATURES.fnbDemo. */}
                 <Route path="/fnb/demo" element={<FnbDemo />} />

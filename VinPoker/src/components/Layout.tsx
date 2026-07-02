@@ -74,7 +74,7 @@ const desktopTabsData = tabsData.filter((t) => !DESKTOP_HIDDEN_ROUTES.has(t.to))
 export const Layout = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const { t } = useTranslation();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, isFnb, isFnbCashier, isFnbKitchen, signOut } = useAuth();
+  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isStaffOps, isMedia, isFloor, isTracker, isDealer, isChipMaster, isMarketing, isFnb, isFnbCashier, isFnbKitchen, isFnbServer, signOut } = useAuth();
   const { count: unreadCount } = useUnreadChats();
   const adminPending = useAdminPendingCounts();
   const location = useLocation();
@@ -304,6 +304,12 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/fnb/kitchen")} className="gap-2.5 cursor-pointer">
                       <ChefHat className="w-4 h-4" />
                       {t("fnb.navKitchen")}
+                    </DropdownMenuItem>
+                  )}
+                  {FEATURES.fnbGuestOrder && (isFnbServer || isFnbCashier || isClubOwner || isAdmin) && (
+                    <DropdownMenuItem onClick={() => nav("/fnb/serve")} className="gap-2.5 cursor-pointer">
+                      <UtensilsCrossed className="w-4 h-4" />
+                      {t("fnb.navServe")}
                     </DropdownMenuItem>
                   )}
                   {FEATURES.fnbModule && (isClubOwner || isAdmin) && (
