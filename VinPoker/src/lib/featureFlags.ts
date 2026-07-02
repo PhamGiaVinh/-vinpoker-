@@ -799,6 +799,23 @@ export const FEATURES = {
    * cashier phone field again (server-side objects stay, just unused by the UI).
    */
   playerHistory: true,
+  /**
+   * Close Report (Chốt giải) — operator tournament settlement + finalize on the Floor. When ON, a
+   * live/final_table tournament shows a "Chốt giải" report: entries by source, money-IN (buy-in
+   * pass-through + rake + service fee) vs money-OUT (prize by place + cashout), the club-revenue
+   * (= rake + service) and cashier-drawer reconciliation, read-only staking/dealer link status, and
+   * a 2-step "Chốt giải" lock (Owner/Cashier only). Locking calls the source-only `close_tournament`
+   * RPC (idempotent, audited via tournament_state_transitions, snapshots into tournament_close_report)
+   * and does NOT auto-fire staking release or the dealer "Đóng tour" — those stay explicit so it can
+   * never double-fire the existing auto-finalize paths. Money doctrine: buy-in and prize are
+   * PASS-THROUGH (never club revenue); the report recomputes NOTHING that is already a saved value
+   * (payroll, ledger). Default **OFF** (dark): while false the report/button never render and nothing
+   * queries the source-only `close_tournament` RPC or `tournament_close_report` table, so an
+   * un-applied schema can't break the Floor. Flip to true ONLY after the enum-unify +
+   * tournament_close_report + close_tournament migration is applied live in a controlled DB session
+   * and owner UAT passes. Kill-switch: set false.
+   */
+  closeReport: false,
 } as const;
 
 /**
