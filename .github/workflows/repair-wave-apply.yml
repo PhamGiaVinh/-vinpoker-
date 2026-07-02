@@ -1,0 +1,136 @@
+name: Repair wave — apply (owner-gated, one repair per run)
+
+# Manual trigger only — never runs on push. Pick ONE repair from the dropdown and click Run.
+# Follows the proven marketing-apply / service-fee-apply pattern: Management API + supabase CLI
+# in CI with GitHub Secrets; NO db push, NO deploy_db, NO schema_migrations writes.
+#
+# HOW TO RUN (owner): Actions → "Repair wave — apply" → Run workflow → choose:
+#   payout-edge      → redeploys compute-payouts from main (engine v1.1, banding default #626)
+#   finance-pt-wage  → preflight → apply 20261211000000 (PT-wage restore) → golden-diff verify
+#   staking-edge     → deploys the 3 reviewed staking functions + runs the smoke suite
+# Run them in that order, one at a time, checking each is green before the next.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repair:
+        description: "Which repair to apply"
+        required: true
+        type: choice
+        options:
+          - payout-edge
+          - finance-pt-wage
+          - staking-edge
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Link Supabase project
+        working-directory: ./VinPoker
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      # ───────────────────────────── R1: payout-edge ─────────────────────────────
+      - name: "R1 before: deployed compute-payouts version"
+        if: inputs.repair == 'payout-edge'
+        working-directory: ./VinPoker
+        run: supabase functions list | grep -E 'compute-payouts|NAME' || true
+
+      - name: "R1: deploy compute-payouts (engine v1.1) — ONLY this function"
+        if: inputs.repair == 'payout-edge'
+        working-directory: ./VinPoker
+        run: supabase functions deploy compute-payouts
+
+      - name: "R1 after: version bump + deployed-source proof"
+        if: inputs.repair == 'payout-edge'
+        working-directory: ./VinPoker
+        run: |
+          supabase functions list | grep -E 'compute-payouts|NAME'
+          mkdir -p /tmp/dl && cd /tmp/dl
+          supabase functions download compute-payouts --project-ref "$SUPABASE_PROJECT_REF"
+          grep -n 'ENGINE_VERSION' supabase/functions/_shared/payoutEngine.ts
+          grep -q 'engine3neo-v1.1' supabase/functions/_shared/payoutEngine.ts \
+            && echo "PROOF: deployed engine is v1.1 (banding default)" \
+            || { echo "FAIL: deployed engine is NOT v1.1"; exit 1; }
+
+      # ─────────────────────────── R2: finance-pt-wage ───────────────────────────
+      - name: "R2 preflight (read-only): live def + BEFORE snapshot + pt_sum"
+        if: inputs.repair == 'finance-pt-wage'
+        working-directory: ./VinPoker
+        run: node scripts/repair-wave/apply_finance_pt_wage.mjs --preflight
+
+      - name: "R2 apply: 20261211000000 PT-wage restore (single Management-API call)"
+        if: inputs.repair == 'finance-pt-wage'
+        working-directory: ./VinPoker
+        env:
+          CONFIRM_APPLY_REPAIR: APPLY_FINANCE_PT_WAGE
+        run: node scripts/repair-wave/apply_finance_pt_wage.mjs --apply
+
+      - name: "R2 verify: golden diff (payrollNet +pt_sum, net −pt_sum, rest identical)"
+        if: inputs.repair == 'finance-pt-wage'
+        working-directory: ./VinPoker
+        run: node scripts/repair-wave/apply_finance_pt_wage.mjs --verify
+
+      - name: "R2 artifacts (before/after snapshots + defs)"
+        if: inputs.repair == 'finance-pt-wage'
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-pt-wage-proof
+          path: VinPoker/scripts/repair-wave/out/
+
+      # ──────────────────────────── R3: staking-edge ─────────────────────────────
+      - name: "R3 before: functions absent + schema preflight (read-only)"
+        if: inputs.repair == 'staking-edge'
+        working-directory: ./VinPoker
+        run: |
+          supabase functions list | grep -E 'staking-cosign-release|admin-confirm-funded|staking-process-refund' && echo "already deployed (re-run)" || echo "confirmed absent"
+          node scripts/repair-wave/apply_staking_refund_schema.mjs --preflight
+
+      - name: "R3 schema: enum leg (own call) then columns leg"
+        if: inputs.repair == 'staking-edge'
+        working-directory: ./VinPoker
+        env:
+          CONFIRM_APPLY_REPAIR: APPLY_STAKING_REFUND
+        run: |
+          node scripts/repair-wave/apply_staking_refund_schema.mjs --apply-enum
+          node scripts/repair-wave/apply_staking_refund_schema.mjs --apply-schema
+          node scripts/repair-wave/apply_staking_refund_schema.mjs --verify
+
+      - name: "R3: deploy the 3 reviewed staking functions"
+        if: inputs.repair == 'staking-edge'
+        working-directory: ./VinPoker
+        run: |
+          supabase functions deploy staking-cosign-release
+          supabase functions deploy admin-confirm-funded
+          supabase functions deploy staking-process-refund
+
+      - name: "R3 after: versions + smoke suite on fixture data (self-cleaning)"
+        if: inputs.repair == 'staking-edge'
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          supabase functions list | grep -E 'staking-cosign-release|admin-confirm-funded|staking-process-refund'
+          npm install --no-save @supabase/supabase-js@2
+          node scripts/repair-wave/smoke_staking.mjs
+
+      - name: Done
+        run: echo "Repair '${{ inputs.repair }}' finished green. Report back to the coordinator session."
