@@ -49,24 +49,42 @@ export function RequestsActionPanel({
   const labelOf = (id: string) => templates.find((t) => t.id === id)?.label ?? id;
   const nameOf = (id: string) => dealers.find((d) => d.id === id)?.fullName ?? id;
 
-  const db = supabase as unknown as { from: (table: string) => any };
+  const db = supabase as unknown as {
+    from: (table: string) => any;
+    rpc: (fn: string, args: object) => Promise<{ data: any; error: { message?: string } | null }>;
+  };
 
   const persistDecision = async (dealerId: string, status: "acknowledged" | "rejected") => {
     if (!live || !clubId) return;
+    // Preferred path: SECDEF RPC scoped to cashier ∪ dealer-control clubs (migration
+    // 20261211000000, owner-gated apply). Fallback while unapplied: direct RLS-gated
+    // UPDATE — works for dealer-control roles, blocked for cashier-path operators.
     try {
-      const { data, error } = await db
-        .from("dealer_availability_requests")
-        .update({ status })
-        .eq("club_id", clubId)
-        .eq("dealer_id", dealerId)
-        .eq("work_date", workDate)
-        .select("id");
-      if (error) throw error;
-      if (!Array.isArray(data) || data.length === 0) throw new Error("no_rows");
+      const { data: res, error: rpcErr } = await db.rpc("review_availability_request", {
+        p_club_id: clubId,
+        p_dealer_id: dealerId,
+        p_work_date: workDate,
+        p_decision: status,
+      });
+      if (!rpcErr && res?.ok) return;
+      if (!rpcErr && res && !res.ok) throw new Error(res.error ?? "rpc_refused");
+      throw rpcErr ?? new Error("rpc_missing");
     } catch {
-      toast.warning(
-        "Đã ghi nhận tại đây, nhưng chưa lưu được trạng thái duyệt vào hệ thống (cần quyền dealer-control — bản cập nhật sau sẽ mở cho mọi vai trò)."
-      );
+      try {
+        const { data, error } = await db
+          .from("dealer_availability_requests")
+          .update({ status })
+          .eq("club_id", clubId)
+          .eq("dealer_id", dealerId)
+          .eq("work_date", workDate)
+          .select("id");
+        if (error) throw error;
+        if (!Array.isArray(data) || data.length === 0) throw new Error("no_rows");
+      } catch {
+        toast.warning(
+          "Đã ghi nhận tại đây, nhưng chưa lưu được trạng thái duyệt vào hệ thống (cần áp dụng RPC duyệt yêu cầu — đã kèm trong bản cập nhật, chờ duyệt DB)."
+        );
+      }
     }
   };
 
