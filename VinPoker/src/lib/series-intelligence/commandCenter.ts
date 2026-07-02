@@ -193,6 +193,10 @@ export function computeContributionByType(events: SeriesEvent[]): ContributionBy
       notes.push(`${feeRevenue.totalCount - feeRevenue.contributingCount}/${feeRevenue.totalCount} giải thiếu fee hoặc entries — không tính vào doanh thu`);
     if (overlayCost.partial)
       notes.push(`${overlayCost.totalCount - overlayCost.contributingCount} giải có GTD nhưng thiếu buy-in/entries — chưa ước được chi phí bù`);
+    // Asymmetric-missing-data artifact: an event can contribute overlay COST while its fee revenue was
+    // uncountable (fee missing) — a negative margin may then be a data hole, not a real bleed. Say so.
+    if (feeRevenue.partial && overlayCost.value > 0)
+      notes.push("⚠ có giải bị tính chi phí bù nhưng thiếu fee — biên có thể ÂM GIẢ TẠO do thiếu dữ liệu, kiểm tra trước khi kết luận");
 
     rows.push({
       type,

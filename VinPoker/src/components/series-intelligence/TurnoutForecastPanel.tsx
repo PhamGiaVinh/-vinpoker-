@@ -48,6 +48,10 @@ export function TurnoutForecastPanel({
   const events: SeriesEvent[] = csvEvents && csvEvents.length > 0 ? csvEvents : native.events;
 
   const [date, setDate] = useState("");
+  // Real start hour matters: training rows carry true start times (hour-slot feature), so serving with a
+  // date-only value would silently parse as UTC midnight (= 07:00 VN → always the morning slot) and
+  // mis-apply the model's hour-of-day adjustment. Default 19:00 = typical VN tournament start, editable.
+  const [startTime, setStartTime] = useState("19:00");
   const [buyIn, setBuyIn] = useState<number | null>(null);
   const [gtd, setGtd] = useState<number | null>(null);
   const [typeKeyword, setTypeKeyword] = useState("");
@@ -55,9 +59,12 @@ export function TurnoutForecastPanel({
   const [showOverlay, setShowOverlay] = useState(false);
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
+  // Local datetime (never date-only): "YYYY-MM-DDTHH:mm" parses in LOCAL time, so the hour-slot feature
+  // matches how the training rows' real start times were bucketed.
+  const eventDateTime = `${date}T${/^\d{2}:\d{2}$/.test(startTime) ? startTime : "19:00"}:00`;
   const fc = useMemo(
-    () => (ready ? forecastTurnout(events, { event_date: date, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null }) : null),
-    [events, date, buyIn, gtd, typeKeyword, ready],
+    () => (ready ? forecastTurnout(events, { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null }) : null),
+    [events, eventDateTime, buyIn, gtd, typeKeyword, ready],
   );
   const medianFee = useMemo(() => median(events.map((e) => e.fee)) ?? 0, [events]);
 
@@ -95,6 +102,7 @@ export function TurnoutForecastPanel({
       {/* upcoming-event form */}
       <Card className="p-3 border-primary/30 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
         <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Ngày giải sắp tới</span><Input type="date" className="h-7" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+        <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Giờ bắt đầu (mặc định 19:00)</span><Input type="time" className="h-7" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label>
         <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Buy-in (prize)</span><Input type="number" className="h-7" value={buyIn ?? ""} onChange={(e) => setBuyIn(numOrNull(e.target.value))} /></label>
         <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">GTD (cho overlay)</span><Input type="number" className="h-7" placeholder="(tùy chọn)" value={gtd ?? ""} onChange={(e) => setGtd(numOrNull(e.target.value))} /></label>
         <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Loại (vd Turbo)</span><Input className="h-7" placeholder="(auto từ tên)" value={typeKeyword} onChange={(e) => setTypeKeyword(e.target.value)} /></label>
@@ -166,9 +174,10 @@ export function TurnoutForecastPanel({
               <Button size="sm" variant="outline" className="h-6 gap-1 text-[10px]" onClick={() => setShowOverlay(true)}>Xem overlay</Button>
             </div>
             <p className="text-[10px] text-muted-foreground/80">
-              Mô phỏng overlay <strong>TỪ DỰ ĐOÁN</strong> (forecast-centered), không phải phân phối quan sát lịch sử.
-              Máy tính "Rủi ro overlay — kịch bản 1 giải" bên dưới mặc định vẫn chạy theo lịch sử nhóm — muốn dùng
-              dự báo này làm tâm, chọn nguồn <strong>"Dự báo"</strong> ở đó.
+              Mô phỏng overlay <strong>TỪ DỰ ĐOÁN</strong> (forecast-centered), không phải phân phối quan sát lịch sử;
+              fee dùng median toàn CLB ({formatVndShort(medianFee)} — giả định). Máy tính "Rủi ro overlay — kịch bản
+              1 giải" bên dưới mặc định vẫn chạy theo lịch sử nhóm — muốn dùng dự báo này làm tâm, chọn nguồn{" "}
+              <strong>"Dự báo"</strong> ở đó.
             </p>
             {showOverlay && (gtd === null || gtd <= 0 ? (
               <p className="text-[10px] text-warning">Đặt GTD ở trên để tính overlay.</p>

@@ -13,6 +13,11 @@ describe("typeOf", () => {
     expect(typeOf("High Roller 25M")).toBe("high roller");
   });
 
+  it("'Hyper Turbo' classifies as hyper (the conventional name), not turbo", () => {
+    expect(typeOf("Hyper Turbo 500K")).toBe("hyper");
+    expect(typeOf("Turbo 500K")).toBe("turbo");
+  });
+
   it("uses the explicit keyword when provided", () => {
     expect(typeOf("Event #12", "plo")).toBe("plo");
   });

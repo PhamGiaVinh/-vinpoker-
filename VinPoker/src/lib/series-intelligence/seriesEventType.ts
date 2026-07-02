@@ -7,7 +7,8 @@
 // grouping axis (same tournament NAME across series) — the two answer different questions.
 
 /** Ordered keyword list — more specific phrases before their substrings ("super high roller" > "high roller"),
- *  and "satellite" before "main" because satellites name their target ("Satellite to Main Event"). */
+ *  "satellite" before "main" (satellites name their target: "Satellite to Main Event"), and "hyper" before
+ *  "turbo" (the conventional name is "Hyper Turbo" — it is a hyper, not a turbo). */
 export const TYPE_KEYWORDS = [
   "super high roller",
   "high roller",
@@ -17,8 +18,8 @@ export const TYPE_KEYWORDS = [
   "bounty",
   "plo",
   "deepstack",
-  "turbo",
   "hyper",
+  "turbo",
 ] as const;
 
 export type SeriesEventType = (typeof TYPE_KEYWORDS)[number] | "other";

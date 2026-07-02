@@ -112,6 +112,12 @@ export function MonteCarloPanel({
     setNMode("real");
   }, [selected?.key]);
 
+  // reset GTD when the CENTER SOURCE flips — the slider bounds re-scale to the new center, so a manual
+  // GTD from the other mode would silently exceed/undershoot the new range while staying in the sim.
+  useEffect(() => {
+    setGtd(null);
+  }, [usingForecast]);
+
   const nReal = selected?.nReal ?? 0;
   const nEff = nMode === "real" ? Math.max(1, nReal) : nMode;
   // what-if n only exists in history mode (the n-toggle is hidden while the forecast is the center)
@@ -147,7 +153,11 @@ export function MonteCarloPanel({
           <Scale className="h-4 w-4" /> Rủi ro overlay — kịch bản 1 giải
         </div>
         <p className="text-[11px] text-[var(--mut)] font-sans">
-          Mô phỏng 2 lớp (kỳ vọng không chắc + turnout dao động) dựa trên <b className="text-[var(--cream)]">N quan sát thật</b> — <b className="text-[var(--gold2)]">KHÔNG phải dự báo</b>.
+          {usingForecast ? (
+            <>Mô phỏng 1 lớp quanh <b className="text-[var(--cream)]">dự báo thống kê (Hypothesis)</b> — dải lấy từ chính dự báo — <b className="text-[var(--gold2)]">KHÔNG phải dự báo cam kết</b>.</>
+          ) : (
+            <>Mô phỏng 2 lớp (kỳ vọng không chắc + turnout dao động) dựa trên <b className="text-[var(--cream)]">N quan sát thật</b> — <b className="text-[var(--gold2)]">KHÔNG phải dự báo</b>.</>
+          )}
         </p>
       </div>
 
@@ -183,7 +193,8 @@ export function MonteCarloPanel({
           {usingForecast && (
             <div className="text-[10px] text-[var(--gold2)] font-sans">
               nguồn tâm: {forecastFeed.label} — buy-in {formatVndShort(forecastFeed.buyIn)} CỦA GIẢI ĐANG DỰ BÁO
-              (không phải median nhóm); dải lấy từ chính dự báo.
+              (không phải median nhóm); fee = {formatVndShort(forecastFeed.fee)} (median toàn CLB — giả định);
+              dải lấy từ chính dự báo.
             </div>
           )}
         </div>
@@ -262,7 +273,7 @@ export function MonteCarloPanel({
               <div className="text-base font-bold tabular-nums text-[var(--cream)]">
                 {Math.round(result.entP5)} · <span className="text-[var(--gold2)]">{Math.round(result.entP50)}</span> · {Math.round(result.entP95)}
               </div>
-              <div className="text-[10px] text-[var(--mut)] font-sans">trung tâm = trung bình hình học</div>
+              <div className="text-[10px] text-[var(--mut)] font-sans">{usingForecast ? "trung tâm = dự báo (Hypothesis)" : "trung tâm = trung bình hình học"}</div>
             </div>
             <div className="rounded-lg border border-[var(--line)] bg-[var(--card)] p-3">
               <div className="text-[10px] text-[var(--mut)] uppercase tracking-wide font-sans">Rake (P5–P95)</div>
@@ -329,12 +340,14 @@ export function MonteCarloPanel({
             )}
             {client && <span className="block mt-1.5 text-[var(--bad)]">Chỉ là kịch bản tham khảo — đừng quyết định tài chính chỉ dựa trên số này.</span>}
             <RegimeNotice tone="felt" className="mt-1.5" />
+            {!usingForecast && (
             <ExplainHint tone="felt" term="hai lớp bất định" className="mt-1.5 block">
               Lớp 1 (<b className="text-[var(--cream)]">epistemic</b>): phần chưa chắc <b className="text-[var(--cream)]">vì ít dữ liệu</b> —
               có thêm giải thì phần này co lại (theo √n). Lớp 2 (<b className="text-[var(--cream)]">aleatoric</b>): phần
               <b className="text-[var(--cream)]"> dao động tự nhiên</b> của lượng khách — không bao giờ hết, thêm bao nhiêu
               dữ liệu cũng vậy. Vì thế "thêm data" giúp thu hẹp dải, nhưng không bao giờ cho con số chắc chắn.
             </ExplainHint>
+            )}
           </div>
         </>
       )}

@@ -58,9 +58,10 @@ export function ContributionByTypeCard({ result }: { result: ContributionByTypeR
       )}
 
       <ExplainHint term="biên đóng góp">
-        Lời/lỗ <b>đo được</b> của mỗi loại giải: tiền fee CLB giữ lại trừ tiền đã (ước tính) phải bù GTD.
-        Chưa trừ lương nhân sự, marketing, mặt bằng — nên dương ở đây chưa chắc lãi thật, nhưng ÂM ở đây thì
-        chắc chắn loại giải đó đang bào tiền, đáng xem lại GTD/cấu trúc.
+        Lời/lỗ <b>đo được</b> của mỗi loại giải: tiền fee CLB giữ lại trừ tiền (ước tính) phải bù GTD.
+        Chưa trừ lương nhân sự, marketing, mặt bằng — nên dương ở đây chưa chắc lãi thật. ÂM ở đây là
+        <b> tín hiệu xấu đáng xem lại GTD/cấu trúc</b> — nhưng đọc ghi chú thiếu dữ liệu trước: giải thiếu fee
+        vẫn bị tính chi phí bù, nên số âm có thể do thiếu dữ liệu chứ chưa chắc lỗ thật.
       </ExplainHint>
       <p className="text-[10px] text-muted-foreground/80">{result.disclaimer}</p>
     </Card>

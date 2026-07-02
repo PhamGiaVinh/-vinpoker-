@@ -115,6 +115,16 @@ describe("simulateOverlayFromForecast — explicit forecast-centered adapter (no
     expect(simulateOverlayFromForecast({ ...FC, buyinPrize: 0 }).usable).toBe(false);
   });
 
+  it("small-club forecast is NOT pinned to the group engine's 150-entry floor (clamps scale with base)", () => {
+    // base 80 entries, GTD needing 200 entries → overlay is near-certain; the old fixed clamp [150, 4600]
+    // would have pinned draws to ≥150 and under-reported the risk.
+    const r = simulateOverlayFromForecast({ baseEntries: 80, logSd: 0.3, buyinPrize: 1_000_000, fee: 100_000, gtd: 200_000_000, seed: 42, nSims: 20000 });
+    expect(r.usable).toBe(true);
+    expect(r.entP50).toBeGreaterThan(80 * 0.95);
+    expect(r.entP50).toBeLessThan(80 * 1.05); // centers on 80, not 150
+    expect(r.pOverlay).toBeGreaterThan(0.95); // threshold 200 entries vs base 80 → near-certain overlay
+  });
+
   it("existing two-layer engine is untouched: same demo call returns the same numbers as before", () => {
     const r = simulateOverlayRisk(inp({ gtd: 25e9, n: 6 }));
     expect(r.pOverlay).toBeGreaterThan(0.14);

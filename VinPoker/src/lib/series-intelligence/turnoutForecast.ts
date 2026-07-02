@@ -260,7 +260,10 @@ function walkForwardCv(rows: TrainRow[]): { modelMape: number | null; baselineMa
   const mApe: number[] = [];
   const bApe: number[] = [];
   for (let i = CV_MIN_TRAIN; i < rows.length; i++) {
-    const train = rows.slice(0, i);
+    // STRICTLY earlier by DATE, not by index — CSV dates are date-only, so festival days produce ties;
+    // an index slice would let same-day events leak into the fold and flatter the CV (the flip gate).
+    const train = rows.filter((r) => r.date < rows[i].date);
+    if (train.length < CV_MIN_TRAIN) continue;
     const actual = rows[i].entries;
     const model = buildModel(train.map((r) => ({ f: r.f, y: r.y })));
     if (model) {
