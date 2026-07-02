@@ -107,7 +107,7 @@ export function OverviewCards({
           icon={Scale}
           label="Biên đóng góp TB / giải"
           value={formatVndShort(Math.round(avgContribution.value))}
-          sub={`fee − bù GTD ước tính · ${avgContribution.measuredCount} giải đo được · CHƯA gồm F&B (chưa nối dữ liệu), nhân sự, vận hành — chưa phải lợi nhuận`}
+          sub={`fee − bù GTD ước tính · ${avgContribution.measuredCount} giải đo được · CHƯA gồm nhân sự, vận hành — chưa phải lợi nhuận. F&B xem ở dòng riêng bên dưới (toàn CLB, không chia theo giải).`}
           danger={avgContribution.value < 0}
         />
       )}
