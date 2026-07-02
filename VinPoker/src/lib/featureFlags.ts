@@ -697,6 +697,16 @@ export const FEATURES = {
    */
   fnbShifts: true,
   /**
+   * F&B GUEST QR ORDERING (khách quét QR gọi món) — one QR sticker per table opens the chrome-less
+   * /fnb/order?t=<token> page: guest confirms "Bạn đang ngồi tại Bàn X", picks a seat, orders from
+   * the club menu, then pays by VietQR bank transfer (SePay auto-confirm) or cash (a server collects
+   * at the table via /fnb/serve). Gates the guest page, the /fnb/serve server surface, and the
+   * FnbAdmin "QR bàn" tab. Requires migrations 20261111000017/18/19 + 20261211000000 applied live
+   * AND the per-club fnb_settings.guest_order_enabled switch. Default OFF (dark). Flip after the
+   * migrations are applied + preview UAT (see plan PART 11).
+   */
+  fnbGuestOrder: false,
+  /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
    * it can never read or mutate real data. Intentionally **ON** so the "F&B (Xem thử)" item shows in
