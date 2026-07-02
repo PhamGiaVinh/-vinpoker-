@@ -542,7 +542,7 @@ export const FEATURES = {
    * discipline locked (actuals are targets only). Default **OFF** (dark). Flip conditions: ≥12 events with
    * entries + walk-forward CV beats the baseline + owner sign-off. Kill-switch: set false to hide.
    */
-  seriesTurnoutForecast: false,
+  seriesTurnoutForecast: true,
   /**
    * Series Intelligence — regime caveat (lớp chế độ, static). When ON, every forward-looking number
    * (scenario outlook, Monte Carlo overlay, festival EV, turnout forecast) carries a one-line caveat:
@@ -550,7 +550,7 @@ export const FEATURES = {
    * regime principle — no state, no interactivity (the local-only owner switch is a SEPARATE deferred
    * increment). Default **OFF** (dark); kill-switch: set false to hide the caveat lines.
    */
-  seriesRegimeNotice: false,
+  seriesRegimeNotice: true,
   /**
    * Series Intelligence — "Biên đóng góp theo loại giải" (contribution margin by event type). When ON,
    * the Owner Command Center shows per-type rows: fee revenue kept − observed GTD overlay cost (only for
@@ -558,7 +558,7 @@ export const FEATURES = {
    * profit: subtitle states it excludes staff/marketing/operations. Buy-in is never treated as revenue.
    * Pure client-side descriptive math (Observed Pattern). Default **OFF** (dark); kill-switch: false.
    */
-  seriesMarginByType: false,
+  seriesMarginByType: true,
   /**
    * Series Intelligence — fractional-Kelly GTD commitment hint (quant spec §3.5, OPTIONAL/deferred).
    * When ON, the festival EV panel shows a one-line "Gợi ý tham khảo theo Kelly phân đoạn (¼–½)" that
