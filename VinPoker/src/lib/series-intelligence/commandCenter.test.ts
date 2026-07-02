@@ -7,6 +7,7 @@ import {
   computeQuarterlySummary,
   computeReadiness,
   computeRiskFlags,
+  seriesDateWindow,
   toEventEconomicsRow,
   computeContributionByType,
   type InsightLabel,
@@ -494,5 +495,67 @@ describe("computeQuarterlySummary (Giải đã chạy theo quý)", () => {
     expect(s.available).toBe(false);
     expect(s.rows).toHaveLength(0);
     expect(s.undatedCount).toBe(0);
+  });
+});
+
+describe("seriesDateWindow (F&B club-level window)", () => {
+  const wev = (id: string, iso: string | null, clubId = "club-A"): SeriesEvent =>
+    mapTournamentToEvent(
+      {
+        id,
+        name: id,
+        start_time: iso,
+        buy_in: 1_000_000,
+        rake_amount: 100_000,
+        service_fee_amount: 0,
+        prize_pool: null,
+        club_id: clubId,
+      },
+      { totalEntries: 100, uniqueEntries: null, reentries: null },
+      null,
+    );
+
+  it("spans earliest→latest dated event, carries the club id, and labels as dd/mm/yyyy", () => {
+    const w = seriesDateWindow([
+      wev("mid", "2026-04-11T12:00:00Z"),
+      wev("early", "2026-03-07T12:00:00Z"),
+      wev("late", "2026-05-13T12:00:00Z"),
+    ]);
+    expect(w).not.toBeNull();
+    expect(w!.clubId).toBe("club-A");
+    // structural (TZ-robust): window must cover every event's instant, not exact ISO hour.
+    expect(new Date(w!.fromIso).getTime()).toBeLessThanOrEqual(new Date("2026-03-07T12:00:00Z").getTime());
+    expect(new Date(w!.toIso).getTime()).toBeGreaterThanOrEqual(new Date("2026-05-13T12:00:00Z").getTime());
+    expect(w!.fromLabel).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(w!.toLabel).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    // fromIso is a day-start, toIso a day-end → toIso strictly after fromIso.
+    expect(new Date(w!.toIso).getTime()).toBeGreaterThan(new Date(w!.fromIso).getTime());
+  });
+
+  it("single event → from-day-start ≤ event ≤ to-day-end", () => {
+    const w = seriesDateWindow([wev("solo", "2026-03-07T12:00:00Z")]);
+    expect(w).not.toBeNull();
+    const t = new Date("2026-03-07T12:00:00Z").getTime();
+    expect(new Date(w!.fromIso).getTime()).toBeLessThanOrEqual(t);
+    expect(new Date(w!.toIso).getTime()).toBeGreaterThanOrEqual(t);
+  });
+
+  it("uses the first non-null club id present", () => {
+    const w = seriesDateWindow([wev("a", "2026-03-07T12:00:00Z", "club-Z"), wev("b", "2026-03-08T12:00:00Z", "club-Z")]);
+    expect(w!.clubId).toBe("club-Z");
+  });
+
+  it("null when no event has a parseable date", () => {
+    expect(seriesDateWindow([wev("a", null), wev("b", "not-a-date")])).toBeNull();
+  });
+
+  it("null on empty input", () => {
+    expect(seriesDateWindow([])).toBeNull();
+  });
+
+  it("ignores undated events when computing span (dated ones still define the window)", () => {
+    const w = seriesDateWindow([wev("none", null), wev("real", "2026-03-07T12:00:00Z")]);
+    expect(w).not.toBeNull();
+    expect(w!.fromLabel).toBe(w!.toLabel); // one dated event → same day both ends
   });
 });
