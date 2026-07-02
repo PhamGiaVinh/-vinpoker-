@@ -15,6 +15,7 @@ import { PlayerActionSheet, type ActionSeat } from "./PlayerActionSheet";
 import { MovePlayerDialog } from "./MovePlayerDialog";
 import { EditChipsDialog } from "./EditChipsDialog";
 import { PlayerInfoSheet } from "./PlayerInfoSheet";
+import { BustConfirmDialog } from "./BustConfirmDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 
@@ -85,6 +86,14 @@ export function FloorTableMapPanel({
   const [busting, setBusting] = useState(false);
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [openTableOpen, setOpenTableOpen] = useState(false);
+  // Floor "Loại" out-confirm dialog (FEATURES.floorOutConfirm). Preview a busting player's
+  // finishing place + prize before the (unchanged) bust runs. activeCount = live active-seat
+  // count tournament-wide (= the player's finishing place, since it includes the one busting);
+  // prizeMap = position → amount from the already-live tournament_prizes.
+  const [bustTarget, setBustTarget] = useState<MapSeat | null>(null);
+  const [activeCount, setActiveCount] = useState(0);
+  const [prizeMap, setPrizeMap] = useState<Map<number, number> | null>(null);
+  const [prizeLoading, setPrizeLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -133,6 +142,10 @@ export function FloorTableMapPanel({
         }
       }
       const seats = (seatsRes.data?.data ?? []) as MapSeat[];
+      // Tournament-wide active count (includes the player about to bust) = the finishing
+      // place preview for the out-confirm dialog. Counted from the raw seat list (before the
+      // table-mapping filter) so it never undercounts on multi-table events.
+      setActiveCount(seats.filter((s) => s.is_active).length);
       const grouped: Record<string, MapSeat[]> = {};
       for (const s of seats) {
         if (!s.is_active) continue;
@@ -151,6 +164,32 @@ export function FloorTableMapPanel({
   }, [tid]);
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
+
+  // Load the prize table once per tournament for the out-confirm dialog (read-only; the
+  // already-live get_tournament_prizes). On any failure fall back to an empty map so the
+  // dialog degrades to a "no prize" (non-ITM) preview rather than hanging — it never blocks
+  // the bust. Only fetched when the confirm dialog is enabled.
+  useEffect(() => {
+    if (!FEATURES.floorOutConfirm) return;
+    let alive = true;
+    setPrizeLoading(true);
+    (async () => {
+      try {
+        const { data } = await supabase.rpc("get_tournament_prizes", { p_tournament_id: tid });
+        const rows = (Array.isArray(data) ? data : []) as { position?: number; amount?: number }[];
+        const m = new Map<number, number>();
+        for (const r of rows) {
+          if (r && typeof r.position === "number") m.set(r.position, Number(r.amount ?? 0));
+        }
+        if (alive) setPrizeMap(m);
+      } catch {
+        if (alive) setPrizeMap(new Map());
+      } finally {
+        if (alive) setPrizeLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [tid]);
 
   const enriched = useMemo(() => (tables ?? []).map((t) => {
     const seats = seatsByTable[t.table_id] ?? [];
@@ -215,6 +254,25 @@ export function FloorTableMapPanel({
     } finally {
       setBusting(false);
     }
+  };
+
+  // Entry point for the "Loại" action from either sheet. With the confirm flag OFF this is
+  // byte-identical to the old behavior (bust immediately). With it ON, close the current sheet
+  // and open the out-confirm dialog on the next frame (mirrors the sheet's own close→open race
+  // guard) so the operator can review place + prize first.
+  const requestBust = (target: MapSeat | null) => {
+    if (!target) return;
+    if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
+    setSelected(null);
+    setInfoTarget(null);
+    requestAnimationFrame(() => setBustTarget(target));
+  };
+
+  const confirmBust = async () => {
+    const target = bustTarget;
+    if (!target) return;
+    await bustSeat(target);
+    setBustTarget(null);
   };
 
   const openReceipt = (target: MapSeat | null) => {
@@ -378,7 +436,7 @@ export function FloorTableMapPanel({
         onMove={() => { if (selected) setMoveTarget(selected); }}
         onEditChips={() => { if (selected) setEditTarget(selected); }}
         onReceipt={() => openReceipt(selected)}
-        onBust={() => bustSeat(selected)}
+        onBust={() => requestBust(selected)}
         onInfo={() => { if (selected) setInfoTarget(selected); }}
       />
 
@@ -391,7 +449,7 @@ export function FloorTableMapPanel({
         busting={busting}
         onMove={() => { if (infoTarget) setMoveTarget(infoTarget); }}
         onReceipt={() => openReceipt(infoTarget)}
-        onBust={() => bustSeat(infoTarget)}
+        onBust={() => requestBust(infoTarget)}
       />
 
       {moveTarget && entryBySeat[moveTarget.seat_id] && (
@@ -414,6 +472,20 @@ export function FloorTableMapPanel({
         seat={editTarget as ActionSeat | null}
         onSaved={load}
       />
+
+      {FEATURES.floorOutConfirm && (
+        <BustConfirmDialog
+          open={bustTarget !== null}
+          onOpenChange={(v) => { if (!v) setBustTarget(null); }}
+          playerName={bustTarget ? (bustTarget.player_name || bustTarget.player_id.slice(0, 8)) : ""}
+          place={bustTarget && activeCount > 0 ? activeCount : null}
+          prize={bustTarget && activeCount > 0 ? (prizeMap?.get(activeCount) ?? null) : null}
+          prizeLoading={prizeLoading}
+          itmPlaces={tournament.itm_places}
+          busting={busting}
+          onConfirm={confirmBust}
+        />
+      )}
 
       <SeatReceiptDialog open={receipt !== null} onOpenChange={(v) => { if (!v) setReceipt(null); }} receipt={receipt} />
     </Card>
