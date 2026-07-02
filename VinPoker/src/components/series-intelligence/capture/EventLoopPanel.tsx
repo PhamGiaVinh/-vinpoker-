@@ -7,6 +7,8 @@ import { findScoredDecision, pickScoringSnapshot, scoreOutcome, registrationFunn
 import { HORIZON_LABEL, COMMITMENT_LABEL, STAGE_ORDER, type CampaignLog, type DecisionLog } from "@/lib/series-intelligence/captureTypes";
 import { shortHash } from "@/lib/series-intelligence/hashPlayerRef";
 import type { UseSeriesCapture } from "@/lib/series-intelligence/useSeriesCapture";
+import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
+import type { SeriesEventActuals } from "@/lib/series-intelligence/captureAutosyncTypes";
 import { DecisionTimeline } from "./DecisionTimeline";
 import { OutcomeScorecard } from "./OutcomeScorecard";
 import { ForecastDialog } from "./dialogs/ForecastDialog";
@@ -33,7 +35,19 @@ function ActionButton({ icon: Icon, title, hint, onClick }: { icon: typeof Trend
  * Wizard hub for one event: a plain "what do you want to record?" question with big buttons, then the timeline /
  * scorecard / recorded lists appear only once there is data. Owns the create/edit dialogs.
  */
-export function EventLoopPanel({ eventId, hook }: { eventId: string; hook: UseSeriesCapture }) {
+export function EventLoopPanel({
+  eventId,
+  hook,
+  history = [],
+  autoActuals = null,
+}: {
+  eventId: string;
+  hook: UseSeriesCapture;
+  /** The club's own past events (feeds the forecast suggestion). */
+  history?: SeriesEvent[];
+  /** Server auto-captured actuals for THIS event (preferred over hand-typed in the scorecard). */
+  autoActuals?: SeriesEventActuals | null;
+}) {
   const snaps = hook.snapshots.filter((s) => s.event_id === eventId);
   const decs = hook.decisions.filter((d) => d.event_id === eventId);
   const camps = hook.campaigns.filter((c) => c.event_linked === eventId);
@@ -41,9 +55,11 @@ export function EventLoopPanel({ eventId, hook }: { eventId: string; hook: UseSe
 
   const scored = findScoredDecision(decs);
   const scoringSnap = pickScoringSnapshot(snaps, scored);
-  const hasScore = scoreOutcome(scoringSnap, scored).hasActuals;
+  // Score against the auto-captured actuals when present, else the hand-typed post-event decision.
+  const hasScore = scoreOutcome(scoringSnap, autoActuals ?? scored).hasActuals;
   const existingPost = decs.find((d) => d.decision_horizon === "post") ?? null;
   const funnel = registrationFunnel(regs);
+  const targetBuyIn = history.find((e) => e.event_id === eventId)?.buy_in ?? null;
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [editingDecision, setEditingDecision] = useState<DecisionLog | null>(null);
@@ -85,8 +101,8 @@ export function EventLoopPanel({ eventId, hook }: { eventId: string; hook: UseSe
       {/* timeline — only when there is activity */}
       {snaps.length + decs.length > 0 && <DecisionTimeline snapshots={snaps} decisions={decs} />}
 
-      {/* scorecard — only once actuals exist */}
-      {hasScore && <OutcomeScorecard snapshot={scoringSnap} scored={scored} />}
+      {/* scorecard — only once actuals exist (auto-captured or hand-typed) */}
+      {hasScore && <OutcomeScorecard snapshot={scoringSnap} scored={scored} autoActuals={autoActuals} />}
 
       {nothingYet && <p className="text-xs text-muted-foreground">Giải này chưa có gì được ghi. Bấm một nút ở trên để bắt đầu.</p>}
 
@@ -177,7 +193,7 @@ export function EventLoopPanel({ eventId, hook }: { eventId: string; hook: UseSe
       )}
 
       {/* dialogs */}
-      <ForecastDialog open={dialog === "forecast"} onOpenChange={(v) => !v && close()} eventId={eventId} saving={hook.saving} insertForecast={hook.insertForecast} />
+      <ForecastDialog open={dialog === "forecast"} onOpenChange={(v) => !v && close()} eventId={eventId} saving={hook.saving} insertForecast={hook.insertForecast} history={history} targetBuyIn={targetBuyIn} />
       <DecisionDialog
         open={dialog === "decision" || dialog === "result"}
         onOpenChange={(v) => !v && close()}

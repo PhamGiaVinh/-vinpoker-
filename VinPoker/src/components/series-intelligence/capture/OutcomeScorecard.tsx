@@ -4,7 +4,13 @@ import { formatVND } from "@/lib/format";
 import { scoreOutcome } from "@/lib/series-intelligence/captureScoring";
 import { HORIZON_LABEL } from "@/lib/series-intelligence/captureTypes";
 import type { DecisionLog, ForecastSnapshot } from "@/lib/series-intelligence/captureTypes";
+import type { SeriesEventActuals } from "@/lib/series-intelligence/captureAutosyncTypes";
 import { InsightLabelBadge } from "@/components/series-intelligence/InsightLabelBadge";
+
+/** The three post-event numbers the scorecard scores against — from either source. */
+type ActualsSource =
+  | Pick<DecisionLog, "actual_entries" | "actual_prize_pool" | "actual_overlay_amount">
+  | Pick<SeriesEventActuals, "actual_entries" | "actual_prize_pool" | "actual_overlay_amount">;
 
 type Verdict = "good" | "warn" | "neutral";
 
@@ -32,11 +38,17 @@ function Row({ label, verdict, value, note }: { label: string; verdict: Verdict;
 export function OutcomeScorecard({
   snapshot,
   scored,
+  autoActuals = null,
 }: {
   snapshot: ForecastSnapshot | null;
   scored: DecisionLog | null;
+  /** Server auto-captured actuals for this event; preferred over the manual post-event decision when present. */
+  autoActuals?: SeriesEventActuals | null;
 }) {
-  const s = scoreOutcome(snapshot, scored);
+  // Prefer the server's auto-captured actuals (recomputed from confirmed registrations) over hand-typed ones.
+  const actualsForScore: ActualsSource | null = autoActuals ?? scored;
+  const s = scoreOutcome(snapshot, actualsForScore);
+  const actualsAreAuto = autoActuals != null;
 
   if (!s.hasActuals) {
     return (
@@ -58,7 +70,12 @@ export function OutcomeScorecard({
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Chấm kết quả</span>
         <InsightLabelBadge label="Observed Pattern" />
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">Đang chấm theo snapshot: {basis}</p>
+      <p className="mb-2 text-[10px] text-muted-foreground">
+        Đang chấm theo snapshot: {basis}
+        <span className="ml-1 text-muted-foreground/80">
+          · kết quả {actualsAreAuto ? "tự động ghi từ đăng ký" : "nhập tay"}
+        </span>
+      </p>
 
       <div className="divide-y divide-border/40">
         {s.inBand != null && (
