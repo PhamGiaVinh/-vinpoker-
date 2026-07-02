@@ -679,6 +679,22 @@ export function TournamentLiveView({
     [replayBigBlind]
   );
 
+  // PR-A1 (liveFeltCompact) status bar blinds. Live = the clock level; replay = the
+  // HAND's own posts (sb/ante scanned from its actions, bb via detectBigBlind — the
+  // clock may have moved on). bb<=0 → null → the bar hides the segment (never fake).
+  const compactFelt = spectator && FEATURES.liveFeltCompact;
+  const feltBlinds = useMemo(() => {
+    if (!compactFelt) return null;
+    if (mode === "replay") {
+      if (!replayHand || replayBigBlind <= 0) return null;
+      const sb = replayHand.actions.find((a) => a.action_type === "post_sb")?.action_amount ?? 0;
+      const ante = replayHand.actions.find((a) => a.action_type === "post_ante")?.action_amount ?? 0;
+      return { sb, bb: replayBigBlind, ante };
+    }
+    if (!clockData || clockData.big_blind <= 0) return null;
+    return { sb: clockData.small_blind, bb: clockData.big_blind, ante: clockData.ante };
+  }, [compactFelt, mode, replayHand, replayBigBlind, clockData]);
+
   // The most recent actor gets the spotlight ring on the felt.
   const latestAction = actions.length > 0 ? actions[actions.length - 1] : null;
   const lastActorId = latestAction?.player_id ?? null;
@@ -1051,6 +1067,8 @@ export function TournamentLiveView({
             viewerLayout={spectator && FEATURES.liveViewerFeltV2}
             tableFx={spectator && FEATURES.liveTableFx}
             chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
+            compact={compactFelt}
+            blinds={feltBlinds}
           />
           {isReplay && replayHand && (
             <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} hud={spectator && FEATURES.liveReplayHud} />

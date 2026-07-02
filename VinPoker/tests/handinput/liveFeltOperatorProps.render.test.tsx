@@ -82,4 +82,26 @@ describe("LiveFelt additive operator props", () => {
     expect((html.match(/ring-emerald-400/g) || []).length).toBe(1);
     expect(html).toContain('aria-pressed="true"'); // the selected seat reports pressed
   });
+
+  // PR-A1 (liveFeltCompact) — the compact prop is DOUBLE-gated on viewerLayout, so even a
+  // leaked compact={true} can never change the operator/TV render (viewerLayout off).
+  it("compact is inert without viewerLayout: operator render byte-identical even with compact+blinds", () => {
+    const plain = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait />);
+    const leaked = renderToStaticMarkup(
+      <LiveFelt seats={seats} {...baseProps} portrait compact blinds={{ sb: 100, bb: 200, ante: 25 }} />
+    );
+    expect(leaked).toBe(plain);
+    expect(plain).not.toContain("felt-status-bar");
+    expect(plain).toContain("5 / 7"); // portrait racetrack aspect untouched
+  });
+
+  it("compact absent === compact={false} on the V2 viewer render (flag-OFF byte-identical)", () => {
+    const plain = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait viewerLayout />);
+    const off = renderToStaticMarkup(
+      <LiveFelt seats={seats} {...baseProps} portrait viewerLayout compact={false} />
+    );
+    expect(off).toBe(plain);
+    expect(plain).not.toContain("felt-status-bar");
+    expect(plain).not.toContain("2.2 / 1");
+  });
 });
