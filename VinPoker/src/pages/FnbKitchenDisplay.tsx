@@ -5,6 +5,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import { TvChrome } from "@/components/tv/TvChrome";
 import { useFnbClubs } from "@/hooks/useFnbClubs";
 import { useFnbKitchen } from "@/hooks/useFnbKitchen";
+import { useFnbLinkTargets } from "@/hooks/useFnbLinkTargets";
 import { KitchenTicket } from "@/components/fnb/KitchenTicket";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -19,6 +20,8 @@ export default function FnbKitchenDisplay() {
   const [clubId, setClubId] = useState<string>("");
   const activeClub = clubId || clubs?.[0]?.id || undefined;
   const { data: orders, isLoading: ordersLoading, refetch } = useFnbKitchen(activeClub);
+  const { data: linkTargets } = useFnbLinkTargets(activeClub); // resolve real table names for guest orders (no-op unless fnbTableLink/guest on)
+  const tableName = (ref: string | null | undefined) => (ref ? linkTargets?.tables.find((t) => t.id === ref)?.table_name ?? null : null);
 
   // Gate AFTER hooks (rules-of-hooks); FEATURES are module constants so the branch is stable.
   if (!FEATURES.fnbModule || !FEATURES.fnbKitchen) return <Navigate to="/" replace />;
@@ -66,7 +69,7 @@ export default function FnbKitchenDisplay() {
           </div>
         ) : (
           <div className="grid flex-1 auto-rows-min grid-cols-1 gap-[1.6vmin] overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {tickets.map((o) => <KitchenTicket key={o.id} order={o} onChanged={() => refetch()} />)}
+            {tickets.map((o) => <KitchenTicket key={o.id} order={o} onChanged={() => refetch()} label={tableName(o.table_ref)} />)}
           </div>
         )}
       </div>

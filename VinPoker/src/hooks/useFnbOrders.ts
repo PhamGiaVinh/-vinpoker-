@@ -14,6 +14,8 @@ export type FnbOrder = {
   created_at: string; paid_at: string | null;
   // A2 — soft links (reporting-only); undefined until migration 20261111000014 is applied live.
   table_ref?: string | null; player_ref?: string | null;
+  // GQR — guest QR ordering; undefined until 20261111000017 applied.
+  guest_seat?: number | null; payment_method?: string | null;
   items: FnbOrderItem[];
 };
 
