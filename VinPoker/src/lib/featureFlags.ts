@@ -662,19 +662,21 @@ export const FEATURES = {
    * làm tròn) from `tournaments.planned_*` (columns already live since 20261120000000, previously
    * unused) and adds a "Lưu mặc định cho giải này" button that writes them back. Uses the
    * EXISTING `tournaments` UPDATE RLS (`is_club_dealer_control` — club owner or TD/floor-control) —
-   * no new RPC or migration. Default **OFF** (kill-switch); while false the panel behaves exactly
-   * as before (hardcoded DAILY/15%/2×/rounding-by-buy-in defaults, no save button).
+   * no new RPC or migration. **ON** (2026-07-02, owner-approved): no DB dependency to wait on
+   * (existing columns/RLS only), so it went live directly. Kill-switch: set false to restore the
+   * old behavior (hardcoded DAILY/15%/2×/rounding-by-buy-in defaults, no save button).
    */
-  payoutPlannedSettings: false,
+  payoutPlannedSettings: true,
   /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
    * shown-rows cap (grouped, so a 19-ITM LIVE_STANDARD run now fits without truncation). Pure
    * client-side render change over the SAME `tournament_prizes` data the TV already reads — no
-   * new fetch/RPC/migration. Default **OFF**; while false `TvPayoutsScreen` is byte-identical to
-   * before (first 12 ranks, one row per rank, no band grouping).
+   * new fetch/RPC/migration. **ON** (2026-07-02, owner-approved): pure client render, no DB
+   * dependency. Kill-switch: set false to restore `TvPayoutsScreen`'s old behavior (first 12
+   * ranks, one row per rank, no band grouping).
    */
-  tvPayoutBandedDisplay: false,
+  tvPayoutBandedDisplay: true,
   /**
    * Player History (Phase 1 — data foundation). When ON, the cashier offline buy-in form shows an
    * optional "Số điện thoại" field with a member lookup, so walk-ins are anchored to ONE per-club
