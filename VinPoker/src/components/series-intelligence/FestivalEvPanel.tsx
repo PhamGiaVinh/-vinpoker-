@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
+import { FEATURES } from "@/lib/featureFlags";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { simulateFestival, type SimResult } from "@/lib/series-intelligence/monteCarloEngine";
 import { scheduleToSimEvents } from "@/lib/series-intelligence/scheduleToMonteCarlo";
+import { computeKellyHint, type KellyVerdict } from "@/lib/series-intelligence/kellyHint";
 import { ExplainHint } from "./ExplainHint";
 import { RegimeNotice } from "./RegimeNotice";
 
@@ -17,12 +19,24 @@ const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number
 const TAIL_RHO_LO = 0;
 const TAIL_RHO_HI = 0.85;
 
+/** Theme tone per Kelly verdict (red = don't/over, amber = aggressive, primary = safe-ish). */
+const KELLY_TONE: Record<KellyVerdict, string> = {
+  "negative-ev": "border-destructive/40 bg-destructive/5",
+  "over-committed": "border-destructive/40 bg-destructive/5",
+  aggressive: "border-warning/40 bg-warning/5",
+  acceptable: "border-primary/30 bg-primary/5",
+  conservative: "border-primary/30 bg-primary/5",
+  "insufficient-data": "border-border bg-card/40",
+};
+
 interface EvState {
   result: SimResult;
   usedCount: number;
   skippedCount: number;
   /** Same festival at ρ=0 vs ρ=0.85 (same seed) — shows correlation's tail effect with REAL numbers. */
   tail: { lo: SimResult; hi: SimResult } | null;
+  /** Bankroll used for THIS sim (so the Kelly hint stays consistent with the shown RoR). */
+  bankrollUsed: number | null;
 }
 
 /**
@@ -55,7 +69,7 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
       bankroll !== null && bankroll > 0
         ? { lo: simulateFestival(events, { ...opts, rho: TAIL_RHO_LO }), hi: simulateFestival(events, { ...opts, rho: TAIL_RHO_HI }) }
         : null;
-    setEv({ result, usedCount: events.length, skippedCount: skipped.length, tail });
+    setEv({ result, usedCount: events.length, skippedCount: skipped.length, tail, bankrollUsed: bankroll ?? null });
   };
 
   const r = ev?.result ?? null;
@@ -149,6 +163,31 @@ export function FestivalEvPanel({ draft }: { draft: ScheduleEvent[] | null }) {
                   trung bình, chỉ mạnh ở đuôi.
                 </div>
               )}
+
+              {/* Kelly hint — humble reference only, flag-gated, needs owner-entered bankroll (never inferred) */}
+              {FEATURES.seriesKellyHint &&
+                (() => {
+                  const kelly = computeKellyHint({ eEV: r.eEV, p5: r.p5, p95: r.p95, bankroll: ev.bankrollUsed, mode: r.mode });
+                  if (!kelly.available) {
+                    return ev.bankrollUsed === null ? (
+                      <p className="rounded-md border border-dashed border-border p-2 text-[10px] text-muted-foreground">
+                        Nhập <strong>Vốn dự phòng</strong> ở trên rồi bấm “Tính EV kịch bản” để xem gợi ý Kelly (mức cam kết GTD có quá tay không).
+                      </p>
+                    ) : null;
+                  }
+                  return (
+                    <div className={cn("rounded-md border p-2 text-[10px] leading-relaxed", KELLY_TONE[kelly.verdict])}>
+                      <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                        <span className="inline-flex items-center gap-0.5 rounded-full border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[9px] text-warning">
+                          <FlaskConical className="h-2.5 w-2.5" /> Giả thuyết
+                        </span>
+                        Gợi ý Kelly phân đoạn (¼–½)
+                      </div>
+                      <div className="mt-1">{kelly.headline}</div>
+                      <div className="mt-1 text-muted-foreground/90">{kelly.caveat}</div>
+                    </div>
+                  );
+                })()}
 
               <ExplainHint term="P5/P50/P95 · P(lỗ) · Risk-of-Ruin">
                 <b>P5 · P50 · P95</b>: kịch bản 5% xấu nhất · điển hình · 5% tốt nhất (90% kịch bản nằm giữa P5–P95).
