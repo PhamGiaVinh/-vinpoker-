@@ -122,6 +122,23 @@ export function summarizeCapture(decisions: DecisionLog[], snapshots: ForecastSn
   return { events: eventIds.size, decisions: decisions.length, scoredEvents, gtdCoveredEvents };
 }
 
+/**
+ * One OutcomeScore per event that has a scored (actuals-bearing) decision — the calibration input for
+ * G7. Reuses the exact same pick/score chain as summarizeCapture so the calibration view and the
+ * overview can never disagree about which snapshot/actuals a giải was scored on. Leakage-safe (actuals
+ * are the scored target only). Events with no actuals yet are skipped, not guessed.
+ */
+export function collectOutcomeScores(decisions: DecisionLog[], snapshots: ForecastSnapshot[]): OutcomeScore[] {
+  const eventIds = new Set(decisions.map((d) => d.event_id));
+  const out: OutcomeScore[] = [];
+  for (const ev of eventIds) {
+    const scored = findScoredDecision(decisions.filter((d) => d.event_id === ev));
+    if (!scored) continue;
+    out.push(scoreOutcome(pickScoringSnapshot(snapshots.filter((s) => s.event_id === ev), scored), scored));
+  }
+  return out;
+}
+
 export interface RegFunnel {
   total: number;
   unique: number; // distinct non-null player_ref_hash

@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { formatShortDate } from "@/lib/format";
+import { FEATURES } from "@/lib/featureFlags";
 import { useSeriesCapture } from "@/lib/series-intelligence/useSeriesCapture";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
 import { useCaptureAutosync } from "@/lib/series-intelligence/useCaptureAutosync";
 import { CaptureOverview } from "./capture/CaptureOverview";
+import { CalibrationCard } from "./capture/CalibrationCard";
 import { EventLoopPanel } from "./capture/EventLoopPanel";
 
 /**
@@ -99,6 +101,7 @@ export function SeriesCaptureConsole() {
       </div>
 
       <CaptureOverview decisions={hook.decisions} snapshots={hook.snapshots} />
+      {FEATURES.seriesCalibration && <CalibrationCard decisions={hook.decisions} snapshots={hook.snapshots} />}
 
       {hook.loading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
