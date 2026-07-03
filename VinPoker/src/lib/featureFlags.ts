@@ -287,9 +287,9 @@ export const FEATURES = {
    * "Tiếp tục không lật" escape when the operator has no hole-card info. OFF (default):
    * behavior byte-identical to today — THE COVER-CALL BUG REMAINS until this flips.
    * Operator-only; no server change (client simply stops sending runout-street actions).
-   * Kill-switch: set false.
+   * **ON 2026-07-03** for owner UAT (no external users; #674 merged). Kill-switch: set false.
    */
-  trackerCoverCallRunout: false,
+  trackerCoverCallRunout: true,
   /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
