@@ -157,6 +157,18 @@ export const FEATURES = {
    */
   accountingControl: true,
   /**
+   * Accounting Control — W1: wire the "Tổng quan" tab to REAL read-only data from the live
+   * `get_club_finance_summary` RPC (via `useClubFinanceSummary`, RLS-scoped to the owner's club,
+   * current month). When ON, the "Tiền của club" block shows real retained revenue + saved dealer
+   * wage cost + "còn lại sau lương" (all Tạm tính — actuals-to-date, not closed); the GTD subsidy,
+   * the "Tiền giữ hộ" (pool/payout/escrow) block, the entries forecast, and every other tab stay
+   * MOCK, clearly tagged "(mock — chưa nối)". Read-only — no writes, no new RPC. PT-wage line and
+   * F&B stay a known gap until #656 R2 applies live + their own increments (see
+   * docs/design/accounting-control-wiring-plan.md). Default **OFF**: while false, Tổng quan renders
+   * today's mock exactly (zero extra reads). Flip to true after golden-diff/UAT on a real club.
+   */
+  accountingControlLiveOverview: false,
+  /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
    * (20260825000000) applied live first. While false the editor is usable as a

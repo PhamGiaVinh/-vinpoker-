@@ -14,6 +14,12 @@ vi.mock("@/lib/featureFlags", async (importActual) => {
 const AUTH = { isAdmin: false, isClubAdmin: false, isClubOwner: false };
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => AUTH }));
 
+// Stub the finance hook so tests never touch supabase (the live W1 path uses it).
+const FIN: { loading: boolean; error: string | null; clubs: unknown[]; summary: unknown; reload: () => void } = {
+  loading: false, error: null, clubs: [], summary: null, reload: () => {},
+};
+vi.mock("@/hooks/useClubFinanceSummary", () => ({ useClubFinanceSummary: () => FIN }));
+
 import AccountingControl from "@/pages/AccountingControl";
 import { FEATURES } from "@/lib/featureFlags";
 import { OverviewTab } from "../tabs/OverviewTab";
@@ -41,9 +47,13 @@ const renderPage = () =>
 
 beforeEach(() => {
   (FEATURES as { accountingControl: boolean }).accountingControl = false;
+  (FEATURES as { accountingControlLiveOverview: boolean }).accountingControlLiveOverview = false;
   AUTH.isAdmin = false;
   AUTH.isClubAdmin = false;
   AUTH.isClubOwner = false;
+  FIN.loading = false;
+  FIN.error = null;
+  FIN.summary = null;
 });
 
 describe("AccountingControl — flag + role gates", () => {
@@ -111,6 +121,35 @@ describe("Per-tab doctrine (rendered directly — Radix unmounts inactive TabsCo
     expect(screen.getByText(/Chưa nối dữ liệu tài chính F&B vào Accounting Control/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/F&B chưa bật/i);
     expect(container.textContent).not.toMatch(/0\s*₫/);
+  });
+
+  it("W1 live overview: shows real retained/cost/còn-lại + số-thật banner, mock parts tagged", () => {
+    (FEATURES as { accountingControl: boolean }).accountingControl = true;
+    (FEATURES as { accountingControlLiveOverview: boolean }).accountingControlLiveOverview = true;
+    AUTH.isClubOwner = true;
+    FIN.summary = {
+      revenue: { total: 12_345_000 },
+      cost: { payrollNet: 4_000_000 },
+      net: 8_345_000,
+    };
+    renderPage();
+    // real numbers from the mocked finance summary
+    expect(screen.getByText(/12\.345\.000/)).toBeInTheDocument();
+    expect(screen.getByText(/8\.345\.000/)).toBeInTheDocument();
+    // live banner + honest "còn lại sau lương" contribution label (not "biên đóng góp" in live)
+    expect(screen.getByText(/Khối "Tiền của club" đang là SỐ THẬT/)).toBeInTheDocument();
+    expect(screen.getByText(/Còn lại sau lương/)).toBeInTheDocument();
+    // page banner reflects partial-live, and mock parts are tagged
+    expect(screen.getByText(/SỐ THẬT một phần/)).toBeInTheDocument();
+    expect(screen.getAllByText(/\(mock — chưa nối\)/).length).toBeGreaterThan(0);
+  });
+
+  it("live flag OFF → Tổng quan renders pure mock (no live banner, no finance fetch)", () => {
+    (FEATURES as { accountingControl: boolean }).accountingControl = true;
+    AUTH.isClubOwner = true;
+    renderPage();
+    expect(screen.queryByText(/Khối "Tiền của club" đang là SỐ THẬT/)).not.toBeInTheDocument();
+    expect(screen.getByText(/DỮ LIỆU MẪU \(mock\)/)).toBeInTheDocument();
   });
 
   it("OverviewTab renders the entries forecast as a COUNT range, not currency (no ₫)", () => {
