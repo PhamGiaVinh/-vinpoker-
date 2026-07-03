@@ -146,6 +146,17 @@ const LANDSCAPE_SEATS_V2: Record<number, Pt> = {
   1: { l: 35, t: 88 }, 2: { l: 8, t: 60 }, 3: { l: 13, t: 24 }, 4: { l: 33, t: 9 }, 5: { l: 50, t: 6 },
   6: { l: 67, t: 9 }, 7: { l: 87, t: 24 }, 8: { l: 92, t: 60 }, 9: { l: 65, t: 88 },
 };
+// Phase-2 rim-tuned VIEWER landscape map (baseline-driven: at 880×406 the V2 top row
+// t=6-9 floated pods 26-38px ABOVE the rim, and the bottom pair at l=35/65 sat 105px
+// from the stadium's rounded-end centres — read as "seats in the middle of the table").
+// V3: top row lowered ONTO the rim (t≈15.5-16 → overhang ≤8px with the Phase-2 scaled
+// ~140px pods), bottom pair spread toward the rounded ends (l 35/65→29/71 → ≤63px) and
+// raised off the status bar (t 88→82). Only `viewerLayout && !portrait` reads this;
+// operator/TV keep LANDSCAPE_SEATS byte-identically.
+const LANDSCAPE_SEATS_V3: Record<number, Pt> = {
+  1: { l: 29, t: 82 }, 2: { l: 10, t: 62 }, 3: { l: 16, t: 22 }, 4: { l: 34, t: 16 }, 5: { l: 50, t: 15.5 },
+  6: { l: 66, t: 16 }, 7: { l: 84, t: 22 }, 8: { l: 90, t: 62 }, 9: { l: 71, t: 82 },
+};
 const GEO_V2 = {
   portrait: { aspect: "5 / 7", seats: PORTRAIT_SEATS_V2, centerTop: "42%", centerW: "54%", vSize: "clamp(26px,9vw,40px)", maxW: "480px" },
   landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS_V2, centerTop: "44%", centerW: "36%", vSize: "clamp(22px,4vw,36px)", maxW: "880px" },
@@ -323,6 +334,10 @@ export function LiveFelt({
   const compactActive = viewerLayout && compact;
   const geoSet = viewerLayout ? GEO_V2 : GEO;
   const geo = compactActive && portrait ? GEO_COMPACT_PORTRAIT : portrait ? geoSet.portrait : geoSet.landscape;
+  // Phase 2: the VIEWER landscape reads the rim-tuned V3 map; every other path keeps its
+  // geo map. All seat/stack/chip-fly placements read `seatMap` so the three stay in sync
+  // (module constants → stable identity for the chips-effect dependency).
+  const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
 
   // trackerShowdownRevealOrder: this seat's flip delay = its place in the reveal
@@ -355,6 +370,26 @@ export function LiveFelt({
       ? { width: "clamp(12px,4.6cqi,20px)", fontSize: "clamp(7px,2.6cqi,10px)" }
       : { width: "clamp(11px,2.3cqi,18px)", fontSize: "clamp(7px,1.6cqi,10px)" }
     : undefined;
+  // Phase 2 (viewerLayout only): the PODS scale with the felt exactly like the cards do.
+  // Baseline: fixed 58/70px pods read 7.95% of an 880px felt (N8 broadcast ≈ 12-15%) —
+  // players looked lost on the table. 11cqi ≈ 97px at 880 (11%); floors keep the 560px
+  // `fit` design width + portrait phones at today's sizes (no regress); caps bound it.
+  // When viewerLayout is off all of these are `undefined` → operator/TV byte-identical.
+  const podStyle: CSSProperties | undefined = viewerLayout
+    ? portrait
+      ? { width: "clamp(56px,15cqi,84px)" }
+      : { width: "clamp(58px,11cqi,112px)" }
+    : undefined;
+  const avatarStyle: CSSProperties | undefined = viewerLayout
+    ? portrait
+      ? { width: "clamp(32px,8.5cqi,44px)", height: "clamp(32px,8.5cqi,44px)" }
+      : { width: "clamp(34px,5.4cqi,52px)", height: "clamp(34px,5.4cqi,52px)" }
+    : undefined;
+  const nameTextStyle: CSSProperties | undefined = viewerLayout ? { fontSize: "clamp(10px,1.5cqi,14px)" } : undefined;
+  const bbTextStyle: CSSProperties | undefined = viewerLayout ? { fontSize: "clamp(11px,1.6cqi,15px)" } : undefined;
+  const subTextStyle: CSSProperties | undefined = viewerLayout ? { fontSize: "clamp(8px,1.2cqi,11px)" } : undefined;
+  const badgeTextStyle: CSSProperties | undefined = viewerLayout ? { fontSize: "clamp(7px,0.95cqi,9.5px)" } : undefined;
+  const toActTextStyle: CSSProperties | undefined = viewerLayout ? { fontSize: "clamp(7.5px,1cqi,10px)" } : undefined;
   // Where a seat's chip stack sits: lerp from the seat toward the pot center, then
   // COLLISION-GUARDED — clamp the result to a minimum radial gap from the pot center so
   // near-pot/top seats can't land on the board safe-zone and 9 stacks don't converge onto
@@ -403,9 +438,9 @@ export function LiveFelt({
     lastChipNonce.current = chipPush.nonce;
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const slot = ((chipPush.seatNumber - 1) % 9) + 1;
-    const pos = geo.seats[slot] || geo.seats[1];
+    const pos = seatMap[slot] || seatMap[1];
     setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%`, color: chipColorFor(chipPush.kind) }]);
-  }, [chipPush, geo]);
+  }, [chipPush, seatMap]);
 
   // V2 landscape scale-to-fit: a wide 9-max table can't fit a narrow phone width without
   // overlap, so below LANDSCAPE_DESIGN_W we render the felt at that design width and scale
@@ -611,7 +646,7 @@ export function LiveFelt({
 
         {seats.map((seat) => {
           const slot = ((seat.seat_number - 1) % 9) + 1;
-          const pos = geo.seats[slot] || geo.seats[1];
+          const pos = seatMap[slot] || seatMap[1];
           const posStyle: CSSProperties = { left: `${pos.l}%`, top: `${pos.t}%`, transform: "translate(-50%, -50%)" };
 
           const isLastActor = !seat.is_folded && lastActorId === seat.player_id;
@@ -676,11 +711,11 @@ export function LiveFelt({
               style={posStyle}
               {...interactiveProps}
             >
-              <div className="relative flex w-[58px] flex-col items-center text-center sm:w-[70px]">
+              <div className="relative flex w-[58px] flex-col items-center text-center sm:w-[70px]" style={podStyle}>
                 {isToAct && (
                   <div
                     className="tracker-display absolute -top-2 z-20 rounded-full px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wide whitespace-nowrap text-white shadow"
-                    style={{ background: "hsl(var(--poker-accent))" }}
+                    style={{ background: "hsl(var(--poker-accent))", ...toActTextStyle }}
                   >
                     ◀ {t("liveHub.felt.toAct", "chờ")}
                   </div>
@@ -690,7 +725,7 @@ export function LiveFelt({
                     className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
                     }`}
-                    style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))" }}
+                    style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))", ...avatarStyle }}
                   >
                     {seat.avatar_url ? (
                       <img src={seat.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -705,8 +740,8 @@ export function LiveFelt({
                       }`}
                       style={
                         seat.position === "BTN"
-                          ? { background: "hsl(var(--poker-gold))" }
-                          : { background: "rgba(18,11,7,0.85)", border: "1px solid hsl(var(--poker-gold) / 0.4)" }
+                          ? { background: "hsl(var(--poker-gold))", ...badgeTextStyle }
+                          : { background: "rgba(18,11,7,0.85)", border: "1px solid hsl(var(--poker-gold) / 0.4)", ...badgeTextStyle }
                       }
                     >
                       {seat.position}
@@ -732,20 +767,20 @@ export function LiveFelt({
                     className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
                     style={{ background: "rgba(8,12,10,0.82)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}
                   >
-                    <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]">
+                    <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameTextStyle}>
                       {seat.display_name}
                     </div>
                     {compactActive && formatBB(seat.chip_count) ? (
                       <>
-                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
+                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
                           {formatBB(seat.chip_count)}
                         </div>
-                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[8px] font-semibold leading-none text-white/60">
+                        <div className="tracker-num mt-[1px] whitespace-nowrap text-[8px] font-semibold leading-none text-white/60" style={subTextStyle}>
                           {formatStack(seat.chip_count)}
                         </div>
                       </>
                     ) : (
-                      <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)" }}>
+                      <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
                         {formatStack(seat.chip_count)}
                       </div>
                     )}
@@ -823,7 +858,7 @@ export function LiveFelt({
             .filter((s) => s.is_all_in || (!s.is_folded && (s.current_bet ?? 0) > 0))
             .map((s) => {
               const slot = ((s.seat_number - 1) % 9) + 1;
-              const pt = stackPt(geo.seats[slot] || geo.seats[1]);
+              const pt = stackPt(seatMap[slot] || seatMap[1]);
               const amt = s.current_bet ?? 0;
               // UAT wave 2 (Fix 3, compact only): the ALL-IN pill prefers the seat's
               // WHOLE-HAND committed total (survives street sweeps), and — RPT style —
@@ -857,7 +892,7 @@ export function LiveFelt({
             .filter((n) => !seats.some((s) => s.seat_number === n))
             .map((n) => {
               const slot = ((n - 1) % 9) + 1;
-              const pos = geo.seats[slot] || geo.seats[1];
+              const pos = seatMap[slot] || seatMap[1];
               const posStyle: CSSProperties = { left: `${pos.l}%`, top: `${pos.t}%`, transform: "translate(-50%, -50%)" };
               const isButtonSeat = buttonSeat != null && buttonSeat === n;
               const tap = onSeatClick;
