@@ -887,8 +887,12 @@ export const FEATURES = {
    * un-applied schema can't break the Floor. Flip to true ONLY after the enum-unify +
    * tournament_close_report + close_tournament migration is applied live in a controlled DB session
    * and owner UAT passes. Kill-switch: set false.
+   *
+   * **ON** (2026-07-03, owner UAT): migration `20261213000000` applied live (tournament_close_report
+   * + close_tournament RPC + enum value 'completed' added first); flipped ON so Owner/Cashier can UAT
+   * on a TEST tournament. Kill-switch: set false to hide the "Chốt giải" button instantly.
    */
-  closeReport: false,
+  closeReport: true,
   /**
    * Floor "Loại" out-confirm dialog. When ON, tapping "Loại" on the floor table map opens a
    * plain, guided confirm dialog that previews the player's finishing place + prize money
