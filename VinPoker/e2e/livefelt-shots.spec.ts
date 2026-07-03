@@ -7,7 +7,7 @@
 // Pure read/observe — never mutates the app. Measurements are DOM-numeric (immune to
 // animation flake); screenshots use fixed settle waits like table-shots.
 
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -132,6 +132,24 @@ for (const vp of VIEWPORTS) {
     }
   });
 }
+
+// Phase 3 — play mode at 8×: the chip-fly queue must stay capped (≤3 concurrent
+// .tracker-chip-push nodes) while the replay machine-guns actions every 125ms.
+test.describe('play-mode', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+  test('speed8_chip_push_capped', async ({ page }) => {
+    await page.goto('/__dev/livefelt?fixture=allin-sidepots&seats=9&orientation=landscape&wrap=plain&play=1&speed=8&step=0');
+    await page.waitForSelector('[data-dev-livefelt-preview]', { timeout: 15_000 });
+    let maxConcurrent = 0;
+    for (let i = 0; i < 30; i++) {
+      const n = await page.locator('.tracker-chip-push').count();
+      maxConcurrent = Math.max(maxConcurrent, n);
+      await page.waitForTimeout(60);
+    }
+    expect(maxConcurrent).toBeLessThanOrEqual(3);
+    expect(maxConcurrent).toBeGreaterThan(0); // FX actually fired (wiring works)
+  });
+});
 
 // Width sweep — empirically probes maxW behavior far past the cap (owner saw ~1400px).
 test.describe('width-sweep', () => {

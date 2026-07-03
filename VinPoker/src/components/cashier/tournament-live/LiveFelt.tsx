@@ -18,7 +18,16 @@ import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import { ChipStack } from "./ChipStack";
 import { FeltStatusBar } from "./FeltStatusBar";
+import { useCountUp } from "@/hooks/useCountUp";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
+
+/** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
+ *  First render / enabled-off / reduced-motion emit the target directly, so static
+ *  renders and the operator/TV paths stay byte-identical. Display only — never state. */
+function CountUpText({ value, format, enabled }: { value: number; format: (n: number) => string; enabled: boolean }) {
+  const v = useCountUp(value, { enabled });
+  return <>{format(v)}</>;
+}
 
 export interface SeatInfo {
   player_id: string;
@@ -339,6 +348,11 @@ export function LiveFelt({
   // (module constants → stable identity for the chips-effect dependency).
   const seatMap = viewerLayout && !portrait ? LANDSCAPE_SEATS_V3 : geo.seats;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
+  // Phase 3 (tableFx only): the POT display counts up toward its target instead of
+  // jumping (~260ms ease-out). tableFx off / reduced-motion → displayPot === potSize
+  // on every render, so operator/TV and static renders are byte-identical. Display
+  // only — every gate below still reads the raw potSize.
+  const displayPot = useCountUp(potSize, { enabled: tableFx });
 
   // trackerShowdownRevealOrder: this seat's flip delay = its place in the reveal
   // order × the per-step stagger. Not in `revealOrder` (or prop absent) → undefined
@@ -439,7 +453,9 @@ export function LiveFelt({
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const slot = ((chipPush.seatNumber - 1) % 9) + 1;
     const pos = seatMap[slot] || seatMap[1];
-    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%`, color: chipColorFor(chipPush.kind) }]);
+    // Phase 3: cap the transient queue at 3 — at 8× replay (125ms/step vs the ~520ms fly
+    // animation) unbounded pushes stack into chip spam; the newest 3 keep the effect legible.
+    setChips((cs) => [...cs, { id: chipPush.nonce, fx: `${pos.l}%`, fy: `${pos.t}%`, color: chipColorFor(chipPush.kind) }].slice(-3));
   }, [chipPush, seatMap]);
 
   // V2 landscape scale-to-fit: a wide 9-max table can't fit a narrow phone width without
@@ -615,10 +631,10 @@ export function LiveFelt({
                   {t("liveHub.felt.pot", "Pot")}
                 </div>
                 <div className="tracker-num text-lg font-bold leading-tight sm:text-xl" style={{ color: "hsl(var(--poker-gold))" }}>
-                  {formatStack(potSize)}
+                  {formatStack(displayPot)}
                   {formatBB(potSize) && (
                     <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(var(--poker-gold) / 0.6)" }}>
-                      ({formatBB(potSize)})
+                      ({formatBB(displayPot)})
                     </span>
                   )}
                 </div>
@@ -707,7 +723,7 @@ export function LiveFelt({
           return (
             <div
               key={seat.player_id}
-              className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}${interactiveCls}${selectedCls}`}
+              className={`absolute z-10 ${seat.is_folded ? "opacity-50" : ""}${tableFx ? " transition-opacity duration-300 motion-reduce:transition-none" : ""}${interactiveCls}${selectedCls}`}
               style={posStyle}
               {...interactiveProps}
             >
@@ -724,7 +740,7 @@ export function LiveFelt({
                   <div
                     className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
-                    }`}
+                    }${tableFx ? " transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none" : ""}`}
                     style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))", ...avatarStyle }}
                   >
                     {seat.avatar_url ? (
@@ -773,15 +789,15 @@ export function LiveFelt({
                     {compactActive && formatBB(seat.chip_count) ? (
                       <>
                         <div className="tracker-num mt-[1px] whitespace-nowrap text-[11px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
-                          {formatBB(seat.chip_count)}
+                          <CountUpText value={seat.chip_count} format={(n) => formatBB(n) ?? formatStack(n)} enabled={tableFx} />
                         </div>
                         <div className="tracker-num mt-[1px] whitespace-nowrap text-[8px] font-semibold leading-none text-white/60" style={subTextStyle}>
-                          {formatStack(seat.chip_count)}
+                          <CountUpText value={seat.chip_count} format={formatStack} enabled={tableFx} />
                         </div>
                       </>
                     ) : (
                       <div className="tracker-num mt-[1px] text-[10px] font-bold leading-none" style={{ color: "hsl(146 62% 56%)", ...bbTextStyle }}>
-                        {formatStack(seat.chip_count)}
+                        <CountUpText value={seat.chip_count} format={formatStack} enabled={tableFx} />
                       </div>
                     )}
                   </div>
@@ -982,7 +998,7 @@ export function LiveFelt({
           toActName={
             toActId ? seats.find((s) => s.player_id === toActId)?.display_name ?? null : null
           }
-          potSize={potSize}
+          potSize={displayPot}
           formatBB={formatBB}
           runout={runout}
         />

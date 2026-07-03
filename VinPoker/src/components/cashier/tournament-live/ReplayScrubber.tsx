@@ -49,7 +49,9 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
   const [step, setStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1);
+  // Phase 3: default 2× (500ms/action) — 1×'s one-second dry steps read as "lag", and the
+  // felt's fold-fade/count-up/chip-fly cover the transition. All speeds stay selectable.
+  const [speed, setSpeed] = useState(2);
 
   // New hand → rewind and pause.
   useEffect(() => {

@@ -20,11 +20,12 @@
 // The default param set (viewerLayout=1 compact=1 tableFx=1, landscape, 9 seats,
 // allin-sidepots) reproduces the owner's problem configuration.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { LiveFelt } from "@/components/cashier/tournament-live/LiveFelt";
 import { ReplayScrubber } from "@/components/cashier/tournament-live/ReplayScrubber";
 import { buildReplayFrames, detectBigBlind, type ReplayFrame } from "@/lib/tracker-poker/replayEngine";
+import { deriveReplayPlaybackFx } from "@/lib/tracker-poker/replayFx";
 import { buildFixtureHand, type LiveFeltFixtureName } from "./livefeltFixtures";
 
 const FIXTURES: LiveFeltFixtureName[] = ["fold-walk", "showdown", "allin-sidepots"];
@@ -52,6 +53,26 @@ export default function LiveFeltPreview() {
   const [frame, setFrame] = useState<ReplayFrame>(frames[step]);
   useEffect(() => { if (!play) setFrame(frames[step]); }, [frames, step, play]);
 
+  // Play mode mirrors the real viewer's replay FX derivation (forward-only, single-step):
+  // a chip-action frame fires one chipPush so the felt's chip-fly (and its Phase-3 queue
+  // cap) can be exercised at high speed.
+  const [chipPush, setChipPush] = useState<{ seatNumber: number; nonce: number; kind?: string } | null>(null);
+  const prevFxRef = useRef<{ index: number | null; board: number }>({ index: null, board: 0 });
+  const handleFrame = (f: ReplayFrame) => {
+    const boardN = f.displayCards.filter(Boolean).length;
+    const fx = deriveReplayPlaybackFx({
+      prevIndex: prevFxRef.current.index,
+      prevBoard: prevFxRef.current.board,
+      index: f.index,
+      board: boardN,
+      actionType: f.latestAction?.action_type ?? null,
+      seatNumber: f.latestAction?.seat_number ?? 0,
+    });
+    prevFxRef.current = { index: f.index, board: boardN };
+    if (fx.chipPush && f.latestAction) setChipPush({ seatNumber: f.latestAction.seat_number, nonce: f.index, kind: f.latestAction.action_type });
+    setFrame(f);
+  };
+
   const bb = detectBigBlind(hand);
   const formatBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1).replace(/\.0$/, "")} BB` : null);
   const blinds = bb > 0 ? { sb: bb / 2, bb, ante: 0 } : null;
@@ -72,6 +93,7 @@ export default function LiveFeltPreview() {
       viewerLayout={viewerLayout}
       compact={compact}
       tableFx={tableFx}
+      chipPush={chipPush}
       blinds={blinds}
     />
   );
@@ -98,7 +120,7 @@ export default function LiveFeltPreview() {
       {wrapped}
       {play && (
         <div className="mt-3">
-          <ReplayScrubber hand={hand} onFrame={setFrame} trackBets={viewerLayout && compact} />
+          <ReplayScrubber hand={hand} onFrame={handleFrame} trackBets={viewerLayout && compact} />
           <AutoPlay speed={speed} />
         </div>
       )}

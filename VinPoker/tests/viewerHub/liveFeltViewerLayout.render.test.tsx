@@ -155,3 +155,30 @@ describe("LiveFelt Phase-2 pod scaling + V3 seat map (viewerLayout)", () => {
     expect(html).toContain("w-[58px]"); // fixed pod width class, no inline override
   });
 });
+
+// Phase 3: smoothness transitions + count-up are tableFx-gated. OFF (operator/TV and
+// the viewer with liveTableFx disabled) the markup carries NO transition utilities and
+// numbers render at their exact targets — byte-identical to today.
+describe("LiveFelt Phase-3 smoothness gating (tableFx)", () => {
+  const potProps = { ...baseProps, potSize: 1_234_000 };
+
+  it("tableFx ON adds the fold-fade + ring-glide transitions", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout tableFx />);
+    expect(html).toContain("transition-opacity");
+    expect(html).toContain("transition-[border-color,box-shadow]");
+    expect(html).toContain("motion-reduce:transition-none");
+  });
+
+  it("tableFx OFF renders no transition utilities and exact numbers", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout />);
+    expect(html).not.toContain("transition-opacity");
+    expect(html).not.toContain("transition-[border-color,box-shadow]");
+    expect(html).toContain("1.2M"); // pot renders the exact target (no tween artifact)
+  });
+
+  it("static render with tableFx ON still emits exact target numbers (first-render sync)", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout tableFx />);
+    expect(html).toContain("1.2M");
+    expect(html).toContain("1k"); // seat chip_count (1000 → formatStack "1k") via CountUpText first render
+  });
+});
