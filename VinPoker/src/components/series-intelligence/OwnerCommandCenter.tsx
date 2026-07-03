@@ -28,6 +28,7 @@ import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
 import { ContributionByTypeCard } from "./ContributionByTypeCard";
 import { FnbClubContributionCard } from "./FnbClubContributionCard";
 import { QuarterlyBreakdownCard } from "./QuarterlyBreakdownCard";
+import { RegimeSwitch } from "./RegimeSwitch";
 import { DataQualityCard } from "./DataQualityCard";
 import { EconomicsTable } from "./EconomicsTable";
 import { RiskInsightCards } from "./RiskInsightCards";
@@ -115,6 +116,8 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
           </span>
         </Card>
       )}
+      {/* Local-only regime switch (self-gates on seriesRegimeSwitch) — escalates the RegimeNotice caveats. */}
+      <RegimeSwitch />
       {/* BI pyramid: overview → data quality → economics → risk → scenario → GTD overlay → actions */}
       <section className="space-y-2">
         <h3 className="font-display text-base flex items-center gap-2">
