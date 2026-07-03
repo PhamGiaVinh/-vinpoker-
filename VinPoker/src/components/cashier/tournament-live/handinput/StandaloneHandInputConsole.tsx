@@ -171,6 +171,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onRevealAndContinue={hook.handleRevealRunout}
           // UAT wave 2: no-card-info escape — flag OFF → prop absent (byte-identical).
           onSkipReveal={FEATURES.trackerCoverCallRunout ? hook.handleSkipRevealRunout : undefined}
+          revealOrder={hook.showdownOrderIds}
         />
       );
     }
@@ -209,6 +210,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onToggleWinner={hook.handleToggleWinner}
           onConfirmResult={hook.handleConfirmShowdownResult}
           submitting={disabled}
+          revealOrder={hook.showdownOrderIds}
         />
       );
     }

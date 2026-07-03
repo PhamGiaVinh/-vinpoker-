@@ -278,6 +278,16 @@ export interface LiveFeltProps {
    * viewer only; absent → no change.
    */
   runout?: boolean;
+  /**
+   * trackerShowdownRevealOrder (viewer) — ADDITIVE; absent → simultaneous reveal
+   * (byte-identical). player_ids in the order they should table their cards at
+   * showdown; each revealed seat's hole-card flip is delayed by its index ×
+   * `revealStaggerMs`, so the cards appear in sequence ~0.5s apart.
+   */
+  revealOrder?: string[];
+  /** Per-step delay for the staggered showdown reveal (ms). Default 500 when
+   * `revealOrder` is set. */
+  revealStaggerMs?: number;
 }
 
 export function LiveFelt({
@@ -303,6 +313,8 @@ export function LiveFelt({
   compact = false,
   blinds = null,
   runout = false,
+  revealOrder,
+  revealStaggerMs = 500,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
@@ -312,6 +324,15 @@ export function LiveFelt({
   const geoSet = viewerLayout ? GEO_V2 : GEO;
   const geo = compactActive && portrait ? GEO_COMPACT_PORTRAIT : portrait ? geoSet.portrait : geoSet.landscape;
   const boardCardCls = "h-[44px] w-[32px] sm:h-[52px] sm:w-[38px]";
+
+  // trackerShowdownRevealOrder: this seat's flip delay = its place in the reveal
+  // order × the per-step stagger. Not in `revealOrder` (or prop absent) → undefined
+  // → no delay (simultaneous, byte-identical). Index 0 → 0ms (starts immediately).
+  const revealDelayStyle = (playerId: string): CSSProperties | undefined => {
+    if (!revealOrder) return undefined;
+    const i = revealOrder.indexOf(playerId);
+    return i > 0 ? { animationDelay: `${i * revealStaggerMs}ms` } : undefined;
+  };
 
   // Viewer Felt V2 — cards size with the FELT's own width (cqi resolves to the
   // container-type set on the oval below) so they never overlap on mobile. Inline
@@ -769,7 +790,20 @@ export function LiveFelt({
                   className={`mt-0.5 flex justify-center gap-0.5${isWinner ? " tracker-win-glow rounded-md p-0.5" : ""}`}
                 >
                   {seat.hole_cards && seat.hole_cards.length === 2 ? (
-                    seat.hole_cards.map((card, ci) => <PokerCard key={ci} card={card} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
+                    // trackerShowdownRevealOrder: stagger the flip by this seat's place
+                    // in the reveal order (index * revealStaggerMs added to the existing
+                    // tracker-card-reveal pop). revealOrder absent → delay undefined →
+                    // today's simultaneous reveal (byte-identical). Reduced-motion kills
+                    // the animation entirely (CSS), so the delay is moot for a11y.
+                    seat.hole_cards.map((card, ci) => (
+                      <PokerCard
+                        key={ci}
+                        card={card}
+                        size="xs"
+                        muted={seat.is_folded}
+                        style={{ ...holeStyle, ...fanFor(ci), ...revealDelayStyle(seat.player_id) }}
+                      />
+                    ))
                   ) : (
                     [0, 1].map((ci) => <CardBack key={ci} size="xs" muted={seat.is_folded} style={{ ...holeStyle, ...fanFor(ci) }} />)
                   )}

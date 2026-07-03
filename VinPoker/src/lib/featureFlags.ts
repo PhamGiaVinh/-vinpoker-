@@ -291,6 +291,18 @@ export const FEATURES = {
    */
   trackerCoverCallRunout: true,
   /**
+   * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
+   * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
+   * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
+   * as a viewer-side staggered card-reveal animation ordered by the pure
+   * `showdownRevealOrder()` — reliable regardless of poll cadence; works live +
+   * replay. The operator still enters all cards + one "Lật bài" (the showdown panel
+   * just lists players in reveal order with a ①②③ hint). OFF (default): cards reveal
+   * simultaneously as today (byte-identical). Reduced-motion → no stagger.
+   * Frontend-only; no DB/RPC/Edge change (broadcast unchanged). Kill-switch: false.
+   */
+  trackerShowdownRevealOrder: false,
+  /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
    * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;

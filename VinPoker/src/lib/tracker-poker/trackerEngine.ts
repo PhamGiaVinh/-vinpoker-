@@ -165,6 +165,39 @@ export function firstPostflopActor(activeSeatNums: number[], buttonSeat: number)
   return ringAfter(seats, buttonSeat)[0] ?? null;
 }
 
+/**
+ * Showdown reveal order (trackerShowdownRevealOrder): the sequence in which the
+ * SHOWING players table their cards, per standard poker/TDA procedure —
+ *   • if there was a bet/raise/all-in on the FINAL betting street, that last
+ *     aggressor tables FIRST (`finalAggressorSeat`), then clockwise;
+ *   • otherwise (checked to showdown, or all-in from an earlier street), the
+ *     first active seat clockwise-left of the BUTTON tables first (= SB / "from
+ *     the SB", via `firstPostflopActor` — showdown order is button-relative, not
+ *     BB-relative, even for a preflop all-in), then clockwise.
+ * `shownSeatNumbers` = only the seats that WILL show (non-folded, non-mucked,
+ * hole cards revealed). Pure + presentational: order-only, no money/legality.
+ * ≤1 shown seat → returned as-is.
+ */
+export function showdownRevealOrder(args: {
+  shownSeatNumbers: number[];
+  buttonSeat: number;
+  finalAggressorSeat?: number | null;
+}): number[] {
+  const shown = [...new Set(args.shownSeatNumbers)]
+    .filter((s) => Number.isInteger(s) && s > 0)
+    .sort((a, b) => a - b);
+  if (shown.length <= 1) return shown;
+  const agg = args.finalAggressorSeat;
+  const start =
+    agg != null && shown.includes(agg)
+      ? agg
+      : firstPostflopActor(shown, args.buttonSeat) ?? shown[0];
+  // Rotate the sorted ring so `start` is first, then clockwise. (Not
+  // `[start, ...ringAfter]` — ringAfter already wraps back around to include start.)
+  const si = shown.indexOf(start);
+  return [...shown.slice(si), ...shown.slice(0, si)];
+}
+
 // ---------- money / street state ----------
 
 export function currentBet(seats: EngineSeat[]): number {

@@ -40,6 +40,7 @@ import {
   snapshotBlindLevel,
   hasLevelChangedDuringHand,
   isRunout,
+  showdownRevealOrder,
   type EngineState,
   type BlindLevelSnapshot,
   type ClockLevel,
@@ -516,6 +517,30 @@ export function useStandaloneHandInput(tournamentId: string) {
   );
 
   const activePlayers = useMemo(() => players.filter((p) => !p.is_folded && !p.is_all_in), [players]);
+
+  // trackerShowdownRevealOrder (operator hint): player_ids of the still-in players in
+  // the order they'd table at showdown (last aggressor on the final street first, else
+  // first-to-act from the SB, then clockwise). Purely informational — the showdown
+  // panel lists players in this order with a ①②③ badge so the operator enters them in
+  // the same sequence the viewer reveals. Flag OFF → undefined → panel unchanged.
+  const showdownOrderIds = useMemo<string[] | undefined>(() => {
+    if (!FEATURES.trackerShowdownRevealOrder) return undefined;
+    const shown = players.filter((p) => !p.is_folded);
+    if (shown.length <= 1) return undefined;
+    const STREET_IDX: Record<string, number> = { preflop: 0, flop: 1, turn: 2, river: 3, showdown: 4 };
+    const AGGR = new Set(["bet", "raise", "all_in"]);
+    const maxStreet = actions.reduce((m, a) => Math.max(m, STREET_IDX[a.street] ?? 0), 0);
+    const shownSeats = new Set(shown.map((p) => p.seat_number));
+    const lastAggr = [...actions]
+      .filter((a) => (STREET_IDX[a.street] ?? 0) === maxStreet && AGGR.has(a.action_type))
+      .sort((a, b) => a.action_order - b.action_order)
+      .pop();
+    const finalAggressorSeat = lastAggr && shownSeats.has(lastAggr.seat_number) ? lastAggr.seat_number : null;
+    const seatToPid = new Map(shown.map((p) => [p.seat_number, p.player_id]));
+    return showdownRevealOrder({ shownSeatNumbers: shown.map((p) => p.seat_number), buttonSeat, finalAggressorSeat })
+      .map((sn) => seatToPid.get(sn))
+      .filter((x): x is string => !!x);
+  }, [players, actions, buttonSeat]);
 
   const usedCards = useMemo(() => {
     const s = new Set<Card>();
@@ -1636,6 +1661,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     availableTables,
     players,
     activePlayers,
+    showdownOrderIds,
     submitting,
     isReadOnly,
     handStarted,
