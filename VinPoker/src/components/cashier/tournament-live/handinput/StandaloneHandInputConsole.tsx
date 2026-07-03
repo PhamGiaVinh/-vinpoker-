@@ -21,6 +21,7 @@ import { LiveFelt } from "../LiveFelt";
 import { InputTableMap } from "./InputTableMap";
 import { SetupHandPanel } from "./SetupHandPanel";
 import { ChipQuickEditPanel } from "./ChipQuickEditPanel";
+import { SeatSetupPanel } from "./SeatSetupPanel";
 import { BlindSetupPanel } from "./BlindSetupPanel";
 import { BoardEntryPanel } from "./BoardEntryPanel";
 import { ShowdownInputPanel } from "./ShowdownInputPanel";
@@ -90,9 +91,20 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           submitting={hook.submitting}
           lastHandId={hook.lastHandId}
           onVoid={hook.handleVoid}
-          // A3: between-hands chip quick-edit — flag OFF → prop absent (byte-identical).
+          // Pre-hand roster setup takes precedence when trackerSeatSetup is on; else the
+          // A3 chip quick-edit; else nothing. Both flags OFF → prop absent (byte-identical).
           chipEditor={
-            FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
+            FEATURES.trackerSeatSetup && hook.tableId ? (
+              <SeatSetupPanel
+                tournamentId={hook.tournamentId}
+                tableId={hook.tableId}
+                players={hook.players}
+                maxSeats={hook.maxSeats}
+                avatarSupported={hook.avatarSupported}
+                disabled={hook.submitting}
+                onSetSeat={hook.handleSetRosterSeat}
+              />
+            ) : FEATURES.trackerChipQuickEdit && hook.players.length > 0 ? (
               <ChipQuickEditPanel
                 tournamentId={hook.tournamentId}
                 tableId={hook.tableId}

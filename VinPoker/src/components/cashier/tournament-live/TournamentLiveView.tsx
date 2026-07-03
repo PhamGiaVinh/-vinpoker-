@@ -176,7 +176,14 @@ export function TournamentLiveView({
     const [seatsRes, handsRes, clockRes, tournamentRes] = await Promise.all([
       supabase
         .from("tournament_seats")
-        .select("player_id, seat_number, chip_count, is_active, player_name, table_id")
+        // trackerSeatSetup: pull the per-seat avatar too. Flag is flipped ON only AFTER
+        // its migration lands (runbook), so the column exists when this is selected;
+        // OFF → the current column list, byte-identical.
+        .select(
+          FEATURES.trackerSeatSetup
+            ? "player_id, seat_number, chip_count, is_active, player_name, table_id, avatar_url"
+            : "player_id, seat_number, chip_count, is_active, player_name, table_id"
+        )
         .eq("tournament_id", tournamentId)
         .order("seat_number"),
       supabase
@@ -213,9 +220,13 @@ export function TournamentLiveView({
       is_active: s.is_active,
       table_id: s.table_id ?? null,
       position: "",
+      // trackerSeatSetup: operator-set per-seat avatar (undefined when flag off).
+      avatar_url: (s as any).avatar_url ?? null,
     }));
 
     // Avatars for everyone seated (display_name keeps the operator-entered player_name).
+    // Priority: operator-set seat avatar wins over the player's profile pic; a walk-in
+    // with no profile uses the seat avatar (or initials).
     if (seatInfos.length > 0) {
       const seatPlayerIds = [...new Set(seatInfos.map((s) => s.player_id))];
       const { data: seatProfiles } = await supabase
@@ -227,7 +238,7 @@ export function TournamentLiveView({
 
       const avatarMap = new Map<string, string | null>();
       (seatProfiles || []).forEach((p: any) => avatarMap.set(p.user_id, p.avatar_url ?? null));
-      seatInfos = seatInfos.map((s) => ({ ...s, avatar_url: avatarMap.get(s.player_id) ?? null }));
+      seatInfos = seatInfos.map((s) => ({ ...s, avatar_url: s.avatar_url ?? avatarMap.get(s.player_id) ?? null }));
     }
 
     let nextHandNumber: number | null = null;
