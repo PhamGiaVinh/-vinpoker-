@@ -1,0 +1,3022 @@
+{
+  "generatedAt": "baseline-run",
+  "seats": 9,
+  "cases": [
+    {
+      "case": "p390_plain_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 366,
+        "h": 166,
+        "left": 12,
+        "top": 94,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 115,
+          "y": 183,
+          "w": 58,
+          "h": 144,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9ec858",
+          "x": 27,
+          "y": 169,
+          "w": 58,
+          "h": 129,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 12,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 64,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 46,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 268,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "7480a0",
+          "x": 320,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "8be84c",
+          "x": 305,
+          "y": 186,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "c45534",
+          "x": 217,
+          "y": 208,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        }
+      ],
+      "podFeltRatioAvg": 15.85,
+      "topRowOverhangPx": 48,
+      "bottomRowEndDistancePx": 39,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 26
+      }
+    },
+    {
+      "case": "p390_plain_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 366,
+        "h": 166,
+        "left": 12,
+        "top": 94,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 115,
+          "y": 198,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9ec858",
+          "x": 27,
+          "y": 176,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 12,
+          "y": 100,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 64,
+          "y": 41,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 36,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 268,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "7480a0",
+          "x": 320,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "8be84c",
+          "x": 305,
+          "y": 186,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "c45534",
+          "x": 217,
+          "y": 208,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        }
+      ],
+      "podFeltRatioAvg": 15.85,
+      "topRowOverhangPx": 58,
+      "bottomRowEndDistancePx": 39,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 26
+      }
+    },
+    {
+      "case": "p390_console_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 366,
+        "h": 166,
+        "left": 12,
+        "top": 94,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 115,
+          "y": 183,
+          "w": 58,
+          "h": 144,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9ec858",
+          "x": 27,
+          "y": 169,
+          "w": 58,
+          "h": 129,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 12,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 64,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 46,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 268,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "7480a0",
+          "x": 320,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "8be84c",
+          "x": 305,
+          "y": 186,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "c45534",
+          "x": 217,
+          "y": 208,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        }
+      ],
+      "podFeltRatioAvg": 15.85,
+      "topRowOverhangPx": 48,
+      "bottomRowEndDistancePx": 39,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 26
+      }
+    },
+    {
+      "case": "p390_console_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 366,
+        "h": 166,
+        "left": 12,
+        "top": 94,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 115,
+          "y": 198,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9ec858",
+          "x": 27,
+          "y": 176,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 12,
+          "y": 100,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 64,
+          "y": 41,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 36,
+          "w": 58,
+          "h": 115,
+          "ratio": 15.85
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 268,
+          "y": 51,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "7480a0",
+          "x": 320,
+          "y": 109,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "8be84c",
+          "x": 305,
+          "y": 186,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        },
+        {
+          "seat": "c45534",
+          "x": 217,
+          "y": 208,
+          "w": 58,
+          "h": 96,
+          "ratio": 15.85
+        }
+      ],
+      "podFeltRatioAvg": 15.85,
+      "topRowOverhangPx": 58,
+      "bottomRowEndDistancePx": 39,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 26
+      }
+    },
+    {
+      "case": "p390_hub_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 348,
+        "h": 158,
+        "left": 21,
+        "top": 103,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 117,
+          "y": 185,
+          "w": 58,
+          "h": 142,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9ec858",
+          "x": 34,
+          "y": 172,
+          "w": 58,
+          "h": 128,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 20,
+          "y": 115,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 69,
+          "y": 60,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 55,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 263,
+          "y": 60,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "7480a0",
+          "x": 312,
+          "y": 115,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "8be84c",
+          "x": 298,
+          "y": 188,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "c45534",
+          "x": 215,
+          "y": 209,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        }
+      ],
+      "podFeltRatioAvg": 16.67,
+      "topRowOverhangPx": 48,
+      "bottomRowEndDistancePx": 37,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 29,
+        "holeW": 25
+      }
+    },
+    {
+      "case": "p390_hub_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 348,
+        "h": 158,
+        "left": 21,
+        "top": 103,
+        "maxWExpected": 480,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 117,
+          "y": 200,
+          "w": 58,
+          "h": 114,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9ec858",
+          "x": 34,
+          "y": 179,
+          "w": 58,
+          "h": 114,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 20,
+          "y": 106,
+          "w": 58,
+          "h": 114,
+          "ratio": 16.67
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 69,
+          "y": 51,
+          "w": 58,
+          "h": 114,
+          "ratio": 16.67
+        },
+        {
+          "seat": "dbbd59",
+          "x": 166,
+          "y": 46,
+          "w": 58,
+          "h": 114,
+          "ratio": 16.67
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 263,
+          "y": 60,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "7480a0",
+          "x": 312,
+          "y": 115,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "8be84c",
+          "x": 298,
+          "y": 188,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        },
+        {
+          "seat": "c45534",
+          "x": 215,
+          "y": 209,
+          "w": 58,
+          "h": 96,
+          "ratio": 16.67
+        }
+      ],
+      "podFeltRatioAvg": 16.67,
+      "topRowOverhangPx": 57,
+      "bottomRowEndDistancePx": 37,
+      "overlaps": {
+        "podPod": 4,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 29,
+        "holeW": 25
+      }
+    },
+    {
+      "case": "l844_plain_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 820,
+        "h": 378,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 264,
+          "y": 291,
+          "w": 70,
+          "h": 154,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9ec858",
+          "x": 43,
+          "y": 193,
+          "w": 70,
+          "h": 137,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 84,
+          "y": 75,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 248,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "dbbd59",
+          "x": 387,
+          "y": 7,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 526,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "7480a0",
+          "x": 690,
+          "y": 75,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "8be84c",
+          "x": 731,
+          "y": 212,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "c45534",
+          "x": 510,
+          "y": 318,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        }
+      ],
+      "podFeltRatioAvg": 8.54,
+      "topRowOverhangPx": 28,
+      "bottomRowEndDistancePx": 98,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 38,
+        "holeW": 29
+      }
+    },
+    {
+      "case": "l844_plain_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 820,
+        "h": 378,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 264,
+          "y": 306,
+          "w": 70,
+          "h": 123,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9ec858",
+          "x": 43,
+          "y": 200,
+          "w": 70,
+          "h": 123,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 84,
+          "y": 64,
+          "w": 70,
+          "h": 123,
+          "ratio": 8.54
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 248,
+          "y": 7,
+          "w": 70,
+          "h": 123,
+          "ratio": 8.54
+        },
+        {
+          "seat": "dbbd59",
+          "x": 387,
+          "y": -4,
+          "w": 70,
+          "h": 123,
+          "ratio": 8.54
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 526,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "7480a0",
+          "x": 690,
+          "y": 75,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "8be84c",
+          "x": 731,
+          "y": 212,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        },
+        {
+          "seat": "c45534",
+          "x": 510,
+          "y": 318,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.54
+        }
+      ],
+      "podFeltRatioAvg": 8.54,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 98,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 38,
+        "holeW": 29
+      }
+    },
+    {
+      "case": "l844_console_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 432,
+        "h": 199,
+        "left": 12,
+        "top": 61,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 136,
+          "y": 181,
+          "w": 54,
+          "h": 111,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9ec858",
+          "x": 20,
+          "y": 132,
+          "w": 54,
+          "h": 97,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 41,
+          "y": 70,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 128,
+          "y": 40,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "dbbd59",
+          "x": 201,
+          "y": 34,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 275,
+          "y": 40,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "7480a0",
+          "x": 361,
+          "y": 70,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "8be84c",
+          "x": 383,
+          "y": 142,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "c45534",
+          "x": 266,
+          "y": 198,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        }
+      ],
+      "podFeltRatioAvg": 12.5,
+      "topRowOverhangPx": 27,
+      "bottomRowEndDistancePx": 51,
+      "overlaps": {
+        "podPod": 2,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 20,
+        "holeW": 15
+      }
+    },
+    {
+      "case": "l844_console_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 432,
+        "h": 199,
+        "left": 12,
+        "top": 61,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 136,
+          "y": 193,
+          "w": 54,
+          "h": 87,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9ec858",
+          "x": 20,
+          "y": 137,
+          "w": 54,
+          "h": 87,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 41,
+          "y": 66,
+          "w": 54,
+          "h": 87,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 128,
+          "y": 36,
+          "w": 54,
+          "h": 87,
+          "ratio": 12.5
+        },
+        {
+          "seat": "dbbd59",
+          "x": 201,
+          "y": 30,
+          "w": 54,
+          "h": 87,
+          "ratio": 12.5
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 275,
+          "y": 40,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "7480a0",
+          "x": 361,
+          "y": 70,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "8be84c",
+          "x": 383,
+          "y": 142,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        },
+        {
+          "seat": "c45534",
+          "x": 266,
+          "y": 198,
+          "w": 54,
+          "h": 78,
+          "ratio": 12.5
+        }
+      ],
+      "podFeltRatioAvg": 12.5,
+      "topRowOverhangPx": 31,
+      "bottomRowEndDistancePx": 51,
+      "overlaps": {
+        "podPod": 2,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 20,
+        "holeW": 15
+      }
+    },
+    {
+      "case": "l844_hub_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 794,
+        "h": 366,
+        "left": 25,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 268,
+          "y": 294,
+          "w": 70,
+          "h": 153,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9ec858",
+          "x": 54,
+          "y": 200,
+          "w": 70,
+          "h": 136,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 93,
+          "y": 86,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 252,
+          "y": 31,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "dbbd59",
+          "x": 387,
+          "y": 20,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 522,
+          "y": 31,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "7480a0",
+          "x": 681,
+          "y": 86,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "8be84c",
+          "x": 720,
+          "y": 217,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "c45534",
+          "x": 506,
+          "y": 320,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        }
+      ],
+      "podFeltRatioAvg": 8.82,
+      "topRowOverhangPx": 28,
+      "bottomRowEndDistancePx": 95,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 37,
+        "holeW": 28
+      }
+    },
+    {
+      "case": "l844_hub_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 794,
+        "h": 366,
+        "left": 25,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 268,
+          "y": 309,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9ec858",
+          "x": 54,
+          "y": 207,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 93,
+          "y": 75,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.82
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 252,
+          "y": 20,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.82
+        },
+        {
+          "seat": "dbbd59",
+          "x": 387,
+          "y": 9,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.82
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 522,
+          "y": 31,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "7480a0",
+          "x": 681,
+          "y": 86,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "8be84c",
+          "x": 720,
+          "y": 217,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        },
+        {
+          "seat": "c45534",
+          "x": 506,
+          "y": 320,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.82
+        }
+      ],
+      "podFeltRatioAvg": 8.82,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 95,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 37,
+        "holeW": 28
+      }
+    },
+    {
+      "case": "d1280_plain_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 200,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 473,
+          "y": 314,
+          "w": 70,
+          "h": 157,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 235,
+          "y": 209,
+          "w": 70,
+          "h": 140,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 279,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 455,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 605,
+          "y": 9,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 755,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 931,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 975,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 737,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 26,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1280_plain_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 200,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 473,
+          "y": 330,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 235,
+          "y": 216,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 279,
+          "y": 70,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 455,
+          "y": 9,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 605,
+          "y": -3,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 755,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 931,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 975,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 737,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1280_console_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 665,
+        "h": 307,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 210,
+          "y": 231,
+          "w": 70,
+          "h": 148,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9ec858",
+          "x": 30,
+          "y": 154,
+          "w": 70,
+          "h": 131,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 64,
+          "y": 58,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 197,
+          "y": 12,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "dbbd59",
+          "x": 310,
+          "y": 3,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 423,
+          "y": 12,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "7480a0",
+          "x": 556,
+          "y": 58,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "8be84c",
+          "x": 589,
+          "y": 169,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "c45534",
+          "x": 410,
+          "y": 255,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        }
+      ],
+      "podFeltRatioAvg": 10.53,
+      "topRowOverhangPx": 32,
+      "bottomRowEndDistancePx": 79,
+      "overlaps": {
+        "podPod": 1,
+        "podStatusBar": 2,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 23
+      }
+    },
+    {
+      "case": "d1280_console_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 665,
+        "h": 307,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 210,
+          "y": 247,
+          "w": 70,
+          "h": 117,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9ec858",
+          "x": 30,
+          "y": 161,
+          "w": 70,
+          "h": 117,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 64,
+          "y": 50,
+          "w": 70,
+          "h": 117,
+          "ratio": 10.53
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 197,
+          "y": 4,
+          "w": 70,
+          "h": 117,
+          "ratio": 10.53
+        },
+        {
+          "seat": "dbbd59",
+          "x": 310,
+          "y": -5,
+          "w": 70,
+          "h": 117,
+          "ratio": 10.53
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 423,
+          "y": 12,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "7480a0",
+          "x": 556,
+          "y": 58,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "8be84c",
+          "x": 589,
+          "y": 169,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        },
+        {
+          "seat": "c45534",
+          "x": 410,
+          "y": 255,
+          "w": 70,
+          "h": 101,
+          "ratio": 10.53
+        }
+      ],
+      "podFeltRatioAvg": 10.53,
+      "topRowOverhangPx": 40,
+      "bottomRowEndDistancePx": 79,
+      "overlaps": {
+        "podPod": 1,
+        "podStatusBar": 2,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 31,
+        "holeW": 23
+      }
+    },
+    {
+      "case": "d1280_hub_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 200,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 473,
+          "y": 327,
+          "w": 70,
+          "h": 157,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 235,
+          "y": 222,
+          "w": 70,
+          "h": 140,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 279,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 455,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 605,
+          "y": 22,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 755,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 931,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 975,
+          "y": 241,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 737,
+          "y": 355,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 26,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1280_hub_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 200,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 473,
+          "y": 343,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 235,
+          "y": 229,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 279,
+          "y": 83,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 455,
+          "y": 22,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 605,
+          "y": 10,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 755,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 931,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 975,
+          "y": 241,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 737,
+          "y": 355,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1600_plain_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 360,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 633,
+          "y": 314,
+          "w": 70,
+          "h": 157,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 395,
+          "y": 209,
+          "w": 70,
+          "h": 140,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 439,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 615,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 765,
+          "y": 9,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 915,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1091,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1135,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 897,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 26,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1600_plain_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 360,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 633,
+          "y": 330,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 395,
+          "y": 216,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 439,
+          "y": 70,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 615,
+          "y": 9,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 765,
+          "y": -3,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 915,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1091,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1135,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 897,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1600_console_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 837,
+        "h": 386,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 270,
+          "y": 297,
+          "w": 70,
+          "h": 155,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9ec858",
+          "x": 44,
+          "y": 198,
+          "w": 70,
+          "h": 138,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 86,
+          "y": 77,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 253,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "dbbd59",
+          "x": 395,
+          "y": 8,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 537,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "7480a0",
+          "x": 705,
+          "y": 77,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "8be84c",
+          "x": 747,
+          "y": 216,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "c45534",
+          "x": 521,
+          "y": 324,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        }
+      ],
+      "podFeltRatioAvg": 8.36,
+      "topRowOverhangPx": 27,
+      "bottomRowEndDistancePx": 100,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 38,
+        "holeW": 29
+      }
+    },
+    {
+      "case": "d1600_console_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 837,
+        "h": 386,
+        "left": 12,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 270,
+          "y": 313,
+          "w": 70,
+          "h": 124,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9ec858",
+          "x": 44,
+          "y": 205,
+          "w": 70,
+          "h": 124,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 86,
+          "y": 66,
+          "w": 70,
+          "h": 124,
+          "ratio": 8.36
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 253,
+          "y": 8,
+          "w": 70,
+          "h": 124,
+          "ratio": 8.36
+        },
+        {
+          "seat": "dbbd59",
+          "x": 395,
+          "y": -4,
+          "w": 70,
+          "h": 124,
+          "ratio": 8.36
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 537,
+          "y": 19,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "7480a0",
+          "x": 705,
+          "y": 77,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "8be84c",
+          "x": 747,
+          "y": 216,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        },
+        {
+          "seat": "c45534",
+          "x": 521,
+          "y": 324,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.36
+        }
+      ],
+      "podFeltRatioAvg": 8.36,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 100,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 38,
+        "holeW": 29
+      }
+    },
+    {
+      "case": "d1600_hub_showdown",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 360,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 633,
+          "y": 327,
+          "w": 70,
+          "h": 157,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 395,
+          "y": 222,
+          "w": 70,
+          "h": 140,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 439,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 615,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 765,
+          "y": 22,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 915,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1091,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1135,
+          "y": 241,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 897,
+          "y": 355,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 26,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "d1600_hub_allin-sidepots",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 360,
+        "top": 48,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 633,
+          "y": 343,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 395,
+          "y": 229,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 439,
+          "y": 83,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 615,
+          "y": 22,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 765,
+          "y": 10,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 915,
+          "y": 34,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1091,
+          "y": 95,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1135,
+          "y": 241,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 897,
+          "y": 355,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "sweep_w560",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 536,
+        "h": 247,
+        "left": 557,
+        "top": 61,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 711,
+          "y": 225,
+          "w": 67,
+          "h": 107,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9ec858",
+          "x": 566,
+          "y": 156,
+          "w": 67,
+          "h": 107,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 593,
+          "y": 67,
+          "w": 67,
+          "h": 107,
+          "ratio": 12.5
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 700,
+          "y": 30,
+          "w": 67,
+          "h": 107,
+          "ratio": 12.5
+        },
+        {
+          "seat": "dbbd59",
+          "x": 792,
+          "y": 22,
+          "w": 67,
+          "h": 107,
+          "ratio": 12.5
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 883,
+          "y": 35,
+          "w": 67,
+          "h": 96,
+          "ratio": 12.5
+        },
+        {
+          "seat": "7480a0",
+          "x": 990,
+          "y": 72,
+          "w": 67,
+          "h": 96,
+          "ratio": 12.5
+        },
+        {
+          "seat": "8be84c",
+          "x": 1017,
+          "y": 161,
+          "w": 67,
+          "h": 96,
+          "ratio": 12.5
+        },
+        {
+          "seat": "c45534",
+          "x": 872,
+          "y": 230,
+          "w": 67,
+          "h": 96,
+          "ratio": 12.5
+        }
+      ],
+      "podFeltRatioAvg": 12.5,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 64,
+      "overlaps": {
+        "podPod": 2,
+        "podStatusBar": 0,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 25,
+        "holeW": 19
+      }
+    },
+    {
+      "case": "sweep_w820",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 796,
+        "h": 367,
+        "left": 427,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 671,
+          "y": 297,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.79
+        },
+        {
+          "seat": "9ec858",
+          "x": 456,
+          "y": 194,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.79
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 495,
+          "y": 62,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.79
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 655,
+          "y": 7,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.79
+        },
+        {
+          "seat": "dbbd59",
+          "x": 790,
+          "y": -4,
+          "w": 70,
+          "h": 122,
+          "ratio": 8.79
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 925,
+          "y": 18,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.79
+        },
+        {
+          "seat": "7480a0",
+          "x": 1085,
+          "y": 73,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.79
+        },
+        {
+          "seat": "8be84c",
+          "x": 1124,
+          "y": 205,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.79
+        },
+        {
+          "seat": "c45534",
+          "x": 909,
+          "y": 308,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.79
+        }
+      ],
+      "podFeltRatioAvg": 8.79,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 95,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 37,
+        "holeW": 28
+      }
+    },
+    {
+      "case": "sweep_w880",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 856,
+        "h": 395,
+        "left": 397,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 662,
+          "y": 320,
+          "w": 70,
+          "h": 125,
+          "ratio": 8.18
+        },
+        {
+          "seat": "9ec858",
+          "x": 430,
+          "y": 210,
+          "w": 70,
+          "h": 125,
+          "ratio": 8.18
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 473,
+          "y": 67,
+          "w": 70,
+          "h": 125,
+          "ratio": 8.18
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 644,
+          "y": 8,
+          "w": 70,
+          "h": 125,
+          "ratio": 8.18
+        },
+        {
+          "seat": "dbbd59",
+          "x": 790,
+          "y": -4,
+          "w": 70,
+          "h": 125,
+          "ratio": 8.18
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 936,
+          "y": 20,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.18
+        },
+        {
+          "seat": "7480a0",
+          "x": 1107,
+          "y": 79,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.18
+        },
+        {
+          "seat": "8be84c",
+          "x": 1150,
+          "y": 222,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.18
+        },
+        {
+          "seat": "c45534",
+          "x": 918,
+          "y": 332,
+          "w": 70,
+          "h": 101,
+          "ratio": 8.18
+        }
+      ],
+      "podFeltRatioAvg": 8.18,
+      "topRowOverhangPx": 39,
+      "bottomRowEndDistancePx": 102,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 39,
+        "holeW": 30
+      }
+    },
+    {
+      "case": "sweep_w1200",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 385,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 658,
+          "y": 330,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 420,
+          "y": 216,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 464,
+          "y": 70,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 640,
+          "y": 9,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 790,
+          "y": -3,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 940,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1116,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1160,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 922,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    },
+    {
+      "case": "sweep_w1400",
+      "dpr": 1,
+      "selectorConfidence": {
+        "ovalCount": 1,
+        "podCount": 9,
+        "expectedPods": 9,
+        "ok": true
+      },
+      "felt": {
+        "w": 880,
+        "h": 406,
+        "left": 385,
+        "top": 35,
+        "maxWExpected": 880,
+        "bypass": false
+      },
+      "pods": [
+        {
+          "seat": "b1a530",
+          "x": 658,
+          "y": 330,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9ec858",
+          "x": 420,
+          "y": 216,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f9f8b",
+          "x": 464,
+          "y": 70,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "9f0ef6",
+          "x": 640,
+          "y": 9,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "dbbd59",
+          "x": 790,
+          "y": -3,
+          "w": 70,
+          "h": 126,
+          "ratio": 7.95
+        },
+        {
+          "seat": "bcd9c1",
+          "x": 940,
+          "y": 21,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "7480a0",
+          "x": 1116,
+          "y": 82,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "8be84c",
+          "x": 1160,
+          "y": 228,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        },
+        {
+          "seat": "c45534",
+          "x": 922,
+          "y": 342,
+          "w": 70,
+          "h": 101,
+          "ratio": 7.95
+        }
+      ],
+      "podFeltRatioAvg": 7.95,
+      "topRowOverhangPx": 38,
+      "bottomRowEndDistancePx": 105,
+      "overlaps": {
+        "podPod": 0,
+        "podStatusBar": 1,
+        "podActionRail": 0
+      },
+      "cards": {
+        "boardW": 40,
+        "holeW": 31
+      }
+    }
+  ]
+}

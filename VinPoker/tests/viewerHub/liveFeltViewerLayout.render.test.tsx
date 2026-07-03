@@ -120,3 +120,65 @@ describe("LiveFelt RPT committed-bet chip stack colors (viewerLayout)", () => {
     expect(html).toContain("text-red-400"); // the standalone ALL IN label stays (as today)
   });
 });
+
+// Phase 2 (gameplay-view): PODS scale with the felt like the cards (fixed 58/70px pods
+// read ~8% of an 880px felt vs the N8 broadcast 12-15% band), and the VIEWER landscape
+// reads the rim-tuned V3 seat map (top row ON the rim, bottom pair toward the rounded
+// ends + clear of the status bar). Both are viewerLayout-gated: the operator/TV render
+// keeps the fixed pod classes + the ORIGINAL LANDSCAPE_SEATS byte-identically.
+describe("LiveFelt Phase-2 pod scaling + V3 seat map (viewerLayout)", () => {
+  it("landscape: pod/avatar/nameplate carry the cqi clamps", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} viewerLayout />);
+    expect(html).toContain("11cqi"); // pod width clamp(58px,11cqi,112px)
+    expect(html).toContain("5.4cqi"); // avatar clamp(34px,5.4cqi,52px)
+    expect(html).toContain("1.5cqi"); // nameplate font clamp(10px,1.5cqi,14px)
+  });
+
+  it("portrait: pod/avatar carry the portrait clamps", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait viewerLayout />);
+    expect(html).toContain("15cqi"); // pod width clamp(56px,15cqi,84px)
+    expect(html).toContain("8.5cqi"); // avatar clamp(32px,8.5cqi,44px)
+  });
+
+  it("viewer landscape positions seats on the V3 rim-tuned map", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} viewerLayout />);
+    expect(html).toContain("left:29%"); // V3 slot 1 (was 35 on V2, 37 on operator)
+    expect(html).toContain("top:82%"); // V3 slot 1 (bottom row raised off the status bar)
+    expect(html).toContain("top:22%"); // V3 slot 3
+  });
+
+  it("operator landscape (viewerLayout off) keeps the ORIGINAL map + fixed pod size", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
+    expect(html).toContain("left:37%"); // LANDSCAPE_SEATS slot 1 unchanged
+    expect(html).toContain("top:86%");
+    expect(html).not.toContain("left:29%"); // V3 never leaks into the operator render
+    expect(html).toContain("w-[58px]"); // fixed pod width class, no inline override
+  });
+});
+
+// Phase 3: smoothness transitions + count-up are tableFx-gated. OFF (operator/TV and
+// the viewer with liveTableFx disabled) the markup carries NO transition utilities and
+// numbers render at their exact targets — byte-identical to today.
+describe("LiveFelt Phase-3 smoothness gating (tableFx)", () => {
+  const potProps = { ...baseProps, potSize: 1_234_000 };
+
+  it("tableFx ON adds the fold-fade + ring-glide transitions", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout tableFx />);
+    expect(html).toContain("transition-opacity");
+    expect(html).toContain("transition-[border-color,box-shadow]");
+    expect(html).toContain("motion-reduce:transition-none");
+  });
+
+  it("tableFx OFF renders no transition utilities and exact numbers", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout />);
+    expect(html).not.toContain("transition-opacity");
+    expect(html).not.toContain("transition-[border-color,box-shadow]");
+    expect(html).toContain("1.2M"); // pot renders the exact target (no tween artifact)
+  });
+
+  it("static render with tableFx ON still emits exact target numbers (first-render sync)", () => {
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...potProps} viewerLayout tableFx />);
+    expect(html).toContain("1.2M");
+    expect(html).toContain("1k"); // seat chip_count (1000 → formatStack "1k") via CountUpText first render
+  });
+});
