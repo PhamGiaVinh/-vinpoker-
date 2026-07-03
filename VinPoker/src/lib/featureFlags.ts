@@ -818,6 +818,19 @@ export const FEATURES = {
    * and owner UAT passes. Kill-switch: set false.
    */
   closeReport: false,
+  /**
+   * Floor "Loại" out-confirm dialog. When ON, tapping "Loại" on the floor table map opens a
+   * plain, guided confirm dialog that previews the player's finishing place + prize money
+   * ("[Tên] về hạng [N] — [tiền]") BEFORE the (unchanged) bust runs. Non-ITM outs show the
+   * place only ("ngoài cơ cấu giải"), never a fake prize. Frontend-only: it reads the already
+   * live `tournament_prizes` (get_tournament_prizes) read-only and computes place from the
+   * live active-seat count the panel already loads — it changes NO write path (the bust is the
+   * same `update_seats is_active=false` call; the server auto-records the official result via
+   * the player-history chain exactly as before). Default **OFF** (per flag policy): while false
+   * the "Loại" button busts immediately, byte-identical to today. Flip to true (one line) after
+   * owner UAT to surface the confirm step — a low-risk safety improvement. Kill-switch: set false.
+   */
+  floorOutConfirm: false,
 } as const;
 
 /**
