@@ -82,4 +82,67 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
     expect(top).toBeGreaterThan(8); // moved down from the seat toward the pot
     expect(top).toBeLessThan(42); // but kept clear of the pot/board
   });
+
+  // ── UAT wave 2 (Fix 2+3, compact only) ──────────────────────────────────────
+  it("compact: the stack is SEAT-ANCHORED (K=0.30) — seat 5 (t=0) lands ≈15%, near the pod", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt seats={[seat({ player_id: "a", seat_number: 5, current_bet: 200000 })]} {...baseProps} portrait viewerLayout compact />
+    );
+    const m = html.match(/z-\[15\][^>]*top:([0-9.]+)%/);
+    expect(m).toBeTruthy();
+    const top = parseFloat(m![1]);
+    expect(top).toBeGreaterThan(12);
+    expect(top).toBeLessThan(18); // 0 + (50−0)×0.30 = 15 — NOT dragged to mid-felt
+  });
+
+  it("compact: adjacent all-in seats keep DISTINCT seat-side positions (no center-ring pileup)", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        seats={[
+          seat({ player_id: "a", seat_number: 4, is_all_in: true, current_bet: 800000 }),
+          seat({ player_id: "b", seat_number: 5, is_all_in: true, current_bet: 800000 }),
+          seat({ player_id: "c", seat_number: 6, is_all_in: true, current_bet: 800000 }),
+        ]}
+        {...baseProps}
+        portrait
+        viewerLayout
+        compact
+      />
+    );
+    const lefts = [...html.matchAll(/z-\[15\][^>]*left:([0-9.]+)%/g)].map((m) => parseFloat(m[1]));
+    expect(lefts.length).toBe(3);
+    expect(new Set(lefts.map((l) => Math.round(l))).size).toBe(3); // three distinct columns
+    // The old MINGAP clamp snapped near-center stacks onto a 16%-radius ring; the
+    // top-center seat (5) must now stay in its own lane near the seat instead.
+    const tops = [...html.matchAll(/z-\[15\][^>]*top:([0-9.]+)%/g)].map((m) => parseFloat(m[1]));
+    expect(Math.max(...tops)).toBeLessThan(22); // K=0.30: top-row stacks ≤ ~17
+  });
+
+  it("compact: ALL-IN pill shows the whole-hand total AMOUNT-ONLY on the red pill (RPT style)", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        seats={[seat({ player_id: "a", seat_number: 1, is_all_in: true, current_bet: 0, total_committed: 19_900_000 })]}
+        {...baseProps}
+        portrait
+        viewerLayout
+        compact
+      />
+    );
+    expect(html).toContain("19.9M"); // amount survives the street sweep via total_committed
+    expect(html).not.toContain("ALL IN 19.9M"); // no wide prefix — red pill signals all-in
+    expect(html.toLowerCase()).toContain("#d33"); // red all-in styling carries the signal
+  });
+
+  it("non-compact keeps today's bare 'ALL IN' when current_bet is 0 (regression)", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        seats={[seat({ player_id: "a", seat_number: 1, is_all_in: true, current_bet: 0, total_committed: 19_900_000 })]}
+        {...baseProps}
+        portrait
+        viewerLayout
+      />
+    );
+    expect(html).toContain("ALL IN");
+    expect(html).not.toContain("ALL IN 19.9M");
+  });
 });

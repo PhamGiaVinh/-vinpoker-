@@ -3,6 +3,7 @@
 // pays each side-pot layer exactly) or SELECT the winner(s) manually (fallback).
 // Fold-win never reaches here (it routes straight to Review with the winner prefilled).
 
+import { useEffect, useRef, useState } from "react";
 import { CardSlotPicker, type Card, displayCard } from "@/components/shared/CardSlotPicker";
 
 export interface ShowdownPlayer {
@@ -34,6 +35,13 @@ interface ShowdownInputPanelProps {
    */
   revealOnly?: boolean;
   onRevealAndContinue?: () => void;
+  /**
+   * UAT wave 2 (trackerCoverCallRunout) — ADDITIVE; absent → markup byte-identical.
+   * Escape for a runout where the operator has NO hole-card info: continue without
+   * broadcasting. Rendered as a separate amber block BELOW the primary reveal flow
+   * with a 2-tap confirm, so it can't be fat-fingered.
+   */
+  onSkipReveal?: () => void;
 }
 
 export function ShowdownInputPanel({
@@ -52,7 +60,27 @@ export function ShowdownInputPanel({
   submitting,
   revealOnly,
   onRevealAndContinue,
+  onSkipReveal,
 }: ShowdownInputPanelProps) {
+  // UAT wave 2: 2-tap confirm for the skip-reveal escape — first tap arms for 3s.
+  const [skipArmed, setSkipArmed] = useState(false);
+  const skipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (skipTimer.current) clearTimeout(skipTimer.current);
+    },
+    []
+  );
+  const handleSkipTap = () => {
+    if (!skipArmed) {
+      setSkipArmed(true);
+      skipTimer.current = setTimeout(() => setSkipArmed(false), 3000);
+      return;
+    }
+    if (skipTimer.current) clearTimeout(skipTimer.current);
+    setSkipArmed(false);
+    onSkipReveal?.();
+  };
   const live = players.filter((p) => !p.is_folded);
   const canConfirm = selectedWinners.length > 0;
   const muckedSet = mucked ?? new Set<string>();
@@ -123,6 +151,23 @@ export function ShowdownInputPanel({
             {!allLiveResolved && (
               <div className="text-[10px] text-muted-foreground">
                 Cần đủ 2 lá tẩy cho mỗi người còn bài (hoặc bấm "Úp bài") trước khi chạy board.
+              </div>
+            )}
+            {onSkipReveal && (
+              // UAT wave 2 escape — its own amber block, visually apart from the
+              // primary purple reveal CTA, with a 2-tap confirm (no silent skip).
+              <div className="mt-3 space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5">
+                <div className="text-[10px] text-amber-300">
+                  Bài sẽ không hiển thị trên viewer. Bạn vẫn phải chấm kết quả thủ công ở Showdown.
+                </div>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={handleSkipTap}
+                  className="w-full rounded-lg border border-amber-500/60 bg-transparent px-3 py-2 text-xs font-semibold text-amber-300 transition active:scale-[0.99] disabled:opacity-40"
+                >
+                  {skipArmed ? "Bấm lần nữa để xác nhận" : "Tiếp tục không lật (không có thông tin bài)"}
+                </button>
               </div>
             )}
           </>

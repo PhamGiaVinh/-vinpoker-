@@ -147,6 +147,34 @@ export function computePotBreakdown(contributors: PotContributor[]): PotBreakdow
 }
 
 /**
+ * P0.1 (UAT wave 2) — THE single place that encodes `action_amount` semantics for
+ * bet reconstruction (live viewer + replay both call this; never add "raw" inline).
+ *
+ * PROVEN: `action_amount` is a DELTA — the chips ADDED by that action — for EVERY
+ * action type. Five independent sources:
+ *  1. Client write-path: `betToAdded(betTo, streetCommitted, stack)` →
+ *     `added = min(betTo − streetCommitted, stack)`; handleAction sends `added`.
+ *  2. Pinned test: racetrackPayloadParity — "raise to 1000 (committed 200) → 800".
+ *  3. Server validator (_shared/trackerEngine/validateAction.ts): raise checks
+ *     `raiseToStreetBet = player.street_bet + amt`; call stores `min(toCall, stack)`;
+ *     bet fails on `amt > stack`; all_in stores `player.stack`; posts clamp to stack.
+ *  4. replayEngine decrements stacks by `action_amount` → correct ending stacks.
+ *  5. contributionsFromActions sums amounts → pot matches server `pot_size`.
+ *
+ * Per action_type: post_sb/post_bb/post_ante = posted delta (stack-clamped) ·
+ * call = delta added to match · bet = delta (== street total when opening) ·
+ * raise = delta ON TOP of the player's prior street commitment · all_in = the
+ * remaining stack shoved. Non-contributing types (fold/check/…) return 0.
+ *
+ * If the wire format ever changes to raise-to/total semantics, fix it HERE (compute
+ * `amount − previousStreetBet`) — every reconstruction downstream follows.
+ */
+export function streetContribution(actionType: string, actionAmount: number | null): number {
+  if (!(CONTRIBUTING_ACTION_TYPES as readonly string[]).includes(actionType)) return 0;
+  return sanitizeChips(actionAmount);
+}
+
+/**
  * Derive per-player contributions from a hand_actions stream (viewer side —
  * the viewer has no stack state, only the action log).
  */

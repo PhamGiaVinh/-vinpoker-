@@ -14,12 +14,15 @@ interface FeltStatusBarProps {
   toActName: string | null;
   potSize: number;
   formatBB: (n: number) => string | null;
+  /** All-in runout in progress (betting closed) — middle segment shows "Đang chạy
+   * board" instead of a waiting-on-player name. Absent → no change. */
+  runout?: boolean;
 }
 
-export function FeltStatusBar({ blinds, toActName, potSize, formatBB }: FeltStatusBarProps) {
+export function FeltStatusBar({ blinds, toActName, potSize, formatBB, runout = false }: FeltStatusBarProps) {
   const { t } = useTranslation();
   const hasBlinds = !!blinds && blinds.bb > 0;
-  if (!hasBlinds && !toActName && potSize <= 0) return null;
+  if (!hasBlinds && !toActName && !runout && potSize <= 0) return null;
   return (
     <div
       data-testid="felt-status-bar"
@@ -43,12 +46,17 @@ export function FeltStatusBar({ blinds, toActName, potSize, formatBB }: FeltStat
           )}
         </span>
       )}
-      {toActName && (
+      {runout ? (
+        <span className="min-w-0 flex-1 truncate font-semibold text-emerald-300/90">
+          {t("liveHub.felt.runout", "Đang chạy board, không còn hành động")}
+        </span>
+      ) : toActName ? (
         <span className="min-w-0 flex-1 truncate text-amber-300/90">
           {t("liveHub.felt.toAct", "chờ")}: <span className="font-semibold text-amber-200">{toActName}</span>
         </span>
+      ) : (
+        <span className="min-w-0 flex-1" />
       )}
-      {!toActName && <span className="min-w-0 flex-1" />}
       {potSize > 0 && (
         <span className="flex shrink-0 items-center gap-1">
           <span

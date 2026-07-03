@@ -150,6 +150,10 @@ export function useStandaloneHandInput(tournamentId: string) {
   const [showdownLayers, setShowdownLayers] = useState<ShowdownLayerResult[]>([]);
   // P2-2: the operator has flipped hole cards for an all-in runout this hand.
   const [revealDone, setRevealDone] = useState(false);
+  // UAT wave 2 (P1 undo rule): hole cards were actually BROADCAST (persisted) this
+  // hand — an undo then preserves revealDone; a never-broadcast reveal/skip is
+  // cleared when the restored snapshot is no longer a runout.
+  const holeCardsBroadcastRef = useRef(false);
   const [blindLevelSnapshot, setBlindLevelSnapshot] = useState<BlindLevelSnapshot | null>(null);
   const [blindsConfirmedLocal, setBlindsConfirmedLocal] = useState(false);
   // P2-3: operator marks this hand as having a dead small blind (no SB posted).
@@ -310,6 +314,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setMuckedPlayerIds(new Set());
     setShowdownLayers([]);
     setRevealDone(false);
+    holeCardsBroadcastRef.current = false;
     setBlindLevelSnapshot(null);
     setBlindsConfirmedLocal(false);
     setDeadSb(false);
@@ -581,6 +586,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       bigBlind,
       deadSb: effectiveDeadSb,
       bbSeatOverride,
+      // UAT wave 2 (Fix 1): cover-call runout waiver — module const, no dep needed.
+      // Flag OFF ⇒ field false ⇒ engine behavior byte-identical to today.
+      coverCallWaiver: FEATURES.trackerCoverCallRunout,
     }),
     [players, buttonSeat, currentStreet, actions, bigBlind, effectiveDeadSb, bbSeatOverride]
   );
@@ -1232,6 +1240,15 @@ export function useStandaloneHandInput(tournamentId: string) {
     setUndoStack((prev) => prev.slice(0, -1));
     setBetAmount("");
     setSelectedActorId(null);
+    // UAT wave 2 (P1 undo rule): restoring a snapshot that is NOT a runout anymore
+    // (e.g. undoing the cover-call) invalidates a reveal/skip that was never
+    // broadcast — clear revealDone so runout_reveal can fire again. Once hole cards
+    // were actually broadcast (persisted server-side) revealDone is preserved.
+    if (revealDone && !holeCardsBroadcastRef.current) {
+      const live = snap.players.filter((p) => !p.is_folded);
+      const elig = live.filter((p) => !p.is_all_in && p.current_stack > 0);
+      if (!(live.length >= 2 && elig.length <= 1)) setRevealDone(false);
+    }
   };
 
   const handleUndo = async () => {
@@ -1326,6 +1343,7 @@ export function useStandaloneHandInput(tournamentId: string) {
         body: buildShowHoleCardsBody({ tournamentId, handId, playerHoleCards: cardsPayload }),
       });
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
+      holeCardsBroadcastRef.current = true; // persisted server-side → undo keeps revealDone
       toast.success("Hole cards revealed");
       markSync("sent", `Đã lật ${cardsPayload.length} tay bài`);
     } catch (e: any) {
@@ -1345,6 +1363,18 @@ export function useStandaloneHandInput(tournamentId: string) {
   const handleRevealRunout = async () => {
     await handleShowHoleCards();
     setRevealDone(true);
+  };
+
+  // UAT wave 2 (Fix 1 escape): the operator has NO hole-card info (e.g. cards not
+  // shown to the floor) — continue the runout WITHOUT broadcasting. Deliberately
+  // does NOT call handleShowHoleCards (it errors on zero cards). The viewer keeps
+  // face-down cards for this hand; settlement still requires revealed-or-mucked at
+  // the Showdown step, so this can never produce a phantom settle.
+  const handleSkipRevealRunout = () => {
+    setRevealDone(true);
+    toast.warning(
+      "Tiếp tục không lật — bài sẽ không hiển thị trên viewer. Bạn vẫn phải chấm kết quả thủ công ở Showdown."
+    );
   };
 
   const nextStreet = () => {
@@ -1705,6 +1735,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUpdateCommunityCards,
     handleShowHoleCards,
     handleRevealRunout,
+    handleSkipRevealRunout,
     handleToggleWinner,
     handleToggleMuck,
     handleAutoSettle,

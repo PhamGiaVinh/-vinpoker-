@@ -128,3 +128,35 @@ describe("resumeHand — replayActions rebuilds mid-hand state", () => {
     expect(out[0].current_stack).toBe(1000);
   });
 });
+
+// ── UAT wave 2 (R3): resuming an orphan MID-RUNOUT ─────────────────────────────
+// The hook seeds sentCommunityStreets from the PERSISTED board count on resume, and
+// the auto-advance needs replayActions to rebuild the all-in/coverer money state so
+// the cover-call waiver sees the same runout it saw before the refresh. Pin the pure
+// pieces: street derivation lands on the runout's current board street, and the
+// rebuilt seats carry the all-in flags + zeroed stacks that make eligibleActorCount≤1.
+describe("resume mid cover-call runout (UAT wave 2)", () => {
+  const rows: ResumeActionRow[] = [
+    act({ player_id: "sb", action_type: "post_sb", action_amount: 100, action_order: 1 }),
+    act({ player_id: "bb", action_type: "post_bb", action_amount: 200, action_order: 2 }),
+    act({ player_id: "shover", action_type: "all_in", action_amount: 5000, action_order: 3 }),
+    act({ player_id: "cover", action_type: "call", action_amount: 4900, action_order: 4, street: "preflop" }),
+  ];
+
+  it("street derives from the persisted board (flop dealt during the runout)", () => {
+    // No flop ACTIONS exist in a runout — the street must come from the board count.
+    expect(deriveResumeStreet(rows, 3)).toBe("flop");
+    expect(deriveResumeStreet(rows, 4)).toBe("turn");
+  });
+
+  it("replayActions rebuilds the runout money state: shover all-in at 0, coverer live", () => {
+    const base = [player("sb", 10000), player("bb", 10000), player("shover", 5000), player("cover", 20000)];
+    const rebuilt = replayActions(base, rows);
+    const shover = rebuilt.find((p) => p.player_id === "shover")!;
+    const cover = rebuilt.find((p) => p.player_id === "cover")!;
+    expect(shover.is_all_in).toBe(true);
+    expect(shover.current_stack).toBe(0);
+    expect(cover.is_all_in).toBe(false);
+    expect(cover.current_stack).toBe(15100); // 20000 − 4900 call delta
+  });
+});

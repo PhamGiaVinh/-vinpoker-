@@ -213,6 +213,8 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           submitting={disabled}
           revealOnly
           onRevealAndContinue={hook.handleRevealRunout}
+          // UAT wave 2: no-card-info escape — flag OFF → prop absent (byte-identical).
+          onSkipReveal={FEATURES.trackerCoverCallRunout ? hook.handleSkipRevealRunout : undefined}
         />
       );
     }
@@ -267,7 +269,15 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
     }
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-border/40 bg-card/50 py-8 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Đang xử lý bước tiếp theo…
+        {/* UAT wave 2: during a runout the "no actor" moment is EXPECTED (betting is
+            closed) — say so instead of an ambiguous spinner. Flag OFF → spinner as today. */}
+        {FEATURES.trackerCoverCallRunout && hook.allInRunout ? (
+          <span className="text-emerald-300">Runout — nhập board tiếp theo, không còn hành động.</span>
+        ) : (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Đang xử lý bước tiếp theo…
+          </>
+        )}
       </div>
     );
   })();
