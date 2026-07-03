@@ -16,6 +16,7 @@ import { playPokerLiveSound, type PokerLiveSound } from "@/lib/pokerLiveSound";
 import {
   computePotBreakdown,
   contributionsFromActions,
+  streetContribution,
   type PotBreakdown,
 } from "@/lib/tracker-poker/potEngine";
 import { nextToAct } from "@/lib/tracker-poker/handFlow";
@@ -126,6 +127,9 @@ export function TournamentLiveView({
   // Live Action Engine inc2: the player whose turn it is to act (flag-gated
   // spotlight). null when the flag is off / no live hand.
   const [toActId, setToActId] = useState<string | null>(null);
+  // UAT wave 2 (R1): the live hand is an all-in runout (betting closed) — drives the
+  // compact status bar's "Đang chạy board" segment instead of a stale to-act name.
+  const [liveRunout, setLiveRunout] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tableNames, setTableNames] = useState<Record<string, string>>({});
   const [localRemaining, setLocalRemaining] = useState(0);
@@ -234,6 +238,7 @@ export function TournamentLiveView({
     let nextBreakdown: PotBreakdown | null = null;
     let nextInProgress = false;
     let liveToActId: string | null = null;
+    let nextRunout = false;
 
     if (handsRes.data && handsRes.data.length > 0) {
       const hand = handsRes.data[0] as any;
@@ -319,21 +324,42 @@ export function TournamentLiveView({
           const boardN = nextCommunity.length;
           const curStreet =
             boardN >= 5 ? "river" : boardN >= 4 ? "turn" : boardN >= 3 ? "flop" : "preflop";
-          const CONTRIB = ["bet", "raise", "call", "all_in", "post_sb", "post_bb", "post_ante"];
           const POSTS = ["post_sb", "post_bb", "post_ante"];
           const streetBets: Record<string, number> = {};
+          // UAT wave 2 (Fix 3): whole-hand committed totals — feeds the ALL-IN pill's
+          // persistent amount. Reconstruction goes through streetContribution (the
+          // single documented DELTA source in potEngine) for BOTH maps.
+          const totalBets: Record<string, number> = {};
           const acted = new Set<string>();
           let lastActorSeat = nextButtonSeat;
           let bbAmt = 0;
           actionData.forEach((a: any) => {
             if (a.action_type === "post_bb") bbAmt = Math.max(bbAmt, a.action_amount || 0);
+            const add = streetContribution(a.action_type, a.action_amount);
+            if (add > 0) totalBets[a.player_id] = (totalBets[a.player_id] || 0) + add;
             if ((a.street || "preflop") !== curStreet) return;
-            if (CONTRIB.includes(a.action_type))
-              streetBets[a.player_id] = (streetBets[a.player_id] || 0) + (a.action_amount || 0);
+            if (add > 0) streetBets[a.player_id] = (streetBets[a.player_id] || 0) + add;
             if (!POSTS.includes(a.action_type)) acted.add(a.player_id);
             lastActorSeat = seatMap.get(a.player_id) ?? lastActorSeat;
           });
-          seatInfos = seatInfos.map((s) => ({ ...s, current_bet: streetBets[s.player_id] || 0 }));
+          // UAT wave 2 (Fix 3 + R2), spectator+compact only so the operator's embedded
+          // view stays byte-identical: (R2) a seat whose whole stack went in via a
+          // stack-consuming CALL is all-in even though no "all_in" action exists
+          // (tournament_seats.chip_count is the PRE-hand stack, so remaining =
+          // chip_count − totalBets); ALL-IN seats carry their whole-hand total for
+          // the pill amount.
+          const wantBetChips = spectator && FEATURES.liveFeltCompact;
+          const stackConsumed = (s: { player_id: string; chip_count: number }) =>
+            (totalBets[s.player_id] || 0) > 0 && s.chip_count - (totalBets[s.player_id] || 0) <= 0;
+          const isAllInAug = (s: { player_id: string; chip_count: number }) =>
+            allInPlayers.has(s.player_id) || (wantBetChips && stackConsumed(s));
+          seatInfos = seatInfos.map((s) => ({
+            ...s,
+            current_bet: streetBets[s.player_id] || 0,
+            ...(wantBetChips && isAllInAug(s)
+              ? { is_all_in: true, total_committed: totalBets[s.player_id] || 0 }
+              : {}),
+          }));
           const stackOf = new Map(seatInfos.map((s) => [s.player_id, s.chip_count]));
           const flowPlayers = (handPlayers || []).map((hp: any) => ({
             player_id: hp.player_id,
@@ -341,7 +367,10 @@ export function TournamentLiveView({
             current_bet: streetBets[hp.player_id] || 0,
             current_stack: stackOf.get(hp.player_id) ?? 0,
             is_folded: foldedPlayers.has(hp.player_id),
-            is_all_in: allInPlayers.has(hp.player_id),
+            is_all_in:
+              allInPlayers.has(hp.player_id) ||
+              (wantBetChips &&
+                stackConsumed({ player_id: hp.player_id, chip_count: stackOf.get(hp.player_id) ?? 0 })),
           }));
           liveToActId = nextToAct({
             players: flowPlayers,
@@ -350,6 +379,23 @@ export function TournamentLiveView({
             lastActorSeat,
             bigBlind: bbAmt,
           });
+          // UAT wave 2 (R1, spectator+compact): during an all-in RUNOUT (≥2 live, ≤1
+          // eligible, and that seat owes no call) the "waiting on X" spotlight is
+          // misleading — betting is closed. Null it and let the status bar say
+          // "Đang chạy board" instead.
+          if (wantBetChips) {
+            const liveFlow = flowPlayers.filter((p) => !p.is_folded);
+            const eligibleFlow = liveFlow.filter((p) => !p.is_all_in && p.current_stack > 0);
+            const maxStreetBet = Math.max(0, ...Object.values(streetBets));
+            const isRunoutLive =
+              liveFlow.length >= 2 &&
+              eligibleFlow.length <= 1 &&
+              (eligibleFlow.length === 0 || eligibleFlow[0].current_bet >= maxStreetBet);
+            if (isRunoutLive) {
+              liveToActId = null;
+              nextRunout = true;
+            }
+          }
         }
 
         nextBreakdown = computePotBreakdown(contributionsFromActions(actionData as any));
@@ -366,6 +412,7 @@ export function TournamentLiveView({
     setPotBreakdown(nextBreakdown);
     setHandInProgress(nextInProgress);
     setToActId(liveToActId);
+    setLiveRunout(nextRunout);
 
     if (clockRes.data && !clockRes.error) {
       const c = clockRes.data as any;
@@ -1069,9 +1116,15 @@ export function TournamentLiveView({
             chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
             compact={compactFelt}
             blinds={feltBlinds}
+            runout={!isReplay && liveRunout}
           />
           {isReplay && replayHand && (
-            <ReplayScrubber hand={replayHand} onFrame={setReplayFrame} hud={spectator && FEATURES.liveReplayHud} />
+            <ReplayScrubber
+              hand={replayHand}
+              onFrame={setReplayFrame}
+              hud={spectator && FEATURES.liveReplayHud}
+              trackBets={spectator && FEATURES.liveFeltCompact}
+            />
           )}
 
           {/* Public spectator-only broadcast action breakdown. Spectator-gated →

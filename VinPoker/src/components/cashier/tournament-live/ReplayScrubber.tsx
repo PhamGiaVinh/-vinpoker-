@@ -34,10 +34,16 @@ interface ReplayScrubberProps {
    * the HAND's OWN blind (detectBigBlind), never the current clock level.
    */
   hud?: boolean;
+  /**
+   * UAT wave 2 (liveFeltCompact, viewer-only) — ADDITIVE; absent → frames are
+   * byte-identical to today's. Frame seats additionally carry `current_bet` (chips
+   * this street) + `total_committed` (ALL-IN pill amount) for the felt chip layer.
+   */
+  trackBets?: boolean;
 }
 
-export function ReplayScrubber({ hand, onFrame, hud = false }: ReplayScrubberProps) {
-  const frames = useMemo(() => buildReplayFrames(hand), [hand]);
+export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }: ReplayScrubberProps) {
+  const frames = useMemo(() => buildReplayFrames(hand, { trackBets }), [hand, trackBets]);
   const streetIdx = useMemo(() => streetFrameIndex(frames), [frames]);
   const lastIndex = frames.length - 1;
 

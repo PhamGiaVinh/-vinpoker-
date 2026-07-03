@@ -38,6 +38,10 @@ export interface SeatInfo {
   /** Net chips for the hand (ending − starting); set ONLY on a replay's final frame.
    * >0 → winner (gold glow + green "+X" badge under liveTableFx). null/undef → no badge. */
   net_won?: number | null;
+  /** UAT wave 2 (compact viewer only): whole-hand chips committed by an ALL-IN seat —
+   * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
+   * Absent → the pill falls back to current_bet (today's behavior). */
+  total_committed?: number;
 }
 
 export interface ActionLog {
@@ -267,6 +271,13 @@ export interface LiveFeltProps {
    * level; replay passes the HAND's own detected blinds.
    */
   blinds?: { sb: number; bb: number; ante: number } | null;
+  /**
+   * UAT wave 2 (Fix 1 companion): the live hand is an all-in RUNOUT — betting is
+   * closed, the board is being dealt out. The status bar's to-act segment shows
+   * "Đang chạy board" instead of a (misleading) waiting-on-player name. Compact
+   * viewer only; absent → no change.
+   */
+  runout?: boolean;
 }
 
 export function LiveFelt({
@@ -291,6 +302,7 @@ export function LiveFelt({
   viewerLayout = false,
   compact = false,
   blinds = null,
+  runout = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
@@ -328,11 +340,19 @@ export function LiveFelt({
   // each other at the pot (the board is positionally protected, NOT just by z-order).
   // K + MINGAP are tuned in the 9-handed-all-bet visual check.
   const potCenterT = parseFloat(geo.centerTop) || 43;
-  const STACK_K = 0.42;
+  // UAT wave 2 (Fix 2, compact only): chips sit NEAR THE SEAT (RPT pattern, lerp 30%)
+  // instead of 42%-plus-center-ring — 9-max all-in stacks no longer converge mid-felt,
+  // so the radial center-gap clamp is unnecessary by construction (seat-anchored
+  // stacks can't reach the pot; nearest compact seat t=0 lands at t=15% vs board top
+  // ≈34%). 0.30 (not lower) because the pills now carry amounts and need clearance
+  // from the pod block — tuned on the 9-max all-in worst case. Non-compact keeps
+  // K=0.42 + the clamp — flag-off render byte-identical.
+  const STACK_K = compactActive ? 0.3 : 0.42;
   const STACK_MINGAP = 16; // % of the felt that the stack center stays clear of the pot
   const stackPt = (pos: Pt): Pt => {
     let l = pos.l + (50 - pos.l) * STACK_K;
     let t = pos.t + (potCenterT - pos.t) * STACK_K;
+    if (compactActive) return { l, t };
     const dx = l - 50;
     const dy = t - potCenterT;
     const d = Math.hypot(dx, dy);
@@ -771,9 +791,17 @@ export function LiveFelt({
               const slot = ((s.seat_number - 1) % 9) + 1;
               const pt = stackPt(geo.seats[slot] || geo.seats[1]);
               const amt = s.current_bet ?? 0;
+              // UAT wave 2 (Fix 3, compact only): the ALL-IN pill prefers the seat's
+              // WHOLE-HAND committed total (survives street sweeps), and — RPT style —
+              // shows the AMOUNT ALONE on the red pill: the red stack already signals
+              // all-in, and the wide "ALL IN 29.9M" labels collided on 9-max bottom
+              // rows at 390px. Non-compact keeps today's exact label logic.
+              const allInAmt = compactActive ? (s.total_committed ?? amt) : amt;
               const label = s.is_all_in
-                ? amt > 0
-                  ? `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(amt)}`
+                ? allInAmt > 0
+                  ? compactActive
+                    ? formatStack(allInAmt)
+                    : `${t("liveHub.felt.allIn", "ALL IN")} ${formatStack(allInAmt)}`
                   : t("liveHub.felt.allIn", "ALL IN")
                 : formatStack(amt);
               return (
@@ -887,6 +915,7 @@ export function LiveFelt({
           }
           potSize={potSize}
           formatBB={formatBB}
+          runout={runout}
         />
       )}
 

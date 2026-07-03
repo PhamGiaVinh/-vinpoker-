@@ -262,6 +262,18 @@ export const FEATURES = {
    */
   trackerChipQuickEdit: false,
   /**
+   * UAT wave 2 (Fix 1): cover-call all-in runout auto-flow. When ON: once a covering
+   * stack's call closes betting with everyone else all-in, the engine waives the lone
+   * coverer's pointless per-street "check" (isRoundComplete true / actorToAct null via
+   * EngineState.coverCallWaiver), so the board runs out enter_flop → enter_turn →
+   * enter_river with no action states; the runout reveal panel also gains a guarded
+   * "Tiếp tục không lật" escape when the operator has no hole-card info. OFF (default):
+   * behavior byte-identical to today — THE COVER-CALL BUG REMAINS until this flips.
+   * Operator-only; no server change (client simply stops sending runout-street actions).
+   * Kill-switch: set false.
+   */
+  trackerCoverCallRunout: false,
+  /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
    * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;

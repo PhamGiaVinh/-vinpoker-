@@ -73,3 +73,17 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(container.textContent).toContain("Call");
   });
 });
+
+// ── UAT wave 2 (Fix 3): trackBets forwards into the frames the scrubber emits ──
+describe("ReplayScrubber trackBets (additive prop)", () => {
+  it("absent → frames carry NO bet keys (byte-identical); set → current_bet present", () => {
+    let plainFrame: any = null;
+    let betsFrame: any = null;
+    render(<ReplayScrubber hand={hand} onFrame={(f) => (plainFrame = f)} />);
+    render(<ReplayScrubber hand={hand} onFrame={(f) => (betsFrame = f)} trackBets />);
+    expect(plainFrame).toBeTruthy();
+    expect(betsFrame).toBeTruthy();
+    expect(plainFrame.seats.some((s: any) => "current_bet" in s)).toBe(false);
+    expect(betsFrame.seats.every((s: any) => "current_bet" in s)).toBe(true);
+  });
+});

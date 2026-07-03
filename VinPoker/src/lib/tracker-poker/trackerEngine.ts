@@ -66,6 +66,15 @@ export interface EngineState {
    * unset ⇒ `blindSeats` drives everything (normal flow + old tab unchanged).
    */
   bbSeatOverride?: number;
+  /**
+   * Cover-call runout waiver (trackerCoverCallRunout, UAT wave 2): when the hand is
+   * an all-in runout with exactly ONE eligible (non-folded, non-all-in) player left
+   * and that player owes no call, betting for the hand is CLOSED — the lone coverer
+   * is not asked to "check" every remaining street, and `actorToAct` returns null so
+   * the board can run out. OPTIONAL — the hook sets it from the feature flag; default
+   * unset ⇒ behavior byte-identical to today (engine stays pure, no flag import).
+   */
+  coverCallWaiver?: boolean;
 }
 
 export interface LegalActions {
@@ -181,6 +190,23 @@ function owes(s: EngineSeat, highest: number, acted: Set<string>): boolean {
   return s.street_committed < highest || !acted.has(s.player_id);
 }
 
+/**
+ * Cover-call runout waiver (trackerCoverCallRunout): the LONE eligible seat owes
+ * nothing — it has matched the highest bet — so betting for the HAND is closed and
+ * no voluntary action ("pointless check") is required on this or later streets.
+ * Guards, in order: flag off → never; <2 live players → fold-win path owns it;
+ * ≠1 eligible → either already closed (0) or normal betting (2+); the lone eligible
+ * seat still owing a call (mid-street uncalled all-in) → NOT waived.
+ */
+function loneActorWaived(state: EngineState): boolean {
+  if (!state.coverCallWaiver) return false;
+  const live = state.seats.filter((s) => !s.folded);
+  if (live.length < 2) return false;
+  const elig = state.seats.filter((s) => eligible(s));
+  if (elig.length !== 1) return false;
+  return elig[0].street_committed >= currentBet(state.seats);
+}
+
 // ---------- actor order ----------
 
 /**
@@ -214,6 +240,10 @@ export function actorToAct(state: EngineState): ActorView | null {
       if (p && !p.folded) return view(state, p, "post_bb");
     }
   }
+
+  // Cover-call runout waiver — AFTER the blind-post prompts (posting is never
+  // skipped), BEFORE the voluntary-action sweep: nobody acts in a runout.
+  if (loneActorWaived(state)) return null;
 
   // Seed: preflop → after BB; postflop → after button. If someone already acted
   // voluntarily, continue clockwise from the last actor instead.
@@ -254,6 +284,9 @@ export function isRoundComplete(state: EngineState): boolean {
     if (!state.deadSb && sb && !sb.folded && !sbPosted) return false;
     if (bb && !bb.folded && !bbPosted) return false;
   }
+  // Cover-call runout waiver — AFTER the preflop post guard (blinds always post
+  // first): the lone coverer who matched the bet owes nothing more this hand.
+  if (loneActorWaived(state)) return true;
   const highest = currentBet(state.seats);
   const acted = actedThisStreet(state.streetActions);
   return !state.seats.some((s) => owes(s, highest, acted));

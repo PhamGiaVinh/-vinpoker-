@@ -11,6 +11,7 @@ import { getPosition } from "@/lib/tournament/button";
 import {
   computePotBreakdown,
   contributionsFromActions,
+  streetContribution,
   type PotBreakdown,
 } from "@/lib/tracker-poker/potEngine";
 import {
@@ -99,13 +100,27 @@ interface SeatRuntime {
   folded: boolean;
   allIn: boolean;
   last?: string;
+  /** UAT wave 2 (trackBets): chips committed on the CURRENT street (swept to 0 at
+   * each street boundary) + across the whole hand. Only maintained when the
+   * `trackBets` option is on; otherwise stays 0 and is never emitted. */
+  streetBet: number;
+  totalBet: number;
 }
 
 /**
  * Build one immutable ReplayFrame per action index (0..N). Deterministic:
  * the same hand always yields the same frames (stepping is idempotent).
+ *
+ * `opts.trackBets` (UAT wave 2, viewer-only — caller gates on liveFeltCompact):
+ * frame seats additionally carry `current_bet` (chips committed this street; swept
+ * to 0 on the first action of a later street) and, for all-in seats,
+ * `total_committed` (whole-hand chips) so the ALL-IN pill always shows an amount.
+ * Amount semantics flow through `streetContribution` (potEngine — the single
+ * documented DELTA source). When absent/false, neither key is emitted — frames are
+ * deep-equal to today's.
  */
-export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
+export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean }): ReplayFrame[] {
+  const trackBets = !!opts?.trackBets;
   const actions = [...(hand.actions || [])].sort((a, b) => a.action_order - b.action_order);
   const N = actions.length;
   const players = hand.players || [];
@@ -124,7 +139,13 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
 
   const runtime = new Map<string, SeatRuntime>();
   players.forEach((p) =>
-    runtime.set(p.player_id, { chip: clampChips(p.starting_stack), folded: false, allIn: false })
+    runtime.set(p.player_id, {
+      chip: clampChips(p.starting_stack),
+      folded: false,
+      allIn: false,
+      streetBet: 0,
+      totalBet: 0,
+    })
   );
 
   let maxStreetIdx = 0;
@@ -172,6 +193,9 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
         net_won: netWonFor(p),
+        // trackBets only — absent keys keep flag-off frames deep-equal to today's.
+        ...(trackBets ? { current_bet: st.streetBet } : {}),
+        ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
       };
     });
 
@@ -202,9 +226,22 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
 
   const frames: ReplayFrame[] = [makeFrame(0, null)];
 
+  let curStreetIdx = 0;
   for (let k = 1; k <= N; k++) {
     const a = actions[k - 1];
     const st = runtime.get(a.player_id);
+    // trackBets street SWEEP — hoisted ABOVE the folded-actor branch (a stray action
+    // by a folded player still advances the street): the first action of a later
+    // street moves every seat's street chips into the pot (current_bet → 0).
+    if (trackBets) {
+      const si = streetIndexOf(a.street);
+      if (si > curStreetIdx) {
+        curStreetIdx = si;
+        runtime.forEach((r) => {
+          r.streetBet = 0;
+        });
+      }
+    }
     if (st && !st.folded) {
       maxStreetIdx = Math.max(maxStreetIdx, streetIndexOf(a.street));
       if (a.action_type === "fold") st.folded = true;
@@ -212,6 +249,13 @@ export function buildReplayFrames(hand: ReplayHand): ReplayFrame[] {
       if (CONTRIBUTING.has(a.action_type)) {
         st.chip = Math.max(0, st.chip - clampChips(a.action_amount));
         if (st.chip === 0) st.allIn = true;
+      }
+      if (trackBets) {
+        // P0.1: the DELTA semantics live in streetContribution (potEngine) — the
+        // shared reconstruction source for live + replay. Never add raw inline.
+        const add = streetContribution(a.action_type, a.action_amount);
+        st.streetBet += add;
+        st.totalBet += add;
       }
       st.last = formatActionLabel({
         street: a.street,
