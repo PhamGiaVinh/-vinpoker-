@@ -164,10 +164,12 @@ export const FEATURES = {
    * the "Tiền giữ hộ" (pool/payout/escrow) block, the entries forecast, and every other tab stay
    * MOCK, clearly tagged "(mock — chưa nối)". Read-only — no writes, no new RPC. PT-wage line and
    * F&B stay a known gap until #656 R2 applies live + their own increments (see
-   * docs/design/accounting-control-wiring-plan.md). Default **OFF**: while false, Tổng quan renders
-   * today's mock exactly (zero extra reads). Flip to true after golden-diff/UAT on a real club.
+   * docs/design/accounting-control-wiring-plan.md). While false, Tổng quan renders today's mock
+   * exactly (zero extra reads). **ON 2026-07-03 at owner request** (after #656 R1/R2/R3 applied
+   * live) — Tổng quan "Tiền của club" now shows real numbers; golden-diff = they must equal
+   * /club/admin/finance for the same month. Kill-switch: set false to revert to mock.
    */
-  accountingControlLiveOverview: false,
+  accountingControlLiveOverview: true,
   /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
