@@ -608,6 +608,14 @@ export const FEATURES = {
    */
   seriesRegimeSwitch: false,
   /**
+   * Series Intelligence — G7 forecast calibration card in the ⑥ CAPTURE console. When ON, it scores past
+   * forecast snapshots against real actuals (client-side, reads the existing capture tables — NO new DB)
+   * and reports in-band rate vs the 90% target + systematic bias. Under-powered by design: below 10
+   * scored forecast↔actual pairs it shows a "chưa đủ dữ liệu (X/10)" state and makes no calibration
+   * claim. Measured facts only (Observed Pattern). Default **OFF** until real pairs accrue; kill-switch: false.
+   */
+  seriesCalibration: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
