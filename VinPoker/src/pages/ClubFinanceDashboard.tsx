@@ -87,7 +87,7 @@ const ClubFinanceDashboard = () => {
         { header: "CÂU LẠC BỘ", get: (r) => r.name },
         { header: "DOANH THU (₫)", get: (r) => r.revenue },
         { header: "CHI PHÍ LƯƠNG (₫)", get: (r) => r.cost },
-        { header: "LÃI RÒNG (₫)", get: (r) => r.net },
+        { header: "CÒN LẠI SAU LƯƠNG (₫)", get: (r) => r.net },
       ],
       `tai-chinh-clb_${from}_${to}`,
       "TỔNG HỢP THEO CLB",
@@ -178,19 +178,21 @@ const ClubFinanceDashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <Kpi icon={<Coins className="w-3.5 h-3.5" />} label="Doanh thu thật" value={formatVND(summary.revenue.total)} hint="rake giải + phí staking" accent="text-primary" />
             <Kpi icon={<Users className="w-3.5 h-3.5" />} label="Chi phí lương" value={formatVND(summary.cost.payrollNet)} hint="đã lưu" accent="text-[#f0997b]" />
-            <Kpi icon={<TrendingUp className="w-3.5 h-3.5" />} label="Lãi ròng" value={formatVND(summary.net)} hint={`biên ${formatPct(margin(summary.net, summary.revenue.total))}`} accent="text-primary" highlight />
+            <Kpi icon={<TrendingUp className="w-3.5 h-3.5" />} label="Còn lại sau lương" value={formatVND(summary.net)} hint={`biên ${formatPct(margin(summary.net, summary.revenue.total))} · chưa trừ CP vận hành`} accent="text-primary" highlight />
             <Kpi icon={<Clock className="w-3.5 h-3.5" />} label="Lương chưa trả" value={formatVND(summary.unpaidTotal)} hint="chờ chi trả" accent="text-warning" />
             <Kpi icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Đã đối soát" value={formatVND(summary.reconciledTotal)} hint="hoàn tất" accent="text-[#378ADD]" />
           </div>
 
           {/* Net formula note */}
           <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
-            <span className="text-foreground/80">Net = Rake giải đấu + Phí staking + Phí chi trả staking{FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? " + F&B (doanh thu − giá vốn)" : ""} − Lương đã lưu</span>
+            <span className="text-foreground/80">Còn lại sau lương = Rake giải đấu + Phí staking + Phí chi trả staking{FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? " + F&B (doanh thu − giá vốn)" : ""} − Lương đã lưu</span>
+            <span>·</span>
+            <span className="text-warning/90">chưa phải lãi ròng cuối cùng — chưa trừ chi phí vận hành chung (mặt bằng, điện, quản lý…)</span>
             <span>·</span>
             {FEATURES.fnbFinance && (summary.revenue.fnb > 0 || summary.cost.fnbCogs > 0) ? (
-              <span>buy-in, vốn staking, tiền mặt cashier KHÔNG tính vào Net</span>
+              <span>buy-in, vốn staking, tiền mặt cashier KHÔNG tính vào số này</span>
             ) : (
-              <span>buy-in, vốn staking, tiền mặt cashier &amp; F&amp;B KHÔNG tính vào Net</span>
+              <span>buy-in, vốn staking, tiền mặt cashier &amp; F&amp;B KHÔNG tính vào số này</span>
             )}
           </div>
 
@@ -363,7 +365,7 @@ const ClubFinanceDashboard = () => {
                       <TableHead>Câu lạc bộ</TableHead>
                       <TableHead className="text-right">Doanh thu</TableHead>
                       <TableHead className="text-right">Lương</TableHead>
-                      <TableHead className="text-right">Net</TableHead>
+                      <TableHead className="text-right">Còn lại</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
