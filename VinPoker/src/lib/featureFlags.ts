@@ -148,13 +148,14 @@ export const FEATURES = {
    * data-state badge (Dự báo/Tạm tính/Đã đối soát/Đã chốt); prize pool + escrow are styled as
    * liability/custody, never revenue; contribution is never labeled "profit". Tabs "Chốt sổ" &
    * "Báo cáo tháng" are SPEC/NOT-BUILT mocks of the Daily Close / Monthly Report contracts.
-   * Default **OFF** (dark): while false the route redirects to /club/admin and the ClubAdmin
-   * entry card is hidden from everyone except super_admin (owner-UAT path — same precedent as
-   * clubFinanceDashboard). Flip to true after owner UAT; kill-switch: set false to hide the page
-   * again. Real data wiring is a later, separately-flagged phase — see
-   * docs/design/accounting-control-ui.md.
+   * Was OFF (dark) during build; **ON 2026-07-03 at owner's explicit request** ("bật với mọi
+   * club") so every club owner/admin can review the mock cockpit from the VẬN HÀNH menu +
+   * ClubAdmin card. STILL UI/mock/read-only — flipping this shows a clearly-labelled
+   * "DỮ LIỆU MẪU (mock)" page; it touches NO money path. Kill-switch: set false to hide the
+   * page + both entry points again. Real data wiring is a later, separately-flagged phase —
+   * see docs/design/accounting-control-ui.md.
    */
-  accountingControl: false,
+  accountingControl: true,
   /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
