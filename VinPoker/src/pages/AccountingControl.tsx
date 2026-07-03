@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MockNotice } from "@/components/accounting-control/shared/Notices";
 import { MOCK_OVERVIEW } from "@/components/accounting-control/mock/mockData";
 import { OverviewTab } from "@/components/accounting-control/tabs/OverviewTab";
+import { LiveOverviewTab } from "@/components/accounting-control/live/LiveOverviewTab";
 import { DailyCloseTab } from "@/components/accounting-control/tabs/DailyCloseTab";
 import { EventPnlTab } from "@/components/accounting-control/tabs/EventPnlTab";
 import { SeriesPnlTab } from "@/components/accounting-control/tabs/SeriesPnlTab";
@@ -77,7 +78,7 @@ const AccountingControl = () => {
         </p>
       </header>
 
-      <MockNotice />
+      <MockNotice partialLive={FEATURES.accountingControlLiveOverview} />
 
       <Tabs value={tab} onValueChange={goTo} className="w-full">
         <div className="overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -91,7 +92,11 @@ const AccountingControl = () => {
         </div>
 
         <TabsContent value="overview" className="mt-4">
-          <OverviewTab onNavigate={goTo} />
+          {FEATURES.accountingControlLiveOverview ? (
+            <LiveOverviewTab onNavigate={goTo} />
+          ) : (
+            <OverviewTab onNavigate={goTo} />
+          )}
         </TabsContent>
         <TabsContent value="close" className="mt-4">
           <DailyCloseTab />

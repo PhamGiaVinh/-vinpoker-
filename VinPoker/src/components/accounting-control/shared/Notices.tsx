@@ -1,8 +1,23 @@
 import type { ReactNode } from "react";
 import { FlaskConical, Hammer, PlugZap } from "lucide-react";
 
-/** Banner toàn trang: mọi thứ trên trang là dữ liệu mẫu để duyệt thiết kế. */
-export function MockNotice() {
+/**
+ * Banner toàn trang. Mặc định: mọi thứ là mock. Khi `partialLive` (W1): tab Tổng quan khối
+ * "Tiền của club" là số thật (Tạm tính), phần còn lại vẫn mock.
+ */
+export function MockNotice({ partialLive = false }: { partialLive?: boolean }) {
+  if (partialLive) {
+    return (
+      <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5">
+        <FlaskConical className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+        <p className="text-[12px] leading-relaxed text-amber-200/90">
+          <span className="font-semibold">SỐ THẬT một phần.</span> Tab Tổng quan (khối "Tiền của
+          club") hiển thị số thật đọc từ tài chính CLB (Tạm tính, chỉ xem). Các tab còn lại vẫn là
+          DỮ LIỆU MẪU (mock) để duyệt thiết kế — nối dần ở các bước sau. Không có nút thao tác tiền.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5">
       <FlaskConical className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
