@@ -161,7 +161,7 @@ const ClubAdmin = () => {
             <Card className="p-4 gradient-card border-primary/50 flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-display text-base flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /> Tài chính CLB</h3>
-                <p className="text-xs text-muted-foreground">Doanh thu (phí + rake), chi phí lương, lãi ròng, công nợ lương — chỉ xem.</p>
+                <p className="text-xs text-muted-foreground">Doanh thu (phí + rake), chi phí lương, còn lại sau lương, công nợ lương — chỉ xem.</p>
               </div>
               <Button asChild size="sm">
                 <Link to="/club/admin/finance">
