@@ -90,3 +90,22 @@ describe("ShowdownInputPanel — revealOnly skip escape (UAT wave 2)", () => {
     expect(html).toContain("Tiếp tục không lật (không có thông tin bài)");
   });
 });
+
+// ── trackerShowdownRevealOrder: operator panel lists players in reveal order ──
+describe("ShowdownInputPanel — reveal-order list (operator hint)", () => {
+  it("revealOrder absent → original players order (byte-identical)", () => {
+    const html = renderToStaticMarkup(<ShowdownInputPanel {...common} selectedWinners={[]} />);
+    // An/Binh in the players[] order; no ①②③ position badge.
+    expect(html.indexOf("An")).toBeLessThan(html.indexOf("Binh"));
+    expect(html).not.toContain('title="Thứ tự lật bài"');
+  });
+
+  it("revealOrder present → still-in list sorted to it + a position badge", () => {
+    // players are p1(An), p2(Binh) [p3 folded]; reveal order Binh-first.
+    const html = renderToStaticMarkup(
+      <ShowdownInputPanel {...common} selectedWinners={[]} revealOrder={["p2", "p1"]} />
+    );
+    expect(html.indexOf("Binh")).toBeLessThan(html.indexOf("An")); // reordered
+    expect(html).toContain('title="Thứ tự lật bài"'); // badge present
+  });
+});

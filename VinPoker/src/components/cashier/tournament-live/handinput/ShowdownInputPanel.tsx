@@ -42,6 +42,12 @@ interface ShowdownInputPanelProps {
    * with a 2-tap confirm, so it can't be fat-fingered.
    */
   onSkipReveal?: () => void;
+  /**
+   * trackerShowdownRevealOrder — ADDITIVE; absent → players in their original order
+   * (byte-identical). player_ids in showdown reveal order → the still-in list is
+   * sorted to match, with a ①②③ position badge.
+   */
+  revealOrder?: string[];
 }
 
 export function ShowdownInputPanel({
@@ -61,6 +67,7 @@ export function ShowdownInputPanel({
   revealOnly,
   onRevealAndContinue,
   onSkipReveal,
+  revealOrder,
 }: ShowdownInputPanelProps) {
   // UAT wave 2: 2-tap confirm for the skip-reveal escape — first tap arms for 3s.
   const [skipArmed, setSkipArmed] = useState(false);
@@ -81,7 +88,16 @@ export function ShowdownInputPanel({
     setSkipArmed(false);
     onSkipReveal?.();
   };
-  const live = players.filter((p) => !p.is_folded);
+  const liveUnordered = players.filter((p) => !p.is_folded);
+  // trackerShowdownRevealOrder: list players in the order they'll table their cards
+  // (revealOrder = player_ids in showdown order). Absent → original players order
+  // (byte-identical). A ①②③ badge shows the reveal position.
+  const revealPos = revealOrder ? new Map(revealOrder.map((id, i) => [id, i])) : null;
+  const live = revealPos
+    ? [...liveUnordered].sort(
+        (a, b) => (revealPos.get(a.player_id) ?? 99) - (revealPos.get(b.player_id) ?? 99)
+      )
+    : liveUnordered;
   const canConfirm = selectedWinners.length > 0;
   const muckedSet = mucked ?? new Set<string>();
   // P2-2: every still-in player must be carded (2 hole cards) or mucked before the
@@ -109,9 +125,17 @@ export function ShowdownInputPanel({
         <div className="text-[11px] font-semibold text-purple-300">Lật bài / Úp bài</div>
         {live.map((p) => {
           const isMucked = muckedSet.has(p.player_id);
+          const pos = revealPos?.get(p.player_id);
           return (
             <div key={p.player_id} className={`flex items-center gap-2 ${isMucked ? "opacity-45" : ""}`}>
-              <div className="w-28 truncate text-sm">Ghế {p.seat_number} · {p.display_name}</div>
+              <div className="flex w-28 items-center gap-1 truncate text-sm">
+                {pos != null && (
+                  <span className="shrink-0 rounded-full bg-purple-500/25 px-1.5 text-[10px] font-bold text-purple-200" title="Thứ tự lật bài">
+                    {pos + 1}
+                  </span>
+                )}
+                <span className="truncate">Ghế {p.seat_number} · {p.display_name}</span>
+              </div>
               <div className="flex gap-1">
                 {[0, 1].map((ci) => (
                   <CardSlotPicker
