@@ -311,9 +311,10 @@ export const FEATURES = {
    * replay. The operator still enters all cards + one "Lật bài" (the showdown panel
    * just lists players in reveal order with a ①②③ hint). OFF (default): cards reveal
    * simultaneously as today (byte-identical). Reduced-motion → no stagger.
-   * Frontend-only; no DB/RPC/Edge change (broadcast unchanged). Kill-switch: false.
+   * Frontend-only; no DB/RPC/Edge change (broadcast unchanged).
+   * **ON 2026-07-03** for owner UAT (no external users; #682 merged). Kill-switch: false.
    */
-  trackerShowdownRevealOrder: false,
+  trackerShowdownRevealOrder: true,
   /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
