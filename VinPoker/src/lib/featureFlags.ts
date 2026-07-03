@@ -599,6 +599,15 @@ export const FEATURES = {
    */
   seriesKellyHint: false,
   /**
+   * Series Intelligence — LOCAL-ONLY "regime changed" switch (PR5b). When ON, the Command Center shows
+   * a RegimeSwitch letting the owner mark the market/legal regime as CHANGED, which escalates every
+   * RegimeNotice caveat to an active warning. Stored in localStorage on THIS browser only — it is NOT a
+   * club setting (other people/devices/agents don't see it); the switch copy states this. Rides on
+   * `seriesRegimeNotice` (self-hides when that is off). The DB-backed official flag (audit of who
+   * flipped it) is a separate owner-gated increment. Default **OFF**; kill-switch: set false.
+   */
+  seriesRegimeSwitch: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
