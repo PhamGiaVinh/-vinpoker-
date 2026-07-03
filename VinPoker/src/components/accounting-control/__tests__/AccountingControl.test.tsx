@@ -113,6 +113,15 @@ describe("Per-tab doctrine (rendered directly — Radix unmounts inactive TabsCo
     expect(container.textContent).not.toMatch(/0\s*₫/);
   });
 
+  it("OverviewTab renders the entries forecast as a COUNT range, not currency (no ₫)", () => {
+    const { container } = render(<MemoryRouter><OverviewTab onNavigate={noop} /></MemoryRouter>);
+    expect(screen.getByText(/Dự báo entries giải tới/)).toBeInTheDocument();
+    // the entries range must read "70 – 105 (thường gặp ~85)" with NO đồng sign
+    expect(container.textContent).toMatch(/70\s*–\s*105\s*\(thường gặp ~85\)/);
+    expect(container.textContent).not.toMatch(/70\s*₫/);
+    expect(container.textContent).not.toMatch(/85\s*₫/);
+  });
+
   it("EventPnlTab shows the DUAL break-even labels (P0: never a generic break-even)", () => {
     render(<MemoryRouter><EventPnlTab /></MemoryRouter>);
     expect(screen.getByText(/Hòa vốn GTD \(đủ phủ đảm bảo\)/)).toBeInTheDocument();

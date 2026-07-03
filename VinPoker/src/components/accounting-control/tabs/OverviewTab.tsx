@@ -94,6 +94,7 @@ export function OverviewTab({
         label="Dự báo entries giải tới"
         amount={MOCK_ENTRY_FORECAST}
         state="forecast"
+        unit="count"
         sub="Số entries dự phóng (không phải tiền) — dùng để ước rủi ro GTD trước giải"
       />
 
