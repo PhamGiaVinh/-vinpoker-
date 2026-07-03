@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ClipboardList, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ClipboardList, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins, Landmark } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
@@ -26,7 +26,7 @@ const REGIONS = ["TP.HCM", "Hanoi", "Da Nang", "Hai Phong", "Can Tho"];
 const ClubAdmin = () => {
   const { t } = useTranslation();
 
-  const { user, loading: authLoading, isClubAdmin, isClubOwner, isChipMaster } = useAuth();
+  const { user, loading: authLoading, isAdmin, isClubAdmin, isClubOwner, isChipMaster } = useAuth();
   const nav = useNavigate();
   const [clubs, setClubs] = useState<any[]>([]);
   const [activeClub, setActiveClub] = useState<any>(null);
@@ -166,6 +166,21 @@ const ClubAdmin = () => {
               <Button asChild size="sm">
                 <Link to="/club/admin/finance">
                   <Wallet className="w-4 h-4" /> Mở
+                </Link>
+              </Button>
+            </Card>
+          )}
+
+          {/* Tài chính & Đối soát — flag OFF ẩn với chủ CLB/admin; super_admin còn thấy để UAT nội bộ. */}
+          {activeClub && (isClubAdmin || isClubOwner) && (FEATURES.accountingControl || isAdmin) && (
+            <Card className="p-4 gradient-card border-primary/40 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> Tài chính &amp; Đối soát</h3>
+                <p className="text-xs text-muted-foreground">Chốt sổ, P&amp;L theo giải/series, đối soát tiền mặt–bank, công nợ trả thưởng &amp; ký quỹ — bản mock, chỉ xem.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link to="/club/admin/accounting-control">
+                  <Landmark className="w-4 h-4" /> Mở
                 </Link>
               </Button>
             </Card>

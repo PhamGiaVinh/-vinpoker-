@@ -30,6 +30,8 @@ const Account = lazy(() => import("./pages/Account"));
 const Auth = lazy(() => import("./pages/Auth"));
 const ClubAdmin = lazy(() => import("./pages/ClubAdmin"));
 const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
+// Accounting Control "Tài chính & Đối soát" — UI-only mock shell; page self-gates on FEATURES.accountingControl.
+const AccountingControl = lazy(() => import("./pages/AccountingControl"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
 const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
 const SeriesDecisionLogAdmin = lazy(() => import("./pages/SeriesDecisionLogAdmin"));
@@ -228,6 +230,8 @@ const App = () => (
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
                 <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
+                {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF). */}
+                <Route path="/club/admin/accounting-control" element={<AccountingControl />} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
