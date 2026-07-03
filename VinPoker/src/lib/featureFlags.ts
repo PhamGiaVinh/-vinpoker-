@@ -858,8 +858,10 @@ export const FEATURES = {
    * the player-history chain exactly as before). Default **OFF** (per flag policy): while false
    * the "Loại" button busts immediately, byte-identical to today. Flip to true (one line) after
    * owner UAT to surface the confirm step — a low-risk safety improvement. Kill-switch: set false.
+   * **ON** (2026-07-03, owner-approved): frontend-only, reads already-live tournament_prizes; the bust
+   * write-path is unchanged. Kill-switch: set false to bust immediately again (byte-identical to before).
    */
-  floorOutConfirm: false,
+  floorOutConfirm: true,
 } as const;
 
 /**
