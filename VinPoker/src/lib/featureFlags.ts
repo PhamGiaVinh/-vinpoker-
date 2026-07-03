@@ -140,6 +140,23 @@ export const FEATURES = {
    */
   clubFinanceDashboard: false,
   /**
+   * Owner "Tài chính & Đối soát" (Accounting Control) cockpit at /club/admin/accounting-control.
+   * UI/CLIENT-ONLY SHELL: 11 tabs (Tổng quan · Chốt sổ · Event P&L · Series P&L · Tiền & Bank ·
+   * Phải trả giải · F&B · Lương & chi phí · Ký quỹ staking · Cảnh báo · Báo cáo tháng) rendered
+   * ENTIRELY from typed mock fixtures — NO DB/RPC/Edge/types import, no writes, zero money-path
+   * logic; the lazy chunk never touches the supabase client. Every money value carries a
+   * data-state badge (Dự báo/Tạm tính/Đã đối soát/Đã chốt); prize pool + escrow are styled as
+   * liability/custody, never revenue; contribution is never labeled "profit". Tabs "Chốt sổ" &
+   * "Báo cáo tháng" are SPEC/NOT-BUILT mocks of the Daily Close / Monthly Report contracts.
+   * Was OFF (dark) during build; **ON 2026-07-03 at owner's explicit request** ("bật với mọi
+   * club") so every club owner/admin can review the mock cockpit from the VẬN HÀNH menu +
+   * ClubAdmin card. STILL UI/mock/read-only — flipping this shows a clearly-labelled
+   * "DỮ LIỆU MẪU (mock)" page; it touches NO money path. Kill-switch: set false to hide the
+   * page + both entry points again. Real data wiring is a later, separately-flagged phase —
+   * see docs/design/accounting-control-ui.md.
+   */
+  accountingControl: true,
+  /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
    * (20260825000000) applied live first. While false the editor is usable as a

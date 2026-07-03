@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2 } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -266,6 +266,13 @@ export const Layout = () => {
                     <DropdownMenuItem onClick={() => nav("/club/admin/finance")} className="gap-2.5 cursor-pointer">
                       <TrendingUp className="w-4 h-4" />
                       {t("layout.finance")}
+                    </DropdownMenuItem>
+                  )}
+                  {/* Tài chính & Đối soát (Accounting Control) — mock cockpit, gated on FEATURES.accountingControl. */}
+                  {(isClubAdmin || isClubOwner) && FEATURES.accountingControl && (
+                    <DropdownMenuItem onClick={() => nav("/club/admin/accounting-control")} className="gap-2.5 cursor-pointer">
+                      <Landmark className="w-4 h-4" />
+                      Tài chính &amp; Đối soát
                     </DropdownMenuItem>
                   )}
                   {(isClubAdmin || isClubOwner) && FEATURES.clubSeriesIntelligence && (
