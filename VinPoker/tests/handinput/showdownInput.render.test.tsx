@@ -26,17 +26,19 @@ describe("ShowdownInputPanel", () => {
   it("shows the showdown header, the MANUAL winner label, and only still-in players", () => {
     const html = renderToStaticMarkup(<ShowdownInputPanel {...common} selectedWinners={[]} />);
     expect(html).toContain("Showdown");
-    expect(html).toContain("Chọn người thắng");
-    expect(html).toContain("Chọn người thắng thủ công — hệ thống chưa tự đánh giá bài trong phiên bản này.");
+    // Manual-winner label. The old "hệ thống chưa tự đánh giá bài" copy was dropped
+    // once the engine gained auto-ranking (settleShowdown); the section header is now
+    // "…hoặc chọn người thắng thủ công".
+    expect(html).toContain("chọn người thắng thủ công");
     expect(html).toContain("An");
     expect(html).toContain("Binh");
     expect(html).not.toContain("Cuong"); // folded → not at showdown
   });
 
-  it("'Xác nhận kết quả' is DISABLED until a winner is selected", () => {
+  it("'Xác nhận thủ công → Review' is DISABLED until a winner is selected", () => {
     const none = renderToStaticMarkup(<ShowdownInputPanel {...common} selectedWinners={[]} />);
     // the confirm button carries the disabled attribute when no winner chosen
-    expect(none).toContain("Xác nhận kết quả");
+    expect(none).toContain("Xác nhận thủ công → Review");
     expect(none).toContain('disabled=""');
 
     const picked = renderToStaticMarkup(<ShowdownInputPanel {...common} selectedWinners={["p1"]} />);
