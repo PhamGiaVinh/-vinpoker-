@@ -81,6 +81,13 @@
     --radius: 0.5rem;
 
     --gradient-neon: linear-gradient(135deg, hsl(var(--primary)), hsl(39 42% 48%));
+    --gradient-sakura: linear-gradient(180deg, var(--vp-sakura), var(--vp-sakura-deep));
+    --button-ink: #1A0D12;
+    --shadow-sakura: 0 0 26px -8px rgba(244, 166, 192, 0.50);
+    --shadow-sakura-hover: 0 14px 46px -10px rgba(226, 113, 143, 0.70), 0 0 32px -6px rgba(244, 166, 192, 0.55);
+    --shadow-sakura-soft: 0 0 22px -14px rgba(244, 166, 192, 0.76);
+    --shadow-destructive: 0 0 0 1px hsl(var(--destructive) / 0.25), 0 0 22px -12px hsl(var(--destructive) / 0.78);
+    --shadow-destructive-hover: 0 0 0 1px hsl(var(--destructive) / 0.34), 0 14px 32px -18px hsl(var(--destructive) / 0.85);
     --gradient-felt:
       radial-gradient(110% 85% at 85% 0%, rgb(var(--vp-sakura-rgb) / 0.075), transparent 42%),
       radial-gradient(90% 72% at 15% -10%, rgb(var(--vp-gold-rgb) / 0.08), transparent 46%),
@@ -175,6 +182,13 @@
     --poker-card-text: #ffe2ae;
 
     --gradient-neon: linear-gradient(135deg, hsl(12 68% 46%), hsl(36 75% 42%));
+    --gradient-sakura: linear-gradient(180deg, #D8567E, #B23A62);
+    --button-ink: #2B1018;
+    --shadow-sakura: 0 8px 22px -10px rgba(178, 58, 98, 0.40);
+    --shadow-sakura-hover: 0 14px 34px -12px rgba(178, 58, 98, 0.45);
+    --shadow-sakura-soft: 0 10px 24px -18px rgba(178, 58, 98, 0.45);
+    --shadow-destructive: 0 0 0 1px hsl(var(--destructive) / 0.28), 0 8px 22px -16px hsl(var(--destructive) / 0.55);
+    --shadow-destructive-hover: 0 0 0 1px hsl(var(--destructive) / 0.36), 0 12px 28px -18px hsl(var(--destructive) / 0.62);
     --gradient-felt: linear-gradient(180deg, hsl(38 38% 89%), hsl(36 48% 85%));
     --gradient-card: linear-gradient(150deg, hsl(41 70% 95%) 0%, hsl(36 48% 85%) 100%);
     --shadow-neon: 0 0 0 1px hsl(36 75% 42% / 0.28);
@@ -335,6 +349,7 @@
 @layer utilities {
   .gradient-neon { background: var(--gradient-neon); }
   .gradient-gold { background: var(--gradient-neon); } /* alias kept for legacy */
+  .gradient-sakura { background: var(--gradient-sakura); }
   .gradient-card { background: var(--gradient-card); }
   .text-gold { color: hsl(var(--primary)); }
   .text-neon { color: hsl(var(--primary)); }
@@ -342,23 +357,68 @@
   .border-neon { border-color: hsl(var(--primary) / 0.4); }
   .shadow-gold { box-shadow: var(--shadow-neon); }
   .shadow-neon { box-shadow: var(--shadow-neon); }
+  .shadow-sakura { box-shadow: var(--shadow-sakura); }
   .shadow-card { box-shadow: var(--shadow-card); }
   .neon-glow { box-shadow: 0 0 18px -8px hsl(var(--primary) / 0.65); }
+
+  button.gradient-neon,
+  a.gradient-neon,
+  [role="button"].gradient-neon,
+  button.gradient-gold,
+  a.gradient-gold,
+  [role="button"].gradient-gold {
+    background: var(--gradient-sakura);
+    color: var(--button-ink);
+  }
+
+  button.shadow-neon,
+  a.shadow-neon,
+  [role="button"].shadow-neon,
+  button.shadow-gold,
+  a.shadow-gold,
+  [role="button"].shadow-gold,
+  button.neon-glow,
+  a.neon-glow,
+  [role="button"].neon-glow {
+    box-shadow: var(--shadow-sakura);
+  }
+
+  button.gradient-neon:hover:not(:disabled),
+  a.gradient-neon:hover,
+  [role="button"].gradient-neon:hover,
+  button.gradient-gold:hover:not(:disabled),
+  a.gradient-gold:hover,
+  [role="button"].gradient-gold:hover {
+    box-shadow: var(--shadow-sakura-hover);
+  }
+
+  button.gradient-neon:disabled,
+  button.gradient-gold:disabled,
+  button.shadow-neon:disabled,
+  button.shadow-gold:disabled,
+  button.neon-glow:disabled {
+    box-shadow: none;
+    transform: none;
+  }
 
   /* Package-specific utilities */
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold transition-all duration-200;
-    background: var(--gradient-neon);
-    color: hsl(var(--primary-foreground));
-    box-shadow: var(--shadow-neon);
+    background: var(--gradient-sakura);
+    color: var(--button-ink);
+    box-shadow: var(--shadow-sakura);
   }
-  .btn-primary:hover {
-    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.26), 0 16px 34px -22px hsl(var(--primary) / 0.9);
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: var(--shadow-sakura-hover);
     transform: translateY(-1px);
   }
   .btn-primary:active {
     transform: translateY(0);
-    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.18);
+    box-shadow: var(--shadow-sakura);
+  }
+  .btn-primary:focus-visible {
+    outline: 2px solid var(--vp-sakura);
+    outline-offset: 3px;
   }
   .btn-primary:disabled {
     opacity: 0.5;
@@ -493,15 +553,15 @@
    remap them to the warm semantic tokens so badges/buttons stay on-theme
    across every page that uses them (packages, countdowns, OT, breaks). */
 [data-theme="vinpoker-warm"] .btn-primary {
-  background: var(--gradient-neon);
-  color: hsl(var(--primary-foreground));
-  box-shadow: 0 2px 12px hsl(var(--primary) / 0.30);
+  background: var(--gradient-sakura);
+  color: var(--button-ink);
+  box-shadow: var(--shadow-sakura);
 }
 [data-theme="vinpoker-warm"] .btn-primary:hover {
-  box-shadow: 0 4px 20px hsl(var(--primary) / 0.42);
+  box-shadow: var(--shadow-sakura-hover);
 }
 [data-theme="vinpoker-warm"] .btn-primary:active {
-  box-shadow: 0 1px 6px hsl(var(--primary) / 0.25);
+  box-shadow: var(--shadow-sakura);
 }
 [data-theme="vinpoker-warm"] .badge-early-bird {
   background: linear-gradient(135deg, hsl(var(--success)), hsl(var(--success) / 0.82));
