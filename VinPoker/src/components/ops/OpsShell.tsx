@@ -1,18 +1,18 @@
-import { Outlet } from "react-router-dom";
-import { Landmark } from "lucide-react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
-import { BackButton } from "@/components/BackButton";
 import { OpsBottomNav } from "./OpsBottomNav";
+import "./ops-ios.css";
 
 /**
- * OpsShell — SafeAreaPageShell cho mobileOpsV2 `/ops/*`. Chrome riêng (KHÔNG dùng Layout, KHÔNG đụng
- * /dealer/*). Nhân bản pattern DealerAppShell: header sticky safe-area · main max-w-md · bottom nav.
- * Gate: flag `mobileOpsV2` OFF + không phải admin/owner → thông báo "chưa bật" (giữ tính năng dark).
- * docs/design/ios-floor-ux-spec.md + ios-operations-implementation-plan.md.
+ * OpsShell — native-iOS shell for mobileOpsV2 `/ops/*`. Slim frosted nav bar + large-title pages
+ * (each page renders its own big title) + frosted tab bar. Chrome riêng, KHÔNG dùng Layout / /dealer/*.
+ * Gate: flag `mobileOpsV2` + admin/owner preview → "chưa bật" notice. docs/design/ios-floor-ux-spec.md.
  */
 export default function OpsShell() {
+  const navigate = useNavigate();
   const { isAdmin, isClubOwner, loading: authLoading } = useAuth();
   const flagOn = FEATURES.mobileOpsV2;
   const allowPreview = isAdmin || isClubOwner;
@@ -21,13 +21,11 @@ export default function OpsShell() {
 
   if (!flagOn && !allowPreview) {
     return (
-      <div className="min-h-screen grid place-items-center bg-background px-6 text-center">
+      <div className="ops-root min-h-screen grid place-items-center bg-[#07050A] px-6 text-center">
         <div className="max-w-xs">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-card border border-primary/30 text-primary">
-            <Landmark className="h-6 w-6" />
-          </div>
-          <div className="text-base font-semibold text-foreground">Vận hành (bản mobile) chưa bật</div>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-[18px] ios-card text-[#c9a86a] text-2xl">✦</div>
+          <div className="text-[17px] font-semibold text-[#f2ece6]">Vận hành (bản mobile) chưa bật</div>
+          <p className="mt-1 text-[15px] text-[#9b8e97]">
             Bản thử nghiệm iPhone đang chờ duyệt. Dùng bản máy tính ở mục VẬN HÀNH.
           </p>
         </div>
@@ -36,26 +34,24 @@ export default function OpsShell() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
-        <div className="mx-auto w-full max-w-md flex items-center justify-between gap-2 px-4 h-14">
-          <div className="flex items-center gap-2">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-card border border-primary/30 text-primary">
-              <Landmark className="w-5 h-5" />
-            </span>
-            <div className="leading-tight">
-              <div className="text-sm font-display font-black tracking-[0.14em] text-primary">VẬN HÀNH</div>
-              <div className="text-[11px] text-muted-foreground -mt-0.5">Floor · bản mobile</div>
-            </div>
-          </div>
-          <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+    <div className="ops-root min-h-screen flex flex-col bg-[#07050A] text-[#f2ece6]">
+      {/* Slim frosted iOS nav bar */}
+      <header className="sticky top-0 z-40 ios-blur bg-[#07050A]/70 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+        <div className="mx-auto flex h-11 w-full max-w-md items-center justify-between px-2.5">
+          <button
+            onClick={() => navigate("/")}
+            className="ios-press-sm -ml-1 flex items-center gap-0.5 rounded-full py-1 pl-1 pr-2 text-[15px] text-[#c9a86a]"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.4} />
+            App chính
+          </button>
+          <span className="rounded-full bg-[#c9a86a]/12 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-[#d8bc85]">
             DỮ LIỆU MẪU
           </span>
         </div>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-md px-4 pt-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-in">
-        <BackButton to="/" label="Về app chính" className="mb-2" />
+      <main className="mx-auto w-full max-w-md flex-1 px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-1">
         <Outlet />
       </main>
 

@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 
 /**
- * OperationStatusChip — 8 trạng thái vận hành, màu semantic (Midnight Sakura tokens + palette an toàn).
- * Kèm CHỮ (không chỉ dựa màu) cho accessibility. Xem docs/design/ios-operations-components.md §3.
+ * OperationStatusChip — 8 trạng thái vận hành dạng pill iOS mềm (fill tint, không viền cứng).
+ * Kèm CHỮ (không chỉ dựa màu). docs/design/ios-operations-components.md §3.
  */
 export type OpStatus =
   | "running"
@@ -14,27 +14,36 @@ export type OpStatus =
   | "provisional"
   | "reconcileError";
 
-const MAP: Record<OpStatus, { label: string; cls: string }> = {
-  running: { label: "Đang chạy", cls: "text-emerald-400 border-emerald-400/40 bg-emerald-400/10" },
-  todo: { label: "Cần xử lý", cls: "text-amber-400 border-amber-400/40 bg-amber-400/10" },
-  late: { label: "Trễ giờ", cls: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
-  noDealer: { label: "Thiếu dealer", cls: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
-  waitCashier: { label: "Chờ cashier", cls: "text-pink-400 border-pink-400/40 bg-pink-400/10" },
-  settled: { label: "Đã chốt", cls: "text-primary border-primary/40 bg-primary/10" },
-  provisional: { label: "Tạm tính", cls: "text-muted-foreground border-border bg-muted/40" },
-  reconcileError: { label: "Lỗi đối soát", cls: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
+const MAP: Record<OpStatus, { label: string; cls: string; dot: string }> = {
+  running: { label: "Đang chạy", cls: "bg-emerald-400/12 text-emerald-300", dot: "bg-emerald-400" },
+  todo: { label: "Cần xử lý", cls: "bg-amber-400/12 text-amber-300", dot: "bg-amber-400" },
+  late: { label: "Trễ giờ", cls: "bg-rose-400/12 text-rose-300", dot: "bg-rose-400" },
+  noDealer: { label: "Thiếu dealer", cls: "bg-rose-400/12 text-rose-300", dot: "bg-rose-400" },
+  waitCashier: { label: "Chờ cashier", cls: "bg-pink-400/12 text-pink-300", dot: "bg-pink-400" },
+  settled: { label: "Đã chốt", cls: "bg-[#c9a86a]/14 text-[#d8bc85]", dot: "bg-[#c9a86a]" },
+  provisional: { label: "Tạm tính", cls: "bg-white/6 text-[#9b8e97]", dot: "bg-[#9b8e97]" },
+  reconcileError: { label: "Lỗi đối soát", cls: "bg-rose-400/12 text-rose-300", dot: "bg-rose-400" },
 };
 
-export function OperationStatusChip({ status, className }: { status: OpStatus; className?: string }) {
+export function OperationStatusChip({
+  status,
+  className,
+  dot = false,
+}: {
+  status: OpStatus;
+  className?: string;
+  dot?: boolean;
+}) {
   const m = MAP[status];
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none",
         m.cls,
         className,
       )}
     >
+      {dot && <span className={cn("h-1.5 w-1.5 rounded-full", m.dot)} />}
       {m.label}
     </span>
   );

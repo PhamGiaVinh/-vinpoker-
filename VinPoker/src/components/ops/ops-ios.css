@@ -1,0 +1,91 @@
+/*
+ * ops-ios.css — native-iOS material language for the mobileOpsV2 /ops screens.
+ * Midnight Sakura dark (sumi #07050A · plum #120C18 · gold #C9A86A · sakura #E2718F · ivory #F2ECE6).
+ * Scoped: only used inside /ops (imported by OpsShell). Borderless elevated surfaces, grouped lists,
+ * grabbers, spring press, frosted bars — replaces the flat bordered "web app" look. No new tokens; just craft.
+ */
+
+/* System font for authentic iOS feel + smooth momentum scroll */
+.ops-root {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+}
+
+/* Elevated "material" card — borderless, lifts off the sumi background */
+.ios-card {
+  background: linear-gradient(180deg, rgba(32, 23, 41, 0.96) 0%, rgba(20, 14, 27, 0.96) 100%);
+  border-radius: 22px;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 10px 30px -16px rgba(0, 0, 0, 0.8),
+    0 2px 6px -2px rgba(0, 0, 0, 0.5);
+}
+
+/* Grouped inset list (iOS Settings style) */
+.ios-group {
+  background: linear-gradient(180deg, rgba(32, 23, 41, 0.94), rgba(20, 14, 27, 0.94));
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 10px 30px -18px rgba(0, 0, 0, 0.8);
+}
+.ios-row { min-height: 54px; }
+.ios-row + .ios-row { border-top: 0.5px solid rgba(255, 255, 255, 0.075); }
+.ios-row-inset + .ios-row-inset { border-top: 0.5px solid rgba(255, 255, 255, 0.075); }
+/* divider inset so it aligns under the text, not the icon (iOS convention) */
+.ios-row-inset + .ios-row-inset { background-clip: padding-box; }
+
+/* Press feedback — springy scale-down, the single biggest "native" tell */
+.ios-press { transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1.2), opacity 0.16s ease; will-change: transform; }
+.ios-press:active { transform: scale(0.96); opacity: 0.92; }
+.ios-press-sm:active { transform: scale(0.98); opacity: 0.9; transition: transform 0.12s ease; }
+
+/* Sheet grabber handle */
+.ios-grabber { width: 36px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); margin: 0 auto; }
+
+/* Tactile gold primary button — inner light + ambient glow */
+.ios-primary {
+  background: linear-gradient(180deg, #dcc08c 0%, #c9a86a 100%);
+  color: #1b1206;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 8px 22px -8px rgba(201, 168, 106, 0.6);
+}
+/* Tinted secondary (accent at low opacity per the design standard) */
+.ios-tinted {
+  background: rgba(201, 168, 106, 0.12);
+  color: #d8bc85;
+}
+.ios-fill { background: rgba(255, 255, 255, 0.05); }
+
+/* Frosted material bar (nav + tab bar) */
+.ios-blur {
+  -webkit-backdrop-filter: saturate(1.5) blur(22px);
+  backdrop-filter: saturate(1.5) blur(22px);
+}
+
+/* Soft ambient glow behind a hero element */
+.ios-glow { position: relative; }
+.ios-glow::before {
+  content: "";
+  position: absolute;
+  inset: -30% -12% auto -12%;
+  height: 70%;
+  background: radial-gradient(60% 90% at 50% 0%, rgba(201, 168, 106, 0.18), transparent 72%);
+  pointer-events: none;
+  z-index: 0;
+}
+.ios-glow > * { position: relative; z-index: 1; }
+
+/* Entrance + live pulse (respect reduced motion) */
+@keyframes iosUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ios-in { animation: iosUp 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes iosPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+.ios-pulse { animation: iosPulse 1.9s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-in, .ios-pulse { animation: none; }
+  .ios-press:active, .ios-press-sm:active { transform: none; }
+}
