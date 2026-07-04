@@ -231,6 +231,16 @@ export const FEATURES = {
    */
   shiftPlannerV2: false,
   /**
+   * Dealer Swing "Tối ưu nhân sự" card — live staffing optimizer in the operator
+   * right rail (owner request 2026-07-04). Shows required-vs-present dealers (target
+   * from the real swing rotation cadence: swing_duration + min_inter_swing_rest) and,
+   * when overstaffed, ranks who could be released to cut labor cost. READ-ONLY
+   * advisory: the actual check-out reuses the existing DC batch-checkout dialog — no
+   * new money-path code. OFF until owner UAT; while false the card is not rendered
+   * (owner/club-admin/super-admin/floor preview it via the role gate).
+   */
+  dealerStaffingOptimizer: false,
+  /**
    * Tracker Live Action Engine MVP — live per-action playback on the public
    * tournament viewer (/live/:id). While a hand is in_progress, the viewer
    * fast-polls so spectators see each recorded action in near-real-time
