@@ -190,8 +190,10 @@ export const FEATURES = {
    * first — while OFF or RPC absent (42883/42P01) the tab renders mock ("chưa áp dụng"). Default
    * **OFF**. Flip after owner-gated apply + golden-diff UAT (owed == manual Σ over the same
    * tournaments). Kill-switch: set false.
+   * APPLIED LIVE 2026-07-04 (migration 20261216000000 via one-shot owner-gated apply, POST-verify
+   * all green) → flipped ON. Paid still 0 until the B2 cashier write flag ships.
    */
-  accountingControlLivePayout: false,
+  accountingControlLivePayout: true,
   /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
