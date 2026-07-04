@@ -22,6 +22,7 @@ import {
   isRedCard,
 } from './constants';
 import { PokerCard, CardBack } from '@/components/cashier/tournament-live/PokerVisuals';
+import { ChipStack } from '@/components/cashier/tournament-live/ChipStack';
 import type { SeatVM, TrackerRacetrackProps } from './types';
 
 // App number identity (AppDigits-first per tailwind.config) — matches the rest of the app.
@@ -343,6 +344,8 @@ export function TrackerRacetrack({
   showHoleCards = false,
   waiting = false,
   portrait: portraitProp,
+  betChips = false,
+  dealerFix = false,
 }: TrackerRacetrackProps) {
   const { t } = useTranslation();
   const detectedPortrait = useIsPortrait(!!rich);
@@ -350,6 +353,15 @@ export function TrackerRacetrack({
   const geo = portrait ? TRACKER_GEO.portrait : TRACKER_GEO.landscape;
   const seatsMap = geo.seats;
   const centerTop = rich ? geo.centerTop : 40;
+
+  // trackerFeltDealerFix: the two bottom seats (1 = dealer-left, 9 = dealer-right) sit in
+  // the dealer station's lane. When the fix is on, lift them up off it (~7% of the felt);
+  // all other seats and the OFF path are untouched (byte-identical).
+  const seatAnchor = (n: number) => {
+    const a = seatsMap[n];
+    if (!a) return a;
+    return dealerFix && (n === 1 || n === 9) ? { left: a.left, top: a.top - 7 } : a;
+  };
 
   // Show the engine's suggested seat ONLY when it differs from the seat being entered.
   const engineSuggestSeat =
@@ -414,11 +426,27 @@ export function TrackerRacetrack({
         </div>
       </div>
 
-      {/* Committed-chip pucks (behind seats) */}
+      {/* Committed-chip pucks (behind seats). liveBetChips → chip-DISC stack (ChipStack);
+          else today's text puck (byte-identical — the OFF branch is untouched). */}
       {seats.map((seat) => {
-        const anchor = seatsMap[seat.seatNumber];
+        const anchor = seatAnchor(seat.seatNumber);
         if (!anchor || seat.isEmpty || seat.isFolded || !seat.committed) return null;
         const puck = betPuckPosition(anchor);
+        if (betChips) {
+          return (
+            <div
+              key={`bet-${seat.seatNumber}`}
+              className="absolute z-[4] -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${puck.left}%`, top: `${puck.top}%` }}
+            >
+              <ChipStack
+                label={formatChips(seat.committed)}
+                allIn={!!seat.isAllIn}
+                sizeStyle={{ width: '15px', fontSize: '9px' }}
+              />
+            </div>
+          );
+        }
         return (
           <div
             key={`bet-${seat.seatNumber}`}
@@ -439,7 +467,7 @@ export function TrackerRacetrack({
         <Seat
           key={seat.seatNumber}
           seat={seat}
-          anchor={seatsMap[seat.seatNumber]}
+          anchor={seatAnchor(seat.seatNumber)}
           isActing={seat.seatNumber === actingSeatNumber}
           isDealerButton={seat.seatNumber === dealerSeatNumber}
           isEngineSuggested={seat.seatNumber === engineSuggestSeat}
@@ -475,20 +503,32 @@ export function TrackerRacetrack({
           <span className="text-[8px] text-[hsl(var(--muted-foreground))]">
             {t('liveHub.felt.dealerHere', 'người chia · cố định')}
           </span>
+          {dealerFix && (
+            <span
+              className={`mt-0.5 block text-[8px] font-bold uppercase tracking-[0.14em] ${
+                rich ? 'tracker-display text-[hsl(var(--poker-gold))]' : 'text-[hsl(var(--primary))]'
+              }`}
+            >
+              ▲ {t('liveHub.felt.trackerHere', 'Tracker đứng đây')}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Tracker cue */}
-      <div className="absolute bottom-1.5 left-1/2 z-[7] -translate-x-1/2 text-center">
-        <div className={`text-xs leading-none ${rich ? 'text-[hsl(var(--poker-gold))]' : 'text-[hsl(var(--primary))]'}`}>▲</div>
-        <div
-          className={`text-[8.5px] font-bold uppercase tracking-[0.14em] ${
-            rich ? 'tracker-display text-[hsl(var(--poker-gold))]' : 'text-[hsl(var(--primary))]'
-          }`}
-        >
-          {t('liveHub.felt.trackerHere', 'Tracker đứng đây')}
+      {/* Tracker cue — separate bottom element; merged into the dealer block above when
+          dealerFix (else the two bottom-center elements overlap on a short felt). */}
+      {!dealerFix && (
+        <div className="absolute bottom-1.5 left-1/2 z-[7] -translate-x-1/2 text-center">
+          <div className={`text-xs leading-none ${rich ? 'text-[hsl(var(--poker-gold))]' : 'text-[hsl(var(--primary))]'}`}>▲</div>
+          <div
+            className={`text-[8.5px] font-bold uppercase tracking-[0.14em] ${
+              rich ? 'tracker-display text-[hsl(var(--poker-gold))]' : 'text-[hsl(var(--primary))]'
+            }`}
+          >
+            {t('liveHub.felt.trackerHere', 'Tracker đứng đây')}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Pre-hand waiting overlay (rich) */}
       {rich && waiting && (

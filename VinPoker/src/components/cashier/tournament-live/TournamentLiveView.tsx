@@ -361,6 +361,11 @@ export function TournamentLiveView({
           // chip_count − totalBets); ALL-IN seats carry their whole-hand total for
           // the pill amount.
           const wantBetChips = spectator && FEATURES.liveFeltCompact;
+          // liveBetChips: keep the committed-bet disc visible the WHOLE hand (not just the
+          // current street) by carrying the whole-hand committed total in a display-only
+          // field. Spectator-only + flag-gated → operator/TV byte-identical. Distinct from
+          // total_committed (all-in pill) — do not conflate the two.
+          const wantPersistentBet = spectator && FEATURES.liveBetChips;
           const stackConsumed = (s: { player_id: string; chip_count: number }) =>
             (totalBets[s.player_id] || 0) > 0 && s.chip_count - (totalBets[s.player_id] || 0) <= 0;
           const isAllInAug = (s: { player_id: string; chip_count: number }) =>
@@ -368,6 +373,7 @@ export function TournamentLiveView({
           seatInfos = seatInfos.map((s) => ({
             ...s,
             current_bet: streetBets[s.player_id] || 0,
+            ...(wantPersistentBet ? { display_committed_bet: totalBets[s.player_id] || 0 } : {}),
             ...(wantBetChips && isAllInAug(s)
               ? { is_all_in: true, total_committed: totalBets[s.player_id] || 0 }
               : {}),

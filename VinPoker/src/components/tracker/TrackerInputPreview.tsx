@@ -41,6 +41,11 @@ function nextActing(seats: SeatVM[], from: number): number {
 
 export function TrackerInputPreview() {
   const [actingSeatNumber, setActingSeatNumber] = useState<number | null>(5);
+  // DEV toggles: `rich` shows the burgundy felt (the operator's real skin); `betChips`
+  // renders committed bets as ChipStack discs (FEATURES.liveBetChips ON) vs today's text puck.
+  const [rich, setRich] = useState(true);
+  const [betChips, setBetChips] = useState(true);
+  const [dealerFix, setDealerFix] = useState(true);
   const [flash, setFlash] = useState<string | null>(null);
   const history = useRef<number[]>([]);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,9 +96,32 @@ export function TrackerInputPreview() {
             Lv.3 · 200/400 · pot {formatChips(POT)}
           </span>
         </div>
-        <span className="rounded border border-dashed border-[hsl(var(--warning)/0.4)] px-2 py-0.5 text-[10px] text-[hsl(var(--warning))]">
-          PREVIEW · mock data · intents → console
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRich((v) => !v)}
+            className="rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--foreground))]"
+          >
+            rich: {rich ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setBetChips((v) => !v)}
+            className="rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--foreground))]"
+          >
+            betChips: {betChips ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDealerFix((v) => !v)}
+            className="rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--foreground))]"
+          >
+            dealerFix: {dealerFix ? 'ON' : 'OFF'}
+          </button>
+          <span className="rounded border border-dashed border-[hsl(var(--warning)/0.4)] px-2 py-0.5 text-[10px] text-[hsl(var(--warning))]">
+            PREVIEW · mock data
+          </span>
+        </div>
       </div>
 
       <TrackerRacetrack
@@ -103,6 +131,9 @@ export function TrackerInputPreview() {
         boardCards={BOARD}
         pot={POT}
         bigBlind={BIG_BLIND}
+        rich={rich}
+        betChips={betChips}
+        dealerFix={dealerFix}
       />
 
       <div className="relative">
@@ -122,3 +153,5 @@ export function TrackerInputPreview() {
     </div>
   );
 }
+
+export default TrackerInputPreview;

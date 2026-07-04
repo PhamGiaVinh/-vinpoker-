@@ -51,6 +51,10 @@ export interface SeatInfo {
    * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
    * Absent → the pill falls back to current_bet (today's behavior). */
   total_committed?: number;
+  /** liveBetChips (spectator): whole-hand committed chips for a NON-all-in seat, so the
+   * committed-bet disc persists after the street sweeps current_bet to 0. Absent → the
+   * disc falls back to current_bet (today's per-street behavior). */
+  display_committed_bet?: number;
 }
 
 export interface ActionLog {
@@ -871,11 +875,14 @@ export function LiveFelt({
             below the to-act badge (z-20) and the flying chip-push (z-[25]). */}
         {viewerLayout &&
           seats
-            .filter((s) => s.is_all_in || (!s.is_folded && (s.current_bet ?? 0) > 0))
+            .filter((s) => s.is_all_in || (!s.is_folded && ((s.current_bet ?? 0) > 0 || (s.display_committed_bet ?? 0) > 0)))
             .map((s) => {
               const slot = ((s.seat_number - 1) % 9) + 1;
               const pt = stackPt(seatMap[slot] || seatMap[1]);
-              const amt = s.current_bet ?? 0;
+              // liveBetChips: prefer the whole-hand committed (display_committed_bet) so the
+              // disc persists across street sweeps; fall back to the per-street current_bet
+              // (today's behavior when the field is absent → byte-identical).
+              const amt = (s.display_committed_bet ?? 0) > 0 ? (s.display_committed_bet as number) : (s.current_bet ?? 0);
               // UAT wave 2 (Fix 3, compact only): the ALL-IN pill prefers the seat's
               // WHOLE-HAND committed total (survives street sweeps), and — RPT style —
               // shows the AMOUNT ALONE on the red pill: the red stack already signals
