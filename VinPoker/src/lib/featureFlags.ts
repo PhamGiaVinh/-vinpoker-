@@ -171,6 +171,16 @@ export const FEATURES = {
    */
   accountingControlLiveOverview: true,
   /**
+   * Accounting Control — W4: wire the "Lương & chi phí" tab to REAL read-only payroll cost from
+   * the live `get_club_finance_summary` RPC (same hook as W1): total SAVED payroll (net incl PT
+   * after #656 R2), gross, adjustments, unpaid total, and the per-period list with status. The
+   * per-ROLE split (dealer/floor/cashier/PT) and the table-hour cost are NOT in that RPC → they
+   * stay mock, tagged "(mock — chưa nối)". Read-only, never recomputes saved payroll. Default
+   * **OFF**: while false the tab renders today's mock. Flip after UAT (numbers must equal the
+   * payroll totals on /club/admin/finance). Kill-switch: set false.
+   */
+  accountingControlLivePayroll: false,
+  /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
    * (20260825000000) applied live first. While false the editor is usable as a
