@@ -48,6 +48,7 @@ const renderPage = () =>
 beforeEach(() => {
   (FEATURES as { accountingControl: boolean }).accountingControl = false;
   (FEATURES as { accountingControlLiveOverview: boolean }).accountingControlLiveOverview = false;
+  (FEATURES as { accountingControlLivePayroll: boolean }).accountingControlLivePayroll = false;
   AUTH.isAdmin = false;
   AUTH.isClubAdmin = false;
   AUTH.isClubOwner = false;
@@ -141,6 +142,22 @@ describe("Per-tab doctrine (rendered directly — Radix unmounts inactive TabsCo
     expect(screen.getByText(/Còn lại sau lương/)).toBeInTheDocument();
     // page banner reflects partial-live, and mock parts are tagged
     expect(screen.getByText(/SỐ THẬT một phần/)).toBeInTheDocument();
+    expect(screen.getAllByText(/\(mock — chưa nối\)/).length).toBeGreaterThan(0);
+  });
+
+  it("W4 live payroll: shows real total payroll (incl PT) + banner + per-period, role split stays mock", async () => {
+    const { LivePayrollTab } = await import("../live/LivePayrollTab");
+    FIN.summary = {
+      cost: { payrollNet: 78_500_000, payrollGross: 82_000_000, adjustments: -1_200_000, fnbCogs: 0, compCogs: 0 },
+      unpaidTotal: 12_000_000,
+      reconciledTotal: 40_000_000,
+      perPeriod: [{ periodKey: "07/2026", gross: 82_000_000, net: 78_500_000, status: "paid" }],
+    };
+    render(<MemoryRouter><LivePayrollTab /></MemoryRouter>);
+    expect(screen.getAllByText(/78\.500\.000/).length).toBeGreaterThan(0); // real payrollNet (card + period row)
+    expect(screen.getByText(/Tổng lương là SỐ THẬT/)).toBeInTheDocument();
+    expect(screen.getByText(/07\/2026/)).toBeInTheDocument(); // per-period row
+    // table-hour cost stays mock-tagged in live mode
     expect(screen.getAllByText(/\(mock — chưa nối\)/).length).toBeGreaterThan(0);
   });
 

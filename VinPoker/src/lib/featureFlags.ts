@@ -164,10 +164,22 @@ export const FEATURES = {
    * the "Tiền giữ hộ" (pool/payout/escrow) block, the entries forecast, and every other tab stay
    * MOCK, clearly tagged "(mock — chưa nối)". Read-only — no writes, no new RPC. PT-wage line and
    * F&B stay a known gap until #656 R2 applies live + their own increments (see
-   * docs/design/accounting-control-wiring-plan.md). Default **OFF**: while false, Tổng quan renders
-   * today's mock exactly (zero extra reads). Flip to true after golden-diff/UAT on a real club.
+   * docs/design/accounting-control-wiring-plan.md). While false, Tổng quan renders today's mock
+   * exactly (zero extra reads). **ON 2026-07-03 at owner request** (after #656 R1/R2/R3 applied
+   * live) — Tổng quan "Tiền của club" now shows real numbers; golden-diff = they must equal
+   * /club/admin/finance for the same month. Kill-switch: set false to revert to mock.
    */
-  accountingControlLiveOverview: false,
+  accountingControlLiveOverview: true,
+  /**
+   * Accounting Control — W4: wire the "Lương & chi phí" tab to REAL read-only payroll cost from
+   * the live `get_club_finance_summary` RPC (same hook as W1): total SAVED payroll (net incl PT
+   * after #656 R2), gross, adjustments, unpaid total, and the per-period list with status. The
+   * per-ROLE split (dealer/floor/cashier/PT) and the table-hour cost are NOT in that RPC → they
+   * stay mock, tagged "(mock — chưa nối)". Read-only, never recomputes saved payroll. Default
+   * **OFF**: while false the tab renders today's mock. Flip after UAT (numbers must equal the
+   * payroll totals on /club/admin/finance). Kill-switch: set false.
+   */
+  accountingControlLivePayroll: false,
   /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
@@ -315,6 +327,20 @@ export const FEATURES = {
    * **ON 2026-07-03** for owner UAT (no external users; #682 merged). Kill-switch: false.
    */
   trackerShowdownRevealOrder: true,
+  /**
+   * Pre-hand "Set up table roster" in the operator tracker: before a hand starts, a
+   * TRACKER/FLOOR operator sets each seat's NAME + CHIP + optional AVATAR and adds a
+   * walk-in to an empty seat. ALL writes go through ONE atomic SECURITY DEFINER RPC
+   * `set_tracker_table_roster_seat` (guards tracker/floor/owner/super_admin itself,
+   * writes seat + tournament_chip_counts in one txn so the start_hand seed can't
+   * desync). TWO-TIER GATE: OFF (default) → the old chip-only quick-edit renders,
+   * byte-identical, no new column/RPC touched. ON but the migration `20261215000000`
+   * NOT applied → the RPC (42883) / avatar_url select (42703) is caught and the panel
+   * degrades to a "chưa áp dụng" state, never crashes. Migration is source-only,
+   * owner-applied; NO edge deploy (the shared tournament-live-draw edge is untouched).
+   * Flip true ONLY after the migration is applied + preview UAT. Kill-switch: false.
+   */
+  trackerSeatSetup: false,
   /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
@@ -622,7 +648,7 @@ export const FEATURES = {
    * stated as such; Hypothesis-labeled, not financial advice. Default **OFF**; build only after PR0–6
    * UAT passes and the owner explicitly asks. Kill-switch: set false to hide.
    */
-  seriesKellyHint: false,
+  seriesKellyHint: true,
   /**
    * Series Intelligence — LOCAL-ONLY "regime changed" switch (PR5b). When ON, the Command Center shows
    * a RegimeSwitch letting the owner mark the market/legal regime as CHANGED, which escalates every
@@ -631,7 +657,7 @@ export const FEATURES = {
    * `seriesRegimeNotice` (self-hides when that is off). The DB-backed official flag (audit of who
    * flipped it) is a separate owner-gated increment. Default **OFF**; kill-switch: set false.
    */
-  seriesRegimeSwitch: false,
+  seriesRegimeSwitch: true,
   /**
    * Series Intelligence — G7 forecast calibration card in the ⑥ CAPTURE console. When ON, it scores past
    * forecast snapshots against real actuals (client-side, reads the existing capture tables — NO new DB)
@@ -639,7 +665,7 @@ export const FEATURES = {
    * scored forecast↔actual pairs it shows a "chưa đủ dữ liệu (X/10)" state and makes no calibration
    * claim. Measured facts only (Observed Pattern). Default **OFF** until real pairs accrue; kill-switch: false.
    */
-  seriesCalibration: false,
+  seriesCalibration: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
@@ -784,11 +810,13 @@ export const FEATURES = {
    * /fnb/order?t=<token> page: guest confirms "Bạn đang ngồi tại Bàn X", picks a seat, orders from
    * the club menu, then pays by VietQR bank transfer (SePay auto-confirm) or cash (a server collects
    * at the table via /fnb/serve). Gates the guest page, the /fnb/serve server surface, and the
-   * FnbAdmin "QR bàn" tab. Requires migrations 20261111000017/18/19 + 20261211000000 applied live
-   * AND the per-club fnb_settings.guest_order_enabled switch. Default OFF (dark). Flip after the
-   * migrations are applied + preview UAT (see plan PART 11).
+   * FnbAdmin "QR bàn" tab. Requires migrations 20261111000017/18/19 + 20261212000000 applied live
+   * AND the per-club fnb_settings.guest_order_enabled switch. Enabled at owner request 2026-07-04.
+   * ⚠️ 20261212000000 (SePay FNB- settle) MUST be applied BEFORE any table QR is printed/scanned,
+   * else an FNB- transfer settles as flagged_no_match and the one-settlement-per-txn idempotency
+   * parks it. Kill-switch: set back to false. (See plan PART 11.)
    */
-  fnbGuestOrder: false,
+  fnbGuestOrder: true,
   /**
    * F&B PUBLIC DEMO (/fnb/demo) — a SELF-CONTAINED static showcase for showing the F&B vision to a
    * guest. The page imports NO supabase client and calls NO RPC (every button is a no-op toast), so
@@ -887,8 +915,12 @@ export const FEATURES = {
    * un-applied schema can't break the Floor. Flip to true ONLY after the enum-unify +
    * tournament_close_report + close_tournament migration is applied live in a controlled DB session
    * and owner UAT passes. Kill-switch: set false.
+   *
+   * **ON** (2026-07-03, owner UAT): migration `20261213000000` applied live (tournament_close_report
+   * + close_tournament RPC + enum value 'completed' added first); flipped ON so Owner/Cashier can UAT
+   * on a TEST tournament. Kill-switch: set false to hide the "Chốt giải" button instantly.
    */
-  closeReport: false,
+  closeReport: true,
   /**
    * Floor "Loại" out-confirm dialog. When ON, tapping "Loại" on the floor table map opens a
    * plain, guided confirm dialog that previews the player's finishing place + prize money
@@ -909,10 +941,12 @@ export const FEATURES = {
    * Hôm nay / Giải đấu / Bàn / Cảnh báo / Thêm). Prototype = màn "Floor hôm nay" với DỮ LIỆU MẪU,
    * read-only, KHÔNG thao tác tiền. Frontend-only: không DB/RPC/Edge/migration; không đụng `Layout.tsx`
    * hay `/dealer/*`. Default **OFF** (per flag policy): while false the `/ops/*` routes show a "chưa bật"
-   * notice (except admin/owner preview) and nothing mounts → prod unchanged. Flip to true ONLY after owner
-   * UAT on a preview branch. Spec: docs/design/ios-floor-ux-spec.md + ios-operations-implementation-plan.md.
+   * notice (except admin/owner preview) and nothing mounts → prod unchanged.
+   * **ON** (2026-07-04, owner request "bật cờ ops đi"): `/ops/*` visible to floor/cashier/tracker/admin.
+   * All screens are **DỮ LIỆU MẪU / read-only** (floor never touches money) — a preview for owner UAT while
+   * real-data wiring is a separate owner-gated step. Kill-switch: set false. Spec: docs/design/ios-floor-ux-spec.md.
    */
-  mobileOpsV2: false,
+  mobileOpsV2: true,
 } as const;
 
 /**
