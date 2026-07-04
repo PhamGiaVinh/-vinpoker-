@@ -638,7 +638,7 @@ export const FEATURES = {
    * stated as such; Hypothesis-labeled, not financial advice. Default **OFF**; build only after PR0–6
    * UAT passes and the owner explicitly asks. Kill-switch: set false to hide.
    */
-  seriesKellyHint: false,
+  seriesKellyHint: true,
   /**
    * Series Intelligence — LOCAL-ONLY "regime changed" switch (PR5b). When ON, the Command Center shows
    * a RegimeSwitch letting the owner mark the market/legal regime as CHANGED, which escalates every
@@ -647,7 +647,7 @@ export const FEATURES = {
    * `seriesRegimeNotice` (self-hides when that is off). The DB-backed official flag (audit of who
    * flipped it) is a separate owner-gated increment. Default **OFF**; kill-switch: set false.
    */
-  seriesRegimeSwitch: false,
+  seriesRegimeSwitch: true,
   /**
    * Series Intelligence — G7 forecast calibration card in the ⑥ CAPTURE console. When ON, it scores past
    * forecast snapshots against real actuals (client-side, reads the existing capture tables — NO new DB)
@@ -655,7 +655,7 @@ export const FEATURES = {
    * scored forecast↔actual pairs it shows a "chưa đủ dữ liệu (X/10)" state and makes no calibration
    * claim. Measured facts only (Observed Pattern). Default **OFF** until real pairs accrue; kill-switch: false.
    */
-  seriesCalibration: false,
+  seriesCalibration: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
