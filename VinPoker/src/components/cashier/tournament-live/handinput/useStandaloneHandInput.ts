@@ -186,6 +186,10 @@ export function useStandaloneHandInput(tournamentId: string) {
   >([]);
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
   const [persistedBoardCount, setPersistedBoardCount] = useState(0);
+  // trackerSeatSetup: false once we learn tournament_seats.avatar_url is absent (migration
+  // not applied) → the roster panel disables the avatar control ("chưa áp dụng") but keeps
+  // name/chip. Stays true when the flag is off (irrelevant).
+  const [avatarSupported, setAvatarSupported] = useState(true);
   // A5 resilience: the orphan hand id armed to auto-resume once its table's seats
   // have loaded (self-clears after firing once — see the effect near handleVoidOrphan).
   const [autoResumeArmed, setAutoResumeArmed] = useState<string | null>(null);
@@ -343,6 +347,92 @@ export function useStandaloneHandInput(tournamentId: string) {
     );
   }, []);
 
+  // trackerSeatSetup: the SINGLE roster write. One atomic SECURITY DEFINER RPC sets the
+  // seat's name + chip (+ tournament_chip_counts, so start_hand seeds correctly) and,
+  // when p_touch_avatar, the avatar — guarding tracker/floor/owner/super_admin itself.
+  // No client dual-write. On success the server-confirmed row is merged into `players`
+  // (id/entry_number authoritative for later edits + start_hand). Returns the RPC result.
+  const handleSetRosterSeat = useCallback(
+    async (args: {
+      seatNumber: number;
+      playerName: string;
+      chipCount: number;
+      existingPlayerId?: string | null;
+      touchAvatar?: boolean;
+      avatarUrl?: string | null;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      if (isReadOnly) {
+        toast.error("Phiên làm việc đã hết hạn");
+        return { ok: false };
+      }
+      if (!tableId) return { ok: false };
+      const { data, error } = await supabase.rpc("set_tracker_table_roster_seat" as any, {
+        p_tournament_id: tournamentId,
+        p_table_id: tableId,
+        p_seat_number: args.seatNumber,
+        p_player_name: args.playerName,
+        p_chip_count: args.chipCount,
+        p_existing_player_id: args.existingPlayerId ?? null,
+        p_touch_avatar: args.touchAvatar ?? false,
+        p_avatar_url: args.avatarUrl ?? null,
+        p_actor_user_id: user?.id ?? null,
+      });
+      if (error) {
+        // 42883 = function not applied yet → degrade (two-tier gate).
+        if ((error as any).code === "42883") {
+          setAvatarSupported(false);
+          toast.error("Tính năng setup bàn chưa được áp dụng trên máy chủ.");
+          return { ok: false, error: "not_applied" };
+        }
+        toast.error(error.message || "Lỗi setup ghế");
+        return { ok: false, error: error.message };
+      }
+      const res = data as { ok: boolean; error?: string; seat?: any } | null;
+      if (!res?.ok) {
+        const map: Record<string, string> = {
+          actor_not_allowed: "Phiên đăng nhập không hợp lệ — hãy tải lại trang.",
+          actor_not_authorized: "Bạn không có quyền setup bàn này (cần tracker/floor/owner của club).",
+          hand_in_progress: "Đang có ván trên bàn — không sửa roster được.",
+          table_mismatch: "Bàn không thuộc giải này.",
+          seat_gone: "Ghế này vừa thay đổi — hãy tải lại bàn.",
+          seat_conflict: "Ghế vừa có người khác ngồi — hãy tải lại bàn.",
+          bad_avatar_url: "Ảnh avatar không hợp lệ.",
+          bad_player_name: "Tên không hợp lệ (1–40 ký tự).",
+          bad_chip_count: "Số chip không hợp lệ.",
+          bad_seat_number: "Số ghế không hợp lệ.",
+          tournament_not_found: "Không tìm thấy giải.",
+        };
+        toast.error(map[res?.error ?? ""] ?? res?.error ?? "Lỗi setup ghế");
+        return { ok: false, error: res?.error };
+      }
+      const seat = res.seat;
+      setPlayers((prev) => {
+        const merged: PlayerState = {
+          player_id: seat.player_id,
+          entry_number: seat.entry_number,
+          seat_number: seat.seat_number,
+          display_name: seat.player_name || String(seat.player_id).slice(0, 6),
+          starting_stack: seat.chip_count,
+          current_stack: seat.chip_count,
+          is_active: true,
+          position: prev.find((p) => p.seat_number === seat.seat_number)?.position ?? "",
+          current_bet: 0,
+          total_bet: 0,
+          is_folded: false,
+          is_all_in: false,
+          avatar_url: seat.avatar_url ?? null,
+        };
+        const exists = prev.some((p) => p.seat_number === seat.seat_number);
+        const next = exists
+          ? prev.map((p) => (p.seat_number === seat.seat_number ? merged : p))
+          : [...prev, merged];
+        return next.sort((a, b) => a.seat_number - b.seat_number);
+      });
+      return { ok: true };
+    },
+    [tournamentId, tableId, isReadOnly, user]
+  );
+
   // ----- Table select -----------------------------------------------------
   const handleTableChange = useCallback(
     async (newTableId: string) => {
@@ -372,13 +462,40 @@ export function useStandaloneHandInput(tournamentId: string) {
         .maybeSingle()
         .then(({ data }) => setMaxSeats((data as any)?.max_seats ?? 9));
 
-      const { data: loadedSeats, error } = await supabase
-        .from("tournament_seats")
-        .select("player_id, entry_number, seat_number, chip_count, player_name")
-        .eq("tournament_id", tournamentId)
-        .eq("table_id", newTableId)
-        .eq("is_active", true)
-        .order("seat_number");
+      // trackerSeatSetup: pull the per-seat avatar_url under the flag. If the migration
+      // isn't applied yet the column is missing → 42703 → mark unsupported + retry
+      // without it (roster still loads; avatars fall back to profiles). Flag OFF → the
+      // select is the current column list, byte-identical.
+      const baseCols = "player_id, entry_number, seat_number, chip_count, player_name";
+      const wantAvatar = FEATURES.trackerSeatSetup;
+      let loadedSeats: any[] | null = null;
+      let error: any = null;
+      if (wantAvatar) {
+        const r = await supabase
+          .from("tournament_seats")
+          .select(`${baseCols}, avatar_url`)
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", newTableId)
+          .eq("is_active", true)
+          .order("seat_number");
+        if (r.error && (r.error as any).code === "42703") {
+          setAvatarSupported(false);
+        } else {
+          loadedSeats = r.data as any[] | null;
+          error = r.error;
+        }
+      }
+      if (loadedSeats === null && error === null) {
+        const r = await supabase
+          .from("tournament_seats")
+          .select(baseCols)
+          .eq("tournament_id", tournamentId)
+          .eq("table_id", newTableId)
+          .eq("is_active", true)
+          .order("seat_number");
+        loadedSeats = r.data as any[] | null;
+        error = r.error;
+      }
 
       if (error) {
         toast.error("Không thể tải danh sách người chơi");
@@ -413,7 +530,14 @@ export function useStandaloneHandInput(tournamentId: string) {
           .in("user_id", seatPlayerIds);
         (seatProfiles ?? []).forEach((p: any) => avatarByUser.set(p.user_id, p.avatar_url ?? null));
       }
-      setPlayers(newPlayers.map((p) => ({ ...p, avatar_url: avatarByUser.get(p.player_id) ?? null })));
+      // Avatar priority: operator-set per-seat avatar wins over the player's profile pic;
+      // a walk-in with no profile uses the seat avatar (or initials).
+      setPlayers(
+        newPlayers.map((p, i) => ({
+          ...p,
+          avatar_url: (loadedSeats![i] as any)?.avatar_url ?? avatarByUser.get(p.player_id) ?? null,
+        }))
+      );
       resetHand();
 
       const activeNums = loadedSeats
@@ -1771,6 +1895,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleSubmitHand,
     handleVoid,
     handleChipQuickEdit,
+    handleSetRosterSeat,
+    avatarSupported,
     resetHand,
   };
 }
