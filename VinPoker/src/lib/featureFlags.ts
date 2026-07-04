@@ -238,10 +238,11 @@ export const FEATURES = {
    * from the real swing rotation cadence: swing_duration + min_inter_swing_rest) and,
    * when overstaffed, ranks who could be released to cut labor cost. READ-ONLY
    * advisory: the actual check-out reuses the existing DC batch-checkout dialog — no
-   * new money-path code. OFF until owner UAT; while false the card is not rendered
-   * (owner/club-admin/super-admin/floor preview it via the role gate).
+   * new money-path code. ENABLED 2026-07-05 (owner UAT request) — visible to
+   * admin/club-admin/club-owner/floor on the Dealer Swing right rail. Kill-switch:
+   * set false to hide the card instantly (no other change needed).
    */
-  dealerStaffingOptimizer: false,
+  dealerStaffingOptimizer: true,
   /**
    * Tracker Live Action Engine MVP — live per-action playback on the public
    * tournament viewer (/live/:id). While a hand is in_progress, the viewer
