@@ -975,10 +975,12 @@ export const FEATURES = {
    * Hôm nay / Giải đấu / Bàn / Cảnh báo / Thêm). Prototype = màn "Floor hôm nay" với DỮ LIỆU MẪU,
    * read-only, KHÔNG thao tác tiền. Frontend-only: không DB/RPC/Edge/migration; không đụng `Layout.tsx`
    * hay `/dealer/*`. Default **OFF** (per flag policy): while false the `/ops/*` routes show a "chưa bật"
-   * notice (except admin/owner preview) and nothing mounts → prod unchanged. Flip to true ONLY after owner
-   * UAT on a preview branch. Spec: docs/design/ios-floor-ux-spec.md + ios-operations-implementation-plan.md.
+   * notice (except admin/owner preview) and nothing mounts → prod unchanged.
+   * **ON** (2026-07-04, owner request "bật cờ ops đi"): `/ops/*` visible to floor/cashier/tracker/admin.
+   * All screens are **DỮ LIỆU MẪU / read-only** (floor never touches money) — a preview for owner UAT while
+   * real-data wiring is a separate owner-gated step. Kill-switch: set false. Spec: docs/design/ios-floor-ux-spec.md.
    */
-  mobileOpsV2: false,
+  mobileOpsV2: true,
 } as const;
 
 /**

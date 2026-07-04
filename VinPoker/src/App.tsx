@@ -56,7 +56,10 @@ const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 // mobileOpsV2 — iPhone operator shell (/ops/*). Self-gates on FEATURES.mobileOpsV2 (OFF) + role.
 const OpsShell = lazy(() => import("./components/ops/OpsShell"));
 const OpsToday = lazy(() => import("./pages/ops/OpsToday"));
-const OpsPlaceholder = lazy(() => import("./pages/ops/OpsPlaceholder"));
+const OpsTournaments = lazy(() => import("./pages/ops/OpsTournaments"));
+const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
+const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
+const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -217,10 +220,10 @@ const App = () => (
                   OpsShell self-gates on FEATURES.mobileOpsV2 (OFF) + admin/owner preview. */}
               <Route element={<OpsShell />}>
                 <Route path="/ops" element={<OpsToday />} />
-                <Route path="/ops/tournaments" element={<OpsPlaceholder title="Giải đấu" />} />
-                <Route path="/ops/tables" element={<OpsPlaceholder title="Bàn" />} />
-                <Route path="/ops/alerts" element={<OpsPlaceholder title="Cảnh báo" />} />
-                <Route path="/ops/more" element={<OpsPlaceholder title="Thêm" />} />
+                <Route path="/ops/tournaments" element={<OpsTournaments />} />
+                <Route path="/ops/tables" element={<OpsTables />} />
+                <Route path="/ops/alerts" element={<OpsAlerts />} />
+                <Route path="/ops/more" element={<OpsMore />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
