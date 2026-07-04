@@ -8,6 +8,7 @@ import { useDealerLink } from "@/hooks/dealer/useDealerLink";
 import { VerificationStatusCard } from "../onboarding/VerificationStatusCard";
 import { DealerClaimDrawer } from "../onboarding/DealerClaimDrawer";
 import { StaffInviteDrawer } from "../onboarding/StaffInviteDrawer";
+import { PushNotificationOptIn } from "./PushNotificationOptIn";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -48,6 +49,8 @@ export function DealerAccountScreen() {
       </div>
 
       <VerificationStatusCard />
+
+      <PushNotificationOptIn />
 
       <div className="rounded-2xl border border-border bg-card divide-y divide-border mb-3">
         {rows.map((r, i) => (
