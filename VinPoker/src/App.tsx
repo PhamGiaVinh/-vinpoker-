@@ -116,6 +116,10 @@ const DevClockPreview = import.meta.env.DEV ? lazy(() => import("./dev/ClockPrev
 // Same import.meta.env.DEV gate → route + lazy chunk stripped from production.
 // Reached only at /__dev/livefelt; not linked anywhere.
 const DevLiveFeltPreview = import.meta.env.DEV ? lazy(() => import("./dev/LiveFeltPreview")) : null;
+// DEV-ONLY visual harness for the operator TrackerRacetrack felt (mock data — no Supabase),
+// with rich + betChips toggles. Same import.meta.env.DEV gate → route + lazy chunk stripped
+// from production. Reached only at /__dev/tracker; not linked anywhere.
+const DevTrackerPreview = import.meta.env.DEV ? lazy(() => import("./components/tracker/TrackerInputPreview")) : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -195,6 +199,9 @@ const App = () => (
               )}
               {import.meta.env.DEV && DevLiveFeltPreview && (
                 <Route path="/__dev/livefelt" element={<DevLiveFeltPreview />} />
+              )}
+              {import.meta.env.DEV && DevTrackerPreview && (
+                <Route path="/__dev/tracker" element={<DevTrackerPreview />} />
               )}
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}

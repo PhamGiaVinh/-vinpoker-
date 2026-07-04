@@ -68,6 +68,13 @@ export interface TrackerRacetrackProps {
   waiting?: boolean;
   /** Use the portrait seat map + aspect (narrow screens). Default = landscape racetrack. */
   portrait?: boolean;
+  /** liveBetChips: render each committed bet as a chip-DISC stack (ChipStack) instead of
+   *  the plain text puck. Falsy ⇒ today's text puck (byte-identical). Set from FEATURES.liveBetChips. */
+  betChips?: boolean;
+  /** trackerFeltDealerFix: nudge bottom seats (1, 9) up + merge the "Tracker đứng đây" cue
+   *  into the dealer block so the bottom-center cluster stops overlapping Ghế 1/9 and itself.
+   *  Falsy ⇒ today's geometry (byte-identical). Set from FEATURES.trackerFeltDealerFix. */
+  dealerFix?: boolean;
 }
 
 export interface ForcedAmountPadProps {

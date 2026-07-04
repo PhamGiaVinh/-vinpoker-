@@ -370,6 +370,28 @@ export const FEATURES = {
    */
   liveFeltCompact: true,
   /**
+   * liveBetChips — render each player's committed bet as a chip-DISC on BOTH the
+   * operator `TrackerRacetrack` felt AND the `/live` viewer (`LiveFelt`), instead of
+   * the operator's plain text puck / the viewer disc vanishing on a street change.
+   * Operator: `TrackerRacetrack` upgrades its text puck → `ChipStack` disc under the
+   * `betChips` prop. Viewer: `TournamentLiveView` carries a display-only
+   * `display_committed_bet` (whole-hand), so `LiveFelt` keeps the disc for the whole
+   * hand (does NOT reuse/overload `total_committed`). Frontend-only; no DB/Edge.
+   * Operator/TV byte-identical when OFF (guards: liveFeltOperatorProps /
+   * manualUnchanged / racetrackPayloadParity). Ships OFF; owner flips after preview
+   * UAT. Kill-switch: false.
+   */
+  liveBetChips: false,
+  /**
+   * trackerFeltDealerFix — operator `TrackerRacetrack` geometry fix for the bottom
+   * "DEALER / người chia cố định" station overlapping Ghế 1/9 and the "▲ Tracker đứng
+   * đây" cue. When ON: bottom seats (1, 9) are nudged up and the cue merges into the
+   * dealer block (one bottom-center element, no self-overlap). Falsy ⇒ today's geometry
+   * (byte-identical). Presentational only. Ships OFF pending owner before/after visual
+   * check at /__dev/tracker (rich ON). Kill-switch: false.
+   */
+  trackerFeltDealerFix: false,
+  /**
    * PR-V3 (B3): viewer "moments" — pot-collect sweep at street end, elimination
    * moment, level-up toast, header Reload. Reduced-motion guarded; no auto-sound;
    * animations never block state updates. Frontend-only.

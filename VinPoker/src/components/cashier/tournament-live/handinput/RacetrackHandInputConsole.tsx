@@ -373,6 +373,8 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
           showHoleCards={rich ? hook.showShowdownInput || hook.showRunoutReveal : undefined}
           waiting={rich ? !hook.handStarted : undefined}
+          betChips={FEATURES.liveBetChips}
+          dealerFix={FEATURES.trackerFeltDealerFix}
         />
       )}
 
