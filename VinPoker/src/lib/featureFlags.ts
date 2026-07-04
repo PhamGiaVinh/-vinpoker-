@@ -910,6 +910,15 @@ export const FEATURES = {
    * write-path is unchanged. Kill-switch: set false to bust immediately again (byte-identical to before).
    */
   floorOutConfirm: true,
+  /**
+   * mobileOpsV2 — iPhone-first operator shell under `/ops/*` (SafeAreaPageShell + 5-tab bottom nav:
+   * Hôm nay / Giải đấu / Bàn / Cảnh báo / Thêm). Prototype = màn "Floor hôm nay" với DỮ LIỆU MẪU,
+   * read-only, KHÔNG thao tác tiền. Frontend-only: không DB/RPC/Edge/migration; không đụng `Layout.tsx`
+   * hay `/dealer/*`. Default **OFF** (per flag policy): while false the `/ops/*` routes show a "chưa bật"
+   * notice (except admin/owner preview) and nothing mounts → prod unchanged. Flip to true ONLY after owner
+   * UAT on a preview branch. Spec: docs/design/ios-floor-ux-spec.md + ios-operations-implementation-plan.md.
+   */
+  mobileOpsV2: false,
 } as const;
 
 /**
