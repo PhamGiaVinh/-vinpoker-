@@ -53,13 +53,14 @@ describe("LiveFelt compact (PR-A1, viewer-only)", () => {
     expect(html).toContain("20cqi"); // watermark sizing, not the stacked V row
   });
 
-  it("compact portrait keeps the stable 5-slot board (backs for undealt streets)", () => {
+  it("compact portrait shows only DEALT community cards (undealt slots render nothing on the viewer)", () => {
     const html = renderToStaticMarkup(
       <LiveFelt seats={[]} {...baseProps} portrait viewerLayout compact displayCards={["As", "Kd", "", "", ""]} />
     );
-    // No seats → every card-back on the page is a BOARD back: 2 faces + 3 backs = 5 slots.
+    // The viewer drops undealt board slots (the face-down backs sat in front of the top-center
+    // pods). No seats → any card-back would be a BOARD back → none; only the 2 dealt faces show.
     expect(html).toContain('data-testid="board-cards"');
-    expect((html.match(/data-testid="card-back"/g) || []).length).toBe(3);
+    expect((html.match(/data-testid="card-back"/g) || []).length).toBe(0);
   });
 
   it("nameplates go BB-FIRST with chips demoted (2500 chips @ bb200 → 12.5 BB primary)", () => {

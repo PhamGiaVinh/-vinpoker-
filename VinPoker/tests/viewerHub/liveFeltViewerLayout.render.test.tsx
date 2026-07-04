@@ -3,7 +3,9 @@
 // hole cards can't overlap each other / the board on mobile. These pin the anti-overlap
 // contract: with viewerLayout ON the oval is a size container and cards carry `cqi`
 // clamp sizing; with it OFF (operator/TV/replay) NO container query leaks in, and the
-// card structure (5 board + 2 per seat) is preserved either way.
+// card structure is preserved: 2 per seat always; the board keeps all 5 slots on
+// operator/TV, but the VIEWER shows only DEALT community cards (undealt slots render
+// nothing, so the face-down backs no longer cover the top-center pods) + hides the V.
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -52,8 +54,10 @@ const seats = [
 ];
 
 describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
+  const board5 = ["Ah", "Kd", "Qc", "Jc", "2s"];
+
   it("makes the felt a size container and sizes cards with cqi clamp (portrait)", () => {
-    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait viewerLayout />);
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} displayCards={board5} portrait viewerLayout />);
     // The oval becomes a container so card `cqi` resolves to the felt width.
     expect(html).toContain("container-type:inline-size");
     // Hole + board cards carry the responsive clamp (cqi is unique to this sizing —
@@ -63,7 +67,7 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
   });
 
   it("uses the landscape clamp set when not portrait", () => {
-    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} viewerLayout />);
+    const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} displayCards={board5} viewerLayout />);
     expect(html).toContain("container-type:inline-size");
     expect(html).toContain("3.0cqi"); // landscape hole-card width clamp
     expect(html).toContain("4.6cqi"); // landscape board-card width clamp
@@ -75,14 +79,32 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
     expect(html).not.toContain("container-type");
   });
 
-  it("preserves the card structure: 5 board cards + exactly 2 per seat", () => {
-    const html = renderToStaticMarkup(
-      <LiveFelt seats={seats} {...baseProps} portrait viewerLayout displayCards={["Ah", "Kd", "Qc", "", ""]} />
-    );
-    const board = (html.split('data-testid="board-cards"')[1] ?? "").split('data-testid="seat-holecards"')[0] ?? "";
-    const boardCards = (board.match(/tracker-card-reveal/g) || []).length + (board.match(/data-testid="card-back"/g) || []).length;
-    expect(boardCards).toBe(5);
-    seatCardCounts(html).forEach((c) => expect(c).toBe(2));
+  it("viewer drops UNDEALT board slots (only dealt cards show); operator/TV keeps the backs; 2 per seat", () => {
+    const dealt3 = ["Ah", "Kd", "Qc", "", ""]; // 3 dealt + 2 undealt
+    const boardSeg = (html: string) =>
+      (html.split('data-testid="board-cards"')[1] ?? "").split('data-testid="seat-holecards"')[0] ?? "";
+    const backs = (seg: string) => (seg.match(/data-testid="card-back"/g) || []).length;
+    const cards = (seg: string) => backs(seg) + (seg.match(/tracker-card-reveal/g) || []).length;
+
+    const viewer = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait viewerLayout displayCards={dealt3} />);
+    const operator = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait displayCards={dealt3} />);
+
+    // VIEWER: the 2 undealt slots render nothing (they used to sit in front of the top-center
+    // pods, covering stacks/chips) → only the 3 dealt community cards remain.
+    expect(cards(boardSeg(viewer))).toBe(3);
+    expect(backs(boardSeg(viewer))).toBe(0);
+    // OPERATOR/TV: the 5-slot board is kept (undealt → V-logo backs) — byte-identical.
+    expect(backs(boardSeg(operator))).toBe(2);
+    // hole cards unaffected: exactly 2 per seat on the viewer.
+    seatCardCounts(viewer).forEach((c) => expect(c).toBe(2));
+  });
+
+  it("viewer renders the brand V as an INVISIBLE spacer (transparent); operator/TV shows it", () => {
+    const vSeg = (html: string) => (html.split('data-testid="felt-v"')[1] ?? "").slice(0, 200);
+    const viewer = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} viewerLayout />);
+    const operator = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} />);
+    expect(vSeg(viewer)).toContain("color:transparent"); // hidden on the viewer (kept only for spacing)
+    expect(vSeg(operator)).not.toContain("color:transparent"); // visible brand V on operator/TV
   });
 
   it("forces its own neon premium surface (independent of viewerNeon)", () => {
