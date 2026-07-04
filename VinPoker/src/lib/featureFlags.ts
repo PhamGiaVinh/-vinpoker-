@@ -181,6 +181,18 @@ export const FEATURES = {
    */
   accountingControlLivePayroll: false,
   /**
+   * Accounting Control — W3-B: wire the "Phải trả giải" tab to REAL read-only payout liability from
+   * the new `get_club_payout_liability` RPC (owed = finalized finished_place × tournament_prizes,
+   * matches get_member_history; paid = paid-to-date from the tournament_prize_payments ledger;
+   * outstanding = owed − paid). Read-only. Owed shows only for finalized tournaments ("chưa chốt"
+   * otherwise, never 0); paid = 0 until the separate `prizePayoutTracking` cashier write flag is on
+   * (labeled "chưa ghi nhận trả"). **Source-only migration** `20261216000000` must be applied live
+   * first — while OFF or RPC absent (42883/42P01) the tab renders mock ("chưa áp dụng"). Default
+   * **OFF**. Flip after owner-gated apply + golden-diff UAT (owed == manual Σ over the same
+   * tournaments). Kill-switch: set false.
+   */
+  accountingControlLivePayout: false,
+  /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
    * (20260825000000) applied live first. While false the editor is usable as a

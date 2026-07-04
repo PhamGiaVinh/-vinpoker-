@@ -20,6 +20,12 @@ const FIN: { loading: boolean; error: string | null; clubs: unknown[]; summary: 
 };
 vi.mock("@/hooks/useClubFinanceSummary", () => ({ useClubFinanceSummary: () => FIN }));
 
+// Stub the payout-liability hook (W3-B live path).
+const PAYOUT: { loading: boolean; error: string | null; notApplied: boolean; data: unknown } = {
+  loading: false, error: null, notApplied: false, data: null,
+};
+vi.mock("@/hooks/useClubPayoutLiability", () => ({ useClubPayoutLiability: () => PAYOUT }));
+
 import AccountingControl from "@/pages/AccountingControl";
 import { FEATURES } from "@/lib/featureFlags";
 import { OverviewTab } from "../tabs/OverviewTab";
@@ -49,12 +55,17 @@ beforeEach(() => {
   (FEATURES as { accountingControl: boolean }).accountingControl = false;
   (FEATURES as { accountingControlLiveOverview: boolean }).accountingControlLiveOverview = false;
   (FEATURES as { accountingControlLivePayroll: boolean }).accountingControlLivePayroll = false;
+  (FEATURES as { accountingControlLivePayout: boolean }).accountingControlLivePayout = false;
   AUTH.isAdmin = false;
   AUTH.isClubAdmin = false;
   AUTH.isClubOwner = false;
   FIN.loading = false;
   FIN.error = null;
   FIN.summary = null;
+  PAYOUT.loading = false;
+  PAYOUT.error = null;
+  PAYOUT.notApplied = false;
+  PAYOUT.data = null;
 });
 
 describe("AccountingControl — flag + role gates", () => {
@@ -159,6 +170,47 @@ describe("Per-tab doctrine (rendered directly — Radix unmounts inactive TabsCo
     expect(screen.getByText(/07\/2026/)).toBeInTheDocument(); // per-period row
     // table-hour cost stays mock-tagged in live mode
     expect(screen.getAllByText(/\(mock — chưa nối\)/).length).toBeGreaterThan(0);
+  });
+
+  it("W3-B live payout: real owed/paid/outstanding + honest states; over-pay = variance not negative debt", async () => {
+    const { LivePayoutTab } = await import("../live/LivePayoutTab");
+    PAYOUT.data = {
+      periodFrom: "2026-07-01", periodTo: "2026-07-31",
+      owedTotal: 28_500_000, paidTotal: 30_000_000, outstandingTotal: -1_500_000,
+      perTournament: [
+        { tournamentId: "t1", name: "Deepstack 500tr", closeDate: "2026-07-05", isClosed: true, hasFinishedPlace: true, owed: 28_500_000, paid: 30_000_000, outstanding: -1_500_000, finishersCount: 8 },
+        { tournamentId: "t2", name: "Turbo tối nay", closeDate: "2026-07-20", isClosed: false, hasFinishedPlace: false, owed: null, paid: 0, outstanding: null, finishersCount: 0 },
+      ],
+      aging: { d0_1: 0, d2_7: 0, d8p: 0 },
+    };
+    const { container } = render(<MemoryRouter><LivePayoutTab /></MemoryRouter>);
+    const txt = (container.textContent ?? "").normalize("NFC");
+    expect(txt.normalize("NFC")).toContain("Số thật".normalize("NFC"));
+    expect(screen.getAllByText(/28\.500\.000/).length).toBeGreaterThan(0); // real owed
+    // over-paid → the TOTAL card shows a variance warning (abs), NOT a negative total debt
+    expect(txt).toContain("Chênh lệch trả vượt".normalize("NFC"));
+    // not-finalized tournament shows "chưa chốt", not an owed 0
+    expect(txt).toContain("chưa chốt kết quả".normalize("NFC"));
+  });
+
+  it("W3-B payout notApplied → 'chưa áp dụng' banner + mock body (no real 0)", async () => {
+    const { LivePayoutTab } = await import("../live/LivePayoutTab");
+    PAYOUT.notApplied = true;
+    PAYOUT.data = null;
+    render(<MemoryRouter><LivePayoutTab /></MemoryRouter>);
+    expect(screen.getByText(/Chưa áp dụng/)).toBeInTheDocument();
+    // mock body still shows (owed row exists), never a bare real 0
+    expect(screen.getByText(/Còn nợ người chơi/)).toBeInTheDocument();
+  });
+
+  it("AC PayoutLiabilityTab is READ-ONLY: no 'Đã trả thưởng' button (that lives only in Cashier)", () => {
+    const { container } = render(<MemoryRouter><PayoutLiabilityTab live={{ active: true, loading: false, error: null, notApplied: false, data: {
+      periodLabel: "Tháng này", owedTotal: 1_000_000, paidTotal: 0, outstandingTotal: 1_000_000,
+      perTournament: [{ tournamentId: "t1", name: "G1", closeDate: "2026-07-05", isClosed: true, hasFinishedPlace: true, owed: 1_000_000, paid: 0, outstanding: 1_000_000, finishersCount: 1 }],
+      aging: { d0_1: 1_000_000, d2_7: 0, d8p: 0 },
+    } }} /></MemoryRouter>);
+    expect(container.textContent).not.toMatch(/Đã trả thưởng/);
+    expect(screen.queryByRole("button", { name: /trả/i })).not.toBeInTheDocument();
   });
 
   it("live flag OFF → Tổng quan renders pure mock (no live banner, no finance fetch)", () => {
