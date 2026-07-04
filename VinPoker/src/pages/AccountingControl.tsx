@@ -15,6 +15,7 @@ import { CashBankTab } from "@/components/accounting-control/tabs/CashBankTab";
 import { PayoutLiabilityTab } from "@/components/accounting-control/tabs/PayoutLiabilityTab";
 import { FnbFinanceTab } from "@/components/accounting-control/tabs/FnbFinanceTab";
 import { PayrollCostTab } from "@/components/accounting-control/tabs/PayrollCostTab";
+import { LivePayrollTab } from "@/components/accounting-control/live/LivePayrollTab";
 import { StakingEscrowTab } from "@/components/accounting-control/tabs/StakingEscrowTab";
 import { VarianceAlertsTab } from "@/components/accounting-control/tabs/VarianceAlertsTab";
 import { MonthlyReportTab } from "@/components/accounting-control/tabs/MonthlyReportTab";
@@ -78,7 +79,7 @@ const AccountingControl = () => {
         </p>
       </header>
 
-      <MockNotice partialLive={FEATURES.accountingControlLiveOverview} />
+      <MockNotice partialLive={FEATURES.accountingControlLiveOverview || FEATURES.accountingControlLivePayroll} />
 
       <Tabs value={tab} onValueChange={goTo} className="w-full">
         <div className="overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -117,7 +118,7 @@ const AccountingControl = () => {
           <FnbFinanceTab />
         </TabsContent>
         <TabsContent value="payroll" className="mt-4">
-          <PayrollCostTab />
+          {FEATURES.accountingControlLivePayroll ? <LivePayrollTab /> : <PayrollCostTab />}
         </TabsContent>
         <TabsContent value="staking" className="mt-4">
           <StakingEscrowTab />
