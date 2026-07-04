@@ -60,6 +60,7 @@ import { deriveTableSwingView, deriveDealerTableStatus, formatTimeHHmm, type Tab
 import DealerStatusLegend from "./dealer-swing/DealerStatusLegend";
 import DealerSearchPanel from "./dealer-swing/DealerSearchPanel";
 import { FeatureTablePoolBox } from "./dealer-swing/FeatureTablePoolBox";
+import { StaffingOptimizerCard } from "./dealer-swing/StaffingOptimizerCard";
 import CloseTourDialog, { type CloseTourPreview } from "./dealer-swing/CloseTourDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { exportToExcel } from "@/lib/exportExcel";
@@ -1646,6 +1647,17 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               onSendToBreak={(attId) => sendToBreak(attId, defaultBreakMinutesRef.current)}
               onRetry={refetchBreakPool}
             />
+            {FEATURES.dealerStaffingOptimizer && (isAdmin || isClubAdmin || isClubOwner || isFloor) && (
+              <StaffingOptimizerCard
+                activeTables={summaryCounts.activeTables}
+                dealers={dealers ?? []}
+                assignments={assignments ?? []}
+                swingConfigs={swingConfigs ?? []}
+                nowMs={nowMs}
+                onRequestCheckout={handleBatchCheckoutClick}
+                onOpenCheckin={() => { loadCheckinDealers(); setCheckinOpen(true); }}
+              />
+            )}
             {FEATURES.dealerFeatureTables && (isAdmin || isClubAdmin || isClubOwner || isFloor) && (
               <FeatureTablePoolBox clubId={clubFilter ?? clubIds[0] ?? null} tables={tables ?? []} dealers={dealers ?? []} />
             )}
