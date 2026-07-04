@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatVND } from "@/lib/format";
 import { mapFnbError } from "@/lib/fnbErrors";
+import { compressImage } from "@/lib/compressImage";
 import { useFnbMenu, type FnbMenuItem, type FnbCategory } from "@/hooks/useFnbMenu";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil } from "lucide-react";
+import { Loader2, Plus, Pencil, ImagePlus, X } from "lucide-react";
 
 const NO_CATEGORY = "__none__";
 
@@ -104,6 +105,30 @@ function MenuItemDialog({
   const [imageUrl, setImageUrl] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFile = async (rawFile: File) => {
+    if (!rawFile.type.startsWith("image/")) { toast.error("Vui lòng chọn tệp ảnh."); return; }
+    if (rawFile.size > 8 * 1024 * 1024) { toast.error("Ảnh quá lớn (tối đa 8MB)."); return; }
+    setUploading(true);
+    try {
+      const file = await compressImage(rawFile, { maxEdge: 1200, quality: 0.82 });
+      const ext = file.type === "image/png" ? "png" : "jpg";
+      const path = `${clubId}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("fnb-menu").upload(path, file, {
+        cacheControl: "3600", contentType: file.type, upsert: false,
+      });
+      if (upErr) { toast.error(upErr.message); return; }
+      const { data: pub } = supabase.storage.from("fnb-menu").getPublicUrl(path);
+      setImageUrl(pub.publicUrl);
+      toast.success("Đã tải ảnh lên.");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Tải ảnh thất bại.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const key = `${open}:${editing?.id ?? "new"}`;
   const [syncedKey, setSyncedKey] = useState("");
@@ -169,9 +194,35 @@ function MenuItemDialog({
             </div>
           </div>
           <div>
-            <Label htmlFor="mi-img">Ảnh (URL, không bắt buộc)</Label>
-            <Input id="mi-img" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://…" className="bg-card border-border text-foreground" />
+            <Label>Ảnh món (không bắt buộc)</Label>
+            <div className="flex items-start gap-3 mt-1">
+              <div className="w-20 h-20 shrink-0 rounded-lg overflow-hidden border border-border bg-card flex items-center justify-center">
+                {imageUrl
+                  ? <img src={imageUrl} alt="Ảnh món" className="w-full h-full object-cover" />
+                  : <ImagePlus className="w-6 h-6 text-muted-foreground" />}
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={uploading}
+                    onClick={() => fileRef.current?.click()}
+                    className="border-border text-foreground">
+                    {uploading
+                      ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Đang tải…</>
+                      : <><ImagePlus className="w-3.5 h-3.5 mr-1" /> Tải ảnh lên</>}
+                  </Button>
+                  {imageUrl && (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setImageUrl("")}
+                      className="text-muted-foreground">
+                      <X className="w-3.5 h-3.5 mr-1" /> Xóa ảnh
+                    </Button>
+                  )}
+                </div>
+                <Input id="mi-img" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="hoặc dán URL ảnh…" className="bg-card border-border text-foreground text-xs" />
+              </div>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }} />
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
             <Label htmlFor="mi-active" className="cursor-pointer">Đang bán</Label>
