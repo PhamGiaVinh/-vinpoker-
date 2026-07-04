@@ -619,7 +619,7 @@ export function LiveFelt({
           {/* Compact portrait: the pot lives in the STATUS BAR below (RPT pattern) — the
               short felt keeps only the board centered, so 9-max pods never collide. */}
           {potSize > 0 && !(compactActive && portrait) && (
-            <div className="mt-2.5 flex flex-col items-center">
+            <div className={`mt-2.5 flex flex-col items-center${viewerLayout ? " relative" : ""}`}>
               <div
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
@@ -644,7 +644,14 @@ export function LiveFelt({
                 </div>
               </div>
               {potBreakdown && potBreakdown.sidePots.length > 0 && (
-                <div className="mt-1 flex flex-wrap justify-center gap-1">
+                <div
+                  className={
+                    viewerLayout
+                      ? "absolute left-1/2 top-full mt-1 flex max-w-[244px] -translate-x-1/2 flex-wrap justify-center gap-1"
+                      : "mt-1 flex flex-wrap justify-center gap-1"
+                  }
+                  style={viewerLayout ? { width: "max-content" } : undefined}
+                >
                   {potBreakdown.pots.map((pot, i) => (
                     <span
                       key={i}
