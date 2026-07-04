@@ -573,27 +573,37 @@ export function LiveFelt({
           style={{ top: geo.centerTop, width: geo.centerW, maxWidth: "244px" }}
         >
           {compactActive && portrait ? (
-            // Compact stadium: no vertical room to STACK the V above the board — it
-            // becomes a faint centered watermark BEHIND the board instead (RPT puts its
-            // brand the same way), so the short felt fits board + pot without clipping.
+            // Compact-portrait: the V is ABSOLUTE behind the board (no layout impact). On the
+            // viewer it's transparent → no visible letter; the short felt keeps board + pot.
             <div
               data-testid="felt-v"
               aria-hidden="true"
               className="tracker-display absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 font-black leading-none"
-              style={{ fontSize: "clamp(44px,20cqi,72px)", color: "hsl(var(--primary) / 0.10)" }}
+              style={{ fontSize: "clamp(44px,20cqi,72px)", color: "transparent" }}
             >
               V
             </div>
           ) : (
-          <div
-            data-testid="felt-v"
-            className="tracker-display mb-2 font-black leading-none"
-            style={{ fontSize: geo.vSize, color: neon ? "hsl(var(--primary) / 0.5)" : "hsl(var(--poker-gold) / 0.55)", textShadow: "0 1px 2px rgba(0,0,0,0.45)" }}
-          >
-            V
-          </div>
+            // Stacked V above the board. VIEWER → kept only as a TRANSPARENT SPACER: it read
+            // as clutter over the top-center pods, but its height holds the board low enough
+            // to clear the top-seat hole cards + chips, so we hide the letter (transparent)
+            // without moving the board. OPERATOR/TV → the visible brand V (byte-identical).
+            <div
+              data-testid="felt-v"
+              aria-hidden={viewerLayout || undefined}
+              className="tracker-display mb-2 font-black leading-none"
+              style={{
+                fontSize: geo.vSize,
+                color: viewerLayout ? "transparent" : neon ? "hsl(var(--primary) / 0.5)" : "hsl(var(--poker-gold) / 0.55)",
+                textShadow: viewerLayout ? undefined : "0 1px 2px rgba(0,0,0,0.45)",
+              }}
+            >
+              V
+            </div>
           )}
-          {/* Board — revealed cards face up; unrevealed slots = premium V-logo backs. */}
+          {/* Board — revealed cards face up. VIEWER: undealt slots render NOTHING (the
+              face-down placeholders sat in front of the top-center seats, covering their
+              pods/stacks/bet chips preflop). Operator/TV keep the V-logo backs → byte-identical. */}
           <div data-testid="board-cards" className="flex items-center justify-center gap-1.5">
             {displayCards.map((card, i) =>
               card ? (
@@ -611,7 +621,7 @@ export function LiveFelt({
                       : undefined
                   }
                 />
-              ) : (
+              ) : viewerLayout ? null : (
                 <CardBack key={`${i}-back`} size="md" className={boardCardCls} style={boardStyle} />
               )
             )}
