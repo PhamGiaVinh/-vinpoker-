@@ -143,6 +143,14 @@ const EXECUTE_MIN_REST_MINUTES = 15;
 // are NOT gated by this flag.)
 const OT_ALERT_TELEGRAM_ENABLED = false;
 
+// Owner request (2026-07-05): hide the post-swing confirmation on Telegram —
+// "🔵 <dealer> vừa vào Bàn X / Thay thế: <dealer>" (and the "- Thay" variants in
+// the dormant force-release / unplanned-pick / fallback branches). It is redundant
+// with the 5-min-ahead "📋 Tiếp theo" pre-assign announce (pass2-pre-assign.ts),
+// which is NOT affected by this flag and still fires. When false, all 7 Pass-3
+// swing-confirmation sends are console-only. Flip true to restore the confirmations.
+const SWING_CONFIRM_TELEGRAM_ENABLED = false;
+
 // ─── Dealer State Machine ─────────────────────────────────────────────────────
 // Wrapper around transition_dealer_state RPC. Dùng cho individual operations.
 // Batch cleanup (Pass 1b, 1c) dùng direct UPDATE — trigger ghi audit tự động.
@@ -2344,7 +2352,7 @@ if (tier2Count > 0) {
             if (fbResult?.outcome === "swung") {
               metrics.success++;
               cycleExcludedIds.add(fbDealer.id);
-              if (botToken && pass2ChatId) {
+              if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                 const swingMsg = `🔵 ${mention({ full_name: fbDealer.full_name, telegram_username: fbDealer.telegram_username ?? null })} vào ${fallbackTableName}${fallbackOutgoingDealer.full_name !== "Unknown" ? ` - Thay ${mention({ full_name: fallbackOutgoingDealer.full_name, telegram_username: fallbackOutgoingDealer.telegram_username ?? null })}` : ""}`;
                 sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
               }
@@ -2686,7 +2694,7 @@ if (tier2Count > 0) {
                   metrics.success++;
                   cycleExcludedIds.add(replacementDealer.id);
                   console.log(`[Pass 3] ✅ Replacement after force-release: ${replacementDealer.full_name} → ${tableName}`);
-                  if (botToken && pass2ChatId) {
+                  if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${mention({ full_name: replacementDealer.full_name, telegram_username: replacementDealer.telegram_username ?? null })} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${mention({ full_name: outgoingDealer.full_name, telegram_username: (outgoingDealer as any).telegram_username ?? null })}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
@@ -2893,7 +2901,7 @@ if (tier2Count > 0) {
                 // future tense, fired minutes earlier): this branch confirms the
                 // handoff is DONE. Fire-and-forget so a Telegram failure can never
                 // fail the swing.
-                if (botToken && pass2ChatId) {
+                if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                   const incomingName = preflightAtt?.full_name ?? "Dealer";
                   const outgoingName =
                     outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown"
@@ -3270,7 +3278,7 @@ if (tier2Count > 0) {
                   if (fbResult?.outcome === "swung") {
                     metrics.success++;
                     cycleExcludedIds.add(fbDealer.id);
-                    if (botToken && pass2ChatId) {
+                    if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                       const swingMsg = `🔵 ${mention({ full_name: fbDealer.full_name, telegram_username: fbDealer.telegram_username ?? null })} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${mention({ full_name: outgoingDealer.full_name, telegram_username: (outgoingDealer as any).telegram_username ?? null })}` : ""}`;
                       sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                     }
@@ -3558,7 +3566,7 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
-                  if (botToken && pass2ChatId) {
+                  if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${mention({ full_name: nextDealer.full_name, telegram_username: nextDealer.telegram_username ?? null })} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${mention({ full_name: outgoingDealer.full_name, telegram_username: (outgoingDealer as any).telegram_username ?? null })}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
@@ -3663,7 +3671,7 @@ if (tier2Count > 0) {
                 if (fbSwingResult?.outcome === "swung") {
                   metrics.success++;
                   cycleExcludedIds.add(nextDealer.id);
-                  if (botToken && pass2ChatId) {
+                  if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${mention({ full_name: (nextDealer.dealers as any)?.full_name ?? "Dealer", telegram_username: (nextDealer.dealers as any)?.telegram_username ?? null })} vào ${tableName}${outgoingDealer?.full_name && outgoingDealer.full_name !== "Unknown" ? ` - Thay ${mention({ full_name: outgoingDealer.full_name, telegram_username: (outgoingDealer as any).telegram_username ?? null })}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
@@ -3731,7 +3739,7 @@ if (tier2Count > 0) {
                 const incomingDealer = (newAssignment?.dealer as any)?.dealers;
                 if (incomingDealer) {
                   console.log(`[Pass 3] Auto-picked dealer confirmed for ${tableName}: ${incomingDealer.full_name}`);
-                  if (botToken && pass2ChatId) {
+                  if (SWING_CONFIRM_TELEGRAM_ENABLED && botToken && pass2ChatId) {
                     const swingMsg = `🔵 ${incomingDealer.full_name} vào ${tableName}${outgoingDealer.full_name !== "Unknown" ? ` - Thay ${outgoingDealer.full_name}` : ""}`;
                     sendTelegramNotification(botToken, pass2ChatId, swingMsg).catch(err => console.error("[process-swing] Telegram error:", err));
                   }
