@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -245,8 +244,8 @@ export function BulkDealerImportDialog({
         <DialogContent className="max-w-lg bg-popover border border-border text-foreground max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Nhập hàng loạt dealer từ file</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Tải ảnh / PDF / Excel / CSV danh sách tên → AI đọc tên → tạo hàng loạt. Chỉ lấy tên; hạng mặc định B.
+            <DialogDescription className="sr-only">
+              Nhập hàng loạt dealer từ file danh sách tên.
             </DialogDescription>
           </DialogHeader>
 
@@ -318,7 +317,7 @@ export function BulkDealerImportDialog({
                   {names.some((n) => n.duplicate) && <span className="text-warning"> · dòng ⚠ trùng đã bỏ chọn sẵn</span>}
                 </div>
 
-                <ScrollArea className="max-h-56 rounded-md border border-border">
+                <div className="max-h-[46vh] overflow-y-auto overscroll-contain rounded-md border border-border">
                   <div className="divide-y divide-border">
                     {names.map((n) => (
                       <div key={n.tempId} className="flex items-center gap-2 px-2 py-1.5">
@@ -334,7 +333,7 @@ export function BulkDealerImportDialog({
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
+                </div>
                 <button onClick={addManual} className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
                   <Plus className="h-3 w-3" /> Thêm tên thủ công
                 </button>
@@ -351,7 +350,7 @@ export function BulkDealerImportDialog({
                       <span className="text-xs text-destructive">{result.errors.length} dòng lỗi:</span>
                       <button onClick={copyErrors} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"><Copy className="h-3 w-3" /> Copy</button>
                     </div>
-                    <ScrollArea className="max-h-28 mt-1 rounded border border-border">
+                    <div className="max-h-28 overflow-y-auto mt-1 rounded border border-border">
                       <table className="w-full text-[11px]">
                         <tbody>
                           {result.errors.map((e, i) => (
@@ -362,7 +361,7 @@ export function BulkDealerImportDialog({
                           ))}
                         </tbody>
                       </table>
-                    </ScrollArea>
+                    </div>
                   </div>
                 )}
               </div>
