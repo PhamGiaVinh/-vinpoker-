@@ -19,7 +19,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-[rgba(7,5,10,0.72)] backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -29,7 +29,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-popover/95 p-6 text-popover-foreground shadow-card backdrop-blur transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {
@@ -61,7 +61,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
             sheets the old `absolute` X scrolled out of reach on short / keyboard-
             reduced mobile viewports, so it couldn't be tapped to close. */}
         <div className="pointer-events-none sticky top-0 z-20 h-0">
-          <SheetPrimitive.Close className="pointer-events-auto absolute right-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-muted text-foreground shadow-card ring-offset-background transition-colors hover:border-primary/50 hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+          <SheetPrimitive.Close className="pointer-events-auto absolute right-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground shadow-md ring-offset-background transition-colors hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
             <X className="h-6 w-6" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
