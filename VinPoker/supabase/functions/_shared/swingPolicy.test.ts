@@ -32,7 +32,7 @@ Deno.test("fatigue / priority-break thresholds match original literals", () => {
 
 Deno.test("pre-assign window match original literals", () => {
   assertEquals(P.preAssignWindow.halfWidthMinutes, 2);               // ±2
-  assertEquals(P.preAssignWindow.emergencyOtPreAnnounceMinutes, 3);  // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES
+  assertEquals(P.preAssignWindow.emergencyOtPreAnnounceMinutes, 5);  // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES (raised 3→5 on 2026-07-05)
 });
 
 Deno.test("scoring weights match original literals", () => {
