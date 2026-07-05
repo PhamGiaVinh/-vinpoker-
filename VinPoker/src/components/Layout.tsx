@@ -85,8 +85,8 @@ export const Layout = () => {
   if (!showShell) return <Outlet />;
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden bg-background">
-      <header className="sticky top-0 z-40 border-b border-primary/15 bg-background/86 shadow-[0_1px_0_hsl(var(--primary)/0.06),0_18px_42px_-34px_hsl(var(--primary)/0.45)] backdrop-blur-xl pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-2 md:gap-4 px-3 md:px-6 h-16">
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Mobile "☰" secondary-nav menu — holds routes without a bottom-nav slot.
@@ -95,7 +95,7 @@ export const Layout = () => {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border/80 bg-card/55 text-muted-foreground hover:text-primary hover:border-primary/60 hover:bg-primary/10 transition-colors"
+                  className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/60 transition-colors"
                   aria-label="Menu"
                 >
                   <Menu className="w-5 h-5" />
@@ -151,8 +151,8 @@ export const Layout = () => {
             </DropdownMenu>
 
             <NavLink to="/" className="flex items-center gap-2 shrink-0">
-              <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg border border-primary/25 object-cover shadow-gold" />
-              <div className="hidden sm:block font-display font-black tracking-[0.18em] text-foreground text-lg leading-none">
+              <img src={appLogo} alt={t("layout.logoAlt")} className="w-9 h-9 rounded-lg object-cover" />
+              <div className="hidden sm:block font-display font-black tracking-[0.18em] text-primary text-lg leading-none">
                 VBacker
               </div>
             </NavLink>
@@ -166,10 +166,10 @@ export const Layout = () => {
                 end={m.end}
                 className={({ isActive }) =>
                   cn(
-                    "text-xs font-bold tracking-[0.1em] uppercase rounded-full border px-2.5 py-1.5 whitespace-nowrap transition-colors",
+                    "text-xs font-bold tracking-[0.1em] uppercase rounded-full px-2.5 py-1.5 whitespace-nowrap transition-colors",
                     isActive
-                      ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.08)]"
-                      : "border-transparent text-muted-foreground hover:border-border/70 hover:bg-card/55 hover:text-foreground"
+                      ? "text-primary bg-primary/10 shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/60"
                   )
                 }
               >
@@ -184,10 +184,10 @@ export const Layout = () => {
                 to="/poker"
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center gap-1.5 text-xs font-bold tracking-[0.1em] uppercase rounded-full border px-2.5 py-1.5 whitespace-nowrap transition-colors",
+                    "inline-flex items-center gap-1.5 text-xs font-bold tracking-[0.1em] uppercase rounded-full px-2.5 py-1.5 whitespace-nowrap transition-colors",
                     isActive
-                      ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.08)]"
-                      : "border-primary/20 text-primary/90 hover:border-primary/35 hover:bg-primary/10 hover:text-primary"
+                      ? "text-primary bg-primary/10 shadow-[0_0_10px_hsl(var(--primary)/0.2)]"
+                      : "text-primary/90 hover:text-primary hover:bg-primary/10"
                   )
                 }
               >
@@ -203,7 +203,7 @@ export const Layout = () => {
             {user && (
               <NavLink
                 to="/inbox"
-                className="relative px-2.5 py-1.5 rounded-lg border border-border/80 bg-card/45 hover:border-primary/60 text-muted-foreground hover:text-primary hidden md:inline-flex items-center gap-1.5 transition-colors"
+                className="relative px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/60 text-muted-foreground hover:text-primary hidden md:inline-flex items-center gap-1.5 transition-colors"
                 title={t("layout.inbox")}
               >
                 <MessageCircle className="w-4 h-4" />
@@ -228,7 +228,7 @@ export const Layout = () => {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center gap-1 min-h-[40px] md:min-h-0 px-2.5 py-2 md:py-1.5 rounded-lg border border-primary/45 bg-card/70 text-primary text-[11px] font-bold tracking-wider shadow-gold transition-colors hover:bg-primary/10"
+                    className="inline-flex items-center justify-center gap-1 min-h-[40px] md:min-h-0 px-2.5 py-2 md:py-1.5 rounded-lg bg-primary/20 border border-primary/50 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/30 shadow-[0_0_10px_hsl(var(--primary)/0.35)] transition-colors"
                     aria-label={t("layout.operations")}
                   >
                     <Wallet className="w-[18px] h-[18px] md:w-4 md:h-4 shrink-0" />
@@ -329,12 +329,12 @@ export const Layout = () => {
 
             <div className="hidden md:flex items-center gap-1.5">
               {isClubAdmin && !isAdmin && (
-                <NavLink to="/club/admin" className="px-2.5 py-1.5 rounded-lg border border-primary/30 bg-card/45 text-primary text-[11px] font-semibold tracking-wider hover:bg-primary/10">
+                <NavLink to="/club/admin" className="px-2.5 py-1.5 rounded-lg border border-primary/30 text-primary text-[11px] font-semibold tracking-wider hover:bg-primary/10">
                   {t("layout.clubAdmin")}
                 </NavLink>
               )}
               {isStaffOps && (
-                <NavLink to="/admin/staking" className="relative px-2.5 py-1.5 rounded-lg border border-border/80 bg-card/45 text-muted-foreground text-[11px] font-semibold tracking-wider hover:text-primary hover:border-primary/60">
+                <NavLink to="/admin/staking" className="relative px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground text-[11px] font-semibold tracking-wider hover:text-primary hover:border-primary/60">
                   {t("layout.staking")}
                   {adminPending.total > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
@@ -350,12 +350,12 @@ export const Layout = () => {
               {/* Floor sees the MEDIA nav only to reach the photo-upload tab; CMS tabs stay
                   media/admin-only (gated inside MediaCenter), and writes are RLS-gated server-side. */}
               {(isMedia || isFloor || isAdmin) && (
-                <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-[hsl(var(--ds-preassign)_/_0.4)] bg-card/45 text-[hsl(var(--ds-preassign))] text-[11px] font-bold tracking-wider hover:bg-[hsl(var(--ds-preassign)_/_0.15)]">
+                <NavLink to="/media" className="px-2.5 py-1.5 rounded-lg border border-[hsl(var(--ds-preassign)_/_0.4)] text-[hsl(var(--ds-preassign))] text-[11px] font-bold tracking-wider hover:bg-[hsl(var(--ds-preassign)_/_0.15)]">
                   MEDIA
                 </NavLink>
               )}
               {isAdmin && (
-                <NavLink to="/admin" className="px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/20">
+                <NavLink to="/admin" className="px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/40 text-primary text-[11px] font-bold tracking-wider hover:bg-primary/25">
                   {t("layout.super")}
                 </NavLink>
               )}
@@ -397,7 +397,7 @@ export const Layout = () => {
         </div>
       </header>
 
-      <main className="relative flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
@@ -405,7 +405,7 @@ export const Layout = () => {
       <DuplicateNameGuard />
       <InstallPWAButton />
 
-      <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-primary/15 bg-background/95 shadow-[0_-18px_44px_-34px_hsl(var(--primary)/0.55)] backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+      <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <RegisteredBadge />
         <div className="mx-auto grid h-[68px] max-w-3xl grid-cols-5 items-stretch">
           {mobileTabsData.slice(0, 2).map((tab) => (
