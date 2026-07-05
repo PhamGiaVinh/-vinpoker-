@@ -14,6 +14,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -301,37 +304,51 @@ export const Layout = () => {
                       {t("marketing.navTitle")}
                     </DropdownMenuItem>
                   )}
-                  {/* F&B — each link gated on its TARGET page's flag (no dead links); all OFF by default. */}
-                  {/* F&B public DEMO — static showcase (no RPC); intentionally visible to owners/admins. */}
-                  {FEATURES.fnbDemo && (isClubOwner || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/fnb/demo")} className="gap-2.5 cursor-pointer">
-                      <UtensilsCrossed className="w-4 h-4" />
-                      F&amp;B (Xem thử)
-                    </DropdownMenuItem>
-                  )}
-                  {FEATURES.fnbCounter && (isFnbCashier || isClubOwner || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/fnb")} className="gap-2.5 cursor-pointer">
-                      <UtensilsCrossed className="w-4 h-4" />
-                      {t("fnb.navCounter")}
-                    </DropdownMenuItem>
-                  )}
-                  {FEATURES.fnbKitchen && (isFnbKitchen || isClubOwner || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/fnb/kitchen")} className="gap-2.5 cursor-pointer">
-                      <ChefHat className="w-4 h-4" />
-                      {t("fnb.navKitchen")}
-                    </DropdownMenuItem>
-                  )}
-                  {FEATURES.fnbGuestOrder && (isFnbServer || isFnbCashier || isClubOwner || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/fnb/serve")} className="gap-2.5 cursor-pointer">
-                      <UtensilsCrossed className="w-4 h-4" />
-                      {t("fnb.navServe")}
-                    </DropdownMenuItem>
-                  )}
-                  {FEATURES.fnbModule && (isClubOwner || isAdmin) && (
-                    <DropdownMenuItem onClick={() => nav("/fnb/admin")} className="gap-2.5 cursor-pointer">
-                      <Settings2 className="w-4 h-4" />
-                      {t("fnb.navAdmin")}
-                    </DropdownMenuItem>
+                  {/* F&B — collapsed into ONE submenu to declutter VẬN HÀNH. Each child stays gated on
+                      its TARGET page's flag + role (no dead links); the parent shows only if ≥1 child does. */}
+                  {((FEATURES.fnbCounter && (isFnbCashier || isClubOwner || isAdmin)) ||
+                    (FEATURES.fnbKitchen && (isFnbKitchen || isClubOwner || isAdmin)) ||
+                    (FEATURES.fnbGuestOrder && (isFnbServer || isFnbCashier || isClubOwner || isAdmin)) ||
+                    (FEATURES.fnbModule && (isClubOwner || isAdmin)) ||
+                    (FEATURES.fnbDemo && (isClubOwner || isAdmin))) && (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="gap-2.5">
+                        <UtensilsCrossed className="w-4 h-4" />
+                        F&amp;B
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {FEATURES.fnbCounter && (isFnbCashier || isClubOwner || isAdmin) && (
+                          <DropdownMenuItem onClick={() => nav("/fnb")} className="gap-2.5 cursor-pointer">
+                            <UtensilsCrossed className="w-4 h-4" />
+                            {t("fnb.navCounter")}
+                          </DropdownMenuItem>
+                        )}
+                        {FEATURES.fnbKitchen && (isFnbKitchen || isClubOwner || isAdmin) && (
+                          <DropdownMenuItem onClick={() => nav("/fnb/kitchen")} className="gap-2.5 cursor-pointer">
+                            <ChefHat className="w-4 h-4" />
+                            {t("fnb.navKitchen")}
+                          </DropdownMenuItem>
+                        )}
+                        {FEATURES.fnbGuestOrder && (isFnbServer || isFnbCashier || isClubOwner || isAdmin) && (
+                          <DropdownMenuItem onClick={() => nav("/fnb/serve")} className="gap-2.5 cursor-pointer">
+                            <UtensilsCrossed className="w-4 h-4" />
+                            {t("fnb.navServe")}
+                          </DropdownMenuItem>
+                        )}
+                        {FEATURES.fnbModule && (isClubOwner || isAdmin) && (
+                          <DropdownMenuItem onClick={() => nav("/fnb/admin")} className="gap-2.5 cursor-pointer">
+                            <Settings2 className="w-4 h-4" />
+                            {t("fnb.navAdmin")}
+                          </DropdownMenuItem>
+                        )}
+                        {FEATURES.fnbDemo && (isClubOwner || isAdmin) && (
+                          <DropdownMenuItem onClick={() => nav("/fnb/demo")} className="gap-2.5 cursor-pointer">
+                            <UtensilsCrossed className="w-4 h-4" />
+                            F&amp;B (Xem thử)
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   )}
                   {/* Dealer App — shown to dealers (their only operator entry) and to
                       admins/owners. Operator items above stay role-gated, so a pure
