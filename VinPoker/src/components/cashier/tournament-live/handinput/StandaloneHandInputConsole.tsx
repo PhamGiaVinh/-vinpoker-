@@ -54,6 +54,14 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
   const bigBlind = hook.bigBlind;
   const formatBB = (n: number): string | null =>
     bigBlind > 0 ? `${(n / bigBlind).toFixed(1).replace(/\.0$/, "")} BB` : null;
+  const feltBlinds =
+    bigBlind > 0
+      ? {
+          sb: hook.sbAmount > 0 ? hook.sbAmount : bigBlind / 2,
+          bb: bigBlind,
+          ante: hook.blindLevelSnapshot?.ante ?? 0,
+        }
+      : null;
 
   const seatInfo = playersToSeatInfo(hook.players, {
     tableId: hook.tableId,
@@ -365,6 +373,10 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               onSeatClick={hook.handleSeatNumberTap}
               selectedSeat={selectedSeatOf(hook.players, hook.selectedActorId)}
               physicalSeats={hook.maxSeats}
+              viewerLayout
+              compact
+              blinds={feltBlinds}
+              runout={hook.allInRunout}
             />
           )}
           {hook.handStarted && !hook.isSummary && (
