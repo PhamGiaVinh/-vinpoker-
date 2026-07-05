@@ -22,8 +22,9 @@ import { OPEN_TABLE_GRACE_MINUTES } from "../../_shared/openTableGrace.ts";
 
 export type SupabaseAdmin = any;
 
-// Mirror process-swing's execute-time hard rest floor (owner policy 2026-06-13).
-const EXECUTE_MIN_REST_MINUTES = 13;
+// Mirror process-swing's execute-time hard rest floor (owner policy 2026-06-13,
+// raised to 15 on 2026-07-05 — keep in sync with process-swing/index.ts).
+const EXECUTE_MIN_REST_MINUTES = 15;
 // A reservation whose dealer never frees up self-cancels after this age so it
 // can't block the table forever.
 const RESERVATION_STALE_MINUTES = 30;

@@ -6,10 +6,12 @@
 // across pickNextDealer.ts, process-swing/index.ts, pass2-pre-assign.ts,
 // fillEmptyTables.ts, mealBreakService.ts and computeSwingDuration.ts.
 //
-// ⚠️ A1 IS A PURE CONSOLIDATION — NO numeric value changes, NO logic/ordering
-//    changes. Every value below is byte-identical to the literal it replaced;
-//    the original site is cited in the trailing comment. swingPolicy.test.ts
-//    asserts each value, so an accidental edit here fails the test.
+// ⚠️ A1 WAS A PURE CONSOLIDATION — every value below was byte-identical to the
+//    literal it replaced; the original site is cited in the trailing comment.
+//    swingPolicy.test.ts asserts each value, so an accidental edit here fails the
+//    test (update the matching assertion alongside any intentional change).
+//    Post-A1 intentional tuning (owner-approved): emergencyOtPreAnnounceMinutes
+//    3→5 on 2026-07-05 (no swing announced <5 min ahead).
 //
 // Notes on intentional duplicates (faithful to today's code; NOT bugs to fix in
 // A1 — surfaced here for a later A2 reconciliation):
@@ -55,7 +57,7 @@ export const SWING_POLICY = {
   // ── pre-assign window (pass2-pre-assign.ts) ───────────────────────────────
   preAssignWindow: {
     halfWidthMinutes: 2,                  // window = [now + (preAnnounce - 2), now + (preAnnounce + 2)]
-    emergencyOtPreAnnounceMinutes: 3,     // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES
+    emergencyOtPreAnnounceMinutes: 5,     // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES — raised 3→5 (owner 2026-07-05: no swing announced <5 min ahead)
   },
 
   // ── pickNextDealer scoring weights ────────────────────────────────────────

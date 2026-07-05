@@ -127,12 +127,12 @@ const AUTO_PREASSIGN_EMPTY_TABLES_CLUB_IDS = parseClubIdEnv("AUTO_PREASSIGN_EMPT
 // set_rotation_slot_dealer) is NOT affected — a resting dealer may still be
 // pre-assigned for a future swing. Flip true to restore emergency auto-pick.
 const UNPLANNED_AUTO_PICK_ENABLED = false;
-// Hard rest revalidation at EXECUTE time (owner policy 2026-06-13): the incoming
-// pre-assigned dealer must have >= 13 min rest at swing time. If still short, do
-// NOT swing — keep the current dealer on OT and alert. Planning may pre-assign a
-// resting dealer who is expected to be valid by swing time; execution enforces
-// the hard rest floor.
-const EXECUTE_MIN_REST_MINUTES = 13;
+// Hard rest revalidation at EXECUTE time (owner policy 2026-06-13, raised to 15 on
+// 2026-07-05): the incoming pre-assigned dealer must have >= 15 min rest at swing
+// time. If still short, do NOT swing — keep the current dealer on OT and alert.
+// Planning may pre-assign a resting dealer who is expected to be valid by swing
+// time; execution enforces the hard rest floor.
+const EXECUTE_MIN_REST_MINUTES = 15;
 // Owner policy (2026-06-14): do NOT spam Telegram with Pass 0c OT alerts — both
 // the per-tick "đang OT, cần can thiệp thủ công" overdue alert AND the >45-min
 // extended-OT alert. With force-release disabled a dealer on overtime is the
