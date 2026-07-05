@@ -12,6 +12,8 @@ import { Plus, Search, X, Pencil, Trash2, Loader2, Send, Copy, Unlink2, Link2 } 
 import { useAllDealers, useDealerScores, type DealerRecord, type DealerScore } from "@/hooks/useDealerManagement";
 import AddDealerDialog from "./AddDealerDialog";
 import DealerAdjustDialog from "./DealerAdjustDialog";
+import { BulkDealerImportDialog } from "./BulkDealerImportDialog";
+import { FEATURES } from "@/lib/featureFlags";
 import { toast } from "sonner";
 
 type MainTab = "dealers" | "telegram";
@@ -315,6 +317,13 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
               <Plus className="h-3.5 w-3.5 mr-1" />
               Thêm dealer
             </Button>
+            {FEATURES.bulkDealerImport && activeClubId && (
+              <BulkDealerImportDialog
+                clubId={activeClubId}
+                existingNames={dealers.map((d) => d.full_name)}
+                onDone={refetchDealers}
+              />
+            )}
           </div>
 
           {/* Table */}

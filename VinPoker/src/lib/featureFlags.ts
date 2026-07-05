@@ -244,6 +244,15 @@ export const FEATURES = {
    */
   dealerStaffingOptimizer: true,
   /**
+   * Bulk dealer import — "Nhập hàng loạt từ file" in Dealer Management. Upload an
+   * image/PDF/Excel/CSV of a name list → the auth-gated `parse-dealer-list` Gemini
+   * edge fn extracts ONLY names → review → bulk-create dealers (tier B fixed, one
+   * FT/PT choice for the whole batch). Reuses the existing dealers insert path
+   * (RLS-protected); no new migration/RPC. OFF until owner UAT; while false the
+   * button is not rendered, the dialog never mounts, and Gemini is never called.
+   */
+  bulkDealerImport: false,
+  /**
    * Tracker Live Action Engine MVP — live per-action playback on the public
    * tournament viewer (/live/:id). While a hand is in_progress, the viewer
    * fast-polls so spectators see each recorded action in near-real-time
