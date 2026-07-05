@@ -4,10 +4,10 @@
 // RICH MODE (opt-in via props.rich, set from FEATURES.trackerRacetrackRich): adds
 // per-seat hole cards (face / face-down) + avatars, main+side-pot chips, a distinct
 // "engine suggestion" cue, a pre-hand waiting overlay, a responsive portrait map, and
-// the burgundy+gold poker-felt skin — all reusing existing pieces (PokerCard/CardBack,
-// the --poker-felt/--poker-gold tokens, the liveHub.felt.* i18n keys). When rich is
-// falsy the component renders byte-identical to the original racetrack.
-import { useEffect, useState, type KeyboardEvent } from 'react';
+// the same black-table direction as the public viewer — all reusing existing pieces
+// (PokerCard/CardBack, tokens, the liveHub.felt.* i18n keys). When rich is falsy the
+// component renders byte-identical to the original racetrack.
+import { useEffect, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -82,16 +82,16 @@ function CommunityCard({ card }: { card: string }) {
 
 /** Rich per-seat hole cards: face-down backs by default; faces only at showdown/reveal
  *  for revealed, non-mucked players (never leaks a value). */
-function HoleCards({ seat, showFaces }: { seat: SeatVM; showFaces: boolean }) {
+function HoleCards({ seat, showFaces, cardStyle }: { seat: SeatVM; showFaces: boolean; cardStyle?: CSSProperties }) {
   const cards = seat.holeCards ?? [];
   const revealed = showFaces && !seat.isMucked && cards.some(Boolean);
   return (
     <div className="mb-0.5 flex justify-center gap-0.5">
       {[0, 1].map((i) =>
         revealed ? (
-          <PokerCard key={i} card={cards[i] ?? null} size="xs" muted={seat.isFolded} />
+          <PokerCard key={i} card={cards[i] ?? null} size="xs" muted={seat.isFolded} style={cardStyle} />
         ) : (
-          <CardBack key={i} size="xs" muted={seat.isFolded} />
+          <CardBack key={i} size="xs" muted={seat.isFolded} style={cardStyle} />
         ),
       )}
     </div>
@@ -104,7 +104,7 @@ function SeatAvatar({ seat }: { seat: SeatVM }) {
       className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full border text-[10px] font-bold"
       style={{
         borderColor: 'hsl(var(--poker-gold) / 0.4)',
-        background: 'linear-gradient(180deg,#2c151b,#0b090d)',
+        background: 'linear-gradient(180deg,#151922,#030407)',
         color: 'hsl(var(--poker-gold))',
       }}
     >
@@ -126,6 +126,8 @@ function Seat({
   bigBlind,
   rich,
   showHoleCards,
+  holeCardStyle,
+  podStyle,
   t,
   onTap,
 }: {
@@ -137,6 +139,8 @@ function Seat({
   bigBlind: number;
   rich: boolean;
   showHoleCards: boolean;
+  holeCardStyle?: CSSProperties;
+  podStyle?: CSSProperties;
   t: TFunction;
   onTap?: () => void;
 }) {
@@ -167,6 +171,7 @@ function Seat({
           style={{
             left: `${anchor.left}%`,
             top: `${anchor.top}%`,
+            ...podStyle,
             borderColor: 'hsl(var(--poker-gold) / 0.3)',
             background: 'rgba(0,0,0,0.25)',
           }}
@@ -229,7 +234,8 @@ function Seat({
         style={{
           left: `${anchor.left}%`,
           top: `${anchor.top}%`,
-          background: 'linear-gradient(180deg, rgba(30,16,20,0.96), rgba(12,10,13,0.96))',
+          ...podStyle,
+          background: 'linear-gradient(180deg, rgba(13,16,22,0.97), rgba(3,4,7,0.97))',
           boxShadow: isActing
             ? '0 0 0 1.5px hsl(var(--primary)), 0 0 28px -6px hsl(var(--primary))'
             : undefined,
@@ -246,7 +252,7 @@ function Seat({
             ▸ {t('liveHub.felt.engineHint', 'máy gợi ý')}
           </span>
         )}
-        <HoleCards seat={seat} showFaces={showHoleCards} />
+        <HoleCards seat={seat} showFaces={showHoleCards} cardStyle={holeCardStyle} />
         <div className="flex items-center justify-between gap-1">
           <span className="tracker-num text-[10px] font-bold text-[hsl(var(--poker-gold)/0.8)]">{seatLabel}</span>
           <div className="flex items-center gap-1">
@@ -369,11 +375,26 @@ export function TrackerRacetrack({
       ? engineToActSeatNumber
       : null;
   const sidePots = rich && potBreakdown && potBreakdown.sidePots.length > 0 ? potBreakdown.pots : null;
+  const boardCardStyle: CSSProperties | undefined = rich
+    ? portrait
+      ? { width: 'clamp(22px,8.4cqi,40px)', height: 'clamp(31px,11.8cqi,56px)' }
+      : { width: 'clamp(26px,4.6cqi,48px)', height: 'clamp(36px,6.4cqi,66px)' }
+    : undefined;
+  const holeCardStyle: CSSProperties | undefined = rich
+    ? portrait
+      ? { width: 'clamp(15px,6.2cqi,26px)', height: 'clamp(21px,8.7cqi,36px)' }
+      : { width: 'clamp(16px,3.0cqi,30px)', height: 'clamp(22px,4.2cqi,42px)' }
+    : undefined;
+  const podStyle: CSSProperties | undefined = rich
+    ? portrait
+      ? { width: 'clamp(82px,24cqi,112px)' }
+      : { width: 'clamp(92px,12cqi,112px)' }
+    : undefined;
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-[9999px] min-h-[360px] ${rich ? '' : 'aspect-[13/6]'}`}
-      style={rich ? { ...RICH_FELT, aspectRatio: geo.aspect } : FELT}
+      className={`relative w-full rounded-[9999px] min-h-[360px] ${rich ? (portrait ? 'overflow-visible' : 'overflow-hidden') : 'overflow-hidden aspect-[13/6]'}`}
+      style={rich ? { ...RICH_FELT, aspectRatio: geo.aspect, containerType: 'inline-size' } : FELT}
     >
       {/* Center: pot + board */}
       <div
@@ -418,7 +439,7 @@ export function TrackerRacetrack({
         <div className="mt-2.5 flex justify-center gap-1.5">
           {boardCards.map((card, i) =>
             rich ? (
-              <PokerCard key={i} card={card || null} size="md" />
+              <PokerCard key={i} card={card || null} size="md" style={boardCardStyle} />
             ) : (
               <CommunityCard key={i} card={card} />
             ),
@@ -474,6 +495,8 @@ export function TrackerRacetrack({
           bigBlind={bigBlind}
           rich={rich}
           showHoleCards={showHoleCards}
+          holeCardStyle={holeCardStyle}
+          podStyle={podStyle}
           t={t}
           onTap={onSeatTap ? () => onSeatTap(seat.seatNumber) : undefined}
         />

@@ -79,16 +79,15 @@ export const FELT = {
 } as const;
 
 /**
- * Rich poker-felt skin — burgundy + gold, driven by the --poker-felt /
- * --poker-felt-dark / --poker-gold tokens (same family as LiveFelt + CardBack).
- * Theme-aware via the tokens. Used only when the rich flag is on.
+ * Rich poker-felt skin — black broadcast table, aligned with LiveFelt viewerLayout.
+ * Used only when the rich flag is on.
  */
 export const RICH_FELT = {
   background:
-    'radial-gradient(120% 130% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt-dark)) 80%)',
-  border: '1.5px solid hsl(var(--poker-gold) / 0.35)',
+    'radial-gradient(80% 72% at 50% 40%, #16181d 0%, #090b0f 58%, #020304 100%)',
+  border: '1.5px solid hsl(var(--primary) / 0.24)',
   boxShadow:
-    'inset 0 0 0 6px hsl(var(--poker-gold) / 0.06), inset 0 0 70px -14px #000, 0 0 0 1px #000',
+    'inset 0 0 0 6px rgba(255,255,255,0.018), inset 0 0 82px rgba(0,0,0,0.74), 0 18px 48px rgba(0,0,0,0.56), 0 0 28px hsl(var(--primary) / 0.07)',
 } as const;
 
 /**

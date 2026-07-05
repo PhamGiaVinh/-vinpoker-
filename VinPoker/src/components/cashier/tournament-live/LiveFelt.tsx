@@ -267,13 +267,11 @@ export interface LiveFeltProps {
    */
   chipPush?: { seatNumber: number; nonce: number; kind?: string } | null;
   /**
-   * Viewer Felt V2 (liveViewerFeltV2): responsive, premium PUBLIC-VIEWER layout.
-   * ADDITIVE — when false/absent (operator/TV/replay always; viewer when the flag is
-   * off) the felt renders byte-identical to today. When true: every card sizes with the
-   * FELT's own width (a CSS container query on the oval + `clamp()` inline styles) so
-   * hole cards can't overlap each other / the board on mobile, and the felt forces its
-   * OWN neon premium surface (independent of `viewerNeon`/`liveHandFeed`). Set only by
-   * the public viewer (TournamentLiveView when `spectator && liveViewerFeltV2`).
+   * Viewer Felt V2 (liveViewerFeltV2): responsive broadcast layout shared by the public
+   * viewer and the operator hand-input felt. ADDITIVE — when false/absent (TV/replay
+   * without V2) the felt renders byte-identical to today. When true: every card sizes
+   * with the FELT's own width (a CSS container query on the oval + `clamp()` inline
+   * styles), and the felt uses the black-table viewer skin.
    */
   viewerLayout?: boolean;
   /**
@@ -436,7 +434,7 @@ export function LiveFelt({
     }
     return { l, t };
   };
-  // V2 forces its OWN neon premium surface, so the redesign never depends on the
+  // V2 forces its OWN premium surface, so the redesign never depends on the
   // separate liveHandFeed/viewerNeon flag being on (review P1).
   const neon = viewerNeon || viewerLayout;
   // RPT-style subtle hole-card FAN (viewer only): the two cards tilt out + overlap a hair.
@@ -542,16 +540,16 @@ export function LiveFelt({
           className="absolute inset-0"
           style={{
             borderRadius: "9999px",
-            // viewerLayout (V2) → RPT-style CLEAN CHARCOAL felt + a thin neon-green rim hint
-            // (keeps the VinPoker brand without a heavy green felt). `neon` (old viewerNeon-only
-            // path) keeps the green felt; default = burgundy operator felt.
+            // viewerLayout (V2) → RPT-style BLACK felt + a thin neon-green rim hint.
+            // `neon` (old viewerNeon-only path) keeps the green felt; default =
+            // burgundy operator/TV felt.
             background: viewerLayout
-              ? "radial-gradient(circle at 50% 42%, #282a2f 0%, #1c1e22 44%, #101114 100%)"
+              ? "radial-gradient(80% 72% at 50% 40%, #16181d 0%, #090b0f 58%, #020304 100%)"
               : neon
               ? "radial-gradient(62% 60% at 50% 38%, hsl(158 30% 13%) 0%, hsl(158 30% 13%) 50%, hsl(210 13% 5%) 100%)"
               : "radial-gradient(62% 60% at 50% 38%, hsl(var(--poker-felt)) 0%, hsl(var(--poker-felt)) 50%, hsl(var(--poker-felt-dark)) 100%)",
             boxShadow: viewerLayout
-              ? "inset 0 0 0 1.5px hsl(var(--primary) / 0.22), inset 0 22px 60px rgba(0,0,0,0.42), inset 0 0 64px rgba(0,0,0,0.5), 0 18px 48px rgba(0,0,0,0.5), 0 0 28px hsl(var(--primary) / 0.06)"
+              ? "inset 0 0 0 1.5px hsl(var(--primary) / 0.24), inset 0 18px 48px rgba(255,255,255,0.025), inset 0 0 82px rgba(0,0,0,0.74), 0 18px 48px rgba(0,0,0,0.56), 0 0 28px hsl(var(--primary) / 0.07)"
               : neon
               ? "inset 0 0 0 5px hsl(var(--primary) / 0.4), inset 0 0 0 7px hsl(210 13% 5% / 0.85), inset 0 0 0 8px hsl(var(--primary) / 0.55), inset 0 0 70px rgba(0,0,0,0.55), 0 22px 55px rgba(0,0,0,0.45), 0 0 36px hsl(var(--primary) / 0.12)"
               : "inset 0 0 0 5px hsl(var(--poker-gold) / 0.5), inset 0 0 0 7px hsl(var(--poker-felt-dark) / 0.85), inset 0 0 0 8px hsl(var(--poker-gold) / 0.7), inset 0 0 70px rgba(0,0,0,0.5), 0 22px 55px rgba(0,0,0,0.42)",
@@ -724,7 +722,9 @@ export function LiveFelt({
           const isSelected = selectedSeat != null && seat.seat_number === selectedSeat;
           const interactiveCls = onSeatClick ? " cursor-pointer" : "";
           const selectedCls = isSelected
-            ? " rounded-2xl ring-2 ring-emerald-400 ring-offset-2 ring-offset-[hsl(var(--poker-felt-dark))] shadow-[0_0_16px_rgba(16,185,129,0.55)]"
+            ? ` rounded-2xl ring-2 ring-emerald-400 ring-offset-2 ${
+                viewerLayout ? "ring-offset-black" : "ring-offset-[hsl(var(--poker-felt-dark))]"
+              } shadow-[0_0_16px_rgba(16,185,129,0.55)]`
             : "";
           const interactiveProps = onSeatClick
             ? {
@@ -762,7 +762,11 @@ export function LiveFelt({
                     className={`grid ${viewerLayout ? "h-9 w-9 sm:h-10 sm:w-10" : "h-8 w-8 sm:h-9 sm:w-9"} place-items-center overflow-hidden rounded-full border-2 text-[9px] font-bold sm:text-[11px] ${
                       isWinner ? "tracker-win-glow border-[hsl(var(--poker-gold))]" : `${avatarBorder} ${avatarRing}`
                     }${tableFx ? " transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none" : ""}`}
-                    style={{ background: "linear-gradient(180deg,#2c151b,#0b090d)", color: "hsl(var(--poker-gold))", ...avatarStyle }}
+                    style={{
+                      background: viewerLayout ? "linear-gradient(180deg,#151922,#030407)" : "linear-gradient(180deg,#2c151b,#0b090d)",
+                      color: "hsl(var(--poker-gold))",
+                      ...avatarStyle,
+                    }}
                   >
                     {seat.avatar_url ? (
                       <img src={seat.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -802,7 +806,7 @@ export function LiveFelt({
                   // (no blind level) → chips render alone exactly as today: never a fake BB.
                   <div
                     className="mt-1 flex max-w-full flex-col items-center rounded-md px-1.5 py-[3px] leading-none"
-                    style={{ background: "rgba(8,12,10,0.82)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}
+                    style={{ background: "rgba(3,5,8,0.9)", border: "1px solid hsl(var(--primary) / 0.28)", boxShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
                   >
                     <div className="tracker-display max-w-full truncate text-[10px] font-semibold leading-tight text-white sm:text-[11px]" style={nameTextStyle}>
                       {seat.display_name}
