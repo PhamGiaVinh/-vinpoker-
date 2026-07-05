@@ -44,6 +44,7 @@ const FnbKitchenDisplay = lazy(() => import("./pages/FnbKitchenDisplay"));
 const FnbTableOrder = lazy(() => import("./pages/FnbTableOrder"));
 const FnbServe = lazy(() => import("./pages/FnbServe"));
 const FnbAdmin = lazy(() => import("./pages/FnbAdmin"));
+const FnbHub = lazy(() => import("./pages/FnbHub"));
 // F&B public DEMO (/fnb/demo) — self-contained static showcase; no supabase/RPC. Gated by FEATURES.fnbDemo.
 const FnbDemo = lazy(() => import("./pages/FnbDemo"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
@@ -271,6 +272,7 @@ const App = () => (
                 {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role. */}
                 <Route path="/marketing" element={<Marketing />} />
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
+                <Route path="/fnb/hub" element={<FnbHub />} />
                 <Route path="/fnb" element={<FnbCounter />} />
                 <Route path="/fnb/serve" element={<FnbServe />} />
                 <Route path="/fnb/admin" element={<FnbAdmin />} />
