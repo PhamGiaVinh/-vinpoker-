@@ -250,8 +250,10 @@ export const FEATURES = {
    * FT/PT choice for the whole batch). Reuses the existing dealers insert path
    * (RLS-protected); no new migration/RPC. OFF until owner UAT; while false the
    * button is not rendered, the dialog never mounts, and Gemini is never called.
+   * Flipped ON 2026-07-05 (owner-requested) so the button is visible for UAT;
+   * the analyze step still needs the GEMINI_API_KEY secret set on the edge fn.
    */
-  bulkDealerImport: false,
+  bulkDealerImport: true,
   /**
    * Tracker Live Action Engine MVP — live per-action playback on the public
    * tournament viewer (/live/:id). While a hand is in_progress, the viewer
