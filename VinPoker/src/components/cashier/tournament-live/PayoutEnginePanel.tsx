@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2, Upload } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseFileToCustomRows } from "@/lib/customPayoutImport";
+import { PrizePayoutTrackingSection } from "./PrizePayoutTrackingSection";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
 // (PR-2a RPCs + PR-2b compute-payouts Edge). Forecast preview (no persist) · one-way close-and-
@@ -581,6 +582,11 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* ===== W3-B2: record prize paid (cashier), flag-gated, only after official prizes exist ===== */}
+      {hasOfficial && FEATURES.prizePayoutTracking && (
+        <PrizePayoutTrackingSection tournamentId={tournamentId} />
       )}
     </Card>
   );
