@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Bulk dealer import — build dealer INSERT rows from a list of names (pure)
 // ═══════════════════════════════════════════════════════════════════════════════
-// Owner-chosen rules: every imported dealer is tier "B" (fixed) and one
-// employment type chosen for the WHOLE batch. ONLY the name comes from the file —
-// no phone/salary/notes. Mirrors the field shape of AddDealerDialog's insert
-// payload, but leaves all pay fields null (owner sets real salary per dealer
-// later) so a few-hundred-row import can never inject a fake salary into payroll.
+// Owner-chosen rules: every imported dealer is tier "B" (fixed); one employment
+// type AND one salary are chosen for the WHOLE batch (PT → hourly rate, FT →
+// monthly). ONLY the name comes from the file — never phone/salary/notes from the
+// file itself. Mirrors AddDealerDialog's insert payload + its FT monthly→base/hourly
+// derivation, so a bulk-imported dealer matches a manually-added one for payroll.
+// Salary is optional: leave it blank and all pay fields stay null (configure later).
 
 export type EmploymentType = "full_time" | "part_time";
 
@@ -55,18 +56,39 @@ function todayVN(): string {
   return new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
+/** FT standard shift hours — used to derive the FT hourly rate (mirrors AddDealerDialog). */
+const STANDARD_HOURS_PER_SHIFT = 8;
+/** Working days per month baseline for FT daily/hourly derivation (AddDealerDialog uses 26). */
+const WORKING_DAYS_PER_MONTH = 26;
+
 /**
  * Build the exact rows to `supabase.from("dealers").insert([...])`.
- * tier is hard 'B'; employment type is the batch choice; pay fields stay null
- * (configured per-dealer later). PT keeps monthly_salary_vnd = 0 to mirror the
- * single-add dialog's `isPT ? 0` shape; FT keeps the untouched shift defaults.
+ * tier is hard 'B'; employment type + salary are the batch choice.
+ *   • PT: `salaryVnd` is the HOURLY rate → hourly_rate_vnd; monthly_salary_vnd = 0.
+ *   • FT: `salaryVnd` is the MONTHLY salary → monthly_salary_vnd; base_rate_vnd =
+ *     round(monthly / 26) and hourly_rate_vnd = round(monthly / 26 / 8), exactly
+ *     mirroring AddDealerDialog so payroll treats a bulk dealer like a manual one.
+ * `salaryVnd` is optional: null/absent/≤0 → all pay fields stay null (PT keeps
+ * monthly_salary_vnd = 0), i.e. the previous "no salary, set later" behaviour.
  */
 export function buildBulkDealerRows(
   names: string[],
-  opts: { clubId: string; employmentType: EmploymentType; today?: string },
+  opts: { clubId: string; employmentType: EmploymentType; today?: string; salaryVnd?: number | null },
 ): BulkDealerRow[] {
   const joined = opts.today ?? todayVN();
   const isPT = opts.employmentType === "part_time";
+  const salary = opts.salaryVnd != null && opts.salaryVnd > 0 ? Math.round(opts.salaryVnd) : null;
+
+  const monthly_salary_vnd = isPT ? 0 : salary; // FT: entered monthly, or null if blank
+  const hourly_rate_vnd = isPT
+    ? salary // PT: entered hourly rate, or null
+    : salary
+      ? Math.round(salary / WORKING_DAYS_PER_MONTH / STANDARD_HOURS_PER_SHIFT)
+      : null;
+  const base_rate_vnd = !isPT && salary ? Math.round(salary / WORKING_DAYS_PER_MONTH) : null;
+  const standard_hours_per_shift = isPT ? null : STANDARD_HOURS_PER_SHIFT;
+  const ot_multiplier = isPT ? null : 1.5;
+
   return dedupeNames(names).map((full_name) => ({
     club_id: opts.clubId,
     full_name,
@@ -74,11 +96,11 @@ export function buildBulkDealerRows(
     employment_type: opts.employmentType,
     status: "active",
     joined_date: joined,
-    monthly_salary_vnd: isPT ? 0 : null,
-    hourly_rate_vnd: null,
-    base_rate_vnd: null,
-    standard_hours_per_shift: isPT ? null : 8,
-    ot_multiplier: isPT ? null : 1.5,
+    monthly_salary_vnd,
+    hourly_rate_vnd,
+    base_rate_vnd,
+    standard_hours_per_shift,
+    ot_multiplier,
     phone: null,
     notes: null,
   }));
