@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { ArrowLeft, Sparkles, FileSpreadsheet, Info, ShieldCheck, ChevronDown, FileText, BarChart3, CalendarRange, Dice5, FileImage, ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,20 @@ import { useGroupingOverrides } from "@/lib/series-intelligence/useGroupingOverr
 export default function SeriesIntelligence() {
   const nav = useNavigate();
   const { isAdmin, isClubAdmin, isClubOwner, loading } = useAuth();
+  // W3 — F5 redirect race: useAuth flips `loading` false as soon as getSession resolves, but roles /
+  // club-ownership are fetched a beat later (fetchRoles is async + fired separately). On a hard reload
+  // that left an authorized owner briefly "unauthorized" → Navigate("/") kicked them home. Give roles a
+  // short grace before actually redirecting; if they arrive (owner/admin becomes true) we cancel.
+  const authorized = isClubAdmin || isClubOwner || isAdmin;
+  const [redirectReady, setRedirectReady] = useState(false);
+  useEffect(() => {
+    if (loading || authorized) {
+      setRedirectReady(false);
+      return;
+    }
+    const t = setTimeout(() => setRedirectReady(true), 1500);
+    return () => clearTimeout(t);
+  }, [loading, authorized]);
   const [mode, setMode] = useState<"dashboard" | "report">("dashboard");
   // Series Library (browser-only). The dashboard renders the ACTIVE series, or live native when none.
   const lib = useSeriesLibrary();
@@ -77,7 +91,9 @@ export default function SeriesIntelligence() {
   ];
 
   if (loading) return null;
-  if (!(isClubAdmin || isClubOwner || isAdmin)) return <Navigate to="/" replace />;
+  // Wait out the roles grace before redirecting (fixes the F5-kicks-you-home race). Only redirect
+  // once roles have had time to load and the user is genuinely unauthorized.
+  if (!authorized) return redirectReady ? <Navigate to="/" replace /> : null;
 
   if (mode === "report") {
     return (
