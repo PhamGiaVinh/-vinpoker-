@@ -22,6 +22,7 @@ import { Stepper, type StepperItem } from "@/components/series-intelligence/Step
 import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
+import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
@@ -126,6 +127,9 @@ export default function SeriesIntelligence() {
 
       {/* step legend */}
       <Stepper items={stepItems} current={hasData ? undefined : 1} />
+
+      {/* W1 — Trợ lý Series: workflow ring + "hôm nay cần làm gì" (gated; hooks only run when mounted) */}
+      {FEATURES.seriesAssistant && <SeriesAssistant csvEvents={lib.activeEvents} onLoadSample={loadSample} />}
 
       {/* start-here CTA when no series is loaded */}
       {!hasData && <SeriesIntelEmptyState onUpload={scrollToLoad} onSample={loadSample} />}
