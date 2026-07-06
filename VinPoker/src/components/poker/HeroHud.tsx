@@ -31,7 +31,9 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
     <div
       className={cn(
         // Constant bottom offset (clears the 44px Fold/Call row) — fixed, never lifts.
-        'pointer-events-none absolute bottom-[3.25rem] left-2 z-40 flex flex-col items-start gap-1',
+        // MOBILE ONLY: on desktop / tablet (sm:) the hero is a real bottom-centre ring seat
+        // (SeatRing HERO_RING_DESKTOP), so the corner HUD hides — exactly one hero per breakpoint.
+        'pointer-events-none absolute bottom-[3.25rem] left-2 z-40 flex flex-col items-start gap-1 sm:hidden',
         folded && 'opacity-50',
       )}
     >

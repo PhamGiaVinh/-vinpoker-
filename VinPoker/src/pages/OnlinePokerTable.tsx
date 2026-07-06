@@ -540,8 +540,12 @@ export default function OnlinePokerTable() {
         {/* action dock — ONLY when it's my turn (N8: no dock off-turn). The "menu loading"
             strip lives inside ActionBar (my turn, legal not yet arrived). */}
         {!showing && inActiveHand && hand?.toActSeat === mySeatNo && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
-            {/* pointer-events-none here — ActionBar re-enables taps per control group so its
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent sm:inset-x-auto sm:left-auto sm:right-3 sm:bottom-3 sm:w-[21rem] sm:bg-none sm:p-0">
+            {/* Mobile: a full-width bottom dock (scrim fades the felt under it). Desktop / tablet
+                (sm:): the dock moves to the bottom-RIGHT as a compact panel (no scrim) so the
+                bottom-centre hero seat stays clear — the GG / N8 desktop layout. ActionBar's
+                logic + sizing are unchanged; only its container moves.
+                pointer-events-none here — ActionBar re-enables taps per control group so its
                 empty centre lets felt taps (and the hero HUD) through. */}
             <ActionBar hand={hand!} legal={legal ?? undefined} bb={table.bb} busy={submitting} onAction={submit} />
           </div>
