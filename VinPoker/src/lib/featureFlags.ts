@@ -195,6 +195,20 @@ export const FEATURES = {
    */
   accountingControlLivePayout: true,
   /**
+   * Accounting Control — W3-B2 (WRITE): the cashier "Đã trả thưởng" section in PayoutEnginePanel.
+   * When ON, a post-close tournament shows one row per IN-MONEY finished place (from the SECDEF read
+   * RPC `get_tournament_payout_recipients`) with a "Ghi nhận đã trả" button → confirmation dialog →
+   * `record_tournament_prize_payment` (already live; server-derives amount + recipient — the client
+   * sends only tournament_id + finished_place + method). Writing a paid row makes the READ-side
+   * "Phải trả giải" tab's `paid`/`outstanding` go real automatically. WRITE-side mirror of
+   * `accountingControlLivePayout` (READ). Default **OFF** (dark): section hidden, no RPC called, no
+   * ledger writes. Needs source-only migration `20261217000000` (the read RPC) applied live first —
+   * while OFF or the read RPC absent (42883/42P01) the section is hidden / shows "Cần áp dụng"
+   * (never crashes). Accounting Control itself stays READ-ONLY — this write lives ONLY in the cashier
+   * surface. Idempotent (already_paid = success). Kill-switch: set false to hide the write section.
+   */
+  prizePayoutTracking: false,
+  /**
    * Blind editor "Lưu" (full-replace save) in BlindEditorPanel. Default **OFF**
    * because it needs the source-only `update_blind_structure` RPC
    * (20260825000000) applied live first. While false the editor is usable as a
