@@ -2,10 +2,12 @@ import { UtensilsCrossed, AlertTriangle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
+import { FEATURES } from "@/lib/featureFlags";
 import type { SeriesDateWindow } from "@/lib/series-intelligence/commandCenter";
 import type { FnbReport } from "@/hooks/useFnbReport";
 import { InsightLabelBadge } from "./InsightLabelBadge";
 import { ExplainHint } from "./ExplainHint";
+import { EmptyExplainer } from "./EmptyExplainer";
 
 const countFmt = new Intl.NumberFormat("vi-VN");
 
@@ -55,9 +57,17 @@ export function FnbClubContributionCard({
           F&B hoặc chưa cấp quyền — thử lại sau.
         </p>
       ) : !hasData ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-md p-3">
-          Chưa có đơn F&B nào trong khoảng thời gian này.
-        </p>
+        FEATURES.seriesEmptyExplainer ? (
+          <EmptyExplainer
+            what="Doanh thu F&B toàn CLB trong kỳ"
+            why="chưa có đơn F&B nào (đã thanh toán) trong khoảng thời gian series này."
+            how="Bán F&B qua quầy/QR trong kỳ — đơn đã thanh toán sẽ tự vào đây (toàn CLB, không chia theo giải)."
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground border border-dashed border-border rounded-md p-3">
+            Chưa có đơn F&B nào trong khoảng thời gian này.
+          </p>
+        )
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
