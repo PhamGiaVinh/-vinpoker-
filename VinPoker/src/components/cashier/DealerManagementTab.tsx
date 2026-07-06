@@ -357,6 +357,13 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                   const monthlyPay = dealer.employment_type === "part_time"
                     ? (score ? Math.round(score.total_hours * (dealer.hourly_rate_vnd ?? 0)) : null)
                     : dealer.monthly_salary_vnd ?? dealer.base_rate_vnd;
+                  // PT with no worked hours yet (e.g. fresh bulk import): the month
+                  // estimate above is null/0, which rendered "—" and looked like the
+                  // salary was never saved (owner 2026-07-07). Fall back to showing
+                  // the configured hourly RATE so a set salary is always visible.
+                  const ptHourlyRate = dealer.employment_type === "part_time"
+                    ? dealer.hourly_rate_vnd ?? null
+                    : null;
                   return (
                     <button
                       key={dealer.id}
@@ -412,7 +419,11 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                         {score ? `${score.total_hours.toFixed(1)}h` : "—"}
                       </div>
                       <div className="col-span-2 text-right text-success text-xs">
-                        {monthlyPay ? `${(monthlyPay / 1000000).toFixed(1)}M` : "—"}
+                        {monthlyPay
+                          ? `${(monthlyPay / 1000000).toFixed(1)}M`
+                          : ptHourlyRate
+                            ? `${Math.round(ptHourlyRate / 1000)}k/h`
+                            : "—"}
                       </div>
                       <div className="col-span-1 text-right">
                         {score ? (
