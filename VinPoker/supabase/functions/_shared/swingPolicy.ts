@@ -37,9 +37,18 @@ export const SWING_POLICY = {
   rest: {
     minRestMinutes: 10,               // pickNextDealer default param
     minInterSwingRestMinutes: 10,     // pickNextDealer default param + fillEmptyTables `?? 10`
-    hardRestFloorMinutes: 10,         // Math.max(minInterSwingRestMinutes, 10)
+    hardRestFloorMinutes: 10,         // legacy 10-min pool cooldown floor (superseded by executeMinRestFloorMinutes for PLANNING)
+    // SINGLE SOURCE of the hard rest floor. It is BOTH the execute-time gate
+    // (index.ts EXECUTE_MIN_REST_MINUTES) AND the plan-time eligibility/forecast
+    // floor (buildRotationSupply restMinutes + the solver restMs in passR). These
+    // MUST stay equal: if the PLAN floor < the EXECUTE floor, the planner locks a
+    // dealer who cannot pass the execute gate → the table sits stuck on OT while
+    // rested dealers idle (root cause fixed 2026-07-06). Raised 13→15 on 2026-07-05.
+    // predictiveHorizonMinutes below must remain >= this value (admit dealers who
+    // reach the floor within the look-ahead).
+    executeMinRestFloorMinutes: 15,
     poolCooldownMinutes: 1,           // pool cooldown guard
-    predictiveHorizonMinutes: 15,     // reservation look-ahead: Date.now() + 15*60_000
+    predictiveHorizonMinutes: 15,     // reservation look-ahead: Date.now() + 15*60_000 (>= executeMinRestFloorMinutes)
     restEpsilonMinutes: 1 / 60,       // EPSILON_SEC = 1/60 min (1-second timing grace)
   },
 

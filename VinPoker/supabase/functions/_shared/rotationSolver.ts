@@ -132,9 +132,12 @@ export function solveGreedyLazy(
 // Zero I/O. Clock injected via opts.nowMs. Same inputs → same plan.
 //
 // Hard invariants (by construction, never by escalation):
-//   R1  a dealer enters no table before eligibleAt (release + 10min rest).
-//   R2  plannedReliefAt >= max(eligibleAt, now) + announceLead (3 min)
-//       → every dealer has >= 13 min from release to entry.
+//   R1  a dealer enters no table before eligibleAt (release + restMs). restMs is
+//       supplied by the caller = SWING_POLICY.rest.executeMinRestFloorMinutes (15),
+//       so eligibleAt == the execute-time rest gate and a locked dealer always
+//       passes it (see passR restMs + pickNextDealer buildRotationSupply floor).
+//   R2  plannedReliefAt >= max(eligibleAt, now) + announceLead
+//       → every dealer has >= restMs + announceLead from release to entry.
 //   swing_due_at is INPUT ONLY — the solver never proposes changing it.
 //       Shortage = honest later plannedReliefAt, visible OT.
 //

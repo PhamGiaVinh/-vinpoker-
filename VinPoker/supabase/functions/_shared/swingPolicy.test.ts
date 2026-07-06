@@ -15,6 +15,7 @@ Deno.test("rest / cooldown guards match original literals", () => {
   assertEquals(P.rest.minRestMinutes, 10);
   assertEquals(P.rest.minInterSwingRestMinutes, 10);
   assertEquals(P.rest.hardRestFloorMinutes, 10);       // Math.max(minInterSwingRest, 10)
+  assertEquals(P.rest.executeMinRestFloorMinutes, 15); // execute gate == plan floor (raised 13→15, aligned 2026-07-06)
   assertEquals(P.rest.poolCooldownMinutes, 1);
   assertEquals(P.rest.predictiveHorizonMinutes, 15);   // Date.now() + 15*60_000
   assertEquals(P.rest.restEpsilonMinutes, 1 / 60);     // EPSILON_SEC = 1/60

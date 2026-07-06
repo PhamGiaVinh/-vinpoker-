@@ -1161,7 +1161,14 @@ export async function buildRotationSupply(
     requiredGameTypes?: string[];
   } = {}
 ): Promise<{ supply: RotationSupplyEntry[]; avgBreakRatio: number | null }> {
-  const restMinutes = Math.max(options.minInterSwingRestMinutes ?? 10, 10);
+  // Plan-time eligibility floor MUST match the execute-time gate
+  // (SWING_POLICY.rest.executeMinRestFloorMinutes), else the planner locks a dealer
+  // who cannot pass the execute rest gate → the table stays stuck on OT while rested
+  // dealers idle. Aligned 2026-07-06 (was a bare 10).
+  const restMinutes = Math.max(
+    options.minInterSwingRestMinutes ?? 10,
+    SWING_POLICY.rest.executeMinRestFloorMinutes,
+  );
   const poolCooldownMs = 60_000;
 
   const { candidates, avgBreakRatio } = await buildDealerCandidates(admin, clubId, {
@@ -1170,8 +1177,12 @@ export async function buildRotationSupply(
     minInterSwingRestMinutes: restMinutes,
     requiredGameTypes: options.requiredGameTypes,
     reservationMode: true,
-    // Admit dealers whose rest completes within the planning horizon.
-    swingDueAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    // Admit dealers whose rest completes within the planning horizon. Horizon must
+    // be >= the rest floor so a dealer who reaches the floor is still admitted.
+    swingDueAt: new Date(
+      Date.now() +
+        Math.max(SWING_POLICY.rest.predictiveHorizonMinutes, SWING_POLICY.rest.executeMinRestFloorMinutes) * 60_000,
+    ).toISOString(),
   });
 
   if (candidates.length === 0) return { supply: [], avgBreakRatio };
