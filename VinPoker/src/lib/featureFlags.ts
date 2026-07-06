@@ -760,7 +760,7 @@ export const FEATURES = {
    * capture snapshots/decisions read-only. Turns the page from a dashboard-to-read into a guide. Works
    * on CSV test data too (softer copy). Default **OFF**; kill-switch: set false to hide the assistant.
    */
-  seriesAssistant: false,
+  seriesAssistant: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
