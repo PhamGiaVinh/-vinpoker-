@@ -131,8 +131,11 @@ const UNPLANNED_AUTO_PICK_ENABLED = false;
 // 2026-07-05): the incoming pre-assigned dealer must have >= 15 min rest at swing
 // time. If still short, do NOT swing — keep the current dealer on OT and alert.
 // Planning may pre-assign a resting dealer who is expected to be valid by swing
-// time; execution enforces the hard rest floor.
-const EXECUTE_MIN_REST_MINUTES = 15;
+// time; execution enforces the hard rest floor. SINGLE SOURCE =
+// SWING_POLICY.rest.executeMinRestFloorMinutes, which the PLANNER also uses
+// (buildRotationSupply floor + passR solver restMs) so plan and execute never
+// disagree — a plan floor below this leaves tables stuck on OT (fixed 2026-07-06).
+const EXECUTE_MIN_REST_MINUTES = SWING_POLICY.rest.executeMinRestFloorMinutes;
 // Owner policy (2026-06-14): do NOT spam Telegram with Pass 0c OT alerts — both
 // the per-tick "đang OT, cần can thiệp thủ công" overdue alert AND the >45-min
 // extended-OT alert. With force-release disabled a dealer on overtime is the
@@ -2802,6 +2805,28 @@ if (tier2Count > 0) {
                 required_min: EXECUTE_MIN_REST_MINUTES,
                 reason: "incoming_not_rested_keep_ot",
               });
+              // (B, 2026-07-06) Scheduler mode: instead of waiting on a lock whose
+              // incoming dealer isn't rested yet, re-plan THIS tick onto a genuinely-
+              // rested free dealer (excluding the current OT dealer + the marginal
+              // pre-assign). Still strictly planned-only: if no rested dealer is free,
+              // replan fails and we fall through to the OT alert below — never a
+              // force-release, never an unplanned pick.
+              if (scheduleDriven) {
+                const restExcludes = new Set([
+                  ...cycleExcludedIds,
+                  assignment.attendance_id,
+                  assignment.pre_assigned_attendance_id,
+                ]);
+                const replan = await replanSingleTable(
+                  admin, passRCtx, assignment.id, restExcludes, "incoming_not_rested",
+                );
+                if (replan.relocked) {
+                  console.log(`[Pass 3] ${tableName}: not-rested lock re-planned to a rested dealer — ${replan.detail}`);
+                  metrics.success++;
+                  continue;
+                }
+                console.log(`[Pass 3] ${tableName}: no rested replacement to substitute — dealer stays on OT (${replan.detail})`);
+              }
               if (botToken) {
                 const chatId = await getClubTelegramChatId(admin, cid).catch(() => null);
                 if (chatId) {

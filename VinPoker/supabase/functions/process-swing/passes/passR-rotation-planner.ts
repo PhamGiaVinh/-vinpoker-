@@ -18,6 +18,7 @@
 
 import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
 import { solveRotationPlan } from "../../_shared/rotationSolver.ts";
+import { SWING_POLICY } from "../../_shared/swingPolicy.ts";
 import { getFeatureTablePoolsByTable, getReservedDealerIds } from "../../_shared/featureTableGate.ts"; // Patch 5c/5d: planner pool gate + reserved exclusivity
 import { tierForBuyIn } from "../../_shared/rotationTypes.ts";
 import type {
@@ -556,7 +557,7 @@ export async function passRRotationPlanner(
         nowMs: Date.now(),
         announceLeadMs: ANNOUNCE_LEAD_MS,
         preAnnounceMs: Math.max(ctx.preAnnounceMinutes, 3) * 60_000,
-        restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
+        restMs: Math.max(ctx.minInterSwingRestMinutes, SWING_POLICY.rest.executeMinRestFloorMinutes) * 60_000,
         forecastSlots: 2,
         reservedDealerIds,
         solverVersion: SOLVER_VERSION,
@@ -677,7 +678,7 @@ export async function replanSingleTable(
         nowMs: Date.now(),
         announceLeadMs: ANNOUNCE_LEAD_MS,
         preAnnounceMs: ANNOUNCE_LEAD_MS, // emergency: 3-min lead
-        restMs: Math.max(ctx.minInterSwingRestMinutes, 10) * 60_000,
+        restMs: Math.max(ctx.minInterSwingRestMinutes, SWING_POLICY.rest.executeMinRestFloorMinutes) * 60_000,
         forecastSlots: 0,
         reservedDealerIds,
         solverVersion: SOLVER_VERSION,
