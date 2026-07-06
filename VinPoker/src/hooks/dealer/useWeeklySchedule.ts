@@ -32,6 +32,14 @@ export function useWeeklySchedule(dealerId: string | undefined, anchorDate: stri
           "id, club_id, dealer_id, work_date, scheduled_start_at, scheduled_end_at, role, status, checked_in_at, checked_out_at"
         )
         .eq("dealer_id", dealerId)
+        // Dealer app must only ever see PUBLISHED schedule + its live lifecycle —
+        // never a floor's 'draft' (or 'superseded'/'cancelled'/'no_show') rows.
+        // Same visible set as useTodayShift. Status domain: draft | published |
+        // confirmed | checked_in | closed | cancelled | no_show
+        // (dealer_shift_assignments CHECK, migration 20260827000000).
+        // TODO(Patch 1): also enforce published-only at the RLS layer for dealer
+        // self-reads so this is defence-in-depth, not the only guard.
+        .in("status", ["published", "confirmed", "checked_in", "closed"])
         .gte("scheduled_start_at", lowIso)
         .lt("scheduled_start_at", highIso);
       if (error) throw error;
