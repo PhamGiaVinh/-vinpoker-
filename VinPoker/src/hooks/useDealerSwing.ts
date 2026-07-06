@@ -65,6 +65,10 @@ export interface DealerAssignment {
   swing_in_progress: boolean | null;
   swing_processed_at: string | null;
   swing_due_at: string | null;
+  /** Assignment-origin marker: "open_manual_*" = manual open with 6-min warmup
+   *  grace (Gán / Gán loạt); "autostaff_*" = cron auto re-fill (no grace).
+   *  Older/rotation rows have executor/reconcile keys or null. */
+  idempotency_key?: string | null;
   /** Slot-0 read-cache ONLY — prefer the dealer_rotation_schedule row whenever one exists. */
   planned_relief_at?: string | null;
   pre_assigned_attendance_id: string | null;
@@ -519,7 +523,7 @@ function useActiveAssignments(clubIds: string[], shiftId?: string) {
              version, updated_at, last_swing_attempted_at, swing_in_progress,
              swing_processed_at, swing_due_at, planned_relief_at,
              pre_assigned_attendance_id, pre_assigned_at,
-             overtime_started_at,
+             overtime_started_at, idempotency_key,
              game_tables!inner(id, table_name, table_type, status, club_id),
              dealer_attendance!attendance_id(current_state, dealers(full_name, telegram_username)),
              pre_assigned:dealer_attendance!pre_assigned_attendance_id(dealers(full_name, telegram_username, tier))`

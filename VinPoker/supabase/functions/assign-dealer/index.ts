@@ -149,7 +149,13 @@ Deno.serve(async (req) => {
           p_assigned_at: new Date(assignedNow).toISOString(),
           p_swing_due_at: swingDueAt,
           p_club_id: table.club_id,
-          p_idempotency_key: idempotency_key ?? null,
+          // "open_manual_" marker (2026-07-07): tells the floor card this row was a
+          // manual open carrying the 6-min grace → show WARMUP. Deterministic wrap of
+          // the client's idempotency key so client retries still replay-dedupe in the
+          // RPC (same client key → same wrapped key).
+          p_idempotency_key: idempotency_key
+            ? `open_manual_${idempotency_key}`
+            : `open_manual_${table_id}_${assignedNow}`,
           p_force_replace: true,
         }
       );
