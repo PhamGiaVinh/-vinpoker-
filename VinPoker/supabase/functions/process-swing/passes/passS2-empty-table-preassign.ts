@@ -18,7 +18,6 @@
 
 import { buildRotationSupply } from "../../_shared/pickNextDealer.ts";
 import { sendTelegramNotification, mention } from "../../_shared/telegram.ts";
-import { OPEN_TABLE_GRACE_MINUTES } from "../../_shared/openTableGrace.ts";
 
 export type SupabaseAdmin = any;
 
@@ -115,7 +114,11 @@ export async function runEmptyTablePreAssign(
       continue;
     }
 
-    const swingDueAt = new Date(Date.now() + (OPEN_TABLE_GRACE_MINUTES + durMin) * 60_000).toISOString();
+    // Auto empty-table re-fill (cron pre-assign), NOT a manual open → NO open-table
+    // warmup grace, same as the fillEmptyTables auto path. Warmup is reserved for the
+    // manual "Gán" / "Gán loạt" opens. (Owner 2026-07-06: "warmup chỉ dành cho mở bàn";
+    // before this, a reserved dealer re-seating a post-swing empty table flashed WARMUP.)
+    const swingDueAt = new Date(Date.now() + durMin * 60_000).toISOString();
     const { data: ex } = await admin.rpc("execute_empty_table_reservation", {
       p_reservation_id: r.id,
       p_swing_due_at: swingDueAt,

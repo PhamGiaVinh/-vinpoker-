@@ -213,13 +213,19 @@ export async function fillEmptyTables(
     // Deterministic stagger: (index % 10) * 30s prevents synchronized OT entry.
     // Max 4.5min drift for any table regardless of club size.
     // Recycles cleanly for 20-30 table clubs.
-    const stagger = (index % 10) * 30_000;
+    // NOT on the AUTO path: the floor card reads ANY swing_due_at excess over
+    // swing_duration as WARMUP (SwingTableCard hasGrace), so a staggered auto-refill
+    // would also flash warmup. Manual opens keep the stagger.
+    const stagger = availableOnly ? 0 : (index % 10) * 30_000;
 
-    // Open-table grace: opening/staffing an empty table gives the incoming dealer
-    // an OPEN_TABLE_GRACE_MINUTES warmup before the swing clock starts (added to
-    // both the per-table-override and the batch-default swing_due_at). Not applied
-    // to perform_swing rotations — this path only fills empty/open tables.
-    const graceMs = OPEN_TABLE_GRACE_MINUTES * 60_000;
+    // Open-table grace: OPENING a table (manual "Gán" / "Gán loạt", availableOnly=false)
+    // gives the incoming dealer an OPEN_TABLE_GRACE_MINUTES warmup before the swing
+    // clock starts. The AUTO cron re-fill (availableOnly=true) is NOT an open — it
+    // re-seats a table mid-session after a dealer swings/breaks out — so it applies
+    // NO grace and shows NO warmup, exactly like a rotation. (Owner 2026-07-06:
+    // "warmup chỉ dành cho mở bàn"; before this, every post-swing auto re-fill
+    // re-flashed a fresh 6-min WARMUP → tables looked like they kept re-opening.)
+    const graceMs = availableOnly ? 0 : OPEN_TABLE_GRACE_MINUTES * 60_000;
     const tableSwingDueAt = effectiveDuration != null
       ? new Date(now.getTime() + graceMs + effectiveDuration * 60_000 + stagger).toISOString()
       : swingDueAt
