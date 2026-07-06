@@ -777,6 +777,14 @@ export const FEATURES = {
    */
   seriesEmptyExplainer: false,
   /**
+   * Series Intelligence — W4 "gọn" Command Center layout (Bước ②). When ON, below the 4-KPI overview the
+   * rest of the cards fold into 3 tap-to-open groups (Tiền / Rủi ro & dữ liệu / Chi tiết) instead of one
+   * long scroll, so a non-technical owner sees the headline numbers first and drills in on demand. Pure
+   * layout — the SAME cards render, no number/logic change; flag OFF = the exact previous flat order.
+   * Default **OFF**; kill-switch: set false to restore the flat layout.
+   */
+  seriesCommandCenterGrouped: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
