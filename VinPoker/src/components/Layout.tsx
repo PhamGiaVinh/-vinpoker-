@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark, Smartphone } from "lucide-react";
+import { Calendar, Building2, User, MessageCircle, LogOut, TrendingUp, Sparkles, Trophy, BookOpen, Newspaper, Globe, Radio, Rss, QrCode, Wallet, Menu, LayoutGrid, Table2, Spade, Coins, Megaphone, UtensilsCrossed, ChefHat, Settings2, Landmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadChats } from "@/hooks/useUnreadChats";
@@ -238,14 +238,6 @@ export const Layout = () => {
                 <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>{t("layout.operations")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {/* mobileOpsV2 iPhone Floor cockpit (/ops) — gated on the flag + operator role. */}
-                  {FEATURES.mobileOpsV2 && (isFloor || isCashier || isTracker || isAdmin || isClubOwner) && (
-                    <DropdownMenuItem onClick={() => nav("/ops")} className="gap-2.5 cursor-pointer font-semibold text-primary">
-                      <Smartphone className="w-4 h-4" />
-                      Floor Mobile
-                      <span className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold">MỚI</span>
-                    </DropdownMenuItem>
-                  )}
                   {(isTracker || isAdmin || isClubOwner) && (
                     <DropdownMenuItem onClick={() => nav("/tracker")} className="gap-2.5 cursor-pointer">
                       <Radio className="w-4 h-4" />
