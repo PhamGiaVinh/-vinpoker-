@@ -583,3 +583,41 @@
   }
 }
 
+/* ==========================================================================
+   Member-card printing (cashier → Cấp lại thẻ). CR80 85.6×54mm, 2 pages
+   (front + back). `.card-print-only` is hidden on screen (Tailwind `hidden`);
+   in print we isolate it and hide the rest of the app.
+   ========================================================================== */
+@media print {
+  /* Isolation: hide everything, then reveal only the card print container. */
+  body * { visibility: hidden !important; }
+  .card-print-only,
+  .card-print-only * { visibility: visible !important; }
+  .no-print { display: none !important; }
+
+  .card-print-only {
+    display: block !important;
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    background: #fff !important;
+  }
+  .card-print-page {
+    width: 85.6mm;
+    height: 54mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    page-break-after: always;
+    break-after: page;
+  }
+  .card-print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  @page {
+    size: 85.6mm 54mm;
+    margin: 0;
+  }
+}
+

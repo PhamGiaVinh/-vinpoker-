@@ -23,6 +23,7 @@ import ClubQrScanDialog from "@/components/ClubQrScanDialog";
 import UnifiedLookupTab from "@/components/cashier/UnifiedLookupTab";
 import SyncMembersTab from "@/components/cashier/SyncMembersTab";
 import ClubCardQrTab from "@/components/cashier/ClubCardQrTab";
+import CardReissueTab from "@/components/cashier/CardReissueTab";
 import RevenueReportTab from "@/components/cashier/RevenueReportTab";
 import { TournamentRegistrationsTab } from "@/components/admin/TournamentRegistrationsTab";
 import { OfflineBuyInPanel } from "@/components/cashier/OfflineBuyInPanel";
@@ -31,7 +32,7 @@ import { SePaySettlementTab } from "@/components/cashier/SePaySettlementTab";
 import { FEATURES } from "@/lib/featureFlags";
 import {
   LayoutDashboard, Coins, Users as UsersIcon, FileBarChart, Loader2, CheckCircle2, XCircle,
-  ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, IdCard, AlertTriangle,
+  ScanLine, Wallet, Search, RefreshCw, Download, ImageIcon, AlertTriangle,
   Ticket, UserPlus, RotateCcw, Banknote,
 } from "lucide-react";
 
@@ -662,7 +663,7 @@ function MembersPanel({ clubIds, clubs }: { clubIds: string[]; clubs: ClubRow[] 
       <TabsContent value="sync" className="mt-4"><SyncMembersTab clubs={clubs} /></TabsContent>
       <TabsContent value="qr" className="mt-4"><ClubCardQrTab clubs={clubs} /></TabsContent>
       <TabsContent value="verify" className="mt-4"><VerificationRequestsTab clubIds={clubIds} clubs={clubs} /></TabsContent>
-      <TabsContent value="reissue" className="mt-4"><CardReissueTab /></TabsContent>
+      <TabsContent value="reissue" className="mt-4"><CardReissueTab clubIds={clubIds} clubs={clubs} /></TabsContent>
     </Tabs>
   );
 }
@@ -857,15 +858,8 @@ function LookupTab({ clubIds }: { clubIds: string[] }) {
   );
 }
 
-function CardReissueTab() {
-  return (
-    <Card className="p-10 text-center space-y-3">
-      <IdCard className="w-12 h-12 mx-auto text-muted-foreground" />
-      <div className="text-lg font-semibold">🪪 Tính năng sắp ra mắt</div>
-      <p className="text-sm text-muted-foreground">Cấp lại thẻ thành viên sẽ được tích hợp với máy in thẻ của CLB.</p>
-    </Card>
-  );
-}
+// CardReissueTab moved to its own component: @/components/cashier/CardReissueTab (real feature —
+// scan → preview → print CR80 card → best-effort audit log). Imported at the top of this file.
 
 /* ============================================================== */
 /* REPORTS                                                         */
