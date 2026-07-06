@@ -149,7 +149,10 @@ export default function BulkCreateTournaments() {
     if (invalid) { toast.error(t("bulkCreate.rowValidation")); return; }
 
     setCreating(true);
-    const scheduleUploadId = crypto.randomUUID();
+    // `schedule_upload_id` intentionally omitted — migration 20260516123400 (adds
+    // tournaments.schedule_upload_id for push-notification grouping) is NOT applied to the live DB,
+    // so sending it fails the insert with "column not found in schema cache". Nothing reads it in the
+    // app. Re-add once that migration is applied (owner-gated). Same fix as BulkScheduleDialog.tsx.
     const payload = rows.map(r => ({
       name: r.name.trim(),
       start_time: new Date(r.start_time).toISOString(),
@@ -158,7 +161,6 @@ export default function BulkCreateTournaments() {
       game_type: r.game_type,
       location: r.venue ?? null,
       club_id: r.club_id,
-      schedule_upload_id: scheduleUploadId,
     }));
     const { error } = await (supabase as any).from("tournaments").insert(payload as any);
     setCreating(false);

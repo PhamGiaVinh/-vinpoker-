@@ -108,7 +108,11 @@ export function BulkScheduleDialog({ clubs, defaultClubId, multiClub, onCreated 
     if (rows.find((r) => !r.name.trim() || !r.start_time)) return toast.error("Mỗi giải cần có tên + thời gian");
     setCreating(true);
     try {
-      const scheduleUploadId = crypto.randomUUID();
+      // `schedule_upload_id` (a client-generated tag used only by the push-notification grouping
+      // trigger) is intentionally NOT written: migration 20260516123400 — which adds
+      // tournaments.schedule_upload_id — is NOT applied to the live DB, so sending it made the whole
+      // insert fail with "Could not find the 'schedule_upload_id' column ... in the schema cache".
+      // Nothing reads this column in the app. Re-add it once that migration is applied (owner-gated).
       const payload = rows.map((r) => ({
         name: r.name.trim(),
         start_time: new Date(r.start_time).toISOString(),
@@ -117,7 +121,6 @@ export function BulkScheduleDialog({ clubs, defaultClubId, multiClub, onCreated 
         game_type: r.game_type,
         location: r.venue ?? null,
         club_id: clubId,
-        schedule_upload_id: scheduleUploadId,
       }));
       const { error } = await (supabase as any).from("tournaments").insert(payload as any);
       if (error) { toast.error(error.message); return; }
