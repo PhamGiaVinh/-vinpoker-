@@ -246,6 +246,13 @@ export function useCheckedInDealers(clubIds: string[]) {
         )
         .eq("status", "checked_in")
         .in("dealers.club_id", clubIds)
+        // Exclude soft-deleted dealers (dealers.deleted_at set by DealerManagementTab's
+        // "Xoá dealer"). Their dealer_attendance row can linger as checked_in, so without
+        // this the ghost still surfaces in the swing pool + "Tối ưu nhân sự" release list
+        // and inflates the present count. Mirrors pickNextDealer's server-side filter
+        // (Patch 5b A6). The dealer_attendance.status stays 'checked_in' — only the
+        // frontend list is filtered; the scheduler already excludes them.
+        .is("dealers.deleted_at", null)
         .order("check_in_time", { ascending: true }),
     realtimeTables: ["dealer_attendance"],
     clubIds,
