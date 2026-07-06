@@ -161,9 +161,21 @@ export async function fillEmptyTables(
     tableOverrideConfig.set(sc.scope_id, sc.swing_duration_minutes);
   }
 
-  // Step 4: Filter empty tables, sort by blind level descending (highest first)
-  const emptyTables = scopedTables
-    .filter((t: { id: string }) => !assignedTableIds.has(t.id))
+  // Step 4: Filter empty tables, then (AUTO-staff only) keep running-session tables.
+  // (Bug 2, 2026-07-06) The cron invokes process-swing with shift_id=null, so
+  // scopedTables above becomes EVERY active table — including a table left active
+  // from a prior day (tournament ended, never closed). Without this gate, auto-staff
+  // re-fills that leftover every tick and it shows up as a WARMUP table the owner
+  // never opened today. So the AUTO-staff path (availableOnly) only fills a table
+  // that belongs to the RUNNING session: a live tournament (tournamentConfig, built
+  // from tournaments WHERE status='live') OR the current active shift. Manual callers
+  // (mass-assign / assign-dealer, availableOnly=false) are UNAFFECTED — the operator
+  // explicitly chose that table.
+  const isRunningSessionTable = (t: { id: string; shift_id: string | null }) =>
+    tournamentConfig.has(t.id) || (shiftId != null && t.shift_id === shiftId);
+  const notAssigned = scopedTables.filter((t: { id: string }) => !assignedTableIds.has(t.id));
+  const skippedNonSession = availableOnly ? notAssigned.filter((t) => !isRunningSessionTable(t)) : [];
+  const emptyTables = (availableOnly ? notAssigned.filter(isRunningSessionTable) : notAssigned)
     .sort((a: GameTableRow, b: GameTableRow) =>
       (b.current_blind_level ?? 0) - (a.current_blind_level ?? 0)
     );
@@ -179,6 +191,10 @@ export async function fillEmptyTables(
     available_only: availableOnly,
     empty_table_count: emptyTables.length,
     empty_table_ids: emptyTables.map((t) => t.id),
+    // Bug 2 (2026-07-06): tables skipped by the running-session gate on the
+    // auto-staff path (leftover active tables with no live tournament / stale shift).
+    skipped_non_session_count: skippedNonSession.length,
+    skipped_non_session_ids: skippedNonSession.map((t) => t.id),
   });
 
   // Step 5: Assign dealers to each empty table with per-table swing_due_at
