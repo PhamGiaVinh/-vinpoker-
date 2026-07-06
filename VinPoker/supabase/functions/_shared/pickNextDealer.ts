@@ -92,6 +92,10 @@ export interface DealerCandidate {
   priority_break_flag: boolean;
   current_state: "available" | "on_break";
   last_tour_tier: string;
+  /** Last time this dealer was released from a table (rest anchor). Used by the
+   *  legacy Pass 2 execute-rest guard to avoid pre-assigning a dealer who won't
+   *  meet the execute rest floor by swing time. */
+  last_released_at?: string | null;
   score?: number;
   score_breakdown?: ScoreBreakdown;
 }
@@ -1068,6 +1072,7 @@ export async function buildDealerCandidates(
       priority_break_flag: priorityBreak,
       current_state: row.current_state as "available" | "on_break",
       last_tour_tier: lastTourTier,
+      last_released_at: (row as any).last_released_at ?? null,
       score,
     };
 

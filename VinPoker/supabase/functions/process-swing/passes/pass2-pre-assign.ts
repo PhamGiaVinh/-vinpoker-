@@ -274,6 +274,29 @@ export async function pass2PreAssignNext(
             break retry;
           }
 
+          // (Bug 1 legacy, 2026-07-06) The scheduler path (#717) defers relief via
+          // buildRotationSupply's eligible_at so a locked dealer is always >= the
+          // execute rest floor. The legacy Pass 2 path has no such deferral (its RPC
+          // only enforces a 10-min soft floor), so a dealer eligible here can still be
+          // blocked at execute (EXECUTE_MIN_REST_MINUTES=15) → table stuck on OT. Guard:
+          // only pre-assign a dealer who WILL have >= the execute rest floor by the time
+          // the swing actually runs (max(swing_due_at, now)). Otherwise exclude + retry;
+          // if none qualifies, no pre-assign this tick (honest OT, never a bad swap).
+          const restFloorMs = SWING_POLICY.rest.executeMinRestFloorMinutes * 60_000;
+          const executeAtMs = Math.max(nominalSwingAtMs, Date.now());
+          const releasedMs = nextDealer.last_released_at
+            ? new Date(nextDealer.last_released_at).getTime()
+            : 0;
+          const restAtExecuteMs = releasedMs > 0 ? executeAtMs - releasedMs : Infinity;
+          if (restAtExecuteMs < restFloorMs) {
+            console.log(
+              `[Pass 2] ${tableName}: ${nextDealer.full_name} sẽ chưa đủ ${SWING_POLICY.rest.executeMinRestFloorMinutes}' nghỉ lúc đổi ` +
+              `(còn ${Math.floor(restAtExecuteMs / 60_000)}') — thử dealer khác (attempt ${attempt})`
+            );
+            localExcludes.add(nextDealer.id);
+            continue retry;
+          }
+
           // Call CAS-based RPC for atomic pre-assignment
           const { data: rpcResult, error: rpcErr } = await admin.rpc(
             "pre_assign_next_dealer_for_table",
