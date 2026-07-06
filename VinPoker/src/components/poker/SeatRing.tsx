@@ -83,6 +83,12 @@ function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
   return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
 }
 
+/** Desktop / tablet (sm:) hero anchor — a REAL bottom-centre ring seat (GG / N8 / PokerStars
+ *  desktop clients), sitting just inside the ellipse's own bottom point (angle 90° ⇒ x≈50,
+ *  y≈50+ry). On a phone the hero stays the bottom-left <HeroHud> instead, so this in-ring hero
+ *  is CSS-hidden below sm: and never affects the mobile felt. */
+const HERO_RING_DESKTOP = { x: 50, y: 85 } as const;
+
 function SeatChip({ seat, isMe, hole, bb, isWinner, onSit, anchor = 'center', cardSize = 'mc' }: { seat: PublicSeatView; isMe: boolean; hole?: string[]; bb?: string; isWinner?: boolean; onSit?: () => void; anchor?: SeatAnchor; cardSize?: 'sm' | 'mc' }) {
   const tcls = anchorTranslate(anchor);
   const empty = seat.status === 'empty';
@@ -338,16 +344,27 @@ export function SeatRing({
         pos={pos}
       />
 
-      {/* seats — with heroAsHud the hero is skipped here (drawn as a screen-corner <HeroHud>),
-          so the lower-left no longer stacks the hero on top of seat 1. */}
+      {/* seats. With heroAsHud the hero is the bottom-left <HeroHud> on MOBILE — but on
+          desktop / tablet (sm:) it becomes a REAL bottom-centre ring seat (its own hole cards),
+          the way GG / N8 / PokerStars desktop clients seat you. Rendered `hidden sm:block` at
+          the ellipse's bottom anchor; the corner <HeroHud> carries `sm:hidden`, so exactly one
+          hero shows per breakpoint. The mobile fixed-slot layout is untouched (hero skipped here
+          → HeroHud), so seat 1 still never stacks on the hero on phones. */}
       {hand.seats.map((s) => {
-        if (heroAsHud && s.seat === hand.mySeat) return null;
+        const isHero = s.seat === hand.mySeat;
+        if (heroAsHud && isHero) {
+          return (
+            <div key={s.seat} className="absolute z-20 hidden sm:block" style={{ left: `${HERO_RING_DESKTOP.x}%`, top: `${HERO_RING_DESKTOP.y}%` }}>
+              <SeatChip seat={s} isMe hole={hand.myHoleCards} bb={bb} isWinner={winnerSeats?.includes(s.seat)} anchor="center" cardSize={cardSize} />
+            </div>
+          );
+        }
         return (
-          <div key={s.seat} className={cn('absolute z-10', s.seat === hand.mySeat && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
+          <div key={s.seat} className={cn('absolute z-10', isHero && 'z-20')} style={{ left: `${pos[s.seat]?.x}%`, top: `${pos[s.seat]?.y}%` }}>
             <SeatChip
               seat={s}
-              isMe={s.seat === hand.mySeat}
-              hole={s.seat === hand.mySeat ? hand.myHoleCards : undefined}
+              isMe={isHero}
+              hole={isHero ? hand.myHoleCards : undefined}
               bb={bb}
               isWinner={winnerSeats?.includes(s.seat)}
               onSit={onEmptySeatClick && s.status === 'empty' ? () => onEmptySeatClick(s.seat) : undefined}

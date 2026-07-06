@@ -190,7 +190,7 @@ export default function TablePreview() {
         {/* action dock — ONLY when it's my turn (off-turn fixture → no dock, felt owns the
             screen). Scrim fades the felt under it. Same structure as OnlinePokerTable. */}
         {!allin && legal && hand.toActSeat === hand.mySeat && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-1 pb-1 pt-12 bg-gradient-to-t from-black/80 via-black/45 to-transparent sm:inset-x-auto sm:left-auto sm:right-3 sm:bottom-3 sm:w-[21rem] sm:bg-none sm:p-0">
             <ActionBar hand={hand} legal={legal} bb={BB} onAction={() => { /* dev no-op */ }} />
           </div>
         )}
