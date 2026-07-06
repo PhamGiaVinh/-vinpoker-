@@ -45,6 +45,10 @@ export interface AvailabilityRow {
   kind: string; // preferred | available | leave | unavailable
   template_id: string | null;
   note: string | null;
+  // submitted (= pending review) | acknowledged (= approved) | rejected.
+  // Returned by get_dealer_availability_requests (migration 20261021000000).
+  // Optional so a fallback read that omits it degrades safely (see groupAvailability).
+  status?: string | null;
 }
 
 export interface LiveScenarioInput {
@@ -144,11 +148,26 @@ function groupAvailability(rows: AvailabilityRow[], workDate: string): Availabil
   };
   for (const row of rows) {
     const r = ensure(row.dealer_id);
-    if (row.kind === "leave") r.leaveRequested = true;
-    else if (row.template_id) {
+    // A leave / unavailable request only counts as "dealer is off" while it is
+    // still pending review ('submitted') or has been approved ('acknowledged').
+    // A 'rejected' request MUST NOT block scheduling — the floor declined it, so
+    // the dealer is available. A missing status (older rows, or a fallback read
+    // that didn't select the column) is treated as active, so we never silently
+    // un-block a genuine request. Status domain: dealer_availability_requests
+    // CHECK (submitted|acknowledged|rejected), migration 20260827000000.
+    const offActive =
+      row.status == null || row.status === "submitted" || row.status === "acknowledged";
+    if (row.kind === "leave") {
+      if (offActive) r.leaveRequested = true;
+    } else if (row.kind === "unavailable" && !row.template_id) {
+      // Whole-day unavailable: dealer_request_leave_or_swap stores template_id=NULL,
+      // so an app-submitted "unavailable" day would otherwise be dropped entirely.
+      // Treat it like a leave day.
+      if (offActive) r.leaveRequested = true;
+    } else if (row.template_id) {
       if (row.kind === "preferred") r.preferredTemplateIds.push(row.template_id);
       else if (row.kind === "available") r.availableTemplateIds.push(row.template_id);
-      else if (row.kind === "unavailable") r.unavailableTemplateIds.push(row.template_id);
+      else if (row.kind === "unavailable" && offActive) r.unavailableTemplateIds.push(row.template_id);
     }
     if (row.note && !r.note) r.note = row.note;
   }
