@@ -753,6 +753,15 @@ export const FEATURES = {
    */
   seriesCalibration: true,
   /**
+   * Series Intelligence — W1 "Trợ lý Series" at the top of the SI page. When ON, shows the fixed 8-step
+   * workflow ring (next step highlighted) + up to 3 concrete "hôm nay cần làm gì" tasks derived from the
+   * loaded data (upcoming giải with no forecast · finished giải with no result · GTD gaps · weekly
+   * review). Pure derivation (deriveAssistantTasks) — no prediction, no DB write; reads native events +
+   * capture snapshots/decisions read-only. Turns the page from a dashboard-to-read into a guide. Works
+   * on CSV test data too (softer copy). Default **OFF**; kill-switch: set false to hide the assistant.
+   */
+  seriesAssistant: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
