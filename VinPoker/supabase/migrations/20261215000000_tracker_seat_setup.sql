@@ -8,9 +8,10 @@
 -- seed). So one SECURITY DEFINER RPC does ALL writes in one transaction, guarding on
 -- tracker/floor/owner/super_admin itself.
 --
--- ⚠ NOT YET APPLIED — SOURCE-ONLY. Production apply is owner-gated (controlled patch
--- session, `vinpoker-production-patch`). The UI (flag `trackerSeatSetup`, default OFF)
--- degrades gracefully (undefined_function / undefined_column caught) until this lands.
+-- ✅ APPLIED LIVE 2026-07-05 (owner ran it in the Supabase SQL Editor; the storage policy
+-- below was rewritten to a text-comparison because `safe_uuid_from_storage_folder` is not
+-- in the live DB). Flag `trackerSeatSetup` flipped ON in the same PR. The UI still degrades
+-- gracefully (undefined_function 42883 / undefined_column 42703 caught) as a safety net.
 --
 -- APPLY ORDER / DEPENDS ON (all already live): tournaments, tournament_seats,
 -- tournament_chip_counts, tournament_tables, tournament_hands (20260608000001 +
@@ -190,15 +191,20 @@ GRANT EXECUTE ON FUNCTION public.set_tracker_table_roster_seat(uuid, uuid, integ
 -- 3. Storage: let a TRACKER upload seat avatars (the existing tournament-photos INSERT
 --    policy is floor/media only). ADDITIVE + scoped to the `seat-avatars` subfolder, so
 --    it widens tracker rights ONLY for seat avatars, not general tournament photos. The
---    tournament_id is foldername[1] (safe_uuid_from_storage_folder); seat-avatars is [2].
+--    tournament_id is foldername[1]; seat-avatars is [2].
+--    NOTE: `safe_uuid_from_storage_folder` is NOT in the live DB (schema drift), so we
+--    match the tournament by TEXT (t.id::text = foldername[1]) — no ::uuid cast (which
+--    would error on non-UUID folder names in the shared bucket). Applied live 2026-07-05.
 DO $$ BEGIN
   CREATE POLICY "tournament_photos_obj_insert_tracker_seatavatar" ON storage.objects FOR INSERT TO authenticated
     WITH CHECK (
       bucket_id = 'tournament-photos'
-      AND public.safe_uuid_from_storage_folder(name) IS NOT NULL
       AND (storage.foldername(name))[2] = 'seat-avatars'
-      AND public.is_club_tracker(auth.uid(), (SELECT t.club_id FROM public.tournaments t
-                                              WHERE t.id = public.safe_uuid_from_storage_folder(name)))
+      AND EXISTS (
+        SELECT 1 FROM public.tournaments t
+        WHERE t.id::text = (storage.foldername(name))[1]
+          AND public.is_club_tracker(auth.uid(), t.club_id)
+      )
     );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 

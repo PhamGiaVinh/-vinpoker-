@@ -372,11 +372,15 @@ export const FEATURES = {
    * desync). TWO-TIER GATE: OFF (default) → the old chip-only quick-edit renders,
    * byte-identical, no new column/RPC touched. ON but the migration `20261215000000`
    * NOT applied → the RPC (42883) / avatar_url select (42703) is caught and the panel
-   * degrades to a "chưa áp dụng" state, never crashes. Migration is source-only,
-   * owner-applied; NO edge deploy (the shared tournament-live-draw edge is untouched).
-   * Flip true ONLY after the migration is applied + preview UAT. Kill-switch: false.
+   * degrades to a "chưa áp dụng" state, never crashes. NO edge deploy (the shared
+   * tournament-live-draw edge is untouched).
+   * APPLIED LIVE 2026-07-05: owner ran migration `20261215000000` in the SQL Editor
+   * (col + RPC + grants + storage policy verified: col=1, grants=authenticated/
+   * service_role, policy=1, spoofguard=actor_not_allowed). The storage policy was
+   * rewritten to a text-comparison since `safe_uuid_from_storage_folder` isn't in the
+   * live DB. Flag now ON. Kill-switch: set back to false.
    */
-  trackerSeatSetup: false,
+  trackerSeatSetup: true,
   /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
