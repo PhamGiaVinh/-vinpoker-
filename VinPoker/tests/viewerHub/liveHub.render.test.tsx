@@ -93,7 +93,7 @@ describe("LiveHub — event-tabs layout (liveEventTabs ON)", () => {
 });
 
 describe("LiveHub — legacy stacked layout (liveEventTabs OFF) stays intact", () => {
-  it("renders the felt + featured badge + orientation toggle", () => {
+  it("renders the felt + featured badge, WITHOUT the removed Ngang/Dọc toggle", () => {
     (FEATURES as Record<string, unknown>).liveEventTabs = false;
     const html = wrap(
       <LiveHub tournamentId="t1" title="Daily Turbo" onShare={noop}>
@@ -102,11 +102,12 @@ describe("LiveHub — legacy stacked layout (liveEventTabs OFF) stays intact", (
     );
     expect(html).toContain("LIVE_TABLE_VIEW");
     expect(html).toContain("BÀN ĐANG DIỄN RA");
-    expect(html).toContain("Ngang");
-    expect(html).toContain("Dọc");
+    // Owner 2026-07-06: viewer is PORTRAIT-ONLY — the orientation toggle is gone.
+    expect(html).not.toContain("Ngang");
+    expect(html).not.toContain("Dọc");
   });
 
-  it("injects orientation + spectator overrides into the child viewer", () => {
+  it("injects PORTRAIT (always) + spectator overrides into the child viewer", () => {
     (FEATURES as Record<string, unknown>).liveEventTabs = false;
     const Viewer = ({ orientationOverride, spectator }: { orientationOverride?: "landscape" | "portrait" | null; spectator?: boolean }) => (
       <div>ORIENT:{orientationOverride}|SPECTATOR:{String(spectator)}</div>
@@ -116,7 +117,8 @@ describe("LiveHub — legacy stacked layout (liveEventTabs OFF) stays intact", (
         <Viewer />
       </LiveHub>
     );
-    expect(html).toContain("ORIENT:landscape");
+    // Portrait-only viewer: the override is portrait on EVERY device (no isMobile branch).
+    expect(html).toContain("ORIENT:portrait");
     expect(html).toContain("SPECTATOR:true");
   });
 });

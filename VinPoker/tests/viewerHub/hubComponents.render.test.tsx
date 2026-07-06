@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import i18n from "@/i18n";
 import { LiveTablesStrip } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesStrip";
 import { LiveUpdatesFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveUpdatesFeed";
-import { OrientationToggle } from "@/components/cashier/tournament-live/viewer-hub/OrientationToggle";
 import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/LiveStatsBar";
 import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
 import { LiveTablesMap } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesMap";
@@ -83,14 +82,8 @@ describe("LiveUpdatesFeed", () => {
   });
 });
 
-describe("OrientationToggle (UI-only)", () => {
-  it("renders both orientations, defaulting to landscape selected", () => {
-    const html = renderToStaticMarkup(<OrientationToggle />);
-    expect(html).toContain("Ngang");
-    expect(html).toContain("Dọc");
-    expect(html).toContain('aria-pressed="true"'); // default landscape is pressed
-  });
-});
+// OrientationToggle was removed 2026-07-06 (owner: the viewer is PORTRAIT-ONLY — the
+// tall 3:4 felt is the one viewer layout; Ngang/Dọc is gone). See liveHub.render.test.tsx.
 
 describe("LiveStatsBar", () => {
   it("renders prize pool, players remaining and chip leader when present", () => {

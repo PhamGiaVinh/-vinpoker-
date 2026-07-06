@@ -20,12 +20,10 @@ import { LiveTablesMap } from "./LiveTablesMap";
 import { LiveStoryFeed } from "./LiveStoryFeed";
 import { LiveUpdatesFeed } from "./LiveUpdatesFeed";
 import { LiveHandFeed } from "./LiveHandFeed";
-import { OrientationToggle } from "./OrientationToggle";
 import { PrizesPanel } from "./PrizesPanel";
 import { StructurePanel } from "./StructurePanel";
 import { PhotosPanel } from "./PhotosPanel";
 import { useLiveTrackerData } from "./useLiveTrackerData";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { FEATURES } from "@/lib/featureFlags";
 
 type Orientation = "landscape" | "portrait";
@@ -80,10 +78,9 @@ export function LiveHub({
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const featuredTableId = selectedTableId ?? activeHandTableId;
 
-  // Orientation: default to the device, but let the viewer flip Ngang/Dọc.
-  const isMobile = useIsMobile();
-  const [orientation, setOrientation] = useState<Orientation | null>(null);
-  const effectiveOrientation: Orientation = orientation ?? (isMobile ? "portrait" : "landscape");
+  // Orientation (owner 2026-07-06): the viewer is PORTRAIT-ONLY — the tall 3:4 felt is
+  // the one viewer layout on every device; the Ngang/Dọc toggle + landscape felt are gone.
+  const effectiveOrientation: Orientation = "portrait";
 
   // Event-tabs: which felt (if any) the viewer is actively watching. null → tabs.
   // Seeded synchronously from a deep-linked hand (?hand=N) so it opens its replay
@@ -115,7 +112,6 @@ export function LiveHub({
         <LiveTablesMap tables={tables} activeTableId={featuredTableId} onSelect={setSelectedTableId} />
         <FeaturedTableCard
           badge={t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
-          headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
         >
           {viewer}
         </FeaturedTableCard>
@@ -168,7 +164,6 @@ export function LiveHub({
           </button>
           <FeaturedTableCard
             badge={watch.kind === "replay" ? t("liveHub.watch.replay", "PHÁT LẠI VÁN") : t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
-            headerAction={<OrientationToggle value={effectiveOrientation} onChange={setOrientation} />}
           >
             {watchViewer}
           </FeaturedTableCard>
