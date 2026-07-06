@@ -269,6 +269,16 @@ export async function fillEmptyTables(
           p_table_id: table.id,
           p_attendance_id: dealer.id,
           p_swing_due_at: tableSwingDueAt,
+          // Explicit assignment-origin marker (2026-07-07). "open_manual_*" =
+          // operator opened/staffed the table (Gán / Gán loạt) and the row carries
+          // the 6-min open-table grace → the floor card shows WARMUP for it.
+          // "autostaff_*" = the cron auto re-fill (no grace since #722) → no WARMUP.
+          // The card previously INFERRED warmup from (swing_due_at − assigned_at) >
+          // swing_duration, which false-fired on every backend timing nuance
+          // (rest-deficit compensation, sync-window rounding, config-fallback
+          // mismatches). The marker makes it exact. Key is deterministic per
+          // table+due so the RPC's replay-dedupe still works across retry attempts.
+          p_idempotency_key: `${availableOnly ? "autostaff" : "open_manual"}_${table.id}_${tableSwingDueAt ?? now.toISOString()}`,
         }
       );
 
