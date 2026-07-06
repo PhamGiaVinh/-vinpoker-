@@ -58,6 +58,7 @@ const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
 const OpsShell = lazy(() => import("./components/ops/OpsShell"));
 const OpsToday = lazy(() => import("./pages/ops/OpsToday"));
 const OpsTournaments = lazy(() => import("./pages/ops/OpsTournaments"));
+const OpsTournamentCockpit = lazy(() => import("./pages/ops/OpsTournamentCockpit"));
 const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
 const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
 const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
@@ -228,6 +229,7 @@ const App = () => (
               <Route element={<OpsShell />}>
                 <Route path="/ops" element={<OpsToday />} />
                 <Route path="/ops/tournaments" element={<OpsTournaments />} />
+                <Route path="/ops/tournaments/:id" element={<OpsTournamentCockpit />} />
                 <Route path="/ops/tables" element={<OpsTables />} />
                 <Route path="/ops/alerts" element={<OpsAlerts />} />
                 <Route path="/ops/more" element={<OpsMore />} />
