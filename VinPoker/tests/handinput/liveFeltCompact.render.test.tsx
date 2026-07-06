@@ -1,9 +1,10 @@
-// PR-A1 (liveFeltCompact → LiveFelt `compact` + `blinds`) — the RPT-style compact-wide
-// viewer felt. Pins: compact portrait = 2.2:1 stadium with rim-straddling anchors + V
-// as watermark + stable 5-slot board; BB-FIRST nameplates (chips demoted) that fall
-// back to chips-only when formatBB is null (never a fake BB); the persistent status
-// bar (blinds · to-act · pot) with every segment hidden when its data is missing;
-// landscape keeps its 13/6 geometry (only the bar is added).
+// PR-A1 (liveFeltCompact → LiveFelt `compact` + `blinds`) — the compact viewer felt.
+// REDESIGNED 2026-07-06 (owner UAT: the 2.2:1 stadium overlapped everything at 9-max
+// showdown): compact portrait = TALL 3:4 oval on the PROVEN V2 portrait rim anchors +
+// V as watermark + viewer board showing only dealt cards; BB-FIRST nameplates (chips
+// demoted) that fall back to chips-only when formatBB is null (never a fake BB); the
+// persistent status bar (blinds · to-act · pot) with every segment hidden when its
+// data is missing; landscape keeps its 13/6 geometry (only the bar is added).
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveFelt, type SeatInfo } from "@/components/cashier/tournament-live/LiveFelt";
@@ -42,13 +43,13 @@ const nineSeats = Array.from({ length: 9 }, (_, i) =>
 );
 
 describe("LiveFelt compact (PR-A1, viewer-only)", () => {
-  it("compact portrait → 2.2:1 stadium, rim-straddling anchors, V as watermark", () => {
+  it("compact portrait → tall 3:4 oval on the V2 rim anchors, V as watermark", () => {
     const html = renderToStaticMarkup(
       <LiveFelt seats={twoSeats} {...baseProps} portrait viewerLayout compact />
     );
-    expect(html).toContain("2.2 / 1");
-    expect(html).not.toContain("5 / 7"); // tall racetrack replaced
-    expect(html).toContain("left:50%;top:0%"); // seat 5 straddles the top rim
+    expect(html).toContain("3 / 4");
+    expect(html).not.toContain("2.2 / 1"); // the short stadium is gone (it overlapped at showdown)
+    expect(html).toContain("left:50%;top:8%"); // seat 5 on the V2 top rim
     expect(html).toContain("felt-v"); // brand V still present (as watermark)
     expect(html).toContain("20cqi"); // watermark sizing, not the stacked V row
   });
@@ -118,7 +119,7 @@ describe("LiveFelt compact (PR-A1, viewer-only)", () => {
       <LiveFelt seats={twoSeats} {...baseProps} potSize={900} viewerLayout compact blinds={{ sb: 100, bb: 200, ante: 0 }} />
     );
     expect(html).toContain("13 / 6");
-    expect(html).not.toContain("2.2 / 1");
+    expect(html).not.toContain("3 / 4");
     expect(html).toContain("felt-status-bar");
   });
 
@@ -127,7 +128,7 @@ describe("LiveFelt compact (PR-A1, viewer-only)", () => {
       <LiveFelt seats={nineSeats} {...baseProps} portrait viewerLayout compact />
     );
     for (let i = 1; i <= 9; i++) expect(html).toContain(`Player ${i}`);
-    expect(html).toContain("left:8%;top:38%"); // seat 3 far-left end
-    expect(html).toContain("left:92%;top:38%"); // seat 7 far-right end
+    expect(html).toContain("left:6%;top:50%"); // seat 3 far-left (V2 anchors)
+    expect(html).toContain("left:94%;top:50%"); // seat 7 far-right (V2 anchors)
   });
 });

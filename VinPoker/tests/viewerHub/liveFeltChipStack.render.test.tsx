@@ -83,16 +83,31 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
     expect(top).toBeLessThan(42); // but kept clear of the pot/board
   });
 
-  // ── UAT wave 2 (Fix 2+3, compact only) ──────────────────────────────────────
-  it("compact: the stack is SEAT-ANCHORED (K=0.30) — seat 5 (t=0) lands ≈15%, near the pod", () => {
+  // ── Compact disc lerp (re-tuned 2026-07-06 with the tall 3:4 portrait oval) ──
+  it("compact portrait: seat 5's stack clears its own ~125px showdown pod (K=0.42) but stays off the board", () => {
     const html = renderToStaticMarkup(
       <LiveFelt seats={[seat({ player_id: "a", seat_number: 5, current_bet: 200000 })]} {...baseProps} portrait viewerLayout compact />
     );
     const m = html.match(/z-\[15\][^>]*top:([0-9.]+)%/);
     expect(m).toBeTruthy();
     const top = parseFloat(m![1]);
-    expect(top).toBeGreaterThan(12);
-    expect(top).toBeLessThan(18); // 0 + (50−0)×0.30 = 15 — NOT dragged to mid-felt
+    // V2 seat 5 t=8 → 8 + (46−8)×0.42 = 23.96: BELOW the pod block (K=0.30 landed the
+    // disc on the pod's own revealed cards), ABOVE the board band (top ≈40%).
+    expect(top).toBeGreaterThan(20);
+    expect(top).toBeLessThan(30);
+  });
+
+  it("compact portrait: middle-SIDE seats keep the short 0.30 lerp so discs stop before the board's edge", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt seats={[seat({ player_id: "a", seat_number: 3, current_bet: 200000 })]} {...baseProps} portrait viewerLayout compact />
+    );
+    // V2 seat 3 l=6, t=50 (inside the board band |50−46|<12) → l = 6 + (50−6)×0.30 = 19.2:
+    // a horizontal-traveling disc at 0.42 (l≈24.5) overlapped the board's left edge.
+    const m = html.match(/z-\[15\][^>]*left:([0-9.]+)%/);
+    expect(m).toBeTruthy();
+    const left = parseFloat(m![1]);
+    expect(left).toBeGreaterThan(15);
+    expect(left).toBeLessThan(22);
   });
 
   it("compact: adjacent all-in seats keep DISTINCT seat-side positions (no center-ring pileup)", () => {
@@ -112,10 +127,10 @@ describe("LiveFelt committed-bet chip stack (viewerLayout)", () => {
     const lefts = [...html.matchAll(/z-\[15\][^>]*left:([0-9.]+)%/g)].map((m) => parseFloat(m[1]));
     expect(lefts.length).toBe(3);
     expect(new Set(lefts.map((l) => Math.round(l))).size).toBe(3); // three distinct columns
-    // The old MINGAP clamp snapped near-center stacks onto a 16%-radius ring; the
-    // top-center seat (5) must now stay in its own lane near the seat instead.
+    // No MINGAP center-ring snap in compact: the top-row stacks stay in their own lanes
+    // between pod (≤ ~16% bottom edge) and board (top ≈40%).
     const tops = [...html.matchAll(/z-\[15\][^>]*top:([0-9.]+)%/g)].map((m) => parseFloat(m[1]));
-    expect(Math.max(...tops)).toBeLessThan(22); // K=0.30: top-row stacks ≤ ~17
+    expect(Math.max(...tops)).toBeLessThan(32);
   });
 
   it("compact: ALL-IN pill shows the whole-hand total AMOUNT-ONLY on the red pill (RPT style)", () => {

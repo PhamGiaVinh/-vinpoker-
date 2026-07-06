@@ -175,27 +175,20 @@ const GEO_V2 = {
   landscape: { aspect: "13 / 6", seats: LANDSCAPE_SEATS_V2, centerTop: "44%", centerW: "36%", vSize: "clamp(22px,4vw,36px)", maxW: "880px" },
 };
 
-// PR-A1 (liveFeltCompact): RPT-style COMPACT-WIDE stadium for PORTRAIT phones —
-// felt ≈2.2:1 so felt+pods stay ≈30% of a 390px viewport instead of the tall 5/7
-// racetrack. Pods straddle the rim (top/bottom rows sit half outside the oval, like a
-// broadcast table). Used ONLY when viewerLayout && compact && portrait; every other
-// path (operator/TV/replay-without-flag, landscape) keeps GEO/GEO_V2 byte-identical.
-const PORTRAIT_SEATS_COMPACT: Record<number, Pt> = {
-  1: { l: 36, t: 97 },
-  2: { l: 12, t: 84 },
-  3: { l: 8, t: 38 }, // side ends stay ≥8% — at 4% half the 58px pod fell off a 390px viewport
-  4: { l: 22, t: 3 },
-  5: { l: 50, t: 0 },
-  6: { l: 78, t: 3 },
-  7: { l: 92, t: 38 },
-  8: { l: 88, t: 84 },
-  9: { l: 64, t: 97 },
-};
+// PR-A1 (liveFeltCompact) — REDESIGNED (owner UAT 2026-07-06): the original 2.2:1
+// stadium gave NINE seats + showdown reveals + bet discs + board only ~167px of felt
+// height at 390px — a showdown pod is ~125px tall, so board/cards/discs/pods overlapped
+// by construction while ~470px of the phone below sat empty. The compact portrait now
+// uses a TALL 3:4 oval (GG/RPT mobile pattern) with the PROVEN V2 portrait rim anchors
+// (the map that fixed the original mobile-overlap bug), keeping everything else compact:
+// pot in the status bar, BB-first nameplates, watermark V, dropped face-down backs.
+// Used ONLY when viewerLayout && compact && portrait; every other path (operator/TV/
+// replay-without-flag, landscape) keeps GEO/GEO_V2 byte-identical.
 const GEO_COMPACT_PORTRAIT = {
-  aspect: "2.2 / 1",
-  seats: PORTRAIT_SEATS_COMPACT,
-  centerTop: "50%",
-  centerW: "44%",
+  aspect: "3 / 4",
+  seats: PORTRAIT_SEATS_V2,
+  centerTop: "46%",
+  centerW: "54%",
   vSize: "clamp(26px,9vw,40px)", // unused in compact (V renders as a watermark instead)
   maxW: "480px",
 };
@@ -412,18 +405,26 @@ export function LiveFelt({
   // each other at the pot (the board is positionally protected, NOT just by z-order).
   // K + MINGAP are tuned in the 9-handed-all-bet visual check.
   const potCenterT = parseFloat(geo.centerTop) || 43;
-  // UAT wave 2 (Fix 2, compact only): chips sit NEAR THE SEAT (RPT pattern, lerp 30%)
-  // instead of 42%-plus-center-ring — 9-max all-in stacks no longer converge mid-felt,
-  // so the radial center-gap clamp is unnecessary by construction (seat-anchored
-  // stacks can't reach the pot; nearest compact seat t=0 lands at t=15% vs board top
-  // ≈34%). 0.30 (not lower) because the pills now carry amounts and need clearance
-  // from the pod block — tuned on the 9-max all-in worst case. Non-compact keeps
-  // K=0.42 + the clamp — flag-off render byte-identical.
-  const STACK_K = compactActive ? 0.3 : 0.42;
+  // Disc lerp K per surface (measured, 2026-07-06 tall-portrait redesign):
+  //  • non-compact: 0.42 + the radial center clamp (unchanged — flag-off byte-identical).
+  //  • compact LANDSCAPE (desktop /live): 0.30 "near the seat" (UAT wave 2 tuning — at
+  //    0.42 the top-row discs land on the board, top seat t15.5 → 27.5%+disc vs board 29%).
+  //  • compact PORTRAIT (tall 3:4 oval): a showdown pod is ~125px tall, so 0.30 landed the
+  //    disc on its OWN pod/cards (top seats: 56px from anchor vs 62px pod half-height) →
+  //    0.42 for the vertical-traveling rim seats. EXCEPT the middle-side seats (t within
+  //    the board band): their discs travel HORIZONTALLY toward the cards — keep those at
+  //    0.30 so they stop short of the board's edge (measured: l 19% vs board left 26%).
   const STACK_MINGAP = 16; // % of the felt that the stack center stays clear of the pot
   const stackPt = (pos: Pt): Pt => {
-    let l = pos.l + (50 - pos.l) * STACK_K;
-    let t = pos.t + (potCenterT - pos.t) * STACK_K;
+    const k = !compactActive
+      ? 0.42
+      : !portrait
+        ? 0.3
+        : Math.abs(pos.t - potCenterT) < 12
+          ? 0.3
+          : 0.42;
+    let l = pos.l + (50 - pos.l) * k;
+    let t = pos.t + (potCenterT - pos.t) * k;
     if (compactActive) return { l, t };
     const dx = l - 50;
     const dy = t - potCenterT;
