@@ -59,6 +59,16 @@ function detectKind(file: File): "binary" | "spreadsheet" {
   return "binary";
 }
 
+/** Strip non-digits and parse to a positive VND amount, or null if blank/invalid. */
+function parseSalaryVnd(s: string): number | null {
+  const digits = String(s ?? "").replace(/[^\d]/g, "");
+  if (!digits) return null;
+  const n = parseInt(digits, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const fmtVnd = (n: number) => n.toLocaleString("vi-VN");
+
 export function BulkDealerImportDialog({
   clubId,
   existingNames,
@@ -73,6 +83,7 @@ export function BulkDealerImportDialog({
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [names, setNames] = useState<PreviewName[]>([]);
   const [employmentType, setEmploymentType] = useState<EmploymentType>("part_time");
+  const [salaryInput, setSalaryInput] = useState(""); // batch salary: PT=hourly, FT=monthly (blank ⇒ null)
   const [analyzing, setAnalyzing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -87,6 +98,7 @@ export function BulkDealerImportDialog({
     setResult(null);
     setAnalyzing(false);
     setCreating(false);
+    setSalaryInput("");
   };
 
   const onPickFiles = (list: FileList | null) => {
@@ -189,7 +201,7 @@ export function BulkDealerImportDialog({
     }
     setCreating(true);
     try {
-      const rows = buildBulkDealerRows(chosen, { clubId, employmentType });
+      const rows = buildBulkDealerRows(chosen, { clubId, employmentType, salaryVnd: parseSalaryVnd(salaryInput) });
       const BATCH = 150;
       let created = 0;
       const errors: { name: string; error: string }[] = [];
@@ -389,8 +401,8 @@ export function BulkDealerImportDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận tạo {selectedCount} dealer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Chọn loại hình áp dụng cho <b>tất cả {selectedCount} dealer</b>. Hạng: <b>B</b> (cố định).
-              Các dòng trùng tên đã được bỏ chọn sẵn. Lương để trống — cấu hình sau ở màn Quản lý Dealer.
+              Chọn loại hình + nhập lương áp dụng cho <b>tất cả {selectedCount} dealer</b>. Hạng: <b>B</b> (cố định).
+              Các dòng trùng tên đã được bỏ chọn sẵn.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -413,6 +425,26 @@ export function BulkDealerImportDialog({
                   {et === "part_time" ? "Bán thời gian (PT)" : "Toàn thời gian (FT)"}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Lương cho cả lô — nhãn đổi theo PT/FT (PT = lương giờ, FT = lương tháng) */}
+          <div>
+            <div className="text-xs text-muted-foreground mb-1.5">
+              {employmentType === "part_time" ? "Lương giờ (VND/giờ)" : "Lương tháng (VND/tháng)"} — áp dụng cho tất cả:
+            </div>
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={salaryInput}
+              onChange={(e) => setSalaryInput(e.target.value)}
+              placeholder={employmentType === "part_time" ? "VD: 100000 (100k/giờ)" : "VD: 9000000 (9 triệu/tháng)"}
+              className="h-9 text-sm bg-card border-border"
+            />
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {parseSalaryVnd(salaryInput) != null
+                ? `= ${fmtVnd(parseSalaryVnd(salaryInput)!)}đ ${employmentType === "part_time" ? "/giờ" : "/tháng"} cho mỗi dealer`
+                : "Bỏ trống nếu muốn nhập lương sau ở màn Quản lý Dealer."}
             </div>
           </div>
 

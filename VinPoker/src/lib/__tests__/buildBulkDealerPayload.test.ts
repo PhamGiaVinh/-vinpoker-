@@ -64,3 +64,40 @@ describe("buildBulkDealerRows", () => {
     expect(rows.map((r) => r.full_name)).toEqual(["Lê Anh"]);
   });
 });
+
+describe("buildBulkDealerRows — batch salary (owner 2026-07-06)", () => {
+  const clubId = "11111111-1111-1111-1111-111111111111";
+
+  it("PT: salaryVnd is the hourly rate → hourly_rate_vnd; monthly 0; base null", () => {
+    const [r] = buildBulkDealerRows(["An"], { clubId, employmentType: "part_time", salaryVnd: 100000 });
+    expect(r.hourly_rate_vnd).toBe(100000);
+    expect(r.monthly_salary_vnd).toBe(0);
+    expect(r.base_rate_vnd).toBeNull();
+    expect(r.standard_hours_per_shift).toBeNull();
+    expect(r.ot_multiplier).toBeNull();
+  });
+
+  it("FT: salaryVnd is monthly → monthly + base round(monthly/26) + hourly round(monthly/26/8)", () => {
+    const [r] = buildBulkDealerRows(["An"], { clubId, employmentType: "full_time", salaryVnd: 9000000 });
+    expect(r.monthly_salary_vnd).toBe(9000000);
+    expect(r.base_rate_vnd).toBe(346154); // round(9000000/26)
+    expect(r.hourly_rate_vnd).toBe(43269); // round(9000000/26/8)
+    expect(r.standard_hours_per_shift).toBe(8);
+    expect(r.ot_multiplier).toBe(1.5);
+  });
+
+  it("blank/zero/negative salary ⇒ pay fields null (PT monthly stays 0) — no fake salary", () => {
+    const [pt] = buildBulkDealerRows(["An"], { clubId, employmentType: "part_time", salaryVnd: 0 });
+    expect(pt.hourly_rate_vnd).toBeNull();
+    expect(pt.monthly_salary_vnd).toBe(0);
+    const [ft] = buildBulkDealerRows(["An"], { clubId, employmentType: "full_time", salaryVnd: -5 });
+    expect(ft.monthly_salary_vnd).toBeNull();
+    expect(ft.base_rate_vnd).toBeNull();
+    expect(ft.hourly_rate_vnd).toBeNull();
+  });
+
+  it("rounds a fractional salaryVnd before use", () => {
+    const [r] = buildBulkDealerRows(["An"], { clubId, employmentType: "part_time", salaryVnd: 100000.7 });
+    expect(r.hourly_rate_vnd).toBe(100001);
+  });
+});
