@@ -15,7 +15,7 @@ import { fmtBB, fmtChips } from '@/lib/onlinePoker/sizing';
 import { PlayingCard } from './PlayingCard';
 import { DeckStack } from './DeckStack';
 import { DealAnimation } from './DealAnimation';
-import { oppSlots, MOBILE_HERO_ANCHOR, MOBILE_FELT_CLASS, type SeatAnchor, type SeatSlot } from './mobileTableLayout';
+import { oppSlots, MOBILE_HERO_ANCHOR, MOBILE_FELT_CLASS, MOBILE_POT_CENTER, type SeatAnchor, type SeatSlot } from './mobileTableLayout';
 import './pokerTable.css';
 import { Clock } from 'lucide-react';
 
@@ -78,9 +78,11 @@ function anchorTranslate(anchor: SeatAnchor): string {
     : '-translate-x-1/2 -translate-y-1/2';
 }
 
-/** A point 36% of the way from a seat toward the table centre (where bets sit). */
-function towardCenter(p: { x: number; y: number }): { x: number; y: number } {
-  return { x: p.x + (50 - p.x) * 0.36, y: p.y + (50 - p.y) * 0.36 };
+/** A point `t` of the way from a seat toward where the bets gather (default: table centre).
+ *  The N8 mobile felt lifts its pot/board block to ~31%, so bets aim at MOBILE_POT_CENTER — and
+ *  travel further (t=0.5) so the chip clears the seat's own card backs. */
+function towardCenter(p: { x: number; y: number }, c: { x: number; y: number } = { x: 50, y: 50 }, t = 0.36): { x: number; y: number } {
+  return { x: p.x + (c.x - p.x) * t, y: p.y + (c.y - p.y) * t };
 }
 
 /** Desktop / tablet (sm:) hero anchor — a REAL bottom-centre ring seat (GG / N8 / PokerStars
@@ -239,6 +241,25 @@ export function SeatRing({
   // bottom-centre position is kept here ONLY for the committed-bet chip + deal target.
   if (!heroAsHud && hand.mySeat != null && pos[hand.mySeat]) pos[hand.mySeat] = { x: heroAnchor?.x ?? 15, y: heroAnchor?.y ?? 85, anchor: 'center' };
 
+  // N8 mobile check — same gate (and SSR default) as seatPositions' mobileFixed: the live
+  // (heroAsHud) table on a phone viewport. Drives the JS-positioned bits (bet-chip gather
+  // point); the CSS bits (stadium radii, board lift) use sm:-reverting classes instead.
+  const mobileN8 = heroAsHud && (typeof window === 'undefined' || window.matchMedia('(max-width: 639px)').matches);
+  // Where committed bets ease toward (and collect into): the lifted N8 pot on mobile,
+  // the geometric centre everywhere else.
+  const potCenter = mobileN8 ? MOBILE_POT_CENTER : { x: 50, y: 50 };
+
+  // N8 stadium felt (owner mockup v3, heroAsHud mobile only): straighter sides + a thin rail so
+  // the green runs edge-to-edge and down to the bottom of the phone — the ellipse's sharp 48%
+  // curvature is what read as "bàn nhọn, lệch tỉ lệ". Desktop (sm:) and the legacy/cinematic
+  // path keep today's oval exactly.
+  const haloRadius = heroAsHud ? 'rounded-[46%_/_21%] sm:rounded-[48%]' : 'rounded-[48%]';
+  const railInset = heroAsHud ? 'inset-1.5 sm:inset-[3%]' : 'inset-[3%]';
+  const feltInset = heroAsHud ? 'inset-3.5 sm:inset-[6.5%]' : 'inset-[6.5%]';
+  const feltRadius = heroAsHud ? 'rounded-[45%_/_20%] sm:rounded-[47%]' : 'rounded-[47%]';
+  const glowRadius = heroAsHud ? 'rounded-[44%_/_19%] sm:rounded-[46%]' : 'rounded-[46%]';
+  const innerRadius = heroAsHud ? 'rounded-[42%_/_18%] sm:rounded-[44%]' : 'rounded-[44%]';
+
   // UI-4 — optional Premium Felt skin (burgundy + gold). Default emerald preserves the
   // PokerVN identity; the warm palette lives ONLY inside this felt, never the app theme.
   const premium = skin === 'premium';
@@ -265,34 +286,38 @@ export function SeatRing({
         ? 'absolute inset-0 sm:relative sm:inset-auto sm:mx-auto sm:aspect-[16/10] sm:h-auto sm:w-full sm:max-w-3xl'
         : 'relative mx-auto aspect-[3/5] max-h-full w-full max-w-3xl sm:aspect-[16/10]'}>
       {/* outer halo — lifts the table off the near-black room */}
-      <div className="pointer-events-none absolute inset-0 rounded-[48%] shadow-[0_30px_80px_rgba(0,0,0,0.65)]" />
+      <div className={cn('pointer-events-none absolute inset-0 shadow-[0_30px_80px_rgba(0,0,0,0.65)]', haloRadius)} />
 
       {/* rail (outer band for depth) + a thin lit top edge (gold on the premium skin) */}
-      <div className={cn('absolute inset-[3%] rounded-[48%] bg-gradient-to-b shadow-[0_22px_60px_rgba(0,0,0,0.72)]', premium ? 'from-[#2a1208] to-[#0d0604]' : 'from-[#11221a] to-[#030806]')} />
-      <div className={cn('pointer-events-none absolute inset-[3%] rounded-[48%]', premium ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(245,194,96,0.28)]' : 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]')} />
+      <div className={cn('absolute bg-gradient-to-b shadow-[0_22px_60px_rgba(0,0,0,0.72)]', railInset, haloRadius, premium ? 'from-[#2a1208] to-[#0d0604]' : 'from-[#11221a] to-[#030806]')} />
+      <div className={cn('pointer-events-none absolute', railInset, haloRadius, premium ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(245,194,96,0.28)]' : 'shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(0,224,122,0.10)]')} />
 
       {/* felt — emerald (default) or burgundy (premium), soft centre glow + strong vignette */}
       <div
-        className={cn('absolute inset-[6.5%] rounded-[47%] border', premium
+        className={cn('absolute border', feltInset, feltRadius, premium
           ? 'border-[#b9892f] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(245,194,96,0.25)]'
           : 'border-[#0a3a25] shadow-[inset_0_0_90px_rgba(0,0,0,0.78),inset_0_0_0_2px_rgba(0,224,122,0.12)]')}
         style={{ background: feltBg }}
       >
         {/* center glow */}
-        <div className="pointer-events-none absolute inset-0 rounded-[46%]" style={{ background: centerGlowBg }} />
+        <div className={cn('pointer-events-none absolute inset-0', glowRadius)} style={{ background: centerGlowBg }} />
         {/* faint felt texture */}
-        <div className="pointer-events-none absolute inset-0 rounded-[44%] opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)', backgroundSize: '15px 15px' }} />
-        {/* very subtle desktop/tablet-only watermark (hidden on mobile; never competes with board) */}
-        <div className="pointer-events-none absolute inset-0 hidden items-center justify-center sm:flex">
+        <div className={cn('pointer-events-none absolute inset-0 opacity-[0.05]', innerRadius)} style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)', backgroundSize: '15px 15px' }} />
+        {/* subtle watermark — desktop always; on the N8 mobile felt the lifted board frees the
+            centre, so it shows there too (never competes with the board) */}
+        <div className={cn('pointer-events-none absolute inset-0 items-center justify-center', heroAsHud ? 'flex' : 'hidden sm:flex')}>
           <span className="text-2xl font-extrabold tracking-[0.2em] lg:text-3xl" style={{ color: premium ? 'rgba(245,194,96,0.07)' : 'rgba(0,224,122,0.06)' }}>VinPoker</span>
         </div>
         {/* inner rim */}
-        <div className={cn('pointer-events-none absolute inset-[6%] rounded-[44%] ring-1 ring-inset', premium ? 'ring-amber-200/15' : 'ring-emerald-200/10')} />
+        <div className={cn('pointer-events-none absolute inset-[6%] ring-1 ring-inset', innerRadius, premium ? 'ring-amber-200/15' : 'ring-emerald-200/10')} />
 
         {/* board + pot. The board CARDS stay at native `md` (equal to hero + opponents); the
             pot pill keeps its own prominence via text size + a small pill-only scale, so
             equalising the cards never shrinks them below the seats' cards. */}
-        <div className="absolute left-1/2 top-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 sm:gap-2">
+        <div className={cn('absolute left-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 sm:gap-2',
+          // N8 mobile: the pot/board block lifts into the upper felt (the lower felt belongs to
+          // the hero cards + dock); desktop and legacy keep the true centre.
+          heroAsHud ? 'top-[31%] sm:top-1/2' : 'top-1/2')}>
           <div className={cn('flex scale-105 items-center gap-1.5 rounded-full border border-amber-300/30 bg-black/60 px-3.5 py-1 shadow-md sm:scale-110', winnerSeats?.length && 'op-winner-glow')}>
             <span className="text-[9px] font-semibold uppercase tracking-wider text-white/55">Tổng Pot</span>
             <span className="text-sm font-bold tabular-nums text-primary sm:text-base">{bbOrChips(hand.pot, bb)}</span>
@@ -324,8 +349,12 @@ export function SeatRing({
       {/* committed-bet chips on the felt (toward the pot) */}
       {hand.seats.map((s) => {
         if (!(Number(s.committed) > 0)) return null;
-        const bp = towardCenter(pos[s.seat] ?? { x: 50, y: 50 });
-        const target = collecting ? { x: 50, y: 50 } : bp;
+        const slot = pos[s.seat] ?? { ...potCenter, anchor: 'center' as SeatAnchor };
+        // Edge-anchored slots hold the pod's OUTER edge — start the bet chip from the pod's
+        // visual centre (~11% ≈ half a plate) so it never lands on the plate itself.
+        const visX = slot.anchor === 'left' ? slot.x + 11 : slot.anchor === 'right' ? slot.x - 11 : slot.x;
+        const bp = towardCenter({ x: visX, y: slot.y }, potCenter, mobileN8 ? 0.5 : 0.36);
+        const target = collecting ? potCenter : bp;
         return (
           <div key={`bet-${s.seat}`} className="op-chip absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${target.x}%`, top: `${target.y}%`, opacity: collecting ? 0.2 : 1 }}>
             <span className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-amber-300 shadow sm:text-[10px]">
