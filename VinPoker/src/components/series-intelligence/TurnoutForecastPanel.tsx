@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatVndShort } from "@/lib/clubFinance";
+import { FEATURES } from "@/lib/featureFlags";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
 import {
@@ -14,6 +15,7 @@ import {
   type ForecastConfidence,
   type ForecastOverlayFeed,
 } from "@/lib/series-intelligence/turnoutForecast";
+import { naiveBaseline, baselineDeltaPct } from "@/lib/series-intelligence/naiveBaseline";
 import { ExplainHint } from "./ExplainHint";
 import { RegimeNotice } from "./RegimeNotice";
 
@@ -82,6 +84,14 @@ export function TurnoutForecastPanel({
 
   const contributions = (fc?.coefContributions ?? []).filter((c) => Math.abs(c.impactPct) >= 1).slice(0, 8);
   const showCoef = fc?.available && fc.confidence !== "low" && contributions.length > 0;
+
+  // W5 — naive baseline: the dumbest honest guess (mean of the last 3 same-type past events) shown next
+  // to the model, so the owner can feel whether the model earns its complexity. Leakage-safe (past only).
+  const baseline = useMemo(
+    () => (FEATURES.seriesNaiveBaseline && ready ? naiveBaseline(events, typeKeyword.trim() || null, eventDateTime) : null),
+    [events, typeKeyword, eventDateTime, ready],
+  );
+  const baseVsModel = baselineDeltaPct(fc?.base ?? null, baseline?.value ?? null);
 
   return (
     <section className="space-y-3">
@@ -163,6 +173,26 @@ export function TurnoutForecastPanel({
                   Độ tin: {CONF[fc.confidence].label} · N={fc.sampleSize} giải
                 </span>
               </div>
+
+              {/* W5 — naive baseline: the plain "just average the last few" guess, next to the model */}
+              {FEATURES.seriesNaiveBaseline && baseline && baseline.value !== null && (
+                <div className="flex items-start gap-1.5 rounded-md border border-border/60 bg-card/40 p-2 text-[11px] text-muted-foreground">
+                  <TrendingUp className="mt-0.5 h-3 w-3 shrink-0 text-primary" aria-hidden />
+                  <span>
+                    Nếu chỉ lấy trung bình {baseline.count} giải{baseline.sameType ? ` ${baseline.typeLabel}` : ""} gần nhất:{" "}
+                    <b className="text-foreground tabular-nums">{baseline.value} khách</b>
+                    {baseVsModel !== null && (
+                      <>
+                        {" "}— model đang đoán{" "}
+                        <b className={baseVsModel >= 0 ? "text-primary" : "text-warning"}>
+                          {baseVsModel >= 0 ? "cao hơn" : "thấp hơn"} {Math.abs(baseVsModel)}%
+                        </b>
+                      </>
+                    )}
+                    . Hai số gần nhau là bình thường; lệch xa thì đọc kỹ yếu tố đóng góp bên dưới.
+                  </span>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-md border border-border/60 bg-card/40 p-2 text-center">

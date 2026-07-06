@@ -762,6 +762,14 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
+   * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
+   * + how far the model's number sits from it, so the owner can feel whether the model earns its
+   * complexity (quant rule: always compare to a naive baseline). Pure measured fact — no prediction.
+   * Default **OFF**; kill-switch: set false to hide the baseline line.
+   */
+  seriesNaiveBaseline: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate
