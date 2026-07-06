@@ -258,6 +258,16 @@ export const FEATURES = {
    */
   dealerStaffingOptimizer: true,
   /**
+   * "Áp lương hàng loạt" — bulk-apply salary to EXISTING dealers in Dealer
+   * Management (owner request 2026-07-07: hundreds of dealers imported before the
+   * batch-salary field existed have empty salary; editing one-by-one is
+   * impractical). PT → hourly rate, FT → monthly (+ derived day/hour rates,
+   * mirroring AddDealerDialog). Writes the same dealers columns the per-dealer ✏️
+   * edit already writes, behind a final confirm; RLS-protected. ENABLED on ship
+   * (owner asked to use it immediately). Kill-switch: set false to hide the button.
+   */
+  bulkSalaryApply: true,
+  /**
    * Bulk dealer import — "Nhập hàng loạt từ file" in Dealer Management. Upload an
    * image/PDF/Excel/CSV of a name list → the auth-gated `parse-dealer-list` Gemini
    * edge fn extracts ONLY names → review → bulk-create dealers (tier B fixed, one

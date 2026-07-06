@@ -13,6 +13,7 @@ import { useAllDealers, useDealerScores, type DealerRecord, type DealerScore } f
 import AddDealerDialog from "./AddDealerDialog";
 import DealerAdjustDialog from "./DealerAdjustDialog";
 import { BulkDealerImportDialog } from "./BulkDealerImportDialog";
+import { BulkSalaryDialog } from "./BulkSalaryDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { toast } from "sonner";
 
@@ -321,6 +322,12 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
               <BulkDealerImportDialog
                 clubId={activeClubId}
                 existingNames={dealers.map((d) => d.full_name)}
+                onDone={refetchDealers}
+              />
+            )}
+            {FEATURES.bulkSalaryApply && activeClubId && (
+              <BulkSalaryDialog
+                dealers={dealers.filter((d) => d.club_id === activeClubId)}
                 onDone={refetchDealers}
               />
             )}
