@@ -1,0 +1,48 @@
+name: Accounting payout recipients — apply read RPC (one-shot, owner-gated)
+
+# Manual trigger only — never runs on push. Applies 20261217000000_get_tournament_payout_recipients.sql
+# via the Management API (NOT the CLI push path; NO schema_migrations write). Preflight is read-only
+# (also verifies prerequisites: tournament_prize_payments ledger, tournament_prizes, club_members,
+# club_cashiers, tournament_entries.finished_place). Apply gated by the confirm env. Brings live the
+# SECDEF read RPC get_tournament_payout_recipients that feeds the cashier "Đã trả thưởng" (B2) list.
+# The write RPC + ledger are already live (20261216000000). Feature stays DARK until
+# FEATURES.prizePayoutTracking is flipped (separate owner-gated commit). Delete after verified.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "preflight (read-only) or apply (gated)"
+        required: true
+        default: preflight
+        type: choice
+        options: [preflight, apply]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preflight — read-only (scan + PRE state + prerequisites)
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: node scripts/accounting/apply_payout_recipients.mjs --preflight
+
+      - name: Apply — read RPC + post-verify
+        if: ${{ github.event.inputs.mode == 'apply' }}
+        working-directory: ./VinPoker
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          CONFIRM_APPLY_PAYOUT_RECIPIENTS: APPLY_PAYOUT_RECIPIENTS
+        run: node scripts/accounting/apply_payout_recipients.mjs --apply
