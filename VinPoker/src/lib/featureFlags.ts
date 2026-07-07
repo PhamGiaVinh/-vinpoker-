@@ -428,7 +428,7 @@ export const FEATURES = {
    * owner-approved; colors ride the --poker-card-* tokens so dark↔warm still works).
    * OFF (default): pods AND card back byte-identical to today. Presentational only.
    */
-  trackerFeltV2: false,
+  trackerFeltV2: true,
   /**
    * Owner-recorded action sounds for the tracker (operator console + /live viewer).
    * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the

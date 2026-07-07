@@ -60,6 +60,9 @@ describe("TrackerRacetrack feltV2 gating (C3)", () => {
 
 describe("CardBack Sakura gating (C3)", () => {
   it("flag OFF → today's guilloché back (rosette ellipses, no petal path), testid preserved", () => {
+    // Explicit OFF — the flag now ships ON, so this "OFF" case sets it rather than
+    // relying on the module default (afterEach restores OFF for the rest).
+    (FEATURES as Record<string, unknown>).trackerFeltV2 = false;
     const html = renderToStaticMarkup(<CardBack size="md" />);
     expect(html).toContain('data-testid="card-back"');
     expect(html).toContain("<ellipse"); // the guilloché rosette
