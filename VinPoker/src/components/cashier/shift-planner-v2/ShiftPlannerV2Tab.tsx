@@ -12,6 +12,11 @@ import {
   chipStates,
   ctaFor,
   REJECTION_HINTS,
+  parseRunParams,
+  buildRunParamsExtra,
+  validateFinalDesignations,
+  stableParamsKey,
+  EMPTY_RUN_PARAMS,
   type PlannerStep,
   type WeeklyImageInput,
 } from "@/lib/shiftPlanner";
@@ -57,6 +62,8 @@ function todayInVN(): string {
 /** Demo tour counts for mock mode so the week strip is previewable without DB. */
 const MOCK_TOURS = [1, 2, 2, 2, 3, 2, 1];
 
+const EMPTY_PARAMS_KEY = stableParamsKey(EMPTY_RUN_PARAMS);
+
 /**
  * Dealer Shift Planner V2 — guided 4-step operator flow (owner-approved mockups,
  * 2026-07-02): week strip → 1 Tạo lịch → 2 Thêm thủ công (pick-from-list) →
@@ -81,6 +88,8 @@ export default function ShiftPlannerV2Tab({
   const [publishStage, setPublishStage] = useState<PublishStage>("idle");
   const [overrides, setOverrides] = useState<DraftAssignment[] | null>(null);
   const [demandOverrides, setDemandOverrides] = useState<Record<string, number>>({});
+  // "Chia final" pins per template for THIS day (persisted in run params).
+  const [finalDesignations, setFinalDesignations] = useState<Record<string, string[]>>({});
   const [reqOpen, setReqOpen] = useState(false);
   const [pickOpen, setPickOpen] = useState(false);
   const [pickTemplateId, setPickTemplateId] = useState<string | null>(null);
@@ -139,6 +148,28 @@ export default function ShiftPlannerV2Tab({
   const effAssignments = useMemo(() => effectiveDraft?.assignments ?? [], [effectiveDraft]);
   const assignedDealerIds = useMemo(() => new Set(effAssignments.map((a) => a.dealerId)), [effAssignments]);
 
+  // ── Chia-final validation inputs (effective need + day off-list + active roster)
+  const needByTemplateEff = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const t of adjustedTemplates) m[t.id] = t.needCount;
+    return m;
+  }, [adjustedTemplates]);
+  const offDealerIds = useMemo(
+    () => new Set((data?.availability ?? []).filter((a) => a.leaveRequested).map((a) => a.dealerId)),
+    [data]
+  );
+  const activeDealerIds = useMemo(
+    () => new Set((data?.dealers ?? []).filter((d) => d.status === "active").map((d) => d.id)),
+    [data]
+  );
+  const finalDesignationBlockers = useMemo(
+    () =>
+      validateFinalDesignations(finalDesignations, needByTemplateEff, offDealerIds, activeDealerIds).filter(
+        (i) => i.kind === "over_cap" || i.kind === "unknown_dealer"
+      ),
+    [finalDesignations, needByTemplateEff, offDealerIds, activeDealerIds]
+  );
+
   const publishedRun = runStatus.runsByDate[workDate]?.status === "published" ? runStatus.runsByDate[workDate] : null;
   const persistedToday = useMemo(() => runStatus.assignmentsByDate[workDate] ?? [], [runStatus.assignmentsByDate, workDate]);
 
@@ -146,7 +177,11 @@ export default function ShiftPlannerV2Tab({
     () => (effectiveDraft ? effectiveDraft.unfilled.reduce((s, u) => s + u.missing, 0) : 0),
     [effectiveDraft]
   );
-  const dirty = (overrides !== null || Object.keys(demandOverrides).length > 0) && savedRunId === null;
+  // Dirty vs a BASELINE key (not vs emptiness): after hydrating saved params the
+  // screen must NOT claim "chưa lưu" — the baseline is set to the hydrated key.
+  const paramsBaselineRef = useRef<string>(EMPTY_PARAMS_KEY);
+  const paramsDirty = stableParamsKey({ demandOverrides, finalDesignations }) !== paramsBaselineRef.current;
+  const dirty = (overrides !== null || paramsDirty) && savedRunId === null;
   const flags = {
     draftExists: effAssignments.length > 0,
     dirty,
@@ -196,12 +231,41 @@ export default function ShiftPlannerV2Tab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, stashKey]);
 
+  // ── Hydrate saved run params (demand + chia-final pins) once per club+date ────
+  // Without this, a designation saved the night before vanished on reload: params
+  // were written by save_shift_run but never read back. Mirrors the restoredRef
+  // pattern above. Never clobbers unsaved in-session edits (dirtyRef guard), and
+  // post-save refetches can't re-hydrate (key already marked).
+  const hydratedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    if (runStatus.loading) return; // wait for the week fetch — "no run" vs "not loaded yet"
+    const key = `${clubId ?? "c"}:${workDate}`;
+    if (hydratedKeyRef.current === key) return;
+    hydratedKeyRef.current = key;
+    const run = runStatus.runsByDate[workDate];
+    if (!run?.params) {
+      paramsBaselineRef.current = EMPTY_PARAMS_KEY;
+      return;
+    }
+    if (dirtyRef.current) return; // user already editing this day — keep their state
+    const parsed = parseRunParams(run.params);
+    // Stale/unknown dealer ids are kept intentionally — DemandDialog shows them in
+    // red and Apply/Save stay blocked until the floor unpins them (no silent drop).
+    setDemandOverrides(parsed.demandOverrides);
+    setFinalDesignations(parsed.finalDesignations);
+    paramsBaselineRef.current = stableParamsKey(parsed); // hydrated state = saved state, not dirty
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, clubId, workDate, runStatus.loading, runStatus.runsByDate]);
+
   // ── Date navigation (with unsaved confirm) ────────────────────────────────────
   const resetForDate = (d: string) => {
     setWorkDate(d || todayInVN());
     setSavedRunId(null);
     setOverrides(null);
     setDemandOverrides({});
+    setFinalDesignations({});
+    paramsBaselineRef.current = EMPTY_PARAMS_KEY; // hydration re-baselines if the new day has a run
     setDmByDealer({});
     setPublishStage("idle");
     setStep(1);
@@ -270,7 +334,14 @@ export default function ShiftPlannerV2Tab({
   // ── Persistence (same RPCs as V1) ─────────────────────────────────────────────
   const persistDraft = async (): Promise<string | null> => {
     if (!data || !effectiveDraft || !clubId) return null;
-    const extra = Object.keys(demandOverrides).length > 0 ? { demand_overrides: demandOverrides } : undefined;
+    // P0: never persist invalid pins — over-cap or a dealer no longer in the roster.
+    if (finalDesignationBlockers.length > 0) {
+      toast.error(
+        "Chỉ định chia final chưa hợp lệ — mở '✎ Sửa nhu cầu' để bỏ bớt dealer (quá số cần hoặc dealer không còn hoạt động)."
+      );
+      return null;
+    }
+    const extra = buildRunParamsExtra({ demandOverrides, finalDesignations });
     const { data: res, error } = await rpc.rpc("save_shift_run", buildSaveRunPayload(clubId, workDate, effectiveDraft, extra));
     if (error) {
       if (String(error.message ?? "").includes("published_schedule_exists")) {
@@ -283,6 +354,8 @@ export default function ShiftPlannerV2Tab({
     }
     const runId = (res?.run_id as string) ?? null;
     setSavedRunId(runId);
+    // Saved state becomes the new baseline — the day is no longer params-dirty.
+    paramsBaselineRef.current = stableParamsKey({ demandOverrides, finalDesignations });
     try { sessionStorage.removeItem(stashKey); } catch { /* best-effort */ }
     return runId;
   };
@@ -508,6 +581,7 @@ export default function ShiftPlannerV2Tab({
   };
 
   // ── Step 4 per-dealer rows ────────────────────────────────────────────────────
+  const finalDealerSet = useMemo(() => new Set(Object.values(finalDesignations).flat()), [finalDesignations]);
   const notifyRows: DealerNotifyRow[] = useMemo(() => {
     if (!data) return [];
     const persistedByDealer = new Map(persistedToday.map((p) => [p.dealerId, p]));
@@ -528,9 +602,10 @@ export default function ShiftPlannerV2Tab({
         appLinked: live ? (link ? link.appLinked : null) : true,
         dm: dmByDealer[s.dealerId] ?? null,
         status: persistedByDealer.get(s.dealerId)?.status ?? null,
+        finalDesignated: finalDealerSet.has(s.dealerId),
       };
     });
-  }, [data, effAssignments, persistedToday, publishedRun, live, linkMapLive, dmByDealer]);
+  }, [data, effAssignments, persistedToday, publishedRun, live, linkMapLive, dmByDealer, finalDealerSet]);
 
   // ── CTA wiring ────────────────────────────────────────────────────────────────
   const cta = ctaFor(step, flags);
@@ -701,6 +776,9 @@ export default function ShiftPlannerV2Tab({
                     {adjustedTemplates.map((t) => (
                       <span key={t.id} className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
                         {t.label}: cần <b className="text-foreground">{t.needCount}</b>
+                        {(finalDesignations[t.id]?.length ?? 0) > 0 && (
+                          <> · <span className="text-primary">📌 {finalDesignations[t.id].length} chia final</span></>
+                        )}
                       </span>
                     ))}
                     <button
@@ -852,12 +930,17 @@ export default function ShiftPlannerV2Tab({
           onOpenChange={setDemandOpen}
           templates={data.templates}
           overrides={demandOverrides}
+          dealers={data.dealers}
+          availability={data.availability}
+          finalDesignations={finalDesignations}
           tourCount={tourCounts[workDate] ?? null}
           onApply={(next) => {
-            setDemandOverrides(next);
+            setDemandOverrides(next.demand);
+            setFinalDesignations(next.final);
             setOverrides(null);
             setSavedRunId(null);
-            if (Object.keys(next).length > 0) toast.success("Đã áp dụng nhu cầu mới cho ngày này");
+            if (Object.keys(next.demand).length > 0 || Object.keys(next.final).length > 0)
+              toast.success("Đã áp dụng nhu cầu mới cho ngày này");
           }}
         />
       )}

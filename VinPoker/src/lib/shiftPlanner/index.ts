@@ -43,6 +43,14 @@ export {
 } from "./templateSeeds";
 export { buildSaveRunPayload } from "./savePayload";
 export type { SaveRunArgs, SaveRunAssignmentRow } from "./savePayload";
+export {
+  parseRunParams,
+  buildRunParamsExtra,
+  validateFinalDesignations,
+  stableParamsKey,
+  EMPTY_RUN_PARAMS,
+} from "./runParams";
+export type { ShiftRunParams, FinalDesignationIssue } from "./runParams";
 export { buildScheduleSvg, svgToPngDataUrl, buildSchedulePng } from "./scheduleImage";
 export type { ScheduleImageInput, ScheduleImageGroup, ScheduleImageRow } from "./scheduleImage";
 export { buildWeeklyScheduleSvg, buildWeeklySchedulePng } from "./weeklyImage";

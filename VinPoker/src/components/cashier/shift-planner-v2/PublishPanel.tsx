@@ -17,6 +17,8 @@ export interface DealerNotifyRow {
   dm: "sent" | "skipped" | null; // null = not sent yet
   /** Persisted assignment status for confirm chips (published/confirmed/checked_in/closed). */
   status: string | null;
+  /** Dealer is pinned "chia final" for this day (from run params). */
+  finalDesignated?: boolean;
 }
 
 const CONFIRM_LABEL: Record<string, { label: string; cls: string }> = {
@@ -154,6 +156,11 @@ export function PublishPanel({
               return (
                 <div key={r.dealerId} className="flex items-center gap-2 px-3 py-2 text-[12.5px]">
                   <span className="min-w-0 flex-1 truncate font-semibold">{r.name}</span>
+                  {r.finalDesignated && (
+                    <span className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                      📌 Final
+                    </span>
+                  )}
                   <span className="hidden text-[11px] text-muted-foreground sm:inline">{r.shiftLabel}</span>
                   {r.telegramLinked === false ? (
                     <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] text-warning">
