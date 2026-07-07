@@ -65,6 +65,8 @@ const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
 const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
 const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
 const OpsFnb = lazy(() => import("./pages/ops/OpsFnb"));
+const OpsChipOps = lazy(() => import("./pages/ops/OpsChipOps"));
+const OpsMarketing = lazy(() => import("./pages/ops/OpsMarketing"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -238,6 +240,8 @@ const App = () => (
                 <Route path="/ops/more" element={<OpsMore />} />
                 <Route path="/ops/dealer-swing" element={<OpsDealerSwing />} />
                 <Route path="/ops/fnb" element={<OpsFnb />} />
+                <Route path="/ops/chip-ops" element={<OpsChipOps />} />
+                <Route path="/ops/marketing" element={<OpsMarketing />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
@@ -281,9 +285,11 @@ const App = () => (
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
                 <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
                 {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
-                <Route path="/chip-ops" element={<ChipOpsInventory />} />
-                {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role. */}
-                <Route path="/marketing" element={<Marketing />} />
+                {/* Chip Ops is device-aware: phones get the mobile /ops/chip-ops UI, desktop the inventory. */}
+                <Route path="/chip-ops" element={<MobileOperatorRoute to="/ops/chip-ops"><ChipOpsInventory /></MobileOperatorRoute>} />
+                {/* Marketing — club-scoped composer/scheduler. Page self-gates on FEATURES.marketingModule + role.
+                    Device-aware: phones get the mobile /ops/marketing UI, desktop the full composer. */}
+                <Route path="/marketing" element={<MobileOperatorRoute to="/ops/marketing"><Marketing /></MobileOperatorRoute>} />
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
                 <Route path="/fnb/hub" element={<FnbHub />} />
                 {/* F&B counter is device-aware: phones get the mobile /ops/fnb UI, desktop the counter. */}

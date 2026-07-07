@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat } from "lucide-react";
+import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat, Megaphone } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DealerStatusCard } from "@/components/ops/shared/DealerStatusCard";
 import { PlayerLookupCard } from "@/components/ops/shared/PlayerLookupCard";
@@ -15,7 +15,8 @@ import { MOCK_DEALERS, MOCK_PLAYERS } from "@/components/ops/mock/opsData";
 const LINKS = [
   { icon: Wallet, label: "Cashier (thu ngân)", badge: "", to: "" },
   { icon: UtensilsCrossed, label: "F&B", badge: "2 chờ thu", to: "/ops/fnb" },
-  { icon: Boxes, label: "Chip Ops", badge: "", to: "" },
+  { icon: Boxes, label: "Chip Ops", badge: "", to: "/ops/chip-ops" },
+  { icon: Megaphone, label: "Marketing", badge: "", to: "/ops/marketing" },
 ];
 
 export default function OpsMore() {
