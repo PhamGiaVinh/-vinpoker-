@@ -64,6 +64,7 @@ const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
 const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
 const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
 const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
+const OpsFnb = lazy(() => import("./pages/ops/OpsFnb"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -236,6 +237,7 @@ const App = () => (
                 <Route path="/ops/alerts" element={<OpsAlerts />} />
                 <Route path="/ops/more" element={<OpsMore />} />
                 <Route path="/ops/dealer-swing" element={<OpsDealerSwing />} />
+                <Route path="/ops/fnb" element={<OpsFnb />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
@@ -284,7 +286,8 @@ const App = () => (
                 <Route path="/marketing" element={<Marketing />} />
                 {/* F&B counter + admin — keep Layout chrome. Pages self-gate on FEATURES.fnb*. */}
                 <Route path="/fnb/hub" element={<FnbHub />} />
-                <Route path="/fnb" element={<FnbCounter />} />
+                {/* F&B counter is device-aware: phones get the mobile /ops/fnb UI, desktop the counter. */}
+                <Route path="/fnb" element={<MobileOperatorRoute to="/ops/fnb"><FnbCounter /></MobileOperatorRoute>} />
                 <Route path="/fnb/serve" element={<FnbServe />} />
                 <Route path="/fnb/admin" element={<FnbAdmin />} />
                 {/* F&B public DEMO — static showcase, keeps Layout chrome. Self-gates on FEATURES.fnbDemo. */}
