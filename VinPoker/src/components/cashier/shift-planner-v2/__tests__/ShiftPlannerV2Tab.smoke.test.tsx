@@ -54,4 +54,13 @@ describe("ShiftPlannerV2Tab (smoke, mock mode)", () => {
     expect(await screen.findByText("Coverage theo giờ")).toBeInTheDocument();
     expect((await screen.findAllByText("Thêm dealer")).length).toBeGreaterThan(0);
   });
+
+  it("demand dialog renders the chia-final designation checkbox (Patch 2)", async () => {
+    render(<ShiftPlannerV2Tab clubIds={["club-1"]} clubs={[{ id: "club-1", name: "CLB Demo" }]} />);
+
+    fireEvent.click(await screen.findByText("✎ Sửa nhu cầu"));
+    expect(await screen.findByText("Nhu cầu dealer hôm nay")).toBeInTheDocument();
+    // One "Có bàn final / bàn tâm điểm" checkbox per template row
+    expect((await screen.findAllByText("Có bàn final / bàn tâm điểm")).length).toBeGreaterThan(0);
+  });
 });

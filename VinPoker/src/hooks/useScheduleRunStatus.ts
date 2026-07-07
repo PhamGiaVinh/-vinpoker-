@@ -18,6 +18,9 @@ export interface RunStatusDay {
   status: "draft" | "published" | null;
   publishedAt: string | null;
   runId: string | null;
+  /** Raw dealer_schedule_runs.params of the surfaced run (demand_overrides /
+   *  final_designations) — parse with parseRunParams. null when absent. */
+  params: Record<string, unknown> | null;
 }
 
 export interface PersistedAssignment {
@@ -73,7 +76,7 @@ export function useScheduleRunStatus({
       const [runsRes, asgRes] = await Promise.all([
         db
           .from("dealer_schedule_runs")
-          .select("id, work_date, status, published_at")
+          .select("id, work_date, status, published_at, params")
           .eq("club_id", clubId)
           .in("work_date", dates),
         db
@@ -91,7 +94,12 @@ export function useScheduleRunStatus({
         // published beats draft; superseded rows never override either.
         if (r.status === "published" || (!prev && r.status === "draft")) {
           if (!prev || prev.status !== "published" || r.status === "published") {
-            runs[r.work_date] = { status: r.status, publishedAt: r.published_at ?? null, runId: r.id };
+            runs[r.work_date] = {
+              status: r.status,
+              publishedAt: r.published_at ?? null,
+              runId: r.id,
+              params: r.params && typeof r.params === "object" ? r.params : null,
+            };
           }
         }
       }
