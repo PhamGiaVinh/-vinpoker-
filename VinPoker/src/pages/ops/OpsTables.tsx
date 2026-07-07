@@ -142,6 +142,27 @@ function closeTableError(res: { error?: string; need?: number; have?: number } |
   }
 }
 type CloseDrawMode = "redraw_balanced" | "fill_lowest_table";
+/** Copy VERBATIM từ RedrawLauncherDialog.mapError. */
+function redrawError(res: { error?: string; need?: number; have?: number } | null, raw?: string): string {
+  const code = res?.error ?? raw;
+  switch (code) {
+    case "unauthorized": return "Bạn cần đăng nhập lại.";
+    case "actor_not_allowed": return "Không có quyền bốc lại cho CLB này.";
+    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
+    case "invalid_mode": return "Chế độ không hợp lệ.";
+    case "manual_requires_entry_ids": return "Hãy chọn ít nhất 1 người chơi.";
+    case "no_target_tables": return "Không có bàn đích hợp lệ.";
+    case "insufficient_capacity": return `Không đủ ghế trống (cần ${res?.need ?? "?"}, có ${res?.have ?? "?"}) — mở thêm bàn / tăng số bàn đích.`;
+    default: return code ? `Bốc lại thất bại (${code})` : "Bốc lại thất bại";
+  }
+}
+// 3 chế độ tự động (thủ công = máy tính, cần chọn từng người). Draw mode dùng chung CloseDrawMode.
+type RedrawMode = "final_table" | "itm" | "table_count_threshold";
+interface RedrawResult {
+  ok?: boolean; error?: string; need?: number; have?: number; moved_count?: number;
+  moves?: { player_name?: string; to_table_number?: number | null }[];
+  tables_to_close?: { table_number?: number }[];
+}
 
 export default function OpsTables() {
   const navigate = useNavigate();
@@ -332,6 +353,54 @@ export default function OpsTables() {
     }
   }, [closeTable, closeMode, floor]);
 
+  // ── Floor-A4: Bốc lại → redraw_tournament, 2 bước preview→confirm (gate floorTableOps) ──
+  const [redrawOpen, setRedrawOpen] = useState(false);
+  const [redrawMode, setRedrawMode] = useState<RedrawMode>("final_table");
+  const [redrawDraw, setRedrawDraw] = useState<CloseDrawMode>("redraw_balanced");
+  const [redrawTarget, setRedrawTarget] = useState("");
+  const [redrawPhase, setRedrawPhase] = useState<"config" | "preview">("config");
+  const [redrawPreview, setRedrawPreview] = useState<RedrawResult | null>(null);
+  const [redrawBusy, setRedrawBusy] = useState(false);
+  const redrawBusyRef = useRef(false);
+  const openRedraw = () => { setRedrawMode("final_table"); setRedrawDraw("redraw_balanced"); setRedrawTarget(""); setRedrawPhase("config"); setRedrawPreview(null); setRedrawOpen(true); };
+  const callRedraw = useCallback(async (dryRun: boolean): Promise<RedrawResult | null> => {
+    const { data, error } = await (supabase.rpc as any)("redraw_tournament", {
+      p_tournament_id: tourId,
+      p_mode: redrawMode,
+      p_eligible_entry_ids: null,          // 3 chế độ auto — không dùng manual
+      p_target_table_count: redrawMode === "table_count_threshold" && redrawTarget.trim() ? Number(redrawTarget) : null,
+      p_draw_mode: redrawDraw,
+      p_dry_run: dryRun,
+    });
+    if (error) { toast.error(redrawError(null, error.message)); return null; }
+    return (data ?? null) as RedrawResult | null;
+  }, [tourId, redrawMode, redrawTarget, redrawDraw]);
+  const runRedrawPreview = useCallback(async () => {
+    if (redrawMode === "table_count_threshold" && !redrawTarget.trim()) { toast.error("Nhập số bàn đích."); return; }
+    if (redrawBusyRef.current) return;
+    redrawBusyRef.current = true; setRedrawBusy(true);
+    try {
+      const r = await callRedraw(true);   // dry_run — KHÔNG ghi
+      if (!r) return;
+      if (!r.ok) { toast.error(redrawError(r)); return; }
+      setRedrawPreview(r); setRedrawPhase("preview");
+    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Xem trước thất bại"); }
+    finally { redrawBusyRef.current = false; setRedrawBusy(false); }
+  }, [redrawMode, redrawTarget, callRedraw]);
+  const runRedrawConfirm = useCallback(async () => {
+    if (redrawBusyRef.current) return;
+    redrawBusyRef.current = true; setRedrawBusy(true);
+    try {
+      const r = await callRedraw(false);  // ghi thật
+      if (!r) return;
+      if (!r.ok) { toast.error(redrawError(r)); return; }
+      toast.success(`Đã bốc lại ${r.moved_count ?? r.moves?.length ?? 0} người`);
+      setRedrawOpen(false);
+      floor.reload();
+    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Bốc lại thất bại"); }
+    finally { redrawBusyRef.current = false; setRedrawBusy(false); }
+  }, [callRedraw, floor]);
+
   // ---- guards (thứ tự chuẩn: auth → login → clubs → quyền → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản floor/cashier để xem sơ đồ bàn thật." onBack={() => navigate("/")} />;
@@ -423,8 +492,9 @@ export default function OpsTables() {
           className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
           <Plus className="h-[18px] w-[18px]" /> {ADD_LIVE ? "Bàn" : "Cần bật cờ"}
         </button>
-        <button onClick={pending} className="ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]">
-          <Shuffle className="h-[18px] w-[18px]" /> Bốc lại
+        <button onClick={() => (ADD_LIVE ? openRedraw() : pending())} disabled={!ADD_LIVE}
+          className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
+          <Shuffle className="h-[18px] w-[18px]" /> {ADD_LIVE ? "Bốc lại" : "Cần bật cờ"}
         </button>
       </div>
 
@@ -580,6 +650,73 @@ export default function OpsTables() {
             {closeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             {closeBusy ? "Đang đóng…" : (closeTable?.seats.length ?? 0) > 0 ? `Đóng & chuyển ${closeTable?.seats.length} người` : "Đóng bàn"}
           </button>
+        </SheetContent>
+      </Sheet>
+
+      {/* Floor-A4 — Bốc lại: config (chế độ + cách chia) → XEM TRƯỚC (dry_run) → xác nhận (ghi) */}
+      <Sheet open={redrawOpen} onOpenChange={(v) => { if (!v && !redrawBusy) setRedrawOpen(false); }}>
+        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Bốc lại bàn</SheetTitle></SheetHeader>
+
+          {redrawPhase === "config" ? (
+            <div className="mt-3 space-y-3">
+              <div>
+                <div className="px-1 text-[12px] text-[#9b8e97]">Kiểu bốc lại</div>
+                <div className="mt-1.5 space-y-1.5">
+                  {([["final_table", "Bốc bàn chung kết (final table)"], ["itm", "Bốc khi vào tiền (ITM)"], ["table_count_threshold", "Gom về số bàn đích"]] as [RedrawMode, string][]).map(([m, label]) => (
+                    <button key={m} onClick={() => setRedrawMode(m)}
+                      className={cn("flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[14px]", redrawMode === m ? "bg-[#c9a86a]/15 text-[#f2ece6] ring-1 ring-[#c9a86a]/40" : "ios-fill text-[#9b8e97]")}>
+                      <span className={cn("grid h-4 w-4 place-items-center rounded-full border", redrawMode === m ? "border-[#c9a86a] bg-[#c9a86a]" : "border-white/25")} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {redrawMode === "table_count_threshold" && (
+                <div>
+                  <label className="px-1 text-[12px] text-[#9b8e97]">Số bàn đích</label>
+                  <input inputMode="numeric" value={redrawTarget} onChange={(e) => setRedrawTarget(e.target.value.replace(/[^0-9]/g, ""))} placeholder="VD: 4"
+                    className="ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-center font-mono text-[16px] text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
+                </div>
+              )}
+              <div>
+                <div className="px-1 text-[12px] text-[#9b8e97]">Cách chia ghế</div>
+                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                  {([["redraw_balanced", "Ngẫu nhiên, ưu tiên bàn ít"], ["fill_lowest_table", "Lấp bàn số nhỏ trước"]] as [CloseDrawMode, string][]).map(([m, label]) => (
+                    <button key={m} onClick={() => setRedrawDraw(m)}
+                      className={cn("ios-press-sm rounded-xl px-2 py-2.5 text-center text-[12.5px]", redrawDraw === m ? "bg-[#c9a86a] text-[#241A08] font-semibold" : "ios-fill text-[#9b8e97]")}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl bg-white/5 px-3 py-2 text-[11px] text-[#7c7079]">Chọn người thủ công (Thủ công) — làm trên máy tính.</div>
+              <button disabled={redrawBusy} onClick={runRedrawPreview}
+                className="ios-press ios-primary flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
+                {redrawBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {redrawBusy ? "Đang tính…" : "Xem trước"}
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <div className="ios-card p-3.5">
+                <div className="text-[13px] text-[#9b8e97]">Kế hoạch (chưa ghi) — <b className="text-[#f2ece6]">{redrawPreview?.moves?.length ?? 0}</b> người chuyển{(redrawPreview?.tables_to_close?.length ?? 0) > 0 ? `, đóng ${redrawPreview?.tables_to_close?.length} bàn` : ""}</div>
+                <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+                  {(redrawPreview?.moves ?? []).slice(0, 60).map((m, i) => (
+                    <div key={i} className="flex items-center justify-between border-b border-white/6 py-1 text-[13px] last:border-0">
+                      <span className="truncate text-[#f2ece6]">{m.player_name ?? "—"}</span>
+                      <span className="font-mono text-[#9b8e97]">→ Bàn {m.to_table_number ?? "?"}</span>
+                    </div>
+                  ))}
+                  {(redrawPreview?.moves?.length ?? 0) === 0 && <div className="py-3 text-center text-[13px] text-[#9b8e97]">Không có người cần chuyển.</div>}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button disabled={redrawBusy} onClick={() => setRedrawPhase("config")} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Quay lại</button>
+                <button disabled={redrawBusy} onClick={runRedrawConfirm} className="ios-press flex-[2] flex items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
+                  {redrawBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />} {redrawBusy ? "Đang bốc…" : `Xác nhận bốc lại ${redrawPreview?.moves?.length ?? 0} người`}
+                </button>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
