@@ -407,6 +407,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         waiting={rich ? !hook.handStarted : undefined}
         betChips={FEATURES.liveBetChips}
         dealerFix={FEATURES.trackerFeltDealerFix}
+        feltV2={FEATURES.trackerFeltV2}
       />
     );
 
