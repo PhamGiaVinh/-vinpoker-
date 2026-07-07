@@ -76,4 +76,31 @@ describe("RunoutBoardPanel (B2 one-screen runout)", () => {
     );
     expect(html).toContain('disabled=""');
   });
+
+  // A0 review fix: while the staged deal-all is in flight, the remaining slots are
+  // FROZEN — a mid-flight edit would show locally (and be used by settle) while the
+  // viewer received the stale card from the press-time closure.
+  it("submitting freezes the remaining card slots (pointer-events-none wrapper)", () => {
+    const idle = renderToStaticMarkup(
+      <RunoutBoardPanel
+        communityCards={allFilled}
+        persistedBoardCount={0}
+        usedCards={new Set()}
+        onCardChange={noop}
+        onDealAll={noop}
+      />
+    );
+    expect(idle).not.toContain("pointer-events-none");
+    const busy = renderToStaticMarkup(
+      <RunoutBoardPanel
+        communityCards={allFilled}
+        persistedBoardCount={0}
+        usedCards={new Set()}
+        onCardChange={noop}
+        onDealAll={noop}
+        submitting
+      />
+    );
+    expect((busy.match(/pointer-events-none/g) || []).length).toBe(5); // all 5 undealt slots frozen
+  });
 });

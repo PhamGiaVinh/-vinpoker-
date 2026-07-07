@@ -440,7 +440,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         {/* B1: mid-hand name/avatar fix — collapsed by default so it never crowds the
             action flow. Chips stay locked (SeatSetupPanel handInProgress). Flag OFF →
             not rendered at all. */}
-        {FEATURES.trackerMidHandEdit && hook.handStarted && !hook.isSummary && hook.tableId && hook.players.length > 0 && (
+        {FEATURES.trackerMidHandEdit && hook.midHandEditSupported && hook.handStarted && !hook.isSummary && hook.tableId && hook.players.length > 0 && (
           <details className="rounded-xl border border-border/50 bg-card/40">
             <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Sửa tên / ảnh người chơi (đang có ván)

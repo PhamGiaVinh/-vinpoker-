@@ -170,4 +170,19 @@ describe("SeatSetupPanel — mid-hand (handInProgress)", () => {
     );
     expect(onSetSeat).not.toHaveBeenCalled();
   });
+
+  // A0 review fix: CLEARING an avatar mid-hand must route to the display RPC with an
+  // explicit null (the hook merge then trusts the echo — `seat.avatar_url ?? null` —
+  // so the felt actually drops the avatar instead of keeping the stale url).
+  it("clearing an avatar mid-hand routes to onSetSeatDisplay with avatarUrl null (never onSetSeat)", async () => {
+    const { onSetSeat, onSetSeatDisplay } = setupMid();
+    // seat 3 has an avatar → its clear (X) button renders
+    fireEvent.click(screen.getByLabelText("Xoá ảnh ghế 3"));
+    await waitFor(() =>
+      expect(onSetSeatDisplay).toHaveBeenCalledWith(
+        expect.objectContaining({ seatNumber: 3, touchAvatar: true, avatarUrl: null })
+      )
+    );
+    expect(onSetSeat).not.toHaveBeenCalled();
+  });
 });

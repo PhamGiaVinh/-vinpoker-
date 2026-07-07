@@ -190,6 +190,11 @@ export function useStandaloneHandInput(tournamentId: string) {
   // not applied) → the roster panel disables the avatar control ("chưa áp dụng") but keeps
   // name/chip. Stays true when the flag is off (irrelevant).
   const [avatarSupported, setAvatarSupported] = useState(true);
+  // B1 review fix: independent feature-detect for the MID-HAND display RPC
+  // (set_tracker_seat_display, migration 20261220000000). Deliberately separate from
+  // avatarSupported — the pre-hand roster RPC is applied live and must never be
+  // disabled by the newer RPC's 42883.
+  const [midHandEditSupported, setMidHandEditSupported] = useState(true);
   // A5 resilience: the orphan hand id armed to auto-resume once its table's seats
   // have loaded (self-clears after firing once — see the effect near handleVoidOrphan).
   const [autoResumeArmed, setAutoResumeArmed] = useState<string | null>(null);
@@ -503,9 +508,12 @@ export function useStandaloneHandInput(tournamentId: string) {
         p_actor_user_id: user?.id ?? null,
       });
       if (error) {
-        // 42883 = RPC not applied yet → degrade (two-tier gate, mirrors seat setup).
+        // 42883 = the DISPLAY RPC not applied yet → degrade ONLY the mid-hand editor.
+        // Review fix: this must NOT touch avatarSupported — that state gates the LIVE
+        // pre-hand avatar feature (a different, already-applied RPC); disabling it here
+        // falsely killed a working feature for the whole session.
         if ((error as any).code === "42883") {
-          setAvatarSupported(false);
+          setMidHandEditSupported(false);
           toast.error("Tính năng sửa tên/ảnh giữa ván chưa được áp dụng trên máy chủ.");
           return { ok: false, error: "not_applied" };
         }
@@ -527,10 +535,13 @@ export function useStandaloneHandInput(tournamentId: string) {
         return { ok: false, error: res?.error };
       }
       const seat = res.seat;
+      // Review fix: trust the RPC echo for avatar_url. The old `?? p.avatar_url`
+      // swallowed a CLEAR (RPC echoes null after deleting the avatar → fallback kept
+      // the stale url on the felt while the DB was already cleared).
       setPlayers((prev) =>
         prev.map((p) =>
           p.seat_number === seat.seat_number
-            ? { ...p, display_name: seat.player_name || p.display_name, avatar_url: seat.avatar_url ?? p.avatar_url }
+            ? { ...p, display_name: seat.player_name || p.display_name, avatar_url: seat.avatar_url ?? null }
             : p
         )
       );
@@ -2105,6 +2116,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleSetRosterSeat,
     handleSetSeatDisplay,
     avatarSupported,
+    midHandEditSupported,
     resetHand,
   };
 }
