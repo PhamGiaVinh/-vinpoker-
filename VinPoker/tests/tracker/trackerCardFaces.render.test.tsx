@@ -44,7 +44,7 @@ describe("PokerCard face — flag ON (xCards deck)", () => {
     on();
     const html = renderToStaticMarkup(<PokerCard card="As" size="md" />);
     expect(html).toContain('src="/cards/xcards/AS.svg"');
-    expect(html).toContain("object-cover");
+    expect(html).toContain("object-contain"); // contain, not cover → corners never cropped
     expect(html).not.toContain("<span>A</span>"); // text face replaced
     expect(html).not.toContain("bg-[#f7f0df]");
   });

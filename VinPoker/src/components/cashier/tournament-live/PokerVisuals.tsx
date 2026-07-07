@@ -41,10 +41,17 @@ function XCardImageFace({
 }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <>{fallback}</>;
+  // object-CONTAIN (not cover): the xCards art already has its own rounded corners +
+  // corner indices, and its aspect (0.716) is slightly narrower than the card box
+  // (~0.75). object-cover would scale-to-fill and CROP the top/bottom edges → the
+  // rounded corners + rank indices get clipped. contain shows the whole card; we drop
+  // the container's own rounding/overflow/white-bg so the card's corners read cleanly
+  // against the felt (a real card shows the background at its rounded corners). The
+  // drop-shadow hugs the card's alpha shape so it still lifts off the felt.
   return (
     <div
       className={cn(
-        "tracker-card-reveal relative shrink-0 overflow-hidden bg-white shadow-xl shadow-black/35",
+        "tracker-card-reveal relative shrink-0",
         muted && "opacity-55 grayscale",
         sizeClass,
         className,
@@ -56,7 +63,7 @@ function XCardImageFace({
         alt=""
         aria-hidden="true"
         draggable={false}
-        className="h-full w-full object-cover"
+        className="h-full w-full object-contain drop-shadow-[0_3px_6px_rgba(0,0,0,0.45)]"
         onError={() => setFailed(true)}
       />
     </div>
