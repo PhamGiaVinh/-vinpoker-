@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LogOut, BadgeCheck, Building2, Award, Link2, UserPlus, Check } from "lucide-react";
+import { LogOut, BadgeCheck, Building2, Award, Link2, UserPlus, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useDealerLink } from "@/hooks/dealer/useDealerLink";
+import { useDealerPreference, type ShiftPreference } from "@/hooks/dealer/useDealerPreference";
 import { VerificationStatusCard } from "../onboarding/VerificationStatusCard";
 import { DealerClaimDrawer } from "../onboarding/DealerClaimDrawer";
 import { StaffInviteDrawer } from "../onboarding/StaffInviteDrawer";
@@ -19,12 +20,20 @@ export function DealerAccountScreen() {
   const { t } = useTranslation();
   const { signOut, isAdmin, isClubOwner } = useAuth();
   const { dealer, memberships, setSelectedDealerId } = useDealerLink();
+  const { setPreference, isPending: prefPending } = useDealerPreference();
   const [claimOpen, setClaimOpen] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
 
   const rows = [
     { Icon: Award, label: t("dealer.account.tier", "Hạng dealer"), value: dealer?.tier ? `Tier ${dealer.tier}` : "—" },
   ];
+
+  const prefOptions: { value: ShiftPreference; label: string }[] = [
+    { value: "som", label: t("dealer.pref.early", "Ca sớm") },
+    { value: "muon", label: t("dealer.pref.late", "Ca muộn") },
+    { value: "linh_hoat", label: t("dealer.pref.flexible", "Linh hoạt") },
+  ];
+  const currentPref = dealer?.shiftPreference ?? "linh_hoat";
 
   return (
     <div>
@@ -61,6 +70,40 @@ export function DealerAccountScreen() {
           </div>
         ))}
       </div>
+
+      {/* Ca ưa thích — dealer self-set for the floor's auto-fill scheduler */}
+      {dealer && (
+        <div className="rounded-2xl border border-border bg-card p-4 mb-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <span className="text-[13px] font-bold text-foreground flex-1">
+              {t("dealer.pref.title", "Ca ưa thích")}
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground mb-2.5">
+            {t("dealer.pref.hint", "Giúp quản lý xếp lịch đúng ca bạn thích — không đảm bảo 100%.")}
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {prefOptions.map((o) => {
+              const active = currentPref === o.value;
+              return (
+                <button
+                  key={o.value}
+                  disabled={prefPending || active}
+                  onClick={() => setPreference.mutate({ dealerId: dealer.dealerId, preference: o.value })}
+                  className={`rounded-xl border px-2 py-2 text-[12px] font-bold transition-colors ${
+                    active
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {memberships.length > 0 && (
         <div className="mb-3">

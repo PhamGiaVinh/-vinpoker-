@@ -24,6 +24,8 @@ export interface DealerProfileView {
   region?: string | null; // profiles.region — open market / international
   avatarUrl?: string | null;
   isVerified?: boolean;
+  /** Auto-fill shift preference: som | muon | linh_hoat. null = flexible. */
+  shiftPreference?: string | null;
 }
 
 /** One shift assignment row, dealer-facing. Mirrors dealer_shift_assignments plus
