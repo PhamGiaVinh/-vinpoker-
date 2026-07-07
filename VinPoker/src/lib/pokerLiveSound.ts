@@ -1,3 +1,5 @@
+import { FEATURES } from "@/lib/featureFlags";
+
 export type PokerLiveSound =
   | "deal"
   | "fold"
@@ -15,7 +17,10 @@ export type PokerLiveSound =
   | "deal_turn"
   | "deal_river"
   | "fold_muck"
-  | "chip";
+  | "chip"
+  // C4 (trackerActionSounds) — chips gathered into the pot on a street change /
+  // hand end. Only ever fired by flag-gated callers.
+  | "pot_collect";
 
 const MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   deal: "/sounds/poker/deal-card.mp3",
@@ -27,6 +32,25 @@ const MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
   post_bb: "/sounds/poker/poker-bet.mp3",
   post_ante: "/sounds/poker/poker-bet.mp3",
 };
+
+// C4 — the owner's recorded clips (public/sounds/tracker/, provenance in LICENSES.md
+// there). Consulted ONLY when FEATURES.trackerActionSounds is on, so flag-OFF
+// resolution is byte-identical to MP3_BY_KIND above. bet/call/raise/all_in are
+// deliberately absent (they keep poker-bet.mp3 — owner decision).
+const TRACKER_MP3_BY_KIND: Partial<Record<PokerLiveSound, string>> = {
+  check: "/sounds/tracker/check.mp3",
+  fold: "/sounds/tracker/fold.mp3",
+  fold_muck: "/sounds/tracker/fold.mp3",
+  deal_flop: "/sounds/tracker/deal-flop.mp3",
+  deal_turn: "/sounds/tracker/deal-turn-river.mp3",
+  deal_river: "/sounds/tracker/deal-turn-river.mp3",
+  pot_collect: "/sounds/tracker/pot-collect.mp3",
+};
+
+/** MP3 source a kind resolves to (exported so tests can pin flag-OFF byte-identity). */
+export function mp3SrcFor(kind: PokerLiveSound): string | undefined {
+  return (FEATURES.trackerActionSounds ? TRACKER_MP3_BY_KIND[kind] : undefined) ?? MP3_BY_KIND[kind];
+}
 
 let audioContext: AudioContext | null = null;
 let userGestureSeen = false;
@@ -87,12 +111,19 @@ function playbackRateFor(kind: PokerLiveSound) {
   return 1;
 }
 
+// Kinds with a synth voice to fall back to when an MP3 fails to load/play. The
+// enriched kinds only reach playMp3 via the flag-gated tracker map, so flag-OFF
+// behavior is unchanged (fold/check keep their legacy fallback).
+const SYNTH_FALLBACK_KINDS = new Set<PokerLiveSound>([
+  "fold", "check", "deal_flop", "deal_turn", "deal_river", "fold_muck", "chip", "pot_collect",
+]);
+
 function playMp3(kind: PokerLiveSound, src: string) {
   const audio = new Audio(src);
   audio.volume = kind === "deal" ? 0.32 : 0.4;
   audio.playbackRate = playbackRateFor(kind);
   void audio.play().catch(() => {
-    if (kind === "fold" || kind === "check") playSynth(kind);
+    if (SYNTH_FALLBACK_KINDS.has(kind)) playSynth(kind);
   });
 }
 
@@ -175,6 +206,14 @@ function playSynth(kind: PokerLiveSound) {
         noiseBurst(ctx, now + 0.03, 0.01, 5200, 4, 0.1);
         noiseBurst(ctx, now + 0.058, 0.009, 4900, 3.5, 0.085);
         return;
+      // Pot collect = a slide of chip clinks gathering toward the center (lower each
+      // clink, like stacks sliding together). Fallback when pot-collect.mp3 fails.
+      case "pot_collect":
+        noiseBurst(ctx, now, 0.014, 4400, 3, 0.12);
+        noiseBurst(ctx, now + 0.05, 0.013, 3900, 3, 0.11);
+        noiseBurst(ctx, now + 0.11, 0.012, 3400, 2.5, 0.1);
+        noiseBurst(ctx, now + 0.18, 0.05, 2400, 1.5, 0.09, 1400);
+        return;
       // Legacy tones (unchanged): fold beep / check tick.
       default: {
         const osc = ctx.createOscillator();
@@ -208,7 +247,7 @@ export function markPokerSoundGesture() {
 
 export function playPokerLiveSound(kind: PokerLiveSound) {
   if (!canPlay(kind)) return;
-  const src = MP3_BY_KIND[kind];
+  const src = mp3SrcFor(kind);
   if (src) {
     playMp3(kind, src);
     return;

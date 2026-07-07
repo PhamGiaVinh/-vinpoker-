@@ -73,6 +73,12 @@ import {
   readEdgeError,
   type EdgePlayer,
 } from "./handInputEdge";
+import {
+  ACTION_SOUND_KINDS,
+  playTrackerSound,
+  playTrackerSoundOnce,
+} from "@/lib/trackerSound";
+import type { PokerLiveSound } from "@/lib/pokerLiveSound";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 
@@ -199,6 +205,9 @@ export function useStandaloneHandInput(tournamentId: string) {
   >([]);
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
   const [persistedBoardCount, setPersistedBoardCount] = useState(0);
+  // C4 (trackerActionSounds) — owner P0 dedupe: deal/pot-collect sounds fire once per
+  // (handId, street, kind) tuple, so a retried send or replayed state never double-plays.
+  const playedSoundsRef = useRef<Set<string>>(new Set());
   // trackerSeatSetup: false once we learn tournament_seats.avatar_url is absent (migration
   // not applied) → the roster panel disables the avatar control ("chưa áp dụng") but keeps
   // name/chip. Stays true when the flag is off (irrelevant).
@@ -404,6 +413,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     setButtonOverridden(false); // P2-5: new hand → the dead-button suggestion drives the button again
     setSentCommunityStreets(new Set());
     setPersistedBoardCount(0);
+    playedSoundsRef.current.clear(); // C4: fresh dedupe window per hand
     setSyncPhase("idle");
     setSyncLabel(null);
     if (tableId) {
@@ -1392,6 +1402,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       },
     ]);
     setBetAmount("");
+    // C4: audible press feedback the moment the action is accepted locally (flag-gated
+    // + mute-gated inside; action_type strings map 1:1 onto PokerLiveSound kinds).
+    if (ACTION_SOUND_KINDS.has(actionType)) playTrackerSound(actionType as PokerLiveSound);
 
     if (handId) {
       markSync("sending", `S${player.seat_number} ${actionType}`);
@@ -1669,6 +1682,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
       setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
       setPersistedBoardCount(cards.length);
+      // C4: chips gather into the pot, then the street's cards hit the felt.
+      playTrackerSoundOnce(playedSoundsRef.current, handId, currentStreet, "pot_collect");
+      playTrackerSoundOnce(
+        playedSoundsRef.current,
+        handId,
+        currentStreet,
+        cards.length >= 5 ? "deal_river" : cards.length === 4 ? "deal_turn" : "deal_flop",
+      );
       toast.success(`Đã gửi ${STREET_LABELS[currentStreet]} lên viewer (${cards.length} lá)`);
       markSync("sent", `${STREET_LABELS[currentStreet]} (${cards.length} lá)`);
     } catch (e: any) {
@@ -1725,6 +1746,15 @@ export function useStandaloneHandInput(tournamentId: string) {
         setSentCommunityStreets((prev) => new Set(prev).add(street));
         setCurrentStreet(street);
         setPlayers((prev) => prev.map((p) => ({ ...p, current_bet: 0 })));
+        // C4: one pot-collect when the runout starts (bets were gathered once), then
+        // a deal sound per staged street reveal.
+        if (k === 0) playTrackerSoundOnce(playedSoundsRef.current, handId, street, "pot_collect");
+        playTrackerSoundOnce(
+          playedSoundsRef.current,
+          handId,
+          street,
+          count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop",
+        );
         markSync("sent", `${STREET_LABELS[street]} (${count} lá)`);
         // Space the reveals so the viewer sees flop → turn → river, not all-at-once.
         if (k < stages.length - 1) await new Promise((r) => setTimeout(r, RUNOUT_STAGE_MS));
@@ -1922,6 +1952,8 @@ export function useStandaloneHandInput(tournamentId: string) {
       });
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Hand recorded successfully");
+      // C4: the final pot is pushed to the winner — one collect per recorded hand.
+      playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
       markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(data?.data?.hand_id ?? null);
       const { data: refreshedSeats } = await supabase
