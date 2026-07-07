@@ -89,6 +89,16 @@ export function DemandDialog({
     [availability]
   );
 
+  // Supply vs demand so the floor doesn't over-request: dealers who will actually
+  // work today = active − those on approved/pending leave. Total demand is summed
+  // across windows because a dealer fills at most ONE shift/day.
+  const offCount = useMemo(() => activeDealers.filter((d) => offIds.has(d.id)).length, [activeDealers, offIds]);
+  const availableCount = activeDealers.length - offCount;
+  const totalDemand = useMemo(
+    () => Object.values(needByTemplate).reduce((s, n) => s + n, 0),
+    [needByTemplate]
+  );
+
   /** Only checked windows count — unchecking "Có bàn final" clears the pins. */
   const effectiveFinal = useMemo(() => {
     const m: Record<string, string[]> = {};
@@ -143,6 +153,30 @@ export function DemandDialog({
             chỉnh số dealer cần cho TỪNG khung ca của riêng ngày này (không đổi khung ca gốc).
           </DialogDescription>
         </DialogHeader>
+
+        {/* Supply vs demand — helps the floor request the right total */}
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-[12px]">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Dealer sẽ đi làm hôm nay</span>
+            <span className="font-bold text-foreground">
+              {availableCount}{" "}
+              <span className="font-normal text-muted-foreground">
+                ({activeDealers.length} hoạt động − {offCount} xin nghỉ)
+              </span>
+            </span>
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="text-muted-foreground">Tổng nhu cầu đang nhập</span>
+            <span className={totalDemand > availableCount ? "font-bold text-destructive" : "font-bold text-foreground"}>
+              {totalDemand} lượt
+            </span>
+          </div>
+          {totalDemand > availableCount && (
+            <p className="mt-1 text-[11px] text-destructive">
+              Tổng nhu cầu ({totalDemand}) vượt số dealer sẽ đi làm ({availableCount}) — sẽ thiếu người (1 dealer chỉ 1 ca/ngày).
+            </p>
+          )}
+        </div>
 
         <div className="space-y-3">
           {templates.map((t) => {
