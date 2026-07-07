@@ -360,13 +360,22 @@ export function TrackerRacetrack({
   const seatsMap = geo.seats;
   const centerTop = rich ? geo.centerTop : 40;
 
-  // trackerFeltDealerFix: the two bottom seats (1 = dealer-left, 9 = dealer-right) sit in
-  // the dealer station's lane. When the fix is on, lift them up off it (~7% of the felt);
-  // all other seats and the OFF path are untouched (byte-identical).
+  // trackerFeltDealerFix: felt-geometry corrections, all gated by the ONE flag.
+  //  • Bottom seats 1 (dealer-left) / 9 (dealer-right) sit in the dealer station's lane
+  //    → lift them up off it (~7% of the felt).
+  //  • RICH top-row seats 4/5/6 carry face-down hole-card backs ABOVE the pod, which
+  //    overflow the oval's top rim and get clipped (measured 6–19px on /__dev/tracker,
+  //    seat 5 worst) → nudge the top row DOWN into the felt. Non-rich pods have no cards
+  //    (short) so they never clip → left untouched.
+  // OFF path + every other seat: byte-identical.
   const seatAnchor = (n: number) => {
     const a = seatsMap[n];
-    if (!a) return a;
-    return dealerFix && (n === 1 || n === 9) ? { left: a.left, top: a.top - 7 } : a;
+    if (!a || !dealerFix) return a;
+    if (n === 1 || n === 9) return { left: a.left, top: a.top - 7 };
+    if (rich && (n === 4 || n === 5 || n === 6)) {
+      return { left: a.left, top: a.top + (n === 5 ? 7 : 5) };
+    }
+    return a;
   };
 
   // Show the engine's suggested seat ONLY when it differs from the seat being entered.
