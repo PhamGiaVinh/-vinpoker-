@@ -67,6 +67,9 @@ const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
 const OpsFnb = lazy(() => import("./pages/ops/OpsFnb"));
 const OpsChipOps = lazy(() => import("./pages/ops/OpsChipOps"));
 const OpsMarketing = lazy(() => import("./pages/ops/OpsMarketing"));
+const OpsFinance = lazy(() => import("./pages/ops/OpsFinance"));
+const OpsAccounting = lazy(() => import("./pages/ops/OpsAccounting"));
+const OpsSeries = lazy(() => import("./pages/ops/OpsSeries"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -242,6 +245,9 @@ const App = () => (
                 <Route path="/ops/fnb" element={<OpsFnb />} />
                 <Route path="/ops/chip-ops" element={<OpsChipOps />} />
                 <Route path="/ops/marketing" element={<OpsMarketing />} />
+                <Route path="/ops/finance" element={<OpsFinance />} />
+                <Route path="/ops/accounting" element={<OpsAccounting />} />
+                <Route path="/ops/series" element={<OpsSeries />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
@@ -277,11 +283,16 @@ const App = () => (
                 <Route path="/packages/:packageId" element={<PackageDetail />} />
                 <Route path="/player/:userId" element={<PlayerProfile />} />
                 <Route path="/club/admin" element={<ClubAdmin />} />
-                <Route path="/club/admin/finance" element={<ClubFinanceDashboard />} />
-                {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF). */}
-                <Route path="/club/admin/accounting-control" element={<AccountingControl />} />
+                {/* Owner finance is device-aware: phones get the read-only mobile /ops/finance view,
+                    desktop the full dashboard. NOTE: /ops/finance sits in the (un-role-gated) ops shell;
+                    real-data wiring must add an isClubOwner guard there — mock data only for now. */}
+                <Route path="/club/admin/finance" element={<MobileOperatorRoute to="/ops/finance"><ClubFinanceDashboard /></MobileOperatorRoute>} />
+                {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF).
+                    Device-aware: phones get the read-only mobile /ops/accounting view. */}
+                <Route path="/club/admin/accounting-control" element={<MobileOperatorRoute to="/ops/accounting"><AccountingControl /></MobileOperatorRoute>} />
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
-                <Route path="/club/admin/series-intelligence" element={<SeriesIntelligence />} />
+                {/* Trí tuệ Series device-aware: phones get the read-only mobile /ops/series view. */}
+                <Route path="/club/admin/series-intelligence" element={<MobileOperatorRoute to="/ops/series"><SeriesIntelligence /></MobileOperatorRoute>} />
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
                 <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
                 {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
