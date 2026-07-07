@@ -149,6 +149,10 @@ function groupAvailability(rows: AvailabilityRow[], workDate: string): Availabil
   };
   for (const row of rows) {
     const r = ensure(row.dealer_id);
+    // Track the review status for the floor's approval panel (~1 active row per
+    // dealer/day). A pending 'submitted' row wins so the dealer still shows as
+    // needing a decision even if an older row was already acted on.
+    if (r.status !== "submitted") r.status = row.status ?? r.status;
     // A leave / unavailable request only counts as "dealer is off" while it is
     // still pending review ('submitted') or has been approved ('acknowledged').
     // A 'rejected' request MUST NOT block scheduling — the floor declined it, so

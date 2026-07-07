@@ -91,6 +91,9 @@ export interface AvailabilityRequest {
   unavailableTemplateIds: string[];
   leaveRequested?: boolean;
   note?: string;
+  /** Review status of the dealer's request: submitted (pending) | acknowledged |
+   *  rejected. Undefined for mock/legacy. 'submitted' → floor still needs to act. */
+  status?: string;
 }
 
 export interface SchedulerConfig {
