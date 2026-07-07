@@ -767,7 +767,7 @@ export const FEATURES = {
    * early. All inputs owner-entered; the pace reference is an honest crude assumption (real sign-up
    * back-loads, stated plainly) — Hypothesis, not a claim. No DB/registration read. Default **OFF**.
    */
-  seriesRegistrationPace: false,
+  seriesRegistrationPace: true,
   /**
    * Series Intelligence — W7 "nhập chiến dịch Telegram 1 chạm" in the ⑥ CAPTURE console. When ON, reads
    * the club's already-SENT marketing posts (read-only) and lets the owner pick one + type its spend +
@@ -775,7 +775,7 @@ export const FEATURES = {
    * stops being measured by hand. Degrades gracefully (manual entry) when marketing data isn't readable
    * (no role / RLS). Reads marketing_posts read-only; no new RPC/migration. Default **OFF**; kill-switch: false.
    */
-  seriesMarketingImport: false,
+  seriesMarketingImport: true,
   /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
@@ -783,14 +783,14 @@ export const FEATURES = {
    * complexity (quant rule: always compare to a naive baseline). Pure measured fact — no prediction.
    * Default **OFF**; kill-switch: set false to hide the baseline line.
    */
-  seriesNaiveBaseline: false,
+  seriesNaiveBaseline: true,
   /**
    * Series Intelligence — W2 consistent "why is this block empty?" explainers. When ON, self-hidden /
    * empty SI blocks (forecast when too little history, F&B when no orders in the window, …) render a
    * uniform 3-line card: WHAT it is · WHY it's empty · HOW to unlock — so an empty block never reads as
    * "the app is broken". Presentational only, no data/logic change. Default **OFF**; kill-switch: false.
    */
-  seriesEmptyExplainer: false,
+  seriesEmptyExplainer: true,
   /**
    * Series Intelligence — W4 "gọn" Command Center layout (Bước ②). When ON, below the 4-KPI overview the
    * rest of the cards fold into 3 tap-to-open groups (Tiền / Rủi ro & dữ liệu / Chi tiết) instead of one
@@ -798,7 +798,7 @@ export const FEATURES = {
    * layout — the SAME cards render, no number/logic change; flag OFF = the exact previous flat order.
    * Default **OFF**; kill-switch: set false to restore the flat layout.
    */
-  seriesCommandCenterGrouped: false,
+  seriesCommandCenterGrouped: true,
   /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
