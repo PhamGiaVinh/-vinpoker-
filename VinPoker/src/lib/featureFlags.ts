@@ -408,6 +408,17 @@ export const FEATURES = {
    */
   trackerWorkflowAids: false,
   /**
+   * Tablet 2-column layout for the RACETRACK operator console. Today the console is a
+   * single centered column (felt on top, guided action region + log stacked below), so
+   * on a tablet the operator scrolls between the felt and the action buttons. When ON,
+   * at ≥xl (1280px+) the felt moves to a LEFT column and the guided region + log sit in
+   * a fixed RIGHT column, both visible at once (the approved mockup). Below xl (phones,
+   * narrow tablets) it stays the single column — the wide 13/6 racetrack felt needs
+   * ≥1280px for a 2-col split without cramping. OFF (default): the single-column layout
+   * is byte-identical to today. Presentational only — no data/handler change.
+   */
+  trackerTabletLayout: false,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
