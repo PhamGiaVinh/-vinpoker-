@@ -247,6 +247,15 @@ export const FEATURES = {
    */
   shiftPlannerV2: false,
   /**
+   * Shift Planner V2 auto-fill ("⚡ Tự động xếp", Patch 3): the solver honours
+   * per-dealer shift_preference (som/muon/linh_hoat) + the floor's per-day "chia
+   * final" pins (dealer_schedule_runs.params.final_designations), records
+   * unfillable designees as shortages, and gap-fills over manual edits. OFF until
+   * owner UAT — while false the "⚡ Tự động xếp" button is hidden for staff
+   * (owner/admin preview it via the role gate). Kill-switch: set false to hide.
+   */
+  shiftPlannerAutofill: false,
+  /**
    * Dealer Swing "Tối ưu nhân sự" card — live staffing optimizer in the operator
    * right rail (owner request 2026-07-04). Shows required-vs-present dealers (target
    * from the real swing rotation cadence: swing_duration + min_inter_swing_rest) and,

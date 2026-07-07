@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarRange, Sparkles, SlidersHorizontal, UserPlus, AlertTriangle, Undo2 } from "lucide-react";
+import { CalendarRange, Sparkles, SlidersHorizontal, UserPlus, AlertTriangle, Undo2, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildSaveRunPayload,
@@ -21,7 +21,7 @@ import {
   type WeeklyImageInput,
 } from "@/lib/shiftPlanner";
 import { buildShiftGroups, weekDates, weekdayLabel } from "../shift-planner/ShiftPlanner.utils";
-import type { DraftAssignment, RejectionReason } from "@/types/shiftPlanner";
+import type { DraftAssignment, FinalShortage, RejectionReason } from "@/types/shiftPlanner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,10 +76,14 @@ const EMPTY_PARAMS_KEY = stableParamsKey(EMPTY_RUN_PARAMS);
 export default function ShiftPlannerV2Tab({
   clubIds,
   mode = "mock",
+  autofillEnabled = false,
 }: {
   clubIds: string[];
   clubs: ClubRow[];
   mode?: "mock" | "live";
+  /** Show the "⚡ Tự động xếp" action (solver honours preferences + chia-final
+   *  pins). Preview-gated by the parent; behind FEATURES.shiftPlannerAutofill. */
+  autofillEnabled?: boolean;
 }) {
   const [workDate, setWorkDate] = useState<string>(todayInVN());
   const [step, setStep] = useState<PlannerStep>(1);
@@ -90,6 +94,8 @@ export default function ShiftPlannerV2Tab({
   const [demandOverrides, setDemandOverrides] = useState<Record<string, number>>({});
   // "Chia final" pins per template for THIS day (persisted in run params).
   const [finalDesignations, setFinalDesignations] = useState<Record<string, string[]>>({});
+  // Designees the last auto-fill run could not pin (on leave / already assigned…).
+  const [finalShortages, setFinalShortages] = useState<FinalShortage[]>([]);
   const [reqOpen, setReqOpen] = useState(false);
   const [pickOpen, setPickOpen] = useState(false);
   const [pickTemplateId, setPickTemplateId] = useState<string | null>(null);
@@ -265,6 +271,7 @@ export default function ShiftPlannerV2Tab({
     setOverrides(null);
     setDemandOverrides({});
     setFinalDesignations({});
+    setFinalShortages([]);
     paramsBaselineRef.current = EMPTY_PARAMS_KEY; // hydration re-baselines if the new day has a run
     setDmByDealer({});
     setPublishStage("idle");
@@ -330,6 +337,39 @@ export default function ShiftPlannerV2Tab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, adjustedTemplates, workDate, baseDraft, overrides]
   );
+
+  // ── Auto-fill ("⚡ Tự động xếp", Patch 3) ────────────────────────────────────
+  // Re-solve honouring per-dealer shift_preference + the floor's chia-final pins,
+  // keeping any manual edits (gap-fill, idempotent). Result becomes the working
+  // draft (overrides); unfillable designees surface in a shortage panel.
+  const handleAutofill = () => {
+    if (!data) return;
+    const result = generateDailyDraft({
+      workDate,
+      clubId: data.clubId,
+      dealers: data.dealers,
+      templates: adjustedTemplates,
+      availability: data.availability,
+      config: {
+        ...data.config,
+        requirementByHour: requirementFromTemplates(adjustedTemplates, data.config.tzOffsetMinutes),
+        applyShiftPreference: true,
+      },
+      finalDesignations,
+      keepAssignments: overrides ?? [],
+    });
+    setOverrides(result.assignments);
+    setFinalShortages(result.finalShortages ?? []);
+    setSavedRunId(null);
+    setStep(3);
+    const pinned = result.assignments.filter((a) => a.finalDesignated).length;
+    const short = result.finalShortages?.length ?? 0;
+    toast.success(
+      `Đã tự động xếp ${result.assignments.length} ca` +
+        (pinned ? ` · ${pinned} chia final` : "") +
+        (short ? ` · ⚠ ${short} thiếu người chia final` : "")
+    );
+  };
 
   // ── Persistence (same RPCs as V1) ─────────────────────────────────────────────
   const persistDraft = async (): Promise<string | null> => {
@@ -705,6 +745,27 @@ export default function ShiftPlannerV2Tab({
         onToggleRequests={() => setReqOpen((v) => !v)}
       />
 
+      {/* Chia-final shortages from the last ⚡ auto-fill run (never auto-substituted) */}
+      {finalShortages.length > 0 && (
+        <Card className="border-destructive/40 bg-destructive/5 p-3">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
+            <AlertTriangle className="h-4 w-4" /> Thiếu người chia final ({finalShortages.length})
+          </div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Dealer được chỉ định chia final nhưng không xếp được — hệ thống KHÔNG tự thay người khác. Đổi người ở "✎ Sửa nhu cầu" hoặc chấp nhận.
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {finalShortages.map((s, i) => (
+              <li key={`${s.templateId}-${s.dealerId}-${i}`} className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                <span className="rounded border border-border px-1.5 py-0 text-[10px] text-muted-foreground">{s.templateLabel}</span>
+                <span className="font-medium text-foreground">{s.dealerName}</span>
+                <span className="text-destructive">— {s.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {loading || !data || !effectiveDraft ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
@@ -790,7 +851,12 @@ export default function ShiftPlannerV2Tab({
                     </button>
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                    <Button onClick={handleRegenerate}>
+                    {autofillEnabled && (
+                      <Button onClick={handleAutofill} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                        <Zap className="mr-1.5 h-4 w-4" /> Tự động xếp
+                      </Button>
+                    )}
+                    <Button onClick={handleRegenerate} variant={autofillEnabled ? "outline" : "default"}>
                       <Sparkles className="mr-1.5 h-4 w-4" /> {flags.draftExists ? "Tạo lại nháp AI" : "Tạo nháp AI — xếp tự động"}
                     </Button>
                     <Button
@@ -804,7 +870,9 @@ export default function ShiftPlannerV2Tab({
                     </Button>
                   </div>
                   <p className="mt-3 text-[11px] text-muted-foreground">
-                    AI xếp theo: đăng ký rảnh · giờ nghỉ giữa ca · giới hạn giờ/tuần · công bằng ca đêm
+                    {autofillEnabled
+                      ? "⚡ Tự động xếp: theo ca ưa thích của dealer + giữ người chia final đã chỉ định, đắp phần thiếu (giữ nguyên chỉnh tay)."
+                      : "AI xếp theo: đăng ký rảnh · giờ nghỉ giữa ca · giới hạn giờ/tuần · công bằng ca đêm"}
                   </p>
                 </Card>
               )}
@@ -938,6 +1006,7 @@ export default function ShiftPlannerV2Tab({
             setDemandOverrides(next.demand);
             setFinalDesignations(next.final);
             setOverrides(null);
+            setFinalShortages([]);
             setSavedRunId(null);
             if (Object.keys(next.demand).length > 0 || Object.keys(next.final).length > 0)
               toast.success("Đã áp dụng nhu cầu mới cho ngày này");

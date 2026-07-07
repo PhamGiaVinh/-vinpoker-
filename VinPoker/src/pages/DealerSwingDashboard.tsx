@@ -60,6 +60,9 @@ export default function DealerSwingDashboard() {
   // is OFF, owner / club-admin / super-admin see the V2 planner for live UAT;
   // everyone else keeps V1 unchanged. Flip the flag ON after UAT for all staff.
   const showPlannerV2 = FEATURES.shiftPlannerV2 || isAdmin || isClubAdmin || isClubOwner;
+  // Auto-fill ("⚡ Tự động xếp") preview gate — same pattern: owner/admin UAT it
+  // while FEATURES.shiftPlannerAutofill is OFF; flip ON for all staff after UAT.
+  const showAutofill = FEATURES.shiftPlannerAutofill || isAdmin || isClubAdmin || isClubOwner;
 
   return (
     <div className="container mx-auto p-3 md:p-6">
@@ -93,7 +96,7 @@ export default function DealerSwingDashboard() {
           <TabsContent value="shift_planner" className="mt-4">
             {/* V2 = guided 4-step flow (owner-approved redesign); non-preview roles keep V1. */}
             {showPlannerV2
-              ? <ShiftPlannerV2Tab clubIds={scopedIds} clubs={clubs} mode="live" />
+              ? <ShiftPlannerV2Tab clubIds={scopedIds} clubs={clubs} mode="live" autofillEnabled={showAutofill} />
               : <ShiftPlannerTab clubIds={scopedIds} clubs={clubs} mode="live" />}
           </TabsContent>
         )}
