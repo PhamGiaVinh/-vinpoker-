@@ -95,24 +95,41 @@ Deno.serve(async (req) => {
     try {
       const chatId = await getClubTelegramChatId(admin, club_id);
       if (botToken && chatId && assignedEntries.length > 0) {
+        const sends: Promise<unknown>[] = [];
+
         // Group notification: summary of all assignments
         const msg = formatMassAssignMessage(assignedEntries);
-        sendTelegramNotification(botToken, chatId, msg, {
-          logError: (errMsg) => {
-            void admin.from("swing_audit_logs").insert({
-              club_id, action: "mass_assign_telegram_failed",
-              error_message: errMsg, triggered_by: uid,
-            });
-          },
-        }).catch(() => {});
+        sends.push(
+          sendTelegramNotification(botToken, chatId, msg, {
+            logError: (errMsg) => {
+              void admin.from("swing_audit_logs").insert({
+                club_id, action: "mass_assign_telegram_failed",
+                error_message: errMsg, triggered_by: uid,
+              });
+            },
+          })
+        );
 
         // Individual dealer notifications: each dealer gets a personal message
         for (const a of assignments) {
           if (a.telegram_username) {
             const dealerMsg = `🎲 Bạn được gán vào *${a.table_name}*. Xoay vòng sau ${durResult.durationMinutes} phút.`;
-            sendTelegramNotification(botToken, chatId, dealerMsg).catch(() => {});
+            sends.push(sendTelegramNotification(botToken, chatId, dealerMsg));
           }
         }
+
+        // Keep the sends alive past the response (EdgeRuntime.waitUntil): the
+        // previous fire-and-forget `.catch(() => {})` promises were dropped when
+        // the function froze on return, so bulk opens (owner: "mở 20 bàn") often
+        // delivered NOTHING. Same fix as assign-dealer's manual-open sends.
+        const settled = Promise.allSettled(sends);
+        const er = (globalThis as any).EdgeRuntime;
+        if (er?.waitUntil) er.waitUntil(settled);
+        else await settled;
+      } else if (assignedEntries.length > 0 && !chatId) {
+        // Make "no messages arrived" diagnosable: the club simply has no group
+        // chat configured (club_settings.telegram_chat_id).
+        console.warn(`[mass-assign] telegram skipped: club ${club_id} has no telegram_chat_id`);
       }
     } catch { /* non-critical */ }
 
