@@ -13,7 +13,7 @@ import { MOCK_DEALERS, MOCK_PLAYERS } from "@/components/ops/mock/opsData";
  * Phong cách iOS grouped. DỮ LIỆU MẪU, read-only. docs/design/ios-floor-ux-spec.md §9,12.
  */
 const LINKS = [
-  { icon: Wallet, label: "Cashier (thu ngân)", badge: "", to: "" },
+  { icon: Wallet, label: "Cashier (thu ngân)", badge: "2 chờ xếp", to: "/ops/cashier" },
   { icon: UtensilsCrossed, label: "F&B", badge: "2 chờ thu", to: "/ops/fnb" },
   { icon: Boxes, label: "Chip Ops", badge: "", to: "/ops/chip-ops" },
   { icon: Megaphone, label: "Marketing", badge: "", to: "/ops/marketing" },
