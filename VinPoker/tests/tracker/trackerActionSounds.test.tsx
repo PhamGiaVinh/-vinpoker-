@@ -44,6 +44,9 @@ afterEach(() => {
 
 describe("mp3SrcFor (C4)", () => {
   it("flag OFF: byte-identical to today's map for every kind (synth kinds stay undefined)", () => {
+    // Explicit OFF — the flag now ships ON, so this "OFF" case sets it rather than
+    // relying on the module default (afterEach restores OFF for the rest).
+    (FEATURES as Record<string, unknown>).trackerActionSounds = false;
     for (const kind of ALL_KINDS) {
       expect(mp3SrcFor(kind), kind).toBe(LEGACY_MP3[kind]);
     }

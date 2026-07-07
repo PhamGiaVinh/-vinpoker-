@@ -428,7 +428,7 @@ export const FEATURES = {
    * owner-approved; colors ride the --poker-card-* tokens so dark↔warm still works).
    * OFF (default): pods AND card back byte-identical to today. Presentational only.
    */
-  trackerFeltV2: false,
+  trackerFeltV2: true,
   /**
    * Owner-recorded action sounds for the tracker (operator console + /live viewer).
    * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the
@@ -438,7 +438,21 @@ export const FEATURES = {
    * existing poker-bet.mp3. OFF (default): the sound engine's MP3 mapping and both
    * surfaces' audio behavior are byte-identical to today (operator stays silent).
    */
-  trackerActionSounds: false,
+  trackerActionSounds: true,
+  /**
+   * "Hoàn tác cả vòng" (street rollback) for the operator console: rolls back a SENT
+   * flop/turn/river — deletes all of that street's actions server-side (the existing
+   * delete_last_action, one per action, each mirrored by one local undo pop), THEN
+   * shrinks the persisted board (the existing update_community_cards wholesale
+   * replace), landing back on enter_{street} so the operator can fix an earlier
+   * action or edit + resend the cards. The /live viewer sees the street's cards
+   * disappear (owner-approved). Blocked after a page reload when the street already
+   * has recorded actions (the local undo stack can't mirror the deletes — owner P0),
+   * and during all-in runout / showdown / review. No DB/Edge change (reuses two
+   * existing endpoints). OFF (default): the controls strip and every handler are
+   * byte-identical to today.
+   */
+  trackerStreetRollback: false,
   /**
    * xCards face deck (owner "fix UI UX toàn bộ" wave): replaces the built-in text card
    * FACE (rank + suit on a cream card) with the owner-chosen xCards vector deck

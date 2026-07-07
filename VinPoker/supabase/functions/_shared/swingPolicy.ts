@@ -69,6 +69,18 @@ export const SWING_POLICY = {
     emergencyOtPreAnnounceMinutes: 5,     // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES — raised 3→5 (owner 2026-07-05: no swing announced <5 min ahead)
   },
 
+  // ── manual bulk-open stagger (fillEmptyTables MANUAL path, F1 2026-07-08) ──
+  // Bulk "Gán loạt" was giving all N tables one due-wave → mass OT. Spread the
+  // TARGET swing_due_at (only the moment the engine STARTS trying to swap — never
+  // a force-release) as a centered fan-out: due_i += (i − (n−1)/2) * step. Centered
+  // keeps the batch mean unchanged and both tails within an operationally sane
+  // first-stint. Auto-staff/cron paths keep stagger 0 (availableOnly gate).
+  bulkOpen: {
+    staggerStepMinutes: 2,     // centered so-le step between consecutive tables
+    minFirstStintMinutes: 15,  // floor: first due never closer than grace + this
+    maxStaggerMinutes: 20,     // |offset| clamp so a huge batch can't push due absurdly late
+  },
+
   // ── pickNextDealer scoring weights ────────────────────────────────────────
   scoring: {
     onBreakPenalty: -50,                  // on_break dealers deprioritized
