@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
@@ -101,7 +102,21 @@ function useFloorSeats(tournamentId: string | null) {
   return { ...state, reload: load };
 }
 
-interface TableVM { mock: MockTable; name: string; seats: MockSeat[] }
+interface TableVM { mock: MockTable; name: string; seats: MockSeat[]; raw: MapTable }
+
+/** Copy VERBATIM từ AddPlayerDialog.mapError — phân biệt permission/validation/conflict (P1). */
+function addPlayerError(code?: string): string {
+  switch (code) {
+    case "unauthorized": return "Bạn cần đăng nhập lại.";
+    case "actor_not_allowed": return "Không có quyền thêm người cho CLB này.";
+    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
+    case "invalid_player_name": return "Tên tối thiểu 2 ký tự.";
+    case "invalid_destination_table": return "Bàn không hợp lệ hoặc đã đóng.";
+    case "invalid_seat_number": return "Số ghế không hợp lệ.";
+    case "seat_occupied": return "Ghế vừa bị lấy — chọn ghế khác.";
+    default: return code ? `Thêm người thất bại (${code})` : "Thêm người thất bại";
+  }
+}
 
 export default function OpsTables() {
   const navigate = useNavigate();
@@ -143,7 +158,7 @@ export default function OpsTables() {
 
   const vms = useMemo<TableVM[]>(() => floor.tables.map((t, i) => {
     const seats = floor.seatsByTable[t.table_id] ?? [];
-    return { mock: toMockTable(t, seats.length, onBreak, 1000 + i), name: t.table_name, seats: seats.map(toMockSeat) };
+    return { mock: toMockTable(t, seats.length, onBreak, 1000 + i), name: t.table_name, seats: seats.map(toMockSeat), raw: t };
   }), [floor.tables, floor.seatsByTable, onBreak]);
 
   const visible = useMemo(() => {
@@ -162,6 +177,49 @@ export default function OpsTables() {
     setOpenNo(null);
     requestAnimationFrame(() => setPlayer({ seat: s, tableNo }));
   };
+
+  // ── Floor-A1: Thêm người → RPC floor_assign_player_to_seat (gate floorTableOps) ──
+  const ADD_LIVE = FEATURES.floorTableOps;
+  const [addTable, setAddTable] = useState<TableVM | null>(null); // bàn đang thêm
+  const [addName, setAddName] = useState("");
+  const [addSeat, setAddSeat] = useState<number | null>(null);
+  const [addBusy, setAddBusy] = useState(false);
+  const addBusyRef = useRef(false);
+  const openAdd = (vm: TableVM) => {
+    setOpenNo(null);
+    setAddName(""); setAddSeat(null);
+    requestAnimationFrame(() => setAddTable(vm));
+  };
+  const addFreeSeats = useMemo(() => {
+    if (!addTable) return [];
+    const taken = new Set(addTable.seats.map((s) => s.seat));
+    const out: number[] = [];
+    for (let n = 1; n <= addTable.raw.max_seats; n++) if (!taken.has(n)) out.push(n);
+    return out;
+  }, [addTable]);
+  const submitAdd = useCallback(async () => {
+    if (!addTable || !tourId || addSeat == null || addName.trim().length < 2) return;
+    if (addBusyRef.current) return;            // P0-7 synchronous double-tap guard
+    addBusyRef.current = true; setAddBusy(true);
+    try {
+      // Mirror AddPlayerDialog.submit — floor_assign_player_to_seat (mig 20260913000000)
+      const { data, error } = await (supabase.rpc as any)("floor_assign_player_to_seat", {
+        p_tournament_id: tourId,
+        p_player_name: addName.trim(),
+        p_tournament_table_id: addTable.raw.tt_id,
+        p_seat_number: addSeat,
+      });
+      const res = (data ?? null) as { ok?: boolean; error?: string; table_number?: number | null; seat_number?: number; display_name?: string } | null;
+      if (error || !res?.ok) { toast.error(addPlayerError(error ? error.message : res?.error)); return; }
+      toast.success(`Đã xếp ${res.display_name ?? addName.trim()} → ${addTable.name} · Ghế ${res.seat_number ?? addSeat}`);
+      setAddTable(null);
+      floor.reload();                          // refetch, không optimistic (P0-7)
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Thêm người thất bại");
+    } finally {
+      addBusyRef.current = false; setAddBusy(false);
+    }
+  }, [addTable, tourId, addSeat, addName, floor]);
 
   // ---- guards (thứ tự chuẩn: auth → login → clubs → quyền → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
@@ -299,8 +357,10 @@ export default function OpsTables() {
           )}
 
           <div className="mt-3 grid grid-cols-3 gap-2">
-            <button onClick={pending} className="ios-press ios-tinted flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-semibold">
-              <Plus className="h-4 w-4" /> Thêm người
+            {/* Floor-A1: LIVE (floorTableOps). Cờ OFF → disable "Cần bật cờ" y desktop, 0 gọi RPC. */}
+            <button onClick={() => (ADD_LIVE ? openVM && openAdd(openVM) : undefined)} disabled={!ADD_LIVE}
+              className={cn("ios-press ios-tinted flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-semibold", !ADD_LIVE && "opacity-50")}>
+              <Plus className="h-4 w-4" /> {ADD_LIVE ? "Thêm người" : "Cần bật cờ"}
             </button>
             <button onClick={pending} className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
               <PauseCircle className="h-4 w-4" /> Tạm dừng
@@ -309,6 +369,42 @@ export default function OpsTables() {
               <XCircle className="h-4 w-4" /> Đóng bàn
             </button>
           </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Floor-A1 — Thêm người (N4): tên + ghế trống + nhắc lại → floor_assign_player_to_seat */}
+      <Sheet open={addTable !== null} onOpenChange={(v) => { if (!v && !addBusy) setAddTable(null); }}>
+        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Thêm người → {addTable?.name}</SheetTitle></SheetHeader>
+          <div className="mt-1 text-center text-[12px] text-[#9b8e97]">xếp khách vào ghế trống · không thu tiền (buy-in ở quầy)</div>
+          <div className="mt-3">
+            <label className="px-1 text-[12px] text-[#9b8e97]">Tên người chơi</label>
+            <input autoFocus value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="VD: Nguyễn Văn A"
+              className="ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-[15px] text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
+          </div>
+          <div className="mt-3">
+            <label className="px-1 text-[12px] text-[#9b8e97]">Ghế trống</label>
+            {addFreeSeats.length === 0 ? (
+              <div className="ios-fill mt-1 rounded-xl py-3 text-center text-[13px] text-[#9b8e97]">Bàn đã đầy — không còn ghế trống.</div>
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {addFreeSeats.map((n) => (
+                  <button key={n} onClick={() => setAddSeat(n)}
+                    className={cn("ios-press-sm grid h-10 w-11 place-items-center rounded-lg text-[15px] font-semibold",
+                      addSeat === n ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>{n}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            disabled={addBusy || addName.trim().length < 2 || addSeat == null}
+            onClick={submitAdd}
+            className="ios-press ios-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
+            {addBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {addBusy ? "Đang xếp…" : addSeat != null && addName.trim() ? `Xếp ${addName.trim()} vào ghế ${addSeat}` : "Chọn tên & ghế"}
+          </button>
+          <div className="mt-2 text-center text-[11px] text-[#7c7079]">nhắc lại: {addName.trim() || "—"} → {addTable?.name} · ghế {addSeat ?? "—"}</div>
         </SheetContent>
       </Sheet>
 
