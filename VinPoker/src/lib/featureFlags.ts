@@ -762,6 +762,13 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — W6 registration-pace check (Bước ④). When ON, a panel lets the owner compare
+   * sign-ups-so-far to a CRUDE linear pace toward the forecast, to spot "đang chậm → đẩy bài/satellite"
+   * early. All inputs owner-entered; the pace reference is an honest crude assumption (real sign-up
+   * back-loads, stated plainly) — Hypothesis, not a claim. No DB/registration read. Default **OFF**.
+   */
+  seriesRegistrationPace: false,
+  /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
    * + how far the model's number sits from it, so the owner can feel whether the model earns its

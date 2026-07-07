@@ -23,6 +23,7 @@ import { StepSection } from "@/components/series-intelligence/StepSection";
 import { SeriesIntelEmptyState } from "@/components/series-intelligence/SeriesIntelEmptyState";
 import { SeriesCaptureConsole } from "@/components/series-intelligence/SeriesCaptureConsole";
 import { SeriesAssistant } from "@/components/series-intelligence/SeriesAssistant";
+import { RegistrationPacePanel } from "@/components/series-intelligence/RegistrationPacePanel";
 import { parseSeriesCsv, SAMPLE_CSV_TEXT } from "@/lib/series-intelligence/csvImport";
 import type { ScheduleEvent } from "@/lib/series-intelligence/scheduleGenerator";
 import { useSeriesLibrary } from "@/lib/series-intelligence/useSeriesLibrary";
@@ -300,6 +301,7 @@ export default function SeriesIntelligence() {
             forecastSourceSignal={forecastSignal}
           />
           <FestivalEvPanel draft={draft} />
+          {FEATURES.seriesRegistrationPace && <RegistrationPacePanel />}
         </StepSection>
       )}
 
