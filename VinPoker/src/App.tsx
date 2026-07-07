@@ -70,6 +70,7 @@ const OpsMarketing = lazy(() => import("./pages/ops/OpsMarketing"));
 const OpsFinance = lazy(() => import("./pages/ops/OpsFinance"));
 const OpsAccounting = lazy(() => import("./pages/ops/OpsAccounting"));
 const OpsSeries = lazy(() => import("./pages/ops/OpsSeries"));
+const OpsCashier = lazy(() => import("./pages/ops/OpsCashier"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -248,6 +249,7 @@ const App = () => (
                 <Route path="/ops/finance" element={<OpsFinance />} />
                 <Route path="/ops/accounting" element={<OpsAccounting />} />
                 <Route path="/ops/series" element={<OpsSeries />} />
+                <Route path="/ops/cashier" element={<OpsCashier />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
@@ -312,7 +314,8 @@ const App = () => (
                 {/* GE-2D online-poker LOBBY — keeps Layout chrome. The TABLE route is
                     chrome-less above (full-screen). Pages self-gate on FEATURES.onlinePoker. */}
                 <Route path="/poker" element={<OnlinePoker />} />
-                <Route path="/cashier" element={<CashierDashboard />} />
+                {/* Cashier is device-aware: phones get the mobile /ops/cashier UI, desktop the dashboard. */}
+                <Route path="/cashier" element={<MobileOperatorRoute to="/ops/cashier"><CashierDashboard /></MobileOperatorRoute>} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
