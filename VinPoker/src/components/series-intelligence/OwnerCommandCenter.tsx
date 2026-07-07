@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Database, Inbox, WifiOff, FlaskConical } from "lucide-react";
+import { Database, Inbox, WifiOff, FlaskConical, Coins, ShieldAlert, ListChecks, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
 import { FEATURES } from "@/lib/featureFlags";
 import {
@@ -105,6 +106,65 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
   if (!isCsv && native.status === "unavailable") return <UnavailableState reason={native.reason} />;
   if (!view) return <EmptyState />;
 
+  // % giải CÓ GTD bị overlay — from the per-row resolution GtdOverlayCard already shows.
+  const overlayRatePct = (() => {
+    const resolved = view.gtdOverlay.rows
+      .map((row) => resolveOverlay(row, truePrizeByEvent?.get(row.event_id) ?? null))
+      .filter((r) => r.covered !== null);
+    if (resolved.length === 0) return null;
+    return (resolved.filter((r) => r.covered === false).length / resolved.length) * 100;
+  })();
+
+  // Each card as a value so the flat and the W4-grouped layouts render the SAME components (0 logic change).
+  const cardQuarterly = view.quarterly ? <QuarterlyBreakdownCard summary={view.quarterly} /> : null;
+  const cardDataQuality = <DataQualityCard readiness={view.readiness} />;
+  const cardEconomics = <EconomicsTable rows={view.rows} />;
+  const cardContribution = view.contributionByType ? (
+    <ContributionByTypeCard result={view.contributionByType} overlayRatePct={overlayRatePct} />
+  ) : null;
+  const cardFnb =
+    fnbEnabled && fnbWindow ? (
+      <FnbClubContributionCard window={fnbWindow} report={fnbReport.data} loading={fnbReport.isLoading} error={fnbReport.isError} />
+    ) : null;
+  const cardRisk = <RiskInsightCards risks={view.risks} />;
+  const cardScenario = <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />;
+  const cardGtd = <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />;
+  const cardActions = <OwnerActionChecklist actions={view.actions} />;
+
+  // W4 — "gọn": below the KPI overview, fold the rest into 3 tap-to-open groups (Tiền / Rủi ro & dữ liệu /
+  // Chi tiết) instead of one long scroll. Flag OFF → the exact previous flat order. No card logic changes.
+  const sections = FEATURES.seriesCommandCenterGrouped ? (
+    <>
+      <CommandGroup icon={Coins} title="Tiền" subtitle="biên theo loại · F&B · theo quý" defaultOpen>
+        {cardContribution}
+        {cardFnb}
+        {cardQuarterly}
+      </CommandGroup>
+      <CommandGroup icon={ShieldAlert} title="Rủi ro và dữ liệu" subtitle="độ phủ · rủi ro · GTD · kịch bản · việc cần làm">
+        {cardDataQuality}
+        {cardRisk}
+        {cardGtd}
+        {cardScenario}
+        {cardActions}
+      </CommandGroup>
+      <CommandGroup icon={ListChecks} title="Chi tiết từng giải" subtitle="bảng kinh tế từng giải">
+        {cardEconomics}
+      </CommandGroup>
+    </>
+  ) : (
+    <>
+      {cardQuarterly}
+      {cardDataQuality}
+      {cardEconomics}
+      {cardContribution}
+      {cardFnb}
+      {cardRisk}
+      {cardScenario}
+      {cardGtd}
+      {cardActions}
+    </>
+  );
+
   return (
     <div className="space-y-4">
       {isCsv && (
@@ -133,35 +193,35 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
         </p>
       </section>
 
-      {view.quarterly && <QuarterlyBreakdownCard summary={view.quarterly} />}
-      <DataQualityCard readiness={view.readiness} />
-      <EconomicsTable rows={view.rows} />
-      {view.contributionByType && (
-        <ContributionByTypeCard
-          result={view.contributionByType}
-          overlayRatePct={(() => {
-            // % giải CÓ GTD bị overlay — from the per-row resolution already shown in GtdOverlayCard.
-            const resolved = view.gtdOverlay.rows
-              .map((row) => resolveOverlay(row, truePrizeByEvent?.get(row.event_id) ?? null))
-              .filter((r) => r.covered !== null);
-            if (resolved.length === 0) return null;
-            return (resolved.filter((r) => r.covered === false).length / resolved.length) * 100;
-          })()}
-        />
-      )}
-      {fnbEnabled && fnbWindow && (
-        <FnbClubContributionCard
-          window={fnbWindow}
-          report={fnbReport.data}
-          loading={fnbReport.isLoading}
-          error={fnbReport.isError}
-        />
-      )}
-      <RiskInsightCards risks={view.risks} />
-      <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />
-      <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />
-      <OwnerActionChecklist actions={view.actions} />
+      {sections}
     </div>
+  );
+}
+
+/** Collapsible group for the W4 "gọn" layout — one titled, default-open section that folds several cards. */
+function CommandGroup({
+  icon: Icon,
+  title,
+  subtitle,
+  defaultOpen = false,
+  children,
+}: {
+  icon: typeof Coins;
+  title: string;
+  subtitle: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="rounded-lg border border-border/70 bg-card/20">
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 p-3 text-left">
+        <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+        <span className="font-display text-sm">{title}</span>
+        <span className="truncate text-[11px] text-muted-foreground">· {subtitle}</span>
+        <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" aria-hidden />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4 p-3 pt-0">{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
