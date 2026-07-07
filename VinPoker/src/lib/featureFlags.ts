@@ -430,6 +430,16 @@ export const FEATURES = {
    */
   trackerFeltV2: false,
   /**
+   * Owner-recorded action sounds for the tracker (operator console + /live viewer).
+   * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the
+   * owner's MP3 clips (public/sounds/tracker/, see LICENSES.md there); the operator
+   * console gains action sounds (today it is silent) + a mute toggle sharing the
+   * viewer's `tracker_sound_muted` localStorage key; bet/call/raise/all_in keep the
+   * existing poker-bet.mp3. OFF (default): the sound engine's MP3 mapping and both
+   * surfaces' audio behavior are byte-identical to today (operator stays silent).
+   */
+  trackerActionSounds: false,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
