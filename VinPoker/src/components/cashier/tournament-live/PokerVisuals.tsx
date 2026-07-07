@@ -1,6 +1,67 @@
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
+
+// ── xCards face deck (trackerCardFaces) ──────────────────────────────────────
+// Map an internal card string ("As", "Th", "2c", or glyph-suited "A♠") to the
+// xCards face filename (rank + suit, both uppercase; ten = "T"). Returns null for
+// anything unrecognized so the caller keeps the built-in text face.
+const XCARDS_SUIT: Record<string, string> = {
+  s: "S", h: "H", d: "D", c: "C",
+  "♠": "S", "♥": "H", "♦": "D", "♣": "C",
+};
+const XCARDS_RANKS = new Set(["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"]);
+function xcardsFaceFile(card: string): string | null {
+  if (!card || card.length < 2) return null;
+  let rank = card.slice(0, -1).toUpperCase();
+  if (rank === "10") rank = "T";
+  const last = card.slice(-1);
+  const suit = XCARDS_SUIT[last] ?? XCARDS_SUIT[last.toLowerCase()];
+  if (!suit || !XCARDS_RANKS.has(rank)) return null;
+  return `${rank}${suit}.svg`;
+}
+
+/** Face-up xCards image with a hard fallback to the built-in text face if the SVG
+ *  fails to load (missing asset → never a blank card). Own state so the fallback
+ *  survives re-render; the whole card box's rounding/size/mute come from the caller. */
+function XCardImageFace({
+  file,
+  muted,
+  sizeClass,
+  className,
+  style,
+  fallback,
+}: {
+  file: string;
+  muted: boolean;
+  sizeClass: string;
+  className?: string;
+  style?: CSSProperties;
+  fallback: ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{fallback}</>;
+  return (
+    <div
+      className={cn(
+        "tracker-card-reveal relative shrink-0 overflow-hidden bg-white shadow-xl shadow-black/35",
+        muted && "opacity-55 grayscale",
+        sizeClass,
+        className,
+      )}
+      style={style}
+    >
+      <img
+        src={`/cards/xcards/${file}`}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="h-full w-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+}
 
 /** Sakura petal (owner's card-back design, vinpoker-card-back.html) — a 5-petal flower
  *  is 5 of these rotated 72° apart. Base path spans r≈7→42; scale at use site. */
@@ -113,7 +174,8 @@ export function PokerCard({
   const rank = card.slice(0, -1);
   const suit = SUIT_SYMBOL[card.slice(-1)] || card.slice(-1);
 
-  return (
+  // Today's built-in text face — also the fallback when an xCards asset fails to load.
+  const textFace = (
     <div
       className={cn(
         "tracker-card-reveal relative shrink-0 overflow-hidden border border-amber-200/70 bg-[#f7f0df] font-serif font-black leading-none shadow-xl shadow-black/35",
@@ -131,6 +193,24 @@ export function PokerCard({
       </div>
     </div>
   );
+
+  // trackerCardFaces: swap the text face for the owner-chosen xCards vector deck.
+  // Only reached for a REVEALED card (the hidden/empty branches returned above), so
+  // no card value is exposed that wasn't already shown as text today.
+  const faceFile = FEATURES.trackerCardFaces ? xcardsFaceFile(card) : null;
+  if (faceFile) {
+    return (
+      <XCardImageFace
+        file={faceFile}
+        muted={muted}
+        sizeClass={sizeClass}
+        className={className}
+        style={style}
+        fallback={textFace}
+      />
+    );
+  }
+  return textFace;
 }
 
 /**

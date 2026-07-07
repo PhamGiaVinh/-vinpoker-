@@ -454,6 +454,18 @@ export const FEATURES = {
    */
   trackerStreetRollback: false,
   /**
+   * xCards face deck (owner "fix UI UX toàn bộ" wave): replaces the built-in text card
+   * FACE (rank + suit on a cream card) with the owner-chosen xCards vector deck
+   * (public/cards/xcards/, LGPL v3 — see LICENSES.md there) inside the SHARED PokerCard
+   * component, so the operator felt + /live viewer + hand feed all change together. Only
+   * the FACE-UP branch is touched — the empty slot + the face-DOWN back are untouched
+   * (the Sakura back stays), and a face image that fails to load falls back to today's
+   * text face. When OFF: PokerCard renders the text face byte-identical to today.
+   * Presentational only — no data/handler change; never renders for a hidden card.
+   * Shipped ON at the owner's request ("bật hết") after they picked the xCards deck.
+   */
+  trackerCardFaces: true,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
