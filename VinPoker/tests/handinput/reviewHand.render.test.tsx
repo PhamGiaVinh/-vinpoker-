@@ -82,3 +82,31 @@ describe("ReviewHandPanel — rankShifts strip (A3)", () => {
     expect(html).toContain("▼"); // Binh moved down
   });
 });
+
+// A2 (trackerWorkflowAids) — conservation DIAGNOSTIC. Additive; absent → byte-identical.
+describe("ReviewHandPanel — conservation diagnostic (A2)", () => {
+  const off = { p1: 50, p2: 60 }; // sum 110 vs start 200 → short by 90
+
+  it("diagnostics off → no Lệch amount, no hint (byte-identical banner)", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel {...common} endingStacks={off} conservationOk={false} winnerDetermined={false} canSubmit={false} />
+    );
+    expect(html).not.toContain("Lệch");
+    expect(html).toContain("✗ Bảo toàn chip"); // the base marker is unchanged
+  });
+
+  it("diagnostics on + not conserved → shows the signed Lệch amount + the hint", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel {...common} endingStacks={off} conservationOk={false} winnerDetermined={false} canSubmit={false} diagnostics />
+    );
+    expect(html).toContain("Lệch: −90"); // 110 end < 200 start → negative (short)
+    expect(html).toContain("âm (đang thiếu)");
+  });
+
+  it("diagnostics on but conserved → no Lệch (only shows when it fails)", () => {
+    const html = renderToStaticMarkup(
+      <ReviewHandPanel {...common} endingStacks={{ p1: 140, p2: 60 }} conservationOk winnerDetermined canSubmit diagnostics />
+    );
+    expect(html).not.toContain("Lệch");
+  });
+});

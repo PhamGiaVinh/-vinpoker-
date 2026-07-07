@@ -111,3 +111,22 @@ describe("BlindSetupPanel A1 blind auto-seed (additive props)", () => {
     expect(html).toContain("SB chết");
   });
 });
+
+// A2 (trackerWorkflowAids) — the additive "Lấy blind mới" refresh button. Absent →
+// byte-identical; only shown while no blind is posted (never re-seeds posted amounts).
+describe("BlindSetupPanel A2 refresh live level (additive prop)", () => {
+  it("without onRefreshLevel → no refresh button (byte-identical)", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} />);
+    expect(html).not.toContain("Lấy blind mới");
+  });
+
+  it("with onRefreshLevel + nothing posted → shows the refresh button", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} onRefreshLevel={() => {}} />);
+    expect(html).toContain("Lấy blind mới");
+  });
+
+  it("once a blind is posted → the refresh button is hidden (never re-seeds posted amounts)", () => {
+    const html = renderToStaticMarkup(<BlindSetupPanel {...baseProps} onRefreshLevel={() => {}} sbPosted bbPosted />);
+    expect(html).not.toContain("Lấy blind mới");
+  });
+});
