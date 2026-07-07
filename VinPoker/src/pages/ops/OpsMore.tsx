@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight } from "lucide-react";
+import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DealerStatusCard } from "@/components/ops/shared/DealerStatusCard";
 import { PlayerLookupCard } from "@/components/ops/shared/PlayerLookupCard";
@@ -18,6 +19,7 @@ const LINKS = [
 ];
 
 export default function OpsMore() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState(false);
   const [q, setQ] = useState("");
   const results = MOCK_PLAYERS.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
@@ -37,6 +39,14 @@ export default function OpsMore() {
 
       <section>
         <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Dealer</h3>
+        <button
+          onClick={() => navigate("/ops/dealer-swing")}
+          className="ios-press ios-card mb-2 flex w-full items-center gap-3 p-3.5 text-left"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#c9a86a]/14 text-[#d8bc85]"><Repeat className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-[#f2ece6]">Dealer Swing — xoay ca</span><span className="block text-[12px] text-[#9b8e97]">1 thiếu dealer · 1 bàn OT</span></span>
+          <ChevronRight className="h-[18px] w-[18px] text-[#5f545c]" />
+        </button>
         <div className="ios-group">
           {MOCK_DEALERS.map((d, i) => <DealerStatusCard key={i} d={d} />)}
         </div>
