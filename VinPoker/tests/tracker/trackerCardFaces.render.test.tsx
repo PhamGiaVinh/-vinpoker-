@@ -16,6 +16,9 @@ afterEach(() => {
 
 describe("PokerCard face — flag OFF (byte-identical text face)", () => {
   it("prop-flag OFF renders the cream text face, no image", () => {
+    // Explicit OFF — the flag now ships ON, so this "OFF" case sets it rather than
+    // relying on the module default (afterEach restores OFF for the rest).
+    (FEATURES as Record<string, unknown>).trackerCardFaces = false;
     const html = renderToStaticMarkup(<PokerCard card="As" size="md" />);
     expect(html).toContain("bg-[#f7f0df]"); // cream card face
     expect(html).toContain("<span>A</span>"); // rank
@@ -24,6 +27,7 @@ describe("PokerCard face — flag OFF (byte-identical text face)", () => {
   });
 
   it("flipping the flag ON then OFF returns to the exact OFF markup", () => {
+    (FEATURES as Record<string, unknown>).trackerCardFaces = false;
     const off1 = renderToStaticMarkup(<PokerCard card="Kh" size="sm" />);
     (FEATURES as Record<string, unknown>).trackerCardFaces = true;
     renderToStaticMarkup(<PokerCard card="Kh" size="sm" />);
