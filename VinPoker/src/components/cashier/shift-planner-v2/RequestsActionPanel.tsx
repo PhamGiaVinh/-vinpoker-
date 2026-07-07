@@ -33,6 +33,7 @@ export function RequestsActionPanel({
   live,
   assignedDealerIds,
   onApproveIntoShift,
+  onDecided,
 }: {
   availability: AvailabilityRequest[];
   templates: ShiftTemplate[];
@@ -42,6 +43,9 @@ export function RequestsActionPanel({
   live: boolean;
   assignedDealerIds: Set<string>;
   onApproveIntoShift: (dealerId: string, templateId: string) => boolean;
+  /** Called after a decision is written, so the parent reloads availability —
+   *  a rejected request then stops blocking the auto-fill solver in-session. */
+  onDecided?: () => void;
 }) {
   // dealerId → decision for this session (server write is best-effort, see above).
   const [decided, setDecided] = useState<Record<string, "approved" | "rejected">>({});
@@ -99,7 +103,7 @@ export function RequestsActionPanel({
       if (!ok) return;
     }
     setDecided((p) => ({ ...p, [r.dealerId]: "approved" }));
-    void persistDecision(r.dealerId, "acknowledged");
+    void persistDecision(r.dealerId, "acknowledged").finally(() => onDecided?.());
     toast.success(
       r.leaveRequested
         ? `Đã duyệt nghỉ cho ${nameOf(r.dealerId)}`
@@ -109,17 +113,26 @@ export function RequestsActionPanel({
 
   const reject = (r: AvailabilityRequest) => {
     setDecided((p) => ({ ...p, [r.dealerId]: "rejected" }));
-    void persistDecision(r.dealerId, "rejected");
+    // Refetch after the write so the now-'rejected' request stops blocking the
+    // solver — the dealer becomes schedulable again on the next auto-fill.
+    void persistDecision(r.dealerId, "rejected").finally(() => onDecided?.());
     toast.success(`Đã từ chối yêu cầu của ${nameOf(r.dealerId)}`);
   };
 
-  if (availability.length === 0) {
+  // Only pending ('submitted') requests need a decision. Already acknowledged /
+  // rejected ones (from a prior session) drop off; ones decided in THIS session
+  // stay visible (masked by `decided`) so the operator sees the outcome line.
+  const visible = availability.filter(
+    (r) => (r.status ?? "submitted") === "submitted" || decided[r.dealerId]
+  );
+
+  if (visible.length === 0) {
     return <div className="px-1 py-3 text-sm text-muted-foreground">Chưa có yêu cầu xin ca / nghỉ phép.</div>;
   }
 
   return (
     <div className="space-y-2">
-      {availability.map((r) => {
+      {visible.map((r) => {
         const decision = decided[r.dealerId];
         return (
           <div key={r.dealerId} className="rounded-lg border border-border p-3">

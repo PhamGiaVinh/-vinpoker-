@@ -739,7 +739,7 @@ export default function ShiftPlannerV2Tab({
                 ? { label: "✓ Đã lưu nháp", tone: "ok" }
                 : null
         }
-        requestCount={data?.availability.length ?? 0}
+        requestCount={data?.availability.filter((a) => (a.status ?? "submitted") === "submitted").length ?? 0}
         onStepClick={(s) => !readOnly && setStep(s)}
         onCta={onCta}
         onToggleRequests={() => setReqOpen((v) => !v)}
@@ -788,6 +788,7 @@ export default function ShiftPlannerV2Tab({
                 live={live}
                 assignedDealerIds={assignedDealerIds}
                 onApproveIntoShift={approveIntoShift}
+                onDecided={() => { refetch(); runStatus.refetch(); }}
               />
             </Card>
           )}
