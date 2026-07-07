@@ -440,6 +440,20 @@ export const FEATURES = {
    */
   trackerActionSounds: false,
   /**
+   * "Hoàn tác cả vòng" (street rollback) for the operator console: rolls back a SENT
+   * flop/turn/river — deletes all of that street's actions server-side (the existing
+   * delete_last_action, one per action, each mirrored by one local undo pop), THEN
+   * shrinks the persisted board (the existing update_community_cards wholesale
+   * replace), landing back on enter_{street} so the operator can fix an earlier
+   * action or edit + resend the cards. The /live viewer sees the street's cards
+   * disappear (owner-approved). Blocked after a page reload when the street already
+   * has recorded actions (the local undo stack can't mirror the deletes — owner P0),
+   * and during all-in runout / showdown / review. No DB/Edge change (reuses two
+   * existing endpoints). OFF (default): the controls strip and every handler are
+   * byte-identical to today.
+   */
+  trackerStreetRollback: false,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
