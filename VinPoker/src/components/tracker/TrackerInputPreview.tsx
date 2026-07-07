@@ -5,6 +5,7 @@
 // into a scratch page) and run `npm run dev` — then revert that temporary mount.
 // All callbacks only console.log the emitted ActionIntent; nothing hits Supabase.
 import { useRef, useState } from 'react';
+import { FEATURES } from '@/lib/featureFlags';
 import { TrackerRacetrack } from './TrackerRacetrack';
 import { ActionDock } from './ActionDock';
 import { formatChips } from './constants';
@@ -46,6 +47,19 @@ export function TrackerInputPreview() {
   const [rich, setRich] = useState(true);
   const [betChips, setBetChips] = useState(true);
   const [dealerFix, setDealerFix] = useState(true);
+  const [feltV2, setFeltV2State] = useState(true);
+  // DEV-only: the Sakura CardBack reads FEATURES.trackerFeltV2 directly (it's a shared
+  // component with no prop path), so the harness toggle mutates the flag too — pods AND
+  // card back flip together, matching what the real flag flip will look like.
+  const setFeltV2 = (updater: (v: boolean) => boolean) =>
+    setFeltV2State((v) => {
+      const next = updater(v);
+      (FEATURES as Record<string, unknown>).trackerFeltV2 = next;
+      return next;
+    });
+  if ((FEATURES as Record<string, unknown>).trackerFeltV2 !== feltV2) {
+    (FEATURES as Record<string, unknown>).trackerFeltV2 = feltV2;
+  }
   const [flash, setFlash] = useState<string | null>(null);
   const history = useRef<number[]>([]);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,6 +132,13 @@ export function TrackerInputPreview() {
           >
             dealerFix: {dealerFix ? 'ON' : 'OFF'}
           </button>
+          <button
+            type="button"
+            onClick={() => setFeltV2((v) => !v)}
+            className="rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--foreground))]"
+          >
+            feltV2: {feltV2 ? 'ON' : 'OFF'}
+          </button>
           <span className="rounded border border-dashed border-[hsl(var(--warning)/0.4)] px-2 py-0.5 text-[10px] text-[hsl(var(--warning))]">
             PREVIEW · mock data
           </span>
@@ -134,6 +155,7 @@ export function TrackerInputPreview() {
         rich={rich}
         betChips={betChips}
         dealerFix={dealerFix}
+        feltV2={feltV2}
       />
 
       <div className="relative">

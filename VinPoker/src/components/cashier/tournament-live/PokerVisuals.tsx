@@ -1,5 +1,21 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
+
+/** Sakura petal (owner's card-back design, vinpoker-card-back.html) — a 5-petal flower
+ *  is 5 of these rotated 72° apart. Base path spans r≈7→42; scale at use site. */
+const SAKURA_PETAL =
+  "M0 -7.0 C -15.0 -21.0, -10.5 -42.0, -2.4 -34.9 L 0 -31.4 L 2.4 -34.9 C 10.5 -42.0, 15.0 -21.0, 0 -7.0 Z";
+
+function SakuraFlower({ scale, fill, opacity = 0.92 }: { scale: number; fill: string; opacity?: number }) {
+  return (
+    <g fill={fill} fillOpacity={opacity} transform={`scale(${scale})`}>
+      {[0, 72, 144, 216, 288].map((r) => (
+        <path key={r} d={SAKURA_PETAL} transform={`rotate(${r})`} />
+      ))}
+    </g>
+  );
+}
 
 const SUIT_SYMBOL: Record<string, string> = {
   s: "\u2660",
@@ -159,6 +175,83 @@ export function CardBack({
   const rRy = compact ? 37 : 53;
   const medR = compact ? 13 : 17;
   const vSize = compact ? 19 : 26;
+
+  // trackerFeltV2 — the owner's SAKURA card back (gold 5-petal medallion on a wine
+  // 45° lattice, from vinpoker-card-back.html), translated to the 100×140 viewBox and
+  // parametrized with the SAME --poker-card-* tokens so dark↔warm still auto-switch.
+  // Tiny sizes (xs/sm) drop the corner flowers + radial ticks for legibility.
+  // Flag OFF → the guilloché design below renders byte-identical.
+  if (FEATURES.trackerFeltV2) {
+    const tiny = size === "xs" || size === "sm";
+    return (
+      <div
+        aria-hidden="true"
+        data-testid="card-back"
+        className={cn(
+          "relative shrink-0 overflow-hidden border shadow-md shadow-black/40",
+          muted && "opacity-55 grayscale",
+          sizeClass,
+          className
+        )}
+        style={{ borderColor: "var(--poker-card-border)", ...style }}
+      >
+        <svg viewBox="0 0 100 140" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+          <defs>
+            <linearGradient id={`${uid}sbg`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--poker-card-bg-soft)" />
+              <stop offset="100%" stopColor="var(--poker-card-bg-deep)" />
+            </linearGradient>
+            <pattern id={`${uid}slat`} width="6.4" height="6.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <path d="M0 0V6.4M3.2 0V6.4" stroke="var(--poker-card-line)" strokeOpacity="0.14" strokeWidth="0.4" />
+            </pattern>
+          </defs>
+
+          <rect width="100" height="140" fill={`url(#${uid}sbg)`} />
+          <rect x="6" y="6" width="88" height="128" rx="3.5" fill={`url(#${uid}slat)`} />
+
+          {/* Double gold border (same framing as v1). */}
+          <rect x="4" y="4" width="92" height="132" rx="5" fill="none" stroke="var(--poker-card-border)" strokeWidth="1.4" opacity="0.92" />
+          <rect x="6.5" y="6.5" width="87" height="127" rx="3.5" fill="none" stroke="var(--poker-card-border)" strokeWidth="0.5" opacity="0.5" />
+
+          {/* Corner mini-sakura (md/lg only). */}
+          {!tiny &&
+            (
+              [
+                [16, 16, 135],
+                [84, 16, 225],
+                [16, 124, 45],
+                [84, 124, 315],
+              ] as const
+            ).map(([x, y, r]) => (
+              <g key={`${x}-${y}`} transform={`translate(${x} ${y}) rotate(${r})`}>
+                <SakuraFlower scale={0.34} fill="var(--poker-card-border)" />
+              </g>
+            ))}
+
+          {/* Center medallion: dark disc + rings + radial ticks + the gold sakura. */}
+          <g transform="translate(50 70)">
+            <circle r="24" fill="var(--poker-card-bg-deep)" fillOpacity="0.55" />
+            <circle r="24" fill="none" stroke="var(--poker-card-border)" strokeWidth="0.7" opacity="0.55" />
+            <circle r="20.4" fill="none" stroke="var(--poker-card-line)" strokeWidth="0.4" opacity="0.32" />
+            {!tiny && (
+              <g stroke="var(--poker-card-line)" strokeOpacity="0.5" strokeWidth="0.45" strokeLinecap="round">
+                {Array.from({ length: 24 }).map((_, i) => {
+                  const a = (i * 15 * Math.PI) / 180;
+                  const x1 = 20.8 * Math.cos(a);
+                  const y1 = 20.8 * Math.sin(a);
+                  const x2 = 23.2 * Math.cos(a);
+                  const y2 = 23.2 * Math.sin(a);
+                  return <line key={i} x1={x1.toFixed(1)} y1={y1.toFixed(1)} x2={x2.toFixed(1)} y2={y2.toFixed(1)} />;
+                })}
+              </g>
+            )}
+            <SakuraFlower scale={tiny ? 0.5 : 0.44} fill="var(--poker-card-border)" />
+            <circle r="2.6" fill="var(--poker-card-medallion)" stroke="var(--poker-card-border)" strokeWidth="0.55" />
+          </g>
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <div
