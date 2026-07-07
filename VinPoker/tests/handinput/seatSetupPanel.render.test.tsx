@@ -107,3 +107,67 @@ describe("SeatSetupPanel", () => {
     );
   });
 });
+
+// B1 — mid-hand DISPLAY-ONLY mode (handInProgress): name/avatar route to the
+// display-only RPC (never onSetSeat), chips are locked, and no walk-ins can be added.
+describe("SeatSetupPanel — mid-hand (handInProgress)", () => {
+  function setupMid() {
+    const onSetSeat = vi.fn(() => Promise.resolve({ ok: true }));
+    const onSetSeatDisplay = vi.fn(() => Promise.resolve({ ok: true }));
+    render(
+      <SeatSetupPanel
+        tournamentId="T1"
+        tableId="TB1"
+        players={PLAYERS}
+        maxSeats={4}
+        avatarSupported={true}
+        onSetSeat={onSetSeat}
+        handInProgress
+        onSetSeatDisplay={onSetSeatDisplay}
+      />
+    );
+    return { onSetSeat, onSetSeatDisplay };
+  }
+
+  it("shows the mid-hand header + hint and hides 'Thêm người' (no walk-ins mid-hand)", () => {
+    setupMid();
+    expect(screen.getByText(/Sửa tên · ảnh/)).toBeTruthy(); // mid-hand header
+    expect(screen.getByText(/chỉ sửa được tên\/ảnh/i)).toBeTruthy(); // amber hint
+    expect(screen.queryByText("Thêm người")).toBeNull();
+  });
+
+  it("the chip input is disabled while a hand is in progress", () => {
+    setupMid();
+    fireEvent.click(screen.getAllByText("Sửa")[0]); // seat 1
+    expect(screen.getByLabelText("Số chip")).toBeDisabled();
+  });
+
+  it("saving a name routes to onSetSeatDisplay (name only), NOT the chip-writing onSetSeat", async () => {
+    const { onSetSeat, onSetSeatDisplay } = setupMid();
+    fireEvent.click(screen.getAllByText("Sửa")[0]); // seat 1
+    fireEvent.change(screen.getByLabelText("Tên người chơi"), { target: { value: "N. HOÀNG SỬA" } });
+    // the save button sits next to the chip input in the edit form
+    fireEvent.click(screen.getByLabelText("Số chip").parentElement!.querySelector("button")!);
+    await waitFor(() =>
+      expect(onSetSeatDisplay).toHaveBeenCalledWith(
+        expect.objectContaining({ seatNumber: 1, playerName: "N. HOÀNG SỬA" })
+      )
+    );
+    expect(onSetSeat).not.toHaveBeenCalled();
+    // display path carries NO chip field
+    expect(onSetSeatDisplay.mock.calls[0][0]).not.toHaveProperty("chipCount");
+  });
+
+  it("uploading an avatar mid-hand routes to onSetSeatDisplay with touchAvatar (never onSetSeat)", async () => {
+    const { onSetSeat, onSetSeatDisplay } = setupMid();
+    fireEvent.click(screen.getByLabelText("Ảnh ghế 1"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["x"], "pic.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(onSetSeatDisplay).toHaveBeenCalled());
+    expect(onSetSeatDisplay).toHaveBeenCalledWith(
+      expect.objectContaining({ seatNumber: 1, touchAvatar: true, avatarUrl: expect.stringContaining("seat-avatars") })
+    );
+    expect(onSetSeat).not.toHaveBeenCalled();
+  });
+});
