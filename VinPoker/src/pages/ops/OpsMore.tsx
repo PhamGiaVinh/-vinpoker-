@@ -13,9 +13,9 @@ import { MOCK_DEALERS, MOCK_PLAYERS } from "@/components/ops/mock/opsData";
  * Phong cách iOS grouped. DỮ LIỆU MẪU, read-only. docs/design/ios-floor-ux-spec.md §9,12.
  */
 const LINKS = [
-  { icon: Wallet, label: "Cashier (thu ngân)", badge: "" },
-  { icon: UtensilsCrossed, label: "F&B", badge: "5 đơn" },
-  { icon: Boxes, label: "Chip Ops", badge: "" },
+  { icon: Wallet, label: "Cashier (thu ngân)", badge: "", to: "" },
+  { icon: UtensilsCrossed, label: "F&B", badge: "2 chờ thu", to: "/ops/fnb" },
+  { icon: Boxes, label: "Chip Ops", badge: "", to: "" },
 ];
 
 export default function OpsMore() {
@@ -58,7 +58,7 @@ export default function OpsMore() {
           {LINKS.map((l) => (
             <button
               key={l.label}
-              onClick={() => toast(`${l.label} (bản mẫu)`)}
+              onClick={() => (l.to ? navigate(l.to) : toast(`${l.label} (bản mẫu)`))}
               className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left"
             >
               <l.icon className="h-[20px] w-[20px] text-[#c9a86a]" />
