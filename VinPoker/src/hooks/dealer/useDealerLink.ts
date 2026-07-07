@@ -52,7 +52,7 @@ export function useDealerLink(): UseDealerLinkResult {
 
       const { data, error } = await db
         .from("dealers")
-        .select("id, club_id, user_id, full_name, tier, status, clubs(name)")
+        .select("id, club_id, user_id, full_name, tier, status, shift_preference, clubs(name)")
         .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("full_name");
@@ -78,6 +78,7 @@ export function useDealerLink(): UseDealerLinkResult {
           region: prof?.region ?? null,
           avatarUrl: prof?.avatar_url ?? null,
           isVerified: !!prof?.is_verified,
+          shiftPreference: d.shift_preference ?? null,
         })
       );
     },
