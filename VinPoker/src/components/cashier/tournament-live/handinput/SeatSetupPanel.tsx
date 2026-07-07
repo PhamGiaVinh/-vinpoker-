@@ -43,6 +43,19 @@ interface SeatSetupPanelProps {
     touchAvatar?: boolean;
     avatarUrl?: string | null;
   }) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * B1 mid-hand mode. When true a hand is in progress: chips + add + delete are locked
+   * (a mid-hand chip write can't survive the start_hand snapshot), but NAME + AVATAR
+   * stay editable via the display-only RPC below so a typo doesn't force a void.
+   */
+  handInProgress?: boolean;
+  /** Display-only write (name + optional avatar), used when handInProgress. */
+  onSetSeatDisplay?: (args: {
+    seatNumber: number;
+    playerName: string;
+    touchAvatar?: boolean;
+    avatarUrl?: string | null;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }
 
 type Draft = { name: string; chip: number };
@@ -55,6 +68,8 @@ export function SeatSetupPanel({
   avatarSupported,
   disabled,
   onSetSeat,
+  handInProgress,
+  onSetSeatDisplay,
 }: SeatSetupPanelProps) {
   const [openSeat, setOpenSeat] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>({ name: "", chip: 0 });
@@ -83,6 +98,21 @@ export function SeatSetupPanel({
     const name = draft.name.trim();
     if (name.length < 1 || name.length > 40) {
       toast.error("Tên phải 1–40 ký tự");
+      return;
+    }
+    // Mid-hand: chips are locked → route to the display-only RPC (name, keep chip).
+    if (handInProgress) {
+      if (!onSetSeatDisplay) return;
+      setSaving(true);
+      try {
+        const res = await onSetSeatDisplay({ seatNumber, playerName: name });
+        if (res.ok) {
+          toast.success(`Đã sửa tên ghế ${seatNumber} · ${name}`);
+          setOpenSeat(null);
+        }
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     if (!Number.isFinite(draft.chip) || draft.chip < 0) {
@@ -133,14 +163,22 @@ export function SeatSetupPanel({
         return;
       }
       const { data: pub } = supabase.storage.from("tournament-photos").getPublicUrl(path);
-      const res = await onSetSeat({
-        seatNumber: seat.seat_number,
-        playerName: seat.display_name,
-        chipCount: seat.current_stack,
-        existingPlayerId: seat.player_id,
-        touchAvatar: true,
-        avatarUrl: pub.publicUrl,
-      });
+      const res =
+        handInProgress && onSetSeatDisplay
+          ? await onSetSeatDisplay({
+              seatNumber: seat.seat_number,
+              playerName: seat.display_name,
+              touchAvatar: true,
+              avatarUrl: pub.publicUrl,
+            })
+          : await onSetSeat({
+              seatNumber: seat.seat_number,
+              playerName: seat.display_name,
+              chipCount: seat.current_stack,
+              existingPlayerId: seat.player_id,
+              touchAvatar: true,
+              avatarUrl: pub.publicUrl,
+            });
       if (res.ok) toast.success(`Đã cập nhật ảnh ghế ${seat.seat_number}`);
     } catch (err: any) {
       toast.error(err?.message || "Lỗi tải ảnh");
@@ -151,14 +189,22 @@ export function SeatSetupPanel({
   };
 
   const clearAvatar = async (seat: RosterSeat) => {
-    const res = await onSetSeat({
-      seatNumber: seat.seat_number,
-      playerName: seat.display_name,
-      chipCount: seat.current_stack,
-      existingPlayerId: seat.player_id,
-      touchAvatar: true,
-      avatarUrl: null,
-    });
+    const res =
+      handInProgress && onSetSeatDisplay
+        ? await onSetSeatDisplay({
+            seatNumber: seat.seat_number,
+            playerName: seat.display_name,
+            touchAvatar: true,
+            avatarUrl: null,
+          })
+        : await onSetSeat({
+            seatNumber: seat.seat_number,
+            playerName: seat.display_name,
+            chipCount: seat.current_stack,
+            existingPlayerId: seat.player_id,
+            touchAvatar: true,
+            avatarUrl: null,
+          });
     if (res.ok) toast.success("Đã xoá ảnh");
   };
 
@@ -176,7 +222,9 @@ export function SeatSetupPanel({
         aria-label="Số chip"
         type="number"
         min={0}
-        className="h-9 w-28 font-mono text-sm"
+        disabled={handInProgress}
+        title={handInProgress ? "Đang có ván — chỉ sửa được tên/ảnh" : undefined}
+        className="h-9 w-28 font-mono text-sm disabled:opacity-40"
         placeholder="Chip"
         value={draft.chip}
         onChange={(e) => setDraft((d) => ({ ...d, chip: Number(e.target.value) }))}
@@ -193,8 +241,14 @@ export function SeatSetupPanel({
   return (
     <div className="space-y-1.5 rounded-xl border border-border/50 bg-card/50 p-2.5">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <UserPlus className="h-3.5 w-3.5" /> Setup bàn (tên · chip · ảnh) — trước khi bắt đầu
+        <UserPlus className="h-3.5 w-3.5" />
+        {handInProgress ? "Sửa tên · ảnh — đang có ván" : "Setup bàn (tên · chip · ảnh) — trước khi bắt đầu"}
       </div>
+      {handInProgress && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">
+          Đang có ván — chỉ sửa được tên/ảnh. Sửa chip sau khi kết thúc ván.
+        </div>
+      )}
       {!avatarSupported && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">
           Ảnh avatar: tính năng chưa được áp dụng trên máy chủ — tên + chip vẫn dùng được.
@@ -252,7 +306,7 @@ export function SeatSetupPanel({
         })}
       </div>
 
-      {emptySeats.length > 0 && (
+      {!handInProgress && emptySeats.length > 0 && (
         <div className="space-y-1 pt-0.5">
           {emptySeats.map((n) => {
             const isOpen = openSeat === n;

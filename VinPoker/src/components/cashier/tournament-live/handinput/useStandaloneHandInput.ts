@@ -433,6 +433,70 @@ export function useStandaloneHandInput(tournamentId: string) {
     [tournamentId, tableId, isReadOnly, user]
   );
 
+  // B1 — mid-hand DISPLAY-ONLY edit (name + avatar). Separate narrow RPC that never
+  // touches chips and has no hand_in_progress guard, so a typo can be fixed live
+  // without VOIDing the hand. The state merge is deliberately PATCH-ONLY: it changes
+  // ONLY display_name + avatar_url and must NEVER rebuild PlayerState the way
+  // handleSetRosterSeat does — a full rebuild would reset current_stack/current_bet/
+  // is_folded/total_bet mid-hand and corrupt the client's running pot math.
+  const handleSetSeatDisplay = useCallback(
+    async (args: {
+      seatNumber: number;
+      playerName: string;
+      touchAvatar?: boolean;
+      avatarUrl?: string | null;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      if (isReadOnly) {
+        toast.error("Phiên làm việc đã hết hạn");
+        return { ok: false };
+      }
+      if (!tableId) return { ok: false };
+      const { data, error } = await supabase.rpc("set_tracker_seat_display" as any, {
+        p_tournament_id: tournamentId,
+        p_table_id: tableId,
+        p_seat_number: args.seatNumber,
+        p_player_name: args.playerName,
+        p_touch_avatar: args.touchAvatar ?? false,
+        p_avatar_url: args.avatarUrl ?? null,
+        p_actor_user_id: user?.id ?? null,
+      });
+      if (error) {
+        // 42883 = RPC not applied yet → degrade (two-tier gate, mirrors seat setup).
+        if ((error as any).code === "42883") {
+          setAvatarSupported(false);
+          toast.error("Tính năng sửa tên/ảnh giữa ván chưa được áp dụng trên máy chủ.");
+          return { ok: false, error: "not_applied" };
+        }
+        toast.error(error.message || "Lỗi sửa tên/ảnh");
+        return { ok: false, error: error.message };
+      }
+      const res = data as { ok: boolean; error?: string; seat?: any } | null;
+      if (!res?.ok) {
+        const map: Record<string, string> = {
+          actor_not_allowed: "Phiên đăng nhập không hợp lệ — hãy tải lại trang.",
+          actor_not_authorized: "Bạn không có quyền sửa bàn này (cần tracker/floor/owner của club).",
+          seat_not_found: "Ghế không tồn tại — hãy tải lại bàn.",
+          table_mismatch: "Bàn không thuộc giải này.",
+          bad_avatar_url: "Ảnh avatar không hợp lệ.",
+          bad_player_name: "Tên không hợp lệ (1–40 ký tự).",
+          tournament_not_found: "Không tìm thấy giải.",
+        };
+        toast.error(map[res?.error ?? ""] ?? res?.error ?? "Lỗi sửa tên/ảnh");
+        return { ok: false, error: res?.error };
+      }
+      const seat = res.seat;
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.seat_number === seat.seat_number
+            ? { ...p, display_name: seat.player_name || p.display_name, avatar_url: seat.avatar_url ?? p.avatar_url }
+            : p
+        )
+      );
+      return { ok: true };
+    },
+    [tournamentId, tableId, isReadOnly, user]
+  );
+
   // ----- Table select -----------------------------------------------------
   const handleTableChange = useCallback(
     async (newTableId: string) => {
@@ -1958,6 +2022,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleVoid,
     handleChipQuickEdit,
     handleSetRosterSeat,
+    handleSetSeatDisplay,
     avatarSupported,
     resetHand,
   };

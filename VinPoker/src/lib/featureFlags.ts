@@ -418,6 +418,21 @@ export const FEATURES = {
    */
   trackerSeatSetup: true,
   /**
+   * Mid-hand DISPLAY-ONLY seat edit: while a hand is in progress, let a TRACKER/FLOOR
+   * operator fix a player's NAME or AVATAR (a typo shouldn't force VOIDing the whole
+   * hand — the #1 operator pain in the workflow audit). Chips stay LOCKED mid-hand by
+   * necessity: start_hand snapshots starting_stack into hand_players and record_hand
+   * settles from THAT snapshot, so a mid-hand chip write is silently lost — chip fixes
+   * remain a finish/void + ChipQuickEditPanel job. Writes go through a SEPARATE narrow
+   * SECURITY DEFINER RPC `set_tracker_seat_display` (name + avatar only, no chip column,
+   * no hand_in_progress guard) — the live money-path `set_tracker_table_roster_seat` is
+   * NOT re-created. TWO-TIER GATE like trackerSeatSetup: OFF (default) → no mid-hand
+   * editor surfaces at all (byte-identical). ON but migration `20261220000000` NOT
+   * applied → the RPC 42883 is caught → "chưa áp dụng" degrade. Owner applies the
+   * migration in a gated session, THEN flips this. Kill-switch: set false.
+   */
+  trackerMidHandEdit: false,
+  /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
    * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;
