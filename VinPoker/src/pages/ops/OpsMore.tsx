@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat } from "lucide-react";
+import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat, Megaphone, Coins, Scale, Sparkles } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DealerStatusCard } from "@/components/ops/shared/DealerStatusCard";
 import { PlayerLookupCard } from "@/components/ops/shared/PlayerLookupCard";
@@ -13,9 +13,10 @@ import { MOCK_DEALERS, MOCK_PLAYERS } from "@/components/ops/mock/opsData";
  * Phong cách iOS grouped. DỮ LIỆU MẪU, read-only. docs/design/ios-floor-ux-spec.md §9,12.
  */
 const LINKS = [
-  { icon: Wallet, label: "Cashier (thu ngân)", badge: "" },
-  { icon: UtensilsCrossed, label: "F&B", badge: "5 đơn" },
-  { icon: Boxes, label: "Chip Ops", badge: "" },
+  { icon: Wallet, label: "Cashier (thu ngân)", badge: "2 chờ xếp", to: "/ops/cashier" },
+  { icon: UtensilsCrossed, label: "F&B", badge: "2 chờ thu", to: "/ops/fnb" },
+  { icon: Boxes, label: "Chip Ops", badge: "", to: "/ops/chip-ops" },
+  { icon: Megaphone, label: "Marketing", badge: "", to: "/ops/marketing" },
 ];
 
 export default function OpsMore() {
@@ -58,7 +59,7 @@ export default function OpsMore() {
           {LINKS.map((l) => (
             <button
               key={l.label}
-              onClick={() => toast(`${l.label} (bản mẫu)`)}
+              onClick={() => (l.to ? navigate(l.to) : toast(`${l.label} (bản mẫu)`))}
               className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left"
             >
               <l.icon className="h-[20px] w-[20px] text-[#c9a86a]" />
@@ -70,11 +71,28 @@ export default function OpsMore() {
         </div>
       </section>
 
+      <section>
+        <h3 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Quản trị · chỉ xem</h3>
+        <div className="ios-group">
+          {[
+            { icon: Coins, label: "Tài chính", sub: "doanh thu giữ lại · biên đóng góp", to: "/ops/finance" },
+            { icon: Scale, label: "Tài chính & Đối soát", sub: "cảnh báo lệch quỹ", to: "/ops/accounting" },
+            { icon: Sparkles, label: "Trí tuệ Series", sub: "dự báo · rủi ro overlay", to: "/ops/series" },
+          ].map((l) => (
+            <button key={l.to} onClick={() => navigate(l.to)}
+              className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+              <l.icon className="h-[20px] w-[20px] text-[#c9a86a]" />
+              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">{l.label}</span><span className="block text-[12px] text-[#9b8e97]">{l.sub}</span></span>
+              <ChevronRight className="h-[18px] w-[18px] text-[#5f545c]" />
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="space-y-2">
         <h3 className="px-1 text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Chỉ trên máy tính</h3>
         <RoleLockedAction label="Nhập hand (Tracker)" mode="desktopOnly" />
-        <RoleLockedAction label="Series Intelligence" mode="desktopOnly" />
-        <RoleLockedAction label="Tài chính &amp; Đối soát (đầy đủ)" mode="desktopOnly" />
+        <RoleLockedAction label="Phân tích &amp; xuất báo cáo đầy đủ" mode="desktopOnly" />
       </section>
 
       {/* Người chơi — search sheet */}
