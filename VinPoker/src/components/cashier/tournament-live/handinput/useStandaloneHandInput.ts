@@ -128,6 +128,19 @@ function formatActionLabel(a: ActionRecord): string {
 const STREET_LABELS_EXPORT = STREET_LABELS;
 export { STREET_LABELS_EXPORT as STANDALONE_STREET_LABELS };
 
+// trackerMultiTable: map one get_tracker_table_locks row → the InputTableSummary lock
+// fields. Shared by the initial load AND the periodic refresh so the two never drift.
+function lockFieldsFrom(lock: any) {
+  const ageSec = lock?.heartbeat_age_seconds;
+  return {
+    lockHandId: lock?.hand_id ?? null,
+    lockedByName: lock?.locked_by_name ?? null,
+    lockedByOther: !!lock && !lock.is_self && lock.locked_by_user_id != null,
+    lockAgeMin: typeof ageSec === "number" ? Math.floor(ageSec / 60) : null,
+    lockStale: !!lock?.is_stale,
+  };
+}
+
 export function useStandaloneHandInput(tournamentId: string) {
   const [tableId, setTableId] = useState("");
   const [tableName, setTableName] = useState("");
@@ -268,28 +281,46 @@ export function useStandaloneHandInput(tournamentId: string) {
       }
       if (cancelled) return;
       setAvailableTables(
-        base.map((t) => {
-          const lock = lockByTable.get(t.id);
-          const lockedByOther = !!lock && !lock.is_self && lock.locked_by_user_id != null;
-          const ageSec = lock?.heartbeat_age_seconds;
-          return {
-            ...t,
-            playerCount: countByTable.get(t.id) || 0,
-            hasLiveHand: liveSet.has(t.id),
-            lockHandId: lock?.hand_id ?? null,
-            lockedByName: lock?.locked_by_name ?? null,
-            lockedByOther,
-            lockAgeMin: typeof ageSec === "number" ? Math.floor(ageSec / 60) : null,
-            lockStale: !!lock?.is_stale,
-          };
-        })
+        base.map((t) => ({
+          ...t,
+          playerCount: countByTable.get(t.id) || 0,
+          hasLiveHand: liveSet.has(t.id),
+          ...lockFieldsFrom(lockByTable.get(t.id)),
+        }))
       );
     };
     loadTables();
     return () => {
       cancelled = true;
     };
-  }, [tournamentId, user?.id]);
+    // Review fix: gate user?.id on the flag so flag-OFF the dep is a constant null and
+    // the base table queries don't double-fire when auth resolves async (byte-identical).
+  }, [tournamentId, FEATURES.trackerMultiTable ? user?.id ?? null : null]);
+
+  // trackerMultiTable review fix: while the picker is open (no table selected), refresh
+  // JUST the lock info every ~45s — so a lock that goes stale becomes takeover-able
+  // without a page reload, and the shown age isn't frozen. The base table list is NOT
+  // re-fetched. Flag OFF (or a table selected) → no interval, no RPC.
+  useEffect(() => {
+    if (!FEATURES.trackerMultiTable || tableId || !tournamentId || !user?.id) return;
+    let cancelled = false;
+    const refreshLocks = async () => {
+      const { data, error } = await supabase.rpc("get_tracker_table_locks" as any, {
+        p_tournament_id: tournamentId,
+        p_actor_user_id: user.id,
+      });
+      if (cancelled || error) return;
+      const res = data as { ok?: boolean; locks?: any[] } | null;
+      if (!res?.ok || !Array.isArray(res.locks)) return;
+      const lockByTable = new Map<string, any>(res.locks.map((l: any) => [l.table_id, l]));
+      setAvailableTables((prev) => prev.map((t) => ({ ...t, ...lockFieldsFrom(lockByTable.get(t.id)) })));
+    };
+    const id = setInterval(refreshLocks, 45000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tournamentId, tableId, user?.id]);
 
   // ----- Heartbeat lock ---------------------------------------------------
   useEffect(() => {
