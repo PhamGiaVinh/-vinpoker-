@@ -4,7 +4,7 @@
 // `activeSeatNumbers` is the post-submit re-query of is_active=true seats.
 
 import { describe, it, expect } from "vitest";
-import { survivorsAfterHand, type FeltSeat } from "@/components/cashier/tournament-live/handinput/postHand";
+import { clearBettingState, survivorsAfterHand, type FeltSeat } from "@/components/cashier/tournament-live/handinput/postHand";
 
 /** Build a felt seat mid-hand (dirty per-hand flags) to prove they get cleared. */
 function seat(over: Partial<FeltSeat> & { player_id: string; seat_number: number }): FeltSeat {
@@ -71,5 +71,43 @@ describe("P2-4 survivorsAfterHand", () => {
     ];
     const out = survivorsAfterHand(players, [3, 1], { A: 100, C: 300 });
     expect(out.map((p) => p.seat_number)).toEqual([1, 3]);
+  });
+});
+
+// C1 BUGFIX — clearBettingState: a voided/abandoned hand must never leak betting
+// state into the next hand (the "side_pots không khớp" root cause), and stacks are
+// restored ONLY on the explicit void path.
+describe("C1 clearBettingState", () => {
+  it("clears current_bet/total_bet/is_folded/is_all_in on every reset", () => {
+    const out = clearBettingState(
+      [seat({ player_id: "A", seat_number: 1, current_stack: 400, starting_stack: 1000 })],
+      false
+    );
+    const a = out[0];
+    expect(a.current_bet).toBe(0);
+    expect(a.total_bet).toBe(0);
+    expect(a.is_folded).toBe(false);
+    expect(a.is_all_in).toBe(false);
+  });
+
+  it("restoreStacks=false (settled hand / new hand): stacks are NOT touched — no false refund", () => {
+    const out = clearBettingState(
+      [seat({ player_id: "A", seat_number: 1, current_stack: 400, starting_stack: 1000 })],
+      false
+    );
+    expect(out[0].current_stack).toBe(400); // the chips a settled hand moved stay moved
+    expect(out[0].starting_stack).toBe(1000);
+  });
+
+  it("restoreStacks=true (VOID only): current_stack returns to starting_stack, mirroring the server", () => {
+    const out = clearBettingState(
+      [
+        seat({ player_id: "A", seat_number: 1, current_stack: 0, starting_stack: 1000 }), // was all-in
+        seat({ player_id: "B", seat_number: 2, current_stack: 1800, starting_stack: 800 }),
+      ],
+      true
+    );
+    expect(out[0].current_stack).toBe(1000);
+    expect(out[1].current_stack).toBe(800);
   });
 });
