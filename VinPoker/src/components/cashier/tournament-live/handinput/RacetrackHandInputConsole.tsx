@@ -74,7 +74,12 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
   if (!hook.tableId) {
     return (
       <div className="mx-auto max-w-3xl">
-        <InputTableMap tables={hook.availableTables} activeTableId={null} onSelect={hook.handlePickTable} />
+        <InputTableMap
+          tables={hook.availableTables}
+          activeTableId={null}
+          onSelect={hook.handlePickTable}
+          onTakeover={FEATURES.trackerMultiTable ? hook.handleTakeoverLock : undefined}
+        />
       </div>
     );
   }

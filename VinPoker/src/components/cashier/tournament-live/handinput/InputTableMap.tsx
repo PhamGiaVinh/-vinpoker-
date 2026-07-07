@@ -13,12 +13,24 @@ export interface InputTableSummary {
   playerCount: number;
   /** True when this table has an in-progress (unfinished) hand to resume. */
   hasLiveHand: boolean;
+  /** trackerMultiTable — this table's in-progress hand id (for takeover). */
+  lockHandId?: string | null;
+  /** Display name of whoever holds the lock (null → unowned / self). */
+  lockedByName?: string | null;
+  /** The lock is held by SOMEONE ELSE right now (not this operator). */
+  lockedByOther?: boolean;
+  /** Minutes since the holder's last heartbeat (rounded). */
+  lockAgeMin?: number | null;
+  /** The lock is stale (past the TTL) → takeover is allowed without floor force. */
+  lockStale?: boolean;
 }
 
 interface InputTableMapProps {
   tables: InputTableSummary[];
   activeTableId: string | null;
   onSelect: (tableId: string) => void;
+  /** trackerMultiTable — take over a stale lock, then open the table. */
+  onTakeover?: (handId: string, tableId: string) => void;
 }
 
 /** Poker-table top-view "logo": felt oval + 6 seat marks + a centered label. */
@@ -41,7 +53,7 @@ function TableTileIcon({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export function InputTableMap({ tables, activeTableId, onSelect }: InputTableMapProps) {
+export function InputTableMap({ tables, activeTableId, onSelect, onTakeover }: InputTableMapProps) {
   if (!tables || tables.length === 0) {
     return (
       <div className="text-sm text-muted-foreground text-center py-6">
@@ -82,10 +94,36 @@ export function InputTableMap({ tables, activeTableId, onSelect }: InputTableMap
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" /> đang có hand
                 </div>
               )}
+              {/* trackerMultiTable: who holds this table (only when someone else does). */}
+              {tbl.lockedByOther && (
+                <div className="mt-1 truncate text-[9px] text-muted-foreground">
+                  🔒 {tbl.lockedByName || "người khác"}
+                  {tbl.lockAgeMin != null ? ` · ${tbl.lockAgeMin} phút` : ""}
+                </div>
+              )}
             </button>
           );
         })}
       </div>
+      {/* trackerMultiTable: stale-lock takeover row (only rendered when onTakeover is
+          wired AND a table has a stale lock held by someone else). */}
+      {onTakeover &&
+        tables
+          .filter((t) => t.lockedByOther && t.lockStale && t.lockHandId)
+          .map((t) => (
+            <button
+              key={`takeover-${t.id}`}
+              type="button"
+              onClick={() => onTakeover(t.lockHandId!, t.id)}
+              className="flex w-full items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left text-[11px] text-amber-200 transition-colors hover:border-amber-400/70"
+            >
+              <span>
+                <span className="font-semibold">{t.name}</span> — khóa bởi {t.lockedByName || "người khác"} đã{" "}
+                {t.lockAgeMin ?? "?"} phút (treo)
+              </span>
+              <span className="ml-2 shrink-0 rounded-md bg-amber-500/30 px-2 py-1 font-bold">Tiếp quản</span>
+            </button>
+          ))}
     </div>
   );
 }
