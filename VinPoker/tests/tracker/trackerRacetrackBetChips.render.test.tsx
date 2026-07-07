@@ -47,4 +47,32 @@ describe("TrackerRacetrack liveBetChips + dealerFix gating", () => {
     expect(on).not.toBe(plain); // geometry/cue placement changed
     expect(on).toContain("Tracker đứng đây"); // the cue text is still present
   });
+
+  // A1a: in RICH mode the top-row pods (4/5/6) carry hole-card backs above the pod and
+  // overflow the oval's top rim → dealerFix nudges them DOWN. Non-rich never clips, so
+  // the nudge is rich-only. SSR renders landscape (portrait defaults false): seat 5
+  // top 9→16, seats 4/6 top 12→17.
+  const TOP_SEATS: SeatVM[] = [
+    { seatNumber: 4, name: "D", stack: 100, committed: 0 },
+    { seatNumber: 5, name: "E", stack: 100, committed: 0 },
+    { seatNumber: 6, name: "F", stack: 100, committed: 0 },
+  ];
+
+  it("rich + dealerFix nudges the top row (4/5/6) DOWN off the clipped top rim", () => {
+    const off = renderToStaticMarkup(<TrackerRacetrack {...base} seats={TOP_SEATS} rich />);
+    const on = renderToStaticMarkup(<TrackerRacetrack {...base} seats={TOP_SEATS} rich dealerFix />);
+    expect(off).toContain("top:9%"); // seat 5 un-nudged (landscape anchor)
+    expect(on).not.toContain("top:9%");
+    expect(on).toContain("top:16%"); // seat 5 nudged down +7
+    expect(on).toContain("top:17%"); // seats 4/6 nudged down +5
+  });
+
+  it("NON-rich dealerFix leaves the top row untouched (short pods never clip)", () => {
+    const off = renderToStaticMarkup(<TrackerRacetrack {...base} seats={TOP_SEATS} />);
+    const on = renderToStaticMarkup(<TrackerRacetrack {...base} seats={TOP_SEATS} dealerFix />);
+    // seat 5 stays at its landscape anchor top:9% in BOTH (no rich → no top-row nudge)
+    expect(off).toContain("top:9%");
+    expect(on).toContain("top:9%");
+    expect(on).not.toContain("top:16%");
+  });
 });
