@@ -375,6 +375,18 @@ export const FEATURES = {
    */
   trackerCoverCallRunout: true,
   /**
+   * All-in runout ONE-SCREEN (operator): during a multi-way all-in runout, replace
+   * the per-street BoardEntryPanel (enter flop → Gửi → enter turn → Gửi → enter
+   * river → Gửi, ~11 taps) with a SINGLE panel that takes every remaining board slot
+   * at once + one "Chia hết bài" button. That button fires the EXISTING
+   * update_community_cards payload in staged cumulative calls (flop → turn → river,
+   * ~0.9s apart) so the /live viewer still gets a street-by-street reveal. No DB/Edge
+   * change — same edge action, same cumulative-array semantics as handleUpdateCommunityCards,
+   * just orchestrated in one operator gesture. OFF (default): the per-street panel is
+   * byte-identical to today. Operator-only; the per-street flow stays as the fallback.
+   */
+  trackerRunoutOneScreen: false,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented

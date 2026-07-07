@@ -26,6 +26,7 @@ import { ChipQuickEditPanel } from "./ChipQuickEditPanel";
 import { SeatSetupPanel } from "./SeatSetupPanel";
 import { BlindSetupPanel } from "./BlindSetupPanel";
 import { BoardEntryPanel } from "./BoardEntryPanel";
+import { RunoutBoardPanel } from "./RunoutBoardPanel";
 import { ShowdownInputPanel } from "./ShowdownInputPanel";
 import { ReviewHandPanel } from "./ReviewHandPanel";
 import { HandControlsStrip } from "./HandControlsStrip";
@@ -229,6 +230,27 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           // UAT wave 2: no-card-info escape — flag OFF → prop absent (byte-identical).
           onSkipReveal={FEATURES.trackerCoverCallRunout ? hook.handleSkipRevealRunout : undefined}
           revealOrder={hook.showdownOrderIds}
+        />
+      );
+    }
+    if (FEATURES.trackerRunoutOneScreen && hook.allInRunout && hook.showBoardEntry) {
+      // B2: multi-way all-in → one panel for every remaining board slot + one
+      // "Chia hết bài" (staged flop→turn→river persist). Flag OFF → the per-street
+      // BoardEntryPanel below runs byte-identically.
+      return (
+        <RunoutBoardPanel
+          communityCards={hook.communityCards}
+          persistedBoardCount={hook.persistedBoardCount}
+          usedCards={hook.usedCards}
+          onCardChange={(i, c) =>
+            hook.setCommunityCards((prev) => {
+              const n = [...prev];
+              n[i] = c;
+              return n;
+            })
+          }
+          onDealAll={hook.handleRunoutDealAll}
+          submitting={disabled}
         />
       );
     }
