@@ -76,6 +76,9 @@ export interface SchedulerDealer {
   lastShiftEndAt?: string | null;
   /** Whole dates the dealer is unavailable (YYYY-MM-DD). */
   unavailableDates?: string[];
+  /** Auto-fill window preference: 'som' | 'muon' | 'linh_hoat'. null/undefined =
+   *  flexible. Only scored when config.applyShiftPreference is on. */
+  shiftPreference?: string | null;
 }
 
 /** A dealer's availability/wishes for one work date (grouped from
@@ -100,6 +103,9 @@ export interface SchedulerConfig {
   tzOffsetMinutes: number;
   /** Required dealers per local hour-of-day (0–23). */
   requirementByHour: Record<number, number>;
+  /** When true, dealer.shiftPreference contributes to the soft score (auto-fill
+   *  Patch 3). Off/undefined → no preference scoring (V1 + legacy behaviour). */
+  applyShiftPreference?: boolean;
 }
 
 // ── Outputs ───────────────────────────────────────────────────────────────────
@@ -124,6 +130,8 @@ export interface DraftAssignment {
   scoreBreakdown: ScoreComponent[];
   reasons: string[];
   isNightShift: boolean;
+  /** Dealer was pinned by the floor to "chia final" for this window (auto-fill Patch 3). */
+  finalDesignated?: boolean;
 }
 
 export type RejectionReason =
@@ -149,6 +157,18 @@ export interface UnfilledSlot {
   templateId: string;
   templateLabel: string;
   missing: number;
+  detail: string;
+}
+
+/** A floor-designated "chia final" dealer who could NOT be pinned (on leave,
+ *  already assigned, inactive…). The seat is still filled by a regular dealer —
+ *  only the designation is short. Auto-fill Patch 3; never auto-substituted. */
+export interface FinalShortage {
+  templateId: string;
+  templateLabel: string;
+  dealerId: string;
+  dealerName: string;
+  reason: RejectionReason;
   detail: string;
 }
 
@@ -185,6 +205,9 @@ export interface GenerateDailyDraftResult {
   coverage: CoverageBucket[];
   warnings: SchedulerWarning[];
   runMeta: ScheduleRunMeta;
+  /** Floor "chia final" designees that couldn't be pinned (auto-fill Patch 3).
+   *  Always present ([] when none / feature unused). */
+  finalShortages?: FinalShortage[];
 }
 
 export interface GenerateDailyDraftInput {
@@ -196,6 +219,14 @@ export interface GenerateDailyDraftInput {
   config: SchedulerConfig;
   /** Optional fixed "now" for deterministic runMeta (tests). */
   nowIso?: string;
+  /** Per-template dealers the floor pinned to "chia final" (auto-fill Patch 3).
+   *  Pinned before the regular fill; an ineligible designee → finalShortages,
+   *  never auto-substituted. Absent → no pinning (V1/legacy behaviour). */
+  finalDesignations?: Record<string, string[]>;
+  /** Assignments to KEEP as-is (manual edits / a prior run) — they seed the used
+   *  set and per-template fill counts so the solver only fills the gap and never
+   *  duplicates. Absent → fill from scratch (V1/legacy behaviour). */
+  keepAssignments?: DraftAssignment[];
 }
 
 /** A persisted draft/published run header (Phase 2 DB shape). */

@@ -65,3 +65,5 @@ export {
   fitLabel,
 } from "./rejectionHints";
 export { downloadDataUrl } from "./download";
+export { classifyShiftWindow, preferenceScore } from "./preference";
+export type { ShiftWindowClass, PreferenceScore } from "./preference";

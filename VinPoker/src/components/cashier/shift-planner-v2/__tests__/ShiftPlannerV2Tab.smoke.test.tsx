@@ -63,4 +63,18 @@ describe("ShiftPlannerV2Tab (smoke, mock mode)", () => {
     // One "Có bàn final / bàn tâm điểm" checkbox per template row
     expect((await screen.findAllByText("Có bàn final / bàn tâm điểm")).length).toBeGreaterThan(0);
   });
+
+  it('shows the "Tự động xếp" button only when autofillEnabled (Patch 3)', async () => {
+    const { unmount } = render(
+      <ShiftPlannerV2Tab clubIds={["club-1"]} clubs={[{ id: "club-1", name: "CLB Demo" }]} />
+    );
+    // Default (flag off, no preview) → no autofill button
+    expect(screen.queryByText("Tự động xếp")).toBeNull();
+    unmount();
+
+    render(
+      <ShiftPlannerV2Tab clubIds={["club-1"]} clubs={[{ id: "club-1", name: "CLB Demo" }]} autofillEnabled />
+    );
+    expect(await screen.findByText("Tự động xếp")).toBeInTheDocument();
+  });
 });

@@ -127,7 +127,7 @@ export function useShiftPlanner({
 
       const [dealersRes, skillsRes, templatesRes, assignmentsRes] = await Promise.all([
         db.from("dealers")
-          .select("id, club_id, full_name, tier, status, skills")
+          .select("id, club_id, full_name, tier, status, skills, shift_preference")
           .in("club_id", clubIds)
           .is("deleted_at", null)
           .order("full_name"),

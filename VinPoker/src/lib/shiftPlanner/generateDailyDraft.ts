@@ -14,6 +14,7 @@ import type {
   AvailabilityRequest,
   CoverageBucket,
   DraftAssignment,
+  FinalShortage,
   GenerateDailyDraftInput,
   GenerateDailyDraftResult,
   RejectionReason,
@@ -26,6 +27,7 @@ import type {
   UnfilledSlot,
 } from "@/types/shiftPlanner";
 import { computeCoverageByHour } from "./coverage";
+import { classifyShiftWindow, preferenceScore } from "./preference";
 import { hoursBetween, isNightShift, shiftDurationHours } from "./time";
 
 export const SOLVER_VERSION = "shift-planner-v2.1";
@@ -136,6 +138,14 @@ export function scoreDealerForSlot(
     add("Lệch nguyện vọng nhân viên", -20);
   }
 
+  // Shift-window preference (auto-fill Patch 3) — only when explicitly enabled,
+  // so V1 / legacy runs (config.applyShiftPreference undefined) are unchanged.
+  if (config.applyShiftPreference && dealer.shiftPreference) {
+    const wc = classifyShiftWindow(template.startAt, config.tzOffsetMinutes);
+    const pref = preferenceScore(dealer.shiftPreference, wc);
+    if (pref.points !== 0) add(pref.label, pref.points);
+  }
+
   const score = breakdown.reduce((sum, c) => sum + c.points, 0);
   return { score, breakdown, reasons };
 }
@@ -154,12 +164,27 @@ function templateHardness(t: ShiftTemplate): number {
 
 export function generateDailyDraft(input: GenerateDailyDraftInput): GenerateDailyDraftResult {
   const { workDate, dealers, templates, availability, config } = input;
+  const finalDesignations = input.finalDesignations ?? {};
+  const keepAssignments = input.keepAssignments ?? [];
   const requestByDealer = new Map(availability.map((r) => [r.dealerId, r]));
+  const dealerById = new Map(dealers.map((d) => [d.id, d]));
   const alreadyAssignedToday = new Set<string>();
   const assignments: DraftAssignment[] = [];
   const unfilled: UnfilledSlot[] = [];
   const rejections: RejectionRecord[] = [];
   const warnings: SchedulerWarning[] = [];
+  const finalShortages: FinalShortage[] = [];
+
+  // Gap-fill seed: keep prior/manual assignments as-is so the solver only fills
+  // the remainder and never duplicates (idempotent — re-running with the previous
+  // output yields the same set). Empty → fill from scratch (V1/legacy behaviour).
+  const keptCountByTemplate: Record<string, number> = {};
+  for (const ka of keepAssignments) {
+    if (alreadyAssignedToday.has(ka.dealerId)) continue; // 1 dealer / day, even in the kept set
+    alreadyAssignedToday.add(ka.dealerId);
+    assignments.push(ka);
+    keptCountByTemplate[ka.templateId] = (keptCountByTemplate[ka.templateId] ?? 0) + 1;
+  }
 
   const sortedTemplates = [...templates].sort((a, b) => {
     const byHardness = templateHardness(b) - templateHardness(a);
@@ -171,7 +196,68 @@ export function generateDailyDraft(input: GenerateDailyDraftInput): GenerateDail
     const duration = shiftDurationHours(template.startAt, template.endAt);
     const night = isNightShift(template.startAt, template.endAt, config.tzOffsetMinutes);
 
-    let filled = 0;
+    let filled = keptCountByTemplate[template.id] ?? 0;
+
+    // ── PASS 0: pin floor-designated "chia final" dealers ────────────────────
+    // An eligible designee takes one seat with a 📌 marker. An ineligible one
+    // (on leave / already assigned elsewhere / inactive / removed) is recorded
+    // in finalShortages and NEVER auto-substituted — the seat is still filled by
+    // a regular dealer in the normal pass below.
+    for (const dealerId of finalDesignations[template.id] ?? []) {
+      const already = assignments.find((a) => a.dealerId === dealerId);
+      if (already?.templateId === template.id) {
+        already.finalDesignated = true; // kept on THIS window → designation honoured
+        continue;
+      }
+      const dealer = dealerById.get(dealerId);
+      if (already || !dealer) {
+        // placed on a DIFFERENT window today, or no longer in the roster
+        finalShortages.push({
+          templateId: template.id,
+          templateLabel: template.label,
+          dealerId,
+          dealerName: dealer?.fullName ?? dealerId,
+          reason: already ? "already_assigned_same_day" : "inactive",
+          detail: already ? "Đã có ca khác trong ngày" : "Dealer không còn trong danh sách",
+        });
+        continue;
+      }
+      if (filled >= template.needCount) break; // cap reached (DemandDialog also guards this)
+      const request = requestByDealer.get(dealer.id);
+      const rejects = hardRejectReasons(dealer, template, workDate, request, config, alreadyAssignedToday);
+      if (rejects.length > 0) {
+        finalShortages.push({
+          templateId: template.id,
+          templateLabel: template.label,
+          dealerId: dealer.id,
+          dealerName: dealer.fullName,
+          reason: rejects[0],
+          detail: REJECTION_DETAILS[rejects[0]],
+        });
+        continue;
+      }
+      const sc = scoreDealerForSlot(dealer, template, config, request);
+      assignments.push({
+        templateId: template.id,
+        templateLabel: template.label,
+        dealerId: dealer.id,
+        dealerName: dealer.fullName,
+        workDate,
+        scheduledStartAt: template.startAt,
+        scheduledEndAt: template.endAt,
+        durationHours: duration,
+        role: template.needsLead ? "Lead" : "Dealer",
+        status: "draft",
+        score: sc.score,
+        scoreBreakdown: sc.breakdown,
+        reasons: ["📌 Chỉ định chia final", ...sc.reasons],
+        isNightShift: night,
+        finalDesignated: true,
+      });
+      alreadyAssignedToday.add(dealer.id);
+      filled++;
+    }
+
     while (filled < template.needCount) {
       const candidates = dealers
         .map((dealer) => {
@@ -296,6 +382,7 @@ export function generateDailyDraft(input: GenerateDailyDraftInput): GenerateDail
     rejections,
     coverage,
     warnings,
+    finalShortages,
     runMeta: {
       solverVersion: SOLVER_VERSION,
       generatedAt: input.nowIso ?? new Date().toISOString(),

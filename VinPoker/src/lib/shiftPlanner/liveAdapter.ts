@@ -23,6 +23,7 @@ export interface DealerRow {
   tier: string | null;
   status: string | null;
   skills: string[] | null;
+  shift_preference?: string | null;
 }
 export interface SkillRow {
   dealer_id: string;
@@ -206,6 +207,7 @@ export function buildLiveScenario(input: LiveScenarioInput): MockScenario {
       nightShiftsThisWeek: agg.nightShiftsThisWeek,
       preferredStartHours: {},
       lastShiftEndAt: agg.lastShiftEndAt,
+      shiftPreference: d.shift_preference ?? null,
     };
   });
 
