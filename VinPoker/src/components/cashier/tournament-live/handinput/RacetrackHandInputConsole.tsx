@@ -326,33 +326,35 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
     );
   })();
 
-  return (
-    <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-3">
-      {/* HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={hook.backToTableMap}
-            className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> Bàn
-          </button>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">{hook.tableName}</div>
-            <div className="text-[11px] text-muted-foreground">
-              {hook.handStarted ? `Hand #${Number(hook.handNumber) || "?"}` : "Chưa bắt đầu"} · {hook.streetLabel}
-            </div>
+  // A4 (trackerTabletLayout): the console render is split into named blocks so the
+  // flag-ON tablet layout can place the felt in a LEFT column and the guided region +
+  // log in a RIGHT column, while flag OFF renders the exact single-column order as
+  // before (byte-identical — same blocks, same order, same wrapper).
+  const headerBlock = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={hook.backToTableMap}
+          className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Bàn
+        </button>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-foreground">{hook.tableName}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {hook.handStarted ? `Hand #${Number(hook.handNumber) || "?"}` : "Chưa bắt đầu"} · {hook.streetLabel}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <HandGuideDrawer />
-          <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} />
-        </div>
       </div>
+      <div className="flex items-center gap-2">
+        <HandGuideDrawer />
+        <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} />
+      </div>
+    </div>
+  );
 
-      {/* ORPHAN RESUME */}
-      {hook.orphanHand && !hook.handStarted && (
+  const orphanBlock = hook.orphanHand && !hook.handStarted && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
           <span className="text-xs text-amber-200">
             Bàn này còn Hand #{hook.orphanHand.hand_number} đang dở. Tiếp tục nhập hay huỷ?
@@ -376,38 +378,40 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             </button>
           </div>
         </div>
-      )}
+  );
 
-      {/* PROGRESS RAIL */}
-      {hook.handStarted && !hook.isSummary && (
-        <WorkflowProgressRail state={hook.workflowState} allInRunout={hook.allInRunout} />
-      )}
+  // PROGRESS RAIL
+  const progressBlock = hook.handStarted && !hook.isSummary && (
+    <WorkflowProgressRail state={hook.workflowState} allInRunout={hook.allInRunout} />
+  );
 
-      {/* FELT — racetrack (PR-A) */}
-      {hook.players.length === 0 ? (
-        <div className="rounded-2xl border border-border/40 bg-card/50 py-10 text-center text-sm text-muted-foreground">
-          Bàn này chưa có người chơi đang hoạt động.
-        </div>
-      ) : (
-        <TrackerRacetrack
-          seats={seatVMs}
-          actingSeatNumber={hook.actorPlayer?.seat_number ?? null}
-          dealerSeatNumber={hook.buttonSeat}
-          boardCards={boardCards}
-          pot={hook.potSize}
-          bigBlind={bigBlind}
-          onSeatTap={hook.isReadOnly ? undefined : hook.handleSeatNumberTap}
-          rich={rich}
-          potBreakdown={rich ? hook.potBreakdown : undefined}
-          engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
-          showHoleCards={rich ? hook.showShowdownInput || hook.showRunoutReveal : undefined}
-          waiting={rich ? !hook.handStarted : undefined}
-          betChips={FEATURES.liveBetChips}
-          dealerFix={FEATURES.trackerFeltDealerFix}
-        />
-      )}
+  // FELT — racetrack (PR-A)
+  const feltBlock =
+    hook.players.length === 0 ? (
+      <div className="rounded-2xl border border-border/40 bg-card/50 py-10 text-center text-sm text-muted-foreground">
+        Bàn này chưa có người chơi đang hoạt động.
+      </div>
+    ) : (
+      <TrackerRacetrack
+        seats={seatVMs}
+        actingSeatNumber={hook.actorPlayer?.seat_number ?? null}
+        dealerSeatNumber={hook.buttonSeat}
+        boardCards={boardCards}
+        pot={hook.potSize}
+        bigBlind={bigBlind}
+        onSeatTap={hook.isReadOnly ? undefined : hook.handleSeatNumberTap}
+        rich={rich}
+        potBreakdown={rich ? hook.potBreakdown : undefined}
+        engineToActSeatNumber={rich ? hook.engineActor?.seat_number ?? null : undefined}
+        showHoleCards={rich ? hook.showShowdownInput || hook.showRunoutReveal : undefined}
+        waiting={rich ? !hook.handStarted : undefined}
+        betChips={FEATURES.liveBetChips}
+        dealerFix={FEATURES.trackerFeltDealerFix}
+      />
+    );
 
-      {/* GUIDED ACTION REGION */}
+  // GUIDED ACTION REGION
+  const guidedBlock = (
       <div className="space-y-2">
         {guidedRegion}
         {hook.handStarted && !hook.isSummary && (
@@ -463,19 +467,56 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           </details>
         )}
       </div>
+  );
 
-      {/* Board strip when not in board-entry (parity with the old console) */}
-      {hook.handStarted && !hook.showBoardEntry && hook.communityCards.some(Boolean) && (
-        <div className="flex items-center justify-center gap-3 rounded-lg border border-emerald-700/30 bg-emerald-950/30 px-3 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Board</span>
-          <span className="font-mono text-sm tracking-wide text-foreground">
-            {hook.communityCards.filter((c): c is Card => c !== null).map((c) => displayCard(c)).join("   ")}
-          </span>
+  // Board strip when not in board-entry (parity with the old console)
+  const boardBlock = hook.handStarted && !hook.showBoardEntry && hook.communityCards.some(Boolean) && (
+    <div className="flex items-center justify-center gap-3 rounded-lg border border-emerald-700/30 bg-emerald-950/30 px-3 py-2">
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Board</span>
+      <span className="font-mono text-sm tracking-wide text-foreground">
+        {hook.communityCards.filter((c): c is Card => c !== null).map((c) => displayCard(c)).join("   ")}
+      </span>
+    </div>
+  );
+
+  // LOG
+  const logBlock = <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />;
+
+  // A4: flag ON → at ≥xl the felt sits in a LEFT column and the guided region + log in a
+  // fixed RIGHT column (both visible without scrolling); below xl it's the single column.
+  // xl (not lg) so the wide 13/6 racetrack keeps a comfortable width. Flag OFF → the exact
+  // single-column order below, byte-identical to before.
+  if (FEATURES.trackerTabletLayout) {
+    return (
+      <div className="mx-auto w-full max-w-[1500px]">
+        <div className="flex flex-col gap-3">
+          {headerBlock}
+          {orphanBlock}
         </div>
-      )}
+        <div className="mt-3 flex flex-col gap-3 xl:grid xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start xl:gap-4">
+          <div className="flex flex-col gap-3">
+            {progressBlock}
+            {feltBlock}
+            {boardBlock}
+          </div>
+          <div className="flex flex-col gap-2">
+            {guidedBlock}
+            {logBlock}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-      {/* LOG */}
-      <OperatorActionLog actions={hook.actions} communityCards={hook.communityCards} />
+  return (
+    <div className="mx-auto flex w-full max-w-[1000px] flex-col gap-3">
+      {headerBlock}
+      {orphanBlock}
+      {progressBlock}
+      {feltBlock}
+      {guidedBlock}
+      {boardBlock}
+      {logBlock}
     </div>
   );
 }
