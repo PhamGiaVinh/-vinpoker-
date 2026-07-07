@@ -108,16 +108,14 @@ export default function OpsDealerSwing() {
     return { openTables: tableVMs.length, inShift: roster.length, ...byState };
   }, [roster, tableVMs.length]);
 
-  const loading = clubsLoading || clubs === null;
-  const noClub = clubs !== null && scopedIds.length === 0 && !isAdmin;
-
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
   const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
-  // ---- guards ----
-  if (!user && !loading) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
-  if (loading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải bảng…" sub="Lấy dữ liệu câu lạc bộ." onBack={() => navigate("/")} />;
-  if (noClub) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền điều phối dealer." onBack={() => navigate("/")} />;
+  // ---- guards (ordered: auth → login → clubs → permission) ----
+  if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
+  if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
+  if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải bảng…" sub="Lấy dữ liệu câu lạc bộ." onBack={() => navigate("/")} />;
+  if (scopedIds.length === 0 && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền điều phối dealer." onBack={() => navigate("/")} />;
 
   const clubName = clubs && clubs.length ? clubs.map((c) => c.name).join(", ") : "Toàn quyền";
 
