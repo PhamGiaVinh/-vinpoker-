@@ -75,6 +75,10 @@ export interface TrackerRacetrackProps {
    *  into the dealer block so the bottom-center cluster stops overlapping Ghế 1/9 and itself.
    *  Falsy ⇒ today's geometry (byte-identical). Set from FEATURES.trackerFeltDealerFix. */
   dealerFix?: boolean;
+  /** trackerFeltV2 (rich only): bigger avatar (44px), 2-line full names, wider pods +
+   *  extra anchor tuning so the taller pods still clear the oval. Falsy ⇒ today's pods
+   *  (byte-identical). Set from FEATURES.trackerFeltV2. */
+  feltV2?: boolean;
 }
 
 export interface ForcedAmountPadProps {
