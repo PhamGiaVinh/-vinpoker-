@@ -50,3 +50,26 @@ export function survivorsAfterHand<T extends FeltSeat>(
       };
     });
 }
+
+/**
+ * BUGFIX (side_pots mismatch): clear every per-hand betting field on hand reset so a
+ * voided/abandoned hand can never leak `total_bet`/`is_folded` into the next hand —
+ * stale totals inflated the client's submitted side_pots while the server recomputes
+ * from the fresh action stream ("side_pots không khớp với chuỗi hành động").
+ *
+ * `restoreStacks` is EXPLICIT and true ONLY for the void path: the server restores
+ * every chip to the pre-hand state on void, so the felt mirrors it. On any other
+ * reset (settled hand, new hand, table switch) stacks must NOT be touched — a
+ * restore there would falsely "refund" chips a settled hand legitimately moved.
+ * Pure — no DB, no side effects.
+ */
+export function clearBettingState<T extends FeltSeat>(players: T[], restoreStacks: boolean): T[] {
+  return players.map((p) => ({
+    ...p,
+    current_bet: 0,
+    total_bet: 0,
+    is_folded: false,
+    is_all_in: false,
+    ...(restoreStacks ? { current_stack: p.starting_stack } : {}),
+  }));
+}

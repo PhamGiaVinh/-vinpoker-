@@ -169,3 +169,40 @@ describe("toSidePotsJson", () => {
     expect(toSidePotsJson(computePotBreakdown([]))).toEqual([]);
   });
 });
+
+// C1 BUGFIX — the SUBMITTED side_pots must derive from the ACTION STREAM
+// (contributionsFromActions), the same source the server's reconcileSidePots
+// recomputes from. Deriving from players[].total_bet allowed stale carryover from a
+// voided hand to inflate the payload → "side_pots không khớp với chuỗi hành động".
+describe("C1 submit side_pots derive from actions (server-parity source)", () => {
+  // The owner's repro: blinds 100k/200k, heads-up-ish all-in — Ivey shoves 45M total,
+  // Dwan calls all-in for 11M total. The 34M uncalled excess must be in NO layer.
+  const allInActions = [
+    { player_id: "ivey", action_type: "post_sb", action_amount: 100_000 },
+    { player_id: "dwan", action_type: "post_bb", action_amount: 200_000 },
+    { player_id: "ivey", action_type: "all_in", action_amount: 44_900_000 },
+    { player_id: "dwan", action_type: "all_in", action_amount: 10_800_000 },
+  ];
+
+  it("2-way all-in with an uncalled shove: single 22M pot, no uncalled excess in any layer", () => {
+    const json = toSidePotsJson(computePotBreakdown(contributionsFromActions(allInActions)));
+    expect(json).toEqual([
+      { amount: 22_000_000, eligible_player_ids: expect.arrayContaining(["ivey", "dwan"]) },
+    ]);
+    expect(json.reduce((s, l) => s + l.amount, 0)).toBe(22_000_000); // 34M refunded, never in a pot layer
+  });
+
+  it("stale player state diverges from the action stream — actions are the truth", () => {
+    // A voided previous hand left total_bet residue on the players array. The OLD
+    // derivation (players.total_bet) would submit inflated layers; the action-stream
+    // derivation matches what the server recomputes from the same payload.
+    const stalePlayers = [
+      p("ivey", 45_000_000 + 1_800_000), // +1.8M stale from the voided hand
+      p("dwan", 11_000_000 + 1_800_000),
+    ];
+    const fromStale = toSidePotsJson(computePotBreakdown(stalePlayers));
+    const fromActions = toSidePotsJson(computePotBreakdown(contributionsFromActions(allInActions)));
+    expect(fromStale).not.toEqual(fromActions); // the drift the bug produced
+    expect(fromActions[0].amount).toBe(22_000_000); // and the action stream is correct
+  });
+});
