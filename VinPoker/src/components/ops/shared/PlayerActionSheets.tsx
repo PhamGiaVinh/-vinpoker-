@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { User, ArrowRightLeft, Coins, Receipt, UserMinus, IdCard, Printer } from "lucide-react";
+import { User, ArrowRightLeft, Coins, Receipt, UserMinus, IdCard, Printer, Loader2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -23,6 +23,8 @@ import type { MockSeat } from "../mock/opsData";
 export interface PlayerTarget {
   seat: MockSeat;
   tableNo: number;
+  /** Chip HIỆN TẠI (số thật) để khởi tạo numpad khi nối thật; bỏ trống = mock. */
+  chipCount?: number;
 }
 
 type Step = "actions" | "info" | "move" | "chip" | "receipt" | "bust" | null;
@@ -37,6 +39,7 @@ export function PlayerActionSheets({
   target,
   onClose,
   pendingNotice,
+  onSaveChip,
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
@@ -44,11 +47,15 @@ export function PlayerActionSheets({
    *  Sửa chip/Phiếu/Loại) chỉ toast notice này và đóng — KHÔNG mở các sheet con (chúng còn
    *  scaffold mẫu, không được hiện như thật). Bỏ trống = hành vi mock cũ "(bản mẫu)". */
   pendingNotice?: string;
+  /** Nếu có → nút "Sửa chip" mở numpad THẬT; xác nhận gọi callback này (màn chủ ghi update_seats
+   *  với identity ghế thật) và trả về true nếu thành công. Các nút khác vẫn theo pendingNotice. */
+  onSaveChip?: (newChip: number) => Promise<boolean>;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
   const [moveReason, setMoveReason] = useState(MOVE_REASONS[0]);
   const [chipValue, setChipValue] = useState("62500");
+  const [chipBusy, setChipBusy] = useState(false);
 
   const open = target !== null;
   const s = target?.seat;
@@ -69,8 +76,14 @@ export function PlayerActionSheets({
     toast.success(msg + " (bản mẫu)");
     close();
   };
-  /** Điều hướng nút con: pendingNotice set → toast + đóng (không mở sheet con mock). */
+  /** Điều hướng nút con: chip có onSaveChip → mở numpad THẬT (init = chip hiện tại);
+   *  còn lại pendingNotice set → toast + đóng (không mở sheet con mock). */
   const act = (next: Step) => {
+    if (next === "chip" && onSaveChip) {
+      setChipValue(String(target?.chipCount ?? 0));
+      go("chip");
+      return;
+    }
     if (pendingNotice) {
       toast(pendingNotice);
       close();
@@ -206,8 +219,8 @@ export function PlayerActionSheets({
         </SheetContent>
       </Sheet>
 
-      {/* N5 — sửa chip (numpad + lý do) */}
-      <Sheet open={sheetOpen("chip")} onOpenChange={(v) => { if (!v) close(); }}>
+      {/* N5 — sửa chip (numpad); nối thật qua onSaveChip (update_seats identity ghế thật) */}
+      <Sheet open={sheetOpen("chip")} onOpenChange={(v) => { if (!v && !chipBusy) close(); }}>
         <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center">
@@ -220,11 +233,38 @@ export function PlayerActionSheets({
               <button key={k} onClick={() => pressKey(k)} className="ios-press-sm rounded-xl bg-white/5 py-2.5 text-center text-[16px] text-[#f2ece6]">{k}</button>
             ))}
           </div>
-          <div className="mt-2.5 rounded-xl bg-amber-400/10 px-3 py-2 text-[13px] text-amber-300">
-            Chênh lệch so với hiện tại — lý do: <b className="text-[#f2ece6]">đếm lại</b>
-          </div>
-          <button onClick={() => done(`Đã lưu ${chipDisplay} chip`)} className="ios-press ios-primary mt-3 w-full rounded-2xl py-3 text-[15px] font-bold">
-            Lưu {chipDisplay}
+          {onSaveChip ? (
+            (() => {
+              const cur = target?.chipCount ?? 0;
+              const next = Number(chipValue || "0");
+              const delta = next - cur;
+              return (
+                <div className="mt-2.5 rounded-xl bg-white/5 px-3 py-2 text-center text-[13px] text-[#9b8e97]">
+                  {cur.toLocaleString("vi-VN")} → <b className="font-mono text-[#f2ece6]">{next.toLocaleString("vi-VN")}</b>
+                  {delta !== 0 && <span className={delta > 0 ? " text-emerald-300" : " text-rose-300"}> ({delta > 0 ? "+" : ""}{delta.toLocaleString("vi-VN")})</span>}
+                </div>
+              );
+            })()
+          ) : (
+            <div className="mt-2.5 rounded-xl bg-amber-400/10 px-3 py-2 text-[13px] text-amber-300">
+              Chênh lệch so với hiện tại — lý do: <b className="text-[#f2ece6]">đếm lại</b>
+            </div>
+          )}
+          <button
+            disabled={chipBusy || !chipValue || Number(chipValue) < 0}
+            onClick={async () => {
+              if (onSaveChip) {
+                setChipBusy(true);
+                const ok = await onSaveChip(Number(chipValue || "0"));
+                setChipBusy(false);
+                if (ok) close();            // refetch do màn chủ lo; không optimistic
+              } else {
+                done(`Đã lưu ${chipDisplay} chip`);
+              }
+            }}
+            className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
+            {chipBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {chipBusy ? "Đang lưu…" : `Lưu ${chipDisplay}`}
           </button>
         </SheetContent>
       </Sheet>

@@ -211,11 +211,42 @@ export default function OpsTables() {
   const openVM = openNo != null ? byNo.get(openNo) ?? null : null;
 
   const pending = () => toast(PENDING_NOTICE);
+  // Floor-A2: giữ identity ghế THẬT (seat_id/player_id/table_id…) để ghi update_seats.
+  const [playerReal, setPlayerReal] = useState<MapSeat | null>(null);
   const openPlayer = (s: MockSeat) => {
-    const tableNo = openVM?.mock.tableNo ?? 0;
+    const vm = openVM;
+    const tableNo = vm?.mock.tableNo ?? 0;
+    const real = vm ? (floor.seatsByTable[vm.raw.table_id] ?? []).find((x) => x.seat_number === s.seat) ?? null : null;
     setOpenNo(null);
-    requestAnimationFrame(() => setPlayer({ seat: s, tableNo }));
+    setPlayerReal(real);
+    requestAnimationFrame(() => setPlayer({ seat: s, tableNo, chipCount: real?.chip_count }));
   };
+
+  // Floor-A2: Sửa chip → Edge tournament-live-draw update_seats (ungated, mirror EditChipsDialog).
+  const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
+    if (!playerReal || !tourId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
+    try {
+      const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
+        body: {
+          tournament_id: tourId,
+          action: "update_seats",
+          seats: [{
+            seat_id: playerReal.seat_id, player_id: playerReal.player_id, entry_number: playerReal.entry_number,
+            table_id: playerReal.table_id, seat_number: playerReal.seat_number, chip_count: newChip,
+            is_active: true, player_name: playerReal.player_name,
+          }],
+        },
+      });
+      const err = error?.message || (data as { error?: string } | null)?.error;
+      if (err) { toast.error(err.includes("permission") || err.includes("denied") ? "Không có quyền sửa chip." : `Sửa chip thất bại: ${err}`); return false; }
+      toast.success(`Đã cập nhật chip ${playerReal.player_name || "người chơi"}`);
+      floor.reload();
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Sửa chip thất bại");
+      return false;
+    }
+  }, [playerReal, tourId, floor]);
 
   // ── Floor-A1: Thêm người → RPC floor_assign_player_to_seat (gate floorTableOps) ──
   const ADD_LIVE = FEATURES.floorTableOps;
@@ -566,8 +597,8 @@ export default function OpsTables() {
         </SheetContent>
       </Sheet>
 
-      {/* S7 — tap người: hiện danh tính thật; mọi nút con toast "đang nối" (P0-4) */}
-      <PlayerActionSheets target={player} onClose={() => setPlayer(null)} pendingNotice={PENDING_NOTICE} />
+      {/* S7 — tap người: hiện danh tính thật. Sửa chip = NỐI THẬT (onSaveChip); nút khác vẫn "đang nối". */}
+      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} />
     </div>
   );
 }
