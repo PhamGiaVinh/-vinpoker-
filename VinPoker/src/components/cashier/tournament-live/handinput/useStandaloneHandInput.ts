@@ -1471,6 +1471,66 @@ export function useStandaloneHandInput(tournamentId: string) {
     }
   };
 
+  // B2 — all-in runout ONE-SCREEN: persist EVERY remaining board street in one
+  // operator gesture. Sends the SAME cumulative update_community_cards payload as
+  // handleUpdateCommunityCards, but staged (flop → turn → river, ~0.9s apart) so the
+  // /live viewer still gets a street-by-street reveal instead of all cards at once.
+  // Only meaningful during a runout (betting closed); the per-street panel stays the
+  // fallback. Advances currentStreet as it goes, then to "showdown" so the workflow
+  // lands on showdown_input. Gated by the caller on FEATURES.trackerRunoutOneScreen.
+  const RUNOUT_STAGE_MS = 900;
+  const handleRunoutDealAll = async () => {
+    if (!handId || isReadOnly) return;
+    if (!isBoardEntryState(workflowState)) {
+      toast.error("Chưa tới bước chia bài board");
+      return;
+    }
+    // Every one of the 5 board slots must be filled before a one-shot runout.
+    if (communityCards.some((c) => c === null)) {
+      toast.error("Nhập đủ 5 lá bài chung trước khi chia hết");
+      return;
+    }
+    const all = communityCards.filter((c): c is Card => c !== null);
+    if (new Set(all).size !== all.length) {
+      toast.error("Có lá bài trùng nhau");
+      return;
+    }
+    // Stage only the street boundaries not already persisted (a runout can start on
+    // the turn — flop already on the board — so [3,4,5] filtered by what's live).
+    const stages: { count: number; street: Street }[] = [
+      { count: 3, street: "flop" as Street },
+      { count: 4, street: "turn" as Street },
+      { count: 5, street: "river" as Street },
+    ].filter((s) => s.count > persistedBoardCount);
+    if (stages.length === 0) return;
+    setSubmitting(true);
+    try {
+      for (let k = 0; k < stages.length; k++) {
+        const { count, street } = stages[k];
+        const slice = communityCards.slice(0, count).filter((c): c is Card => c !== null);
+        markSync("sending", `Chia ${STREET_LABELS[street]}`);
+        const { data, error } = await supabase.functions.invoke("tournament-live-update", {
+          body: buildUpdateCommunityCardsBody({ tournamentId, handId, communityCards: slice }),
+        });
+        if (error || data?.error) throw new Error(await readEdgeError(error, data));
+        setPersistedBoardCount(count);
+        setSentCommunityStreets((prev) => new Set(prev).add(street));
+        setCurrentStreet(street);
+        setPlayers((prev) => prev.map((p) => ({ ...p, current_bet: 0 })));
+        markSync("sent", `${STREET_LABELS[street]} (${count} lá)`);
+        // Space the reveals so the viewer sees flop → turn → river, not all-at-once.
+        if (k < stages.length - 1) await new Promise((r) => setTimeout(r, RUNOUT_STAGE_MS));
+      }
+      setCurrentStreet("showdown");
+      toast.success("Đã chia hết bài — chuyển sang chấm kết quả");
+    } catch (e: any) {
+      toast.error(`Lỗi chia bài, thử lại: ${e.message}`);
+      markSync("error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleShowHoleCards = async () => {
     if (!handId || isReadOnly) return;
     const cardsPayload = [];
@@ -1883,6 +1943,8 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleSeatNumberTap,
     handleUndo,
     handleUpdateCommunityCards,
+    handleRunoutDealAll,
+    persistedBoardCount,
     handleShowHoleCards,
     handleRevealRunout,
     handleSkipRevealRunout,
