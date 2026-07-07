@@ -770,6 +770,13 @@ export const FEATURES = {
    */
   seriesNaiveBaseline: false,
   /**
+   * Series Intelligence — W2 consistent "why is this block empty?" explainers. When ON, self-hidden /
+   * empty SI blocks (forecast when too little history, F&B when no orders in the window, …) render a
+   * uniform 3-line card: WHAT it is · WHY it's empty · HOW to unlock — so an empty block never reads as
+   * "the app is broken". Presentational only, no data/logic change. Default **OFF**; kill-switch: false.
+   */
+  seriesEmptyExplainer: false,
+  /**
    * GTD #2 — server-authoritative TRUE prize pool / overlay. When ON, the GTD overlay card
    * reads `get_tournament_prize_pool` (SUM of confirmed buy_in) and shows the real "thực thu"
    * overlay for events with confirmed entries, falling back to the #415 "ước tính" estimate

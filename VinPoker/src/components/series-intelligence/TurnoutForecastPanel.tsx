@@ -17,6 +17,7 @@ import {
 } from "@/lib/series-intelligence/turnoutForecast";
 import { naiveBaseline, baselineDeltaPct } from "@/lib/series-intelligence/naiveBaseline";
 import { ExplainHint } from "./ExplainHint";
+import { EmptyExplainer } from "./EmptyExplainer";
 import { RegimeNotice } from "./RegimeNotice";
 
 /** What this panel emits upward so the group-history overlay simulator can offer a forecast center. */
@@ -155,9 +156,19 @@ export function TurnoutForecastPanel({
               Nhập ngày + buy-in giải sắp tới để xem dự báo.
             </Card>
           ) : !fc?.available ? (
-            <Card className="flex h-full min-h-[220px] items-center justify-center border-dashed border-warning/40 bg-warning/5 p-4 text-[11px] text-warning">
-              <span><AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> Cần thêm dữ liệu — {fc?.missingDataNotes[0] ?? "chưa đủ giải trước đó để dự báo."}</span>
-            </Card>
+            FEATURES.seriesEmptyExplainer ? (
+              <EmptyExplainer
+                tone="warning"
+                className="h-full min-h-[220px]"
+                what="Dự báo lượng khách cho giải sắp tới"
+                why={fc?.missingDataNotes[0] ?? "chưa đủ giải trước đó cùng loại để mô hình học (cần ≥2 giải)."}
+                how="Nạp thêm các giải đã chạy ở Bước ① — từ 2 giải có số; ≥8 giải mới đủ độ tin cao."
+              />
+            ) : (
+              <Card className="flex h-full min-h-[220px] items-center justify-center border-dashed border-warning/40 bg-warning/5 p-4 text-[11px] text-warning">
+                <span><AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> Cần thêm dữ liệu — {fc?.missingDataNotes[0] ?? "chưa đủ giải trước đó để dự báo."}</span>
+              </Card>
+            )
           ) : (
             <Card className="gradient-card space-y-3 border-primary/40 p-4">
               <div className="text-center">
