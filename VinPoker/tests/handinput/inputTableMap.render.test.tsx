@@ -44,4 +44,29 @@ describe("InputTableMap (operator table picker)", () => {
     );
     expect(html).toContain("Chưa có bàn nào");
   });
+
+  // B3 (trackerMultiTable): lock visibility + stale-lock takeover row.
+  it("shows the holder chip when a table is locked by someone else", () => {
+    const locked: InputTableSummary[] = [
+      { id: "tA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 2, lockStale: false },
+      { id: "tB", name: "Bàn 2", playerCount: 6, hasLiveHand: false },
+    ];
+    const html = renderToStaticMarkup(<InputTableMap tables={locked} activeTableId={null} onSelect={() => {}} />);
+    expect(html).toContain("TĐ Minh");
+    expect(html).toContain("2 phút");
+  });
+
+  it("renders a 'Tiếp quản' row ONLY for a STALE lock and ONLY when onTakeover is wired", () => {
+    const stale: InputTableSummary[] = [
+      { id: "tA", name: "Bàn 1", playerCount: 8, hasLiveHand: true, lockHandId: "h1", lockedByName: "TĐ Minh", lockedByOther: true, lockAgeMin: 7, lockStale: true },
+      { id: "tB", name: "Bàn 2", playerCount: 6, hasLiveHand: true, lockHandId: "h2", lockedByName: "TĐ An", lockedByOther: true, lockAgeMin: 1, lockStale: false },
+    ];
+    // No onTakeover → no takeover row even for the stale one.
+    const noCb = renderToStaticMarkup(<InputTableMap tables={stale} activeTableId={null} onSelect={() => {}} />);
+    expect(noCb).not.toContain("Tiếp quản");
+    // With onTakeover → exactly the stale table gets a takeover row (the fresh one doesn't).
+    const withCb = renderToStaticMarkup(<InputTableMap tables={stale} activeTableId={null} onSelect={() => {}} onTakeover={() => {}} />);
+    expect((withCb.match(/Tiếp quản/g) || []).length).toBe(1);
+    expect(withCb).toContain("(treo)");
+  });
 });

@@ -251,19 +251,45 @@ export function useStandaloneHandInput(tournamentId: string) {
         if (s.player_id) countByTable.set(s.table_id, (countByTable.get(s.table_id) || 0) + 1);
       });
       const liveSet = new Set<string>((liveHands ?? []).map((h: any) => h.table_id));
+
+      // trackerMultiTable: enrich with "who holds each table" via the read-only lock RPC.
+      // Flag OFF → this call is skipped entirely (byte-identical). If the migration isn't
+      // applied the RPC 42883s → we swallow it and just omit lock info (no crash).
+      const lockByTable = new Map<string, any>();
+      if (FEATURES.trackerMultiTable && user?.id) {
+        const { data: lockData, error: lockErr } = await supabase.rpc("get_tracker_table_locks" as any, {
+          p_tournament_id: tournamentId,
+          p_actor_user_id: user.id,
+        });
+        const res = lockData as { ok?: boolean; locks?: any[] } | null;
+        if (!lockErr && res?.ok && Array.isArray(res.locks)) {
+          res.locks.forEach((l: any) => lockByTable.set(l.table_id, l));
+        }
+      }
+      if (cancelled) return;
       setAvailableTables(
-        base.map((t) => ({
-          ...t,
-          playerCount: countByTable.get(t.id) || 0,
-          hasLiveHand: liveSet.has(t.id),
-        }))
+        base.map((t) => {
+          const lock = lockByTable.get(t.id);
+          const lockedByOther = !!lock && !lock.is_self && lock.locked_by_user_id != null;
+          const ageSec = lock?.heartbeat_age_seconds;
+          return {
+            ...t,
+            playerCount: countByTable.get(t.id) || 0,
+            hasLiveHand: liveSet.has(t.id),
+            lockHandId: lock?.hand_id ?? null,
+            lockedByName: lock?.locked_by_name ?? null,
+            lockedByOther,
+            lockAgeMin: typeof ageSec === "number" ? Math.floor(ageSec / 60) : null,
+            lockStale: !!lock?.is_stale,
+          };
+        })
       );
     };
     loadTables();
     return () => {
       cancelled = true;
     };
-  }, [tournamentId]);
+  }, [tournamentId, user?.id]);
 
   // ----- Heartbeat lock ---------------------------------------------------
   useEffect(() => {
@@ -277,7 +303,23 @@ export function useStandaloneHandInput(tournamentId: string) {
           const isAuthError = error.message?.includes("Unauthorized") || error.message?.includes("locked by another");
           failCount++;
           if (isAuthError) {
-            toast.error("Phiên làm việc đã hết hạn. Vui lòng tải lại trang.");
+            // trackerMultiTable: name whoever took the table over (best-effort) instead
+            // of the generic "phiên hết hạn". Flag OFF → the old generic toast, unchanged.
+            if (FEATURES.trackerMultiTable && tournamentId) {
+              supabase
+                .rpc("get_tracker_table_locks" as any, { p_tournament_id: tournamentId, p_actor_user_id: user.id })
+                .then(({ data }) => {
+                  const locks = (data as any)?.locks as any[] | undefined;
+                  const mine = Array.isArray(locks) ? locks.find((l) => l.hand_id === handId) : null;
+                  toast.error(
+                    mine?.locked_by_name
+                      ? `Bàn đã được ${mine.locked_by_name} tiếp quản — màn hình chuyển sang chỉ xem.`
+                      : "Bàn đã được người khác tiếp quản — màn hình chuyển sang chỉ xem."
+                  );
+                });
+            } else {
+              toast.error("Phiên làm việc đã hết hạn. Vui lòng tải lại trang.");
+            }
             setIsReadOnly(true);
             clearInterval(interval);
             return;
@@ -659,6 +701,44 @@ export function useStandaloneHandInput(tournamentId: string) {
     resumedTableRef.current = null;
     setTableParam(null);
   }, [setTableParam]);
+
+  // trackerMultiTable: claim a STALE lock, then open the table (its orphan hand
+  // resumes as usual). Two-writer safety is on the server — takeover_hand_lock refuses
+  // a still-fresh lock; the loser's next write is refused by tracker_lock_blocks.
+  const handleTakeoverLock = useCallback(
+    async (handId: string, tableIdToOpen: string, force = false) => {
+      if (!user?.id) return;
+      const { data, error } = await supabase.rpc("takeover_hand_lock" as any, {
+        p_hand_id: handId,
+        p_force: force,
+        p_actor_user_id: user.id,
+      });
+      if (error) {
+        if ((error as any).code === "42883") {
+          toast.error("Tính năng tiếp quản bàn chưa được áp dụng trên máy chủ.");
+          return;
+        }
+        toast.error(error.message || "Không tiếp quản được bàn");
+        return;
+      }
+      const res = data as { ok: boolean; error?: string; age_seconds?: number } | null;
+      if (!res?.ok) {
+        const map: Record<string, string> = {
+          actor_not_allowed: "Phiên đăng nhập không hợp lệ — hãy tải lại trang.",
+          actor_not_authorized: "Bạn không có quyền bàn này (cần tracker/floor).",
+          lock_fresh: "Bàn vẫn đang được người khác thao tác — chưa thể tiếp quản.",
+          force_requires_floor: "Chỉ floor mới buộc tiếp quản được bàn đang hoạt động.",
+          hand_not_in_progress: "Ván đã kết thúc — hãy tải lại danh sách bàn.",
+          hand_not_found: "Không tìm thấy ván — hãy tải lại danh sách bàn.",
+        };
+        toast.error(map[res?.error ?? ""] ?? res?.error ?? "Không tiếp quản được bàn");
+        return;
+      }
+      toast.success("Đã tiếp quản bàn");
+      handlePickTable(tableIdToOpen);
+    },
+    [user, handlePickTable]
+  );
 
   // Resume the table from the URL once, when the list is ready and nothing selected.
   useEffect(() => {
@@ -1994,6 +2074,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     playerName,
     // handlers
     handlePickTable,
+    handleTakeoverLock,
     backToTableMap,
     handleTableChange,
     handleStartHand,

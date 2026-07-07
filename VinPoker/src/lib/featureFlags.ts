@@ -433,6 +433,23 @@ export const FEATURES = {
    */
   trackerMidHandEdit: false,
   /**
+   * Multi-table lock visibility + takeover (operator). The table picker shows who
+   * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
+   * `get_tracker_table_locks`, and offers a "Tiếp quản" button for a STALE lock
+   * (heartbeat older than the 5-min TTL) that calls `takeover_hand_lock` before
+   * opening the table — so a shift-change tracker no longer has to wait out the TTL
+   * or refresh blindly. When ON, the heartbeat "lock lost" toast also NAMES whoever
+   * took over instead of the generic "phiên hết hạn". TWO-TIER GATE: OFF (default) →
+   * the picker + heartbeat are byte-identical (no new RPC called). ON but the
+   * migration `20261221000000` NOT applied → the lock RPC 42883 is caught and the
+   * picker simply omits lock info (no crash).
+   * ⚠ Before flipping ON, verify the live record_action enforces the lock
+   * (migration 20260928000000): SELECT prosrc LIKE '%tracker_lock_blocks%' FROM
+   * pg_proc WHERE proname='record_action'; else takeover is unsafe (two writers).
+   * Kill-switch: set false.
+   */
+  trackerMultiTable: false,
+  /**
    * PR-V1 (B1): replay HUD parity — BB/ANTE + to-act + POT bar under the felt,
    * SUMMARY|ACTIONS tabs (winner rows ±BB + hand-summary bullets from revealed data
    * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;
