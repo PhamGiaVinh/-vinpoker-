@@ -769,6 +769,14 @@ export const FEATURES = {
    */
   seriesRegistrationPace: false,
   /**
+   * Series Intelligence — W7 "nhập chiến dịch Telegram 1 chạm" in the ⑥ CAPTURE console. When ON, reads
+   * the club's already-SENT marketing posts (read-only) and lets the owner pick one + type its spend +
+   * link it to a giải, saving a `series_campaign_logs` row via the existing capture insert — so marketing
+   * stops being measured by hand. Degrades gracefully (manual entry) when marketing data isn't readable
+   * (no role / RLS). Reads marketing_posts read-only; no new RPC/migration. Default **OFF**; kill-switch: false.
+   */
+  seriesMarketingImport: false,
+  /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
    * + how far the model's number sits from it, so the owner can feel whether the model earns its

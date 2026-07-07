@@ -10,6 +10,7 @@ import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeries
 import { useCaptureAutosync } from "@/lib/series-intelligence/useCaptureAutosync";
 import { CaptureOverview } from "./capture/CaptureOverview";
 import { CalibrationCard } from "./capture/CalibrationCard";
+import { MarketingImportPanel } from "./MarketingImportPanel";
 import { EventLoopPanel } from "./capture/EventLoopPanel";
 
 /**
@@ -102,6 +103,13 @@ export function SeriesCaptureConsole() {
 
       <CaptureOverview decisions={hook.decisions} snapshots={hook.snapshots} />
       {FEATURES.seriesCalibration && <CalibrationCard decisions={hook.decisions} snapshots={hook.snapshots} />}
+      {FEATURES.seriesMarketingImport && (
+        <MarketingImportPanel
+          clubId={hook.clubId ?? undefined}
+          events={hook.events.map((e) => ({ id: e.id, name: e.name }))}
+          onImport={hook.insertCampaign}
+        />
+      )}
 
       {hook.loading ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
