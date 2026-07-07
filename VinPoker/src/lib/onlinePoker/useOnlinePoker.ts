@@ -23,10 +23,18 @@ import {
   type LiveTableMeta,
   type LiveSeat,
 } from './client';
-import { isHoleCardsOk, type RpcOutcome, type WireLegalActions } from './wire';
+import { isHoleCardsOk, type RpcOutcome, type WireLegalActions, type WirePrivateHandState } from './wire';
 import { derivePokerSounds } from './pokerSounds';
-import { deriveMySeatNo, shouldDealSignal, filterLobbyTables } from './tableState';
+import { deriveMySeatNo, shouldDealSignal, filterLobbyTables, isNewerHandSnap, legalFetchKey, type HandSnapId } from './tableState';
 import { playPokerLiveSound } from '@/lib/pokerLiveSound';
+
+// ── action fast-path keep-warm (Mức C) ──────────────────────────────────────
+// A local constant, NOT a feature flag (scope kept small — flip here to disable). The ping
+// keeps the online-poker-action isolate + GoTrue warm while a live table page is open, so
+// the FIRST action after idle doesn't pay a cold start. Errors are ALWAYS swallowed: until
+// the ping op is deployed the edge zod-rejects it (400), which still warms the isolate.
+const ENABLE_PING_WARMUP = true;
+const PING_INTERVAL_MS = 100_000;
 
 // ── lobby ──────────────────────────────────────────────────────────────────
 
@@ -125,6 +133,10 @@ export interface TableHandState {
   /** Seats that received cards on the last dealt hand (the animation flies only to these). */
   dealSeats: number[];
   refresh: () => void;
+  /** Fast-path: ingest the SERVER-returned post-action state (SubmitActionOk.view) so the
+   *  actor sees their own move in one round trip. NOT optimistic — the view is the engine's
+   *  own output; the same high-water (handNo, stateVersion) guard orders it against polls. */
+  applyServerView: (view: WirePrivateHandState, stateVersion: number) => void;
   actions: TableHandActions;
 }
 
@@ -143,11 +155,57 @@ export function useTableHand(tableId: string): TableHandState {
   const [dealSeats, setDealSeats] = useState<number[]>([]);
   const prevDealHandIdRef = useRef<string | null>(null);
   // Cache of the caller's hole cards, keyed by handId, so the poll loop doesn't re-hit
-  // the edge for cards that never change within a hand.
+  // the edge for cards that never change within a hand. The PUBLIC poll (which carries no
+  // holes) never clears it — only a valid private view (hole fetch / applyServerView) writes
+  // it, and it resets on a genuinely new hand's fetch-miss or a table change.
   const holesRef = useRef<{ handId: string; priv: { mySeat: number; myHoleCards: string[] } } | null>(null);
   // Previous hand view, kept ONLY to derive opponent-action sound cues (PR C). Starts
   // null so the first snapshot / mid-hand reconnect never plays a burst of history.
   const prevSoundHandRef = useRef<PublicHandView | null>(null);
+  // HIGH-WATER mark of the newest (handNo, stateVersion) EVER INGESTED — the fast-path
+  // ordering guard. Deliberately NOT "the currently visible hand": a poll returning no hand
+  // clears the view but must NOT lower this mark, or a late response from an older hand
+  // would resurrect it. Reset ONLY when the tableId truly changes.
+  const snapRef = useRef<HandSnapId | null>(null);
+  // Legal-menu fetch bookkeeping (one fetch per turn-state, stale responses dropped by key).
+  const legalKeyRef = useRef<string | null>(null);
+  const lastLegalOkRef = useRef<string | null>(null);
+  const legalInflightRef = useRef<string | null>(null);
+
+  // Table switch = a genuinely new world: drop every cross-hand ref (high-water included).
+  useEffect(() => {
+    return () => {
+      snapRef.current = null;
+      holesRef.current = null;
+      prevSoundHandRef.current = null;
+      prevDealHandIdRef.current = null;
+      lastLegalOkRef.current = null;
+      legalInflightRef.current = null;
+    };
+  }, [tableId]);
+
+  /**
+   * The ONE ingest point for hand snapshots (poll AND submit fast-path). SYNCHRONOUS by
+   * contract — guard, side-effect derivations and state commits run in a single block with
+   * no `await` in between, so a stale response cannot interleave between the guard check
+   * and the commit (the `cancelled` flag alone cannot prevent that microtask gap).
+   * Returns true iff the snapshot was accepted.
+   */
+  const ingestView = useCallback((view: PublicHandView, snap: HandSnapId): boolean => {
+    if (!isNewerHandSnap(snapRef.current, snap)) return false;
+    snapRef.current = { handNo: snap.handNo, stateVersion: snap.stateVersion };
+    // Opponent-action sound cues, derived purely from prev->next (skips my own seat, which
+    // sounds on submit; [] on the first snapshot). Never allowed to break the table.
+    try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach(playPokerLiveSound); } catch { /* audio must never break the felt */ }
+    prevSoundHandRef.current = view;
+    // Deal-animation trigger: a KNOWN previous handId transitioning to a NEW empty-board
+    // hand with ≥2 players. Advances the ref exactly once per accepted snapshot.
+    const dealCheck = shouldDealSignal(prevDealHandIdRef.current, view);
+    if (dealCheck.fire) { setDealSeats(dealCheck.dealSeats); setDealSignal((n) => n + 1); }
+    if (view.handId) prevDealHandIdRef.current = view.handId;
+    setHand(view);
+    return true;
+  }, []);
 
   // Resolve the caller's uid once (live only) — used to find my seat / host.
   useEffect(() => {
@@ -168,10 +226,16 @@ export function useTableHand(tableId: string): TableHandState {
     }
     setLoading(true);
     (async () => {
-      const wire = await loadHandStateLive(tableId);
-      if (!wire) { if (!cancelled) { setHand(null); setLegal(null); setError(null); } return; }
+      const res = await loadHandStateLive(tableId);
+      if (!res) {
+        // No live hand: clear the VIEW + menu, but KEEP the high-water snapRef — lowering
+        // it here would let a late in-flight response of an OLDER hand resurrect that hand.
+        if (!cancelled) { setHand(null); setLegal(null); setError(null); }
+        return;
+      }
+      const { wire, stateVersion } = res;
       // Hole cards are fixed for the life of a hand — fetch once per handId and reuse it
-      // across polls so the 2.5s loop doesn't hit the edge for cards every tick.
+      // across polls. The public poll NEVER clears the cache (it carries no holes).
       let priv: { mySeat: number; myHoleCards: string[] } | undefined;
       if (holesRef.current && holesRef.current.handId === wire.config.handId) {
         priv = holesRef.current.priv;
@@ -186,35 +250,75 @@ export function useTableHand(tableId: string): TableHandState {
       }
       const view = wirePublicToView(wire, priv);
       if (cancelled) return;
-      // PR C — opponent-action sound cues, derived purely from prev->next (skips my own
-      // seat, which sounds on submit; [] on the first snapshot). Sound must NEVER affect
-      // engine state, so it runs after the view is built and is fully guarded.
-      try { derivePokerSounds(prevSoundHandRef.current, view, view.mySeat ?? null).forEach(playPokerLiveSound); } catch { /* never break the table on audio */ }
-      prevSoundHandRef.current = view;
-      // Deal-animation trigger (live, NOT dwell): a KNOWN previous handId transitioning to
-      // a NEW hand whose board is still empty, with ≥2 players in the hand. Never fires on
-      // initial load (prev null) or a re-poll of the same hand. dealSeats = seats holding
-      // cards so the animation only flies to occupied seats.
-      const dealCheck = shouldDealSignal(prevDealHandIdRef.current, view);
-      if (dealCheck.fire) { setDealSeats(dealCheck.dealSeats); setDealSignal((n) => n + 1); }
-      if (view.handId) prevDealHandIdRef.current = view.handId;
-      setHand(view);
+      // Sounds + deal signal + setHand live inside the shared SYNCHRONOUS ingest, ordered by
+      // the high-water (handNo, stateVersion) guard — a stale poll response is dropped here
+      // even when it slips past `cancelled` (fetch raced the submit fast-path).
+      ingestView(view, { handNo: wire.config.handNo, stateVersion });
       setError(null);
-      // Legal menu only when it is genuinely my turn. Keep the previous menu on a
-      // transient fetch failure so the action bar never flickers empty mid-turn.
-      if (priv && view.status === 'betting' && view.toActSeat === priv.mySeat) {
-        try {
-          const lm = await loadLegalActionsLive(wire.config.handId);
-          if (!cancelled) setLegal(lm);
-        } catch { /* keep the previous menu */ }
-      } else if (!cancelled) {
-        setLegal(null);
-      }
     })()
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'load_failed'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tableId, tick]);
+  }, [tableId, tick, ingestView]);
+
+  // Legal-action menu — its OWN effect, ONE edge fetch per (handId, stateVersion) while it
+  // is genuinely my turn (the old inline fetch re-hit the edge EVERY 1s tick on-turn, which
+  // both hammered the function and queued behind submits). Contract:
+  //   • success for key K → no refetch until the key changes (every action bumps
+  //     state_version server-side, so a re-opened turn always makes a new key);
+  //   • failure → NOT cached; the previous menu stays visible and the next tick retries;
+  //   • off-turn / no hand → menu cleared immediately (key null);
+  //   • a response that lands after the key moved on is DROPPED (stale menu never applies).
+  const legalKey = legalFetchKey(
+    hand ? { handId: hand.handId, status: hand.status, toActSeat: hand.toActSeat ?? null } : null,
+    hand?.mySeat ?? null,
+    snapRef.current?.stateVersion ?? null,
+  );
+  legalKeyRef.current = legalKey;
+  useEffect(() => {
+    if (!RUNTIME_LIVE) return;
+    if (legalKey == null) { setLegal(null); return; }
+    if (lastLegalOkRef.current === legalKey || legalInflightRef.current === legalKey) return;
+    const issuedFor = legalKey;
+    const handId = hand?.handId;
+    if (!handId) return;
+    legalInflightRef.current = issuedFor;
+    loadLegalActionsLive(handId).then((lm) => {
+      if (legalInflightRef.current === issuedFor) legalInflightRef.current = null;
+      if (legalKeyRef.current !== issuedFor) return; // state moved on — stale menu, drop
+      if (lm) { setLegal(lm); lastLegalOkRef.current = issuedFor; }
+      // lm null = transient failure (loadLegalActionsLive swallows) → keep the shown menu,
+      // retry on the next tick (key stays uncached).
+    });
+    // `tick` is a deliberate dep: it is the retry heartbeat for transient failures.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legalKey, tick]);
+
+  // Fast-path ingest of the server's own post-action state (SubmitActionOk.view). The actor
+  // sees their move in ONE round trip; the same guard orders it against in-flight polls.
+  const applyServerView = useCallback((view: WirePrivateHandState, stateVersion: number) => {
+    const priv = { mySeat: view.mySeat, myHoleCards: view.myHoleCards };
+    const pv = wirePublicToView(view, priv);
+    const applied = ingestView(pv, { handNo: view.config.handNo, stateVersion });
+    // Refresh the hole cache only when the snapshot was actually accepted — an out-of-order
+    // response must never clobber a newer hand's cached holes.
+    if (applied && view.config.handId) holesRef.current = { handId: view.config.handId, priv };
+  }, [ingestView]);
+
+  // Keep-warm ping — only while a live table page is mounted, skipped while hidden, ALL
+  // errors swallowed (pre-deploy the edge zod-rejects the op; that reject still warms it).
+  useEffect(() => {
+    if (!RUNTIME_LIVE || !ENABLE_PING_WARMUP) return;
+    const ping = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      onlinePokerClient.ping().catch(() => { /* silent by contract — no toast, no console */ });
+    };
+    ping();
+    const id = setInterval(ping, PING_INTERVAL_MS);
+    const onVisible = () => { if (!document.hidden) ping(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+  }, [tableId]);
 
   // Load table seats + current host (live). Seats exist even with no active hand.
   useEffect(() => {
@@ -299,7 +403,7 @@ export function useTableHand(tableId: string): TableHandState {
     rebuy: (amount) => onlinePokerClient.rebuyOpen(tableId, amount),
   };
 
-  return { hand, seats, mySeatNo, myUserId: uid, hostUserId, amIHost, legal, loading, error, dealSignal, dealSeats, refresh, actions };
+  return { hand, seats, mySeatNo, myUserId: uid, hostUserId, amIHost, legal, loading, error, dealSignal, dealSeats, refresh, applyServerView, actions };
 }
 
 // ── table metadata ─────────────────────────────────────────────────────────

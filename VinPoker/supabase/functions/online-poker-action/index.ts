@@ -44,6 +44,10 @@ type LogDone = (outcome: string, extra?: Record<string, unknown>) => void;
 // ── request schema (discriminated by op) ────────────────────────────────────
 const IdemKey = z.string().min(8).max(200);
 const Body = z.discriminatedUnion("op", [
+  // Keep-warm ping (fast-path): authenticated no-op — answered right after auth, BEFORE the
+  // admin client / dark-switch, so it does zero Postgres IO. Static 8-byte body; strictly
+  // cheaper than every real op. Clients fire-and-forget it to keep the isolate + GoTrue warm.
+  z.object({ op: z.literal("ping") }),
   z.object({ op: z.literal("claim_daily_chips") }),
   z.object({ op: z.literal("get_my_hole_cards"), handId: z.string().uuid() }),
   z.object({ op: z.literal("legal_actions"), handId: z.string().uuid() }),
@@ -106,6 +110,10 @@ Deno.serve(async (req) => {
     if (!parsed.ok) { logDone("bad_request", { http: 400 }); return parsed.response; }
     const body = parsed.data;
     op = body.op;
+
+    // Keep-warm ping: return BEFORE the admin client + dark-switch (zero Postgres IO).
+    // Auth already ran above (G2) — a ping still requires a valid user JWT.
+    if (body.op === "ping") { logDone("ok", { http: 200 }); return json({ ok: true }, 200); }
 
     const admin = createClient(url, serviceKey, { global: { fetch: retryFetch } });
 
