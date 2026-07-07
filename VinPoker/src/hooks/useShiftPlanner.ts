@@ -161,7 +161,10 @@ export function useShiftPlanner({
         availabilityRows = Array.isArray(avData) ? avData : [];
       } catch {
         const { data: avFallback } = await db.from("dealer_availability_requests")
-          .select("dealer_id, work_date, kind, template_id, note")
+          // status is needed so groupAvailability can drop 'rejected' requests
+          // (a rejected leave must NOT block auto-fill). Mirrors the columns the
+          // get_dealer_availability_requests RPC returns.
+          .select("dealer_id, work_date, kind, template_id, note, status")
           .in("club_id", clubIds)
           .eq("work_date", workDate);
         availabilityRows = avFallback ?? [];
