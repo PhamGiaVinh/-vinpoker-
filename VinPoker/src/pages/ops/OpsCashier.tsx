@@ -1,27 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ChevronLeft, ClipboardList, Banknote, ArrowLeftRight, HandCoins, ShieldCheck,
-  Dice5, Receipt, XCircle, RotateCcw, Check, Monitor, IdCard,
+  Monitor, IdCard, Loader2, LogIn, Users, AlertTriangle, RefreshCw,
 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import {
-  vnd, REG_QUEUE, REG_STATUS_META, CANCEL_REASONS, BUYIN_TOURNAMENTS, SEPAY_ROWS,
-  STAKE_ROWS, VERIFY_ROWS, type RegRow,
-} from "@/components/ops/mock/cashierData";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 
 /**
- * Cashier — thu ngân (mobileOpsV2) — theo bản vẽ đã duyệt Q1–Q6.
- * pills Hàng chờ(Q1) · Buy-in(Q3) · SePay(Q4) · Staking(Q5) · Xác minh(Q6). Tap đăng ký → Q2 sheet.
- * DỮ LIỆU MẪU. Module tiền-vào: mọi nút 💰 NHẮC LẠI SỐ rồi mới xác nhận (toast "bản mẫu").
- * Chi tiết/lịch sử staking, cấp lại thẻ (đã build #725) = máy tính.
+ * Cashier — thu ngân (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads Q1/Q3/Q4/Q5/Q6).
+ * Đọc từ đúng nguồn desktop CashierDashboard dùng (tournament_registrations, RPC
+ * sepay_cashier_settlement_worklist, staking_purchases/deals, membership_verification_requests,
+ * tournaments). Ngữ cảnh CLB = useOperatorClubs().clubIds (= cashier_club_ids).
+ *
+ * ⚠️ Module tiền-vào: mọi NÚT hành động (thu tiền / khớp SePay / FUNDED / duyệt / bốc thăm) CHƯA nối —
+ * bấm chỉ nhắc; sẽ gắn RPC/Edge thật (confirm_registration_and_assign_seat / manual_confirm_bank_transaction
+ * / admin-confirm-funded / approve_verification …) ở bước sau, mỗi cái owner UAT. KHÔNG fallback mock.
  */
+const PENDING = "Chức năng đang nối dữ liệu — chưa thao tác trên live.";
+const vnd = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("vi-VN") + "đ");
+const hhmm = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "";
+const ACTIVE_TOUR_STATUSES = ["upcoming", "registering", "drawing", "active", "live", "break", "final_table"];
+
 const PILLS = [
   { key: "queue", label: "Hàng chờ", icon: ClipboardList },
   { key: "buyin", label: "Buy-in", icon: Banknote },
@@ -31,22 +34,131 @@ const PILLS = [
 ] as const;
 type Pill = (typeof PILLS)[number]["key"];
 
+// ── loaders (reads-only, mirror desktop queries; id-then-name fetch = no FK-alias risk) ──
+async function namesByIds(ids: string[]): Promise<Record<string, { name: string; phone: string | null }>> {
+  const uniq = [...new Set(ids.filter(Boolean))];
+  if (!uniq.length) return {};
+  const { data } = await supabase.from("profiles").select("user_id, display_name, phone").in("user_id", uniq);
+  const m: Record<string, { name: string; phone: string | null }> = {};
+  for (const p of (data ?? []) as any[]) m[p.user_id] = { name: p.display_name ?? "—", phone: p.phone ?? null };
+  return m;
+}
+
+async function loadQueue(clubIds: string[]) {
+  let q = supabase.from("tournament_registrations")
+    .select("id, reference_code, status, total_pay, player_id, tournament_id, committed_at")
+    .in("status", ["pending", "confirmed"]).order("committed_at", { ascending: true }).limit(100);
+  if (clubIds.length) q = q.in("club_id", clubIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as any[];
+  const names = await namesByIds(rows.map((r) => r.player_id));
+  const tourIds = [...new Set(rows.map((r) => r.tournament_id).filter(Boolean))];
+  const tmap: Record<string, string> = {};
+  if (tourIds.length) {
+    const { data: ts } = await supabase.from("tournaments").select("id, name").in("id", tourIds);
+    for (const t of (ts ?? []) as any[]) tmap[t.id] = t.name;
+  }
+  return rows.map((r) => ({
+    id: r.id, ref: r.reference_code, status: r.status, total: r.total_pay,
+    name: names[r.player_id]?.name ?? "—", phone: names[r.player_id]?.phone ?? "",
+    tour: tmap[r.tournament_id] ?? "", at: r.committed_at,
+  }));
+}
+async function loadTours(clubIds: string[]) {
+  let q = supabase.from("tournaments").select("id, name, buy_in, rake_amount, service_fee_amount, start_time")
+    .in("status", ACTIVE_TOUR_STATUSES).order("created_at", { ascending: false }).limit(50);
+  if (clubIds.length) q = q.in("club_id", clubIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as any[];
+}
+async function loadSepay(scope: "actionable" | "resolved") {
+  const { data, error } = await (supabase.rpc as any)("sepay_cashier_settlement_worklist", { p_scope: scope, p_limit: 100 });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []) as any[];
+}
+async function loadStaking(clubIds: string[]) {
+  let dq = supabase.from("staking_deals").select("id, custom_event_name, player_id").limit(200);
+  if (clubIds.length) dq = dq.in("club_id", clubIds);
+  const { data: deals, error: de } = await dq;
+  if (de) throw de;
+  const dealMap: Record<string, any> = {};
+  for (const d of (deals ?? []) as any[]) dealMap[d.id] = d;
+  const dealIds = Object.keys(dealMap);
+  if (!dealIds.length) return [];
+  const { data: purchases, error: pe } = await supabase.from("staking_purchases")
+    .select("id, deal_id, percent, amount_vnd, status, backer_id, committed_at")
+    .in("deal_id", dealIds).eq("status", "committed").order("committed_at", { ascending: true }).limit(100);
+  if (pe) throw pe;
+  const rows = (purchases ?? []) as any[];
+  const names = await namesByIds([...rows.map((r) => r.backer_id), ...Object.values(dealMap).map((d: any) => d.player_id)]);
+  return rows.map((r) => ({
+    id: r.id, amount: r.amount_vnd, pct: r.percent,
+    backer: names[r.backer_id]?.name ?? "Nhà đầu tư",
+    player: names[dealMap[r.deal_id]?.player_id]?.name ?? dealMap[r.deal_id]?.custom_event_name ?? "—",
+  }));
+}
+async function loadVerify(clubIds: string[]) {
+  let q = supabase.from("membership_verification_requests")
+    .select("id, member_card_id, created_at, player_user_id")
+    .eq("status", "pending").order("created_at", { ascending: true }).limit(100);
+  if (clubIds.length) q = q.in("club_id", clubIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as any[];
+  const names = await namesByIds(rows.map((r) => r.player_user_id));
+  return rows.map((r) => ({
+    id: r.id, card: r.member_card_id, at: r.created_at,
+    name: names[r.player_user_id]?.name ?? "—", phone: names[r.player_user_id]?.phone ?? "",
+  }));
+}
+
+const REG_CHIP: Record<string, { label: string; cls: string }> = {
+  pending: { label: "Chờ xếp", cls: "bg-amber-400/12 text-amber-300" },
+  confirmed: { label: "Đã thu", cls: "bg-sky-400/12 text-sky-300" },
+};
+
 export default function OpsCashier() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const { loading: clubsLoading, user, clubs, clubIds } = useOperatorClubs();
   const [pill, setPill] = useState<Pill>("queue");
-  const [regSheet, setRegSheet] = useState<RegRow | null>(null);
-  const [cancelFor, setCancelFor] = useState<RegRow | null>(null);
-  const [confirm, setConfirm] = useState<{ title: string; body: string; danger?: boolean; onOk: () => void } | null>(null);
-  const [tourId, setTourId] = useState(BUYIN_TOURNAMENTS[0].id);
-  const [reentry, setReentry] = useState(false);
-  const [buyinName, setBuyinName] = useState("");
-  const [payMethod, setPayMethod] = useState<"cash" | "bank">("cash");
   const [sepayTab, setSepayTab] = useState<"todo" | "done">("todo");
+  const [state, setState] = useState<{ loading: boolean; error: string | null; rows: any[] }>({ loading: true, error: null, rows: [] });
+  const [reload, setReload] = useState(0);
+  const clubKey = clubIds.join(",");
+  const pending = () => { toast(PENDING); };
 
-  const ask = (c: NonNullable<typeof confirm>) => setConfirm(c);
-  const done = (m: string) => { setRegSheet(null); setCancelFor(null); setConfirm(null); toast.success(m + " (bản mẫu)"); };
-  const tour = useMemo(() => BUYIN_TOURNAMENTS.find((t) => t.id === tourId)!, [tourId]);
-  const buyinTotal = tour.buyin + tour.fee;
+  const canLoad = !clubsLoading && !!user && clubs !== null && (clubIds.length > 0 || isAdmin);
+  useEffect(() => {
+    if (!canLoad) return;
+    let alive = true;
+    setState({ loading: true, error: null, rows: [] });
+    (async () => {
+      try {
+        let rows: any[] = [];
+        if (pill === "queue") rows = await loadQueue(clubIds);
+        else if (pill === "buyin") rows = await loadTours(clubIds);
+        else if (pill === "sepay") rows = await loadSepay(sepayTab === "todo" ? "actionable" : "resolved");
+        else if (pill === "staking") rows = await loadStaking(clubIds);
+        else if (pill === "verify") rows = await loadVerify(clubIds);
+        if (alive) setState({ loading: false, error: null, rows });
+      } catch (e) {
+        if (alive) setState({ loading: false, error: e instanceof Error ? e.message : "Không tải được dữ liệu", rows: [] });
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pill, sepayTab, clubKey, reload, canLoad]);
+
+  // ---- guards ----
+  if (clubsLoading) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
+  if (!user) return <Guard nav={navigate} icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản thu ngân để xem quầy." />;
+  if (clubs === null) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
+  if (clubIds.length === 0 && !isAdmin) return <Guard nav={navigate} icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền thu ngân." />;
+
+  const clubName = clubs && clubs.length ? clubs.map((c) => c.name).join(", ") : "Toàn quyền";
 
   return (
     <div className="ios-in space-y-4 pt-1">
@@ -55,8 +167,10 @@ export default function OpsCashier() {
           <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
         </button>
         <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cashier</h1>
-        <p className="mt-0.5 text-[14px] text-[#9b8e97]">Hanoi Royal · thu ngân · <span className="text-[#d8bc85]">nhắc lại số trước khi thu</span></p>
+        <p className="mt-0.5 text-[14px] text-[#9b8e97]">{clubName} · thu ngân</p>
       </header>
+
+      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">Dữ liệu thật · nút hành động chưa nối</div>
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5">
         {PILLS.map((p) => (
@@ -67,234 +181,158 @@ export default function OpsCashier() {
         ))}
       </div>
 
-      {/* Q1 — Hàng chờ */}
-      {pill === "queue" && (
-        <div className="space-y-3">
-          <div className="ios-card flex items-center justify-between px-4 py-2.5 text-[13px]">
-            <span><span className="text-amber-300">2 chờ xếp</span> · <span className="text-sky-300">1 đã thu</span> · <span className="text-emerald-300">2 đã xếp</span></span>
-            <button onClick={() => toast("Bốc thăm tất cả người chờ (bản mẫu)")} className="ios-press-sm flex items-center gap-1 rounded-full bg-[#c9a86a]/15 px-2.5 py-1 text-[11px] font-semibold text-[#d8bc85]"><Dice5 className="h-3.5 w-3.5" /> Bốc tất cả</button>
-          </div>
-          <div className="ios-group">
-            {REG_QUEUE.map((r) => {
-              const s = REG_STATUS_META[r.status];
-              return (
-                <button key={r.name} onClick={() => setRegSheet(r)}
-                  className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] text-[#f2ece6]">{r.name} <span className="font-mono text-[12px] text-[#7c7079]">{r.phone}</span></span>
-                    <span className="block text-[12px] text-[#9b8e97]">{r.status === "seated" ? `${r.table} · ghế ${r.seat}` : `${vnd(r.buyin)} · ${r.method === "cash" ? "tiền mặt" : "chuyển khoản"}`}</span>
-                  </span>
-                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", s.cls)}>{s.label}</span>
-                </button>
-              );
-            })}
-          </div>
+      {pill === "sepay" && (
+        <div className="flex gap-2 px-1">
+          {(["todo", "done"] as const).map((t) => (
+            <button key={t} onClick={() => setSepayTab(t)}
+              className={cn("ios-press-sm rounded-full px-3 py-1 text-[12px]", sepayTab === t ? "bg-white/12 text-[#f2ece6]" : "bg-white/5 text-[#9b8e97]")}>{t === "todo" ? "Cần xử lý" : "Đã xử lý"}</button>
+          ))}
         </div>
       )}
 
-      {/* Q3 — Buy-in / Re-entry */}
-      {pill === "buyin" && (
-        <div className="space-y-3">
-          <div className="ios-card p-4 space-y-3">
-            <div className="flex gap-2">
-              <button onClick={() => setReentry(false)} className={cn("ios-press-sm flex-1 rounded-2xl py-2 text-[14px] font-medium", !reentry ? "bg-[#c9a86a] text-[#241A08]" : "ios-fill text-[#f2ece6]")}>Buy-in mới</button>
-              <button onClick={() => setReentry(true)} className={cn("ios-press-sm flex-1 rounded-2xl py-2 text-[14px] font-medium", reentry ? "bg-[#c9a86a] text-[#241A08]" : "ios-fill text-[#f2ece6]")}>Mua lại (re-entry)</button>
+      {/* data zone: loading → error → empty → rows (never mock) */}
+      {state.loading ? (
+        <div className="ios-card flex flex-col items-center gap-2 py-12 text-center"><Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" /><div className="text-[13px] text-[#9b8e97]">Đang tải…</div></div>
+      ) : state.error ? (
+        <div className="ios-card flex flex-col items-center gap-2 py-10 text-center">
+          <AlertTriangle className="h-7 w-7 text-rose-300" />
+          <div className="text-[15px] font-semibold text-[#f2ece6]">Không tải được</div>
+          <div className="max-w-[280px] text-[12px] text-[#9b8e97]">{state.error}</div>
+          <button onClick={() => setReload((n) => n + 1)} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]"><RefreshCw className="h-3.5 w-3.5" /> Thử lại</button>
+        </div>
+      ) : (
+        <>
+          {/* Q1 — Hàng chờ */}
+          {pill === "queue" && (state.rows.length === 0 ? <Empty text="Không có đăng ký chờ." /> : (
+            <div className="ios-group">
+              {state.rows.map((r) => {
+                const chip = REG_CHIP[r.status] ?? REG_CHIP.pending;
+                return (
+                  <button key={r.id} onClick={pending} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] text-[#f2ece6]">{r.name} {r.phone && <span className="font-mono text-[12px] text-[#7c7079]">{maskPhone(r.phone)}</span>}</span>
+                      <span className="block truncate text-[12px] text-[#9b8e97]">{r.tour}{r.total != null ? ` · ${vnd(r.total)}` : ""}{r.ref ? ` · ${r.ref}` : ""}</span>
+                    </span>
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", chip.cls)}>{chip.label}</span>
+                  </button>
+                );
+              })}
             </div>
-            <div>
-              <label className="px-1 text-[12px] text-[#9b8e97]">Giải</label>
-              <div className="mt-1 space-y-1.5">
-                {BUYIN_TOURNAMENTS.map((t) => (
-                  <button key={t.id} onClick={() => setTourId(t.id)}
-                    className={cn("flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left", tourId === t.id ? "bg-[#c9a86a]/15 ring-1 ring-[#c9a86a]/40" : "ios-fill")}>
-                    <span className="text-[14px] text-[#f2ece6]">{t.name}</span>
-                    <span className="font-mono text-[12px] text-[#9b8e97]">{vnd(t.buyin)}+{vnd(t.fee)}</span>
+          ))}
+
+          {/* Q3 — Buy-in: chọn giải thật; form thu tiền = đang nối */}
+          {pill === "buyin" && (state.rows.length === 0 ? <Empty text="Không có giải đang mở để buy-in." /> : (
+            <div className="space-y-3">
+              <div className="px-1 text-[12px] text-[#9b8e97]">Chọn giải</div>
+              <div className="ios-group">
+                {state.rows.map((t) => (
+                  <button key={t.id} onClick={pending} className="ios-press-sm ios-row-inset flex w-full items-center justify-between px-4 py-3 text-left">
+                    <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">{t.name}</span><span className="block text-[12px] text-[#9b8e97]">{hhmm(t.start_time)}</span></span>
+                    <span className="font-mono text-[12px] text-[#9b8e97]">{vnd((t.buy_in ?? 0) + (t.rake_amount ?? 0) + (t.service_fee_amount ?? 0))}</span>
                   </button>
                 ))}
               </div>
+              <button onClick={pending} className="ios-press ios-primary w-full rounded-2xl py-3 text-[15px] font-bold">Buy-in / Re-entry (đang nối)</button>
             </div>
-            <div>
-              <label className="px-1 text-[12px] text-[#9b8e97]">{reentry ? "Người chơi mua lại" : "Tên / SĐT người chơi"}</label>
-              <input value={buyinName} onChange={(e) => setBuyinName(e.target.value)} placeholder={reentry ? "chọn người đã bị loại…" : "Nguyễn Văn A / 09…"}
-                className="ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-[15px] text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["cash", "bank"] as const).map((m) => (
-                <button key={m} onClick={() => setPayMethod(m)} className={cn("ios-press-sm rounded-2xl py-2.5 text-[14px] font-medium", payMethod === m ? "bg-[#c9a86a] text-[#241A08]" : "ios-fill text-[#f2ece6]")}>{m === "cash" ? "Tiền mặt" : "Chuyển khoản"}</button>
+          ))}
+
+          {/* Q4 — SePay */}
+          {pill === "sepay" && (state.rows.length === 0 ? <Empty text={sepayTab === "todo" ? "Không có giao dịch cần xử lý." : "Chưa có giao dịch đã xử lý."} /> : (
+            <div className="ios-group">
+              {state.rows.map((r, i) => (
+                <div key={r.bank_transaction_id ?? i} className="ios-row-inset px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[15px] font-semibold text-[#f2ece6]">{vnd(r.amount)}</span>
+                      <span className="block truncate text-[12px] text-[#9b8e97]">"{r.content ?? r.txn_ref ?? "—"}" · {hhmm(r.occurred_at ?? r.created_at)}{r.player_display ? ` · ${r.player_display}` : " · chưa rõ người"}</span>
+                    </span>
+                    {sepayTab === "done" && <span className="rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">đã xử lý</span>}
+                  </div>
+                  {sepayTab === "todo" && (
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={pending} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Xác nhận &amp; xếp ghế</button>
+                      <button onClick={pending} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-[#9b8e97]">Bỏ qua</button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
-          </div>
-          <button disabled={!buyinName.trim()}
-            onClick={() => ask({ title: reentry ? "Xác nhận mua lại (re-entry)" : "Xác nhận đã nhận tiền", body: `${buyinName || "Khách"} · ${tour.name}\nThu ${vnd(buyinTotal)} (${vnd(tour.buyin)} + phí ${vnd(tour.fee)}) — ${payMethod === "cash" ? "tiền mặt" : "chuyển khoản"}?`, onOk: () => { setBuyinName(""); done(`Đã thu ${vnd(buyinTotal)} · ${reentry ? "re-entry" : "buy-in"}`); } })}
-            className="ios-press ios-primary flex w-full items-center justify-between rounded-2xl px-4 py-3.5 disabled:opacity-40">
-            <span className="text-[15px] font-bold">{reentry ? "Mua lại & thu tiền" : "Xác nhận đã nhận tiền"}</span>
-            <span className="font-mono text-[15px] font-bold">{vnd(buyinTotal)}</span>
-          </button>
-        </div>
-      )}
+          ))}
 
-      {/* Q4 — SePay khớp tiền */}
-      {pill === "sepay" && (
-        <div className="space-y-3">
-          <div className="flex gap-2 px-1">
-            {(["todo", "done"] as const).map((t) => (
-              <button key={t} onClick={() => setSepayTab(t)}
-                className={cn("ios-press-sm rounded-full px-3 py-1 text-[12px]", sepayTab === t ? "bg-white/12 text-[#f2ece6]" : "bg-white/5 text-[#9b8e97]")}>{t === "todo" ? "Cần xử lý" : "Đã xử lý"}</button>
-            ))}
-          </div>
-          <div className="ios-group">
-            {SEPAY_ROWS.filter((r) => (sepayTab === "todo" ? !r.done : r.done)).map((r) => (
-              <div key={r.id} className="ios-row-inset px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-[15px] font-semibold text-[#f2ece6]">{vnd(r.amount)}</span>
-                    <span className="block truncate text-[12px] text-[#9b8e97]">"{r.memo}" · {r.at}{r.match ? ` · khớp: ${r.match}` : " · chưa rõ người"}</span>
-                  </span>
-                  {r.done && <span className="rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">đã khớp</span>}
-                </div>
-                {!r.done && (
-                  <div className="mt-2 flex gap-2">
-                    <button onClick={() => ask({ title: "Xác nhận & xếp ghế", body: `Khớp ${vnd(r.amount)} — "${r.memo}"${r.match ? ` cho ${r.match}` : ""}?\nGhi nhận buy-in và xếp ghế.`, onOk: () => done(`Đã khớp ${vnd(r.amount)} & xếp ghế`) })}
-                      className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Xác nhận & xếp ghế</button>
-                    <button onClick={() => ask({ title: "Bỏ qua giao dịch", danger: true, body: `Bỏ qua CK ${vnd(r.amount)} — "${r.memo}"?\nKhông ghi vào buy-in (VD: chuyển nhầm).`, onOk: () => done("Đã bỏ qua giao dịch") })}
-                      className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-[#9b8e97]">Bỏ qua</button>
+          {/* Q5 — Staking */}
+          {pill === "staking" && (state.rows.length === 0 ? <Empty text="Không có kèo chờ xác nhận góp." /> : (
+            <div className="space-y-3">
+              <div className="ios-group">
+                {state.rows.map((s) => (
+                  <div key={s.id} className="ios-row-inset flex items-center gap-3 px-4 py-3">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[14px] text-[#f2ece6]">{s.backer} → <b>{s.player}</b></span>
+                      <span className="block font-mono text-[12px] text-[#9b8e97]">{vnd(s.amount)}{s.pct != null ? ` · ${s.pct}% kèo` : ""}</span>
+                    </span>
+                    <button onClick={pending} className="ios-press-sm rounded-full bg-[#c9a86a]/15 px-3 py-1 text-[12px] font-semibold text-[#d8bc85]">Xác nhận góp</button>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-          {sepayTab === "todo" && <div className="px-1 text-[12px] text-[#7c7079]">Chuyển khoản đến sẽ tự hiện ở đây để khớp với người chơi.</div>}
-        </div>
-      )}
+              <DesktopNote text="Chi tiết kèo, hoàn tiền, lịch sử và xuất Excel làm trên máy tính." />
+            </div>
+          ))}
 
-      {/* Q5 — Staking */}
-      {pill === "staking" && (
-        <div className="space-y-3">
-          <div className="ios-card px-4 py-2.5 text-[13px] text-[#9b8e97]"><span className="font-semibold text-amber-300">2 kèo</span> chờ xác nhận góp vốn</div>
-          <div className="ios-group">
-            {STAKE_ROWS.map((s, i) => (
-              <div key={i} className="ios-row-inset flex items-center gap-3 px-4 py-3">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] text-[#f2ece6]">{s.backer} → <b>{s.player}</b></span>
-                  <span className="block font-mono text-[12px] text-[#9b8e97]">{vnd(s.amount)} · {s.pct}% kèo</span>
-                </span>
-                {s.status === "funded"
-                  ? <span className="rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">đã góp</span>
-                  : <button onClick={() => ask({ title: "Xác nhận đã góp vốn (FUNDED)", body: `${s.backer} góp ${vnd(s.amount)} (${s.pct}%) cho ${s.player}?\nGhi nhận đã nhận tiền góp.`, onOk: () => done(`Đã xác nhận FUNDED ${vnd(s.amount)}`) })}
-                    className="ios-press-sm rounded-full bg-[#c9a86a]/15 px-3 py-1 text-[12px] font-semibold text-[#d8bc85]">Xác nhận góp</button>}
-              </div>
-            ))}
-          </div>
-          <DesktopNote text="Chi tiết kèo, hoàn tiền, lịch sử và xuất Excel làm trên máy tính." />
-        </div>
-      )}
-
-      {/* Q6 — Xác minh */}
-      {pill === "verify" && (
-        <div className="space-y-3">
-          <div className="ios-card px-4 py-2.5 text-[13px] text-[#9b8e97]"><span className="font-semibold text-amber-300">{VERIFY_ROWS.length} hồ sơ</span> chờ duyệt hội viên</div>
-          <div className="ios-group">
-            {VERIFY_ROWS.map((v) => (
-              <div key={v.name} className="ios-row-inset px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] text-[#f2ece6]">{v.name} <span className="font-mono text-[12px] text-[#7c7079]">{v.phone}</span></span>
-                    <span className="block text-[12px] text-[#9b8e97]">{v.note} · {v.submitted}</span>
-                  </span>
+          {/* Q6 — Xác minh */}
+          {pill === "verify" && (
+            <div className="space-y-3">
+              {state.rows.length === 0 ? <Empty text="Không có hồ sơ chờ duyệt." /> : (
+                <div className="ios-group">
+                  {state.rows.map((v) => (
+                    <div key={v.id} className="ios-row-inset px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] text-[#f2ece6]">{v.name} {v.phone && <span className="font-mono text-[12px] text-[#7c7079]">{maskPhone(v.phone)}</span>}</span>
+                          <span className="block text-[12px] text-[#9b8e97]">thẻ {v.card ?? "—"} · {hhmm(v.at)}</span>
+                        </span>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <button onClick={pending} className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Duyệt</button>
+                        <button onClick={pending} className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-rose-300">Từ chối</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="mt-2 flex gap-2">
-                  <button onClick={() => ask({ title: "Duyệt hội viên", body: `Duyệt ${v.name}? Hồ sơ đủ điều kiện thành hội viên.`, onOk: () => done(`Đã duyệt ${v.name}`) })}
-                    className="ios-press-sm ios-primary flex-1 rounded-xl py-2 text-[13px] font-bold">Duyệt</button>
-                  <button onClick={() => ask({ title: "Từ chối hồ sơ", danger: true, body: `Từ chối ${v.name}? Cần ghi lý do cho khách.`, onOk: () => done(`Đã từ chối ${v.name}`) })}
-                    className="ios-press-sm ios-fill rounded-xl px-4 py-2 text-[13px] text-rose-300">Từ chối</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => toast("Mở Cấp lại thẻ (bản máy tính — PR #725)")} className="ios-press-sm ios-card flex w-full items-center gap-3 p-3.5 text-left">
-            <IdCard className="h-5 w-5 text-[#c9a86a]" />
-            <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Cấp lại thẻ hội viên</span><span className="block text-[12px] text-[#9b8e97]">quét QR → in thẻ 2 mặt · bản đầy đủ trên máy tính</span></span>
-            <Monitor className="h-4 w-4 text-[#5f545c]" />
-          </button>
-        </div>
-      )}
-
-      {/* Q2 — sheet đăng ký (bốc thăm / phiếu / huỷ / huỷ&hoàn) */}
-      <Sheet open={regSheet !== null} onOpenChange={(v) => { if (!v) setRegSheet(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">{regSheet?.name} <span className="font-mono text-[12px] text-[#7c7079]">{regSheet?.phone}</span></SheetTitle>
-          </SheetHeader>
-          <div className="mt-1 text-center text-[13px] text-[#9b8e97]">
-            {regSheet && REG_STATUS_META[regSheet.status].label} · {vnd(regSheet?.buyin ?? 0)} · {regSheet?.method === "cash" ? "tiền mặt" : "chuyển khoản"}
-            {regSheet?.status === "seated" && ` · ${regSheet.table} ghế ${regSheet.seat}`}
-          </div>
-          <div className="mt-3 space-y-1.5">
-            {regSheet?.status !== "seated" && (
-              <button onClick={() => done(`Đã bốc thăm chỗ cho ${regSheet?.name}`)} className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
-                <Dice5 className="h-5 w-5 shrink-0" /><span className="text-[15px] font-bold">Bốc thăm chỗ ngồi</span>
+              )}
+              <button onClick={() => toast("Cấp lại thẻ — bản đầy đủ trên máy tính (#725)")} className="ios-press-sm ios-card flex w-full items-center gap-3 p-3.5 text-left">
+                <IdCard className="h-5 w-5 text-[#c9a86a]" />
+                <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Cấp lại thẻ hội viên</span><span className="block text-[12px] text-[#9b8e97]">quét QR → in thẻ · bản đầy đủ trên máy tính</span></span>
+                <Monitor className="h-4 w-4 text-[#5f545c]" />
               </button>
-            )}
-            <SheetRow icon={<Receipt className="h-5 w-5 text-sky-300" />} label="In phiếu đăng ký" onTap={() => done("Đã in phiếu")} />
-            {regSheet?.status === "waiting" ? (
-              <SheetRow icon={<XCircle className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Huỷ đăng ký</span>} onTap={() => { setRegSheet(null); setCancelFor(regSheet); }} />
-            ) : (
-              <SheetRow icon={<RotateCcw className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Huỷ &amp; hoàn tiền</span>} onTap={() => { setRegSheet(null); setCancelFor(regSheet); }} />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Q2 — cancel/void with reason preset */}
-      <Sheet open={cancelFor !== null} onOpenChange={(v) => { if (!v) setCancelFor(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">{cancelFor?.status === "waiting" ? "Huỷ đăng ký" : "Huỷ & hoàn tiền"} — {cancelFor?.name}</SheetTitle>
-          </SheetHeader>
-          {cancelFor?.status !== "waiting" && (
-            <div className="ios-card mt-2 flex items-center justify-center gap-2 py-2.5 text-[13px] text-rose-300"><RotateCcw className="h-4 w-4" /> sẽ hoàn {vnd(cancelFor?.buyin ?? 0)} · {cancelFor?.method === "cash" ? "tiền mặt" : "chuyển khoản"}</div>
+            </div>
           )}
-          <div className="mt-1 px-1 text-center text-[12px] text-[#9b8e97]">chọn lý do</div>
-          <div className="ios-group mt-2">
-            {CANCEL_REASONS.map((reason) => (
-              <button key={reason} onClick={() => ask({ title: cancelFor?.status === "waiting" ? "Xác nhận huỷ đăng ký" : "Xác nhận huỷ & hoàn", danger: true, body: `${cancelFor?.name} · lý do: ${reason}\n${cancelFor?.status === "waiting" ? "Huỷ đăng ký này?" : `Hoàn ${vnd(cancelFor?.buyin ?? 0)} và huỷ đăng ký? Không hoàn tác.`}`, onOk: () => done(cancelFor?.status === "waiting" ? "Đã huỷ đăng ký" : `Đã hoàn ${vnd(cancelFor?.buyin ?? 0)}`) })}
-                className="ios-press-sm ios-row-inset flex w-full items-center px-4 py-3.5 text-left text-[15px] text-[#f2ece6]">{reason}</button>
-            ))}
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Money / danger restate confirm */}
-      <AlertDialog open={confirm !== null} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
-        <AlertDialogContent className="max-w-[340px] rounded-3xl border-white/10 bg-[#0d0913]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#f2ece6]">{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription className="whitespace-pre-line text-[14px] text-[#c7bcc4]">{confirm?.body}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2">
-            <AlertDialogCancel className="ios-press-sm mt-0 rounded-2xl border-white/12 bg-white/5 text-[#f2ece6]">Huỷ</AlertDialogCancel>
-            <AlertDialogAction onClick={() => confirm?.onOk()}
-              className={cn("ios-press rounded-2xl font-bold", confirm?.danger ? "bg-rose-500/90 text-white hover:bg-rose-500" : "bg-[#c9a86a] text-[#241A08] hover:bg-[#d8bc85]")}>Xác nhận</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        </>
+      )}
+      <div className="pb-2" />
     </div>
   );
 }
 
-function SheetRow({ icon, label, onTap }: { icon: React.ReactNode; label: React.ReactNode; onTap: () => void }) {
-  return (
-    <button onClick={onTap} className="ios-press ios-fill flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
-      {icon}<span className="text-[15px] text-[#f2ece6]">{label}</span>
-    </button>
-  );
-}
+function maskPhone(p: string) { return p.length >= 6 ? p.slice(0, 2) + "••••" + p.slice(-3) : p; }
 
+function Empty({ text }: { text: string }) {
+  return <div className="ios-card py-10 text-center text-[14px] text-[#9b8e97]">{text}</div>;
+}
 function DesktopNote({ text }: { text: string }) {
+  return <div className="ios-card flex items-start gap-2 p-3.5 text-[12px] text-[#9b8e97]"><Monitor className="mt-0.5 h-4 w-4 shrink-0 text-[#9b8e97]" /> <span>{text}</span></div>;
+}
+function Guard({ nav, icon, title, sub }: { nav: (to: string) => void; icon: React.ReactNode; title: string; sub: string }) {
   return (
-    <div className="ios-card flex items-start gap-2 p-3.5 text-[12px] text-[#9b8e97]">
-      <Monitor className="mt-0.5 h-4 w-4 shrink-0 text-[#9b8e97]" /> <span>{text}</span>
+    <div className="ios-in space-y-4 pt-1">
+      <header className="px-1">
+        <button onClick={() => nav("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
+          <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
+        </button>
+        <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cashier</h1>
+      </header>
+      <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
+        {icon}<div className="mt-1 text-[16px] font-semibold text-[#f2ece6]">{title}</div>
+        <div className="max-w-[260px] text-[13px] text-[#9b8e97]">{sub}</div>
+      </div>
     </div>
   );
 }
