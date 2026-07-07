@@ -38,6 +38,14 @@ export function RunoutBoardPanel({
   const remaining = [0, 1, 2, 3, 4].filter((i) => i >= persistedBoardCount);
   const allFilled = remaining.every((i) => communityCards[i] != null);
 
+  // Review fix: FREEZE edits while the staged deal-all is in flight. The loop sends the
+  // press-time board across ~2-3s (3 calls + 2×900ms gaps); an edit landing mid-flight
+  // would show locally (and be used by settle) while the viewer received the stale card.
+  const handleCardChange = (i: number, c: Card | null) => {
+    if (submitting) return;
+    onCardChange(i, c);
+  };
+
   return (
     <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-card p-3.5">
       <h3 className="text-sm font-bold uppercase tracking-wide text-amber-300">Chia hết bài (all-in)</h3>
@@ -59,7 +67,9 @@ export function RunoutBoardPanel({
                   {communityCards[i] ?? "?"}
                 </div>
               ) : (
-                <CardSlotPicker value={communityCards[i]} used={usedCards} onChange={(c) => onCardChange(i, c)} />
+                <div className={submitting ? "pointer-events-none opacity-50" : undefined}>
+                  <CardSlotPicker value={communityCards[i]} used={usedCards} onChange={(c) => handleCardChange(i, c)} />
+                </div>
               )}
             </div>
           );
