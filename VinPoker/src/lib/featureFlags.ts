@@ -430,6 +430,16 @@ export const FEATURES = {
    */
   trackerFeltV2: false,
   /**
+   * Owner-recorded action sounds for the tracker (operator console + /live viewer).
+   * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the
+   * owner's MP3 clips (public/sounds/tracker/, see LICENSES.md there); the operator
+   * console gains action sounds (today it is silent) + a mute toggle sharing the
+   * viewer's `tracker_sound_muted` localStorage key; bet/call/raise/all_in keep the
+   * existing poker-bet.mp3. OFF (default): the sound engine's MP3 mapping and both
+   * surfaces' audio behavior are byte-identical to today (operator stays silent).
+   */
+  trackerActionSounds: false,
+  /**
    * "Hoàn tác cả vòng" (street rollback) for the operator console: rolls back a SENT
    * flop/turn/river — deletes all of that street's actions server-side (the existing
    * delete_last_action, one per action, each mirrored by one local undo pop), THEN

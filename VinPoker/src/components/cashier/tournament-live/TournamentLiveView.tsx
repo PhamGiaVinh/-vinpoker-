@@ -643,8 +643,14 @@ export function TournamentLiveView({
     const prev = prevBoardCountRef.current;
     prevBoardCountRef.current = count;
     if (soundMuted || prev === null || count <= prev) return;
-    if (FEATURES.liveTableFx) {
-      // flop riffles in (deal_flop = 3 bursts), turn/river = a single card.
+    // C4 (trackerActionSounds): a street change means the finished street's bets were
+    // gathered — play the owner's pot-collect clip before the deal. The prev-count
+    // guard above IS the dedupe (fires once per board growth; polling echoes and
+    // re-renders keep count unchanged and return early).
+    if (FEATURES.trackerActionSounds) playPokerLiveSound("pot_collect");
+    if (FEATURES.liveTableFx || FEATURES.trackerActionSounds) {
+      // flop riffles in (deal_flop = 3 bursts), turn/river = a single card — with
+      // trackerActionSounds on, these kinds resolve to the owner's MP3 clips.
       playPokerLiveSound(count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop");
     } else {
       playPokerLiveSound("deal");
