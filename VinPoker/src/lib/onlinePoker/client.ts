@@ -60,6 +60,11 @@ export function newIdemKey(): string {
 
 export const bodyClaimDaily = () => ({ op: 'claim_daily_chips' as const });
 
+/** Keep-warm ping — the edge answers {ok:true} right after auth, zero Postgres IO. Until the
+ *  ping op is deployed the edge zod-rejects it (400) — callers MUST swallow errors; the
+ *  rejected request still warms the isolate (auth + parse run before the reject). */
+export const bodyPing = () => ({ op: 'ping' as const });
+
 export const bodyGetHole = (handId: string) => ({ op: 'get_my_hole_cards' as const, handId });
 
 export const bodyLegalActions = (handId: string) => ({ op: 'legal_actions' as const, handId });
@@ -129,6 +134,9 @@ async function invokeEdge<T>(body: Record<string, unknown>): Promise<T> {
 export const onlinePokerClient = {
   /** Daily play-chip grant (idempotent per UTC day, server-side). */
   claimDailyChips: () => invokeEdge<RpcOutcome>(bodyClaimDaily()),
+
+  /** Keep-warm ping (see bodyPing). Fire-and-forget; callers swallow all errors. */
+  ping: () => invokeEdge<{ ok: true }>(bodyPing()),
 
   /** The caller's OWN hole cards for a hand (deny-all secrets, auth.uid()-scoped). */
   getMyHoleCards: (handId: string) => invokeEdge<RpcOutcome>(bodyGetHole(handId)),
@@ -406,18 +414,24 @@ export async function loadLegalActionsLive(handId: string): Promise<WireLegalAct
  * 4s) and the client polls every ~2.5s, so it is always observed at least once; the
  * ~8s result dwell then holds it across the next deal. 'voided' stays excluded.
  */
-export async function loadHandStateLive(tableId: string): Promise<WirePublicHandState | null> {
+export async function loadHandStateLive(
+  tableId: string,
+): Promise<{ wire: WirePublicHandState; stateVersion: number } | null> {
   if (!RUNTIME_LIVE) throw new RuntimeNotLiveError();
+  // state_version = the CAS counter op_submit_action bumps on EVERY action; carried out so
+  // the hook's high-water snapshot guard can drop stale poll responses (fast-path ordering).
+  // Whole-row RLS (op_hands_select USING(true)) — spectators read it identically.
   const { data, error } = await rails()
     .from('online_poker_hands')
-    .select('state')
+    .select('state, state_version')
     .eq('table_id', tableId)
     .in('status', ['dealing', 'betting', 'complete'])
     .order('hand_no', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new OnlinePokerError('hand_load_failed', error.message);
-  return (data?.state as WirePublicHandState) ?? null;
+  if (!data?.state) return null;
+  return { wire: data.state as WirePublicHandState, stateVersion: Number(data.state_version ?? 0) };
 }
 
 // ── wire -> component view-model mapping (pure) ───────────────────────────────

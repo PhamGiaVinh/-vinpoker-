@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAuth } from '@/hooks/useAuth';
 import { FEATURES } from '@/lib/featureFlags';
 import { RUNTIME_LIVE, type ActionType, type PublicHandResult, type PublicHandView, type PublicSeatView } from '@/lib/onlinePoker/types';
-import type { RpcOutcome } from '@/lib/onlinePoker/wire';
+import type { RpcOutcome, SubmitActionResult } from '@/lib/onlinePoker/wire';
 import { useTableHand, useTableMeta } from '@/lib/onlinePoker/useOnlinePoker';
 import type { LiveSeat, LiveTableMeta } from '@/lib/onlinePoker/client';
 import { loadBuyinsLive, type BuyinSummary } from '@/lib/onlinePoker/client';
@@ -32,7 +32,7 @@ import { BustoutDialog } from '@/components/poker/BustoutDialog';
 import { actionToSound } from '@/lib/onlinePoker/pokerSounds';
 import { playPokerLiveSound, markPokerSoundGesture, isPokerSoundMuted, setPokerSoundMuted } from '@/lib/pokerLiveSound';
 import { readImmersivePref, writeImmersivePref, requestFullscreenBestEffort, exitFullscreenBestEffort } from '@/lib/onlinePoker/immersive';
-import { iAmInLiveHand as computeIAmInLiveHand } from '@/lib/onlinePoker/tableState';
+import { iAmInLiveHand as computeIAmInLiveHand, classifySubmitResult } from '@/lib/onlinePoker/tableState';
 import { readFeltSkin, writeFeltSkin, type FeltSkin } from '@/lib/onlinePoker/feltSkin';
 import { ChevronLeft, Crown, LogIn, Volume2, VolumeX, Maximize2, Minimize2, Palette, Settings } from 'lucide-react';
 
@@ -128,7 +128,7 @@ const RESULT_DWELL_MS = 8000;
 export default function OnlinePokerTable() {
   const { tableId = '' } = useParams();
   const { user } = useAuth();
-  const { hand, seats, mySeatNo, myUserId, hostUserId, amIHost, legal, loading, dealSignal, dealSeats, refresh, actions } = useTableHand(tableId);
+  const { hand, seats, mySeatNo, myUserId, hostUserId, amIHost, legal, loading, dealSignal, dealSeats, refresh, applyServerView, actions } = useTableHand(tableId);
   const table = useTableMeta(tableId);
 
   const [sitSeat, setSitSeat] = useState<number | null>(null);
@@ -408,9 +408,23 @@ export default function OnlinePokerTable() {
     markPokerSoundGesture();
     playPokerLiveSound(actionToSound(a.type));
     try {
-      const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as { ok: boolean; code?: string };
-      if (res && res.ok === false) toast.error(vn(res.code));
-      else refresh();
+      const res = (await actions.submitAction({ handId: hand.handId, seat: mySeatNo, type: a.type, amount: a.amount })) as SubmitActionResult;
+      const kind = classifySubmitResult(res);
+      if (kind === 'rejected') {
+        toast.error(vn((res as { code?: string }).code));
+      } else if (kind === 'fastpath') {
+        // Fast-path: the edge already returned the engine's post-action state — render it NOW
+        // (one round trip, NOT optimistic: it is the server's own output, ordered against
+        // in-flight polls by the hook's high-water guard). refresh() converges seats/host in
+        // the background without blocking the felt.
+        const ok = res as Extract<SubmitActionResult, { ok: true }>;
+        applyServerView(ok.view, ok.stateVersion);
+        refresh();
+      } else {
+        // 'refetch' fallback (deployed edge variant without `view` / unexpected shape):
+        // the old refresh path — never a dead-end.
+        refresh();
+      }
     } catch { toast.error('Gửi hành động thất bại, thử lại.'); }
     finally { setSubmitting(false); }
   };

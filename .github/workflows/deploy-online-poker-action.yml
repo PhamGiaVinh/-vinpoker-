@@ -1,0 +1,65 @@
+name: Deploy online-poker-action edge (owner-gated)
+
+# Manual trigger ONLY — never runs on push. Redeploys the ONE online-poker game edge
+# function from main. Added for the action fast-path wave: the redeploy picks up the
+# keep-warm `op: "ping"` (client already ships it fire-and-forget and swallows the 400
+# until this runs). Same proven pattern as repair-wave-apply: supabase CLI in CI with
+# GitHub Secrets; NO db push, NO deploy_db, NO schema/migration writes — function only.
+#
+# HOW TO RUN (owner): Actions → "Deploy online-poker-action edge" → Run workflow → Run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to confirm redeploying online-poker-action from main'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+    steps:
+      - name: Gate — require explicit confirmation
+        if: inputs.confirm != 'DEPLOY'
+        run: |
+          echo "Refusing: type DEPLOY in the confirm input to proceed."
+          exit 1
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Link Supabase project
+        working-directory: ./VinPoker
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: "Before: deployed online-poker-action version"
+        working-directory: ./VinPoker
+        run: supabase functions list | grep -E 'online-poker-action|NAME' || true
+
+      - name: "Deploy online-poker-action — ONLY this function"
+        working-directory: ./VinPoker
+        run: supabase functions deploy online-poker-action
+
+      - name: "After: version bump + deployed-source proof (ping op present)"
+        working-directory: ./VinPoker
+        run: |
+          supabase functions list | grep -E 'online-poker-action|NAME'
+          mkdir -p /tmp/dl && cd /tmp/dl
+          supabase functions download online-poker-action --project-ref "$SUPABASE_PROJECT_REF"
+          grep -q 'z.literal("ping")' supabase/functions/online-poker-action/index.ts \
+            && echo "PROOF: deployed source contains the keep-warm ping op" \
+            || { echo "FAIL: deployed source does NOT contain the ping op"; exit 1; }
