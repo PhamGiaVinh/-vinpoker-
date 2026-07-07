@@ -42,6 +42,7 @@ export default function AddDealerDialog({
   const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [shiftPreference, setShiftPreference] = useState(""); // "" = linh hoạt (mặc định)
   const [manualBhxh, setManualBhxh] = useState("");
   const [manualTax, setManualTax] = useState("");
   const [saving, setSaving] = useState(false);
@@ -58,6 +59,7 @@ export default function AddDealerDialog({
     setOtMultiplier("1.5");
     setPhone("");
     setNotes("");
+    setShiftPreference("");
     setManualBhxh("");
     setManualTax("");
   };
@@ -97,6 +99,10 @@ export default function AddDealerDialog({
         joined_date: new Date().toISOString().split("T")[0],
         status: "active",
       };
+      // Ca ưa thích (auto-fill xếp lịch). Cột dealers.shift_preference chỉ tồn tại
+      // sau khi owner apply migration 20261220000000 → chỉ đính khi đã chọn, để việc
+      // thêm dealer bình thường không tham chiếu cột lúc chưa apply.
+      if (shiftPreference) insertPayload.shift_preference = shiftPreference;
       // Manual BHXH/tax override (flag-gated; columns exist only after the owner-gated apply).
       if (FEATURES.manualPayrollDeductions) {
         insertPayload.manual_bhxh_vnd = manualBhxh.trim() === "" ? null : Math.max(0, parseInt(manualBhxh, 10) || 0);
@@ -172,6 +178,21 @@ export default function AddDealerDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* ── Ca ưa thích (dùng cho tự động xếp lịch) ── */}
+          <div>
+            <Label>Ca ưa thích <span className="text-muted-foreground font-normal">(cho tự động xếp lịch)</span></Label>
+            <Select value={shiftPreference || undefined} onValueChange={setShiftPreference}>
+              <SelectTrigger className="bg-card border-border text-foreground">
+                <SelectValue placeholder="Linh hoạt (mặc định)" />
+              </SelectTrigger>
+              <SelectContent className="bg-card border-border text-foreground">
+                <SelectItem value="som">Ca sớm (sáng)</SelectItem>
+                <SelectItem value="muon">Ca muộn (tối)</SelectItem>
+                <SelectItem value="linh_hoat">Linh hoạt</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* ── Payroll Fields ── */}

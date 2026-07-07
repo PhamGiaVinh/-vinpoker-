@@ -27,6 +27,7 @@ interface DealerData {
   standard_hours_per_shift: number | null;
   ot_multiplier: number | null;
   notes: string | null;
+  shift_preference?: string | null;
   manual_bhxh_vnd?: number | null;
   manual_tax_vnd?: number | null;
 }
@@ -49,6 +50,7 @@ export default function DealerAdjustDialog({
   const [standardHours, setStandardHours] = useState("8");
   const [otMultiplier, setOtMultiplier] = useState("1.5");
   const [notes, setNotes] = useState("");
+  const [shiftPreference, setShiftPreference] = useState(""); // "" = linh hoạt (mặc định)
   // Manual BHXH/tax override ("" = auto-compute, "0" = none, ">0" = exact). Gated by flag.
   const [manualBhxh, setManualBhxh] = useState("");
   const [manualTax, setManualTax] = useState("");
@@ -71,6 +73,7 @@ export default function DealerAdjustDialog({
     setStandardHours(String(dealer.standard_hours_per_shift ?? 8));
     setOtMultiplier(String(dealer.ot_multiplier ?? 1.5));
     setNotes(dealer.notes ?? "");
+    setShiftPreference(dealer.shift_preference ?? "");
     setManualBhxh(dealer.manual_bhxh_vnd == null ? "" : String(dealer.manual_bhxh_vnd));
     setManualTax(dealer.manual_tax_vnd == null ? "" : String(dealer.manual_tax_vnd));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,6 +169,10 @@ export default function DealerAdjustDialog({
         ot_multiplier: otMultiplierSave,
         notes: notes || null,
       };
+      // Ca ưa thích (auto-fill xếp lịch). Cột dealers.shift_preference chỉ tồn tại
+      // sau khi owner apply migration 20261220000000 → chỉ đính khi đã chọn để việc
+      // sửa dealer bình thường không tham chiếu cột lúc chưa apply.
+      if (shiftPreference) payload.shift_preference = shiftPreference;
       // Manual BHXH/tax override (flag-gated; columns only exist after the owner-gated apply).
       // "" => NULL (auto-compute); a number (incl. 0) => fixed override.
       if (FEATURES.manualPayrollDeductions) {
@@ -276,6 +283,19 @@ export default function DealerAdjustDialog({
                   <SelectItem value="A">A</SelectItem>
                   <SelectItem value="B">B</SelectItem>
                   <SelectItem value="C">C</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Ca ưa thích (dùng cho tự động xếp lịch) */}
+            <div>
+              <Label className="text-xs">Ca ưa thích <span className="text-muted-foreground">(cho tự động xếp lịch)</span></Label>
+              <Select value={shiftPreference || undefined} onValueChange={setShiftPreference}>
+                <SelectTrigger><SelectValue placeholder="Linh hoạt (mặc định)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="som">Ca sớm (sáng)</SelectItem>
+                  <SelectItem value="muon">Ca muộn (tối)</SelectItem>
+                  <SelectItem value="linh_hoat">Linh hoạt</SelectItem>
                 </SelectContent>
               </Select>
             </div>
