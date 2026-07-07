@@ -26,7 +26,7 @@ import {
   nextActionOrderFrom,
   type ResumeActionRow,
 } from "./resumeHand";
-import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
+import { computePotBreakdown, contributionsFromActions, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { actorView } from "@/lib/tracker-poker/handFlow";
 import {
   actorToAct,
@@ -48,7 +48,7 @@ import {
 import { FEATURES } from "@/lib/featureFlags";
 import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
 import { computeRankShifts } from "@/lib/tracker-poker/rankShift";
-import { survivorsAfterHand } from "./postHand";
+import { clearBettingState, survivorsAfterHand } from "./postHand";
 import {
   deriveTrackerWorkflowState,
   isActionState,
@@ -392,7 +392,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (label !== undefined) setSyncLabel(label);
   }, []);
 
-  const resetHand = useCallback(() => {
+  const resetHand = useCallback((opts?: { restoreStacks?: boolean }) => {
     setCurrentStreet("preflop");
     setActions([]);
     setCommunityCards([null, null, null, null, null]);
@@ -416,6 +416,11 @@ export function useStandaloneHandInput(tournamentId: string) {
     playedSoundsRef.current.clear(); // C4: fresh dedupe window per hand
     setSyncPhase("idle");
     setSyncLabel(null);
+    // BUGFIX: the previous hand's betting state MUST NOT leak into the next hand
+    // (stale total_bet → inflated side_pots on submit + ghost Main/Side pills on a
+    // not-yet-started felt). restoreStacks is true ONLY from handleVoid — see
+    // clearBettingState's doc for why any other restore would be wrong.
+    setPlayers((prev) => clearBettingState(prev, opts?.restoreStacks === true));
     if (tableId) {
       supabase
         .rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId })
@@ -1929,6 +1934,17 @@ export function useStandaloneHandInput(tournamentId: string) {
         starting_stack: p.starting_stack,
         current_stack: p.current_stack,
       }));
+      // BUGFIX: derive the submitted side_pots from the SAME action stream the server
+      // recomputes from (reconcileSidePots runs contributionsFromActions over the
+      // payload's actions). The old source — players[].total_bet — could drift from the
+      // actions (stale carryover) and trip "side_pots không khớp" in enforce mode.
+      // `actions` is the CURRENT hand only (reset per hand); the on-felt potBreakdown
+      // display memo is unchanged.
+      const submitBreakdown = computePotBreakdown(
+        contributionsFromActions(
+          actions.map((a) => ({ player_id: a.player_id, action_type: a.action_type, action_amount: a.amount }))
+        )
+      );
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildRecordHandBody({
           tournamentId,
@@ -1940,7 +1956,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           players: edgePlayers,
           endingStacks,
           playerHoleCards,
-          sidePots: toSidePotsJson(potBreakdown),
+          sidePots: toSidePotsJson(submitBreakdown),
           actions: actions.map((a) => ({
             player_id: a.player_id,
             action_type: a.action_type,
@@ -2007,7 +2023,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       setLastHandId(null);
       setHandId(null);
       setHandStarted(false);
-      resetHand();
+      // Void is the ONLY path that restores stacks: the server put every chip back to
+      // the pre-hand state, so the felt mirrors it (see resetHand's restoreStacks note).
+      resetHand({ restoreStacks: true });
     } catch (e: any) {
       toast.error(e.message);
     } finally {

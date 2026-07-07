@@ -419,6 +419,17 @@ export const FEATURES = {
    */
   trackerTabletLayout: false,
   /**
+   * Felt UI v2 (owner "fix UI UX toàn bộ" wave): bigger seat pods on the RICH operator
+   * felt — 44px avatars (was 32px), full player names on up to 2 lines (no more
+   * "Adrian …" ellipsis), wider pod clamps, re-tuned seat anchors so the taller pods
+   * still fit the oval — AND the owner's Sakura card back (gold 5-petal medallion on a
+   * wine lattice, from vinpoker-card-back.html) replacing the guilloché design in the
+   * SHARED CardBack (operator hole backs + /live viewer + hand feed change together —
+   * owner-approved; colors ride the --poker-card-* tokens so dark↔warm still works).
+   * OFF (default): pods AND card back byte-identical to today. Presentational only.
+   */
+  trackerFeltV2: false,
+  /**
    * Owner-recorded action sounds for the tracker (operator console + /live viewer).
    * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the
    * owner's MP3 clips (public/sounds/tracker/, see LICENSES.md there); the operator

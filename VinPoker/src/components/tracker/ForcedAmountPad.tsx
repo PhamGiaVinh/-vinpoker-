@@ -25,7 +25,9 @@ export function ForcedAmountPad({
   const remaining = stack - delta;
   const overStack = delta > stack; // typed more than this seat physically has left
   const valid = entered > committedThisStreet && !overStack; // must raise over what's in, within stack
-  const belowMin = valid && minTotal != null && entered <= minTotal; // soft typo warning
+  // BUGFIX: strict < — entering EXACTLY the minimum raise-to (e.g. 400k over a 200k BB)
+  // is a LEGAL min-raise and must not trigger the "dưới mức tố tối thiểu" warning.
+  const belowMin = valid && minTotal != null && entered < minTotal; // soft typo warning
 
   const press = (k: string) => {
     setEntered((prev) => {
