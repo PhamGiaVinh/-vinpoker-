@@ -21,6 +21,9 @@ export interface DealerRecord {
   phone: string | null;
   telegram_user_id: number | null;
   telegram_username: string | null;
+  /** Auto-fill shift preference: som | muon | linh_hoat. null = flexible.
+   *  Column added by migration 20261220000000 (owner-applied). */
+  shift_preference: string | null;
 }
 
 export interface DealerScore {
@@ -91,7 +94,7 @@ export function useAllDealers(clubIds: string[]): {
       const { data, error } = await supabase
         .from("dealers")
         .select(
-          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username" +
+          "id, club_id, full_name, tier, status, employment_type, hourly_rate_vnd, base_rate_vnd, monthly_salary_vnd, standard_hours_per_shift, ot_multiplier, joined_date, notes, phone, telegram_user_id, telegram_username, shift_preference" +
           (FEATURES.manualPayrollDeductions ? ", manual_bhxh_vnd, manual_tax_vnd" : "")
         )
         .in("club_id", clubIds)

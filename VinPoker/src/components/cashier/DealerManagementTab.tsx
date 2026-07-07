@@ -14,6 +14,7 @@ import AddDealerDialog from "./AddDealerDialog";
 import DealerAdjustDialog from "./DealerAdjustDialog";
 import { BulkDealerImportDialog } from "./BulkDealerImportDialog";
 import { BulkSalaryDialog } from "./BulkSalaryDialog";
+import { BulkShiftPreferenceDialog } from "./BulkShiftPreferenceDialog";
 import { FEATURES } from "@/lib/featureFlags";
 import { toast } from "sonner";
 
@@ -331,6 +332,12 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                 onDone={refetchDealers}
               />
             )}
+            {activeClubId && (
+              <BulkShiftPreferenceDialog
+                dealers={dealers.filter((d) => d.club_id === activeClubId)}
+                onDone={refetchDealers}
+              />
+            )}
           </div>
 
           {/* Table */}
@@ -398,8 +405,13 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                           rank
                         )}
                       </div>
-                      <div className="col-span-3 text-white truncate">
-                        {dealer.full_name}
+                      <div className="col-span-3 text-white truncate flex items-center gap-1.5">
+                        <span className="truncate">{dealer.full_name}</span>
+                        {(dealer.shift_preference === "som" || dealer.shift_preference === "muon") && (
+                          <span className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0 text-[10px] text-primary">
+                            {dealer.shift_preference === "som" ? "Sớm" : "Muộn"}
+                          </span>
+                        )}
                       </div>
                       <div className="col-span-1">
                         <Badge
