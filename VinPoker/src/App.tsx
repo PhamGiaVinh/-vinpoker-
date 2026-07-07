@@ -63,6 +63,7 @@ const OpsTournamentCockpit = lazy(() => import("./pages/ops/OpsTournamentCockpit
 const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
 const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
 const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
+const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -234,6 +235,7 @@ const App = () => (
                 <Route path="/ops/tables" element={<OpsTables />} />
                 <Route path="/ops/alerts" element={<OpsAlerts />} />
                 <Route path="/ops/more" element={<OpsMore />} />
+                <Route path="/ops/dealer-swing" element={<OpsDealerSwing />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
@@ -296,7 +298,8 @@ const App = () => (
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
                 {/* Floor is device-aware: phones get the mobile /ops UI, desktop gets the full dashboard. */}
                 <Route path="/floor" element={<MobileOperatorRoute to="/ops"><FloorDashboard /></MobileOperatorRoute>} />
-                <Route path="/dealer-swing" element={<DealerSwingDashboard />} />
+                {/* Dealer Swing is device-aware: phones get the mobile /ops/dealer-swing UI, desktop the dashboard. */}
+                <Route path="/dealer-swing" element={<MobileOperatorRoute to="/ops/dealer-swing"><DealerSwingDashboard /></MobileOperatorRoute>} />
                 <Route path="/admin" element={<SuperAdmin />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/media" element={<MediaCenter />} />
