@@ -33,7 +33,18 @@ const FREE_SEATS = new Set([3, 4, 7]);
 const MOVE_REASONS = ["cân bàn", "gãy bàn", "yêu cầu TD"];
 const CHIP_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "⌫"];
 
-export function PlayerActionSheets({ target, onClose }: { target: PlayerTarget | null; onClose: () => void }) {
+export function PlayerActionSheets({
+  target,
+  onClose,
+  pendingNotice,
+}: {
+  target: PlayerTarget | null;
+  onClose: () => void;
+  /** Khi màn chủ chạy DỮ LIỆU THẬT nhưng hành động CHƯA nối: mọi nút con (Thông tin/Chuyển/
+   *  Sửa chip/Phiếu/Loại) chỉ toast notice này và đóng — KHÔNG mở các sheet con (chúng còn
+   *  scaffold mẫu, không được hiện như thật). Bỏ trống = hành vi mock cũ "(bản mẫu)". */
+  pendingNotice?: string;
+}) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
   const [moveReason, setMoveReason] = useState(MOVE_REASONS[0]);
@@ -58,6 +69,15 @@ export function PlayerActionSheets({ target, onClose }: { target: PlayerTarget |
     toast.success(msg + " (bản mẫu)");
     close();
   };
+  /** Điều hướng nút con: pendingNotice set → toast + đóng (không mở sheet con mock). */
+  const act = (next: Step) => {
+    if (pendingNotice) {
+      toast(pendingNotice);
+      close();
+      return;
+    }
+    go(next);
+  };
 
   const chipDisplay = Number(chipValue || "0").toLocaleString("vi-VN");
   const pressKey = (k: string) => {
@@ -80,24 +100,24 @@ export function PlayerActionSheets({ target, onClose }: { target: PlayerTarget |
             <span className="font-mono">{s?.chip}</span> chip · lượt vào #{s?.entryNo ?? 1}
           </div>
           <div className="mt-4 space-y-1.5">
-            <button onClick={() => go("info")} className="ios-press ios-tinted flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+            <button onClick={() => act("info")} className="ios-press ios-tinted flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <User className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-semibold">Thông tin người chơi</span>
             </button>
             <div className="grid grid-cols-2 gap-1.5">
-              <button onClick={() => go("move")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button onClick={() => act("move")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <ArrowRightLeft className="h-5 w-5 shrink-0 text-[#d8bc85]" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Chuyển</span><span className="block text-[11px] text-[#9b8e97]">bàn / ghế</span></span>
               </button>
-              <button onClick={() => go("chip")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button onClick={() => act("chip")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <Coins className="h-5 w-5 shrink-0 text-amber-300" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Sửa chip</span><span className="block text-[11px] text-[#9b8e97]">điều chỉnh</span></span>
               </button>
-              <button onClick={() => go("receipt")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
+              <button onClick={() => act("receipt")} className="ios-press ios-fill flex items-center gap-3 rounded-2xl p-3.5 text-left">
                 <Receipt className="h-5 w-5 shrink-0 text-sky-300" />
                 <span><span className="block text-[15px] font-semibold text-[#f2ece6]">Phiếu</span><span className="block text-[11px] text-[#9b8e97]">xem / in lại</span></span>
               </button>
-              <button onClick={() => go("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300">
+              <button onClick={() => act("bust")} className="ios-press flex items-center gap-3 rounded-2xl bg-rose-500/12 p-3.5 text-left text-rose-300">
                 <UserMinus className="h-5 w-5 shrink-0" />
                 <span><span className="block text-[15px] font-semibold">Loại</span><span className="block text-[11px] opacity-80">bust out</span></span>
               </button>
