@@ -20,9 +20,11 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
   if (!me || me.status === 'empty') return null;
 
   const cards = hand.myHoleCards && hand.myHoleCards.length ? hand.myHoleCards : ['?', '?'];
-  // Same uniform size as the board + opponents (SeatRing) so every in-play card reads EQUAL —
-  // `mc` at ≤6 seats, `sm` at 7–9 max so the crowded table declutters without breaking equality.
-  const cardSize: 'sm' | 'mc' = hand.seats.length >= 7 ? 'sm' : 'mc';
+  // N8-ratio mobile (owner mockup v3): the hero's own cards render LARGE (`lg`, 44×64) and
+  // slightly fanned on the felt's lower-left — deliberately bigger than the board/opponents,
+  // replacing the old everything-equal rule for the hero only. The HUD is mobile-only (sm:hidden),
+  // so this never affects the desktop hero-centre ring seat.
+  const cardSize = 'lg' as const;
   const allin = me.status === 'allin';
   const folded = me.status === 'folded';
   const stack = bb && fmtBB(me.stack, bb) ? `${fmtBB(me.stack, bb)} BB` : fmtChips(me.stack);
@@ -37,10 +39,12 @@ export function HeroHud({ hand, bb }: { hand: PublicHandView; bb?: string }) {
         folded && 'opacity-50',
       )}
     >
-      {/* the hero's two cards — same uniform size as the board + opponents, soft drop shadow */}
-      <div className="flex items-end gap-0.5 origin-bottom-left [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))]">
+      {/* the hero's two big cards, slightly fanned like N8, soft drop shadow */}
+      <div className="flex items-end origin-bottom-left [filter:drop-shadow(0_10px_16px_rgba(0,0,0,0.7))]">
         {cards.map((c, i) => (
-          <PlayingCard key={i} card={c} size={cardSize} reveal={!!c && c !== '?'} />
+          <span key={i} className={i === 0 ? 'inline-block -rotate-[5deg]' : 'inline-block -ml-3 translate-y-[2px] rotate-[6deg]'}>
+            <PlayingCard card={c} size={cardSize} reveal={!!c && c !== '?'} />
+          </span>
         ))}
       </div>
 

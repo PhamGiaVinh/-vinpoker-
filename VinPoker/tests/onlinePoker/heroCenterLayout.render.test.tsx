@@ -77,3 +77,46 @@ describe('online table — desktop/tablet hero-centre layout', () => {
     expect(root.className).toContain('left-2');
   });
 });
+
+// ── N8-ratio mobile felt (owner mockup v3) ─────────────────────────────────────────────
+// The stadium shape + lifted board are CLASS-driven (sm:-reverting) and gated to heroAsHud;
+// pixel geometry is proven by Playwright against /__dev/table — these pins freeze the contract.
+
+describe('online table — N8 stadium mobile felt', () => {
+  it('heroAsHud: stadium radii + lifted board classes present (sm: reverts to the oval)', () => {
+    const { container } = render(<SeatRing hand={hand(9)} bb="50" heroAsHud fill />);
+    const html = container.innerHTML;
+    expect(html).toContain('rounded-[46%_/_21%]');
+    expect(html).toContain('sm:rounded-[48%]');
+    expect(html).toContain('top-[31%]');
+    expect(html).toContain('sm:top-1/2');
+  });
+
+  it('legacy / cinematic (no heroAsHud): keeps the 48% oval and the true-centre board', () => {
+    const { container } = render(<SeatRing hand={hand(6)} bb="50" />);
+    const html = container.innerHTML;
+    expect(html).not.toContain('rounded-[46%_/_21%]');
+    expect(html).not.toContain('top-[31%]');
+    expect(html).toContain('rounded-[48%]');
+  });
+
+  it('HeroHud: hero cards render LARGE (lg) and fanned — N8 rule replaces everything-equal', () => {
+    const { container } = render(<HeroHud hand={hand(9)} bb="50" />);
+    const html = container.innerHTML;
+    expect(html).toContain('h-16 w-11'); // PlayingCard size lg
+    expect(html).toContain('-rotate-[5deg]');
+    expect(html).toContain('rotate-[6deg]');
+  });
+});
+
+describe('N8 mobile slot map (mockup v3 contract)', () => {
+  it('no opponent slot sits below y=48 — the lower felt belongs to the hero + dock', async () => {
+    const { MOBILE_OPP_SLOTS_6MAX, MOBILE_OPP_SLOTS_9MAX, MOBILE_HERO_ANCHOR, MOBILE_POT_CENTER } =
+      await import('@/components/poker/mobileTableLayout');
+    expect(Math.max(...MOBILE_OPP_SLOTS_9MAX.map((s) => s.y))).toBeLessThanOrEqual(48);
+    expect(Math.max(...MOBILE_OPP_SLOTS_6MAX.map((s) => s.y))).toBeLessThanOrEqual(48);
+    expect(MOBILE_OPP_SLOTS_9MAX).toHaveLength(8);
+    expect(MOBILE_HERO_ANCHOR).toMatchObject({ x: 18, y: 80 });
+    expect(MOBILE_POT_CENTER).toEqual({ x: 50, y: 38 });
+  });
+});
