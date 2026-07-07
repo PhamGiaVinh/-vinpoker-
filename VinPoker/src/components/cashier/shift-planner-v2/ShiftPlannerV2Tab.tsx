@@ -154,6 +154,18 @@ export default function ShiftPlannerV2Tab({
   const effAssignments = useMemo(() => effectiveDraft?.assignments ?? [], [effectiveDraft]);
   const assignedDealerIds = useMemo(() => new Set(effAssignments.map((a) => a.dealerId)), [effAssignments]);
 
+  // Supply today (dealers who will actually work = active − on-leave) vs total
+  // demand — surfaced on step 1 so the floor requests the right total (a dealer
+  // fills at most one shift/day, so total demand is summed across windows).
+  const supplyToday = useMemo(() => {
+    if (!data) return { active: 0, off: 0, available: 0 };
+    const off = new Set(data.availability.filter((a) => a.leaveRequested).map((a) => a.dealerId));
+    const active = data.dealers.filter((d) => d.status === "active");
+    const offActive = active.filter((d) => off.has(d.id)).length;
+    return { active: active.length, off: offActive, available: active.length - offActive };
+  }, [data]);
+  const totalDemand = useMemo(() => adjustedTemplates.reduce((s, t) => s + t.needCount, 0), [adjustedTemplates]);
+
   // ── Chia-final validation inputs (effective need + day off-list + active roster)
   const needByTemplateEff = useMemo(() => {
     const m: Record<string, number> = {};
@@ -337,6 +349,19 @@ export default function ShiftPlannerV2Tab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, adjustedTemplates, workDate, baseDraft, overrides]
   );
+
+  // Inline per-shift demand stepper (Bước 1) — set "số người cần" for a template
+  // directly on the create screen (matches the approved mockup B1). Editing demand
+  // invalidates the current working draft, same as the DemandDialog "Áp dụng".
+  const bumpNeed = (templateId: string, base: number, delta: number) => {
+    setDemandOverrides((p) => {
+      const cur = p[templateId] ?? base;
+      return { ...p, [templateId]: Math.max(0, Math.min(30, cur + delta)) };
+    });
+    setOverrides(null);
+    setSavedRunId(null);
+    setFinalShortages([]);
+  };
 
   // ── Auto-fill ("⚡ Tự động xếp", Patch 3) ────────────────────────────────────
   // Re-solve honouring per-dealer shift_preference + the floor's chia-final pins,
@@ -831,24 +856,40 @@ export default function ShiftPlannerV2Tab({
                   </div>
                   <div className="mt-1 text-[12px] text-muted-foreground">
                     {tourCounts[workDate] != null && <>{tourCounts[workDate]} tour trong ngày · </>}
-                    {data.dealers.filter((d) => d.status === "active").length} dealer hoạt động ·{" "}
-                    {data.availability.filter((a) => a.leaveRequested).length} xin nghỉ
+                    <b className="text-foreground">{supplyToday.available}</b> dealer sẽ đi làm
+                    <span className="text-[11px]"> ({supplyToday.active} hoạt động − {supplyToday.off} xin nghỉ)</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-                    {adjustedTemplates.map((t) => (
-                      <span key={t.id} className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
-                        {t.label}: cần <b className="text-foreground">{t.needCount}</b>
-                        {(finalDesignations[t.id]?.length ?? 0) > 0 && (
-                          <> · <span className="text-primary">📌 {finalDesignations[t.id].length} chia final</span></>
-                        )}
+                  <div className="mt-4 mx-auto max-w-md space-y-1.5 text-left">
+                    <div className="text-center text-[11px] font-semibold text-muted-foreground">
+                      Số người cần cho mỗi ca
+                    </div>
+                    {adjustedTemplates.map((t) => {
+                      const base = data.templates.find((x) => x.id === t.id)?.needCount ?? t.needCount;
+                      const finalN = finalDesignations[t.id]?.length ?? 0;
+                      return (
+                        <div key={t.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5">
+                          <span className="flex-1 truncate text-[12px] font-medium text-foreground">{t.label}</span>
+                          {finalN > 0 && <span className="text-[10px] text-primary">📌 {finalN} chia final</span>}
+                          <div className="flex items-center overflow-hidden rounded-md border border-border">
+                            <button type="button" aria-label="Bớt người" onClick={() => bumpNeed(t.id, base, -1)} className="h-7 w-7 text-base font-bold text-primary hover:bg-primary/10">−</button>
+                            <span className="w-9 text-center font-mono text-[13px] tabular-nums text-foreground">{t.needCount}</span>
+                            <button type="button" aria-label="Thêm người" onClick={() => bumpNeed(t.id, base, 1)} className="h-7 w-7 text-base font-bold text-primary hover:bg-primary/10">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-[12px] ${totalDemand > supplyToday.available ? "bg-destructive/10 text-destructive" : "bg-muted/40 text-muted-foreground"}`}>
+                      <span>Tổng nhu cầu đang nhập</span>
+                      <span className="font-bold">
+                        {totalDemand} lượt{totalDemand > supplyToday.available ? ` · vượt quân số (${supplyToday.available})` : ` / ${supplyToday.available} dealer`}
                       </span>
-                    ))}
+                    </div>
                     <button
                       type="button"
                       onClick={() => setDemandOpen(true)}
-                      className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-primary hover:bg-primary/10"
+                      className="w-full pt-0.5 text-[11px] text-primary hover:underline"
                     >
-                      ✎ Sửa nhu cầu
+                      📌 Chỉ định dealer chia final / sửa chi tiết
                     </button>
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

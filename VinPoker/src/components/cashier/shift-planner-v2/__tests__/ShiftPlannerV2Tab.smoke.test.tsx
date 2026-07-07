@@ -37,6 +37,9 @@ describe("ShiftPlannerV2Tab (smoke, mock mode)", () => {
     // Mock data auto-fills a draft → step 1 shows the "Đã có nháp" state + CTA
     expect((await screen.findAllByText(/Tạo nháp AI|Tạo lại nháp AI/)).length).toBeGreaterThan(0);
 
+    // Step 1 shows the inline per-shift demand steppers (matches mockup B1)
+    expect(await screen.findByText("Số người cần cho mỗi ca")).toBeInTheDocument();
+
     // Week strip renders 7 day chips with tour counts (mock demo values)
     expect((await screen.findAllByText(/tour ·/)).length).toBeGreaterThan(0);
 
@@ -58,7 +61,7 @@ describe("ShiftPlannerV2Tab (smoke, mock mode)", () => {
   it("demand dialog renders the chia-final designation checkbox (Patch 2)", async () => {
     render(<ShiftPlannerV2Tab clubIds={["club-1"]} clubs={[{ id: "club-1", name: "CLB Demo" }]} />);
 
-    fireEvent.click(await screen.findByText("✎ Sửa nhu cầu"));
+    fireEvent.click(await screen.findByText("📌 Chỉ định dealer chia final / sửa chi tiết"));
     expect(await screen.findByText("Nhu cầu dealer hôm nay")).toBeInTheDocument();
     // One "Có bàn final / bàn tâm điểm" checkbox per template row
     expect((await screen.findAllByText("Có bàn final / bàn tâm điểm")).length).toBeGreaterThan(0);
