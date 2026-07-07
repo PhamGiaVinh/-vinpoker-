@@ -117,6 +117,31 @@ function addPlayerError(code?: string): string {
     default: return code ? `Thêm người thất bại (${code})` : "Thêm người thất bại";
   }
 }
+/** Copy VERBATIM từ OpenTableDialog.mapError. */
+function openTableError(code?: string): string {
+  switch (code) {
+    case "unauthorized": return "Bạn cần đăng nhập lại.";
+    case "actor_not_allowed": return "Không có quyền mở bàn cho CLB này.";
+    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
+    case "table_number_taken": return "Số bàn này đã tồn tại — chọn số khác.";
+    case "invalid_max_seats": return "Số ghế không hợp lệ (2–10).";
+    case "invalid_table_number": return "Số bàn không hợp lệ.";
+    default: return code ? `Mở bàn thất bại (${code})` : "Mở bàn thất bại";
+  }
+}
+/** Copy VERBATIM từ CloseTableDialog.mapError (kèm need/have cho insufficient_capacity). */
+function closeTableError(res: { error?: string; need?: number; have?: number } | null, raw?: string): string {
+  const code = res?.error ?? raw;
+  switch (code) {
+    case "unauthorized": return "Bạn cần đăng nhập lại.";
+    case "actor_not_allowed": return "Không có quyền đóng bàn cho CLB này.";
+    case "tournament_not_open": return "Giải đã kết thúc/huỷ.";
+    case "table_not_found": return "Không tìm thấy bàn.";
+    case "insufficient_capacity": return `Không đủ ghế trống (cần ${res?.need ?? "?"}, có ${res?.have ?? "?"}) — mở thêm bàn trước khi đóng.`;
+    default: return code ? `Đóng bàn thất bại (${code})` : "Đóng bàn thất bại";
+  }
+}
+type CloseDrawMode = "redraw_balanced" | "fill_lowest_table";
 
 export default function OpsTables() {
   const navigate = useNavigate();
@@ -221,6 +246,61 @@ export default function OpsTables() {
     }
   }, [addTable, tourId, addSeat, addName, floor]);
 
+  // ── Floor-A3: Mở bàn → open_tournament_table (gate floorTableOps) ──
+  const [openTableOpen, setOpenTableOpen] = useState(false);
+  const [newTableNo, setNewTableNo] = useState("");
+  const [newMaxSeats, setNewMaxSeats] = useState(9);
+  const [openBusy, setOpenBusy] = useState(false);
+  const openBusyRef = useRef(false);
+  const submitOpenTable = useCallback(async () => {
+    if (!tourId || newMaxSeats < 2 || newMaxSeats > 10) return;
+    if (openBusyRef.current) return;
+    openBusyRef.current = true; setOpenBusy(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("open_tournament_table", {
+        p_tournament_id: tourId,
+        p_table_number: newTableNo.trim() ? Number(newTableNo) : null,
+        p_max_seats: Number(newMaxSeats) || null,
+      });
+      const res = (data ?? null) as { ok?: boolean; error?: string; table_number?: number; reopened?: boolean } | null;
+      if (error || !res?.ok) { toast.error(openTableError(error ? error.message : res?.error)); return; }
+      toast.success(res.reopened ? `Đã mở lại Bàn ${res.table_number}` : `Đã mở Bàn ${res.table_number}`);
+      setOpenTableOpen(false); setNewTableNo("");
+      floor.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Mở bàn thất bại");
+    } finally {
+      openBusyRef.current = false; setOpenBusy(false);
+    }
+  }, [tourId, newTableNo, newMaxSeats, floor]);
+
+  // ── Floor-A3: Đóng bàn → close_tournament_table (redistribute; gate floorTableOps) ──
+  const [closeTable, setCloseTable] = useState<TableVM | null>(null);
+  const [closeMode, setCloseMode] = useState<CloseDrawMode>("redraw_balanced");
+  const [closeBusy, setCloseBusy] = useState(false);
+  const closeBusyRef = useRef(false);
+  const submitCloseTable = useCallback(async () => {
+    if (!closeTable) return;
+    if (closeBusyRef.current) return;
+    closeBusyRef.current = true; setCloseBusy(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("close_tournament_table", {
+        p_tournament_table_id: closeTable.raw.tt_id,
+        p_draw_mode: closeMode,
+        p_reason: "table_break",
+      });
+      const res = (data ?? null) as { ok?: boolean; error?: string; need?: number; have?: number; moved?: unknown[] } | null;
+      if (error || !res?.ok) { toast.error(closeTableError(res, error?.message)); return; }
+      toast.success(`Đã đóng ${closeTable.name} · chuyển ${res.moved?.length ?? 0} người`);
+      setCloseTable(null);
+      floor.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Đóng bàn thất bại");
+    } finally {
+      closeBusyRef.current = false; setCloseBusy(false);
+    }
+  }, [closeTable, closeMode, floor]);
+
   // ---- guards (thứ tự chuẩn: auth → login → clubs → quyền → data) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản floor/cashier để xem sơ đồ bàn thật." onBack={() => navigate("/")} />;
@@ -308,8 +388,9 @@ export default function OpsTables() {
         <button onClick={() => { setSearchOn((v) => !v); if (searchOn) setQuery(""); }} className="ios-press ios-fill grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#f2ece6]">
           <Search className="h-5 w-5" />
         </button>
-        <button onClick={pending} className="ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]">
-          <Plus className="h-[18px] w-[18px]" /> Bàn
+        <button onClick={() => (ADD_LIVE ? (setNewTableNo(""), setNewMaxSeats(9), setOpenTableOpen(true)) : undefined)} disabled={!ADD_LIVE}
+          className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
+          <Plus className="h-[18px] w-[18px]" /> {ADD_LIVE ? "Bàn" : "Cần bật cờ"}
         </button>
         <button onClick={pending} className="ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]">
           <Shuffle className="h-[18px] w-[18px]" /> Bốc lại
@@ -365,8 +446,9 @@ export default function OpsTables() {
             <button onClick={pending} className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
               <PauseCircle className="h-4 w-4" /> Tạm dừng
             </button>
-            <button onClick={pending} className="ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300">
-              <XCircle className="h-4 w-4" /> Đóng bàn
+            <button onClick={() => { if (!ADD_LIVE) { pending(); return; } const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
+              className="ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300">
+              <XCircle className="h-4 w-4" /> {ADD_LIVE ? "Đóng bàn" : "Cần bật cờ"}
             </button>
           </div>
         </SheetContent>
@@ -405,6 +487,68 @@ export default function OpsTables() {
             {addBusy ? "Đang xếp…" : addSeat != null && addName.trim() ? `Xếp ${addName.trim()} vào ghế ${addSeat}` : "Chọn tên & ghế"}
           </button>
           <div className="mt-2 text-center text-[11px] text-[#7c7079]">nhắc lại: {addName.trim() || "—"} → {addTable?.name} · ghế {addSeat ?? "—"}</div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Floor-A3 — Mở bàn: số bàn (trống=tự đánh số / nhập số bàn đã đóng = mở lại) + số ghế */}
+      <Sheet open={openTableOpen} onOpenChange={(v) => { if (!v && !openBusy) setOpenTableOpen(false); }}>
+        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Mở bàn mới</SheetTitle></SheetHeader>
+          <div className="mt-1 text-center text-[12px] text-[#9b8e97]">nhập đúng số bàn đã đóng để <b>mở lại</b> · không thu tiền</div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <label className="px-1 text-[12px] text-[#9b8e97]">Số bàn (trống = tự động)</label>
+              <input inputMode="numeric" value={newTableNo} onChange={(e) => setNewTableNo(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Tự động"
+                className="ios-fill mt-1 w-full rounded-xl px-3 py-2.5 text-center font-mono text-[16px] text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
+            </div>
+            <div>
+              <label className="px-1 text-[12px] text-[#9b8e97]">Số ghế (2–10)</label>
+              <div className="ios-fill mt-1 flex items-center justify-between rounded-xl px-2 py-1.5">
+                <button onClick={() => setNewMaxSeats((v) => Math.max(2, v - 1))} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]">−</button>
+                <span className="font-mono text-[16px] text-[#f2ece6]">{newMaxSeats}</span>
+                <button onClick={() => setNewMaxSeats((v) => Math.min(10, v + 1))} className="ios-press-sm grid h-8 w-8 place-items-center rounded-lg bg-white/6 text-[#f2ece6]">+</button>
+              </div>
+            </div>
+          </div>
+          <button disabled={openBusy || newMaxSeats < 2 || newMaxSeats > 10} onClick={submitOpenTable}
+            className="ios-press ios-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
+            {openBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {openBusy ? "Đang mở…" : newTableNo ? `Mở Bàn ${newTableNo}` : "Mở bàn (tự đánh số)"}
+          </button>
+        </SheetContent>
+      </Sheet>
+
+      {/* Floor-A3 — Đóng bàn: chọn cách chia người + nhắc lại → close_tournament_table */}
+      <Sheet open={closeTable !== null} onOpenChange={(v) => { if (!v && !closeBusy) setCloseTable(null); }}>
+        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-rose-300">Đóng {closeTable?.name}</SheetTitle></SheetHeader>
+          <div className="mt-1 text-center text-[13px] text-[#9b8e97]">
+            {(closeTable?.seats.length ?? 0) > 0
+              ? <>chuyển <b className="text-[#f2ece6]">{closeTable?.seats.length}</b> người sang ghế trống bàn khác rồi đóng · không hoàn tác</>
+              : "bàn trống — đóng ngay, không phải chuyển ai"}
+          </div>
+          {(closeTable?.seats.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <div className="px-1 text-[12px] text-[#9b8e97]">Cách chia người</div>
+              <div className="mt-1.5 space-y-1.5">
+                {([["redraw_balanced", "Bốc ngẫu nhiên, ưu tiên bàn ít người"], ["fill_lowest_table", "Lấp bàn số nhỏ trước"]] as [CloseDrawMode, string][]).map(([m, label]) => (
+                  <button key={m} onClick={() => setCloseMode(m)}
+                    className={cn("flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[14px]", closeMode === m ? "bg-[#c9a86a]/15 text-[#f2ece6] ring-1 ring-[#c9a86a]/40" : "ios-fill text-[#9b8e97]")}>
+                    <span className={cn("grid h-4 w-4 place-items-center rounded-full border", closeMode === m ? "border-[#c9a86a] bg-[#c9a86a]" : "border-white/25")} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 px-1 text-[11px] text-[#7c7079]">thiếu ghế trống → server chặn, không tự mở bàn (mở thêm bàn trước).</div>
+            </div>
+          )}
+          <button disabled={closeBusy} onClick={submitCloseTable}
+            className="ios-press mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-500/90 py-3.5 text-[15px] font-bold text-white disabled:opacity-40">
+            {closeBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+            {closeBusy ? "Đang đóng…" : (closeTable?.seats.length ?? 0) > 0 ? `Đóng & chuyển ${closeTable?.seats.length} người` : "Đóng bàn"}
+          </button>
         </SheetContent>
       </Sheet>
 
