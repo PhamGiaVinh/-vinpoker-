@@ -147,6 +147,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           onBack={() => hook.setEndingStacks({})}
           submitting={hook.submitting}
           rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
+          diagnostics={FEATURES.trackerWorkflowAids}
         />
       );
     }
@@ -173,6 +174,7 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
           disabled={disabled}
           deadSb={hook.deadSb}
           onToggleDeadSb={hook.handleToggleDeadSb}
+          onRefreshLevel={FEATURES.trackerWorkflowAids ? hook.refreshLiveLevel : undefined}
         />
       );
     }

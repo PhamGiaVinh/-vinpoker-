@@ -39,6 +39,12 @@ interface ReviewHandPanelProps {
    * whose tournament-wide RANK would change once this hand's ending stacks apply.
    */
   rankShifts?: { player_id: string; seat_number: number; display_name: string; before: number; after: number }[];
+  /**
+   * trackerWorkflowAids — when the chip totals don't balance, also show the exact
+   * "Lệch: ±X" amount + a plain hint so the operator can find the wrong ending stack
+   * instead of guessing. Absent/false → the banner is byte-identical.
+   */
+  diagnostics?: boolean;
 }
 
 export function ReviewHandPanel({
@@ -55,6 +61,7 @@ export function ReviewHandPanel({
   onBack,
   submitting,
   rankShifts,
+  diagnostics,
 }: ReviewHandPanelProps) {
   const startTotal = players.reduce((s, p) => s + p.starting_stack, 0);
   const endTotal = players.reduce((s, p) => s + (endingStacks[p.player_id] ?? p.current_stack), 0);
@@ -103,11 +110,23 @@ export function ReviewHandPanel({
       <div className="flex flex-wrap items-center gap-3 text-[11px]">
         <span className={conservationOk ? "text-emerald-400" : "text-rose-400"}>
           {conservationOk ? "✓" : "✗"} Bảo toàn chip: {formatStack(startTotal)} → {formatStack(endTotal)}
+          {diagnostics && !conservationOk && (
+            <strong className="ml-1">
+              (Lệch: {endTotal > startTotal ? "+" : "−"}
+              {formatStack(Math.abs(endTotal - startTotal))})
+            </strong>
+          )}
         </span>
         <span className={winnerDetermined ? "text-emerald-400" : "text-amber-300"}>
           {winnerDetermined ? "✓ Đã có người thắng" : "⚠ Chưa xác định người thắng"}
         </span>
       </div>
+      {diagnostics && !conservationOk && (
+        <div className="text-[10px] text-rose-300">
+          Tổng chip cuối phải bằng tổng chip đầu. Số lệch{" "}
+          {endTotal > startTotal ? "dương (đang thừa)" : "âm (đang thiếu)"} — kiểm tra người có số cuối nhập sai.
+        </div>
+      )}
       {!canSubmit && (
         <div className="text-[10px] text-amber-300">Chưa thể gửi hand — cần bảo toàn chip và xác định người thắng trước.</div>
       )}

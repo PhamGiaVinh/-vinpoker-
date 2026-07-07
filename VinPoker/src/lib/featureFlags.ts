@@ -396,6 +396,18 @@ export const FEATURES = {
    */
   trackerRunoutOneScreen: false,
   /**
+   * Operator workflow aids (small, additive quick-wins from the workflow audit):
+   *  • "Lấy blind mới ngay" — a button that pulls the live tournament-clock level on
+   *    demand (the 25s auto-poll can be stale after a level change) and re-seeds the SB/BB
+   *    inputs, but ONLY when no blind has been posted yet this hand (never mutates posted
+   *    amounts). Reuses the existing get_tournament_clock read.
+   *  • Chip-conservation DIAGNOSTIC — when the review's start/end totals don't match, the
+   *    banner also shows the exact "Lệch: ±X" amount + a plain hint, so the operator can
+   *    find the wrong ending stack instead of guessing.
+   * OFF (default): neither surfaces (byte-identical). No DB/Edge change; operator-only.
+   */
+  trackerWorkflowAids: false,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented

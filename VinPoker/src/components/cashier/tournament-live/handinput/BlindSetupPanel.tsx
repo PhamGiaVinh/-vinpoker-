@@ -56,6 +56,12 @@ interface BlindSetupPanelProps {
    */
   provenance?: string | null;
   onPostBoth?: (() => void) | null;
+  /**
+   * trackerWorkflowAids — "Lấy blind mới ngay": pull the live clock level on demand (the
+   * 25s auto-poll may be stale after a level change) and re-seed the unposted SB/BB.
+   * Absent → not rendered (byte-identical).
+   */
+  onRefreshLevel?: (() => void) | null;
 }
 
 function seatLabel(players: BlindSetupPlayer[], seat: number | null): string {
@@ -143,6 +149,7 @@ export function BlindSetupPanel({
   onToggleDeadSb,
   provenance,
   onPostBoth,
+  onRefreshLevel,
 }: BlindSetupPanelProps) {
   const sbPlayer = players.find((p) => p.seat_number === sbSeat);
   const bbPlayer = players.find((p) => p.seat_number === bbSeat);
@@ -155,9 +162,21 @@ export function BlindSetupPanel({
     <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-card p-3.5">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold uppercase tracking-wide text-amber-300">Thiết lập blind</h3>
-        <div className="text-xs text-muted-foreground">
-          {levelNumber != null ? `Level ${levelNumber}` : "Manual"}
-          {ante > 0 && <span className="ml-2">· Ante {formatStack(ante)}</span>}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {onRefreshLevel && !sbPosted && !bbPosted && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onRefreshLevel()}
+              className="rounded-md border border-amber-500/40 px-2 py-1 text-[11px] font-semibold text-amber-300 transition-colors hover:border-amber-400/70 disabled:opacity-40"
+            >
+              ↻ Lấy blind mới
+            </button>
+          )}
+          <span>
+            {levelNumber != null ? `Level ${levelNumber}` : "Manual"}
+            {ante > 0 && <span className="ml-2">· Ante {formatStack(ante)}</span>}
+          </span>
         </div>
       </div>
 

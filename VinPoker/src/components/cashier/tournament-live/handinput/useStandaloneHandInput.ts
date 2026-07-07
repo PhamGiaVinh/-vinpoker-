@@ -1016,6 +1016,28 @@ export function useStandaloneHandInput(tournamentId: string) {
   const blindLevelMissing = !blindLevelSnapshot || blindLevelSnapshot.level_number == null;
   const blindLevelChanged = hasLevelChangedDuringHand(blindLevelSnapshot, { level_number: liveLevelNumber });
 
+  // trackerWorkflowAids: "Lấy blind mới ngay" — pull the live clock level on demand (the
+  // 25s poll may be stale after a level change). Re-seeds the SB/BB INPUTS + re-snapshots
+  // (so provenance/banner agree) ONLY when no blind has been posted yet this hand; once a
+  // blind is posted it refreshes the live level for the banner but never touches amounts.
+  // Placed AFTER sbPosted/bbPosted so the useCallback deps are initialized (no TDZ).
+  const refreshLiveLevel = useCallback(async () => {
+    const { data } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
+    const cl = ((data as any)?.current_level ?? null) as ClockLevel | null;
+    setLiveLevelNumber(cl?.level_number ?? null);
+    setLiveLevel(cl);
+    if (cl && (cl.big_blind ?? 0) > 0 && !sbPosted && !bbPosted) {
+      const snap = snapshotBlindLevel(cl);
+      setBlindLevelSnapshot(snap);
+      setSbAmount(snap.small_blind);
+      setBbAmount(snap.big_blind);
+      setBlindFetchedAt(new Date());
+      toast.success(`Đã lấy mức blind mới: Level ${snap.level_number ?? "?"}`);
+    } else {
+      toast.info("Đã cập nhật mức blind hiện tại (ván đã đặt blind — không đổi số).");
+    }
+  }, [tournamentId, sbPosted, bbPosted]);
+
   const isReview = Object.keys(endingStacks).length > 0;
   const isSummary = isReview;
   const conservationOk = useMemo(() => {
@@ -2091,6 +2113,7 @@ export function useStandaloneHandInput(tournamentId: string) {
     liveLevelNumber,
     liveLevel,
     blindFetchedAt,
+    refreshLiveLevel,
     handlePostBothBlinds,
     sbPosted,
     bbPosted,

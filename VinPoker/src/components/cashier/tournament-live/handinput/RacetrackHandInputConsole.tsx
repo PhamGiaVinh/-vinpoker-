@@ -176,6 +176,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
           onBack={() => hook.setEndingStacks({})}
           submitting={hook.submitting}
           rankShifts={FEATURES.trackerChipQuickEdit ? hook.rankShifts : undefined}
+          diagnostics={FEATURES.trackerWorkflowAids}
         />
       );
     }
@@ -211,6 +212,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
               : undefined
           }
           onPostBoth={FEATURES.trackerBlindAutoSeed ? hook.handlePostBothBlinds : undefined}
+          onRefreshLevel={FEATURES.trackerWorkflowAids ? hook.refreshLiveLevel : undefined}
         />
       );
     }
