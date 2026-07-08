@@ -147,6 +147,14 @@ const DealerWeek = lazy(() => import("./pages/dealer/DealerWeek"));
 const DealerCareers = lazy(() => import("./pages/dealer/DealerCareers"));
 const DealerAccount = lazy(() => import("./pages/dealer/DealerAccount"));
 const DealerSalary = lazy(() => import("./pages/dealer/DealerSalary"));
+// Staff App (/staff/*) — separate non-dealer staff portal; self-gates on FEATURES.staffApp.
+const StaffAppShell = lazy(() => import("./components/staff-app/StaffAppShell"));
+const StaffHome = lazy(() => import("./pages/staff/StaffHome"));
+const StaffAttendance = lazy(() => import("./pages/staff/StaffAttendance"));
+const StaffAccount = lazy(() => import("./pages/staff/StaffAccount"));
+const StaffSalary = lazy(() => import("./pages/staff/StaffSalary"));
+// Club operating expenses ledger; page self-gates on FEATURES.clubExpenses + owner/cashier role.
+const ClubExpenses = lazy(() => import("./pages/ClubExpenses"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -233,6 +241,13 @@ const App = () => (
                 <Route path="/dealer/account" element={<DealerAccount />} />
                 <Route path="/dealer/salary" element={<DealerSalary />} />
               </Route>
+              {/* Staff App — separate non-dealer staff shell. Source stays mock while staffApp flag is OFF. */}
+              <Route element={<StaffAppShell />}>
+                <Route path="/staff" element={<StaffHome />} />
+                <Route path="/staff/attendance" element={<StaffAttendance />} />
+                <Route path="/staff/account" element={<StaffAccount />} />
+                <Route path="/staff/salary" element={<StaffSalary />} />
+              </Route>
               {/* mobileOpsV2 iPhone operator shell — its own mobile chrome, separate from Layout.
                   OpsShell self-gates on FEATURES.mobileOpsV2 (OFF) + admin/owner preview. */}
               <Route element={<OpsShell />}>
@@ -289,6 +304,7 @@ const App = () => (
                     desktop the full dashboard. NOTE: /ops/finance sits in the (un-role-gated) ops shell;
                     real-data wiring must add an isClubOwner guard there — mock data only for now. */}
                 <Route path="/club/admin/finance" element={<MobileOperatorRoute to="/ops/finance"><ClubFinanceDashboard /></MobileOperatorRoute>} />
+                <Route path="/club/admin/expenses" element={<ClubExpenses />} />
                 {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF).
                     Device-aware: phones get the read-only mobile /ops/accounting view. */}
                 <Route path="/club/admin/accounting-control" element={<MobileOperatorRoute to="/ops/accounting"><AccountingControl /></MobileOperatorRoute>} />
