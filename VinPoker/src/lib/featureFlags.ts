@@ -745,6 +745,19 @@ export const FEATURES = {
    */
   floorTableOps: true,
   /**
+   * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
+   * page renders every operator action (swing 1 table, assign a specific dealer via the
+   * picker, send-to-break, single + batch check-out) but keeps each button on a stub
+   * "đang nối" toast until this flag is ON. Flip to true ONLY after the owner UATs on
+   * Preview and confirms the real board is correct. The wired handlers mirror the desktop
+   * DealerSwingTab handlers 1:1 (perform_swing / assign-dealer force_dealer_id /
+   * manage-break start / checkout-dealer) — same server RPCs/edge fns, same RLS
+   * (`is_club_dealer_control`); no new write path, no migration. Kill-switch: set false →
+   * every button reverts to the stub. Đóng tour / sửa nhầm bàn / check-in QR stay stubbed
+   * (need a shift/club selector the phone does not track yet). Default **OFF**.
+   */
+  opsSwingActions: false,
+  /**
    * Club "Lịch series" — a per-club gallery of MANY series-schedule images (posters +
    * match schedules) shown as a swipeable carousel on the public ClubDetail page and
    * managed by admins in Media Center (MediaClubSchedules), alongside the single

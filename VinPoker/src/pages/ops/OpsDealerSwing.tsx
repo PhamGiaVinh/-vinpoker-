@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { FunctionsHttpError } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   ChevronLeft, Repeat, Users, Coffee, ArrowRightLeft, History, Lightbulb, QrCode,
   Monitor, LogOut, ArrowRight, Clock, FlagTriangleRight, Loader2, LogIn,
@@ -46,6 +49,9 @@ type EnrichedAssignment = DealerAssignment & {
     dealers?: { full_name?: string | null } | null;
   } | null;
 };
+
+/** Target cho break picker — cần attendance_id + club_id (edge manage-break yêu cầu). */
+type BreakTarget = { attendanceId: string; clubId: string; name: string };
 
 const hhmm = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -220,7 +226,7 @@ export default function OpsDealerSwing() {
   const [tableSheet, setTableSheet] = useState<TableVM | null>(null);
   const [dealerSheet, setDealerSheet] = useState<DealerAttendance | null>(null);
   const [pickFor, setPickFor] = useState<TableVM | null>(null);
-  const [breakFor, setBreakFor] = useState<string | null>(null);
+  const [breakFor, setBreakFor] = useState<BreakTarget | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [schedulePickOpen, setSchedulePickOpen] = useState(false);
   const [dongTour, setDongTour] = useState("");
@@ -265,6 +271,102 @@ export default function OpsDealerSwing() {
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
   const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSchedulePickOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
+  // ── Nối hành động THẬT (gate opsSwingActions). Cờ OFF → mọi nút giữ nhắc "đang nối"
+  // (soon), 0 gọi RPC/edge. Handlers mirror desktop DealerSwingTab 1:1 (perform_swing /
+  // assign-dealer / manage-break / checkout-dealer) — cùng server, cùng RLS. ──
+  const LIVE = FEATURES.opsSwingActions;
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const reloadAll = () => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); outQ.refetch(); };
+  const runAction = async (fn: () => Promise<void>) => {
+    if (!LIVE) { soon(); return; }                 // chưa bật cờ → stub
+    if (busyRef.current) return;                   // chống double-tap (ref đồng bộ)
+    busyRef.current = true; setBusy(true);
+    try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Lỗi mạng"); } finally { busyRef.current = false; setBusy(false); }
+  };
+
+  // Swing 1 bàn → RPC perform_swing (mirror performSwingForTable)
+  const doSwing = (t: TableVM) => runAction(async () => {
+    const asgId = t.assignment?.id;
+    if (!asgId) { toast.error("Bàn chưa có lượt để swing."); return; }
+    const { data, error } = await (supabase.rpc as any)("perform_swing", { p_assignment_id: asgId });
+    if (error) { toast.error(`Lỗi swing: ${error.message}`); return; }
+    const outcome = (data as any)?.outcome;
+    if (outcome === "no_dealer" || outcome === "no_dealer_available") toast.warning("Không đủ dealer khả dụng để thay.");
+    else if (outcome === "race_lost" || outcome === "version_conflict" || outcome === "not_found" || outcome === "state_mismatch") toast.warning("Bàn vừa được xử lý — đang cập nhật.");
+    else toast.success("Swing thành công!");
+    setTableSheet(null);
+    reloadAll();
+  });
+
+  // Gán 1 dealer cụ thể vào bàn → edge assign-dealer force_dealer_id (mirror confirmAssign)
+  const doAssign = (t: TableVM, d: DealerAttendance) => runAction(async () => {
+    const { data, error } = await supabase.functions.invoke("assign-dealer", {
+      body: { table_id: t.id, force_dealer_id: d.dealer_id, requested_by: user?.id, idempotency_key: crypto.randomUUID() },
+    });
+    if (error) {
+      let detail = error.message;
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        if (error.context.status === 409) { toast.info("Bàn đã có dealer — đang cập nhật."); setPickFor(null); reloadAll(); return; }
+        detail = body?.error ?? body?.message ?? detail;
+      }
+      toast.error(`Lỗi gán: ${detail}`); return;
+    }
+    if ((data as any)?.error) { toast.error((data as any).error); return; }
+    toast.success(`Đã gán ${d.dealers?.full_name ?? "dealer"} → ${t.name}`);
+    setPickFor(null);
+    reloadAll();
+  });
+
+  // Cho nghỉ → edge manage-break start (mirror sendToBreak). Server kiểm luật nghỉ 15p.
+  const doBreak = (target: BreakTarget, minutes: number) => runAction(async () => {
+    const { data, error } = await supabase.functions.invoke("manage-break", {
+      body: { attendance_id: target.attendanceId, action: "start", requested_by: user?.id, club_id: target.clubId, duration_minutes: minutes, idempotency_key: crypto.randomUUID() },
+    });
+    if (error) {
+      let eb: any = null;
+      if (error instanceof FunctionsHttpError) { try { eb = await error.context?.json?.(); } catch { /* ignore */ } }
+      toast.error(eb?.error ?? error.message); return;
+    }
+    const res = data as any;
+    if (res?.action === "extended") toast.success(`Đã gia hạn nghỉ ${target.name}, tổng ${res.break_minutes ?? minutes} phút`);
+    else toast.success(`Đã cho ${target.name} nghỉ ${minutes} phút`);
+    setBreakFor(null);
+    reloadAll();
+  });
+
+  // Check-out 1 dealer → edge checkout-dealer (mirror doCheckout)
+  const doCheckoutOne = (d: DealerAttendance) => runAction(async () => {
+    const { data, error } = await supabase.functions.invoke("checkout-dealer", { body: { attendance_id: d.id } });
+    if (error) {
+      let detail = error.message || "Lỗi check-out";
+      try { const ctx = (error as any)?.context; if (ctx?.json) { const b = await ctx.json(); if (b?.error) detail = b.error; } } catch { /* ignore */ }
+      toast.error(detail); return;
+    }
+    if ((data as any)?.released_pre_assigned) toast.warning(`Dealer đang pre-assign bàn ${(data as any).pre_assigned_table ?? "?"} được release`);
+    toast.success(`Đã check-out ${d.dealers?.full_name ?? "dealer"}`);
+    setDealerSheet(null);
+    reloadAll();
+  });
+
+  // Check-out hàng loạt → edge checkout-dealer attendance_ids (mirror doBatchCheckout)
+  const doBatchCheckout = (ids: string[]) => runAction(async () => {
+    if (!ids.length) return;
+    const { data, error } = await supabase.functions.invoke("checkout-dealer", { body: { attendance_ids: ids } });
+    if (error) {
+      let detail = error.message || "Lỗi checkout hàng loạt";
+      try { const ctx = (error as any)?.context; if (ctx?.json) { const b = await ctx.json(); if (b?.error) detail = b.error; } } catch { /* ignore */ }
+      toast.error(detail); return;
+    }
+    const results = (data as any)?.results ?? [];
+    const ok = results.filter((r: any) => r.success).length;
+    if (ok > 0) toast.success(`Đã check-out ${ok}/${ids.length} dealer`);
+    if (ok < ids.length) toast.error(`${ids.length - ok} dealer thất bại`);
+    setCheckout(new Set());
+    reloadAll();
+  });
+
   // ---- guards (ordered: auth → login → clubs → permission) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
@@ -283,9 +385,15 @@ export default function OpsDealerSwing() {
         <p className="mt-0.5 text-[14px] text-[#9b8e97]">{clubName} · việc gấp tự nổi lên đầu</p>
       </header>
 
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
-        Dữ liệu <b>thật</b>. Các nút hành động đang được nối — bấm sẽ nhắc; sẽ bật sau khi anh xác nhận bảng đúng.
-      </div>
+      {LIVE ? (
+        <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">
+          Nút <b>swing · gán · nghỉ · check-out</b> đã bật (chạy trên dữ liệu thật). Đóng tour / check-in QR vẫn làm trên máy tính.
+        </div>
+      ) : (
+        <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
+          Dữ liệu <b>thật</b>. Các nút hành động đang được nối — bấm sẽ nhắc; sẽ bật sau khi anh xác nhận bảng đúng.
+        </div>
+      )}
 
       <div className="flex gap-1.5 overflow-x-auto px-1 pb-1">
         {PILLS.map((p) => (
@@ -566,7 +674,7 @@ export default function OpsDealerSwing() {
                 );
               })}
             </div>
-            <button onClick={soon} disabled={checkout.size === 0}
+            <button onClick={() => doBatchCheckout([...checkout])} disabled={checkout.size === 0 || busy}
               className="ios-press ios-fill mt-2.5 w-full rounded-2xl py-2.5 text-[14px] font-medium text-[#f2ece6] disabled:opacity-40">
               Check-out {checkout.size} người đã chọn
             </button>
@@ -615,12 +723,16 @@ export default function OpsDealerSwing() {
             </div>
           )}
           <div className="mt-3 space-y-1.5">
-            <button onClick={soon} className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+            <button disabled={busy} onClick={() => { if (!tableSheet) return; tableSheet.missing ? go(setPickFor, tableSheet) : doSwing(tableSheet); }}
+              className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left disabled:opacity-50">
               <Repeat className="h-5 w-5 shrink-0" />
               <span className="text-[15px] font-bold">{tableSheet?.missing ? "Gán dealer ngay" : `Swing ngay${tableSheet?.next ? ` — ${tableSheet.next} vào thay` : ""}`}</span>
             </button>
             <SheetRow icon={<Users className="h-5 w-5 text-sky-300" />} label="Chọn dealer khác…" onTap={() => go(setPickFor, tableSheet)} />
-            <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label={`Cho ${tableSheet?.dealer ?? "dealer"} nghỉ sau khi thay`} onTap={() => go(setBreakFor, tableSheet?.dealer ?? "")} />
+            {tableSheet?.assignment?.attendance_id && (
+              <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label={`Cho ${tableSheet.dealer ?? "dealer"} nghỉ`}
+                onTap={() => go(setBreakFor, { attendanceId: tableSheet.assignment!.attendance_id, clubId: tableSheet.clubId, name: tableSheet.dealer ?? "dealer" })} />
+            )}
             <SheetRow icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />} label="Sửa nhầm bàn (đổi chéo)" onTap={soon} />
             <SheetRow icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử bàn này" onTap={soon} />
           </div>
@@ -644,9 +756,10 @@ export default function OpsDealerSwing() {
             <button onClick={soon} className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
               <ArrowRight className="h-5 w-5 shrink-0" /><span className="text-[15px] font-bold">Đưa vào bàn…</span>
             </button>
-            <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label="Cho nghỉ ưu tiên" onTap={() => go(setBreakFor, dealerSheet?.dealers?.full_name ?? "")} />
+            <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label="Cho nghỉ ưu tiên"
+              onTap={() => dealerSheet && go(setBreakFor, { attendanceId: dealerSheet.id, clubId: dealerSheet.dealers.club_id, name: dealerSheet.dealers.full_name })} />
             <SheetRow icon={<Clock className="h-5 w-5 text-[#9b8e97]" />} label="Ca hôm nay — giờ vào/ra, số bàn đã chia" onTap={soon} />
-            <SheetRow icon={<LogOut className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Check-out khỏi ca</span>} onTap={soon} />
+            <SheetRow icon={<LogOut className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Check-out khỏi ca</span>} onTap={() => dealerSheet && doCheckoutOne(dealerSheet)} />
           </div>
         </SheetContent>
       </Sheet>
@@ -662,7 +775,7 @@ export default function OpsDealerSwing() {
               : roster.filter((d) => d.current_state === "available" || d.current_state === "on_break").map((d) => {
                 const locked = d.current_state !== "available";
                 return (
-                  <button key={d.id} disabled={locked} onClick={soon}
+                  <button key={d.id} disabled={locked || busy} onClick={() => pickFor && doAssign(pickFor, d)}
                     className={cn("ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left", !locked && "ios-press-sm", locked && "opacity-55")}>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
@@ -681,10 +794,10 @@ export default function OpsDealerSwing() {
       <Sheet open={breakFor !== null} onOpenChange={(v) => { if (!v) setBreakFor(null); }}>
         <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Cho {breakFor} nghỉ</SheetTitle></SheetHeader>
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Cho {breakFor?.name} nghỉ</SheetTitle></SheetHeader>
           <div className="mt-3 grid grid-cols-4 gap-2">
             {BREAK_PRESETS.map((m) => (
-              <button key={m} onClick={soon} className="ios-press ios-fill rounded-2xl py-3 text-center text-[15px] font-semibold text-[#f2ece6]">{m}p</button>
+              <button key={m} disabled={busy} onClick={() => breakFor && doBreak(breakFor, m)} className="ios-press ios-fill rounded-2xl py-3 text-center text-[15px] font-semibold text-[#f2ece6] disabled:opacity-50">{m}p</button>
             ))}
           </div>
         </SheetContent>
