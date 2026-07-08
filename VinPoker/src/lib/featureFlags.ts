@@ -449,10 +449,11 @@ export const FEATURES = {
    * disappear (owner-approved). Blocked after a page reload when the street already
    * has recorded actions (the local undo stack can't mirror the deletes — owner P0),
    * and during all-in runout / showdown / review. No DB/Edge change (reuses two
-   * existing endpoints). OFF (default): the controls strip and every handler are
-   * byte-identical to today.
+   * existing endpoints). **ON 2026-07-08** (Đợt F0, owner-approved) — was OFF (controls
+   * strip + every handler byte-identical); the flip only surfaces the already-built
+   * "Hoàn tác cả vòng" button on active hands.
    */
-  trackerStreetRollback: false,
+  trackerStreetRollback: true,
   /**
    * xCards face deck (owner "fix UI UX toàn bộ" wave): replaces the built-in text card
    * FACE (rank + suit on a cream card) with the owner-chosen xCards vector deck
@@ -509,8 +510,12 @@ export const FEATURES = {
    * editor surfaces at all (byte-identical). ON but migration `20261220000000` NOT
    * applied → the RPC 42883 is caught → "chưa áp dụng" degrade. Owner applies the
    * migration in a gated session, THEN flips this. Kill-switch: set false.
+   * **ON 2026-07-08** (Đợt F0, owner-approved) — migration 20261220000000 apply status
+   * unconfirmed; the 42883 degrade (useStandaloneHandInput.ts:577 → midHandEditSupported
+   * false → console gate at RacetrackHandInputConsole.tsx:454 hides the editor) makes the
+   * flip safe either way: honest "chưa áp dụng" instead of a crash.
    */
-  trackerMidHandEdit: false,
+  trackerMidHandEdit: true,
   /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
