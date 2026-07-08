@@ -15,6 +15,8 @@ import DealerAdjustDialog from "./DealerAdjustDialog";
 import { BulkDealerImportDialog } from "./BulkDealerImportDialog";
 import { BulkSalaryDialog } from "./BulkSalaryDialog";
 import { BulkShiftPreferenceDialog } from "./BulkShiftPreferenceDialog";
+import { BulkEditDialog } from "./BulkEditDialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FEATURES } from "@/lib/featureFlags";
 import { toast } from "sonner";
 
@@ -42,6 +44,11 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [usernameDrafts, setUsernameDrafts] = useState<Record<string, string>>({});
+  // Multi-select for bulk delete / bulk edit (tier + employment).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Soft-delete handler
   const handleSoftDelete = async () => {
@@ -59,6 +66,37 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
       toast.error(e?.message ?? "Lỗi xoá dealer");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // ── Multi-select helpers ────────────────────────────────────────────────
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Bulk soft-delete (same as single: deleted_at + status inactive), grouped .in().
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("dealers")
+        .update({ deleted_at: new Date().toISOString(), status: "inactive" })
+        .in("id", ids);
+      if (error) throw error;
+      toast.success(`Đã xoá ${ids.length} dealer`);
+      setSelectedIds(new Set());
+      setBulkDeleteOpen(false);
+      refetchDealers();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Lỗi xoá hàng loạt");
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -340,6 +378,28 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
             )}
           </div>
 
+          {/* Bulk-select action bar */}
+          {selectedIds.size > 0 && (
+            <div className="mb-2 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+              <span>Đã chọn <b className="text-foreground">{selectedIds.size}</b> dealer</span>
+              <span className="flex-1" />
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setBulkEditOpen(true)}>
+                <Pencil className="mr-1 h-3.5 w-3.5" /> Sửa hàng loạt
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs text-destructive border-destructive/40 hover:bg-destructive/10"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" /> Xoá {selectedIds.size}
+              </Button>
+              <button className="text-muted-foreground hover:underline" onClick={() => setSelectedIds(new Set())}>
+                Bỏ chọn
+              </button>
+            </div>
+          )}
+
           {/* Table */}
           <ScrollArea className="flex-1">
             {loading && filtered.length === 0 ? (
@@ -353,15 +413,23 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
             ) : (
               <div className="space-y-1">
                 {/* Header */}
-                <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground font-medium">
-                  <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-3">Tên</div>
-                  <div className="col-span-1">Hạng</div>
-                  <div className="col-span-1">Loại</div>
-                  <div className="col-span-2 text-right">Giờ</div>
-                  <div className="col-span-2 text-right">Lương</div>
-                  <div className="col-span-1 text-right">Điểm</div>
-                  <div className="col-span-1 text-center">Sửa</div>
+                <div className="flex items-center gap-1.5">
+                  <Checkbox
+                    className="shrink-0"
+                    aria-label="Chọn tất cả"
+                    checked={filtered.length > 0 && filtered.every((d) => selectedIds.has(d.id))}
+                    onCheckedChange={(v) => setSelectedIds(v === true ? new Set(filtered.map((d) => d.id)) : new Set())}
+                  />
+                  <div className="flex-1 grid grid-cols-12 gap-2 px-3 py-2 text-xs text-muted-foreground font-medium">
+                    <div className="col-span-1 text-center">#</div>
+                    <div className="col-span-3">Tên</div>
+                    <div className="col-span-1">Hạng</div>
+                    <div className="col-span-1">Loại</div>
+                    <div className="col-span-2 text-right">Giờ</div>
+                    <div className="col-span-2 text-right">Lương</div>
+                    <div className="col-span-1 text-right">Điểm</div>
+                    <div className="col-span-1 text-center">Sửa</div>
+                  </div>
                 </div>
                 {/* Rows */}
                 {filtered.map((dealer, idx) => {
@@ -379,10 +447,16 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                     ? dealer.hourly_rate_vnd ?? null
                     : null;
                   return (
+                    <div key={dealer.id} className="flex items-center gap-1.5">
+                      <Checkbox
+                        className="shrink-0"
+                        aria-label={`Chọn ${dealer.full_name}`}
+                        checked={selectedIds.has(dealer.id)}
+                        onCheckedChange={() => toggleSelect(dealer.id)}
+                      />
                     <button
-                      key={dealer.id}
                       onClick={() => setSelectedDealer(isSelected ? null : dealer.id)}
-                      className={`w-full grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded transition-colors text-left ${
+                      className={`flex-1 grid grid-cols-12 gap-2 px-3 py-2 text-sm rounded transition-colors text-left ${
                         isSelected
                           ? "bg-success/10 border border-success/30"
                           : "hover:bg-muted/50 border border-transparent"
@@ -470,6 +544,7 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
                         </button>
                       </div>
                     </button>
+                    </div>
                   );
                 })}
               </div>
@@ -626,6 +701,36 @@ export default function DealerManagementTab({ clubIds, clubFilter }: DealerManag
           setAdjustDealer(null);
         }}
       />
+
+      {/* Bulk edit (Hạng + Loại) */}
+      <BulkEditDialog
+        open={bulkEditOpen}
+        onOpenChange={setBulkEditOpen}
+        dealers={dealers.filter((d) => selectedIds.has(d.id))}
+        onDone={() => { setSelectedIds(new Set()); refetchDealers(); }}
+      />
+
+      {/* Bulk soft-delete confirmation */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xoá {selectedIds.size} dealer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedIds.size} dealer đã chọn sẽ bị xoá (ẩn khỏi danh sách + vô hiệu hoá). Lịch sử chấm công / lương vẫn giữ.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleBulkDelete(); }}
+              disabled={bulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDeleting ? "Đang xoá..." : `Xoá ${selectedIds.size} dealer`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Soft-delete confirmation */}
       <AlertDialog open={!!deleteDealerId} onOpenChange={(o) => { if (!o) setDeleteDealerId(null); }}>
