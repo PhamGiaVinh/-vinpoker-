@@ -27,12 +27,14 @@ export interface HandPlayerDisplay {
 let snapshotProbe: Promise<boolean> | null = null;
 export function handPlayersHasSnapshot(): Promise<boolean> {
   if (!snapshotProbe) {
-    snapshotProbe = supabase
-      .from("hand_players")
-      .select("player_name")
-      .limit(1)
-      .then(({ error }) => !error)
-      .then(undefined, () => false);
+    snapshotProbe = (async () => {
+      try {
+        const { error } = await supabase.from("hand_players").select("player_name").limit(1);
+        return !error;
+      } catch {
+        return false;
+      }
+    })();
   }
   return snapshotProbe;
 }
