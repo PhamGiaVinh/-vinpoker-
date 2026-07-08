@@ -25,7 +25,10 @@
 -- ── 1. Immutable audit log ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.resettle_forward_log (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  club_id            uuid NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
+  -- No FK to public.clubs on purpose: adding it would take a ShareRowExclusive lock on
+  -- the hot clubs table during apply (deadlock risk against live traffic). Integrity is
+  -- already guaranteed — club_id is sourced from tournaments.club_id, which IS FK'd.
+  club_id            uuid NOT NULL,
   tournament_id      uuid NOT NULL,
   target_hand_id     uuid NOT NULL,
   target_hand_number integer,
