@@ -1,0 +1,305 @@
+---
+title: Claude Latest Handoff
+updated: 2026-07-09
+status: active
+---
+
+# Claude Session Handoff
+
+## Tracker — SỬA HAND ĐÃ HOÀN THÀNH → tự đảo chip (Đợt F2 + G1 + G2) — PRs #806/#807/#813/#815 (2026-07-08→09)
+- **Arc:** owner "mở lịch sử hand thứ N phải sửa được lá/action, và khi nhập lại thì chip + thứ hạng phải TỰ tính lại." Chia 2 tầng: **F2 = sửa HIỂN THỊ** (chip KHÔNG đổi) → **Đợt G = sửa + TỰ ĐẢO CHIP** (money-path). Memory: [[project-resettle-forward-engine]] + [[project-tracker-waves-bac]].
+- **F2 #806 MERGED + migration `20261225000000` APPLIED LIVE + flag flip #807** → nút **"Sửa hand"** LIVE trong HandHistoryPanel (chỉ hiển thị board/hole/action; RPC `edit_completed_hand` chạm CHỈ community_cards/hole_cards/hand_actions, NEVER chip; `hand_edit_log` bất biến; `void_last_hand` guard chặn void ván không-mới-nhất). Owner đã UAT.
+- **Đợt G = resettle-forward. KEY: re-sim, KHÔNG phải naive stack-shift.** Chip là số dư chạy tiếp → sửa ván CŨ chỉ đúng khi tua lại action các ván sau với stack mới + phát hiện lệch. Bộ so bài `evaluate7` + `trackerShowdown.settleShowdown` + reducer `reduceHand` ĐÃ CÓ sẵn.
+- **G1 #813 MERGED + LIVE (INERT):** pure engine `src/lib/tracker-poker/resettleForward.ts` — `resettleForward()` / `planEditedHandSettlement()` / `detectStructuralDivergence()`. **`reduceHand` INJECTED** (nó bị vite-wall khỏi client bundle; structural mirror types → real reduceHand assignable no-cast); import client settle fns trực tiếp. 10 test `tests/trackerPoker/resettleForward.test.ts`. **6 block reason** (đều `safeToWrite:false` + đúng hand + lý do + câu VN): `needs_manual_winner` · `all_in_cap_changed` · `elimination_changed` (bust→survive, chỉ chặn nếu CÓ ván sau — bust-flip ván mới nhất OK) · `eliminated_player_has_future_actions` · `affected_player_table_changed` · `action_replay_invalid`. Ván sau: KHÔNG chấm lại bài — chạy lại `reduceHand` + áp recorded net delta (an toàn vì đã BLOCK khi cap đổi → contributions == recorded).
+- **G2 #815 MERGED + migration `20261226000000` APPLIED LIVE 2026-07-09** (owner SQL Editor; `has_function_privilege('anon',…)=false` verified). ⚠️ **Lần chạy đầu DEADLOCK ở FK `clubs`** (CREATE TABLE…REFERENCES clubs giành ShareRowExclusive trên bảng clubs nóng vs traffic) → **BỎ FK** (club_id lấy từ tournaments.club_id vốn đã FK) + `SET lock_timeout` → chạy lại OK. **Kiến trúc tinh chỉnh: KHÔNG Edge Function** — vì G1 chặn mọi thay đổi loại → resettle được áp là **tái phân bổ chip (tổng bảo toàn, không lật bust)** → ghi chips-only, không cascade elim/seat/aggregate. RPC `apply_resettle_forward(p_tournament_id, p_target_hand_id, p_reason, p_hand_changes[{hand_id,player_id,entry_number,ending_stack}], p_final_stacks[{player_id,entry_number,chip_count}], p_target_winner_ids)` SECDEF actor=auth.uid() nội bộ, guard tracker/floor, ghi CHỈ `hand_players.ending_stack` + `tournament_chip_counts.chip_count` + `tournament_seats.chip_count`; guard không-âm + bảo-toàn-tổng + TỪ CHỐI lật sống↔hết-chip (`elimination_change_use_void` → dùng void+re-enter); + `resettle_forward_log` bất biến. **Read-only DB/RLS auditor PASS** (ghi chip-only KHÔNG kích trigger; ending_stack không nguồn tiền đọc; parity bảo mật đầy đủ với F2). Flag `trackerResettleForward:false`. Vercel #815 deploy SUCCESS.
+- **⚠️ Cả G1 + G2 INERT — chưa có UI, cờ tắt → owner KHÔNG thấy gì mới trên site.** Nền móng đã đủ (engine + RPC + audit đều LIVE).
+- **NEXT = G3 (UI, CHƯA build):** nút "Sửa & tính lại chip" trong HandHistoryPanel. Cần: (1) **client-runnable reduceHand** — parity-copy `supabase/functions/_shared/trackerEngine/handState.ts` sang `src/` (kiểu 2-copy potEngine + parity test; nó bị vite-wall) để chạy engine G1 phía client; (2) map `ResettleForwardResult.ok` → RPC contract; (3) gọi F2 `edit_completed_hand` (sửa lá hiển thị) RỒI `apply_resettle_forward` (chip); (4) `42883` degrade (two-tier); (5) chỉ bật nút khi engine trả `ok`, khi block hiện đúng ván lệch + lý do; (6) bust-flip ván mới nhất → route sang void+re-enter. **Owner áp G2 xong (✅) + UAT trên giải TEST TRƯỚC khi bật cờ.**
+
+## Online-poker ACTION FAST-PATH — hết "bấm không ăn" khi 2 người chơi — PR #763 (2026-07-07, client + edge ping)
+- **Owner:** "2 người vào chơi cùng 1 bàn rất chậm, không thao tác được — Supabase hết hạn à?" → **KHÔNG hết hạn** (app live, đọc dữ liệu về; hết hạn thì cả app chết). Chẩn bằng 2 Explore + 1 Plan agent đọc từng dòng: (1) client VỨT `SubmitActionOk.view` server đã trả rồi refresh() chạy lại chuỗi đọc tuần tự → chờ 1–3.5s mới thấy nước MÌNH; (2) legalActions gọi MỖI GIÂY lúc tới lượt (GoTrue 80ms+RPC) hammering edge; (3) không op ping → cold-start dính nước đầu. Edge warm path bản thân ~150–220ms OK (không sửa engine).
+- **Owner review GO sau P0** (vá vào plan): P0-1 snapRef=HIGH-WATER (wire=null KHÔNG hạ → response cũ không hồi sinh hand cũ); P0-2 `isNewerHandSnap` normalize `BigInt(handNo)` (KHÔNG so chuỗi "10"<"9"); P0-3 submit thiếu view → fallback refetch cũ; P1: holesRef poll không xoá, ping guard mềm, legal fail-retry.
+- **Branch `agent/online-poker-action-fastpath` off origin/main** (KHÔNG stack — bài học #739), worktree D:/wt/hero-center. **PR [#763](https://github.com/PhamGiaVinh/-vinpoker-/pull/763) OPEN base=main.**
+- **7 file:** `tableState.ts` (pure `isNewerHandSnap`/`legalFetchKey`/`classifySubmitResult` — testable) · `client.ts` (loadHandStateLive select `state,state_version` + return `{wire,stateVersion}`; `bodyPing`/`ping()`) · `useOnlinePoker.ts` (snapRef high-water + `ingestView` ĐỒNG BỘ dùng chung poll+submit; legal effect riêng keyed inflight-tag/fail-retry/stale-drop; `applyServerView`; ping keep-warm 100s) · `OnlinePokerTable.tsx` (submit → classify → applyServerView + refresh nền) · `online-poker-action/index.ts` (+8 dòng: zod `op:'ping'` + early-return SAU auth TRƯỚC admin client = zero Postgres IO) · `deploy-online-poker-action.yml` (owner-gated workflow_dispatch confirm=DEPLOY, 1 function, grep-proof ping) · test.
+- **Server vẫn AUTHORITATIVE tuyệt đối** — render `view` server tự trả, KHÔNG optimistic. **0 diff engine/RPC/migration/CAS/idempotency**; không đụng UI #729/#751.
+- **Verify:** vitest +15 pin (P0 high-water+BigInt incl. >MAX_SAFE_INTEGER, legal keying, fallback, ping anti-drift) → tests/onlinePoker 171 pass (chỉ 4 fail pre-existing client/ge2Readiness); `tsc -b` 0 file mình; **review 3 lens (authority/race-ordering/degrade-compat) 3/3 SẠCH**. KHÔNG e2e local (cần auth thật) → owner UAT 2 thiết bị.
+- **Owner next (2 bước):** (1) **merge #763** → Vercel deploy client — ĂN NGAY C1/C2 (edge đang chạy đã trả view); ping bị zod-400 tự nuốt (vẫn warm). (2) **Actions → "Deploy online-poker-action edge" → confirm DEPLOY** → op ping live → hết cold-start nước đầu. UAT: nước MÌNH ~200-300ms sau bấm; all-in/dwell/rebuy/spectator OK. Rollback = revert (ping additive vô hại). **BÀI HỌC: đây là "chậm do kiến trúc poll+edge cold-start", KHÔNG phải Supabase hết hạn — đừng chẩn nhầm.**
+
+## Online-poker MOBILE — tỉ lệ bàn theo N8 (stadium + board nâng + bài hero to) — PR #739→RE-LAND #751 (2026-07-06→07, visual/client-only)
+- **⚠️ 2026-07-07 STACKED-PR FOOTGUN:** #729 + #739 owner đều bấm MERGE, nhưng #739 (base=nhánh #729) squash-merge vào **NHÁNH #729 ĐÃ CHẾT, KHÔNG vào main** (GitHub không kịp retarget khi #729 squash-merge tới main `dc5ee9dc`). Kết quả: **#729 desktop LIVE, #739 mobile KHÔNG lên main** → owner mở điện thoại vẫn thấy bàn cũ. Verify: main có `HERO_RING_DESKTOP` nhưng **0** `MOBILE_POT_CENTER`. FIX = re-land nguyên #739 lên main hiện tại (đã có #729) → **PR [#751](https://github.com/PhamGiaVinh/-vinpoker-/pull/751) OPEN base=main**; diff=đúng N8-delta (không revert, working tree có CẢ #729+#739), pin **8/8** + `tsc -b` **0 file mình** trên main mới. **Owner: MERGE #751** → deploy → điện thoại đóng/mở lại app (PWA cache). BÀI HỌC: đừng stack PR khi cả 2 sẽ merge gần nhau + repo squash-merge → PR con rơi vào nhánh cha đã chết; luôn verify commit thật sự trên origin/main (grep marker), đừng tin badge "MERGED".
+- **Owner:** so bàn mobile vs N8 "tỉ lệ bàn và người chơi không giống N8 1 chút nào". Qua **4 vòng mockup show_widget** chốt v3: bàn **stadium trải xuống đáy máy** (hết oval nhọn `rounded-[48%]`), board/pot **nâng ~31%**, ghế cụm nửa trên, **bài hero TO (`lg` 44×64) fanned nằm TRONG bàn góc dưới-trái**, nút đè mặt bàn. Owner chính thức đổi luật "3 loại bài bằng nhau" (#564) → hero to kiểu N8.
+- **Branch `agent/online-poker-n8-mobile-ratio` STACK trên `agent/online-poker-hero-center-desktop`** (#729 — cùng file). Worktree `D:/wt/hero-center`. **PR [#739](https://github.com/PhamGiaVinh/-vinpoker-/pull/739) OPEN base=nhánh #729 → GitHub tự retarget main khi #729 merge. MERGE #729 TRƯỚC rồi #739.**
+- **CHỈ mobile <640px + CHỈ `heroAsHud`.** Desktop/tablet (#729), cinematic/spectator (`AllInRunout` no heroAsHud), ActionBar (**0 diff**) byte-identical.
+- **3 file:** `mobileTableLayout.ts` (slot maps v3 mọi slot **y≤48** để nửa dưới cho hero+dock; `MOBILE_HERO_ANCHOR`→{18,80}; new `MOBILE_POT_CENTER {50,38}`) · `SeatRing.tsx` (stadium radii **`rounded-[46%_/_21%] sm:rounded-[48%]`** mọi lớp felt gated heroAsHud; board **`top-[31%] sm:top-1/2`**; `towardCenter(p,c,t)` → bet chip gom về pot mới từ tâm-thị-giác pod, edge-anchor offset ±11, t=0.5 mobile; watermark hiện trên felt mobile) · `HeroHud.tsx` (cards **`lg`** fanned −5/+6°, mobile-only vì `sm:hidden`).
+- **Verify** (Playwright `/__dev/table`): mobile 9/6(premium)/2-max/off-turn stadium áp + board 31% + ghế ≤52% + hero 44×64 + **0 overlap**; **regression desktop 1280 = y hệt #729** (radii 48/47/46/44, board 50% oval, hero in-ring, HUD none, fold cx773) + cinematic giữ oval 48%. **+8 pin** (tests/onlinePoker 33/33); `tsc -b` **0 file mình**; **review 3 lens (geometry/gating/render-safety) 3/3 SẠCH**. Ảnh `docs/design/n8-mobile-screens/`.
+- **KHÔNG backend.** Rollback = revert commit (không cờ, class-driven gated heroAsHud+mobile).
+- **Owner next:** merge #729 → merge #739 → mở bàn `/poker/table/:id` trên ĐIỆN THOẠI (bàn stadium như N8, bài mình to trong bàn); desktop/tablet vẫn như #729.
+
+## Online-poker table — hero ngồi GIỮA-DƯỚI trên desktop/tablet — PR #729 (2026-07-06, visual/client-only)
+- **Owner (session gameplay):** "ở bàn desktop và tablet cho người chơi ngồi ở vị trí giữa đi… nút bet/fold/raise phải giữ logic." Bàn ONLINE chơi thật (khác bàn tracker #686). Mockup show_widget → owner duyệt "nút phải-dưới (như N8/GG)".
+- **Branch `agent/online-poker-hero-center-desktop`** (off origin/main 09eeeba6, có #722) · Worktree `D:/wt/hero-center` (standalone `npm ci` — shared node_modules giờ có 412 nhưng bài học cũ vẫn ci riêng; .env copy từ VinPoker chính) · **PR [#729](https://github.com/PhamGiaVinh/-vinpoker-/pull/729) OPEN** (owner merge).
+- **Chỉ responsive `sm:` (≥640px) = desktop+tablet. Mobile (<640) KHÔNG đổi.** ActionBar bet/fold/raise **0 diff** — chỉ container dời chỗ.
+- **4 file:** `SeatRing.tsx` (const `HERO_RING_DESKTOP` {50,85}; khi `heroAsHud` → hero vẽ IN-RING giữa-dưới, bọc `hidden sm:block`; gated `heroAsHud` nên spectator/cinematic/AllInRunout — vốn KHÔNG truyền heroAsHud — byte-identical) · `HeroHud.tsx` (`+sm:hidden` → HUD góc trái chỉ còn trên mobile; đúng 1 hero/breakpoint) · `OnlinePokerTable.tsx` + `TablePreview.tsx` (dock wrapper `sm:right-3 sm:w-[21rem] sm:bg-none sm:p-0 sm:inset-x-auto` → phải-dưới desktop; mobile full-width như cũ).
+- **Verify** (Playwright `/__dev/table`, đo px): desktop 1280 hero cx≈oval-center + HUD display:none + dock phải-dưới dưới oval; tablet 768 portrait 9-max hero giữa + 8 đối thủ vòng quanh + tiles x≥604 hở hero x≤427; **mobile 390 KHÔNG đổi** (in-ring hidden, HUD flex góc trái, dock full-width); 9-max preflop tiles **BB #551** (Tất tay100/4×/3×/2.5×/2×) → logic nguyên. `tsc -b` 75 baseline **0 file mình**; **+4 pin test** (heroCenterLayout.render); **review 4 lens (mobile/spectator/action-logic/hero-in-ring) 4/4 SẠCH**. Ảnh `docs/design/hero-center-screens/`. (2 test fail = `client`+`ge2Readiness` **pre-existing** trên base.)
+- **KHÔNG backend:** no DB/RPC/Edge/migration/types/writes/flag. **Rollback = revert commit** (không cờ, class-driven). Worktree D:/wt/hero-center còn — muốn chỉnh bàn to/ghế nhích thì sửa `HERO_RING_DESKTOP` + dock width rồi chạy lại harness.
+- **Owner next:** merge #729 → Vercel auto-deploy → mở bàn `/poker/table/:id` trên máy tính/máy tính bảng (hero ngồi giữa-dưới, bài ngửa, nút phải-dưới) + điện thoại (y như cũ).
+
+## Bulk dealer import (file → Gemini → tạo hàng loạt) — PR #709 (2026-07-05, cờ OFF)
+- **Owner ask:** setup vài trăm dealer nhanh — upload ảnh/Excel/Word/… → AI đọc CHỈ tên → tạo hàng loạt; hạng B cố định; 1 lựa chọn FT/PT cho cả file (chốt qua AskUserQuestion). Owner đính chính "Claude Code thực thi" (ban đầu định giao Codex).
+- **Review vòng 2 (owner + đối chiếu tài liệu Gemini) → GO có điều kiện**, đã vá P0: edge phải auth trước khi gọi Gemini; giới hạn size/row/name; Word best-effort; không log PII; xác nhận cuối trước insert.
+- **PR [#709](https://github.com/PhamGiaVinh/-vinpoker-/pull/709) (branch agent/bulk-dealer-import, worktree D:/wt/ds-declutter):** **KHÔNG migration/RPC/RLS** — tái dùng `dealers` insert path (RLS `dealers_insert_control`). Files: edge `parse-dealer-list` (auth-gate getUser+is_club_dealer_control mirror send-shift-schedule; zod caps; no PII log; workflow deploy result16) + `src/lib/dealerImport/parseSpreadsheet.ts` (xlsx/csv client-side, lọc cell nặng-số, cap 5000 dòng/120k ký tự) + `buildBulkDealerPayload.ts` (tier 'B' cứng, lương NULL — không nhét lương giả, dedup trim+lowercase) + `BulkDealerImportDialog.tsx` (≤10 file/≤10MB, preview tick+sửa+cảnh báo trùng, FT/PT toggle, xác nhận cuối, insert lô 150 + fallback từng dòng + bảng lỗi copy) + wire DealerManagementTab (nút cạnh "Thêm dealer") + cờ `bulkDealerImport:false`.
+- **Verify:** tsc 75/0 mới · vitest 14/14 · deno check PASS · build OK · git diff --check clean · scope đúng danh sách duyệt.
+- **Owner next:** merge → edge tự deploy → đảm bảo secret `GEMINI_API_KEY` (dùng lại của "Tạo từ ảnh lịch" #628) → bật cờ `bulkDealerImport` → UAT ảnh mẫu tên giả.
+- **⚠ CÒN TREO (Claude, chưa xong):** owner báo "không bấm được mục F&B trong Vận hành" — mới đọc sơ bộ Layout.tsx (các cờ fnb* đều true, nav gate theo role riêng từng mục) nhưng CHƯA tìm ra nguyên nhân (bị ngắt để làm bulk-import). Cần quay lại.
+
+## Dealer Swing — Staffing Optimizer + auto shift reminders — PR #697 + #698 (2026-07-05, both flag/config OFF)
+- **Owner ask (2026-07-04, after merging Shift Planner V2 #652/#653):** (1) nhắc ca tự động + "chuẩn bị kết nối OneSignal sẵn"; (2) UI "cần thêm/thừa bao nhiêu dealer, có thể check-out ai" để tối ưu. Owner AskUserQuestion locks: staffing target = **nhịp xoay ca thật** `ceil(tables×(deal+rest)/deal)`; checkout = **advisory only** (reuse existing DC batch-checkout dialog); UI = **build behind flag + quick mockup**.
+- **PR [#697](https://github.com/PhamGiaVinh/-vinpoker-/pull/697) — Staffing Optimizer (FE, `dealerStaffingOptimizer` OFF):** new right-rail card `StaffingOptimizerCard` + pure `src/lib/staffingOptimizer.ts` (computeStaffingTarget/computeStaffing/rankReleaseCandidates) reusing `calculateLiveWorkedMinutes` + swing_config. Thừa → ranks release candidates (most worked-min → lowest tier → longest since release; only available|on_break, assigned excluded) → wired to existing `handleBatchCheckoutClick`. Thiếu → open check-in. READ-ONLY, no new money-path. tsc 75=baseline/0 new, vitest 98/98 (12 new), build OK.
+- **PR [#698](https://github.com/PhamGiaVinh/-vinpoker-/pull/698) — auto reminders (DB+Edge+FE, ALL OFF, CRITICAL mode):** migration `20261216000000` SOURCE-ONLY (`dealer_shift_reminder_config` single-row enabled=false + `dealer_shift_notifications` dedup ledger UNIQUE(assignment,kind,channel) + `run_dealer_shift_reminders()` vault-cron caller every 5 min, mirrors 20260915/20260917) + NEW edge fn `send-shift-reminders` (Bearer-secret, reads ONLY dealer_shift_assignments+dealers+config+ledger, Telegram DM + OneSignal push, send-then-record) + root workflow deploy-list `result15` + dealer-app "🔔 Bật thông báo ca làm" opt-in (`PushNotificationOptIn`, reuses existing OneSignal infra). 3 dark gates (vault secret absent / config OFF / no due rows) → inert on merge. **Read-only DB-safety+RLS audit = SAFE TO PR** (A–H all PASS). deno check PASS, tsc 75/0 new, build OK.
+- **CORRECTION to earlier note:** the ACTIVE edge deploy list is the **repo-root** `.github/workflows/vbackerworkflowmain.yml` (`deploy_func` helper) — it already includes `telegram-bot` (L112) + `send-shift-schedule` (L114), so #653's `/lich` auto-deploys on merge (no manual redeploy needed).
+- **Owner next:** merge #697 → flip `dealerStaffingOptimizer` for UAT. Merge #698 → apply `20261216000000` (SQL Editor) → set vault `dealer_shift_reminders_secret` + edge env `SHIFT_REMINDERS_SECRET` → dry-run → `enabled=true`. Kill-switch: config false / cron.unschedule. Worktree `D:/wt/ds-declutter` (standalone npm ci — shared junction keeps getting wiped).
+
+## Tracker roster v2 — Phase 1: bet-chip discs + dealer overlap fix — PR #695 (2026-07-04, frontend-only, flags OFF)
+- **Owner report** (operator console + `/live` screenshots): (1) chip cược đẩy ra khi bet/all-in/call bị mất; (2) UI đè nhau (DEALER + "▲ Tracker đứng đây" cluster đè Ghế 1/9). Plus a bigger v2 ask (roster edit/delete + floor approval + auto-bust) — see plan phasing below.
+- **Owner verdict on the v2 plan:** **Phase 1 (visual bugs) GO now; Phase 2 (roster edit/delete + floor approval) HOLD; Phase 3 (ITM prize payout) HOLD + SPLIT into a separate money-path plan** ("Floor prize payout acknowledgement", statuses "Trả thưởng — chờ xác nhận"/"Đã xác nhận trả thưởng", NOT accounting truth). Plan file `~/.claude/plans/ok-l-n-plan-ui-curried-island.md` has the full Phase 2/3 design incl. P0s (stale-approval snapshot + `request_stale` re-check; delete-is-NOT-bust mandatory dry-run; do-not-overload-`total_committed`).
+- **Branch** `feat/tracker-bet-chips-overlap` (off origin/main a1314015 = #693) · Worktree `D:/wt/tracker-handinput-map` · **PR [#695](https://github.com/PhamGiaVinh/-vinpoker-/pull/695) OPEN**.
+- **⚠ Load-bearing fact:** production operator felt = **`TrackerRacetrack`** (flag `trackerRacetrackUi:true`), NOT `LiveFelt` (which is `/live` viewer/TV + legacy standalone). The 3 byte-identical guard tests cover `LiveFelt`, not `TrackerRacetrack`.
+- **`liveBetChips` (OFF):** operator `TrackerRacetrack` text puck → **`ChipStack` disc** (reused viewer component) under a `betChips` prop; OFF = today's puck byte-identical. `/live` disc **was vanishing on street change** (`current_bet` is per-street + resets) → fixed with a **display-only `display_committed_bet`** (whole-hand committed) carried by `TournamentLiveView` only when `liveBetChips && spectator`; `LiveFelt` disc filter = `current_bet OR display_committed_bet OR all-in total_committed`. Does NOT overload `total_committed`. `viewerLayout`-gated → operator/TV untouched.
+- **`trackerFeltDealerFix` (OFF):** bottom seats (1,9) lift ~7% off the dealer lane + the "▲ Tracker đứng đây" cue merges into the dealer block (kills the self-overlap). OFF = today's geometry.
+- **Dev harness:** wired **`/__dev/tracker`** (DEV-only, stripped from prod) → `TrackerInputPreview` with `rich`/`betChips`/`dealerFix` toggles (rich ON = the burgundy felt from the report).
+- **Verify:** new `tests/tracker/trackerRacetrackBetChips.render.test.tsx` 3/3 (OFF byte-identical puck / ON disc / dealerFix gating); guards green untouched (liveFeltOperatorProps/manualUnchanged/racetrackPayloadParity); full handinput+viewerHub+tracker battery **509 passed/0 failed**; `tsc -b` **75 baseline, 0 new** (only the pre-existing TournamentLiveView ActionLog error).
+- **⚠️ NO preview screenshots this session** — the preview MCP targets the MAIN working dir (different branch, broken local `vite`); worktree can't be previewed there + RAM pressure. Owner acceptance requires before/after screenshots → BOTH flags ship OFF; **owner verifies at `/__dev/tracker` (npm run dev in worktree), then flips flags** in a follow-up one-liner.
+- **Owner next:** merge #695 (prod byte-identical) → screenshot `/__dev/tracker` (toggle rich/betChips/dealerFix) → flip `liveBetChips` + `trackerFeltDealerFix` after UAT. Then Phase 2 (needs #689 applied first) / Phase 3 split per plan.
+
+## F&B Guest-QR — FE flag LIVE + ALL 4 MIGS APPLIED LIVE — PR #691 (2026-07-04 / 05)
+- **Task:** owner "bật cờ fnbGuestOrder=true, làm trên web đi" → then applied the 4 DB migrations together in SQL Editor (owner-gated).
+- **FE:** `fnbGuestOrder: false→true` via **PR [#691](https://github.com/PhamGiaVinh/-vinpoker-/pull/691)** (squash `d433d12`) → Deploy-to-Production SUCCESS. Same PR fixed stale flag-comment ref `20261211000000`→`20261212000000`.
+- **DB — ✅ ALL 4 APPLIED LIVE 2026-07-05, 10/10 read-only verify PASS** (`…017`/`…018`/`…019`/`20261212000000`). Guest RPCs, QR-token RPCs, fnb_settle_bank_paid, parser(FNB-), payment_settlements.fnb_order_id all present; settle **keeps `confirm_reentry_and_assign_seat` + FOR UPDATE** and has the FNB branch.
+- **⚠️ 2 LIVE-DRIFT CATCHES during apply (money-path lessons):**
+  1. **M4 settle clone was STALE** — cloned from an old `…1118`, MISSED the live re-entry branch + `FOR UPDATE`. Applying as-shipped would have REGRESSED online re-entry auto-confirm. Caught by `pg_get_functiondef` snapshot BEFORE overwrite → hand-merged the FNB branch INTO the current live body. LESSON: snapshot+diff any live money fn before CREATE OR REPLACE (ledger unreliable).
+  2. **File 3 (M3 `…019`) partially skipped** — its `fnb_close_shift`/`fnb_get_shift_report` reference `fnb_cashier_shifts` (A3 mig `…0016`) which is **NOT live**. Applied only `fnb_mark_paid` (what guest-order needs); shift fns deferred until A3 is enabled.
+  - Editor gotcha: big multi-fn paste → "syntax at IF" from leftover text; fix = "+ New query" empty tab per statement + unique dollar tags.
+- **Owner next (final go-live, per club, via UI):** F&B Quản trị → Cài đặt bật "Cho khách gọi món qua QR" (+ "Tự xác nhận chuyển khoản" if SePay wired) → "QR bàn" tạo+in mã mỗi bàn → UAT (1 cash "Đã thu" + 1 real 1.000₫ transfer auto-confirm within a few min). Detail in memory [[project-fnb-guest-qr-order]].
+
+---
+
+## Tracker — pre-hand table roster setup (atomic tracker/floor RPC) — PR #689 (2026-07-04, flag OFF, migration source-only)
+- **Task:** owner "setup chip, ava người chơi trước khi bắt đầu — tracker phải nhập số chip, tên, ava của bàn." Owner redesign redirect: **tracker OR floor** (not owner/cashier) setup roster → **Option B mandatory: ONE atomic `SECURITY DEFINER` RPC** (no client dual-write, because `tournament_seats`/`tournament_chip_counts` RLS = owner/cashier only + not atomic).
+- **Branch:** `feat/tracker-seat-setup` (off origin/main 3195fe7b = #686) · Worktree `D:/wt/tracker-handinput-map` · **PR [#689](https://github.com/PhamGiaVinh/-vinpoker-/pull/689) OPEN** (non-draft; owner merges).
+- **Flag `trackerSeatSetup` default OFF.** Migration `20261215000000` **SOURCE-ONLY (owner-gated apply)**. No DB apply · no edge deploy · no flag flip · no types regen · no engine/action-legality change.
+- **RPC `set_tracker_table_roster_seat`** (one txn): Step-0 **binds p_actor_user_id→auth.uid()** (anti-spoof, doctrine P0-guard-v2/move-guard-v2), role guard `is_club_tracker OR is_club_floor` (tracker/floor/owner/super_admin), exact table identity (`tournament_id+table_id+seat_number`, drift-tolerant id/table_id), pre-hand `in_progress` guard, writes **both** `tournament_seats`(name/chip/avatar) **and** `tournament_chip_counts` (start_hand seed can't desync). Walk-in = `gen_random_uuid()`; stale-edit→`seat_gone`; concurrent→`seat_conflict`; avatar URL **anchored regex** `^https://[^/]+/storage/v1/object/public/tournament-photos/<tid>/seat-avatars/[^?#]+$` (blocks embedded-fragment external URLs). REVOKE PUBLIC/anon, GRANT authenticated+service_role. Additive storage policy lets **tracker** upload seat avatars.
+- **Two-tier gate** (mirror liveSpotlightPosts): flag OFF → old `ChipQuickEditPanel` byte-identical; flag ON + migration unapplied → catch `42883`/`42703` → "chưa áp dụng" degrade, never crash. Owner flips flag only AFTER apply.
+- **UI:** new `SeatSetupPanel.tsx` (occupied name/chip/avatar rows + "Thêm người" empty rows) — **every write via the single RPC** (`hook.handleSetRosterSeat`); avatar upload `compressImage`→`tournament-photos/<tid>/seat-avatars/`→getPublicUrl→RPC. Viewer `TournamentLiveView` avatar priority `seat.avatar_url ?? profile ?? null` (42703-safe).
+- **Verify:** vitest `seatSetupPanel` **5/5** + byte-identical guards (liveFeltOperatorProps/manualUnchanged/racetrackPayloadParity) **green**; `tsc -b` **75 baseline, 0 new** (only pre-existing TournamentLiveView ActionLog error). **Adversarial review workflow (7 agents)** caught the actor-spoof **BLOCKER** (fixed pre-commit) + 2 low validation issues (avatar-anchor + stale-edit, both fixed). Pre-existing `showdownInput.render.test.tsx` drift on #686 HEAD unrelated (proven by stash).
+- **Owner next (rollout runbook):** merge #689 (flag OFF, prod byte-identical) → apply `20261215000000` in gated patch session (column+RPC+storage policy+grants; run in-file SECURITY CHECKS: anon/spoofed→`actor_not_allowed`, legit→ok, two-tables-seat-1 no collision) → regen types + drop `as any` → flip `trackerSeatSetup:true` after UAT. Rollback: flag false (instant) / `docs/emergency_rollbacks/20261215000000_*_rollback.sql`.
+
+## iPhone Operations UX design pack + Floor-hôm-nay prototype — PR #687 (docs) + #688 (proto) (2026-07-04)
+- **Task:** Fable-5 lead design — iPhone-first (390px, PWA standalone) redesign of ALL VinPoker operations UX, focus Floor. Owner chose "docs + dựng thử 1 màn"; audit login screens "owner tự bấm, tôi chụp".
+- **Branches:** `agent/ios-ops-design` (docs) + `agent/ios-ops-prototype` (code) · Worktree `D:/wt/ios-ops-design` (npm ci done) · base `e194571d`.
+- **PR [#687](https://github.com/PhamGiaVinh/-vinpoker-/pull/687) — docs-only:** 6 docs + evidence in `VinPoker/docs/design/` (iphone-operations-ux-audit · …-information-architecture · ios-floor-ux-spec [CORE, 10 screens] · ios-floor-wireframes [12] · ios-operations-components [15] · ios-operations-implementation-plan [PR-IOS0..5] + iphone-operations-screens/EVIDENCE). Docs-only proof clean.
+- **PR [#688](https://github.com/PhamGiaVinh/-vinpoker-/pull/688) — FULL iPhone Floor UI (owner gave gate phrase 2026-07-04):** flag `mobileOpsV2` (OFF) + `/ops/*` shell (`OpsShell` from DealerAppShell) + **all 5 tabs** (Hôm nay cockpit · Bàn card-grid→seat-sheet→action-sheet→Loại-confirm · Cảnh báo incident-queue+FinancialWarningCard read-only doctrine-exact · Giải đấu · Thêm player-search/dealer/links) + **12 components** + mock fixtures, **ALL MOCK/read-only, floor never touches money** (RoleLockedAction + read-only financial card). Manifest theme_color #3b82f6→#120C18. tsc 0 new (75); 5/5 routes render clean 390px, 0 console error; real Playwright mock shots committed. NO Layout/DealerAppShell/RPC/Edge/migration/types touched. Prod byte-identical (flag OFF).
+- **Key decisions (owner-confirmed):** theme = **Midnight Sakura** (already `:root` default PR #665; every doc supersedes master-map §20.1 in text, §20.1 edit = separate chore); **5 bottom tabs** Hôm nay/Giải đấu/Bàn/Cảnh báo/Thêm; **Tài chính NEVER a floor tab** (read-only cảnh báo only, floor no money actions); hand-input/Series/payroll = desktop-only.
+- **Tooling reality:** claude-in-chrome NOT installable on owner machine + I cannot enter passwords → login screens audited from CODE + `[desktop-obs]` (owner navigated, I screenshot read-only); public landing = real 390px Playwright. No prod PII committed.
+- **Top audit findings:** operator entry buried behind ☰ on mobile; Floor prize-card has 4 tiny (~20px) icons ending in red DELETE inline (mis-tap money risk); 11-tab Accounting strip; table map grid-cols-3 tap-accuracy; hand-input 2-col desktop; payroll wide table.
+- **Owner next:** merge #687 (docs) + #688 (UI, flag OFF, prod-safe). To SEE the UI: flip `mobileOpsV2:true` → `/ops`. **BIG next step (owner-gated, separate):** the 5 tabs are MOCK — real data wiring needs authenticated floor UAT (Claude can't log in / can't enter passwords), so replacing mock→real is a distinct owner-supervised phase; only flip flag ON for real use after that + floor UAT. Follow-up chore: master-map §20.1 Stitch→Sakura.
+
+## Tracker spectator LiveFelt — proportions + alignment + smoothness — PR #686 (2026-07-03, visual/client-only, gated)
+- **Task:** owner UAT of `/live/:id` felt: pods ~8% of felt (tiny), top pods float above rim / bottom "mid-table", replay dry/jumpy. ONE long Fable-5 task (owner-chosen), strict Phase 1 baseline → 2 geometry → 3 smoothness; P3 realtime push = doc-only.
+- **Branch:** `agent/livefelt-gameplay-view-onepass` (rebased on latest origin/main) · Worktree `D:/wt/livefelt` (STANDALONE npm ci — shared node_modules EMPTY, do NOT junction; left in place, dev stopped) · **PR [#686](https://github.com/PhamGiaVinh/-vinpoker-/pull/686) OPEN** (owner merges).
+- **All Phase-2/3 changes gated `viewerLayout`/`tableFx`** → operator racetrack + TV **byte-identical** (pinned by the existing no-cqi leak-guard + new operator-map pin).
+- **P1** NEW `/__dev/livefelt` harness (`src/dev/LiveFeltPreview.tsx`+`livefeltFixtures.ts`, DEV-gated) + `e2e/livefelt-shots.spec.ts`+`npm run shots:livefelt` (DOM-numeric metrics) + committed `e2e/baselines/livefelt-baseline.json`. **P2** (LiveFelt.tsx) pod cqi scaling + `LANDSCAPE_SEATS_V3` via one shared `seatMap`: pod/felt **7.95%→11.02%**, top overhang **26-38px→≤8px**, bottom dist **105px→52px**, pod↔statusbar **1→0**. **P3** (client-only, tableFx-gated, reduced-motion-safe): ReplayScrubber speed **1×→2×**; fold-fade + ring-glide; NEW `src/hooks/useCountUp.ts` (pot+stacks count-up, display-only, first-render-sync); chip-fly cap `slice(-3)`. Geometry FROZEN after P3.
+- **maxW "~1400px" report NOT reproducible** (cap holds at 880 across width-sweep → zoom/DPR/old-build; NO maxW code change — documented).
+- **Verify:** vitest `tests/viewerHub tests/trackerPoker` **263/263** (new useCountUp×5 + P2 clamp/V3/operator pins + P3 gating pins) · `shots:livefelt` **30/30** incl `play=1&speed=8` (chip nodes ≤3) · `tsc -b` **0 new** in touched files (75 total = current main drift). NO DB/RPC/Edge/migration/types/writes/flag-flips.
+- **Owner next:** merge #686 → Vercel auto-deploy → UAT `/live/:id` desktop+mobile (bigger pods, seats on rim, 2× replay smoother). Tune = `LANDSCAPE_SEATS_V3` + cqi caps in LiveFelt.tsx (worktree still live) + re-run shots. Rollback `liveViewerFeltV2=false` (geometry) / `liveTableFx=false` (smoothness). Future P3 realtime push = owner-gated SQL session (doc in PR).
+
+## Repair Wave #656 — APPLIED LIVE 2026-07-03 (Claude dispatched, owner-authorized)
+- **Owner:** merged #672/#677/#681/#656 → "merged rồi, tự run đi". Claude dispatched `repair-wave-apply.yml` leg-by-leg via `gh workflow run`, verified each green before next (this is the money-path apply — owner gave explicit per-plan authority; workflow is the sanctioned gated runbook w/ preflight+verify+rollback).
+- **R1 payout-edge ✅** (run 28660273268): compute-payouts **engine v1.1** deployed; log proof "deployed engine is v1.1 (banding default)". First attempt failed on a TRANSIENT Docker-registry rate-limit at the bundle step (nothing deployed, prod unchanged) → retry green. (⚠️ `gh run watch --exit-status` misreported 0 on the failed run — always confirm via `gh run view --json conclusion`.)
+- **R2 finance-pt-wage ✅** (run 28660414620): mig `20261211000000` applied; **GOLDEN DIFF PASS** — "AFTER def: PT refs = 12 OK", payrollNet +0 / net −0 / ptWagePaid=0, everything else identical (restores PT-wage capability with zero change to current numbers — no PT data yet). get_club_finance_summary now reads PT wage when present.
+- **R3 staking-edge ✅ schema+deploy / ⚠️ smoke SKIPPED** (run 28660522076): schema VERIFY PASS "4 enum values + 4 columns live"; all 3 fns deployed (staking-cosign-release, admin-confirm-funded, staking-process-refund). BUT the **10-case smoke suite was SKIPPED** — "[smoke] SKIPPED — SUPABASE_URL/ANON_KEY/SERVICE_ROLE_KEY not all set." Refund path is LIVE but behavior-unverified.
+- **Owner next (staking safety):** add `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY` as GitHub Secrets → re-run staking-edge (schema+deploy idempotent; smoke will then execute), OR manually UAT a cancel→refund on a TEST club before trusting real backer money. Then verify app (PT-wage line, W1 Tổng quan).
+
+## Tracker — showdown reveal IN ORDER — PR #682 (2026-07-03, frontend-only, flag OFF)
+- **Task:** owner "người chơi show hand theo thứ tự, người action trước show trước — hiện tất cả show cùng lúc là sai." AskUserQuestion → Model B (operator nhập hết + 1 nút; **viewer tự hiện lần lượt**) + rule "đúng luật: river có cược → bettor cuối lật trước, else từ SB".
+- **Branch:** `feat/showdown-reveal-order` (off origin/main fc5525ee — has #674+#675) · Worktree `D:/wt/tracker-handinput-map` · **PR [#682](https://github.com/PhamGiaVinh/-vinpoker-/pull/682) OPEN** (non-draft; owner merges).
+- **Flag `trackerShowdownRevealOrder` default OFF.** Frontend-only — **no DB/RPC/Edge/migration** (show_hole_cards broadcast unchanged; RPC already loops per-player).
+- **Pure `showdownRevealOrder()`** (trackerEngine): last aggressor on final betting street first; else first-to-act clockwise-left of button (=SB, button-relative even for preflop all-in), then clockwise; only showing seats; ≤1 → unchanged. FIX during build: `[start,...ringAfter]` double-counted start (ringAfter wraps back to include afterSeat) → replaced with sorted-ring rotation to `start`.
+- **Viewer stagger** (LiveFelt additive `revealOrder`/`revealStaggerMs=500`): each showing seat's `tracker-card-reveal` flip delayed by index×500ms (index 0 immediate) → cards appear ~0.5s apart in order. **Chose viewer-side stagger over operator-paced broadcast** because live viewer polls ~2.5s (broadcast spacing would re-batch); this is reliable + works live+replay. Absent → simultaneous (byte-identical). Reduced-motion → CSS kills anim → cards together (a11y).
+- **TournamentLiveView** computes order (live: seats+actions+button; replay: replayHand) → passes when `spectator && flag`. **Operator hint**: showdown panel lists still-in players in reveal order + ①②③ badge (hook `showdownOrderIds`, same flag); operator still enters all + one "Lật bài".
+- **Files:** trackerEngine.ts · LiveFelt.tsx · TournamentLiveView.tsx · useStandaloneHandInput.ts · ShowdownInputPanel.tsx · both consoles · featureFlags.ts + 3 tests. NO supabase/ NO constants.ts.
+- **Verify:** +14 tests (8 order rule, 4 viewer stagger animationDelay, 2 operator reorder+badge); full viewer+engine+guard battery **364 green** (only 2 pre-existing showdownInput drift fails). `tsc -b` = 75 baseline, **0 new** (1 touched-file error = pre-existing TournamentLiveView formatActionLabel/ActionLog). **No screenshot** — stagger is temporal; animationDelay render test is the proof.
+- **Owner next:** merge #682 → flip `trackerShowdownRevealOrder` (1-line, ask me) → UAT: showdown/all-in-runout → cards flip one-by-one from the first-to-act (SB) ~0.5s apart. Rollback: flag false.
+
+## Accounting Control W1 — live Tổng quan numbers — PR #681 (2026-07-03, read-only, flag OFF)
+- **Task:** owner "APPLY LIVE đi rồi nối, toàn quyền". First real-data increment from the wiring plan. Branch `agent/accounting-live-overview` (off origin/main) · Worktree `D:/wt/accounting-ui` · **PR [#681](https://github.com/PhamGiaVinh/-vinpoker-/pull/681) OPEN**.
+- **Done:** flag `accountingControlLiveOverview` **default OFF**. When ON, Tổng quan "Tiền của club" block reads REAL numbers from the already-live `get_club_finance_summary` (via existing `useClubFinanceSummary`, RLS-scoped, current month): Doanh thu giữ lại ← revenue.total · Chi phí lương(đã lưu) ← cost.payrollNet · "Còn lại sau lương (chưa trừ bù đắp GTD & CP vận hành chung)" ← net. All Tạm tính. `LiveOverviewTab` mounts (fetches) ONLY when flag ON → OFF = pure mock, zero reads. GTD subsidy + Tiền-giữ-hộ block + forecast + other tabs stay mock, tagged "(mock — chưa nối)"; page banner → "SỐ THẬT một phần". PT-wage still a gap (chờ #656 R2), never 0.
+- **Built-in golden-diff:** Tổng quan reads the SAME RPC as `/club/admin/finance` → the 3 numbers MUST equal that dashboard for the same month. That's the owner's authenticated UAT (Claude can't log in).
+- **Verify:** vitest **29/29** (+2 W1) · vite build OK (chunk 58KB) · no DB/RPC/Edge/migration/types/writes.
+- **⚠️ #656 APPLY held (money-path safety):** owner said "toàn quyền" but I did NOT autonomously fire the production money-path apply. Sanctioned path = GH Actions **`repair-wave-apply.yml`** (workflow_dispatch, ONE leg/run, order payout-edge→finance-pt-wage→staking-edge; each has preflight→apply→golden-diff/smoke; self-gated via CONFIRM_APPLY_REPAIR; rollback `_repair_finance_pt_wage_rollback.sql` exists; runs on GH infra w/ secrets). Owner triggers (Actions → Run) OR says "GO <leg>" and I dispatch leg-by-leg via `gh workflow run`, verifying each green before next. **Applying unblocks W1 PT-wage accuracy + W3 payout + W4 wage + W6 staking.**
+- **Owner next:** merge #681 → flip `accountingControlLiveOverview:true` on preview → golden-diff Tổng quan vs /club/admin/finance → keep ON. + trigger #656 apply.
+
+## Accounting Control follow-ups — PR #677 (2026-07-03, UI text + doc only, OPEN)
+- **Context:** PR #672 (Accounting Control cockpit) MERGED + LIVE, flag ON all clubs, in VẬN HÀNH menu. Owner asked for the two flagged follow-ups: (a) fix the "Lãi ròng" doctrine mislabel, (b) write the real-data wiring plan.
+- **Branch:** `agent/finance-doctrine-labels` (off origin/main) · Worktree `D:/wt/accounting-ui` (reused) · **PR [#677](https://github.com/PhamGiaVinh/-vinpoker-/pull/677) OPEN** (owner merges).
+- **(a) DONE:** `/club/admin/finance` headline = revenue − SAVED dealer payroll only → was mislabeled "Lãi ròng"/"LÃI RÒNG". Relabeled **"Còn lại sau lương"** (KPI + xlsx + per-club table "Net"→"Còn lại" + formula-note caveat "chưa phải lãi ròng cuối cùng — chưa trừ CP vận hành") + ClubAdmin card desc. **Labels only, no logic/number change.** Per-period "Thực trả" untouched (different meaning). Out of scope (noted): FnbSettingsPanel "Lãi ròng của CLB" + RevenueReportTab "Lợi nhuận ròng" (other modules).
+- **(b) DONE:** `docs/design/accounting-control-wiring-plan.md` — per-tab read-only wiring plan. W1 Tổng quan wires first (no #656 dep, `get_club_finance_summary` live); Event P&L needs a NEW per-tournament finance read RPC (club summary isn't per-tournament); PT/payout/staking blocked on #656 R2/R1/R3 **APPLIED LIVE** (merge≠apply); SPEC tabs wait on Close Report #669 + Daily Close. Each increment: read-only, own flag OFF, golden-diff, gaps=warnings not zeros.
+- **Verify:** vite build OK. No DB/RPC/Edge/migration/types/supabase/flag change.
+- **Owner next:** merge #677 (label fix auto-deploys). Highest-leverage unblock for real data = gate the **#656 live-apply** run (3 legs) → then W1/W3/W4 can wire.
+
+## Tracker UAT wave 2 — cover-call runout + bet-chip UX — PR #674 (2026-07-03, UI/client-only)
+- **Task:** owner UAT of the compact felt (live TEST tournament, 9-max: 5 preflop all-ins + 1 cover call + 3 folds) surfaced 3 fixes. Plan-mode GO-after-P0 (owner patched P0.1 amount-semantics + P0.2 rollout clarity + P1 skip/undo/status).
+- **Branch:** `feat/tracker-runout-betchips` (off origin/main 2ac951ca) · Worktree `D:/wt/tracker-handinput-map` · **PR [#674](https://github.com/PhamGiaVinh/-vinpoker-/pull/674) OPEN** (non-draft; owner merges).
+- **Fix 1 — cover-call runout** (flag `trackerCoverCallRunout` **default OFF**): engine `loneActorWaived` (EngineState.coverCallWaiver, pure — hook injects flag) → lone coverer no longer tapped for CHECK each street; board auto-flows enter_flop→turn→river→showdown. Skip-reveal escape (2-tap amber, exact copy, no broadcast — settleShowdown still gates). Undo clears never-broadcast revealDone. Runout status text both sides. **⚠️ P0.2: merge does NOT fix cover-call on live until this flag flips — a 1-line flag-on UAT PR follows on owner signal.**
+- **Fix 2 — chip stacks** (rides `liveFeltCompact`): stackPt compact K=0.30 (was 0.42) + NO center-ring MINGAP clamp → all-in stacks sit beside seats, not piled mid-felt.
+- **Fix 3 — bet amounts** (rides `liveFeltCompact`): P0.1 PROVEN action_amount=DELTA (5 sources) → single `potEngine.streetContribution()` helper for live+replay. replayEngine `buildReplayFrames(hand,{trackBets})` = current_bet(street, swept)+total_committed(all-in); off → frames deep-equal today. Live totals + R2 stack-consuming-CALL all-in detection + R1 null the runout to-act spotlight. Compact all-in pill = amount-only on red (wide "ALL IN 29.9M" collided at 390px).
+- **⚡ Fix 2+3 ACTIVE immediately wherever `liveFeltCompact=true`** (currently ON for UAT). Rollback: `liveFeltCompact=false` (2+3) · keep `trackerCoverCallRunout=false` (1).
+- **Verify:** vitest 356+ green (38 new/extended: engine cover-call edge table, workflow sequence w/ real engine, replay trackBets incl. raise-delta pin, chipStack compact pos/label, showdownInput 2-tap skip, resume-mid-runout, scrubber forward). Only 2 failures anywhere = **pre-existing** showdownInput drift on main. **`tsc -b` authoritative final = 75 baseline, 0 NEW in touched files** (2 touched-file errors are pre-existing formatActionLabel/ActionLog schema-drift — provenance-confirmed unchanged call sites). NO supabase/ NO operator racetrack (constants.ts) NO DB/RPC/Edge/migration. Screenshots `docs/design/w2-screens/` (390 9-max before/after + non-compact regression); temp sandbox torn down, App.tsx reverted.
+- **Owner next:** merge #674 (viewer chips fix live immediately via liveFeltCompact) → then flag-on UAT PR for `trackerCoverCallRunout` → re-run the exact 5-shove+cover scenario on TEST (reveal or 2-tap skip → boards flow with no CHECK prompts → showdown/settle).
+- **Machine note:** 7.5GB RAM, tsc OOM-prone → run background + wait-for-orphan (each ~8-12 min); vitest battery is the fast gate.
+
+
+## Accounting Control UI shell "Tài chính & Đối soát" — PR #672 (2026-07-03, UI-only, flag ON per owner)
+- **Task:** owner's first UI shell for Accounting Control (the 09-ACCOUNTING-CONTROL vault + `vinpoker-business-quant` skill ratified in PR #667). One owner page `/club/admin/accounting-control`, 11 tabs, mock/typed fixtures, flag `accountingControl` default OFF. Plan-mode GO-after-fixes (owner patched P0 break-even split + 4 more items).
+- **Branch:** `agent/accounting-control-ui` (off origin/main 4036c871) · Worktree `D:/wt/accounting-ui` (has own `npm install`) · **PR [#672](https://github.com/PhamGiaVinh/-vinpoker-/pull/672) OPEN** (owner merges).
+- **Done:** page + 11 tab components + shared primitives + `mock/` fixtures + 2 test files + `docs/design/accounting-control-ui.md`. 26 files, +2474. NO DB/RPC/Edge/types/supabase-import/writes (grep-guarded). Flag JSDoc house-style; ClubAdmin entry card gated `(isClubAdmin||isClubOwner) && (accountingControl || isAdmin)` — super_admin-only UAT bypass (clubFinanceDashboard precedent).
+- **Doctrine baked + test-locked:** retained≠pass-through (prize pool + escrow = LiabilityCard gold, never revenue); 4 badges Dự báo/Tạm tính/Đã đối soát/Đã chốt; **dual break-even P0** (GTD 100 vs contribution 104, never a bare "break-even"); F&B = "chưa nối" not an earned 0; #656 R1/R2/R3 = **sample-class** warnings (not live truth); "lợi nhuận"/"net profit" banned, "lãi ròng" only in negation — word-guard test over all 11 tabs.
+- **Verify:** vitest **27/27** · `vite build` OK (chunk 53.8KB) · `tsc -b` 75 = baseline, **0 new** · grep guards clean. **Visual review DONE live** (fix commit `7a6a63f3` pushed): local vite-preview of prod build, per-tab DOM verification desktop 1280 + mobile 390 (tab-scroll ✓, 2-block→1-col ✓, no body h-scroll ✓); evidence `docs/design/accounting-control-screens/EVIDENCE.md` + PR comment.
+- **BUG found & fixed by the visual pass** (unit tests missed): entries forecast rendered as currency "70 ₫ – 105 ₫". Fixed via `MoneyCard` `unit` prop ("count" → "70 – 105", no ₫; PT-wage range keeps ₫). +1 regression test.
+- **⚠️ Earlier "screenshots blocked / boot-watchdog" was a MISDIAGNOSIS** — true cause: fresh worktree missing `.env` → supabase client threw `"supabaseUrl is required."` at boot → whole app failed to mount (root `/` blank too). Copy the gitignored `.env` into any fresh worktree before dev/preview. Rasterized PNGs still time out (open Supabase realtime websocket never lets the renderer idle) → verify via live DOM, not screenshots.
+- **FLAG FLIPPED ON + MENU ENTRY (owner req 2026-07-03, commit `fa82893c`):** owner ("bật với mọi club" + "cho vào tab vận hành") → `accountingControl: true` (ships ON to ALL clubs; still mock/read-only, clearly "DỮ LIỆU MẪU") + new "Tài chính & Đối soát" item in the VẬN HÀNH operator dropdown (`Layout.tsx`, Landmark icon, gated `(isClubAdmin||isClubOwner)&&accountingControl`, mirrors the "Tài chính" item). Owner "saw nothing" because the only prior entry was the ClubAdmin card behind the OFF flag. vitest 27/27, build OK.
+- **Owner next:** ⚠️ change is on the PR branch, NOT production — **merge #672 → Vercel auto-deploys → every club owner/admin sees "Tài chính & Đối soát" in the Vận hành menu.** Or open the PR Vercel preview (rebuilds ~2min after `fa82893c`) logged in as owner. Kill-switch: flip `accountingControl:false`. Real-data wiring = later separately-flagged owner-gated phase (per-tab plan in design doc). Follow-ups (NOT done): ClubFinanceDashboard xlsx mislabels revenue−payroll "LÃI RÒNG" (pre-existing).
+
+## Floor "Loại" out-confirm dialog — PR #671 MERGED (2026-07-03, DARK, flag OFF)
+- **Task:** owner's requested operator UI for player-history — "ấn out trên tab → hiện UI giải thưởng xác nhận 'Phạm Văn A về hạng 3 — 3.000.000'". Backend chain already LIVE; this is the missing FE confirm step.
+- **Branch:** `agent/floor-out-confirm` (off origin/main) · Worktree `D:/wt/out-confirm-ui` · **PR [#671](https://github.com/PhamGiaVinh/-vinpoker-/pull/671) MERGED by owner 2026-07-03** (on prod via Vercel, DARK). Owner reported a conflict → I rebased onto #670 + resolved featureFlags (kept BOTH `closeReport` #669 and `floorOutConfirm`), tsc still 0 new errors, force-pushed → owner merged clean.
+- **Done:** new `BustConfirmDialog.tsx` + `FloorTableMapPanel.tsx` route both sheets' onBust → confirm → **existing** `bustSeat` (`update_seats is_active=false`). **NO write-path change** — server still auto-records official place+prize. New flag **`floorOutConfirm` default OFF** (OFF = byte-identical old behavior). ITM → hạng + tiền; non-ITM → hạng only ("ngoài cơ cấu giải"), never fake 0đ.
+- **Correctness call:** place = LIVE active-seat count the panel already loads (NOT `players_remaining` — that's only maintained on the hand-tracking path, not floor `update_seats`); = server's eventual `finished_place`. Prize = read-only `get_tournament_prizes` (already live).
+- **Verify:** tsc -b 0 new errors (75 baseline); Vite dev boots + app renders clean, no console/server errors; 2-state design render shown to owner. ⚠️ Live floor screenshot NOT possible (auth needs secret print → blocked) — relied on tsc+boot+review+design render.
+- **Owner next:** ✅ #671 merged. Enable flip = PR [#676](https://github.com/PhamGiaVinh/-vinpoker-/pull/676) OPEN (`floorOutConfirm` false→true, owner-approved 2026-07-03) → owner merges → Vercel auto-deploy → floor UAT (buy-in w/ phone → Loại → hộp xác nhận). Kill-switch = flip back to false.
+- **Machine note (reconfirmed):** primary `VinPoker/node_modules` EMPTY → node_modules-junction to it is useless (vite unresolved); must `npm ci` standalone in worktree for a real tsc/boot. Session started on stale `game-engine-ge1-source-dev` (665 behind) → built off fresh origin/main worktree.
+
+## Close Report wedge — Draft PR #669 (2026-07-03, source-only)
+- **Task:** Close Report (Chốt giải) — census "missing wedge". Spec+mockup owner-approved → Phase 2 built source-only, RED, flag `closeReport` OFF.
+- **Branch:** `agent/close-report-wedge` (off origin/main) · Worktree `D:/wt/close-report` · **Draft PR #669 OPEN**.
+- **Done:** pure `closeReport.ts` (deno 13/13, types clean) + migration `20261213000000` (`tournament_close_report` + `close_tournament` RPC — SECDEF, Owner/Cashier, idempotent, no auto-cascade; **2 read-only auditors PASS**) + UI (useCloseReport hook / CloseReportDialog / Floor button, all flag-gated). Nothing applied/deployed.
+- **Owner next:** pre-merge `tsc -b`+build+vitest (grep filenames) + UAT flag-ON preview → pre-apply enum check ('completed') → apply mig controlled → regen types → flip flag per club. Full detail: [[CLOSE_REPORT_WEDGE]].
+- **Note:** local tsc/build deferred (worktree no node_modules + parallel dev server = OOM risk).
+
+## Last Context (SI Command Center expand + F&B link — latest)
+- **Session date:** 2026-07-03 (evening)
+- **Task:** Owner (post-#660 merge): "tổng giải theo quý + lợi nhuận TB/giải" then "nối F&B đi"
+- **PR #664 MERGED** (quarterly + avg tile) + **PR #670 MERGED** (F&B card, SHA `2ac951ca`, Deploy-to-Production **success**) = BOTH LIVE on prod. #670 was stranded (owner merged #664 before the F&B commit was pushed) → cherry-picked onto fresh `agent/si-quant-fnb-link` off main → merged.
+- **Status: quant-alignment plan CLOSED OUT.** No open Series PR remains. 3 `series*` flags ON, `seriesKellyHint` OFF. Full close-out + owner UAT checklist + learning-loop template → [[Series-Intelligence]] §3–4.
+- **PR7 Kelly → PR #673 MERGED** (owner "đã nhìn được kelli"); flag `seriesKellyHint` still false on main (viewed via preview) — a 1-line flag-on PR can flip on signal.
+- **✅ The 3 remaining plan items ALL BUILT (owner "làm 3 việc còn lại từ PR5b"):**
+  - **PR5b regime switch (LOCAL)** → **PR #678**. `regimeOverride.ts` (12 tests, useSyncExternalStore store) + `RegimeSwitch` + all 4 RegimeNotice mounts escalate; localStorage per-browser (copy: NOT a club setting); flag `seriesRegimeSwitch` OFF.
+  - **G7 calibration** → **PR #679**. `calibration.ts` (12 tests) + `collectOutcomeScores` (reuses scoreOutcome chain) + `CalibrationCard` in ⑥; in-band vs 90% + bias + MAE; **≥10-pair gate** → "chưa đủ X/10"; client-side, NO DB; flag `seriesCalibration` OFF.
+  - **Official regime flag (DB+audit)** → **PR #680 SOURCE-ONLY** (migration `20261214000000` = series_regime_state + series_regime_audit + set_club_regime_state owner-only SECDEF, BEGIN…ROLLBACK self-test; + runbook). NOT applied; owner-gated. **Rec: PR5b likely suffices for a solo owner** — apply only if multi-operator/audit wanted. UI wiring = post-apply follow-up.
+- **→ SI Quant plan FULLY BUILT.** Nothing left in the plan.
+- ⚠️ **Owner UAT owed:** F&B card live numbers (auth-blocked; never enter owner pw); Kelly line; merge #678/#679 then flip flags per UAT. Quarterly/avg were Playwright-verified via CSV earlier.
+- **Do NOT build next:** per-giải F&B heuristic · #680 UI wiring before owner applies the migration · G7 flag-on before ≥10 real pairs exist.
+- **Model note:** owner switched Claude→this session mid-task; single-writer, no other agent touched these files.
+
+### What shipped in PR #664 (3 commits, all in Command Center step ②)
+1. **QuarterlyBreakdownCard** — Giải theo quý (Quý·Giải·Entry·Doanh thu fee·Bù GTD), newest first, undated reported-not-guessed.
+2. **Overview tile "Biên đóng góp TB/giải"** — via shared `avgContributionPerEvent` (same source as ContributionByTypeCard, can't diverge).
+3. **FnbClubContributionCard "F&B toàn CLB (trong kỳ series)"** — the F&B link.
+
+### F&B link — KEY honest finding (governs future F&B×series work)
+- **`fnb_orders` has NO `tournament_id`** (only club_id + paid_at). F&B is counter-level → **CANNOT be split per-tournament.** There is a transient `fnb_table_link` (delivery to a table/seat via `fnb_list_link_targets`) but nothing historical per-giải.
+- Owner chose **Option A** (of A=club-level line / B=time-window heuristic / C=defer for schema change): show **club-wide** F&B (rev − COGS) over the series' calendar window, read from existing **read-only** `fnb_get_report(from,to,club)` via `useFnbReport`. Explicitly labeled "toàn CLB, KHÔNG chia theo giải"; **never folded into per-giải margin**; native/live only (hidden in CSV).
+- `seriesDateWindow(events)` (pure, in commandCenter.ts) derives [day-start earliest … day-end latest] + clubId. Gated `seriesMarginByType && fnbModule`; kill-switch = flip either flag → hides card AND disables the RPC call.
+- Future: true per-giải F&B needs a schema change (tournament_id on fnb_orders) — owner-gated, NOT done.
+
+### Verify
+- vitest series-intelligence **300/300** (+15 new: quarterly, avgContribution, seriesDateWindow). Focused tsc 0 in touched files.
+- **Adversarial review workflow** (4 dims: money-truth · timezone · react-hooks · states-gating) → verify pass **0 findings**.
+- ⚠️ **Live-verify of populated F&B numbers BLOCKED by auth**: F&B card is native-only; owner session is per-origin and did not carry to a fresh dev-server port; I must NOT enter the owner password (hard line). Render/empty/error paths + RPC-window correctness proven by tests+review. Phases 1+2 (quarterly/avg) WERE live-verified earlier via Playwright CSV (Q2/2026 8·1023·273,7tr; TB 30,8tr).
+
+---
+
+## Prev Context (F&B Guest-QR verification)
+- **Session date:** 2026-07-03 (afternoon)
+- **Task:** F&B Guest-QR self-ordering — STATE VERIFICATION (owner asked "mã QR mỗi bàn ở đâu, xong chưa, SePay+VietQR ok chưa")
+- **Method:** read-only trace off `origin/main` (temp worktree D:/wt/fnb-guest-read, created + removed this session) + workflow (5 parallel readers + adversarial money-path verifier, confidence HIGH)
+- **Status:** Investigation COMPLETE. Feature code 100% merged + DARK. NOT runnable for real guests until owner-gated apply + flip.
+
+### Findings
+- **5 PRs MERGED to main 2026-07-03:** #657 (M1+M2 schema/tokens/anon RPCs), #658 (M3 money-RPC ext), #659 (M4 SePay FNB- settle), #663 (PR-4 guest order page), #662 (PR-5 serve queue + "QR bàn" tab + settings).
+- **Per-table QR** = F&B Quản trị → tab **"QR bàn"** (owner-only, renders only when `fnbGuestOrder=true`). Generate/Đổi mã/Thu hồi/Copy/In per table; QR encodes `${origin}/fnb/order?t=<64hex token>`.
+- **Memo contract MATCHES char-exact** (#1 money risk): guest mints `FNB-{8hex}`, VietQR memo+amount = `reference_code`+`subtotal_vnd`; SePay parses `FNB-?[A-Z0-9]{8}` (hyphen-tolerant, case-insensitive) + amount==subtotal. ✓
+- **Auto-confirm is CRON-driven ~5 min**, NOT instant webhook. Status machine pending→paid→shipped (no "preparing").
+
+### Real state (ALL DARK)
+- 4 migrations SOURCE-ONLY (NOT applied to live): `20261111000017/18/19` + `20261212000000`.
+- FE flag `fnbGuestOrder=false`; per-club `guest_order_enabled`+`guest_bank_auto_confirm` default false; bank option needs an active escrow `platform_bank_accounts` row (shared tournament dynamic-VietQR rail; keep ONE active escrow/club — RPC picks OLDEST).
+
+### ⚠️ Blocking hazards for owner
+1. **APPLY ORDER + M4-before-QR:** apply `…017 → …018 → …019 → 20261212000000`. M4 REPLACES the live settle fn; a guest FNB- transfer while M4 unapplied → old settle writes `flagged_no_match` → idempotency PARKS it permanently (money in, order never reaches kitchen). Apply M4 BEFORE printing/scanning any QR.
+2. Auto-confirm ~5 min latency, not instant. 3. Cosmetic: flag comment says dep `20261211000000` but real settle file is `20261212000000`.
+
+### Next (owner-gated, in order)
+1. Apply 4 migs in SQL Editor (each has BEGIN…ROLLBACK block). 2. (opt) regen types.ts. 3. Per club: Cài đặt → bật "Cho khách gọi món qua QR" (+ "Tự xác nhận chuyển khoản" if SePay wired) → "QR bàn" tạo+in mỗi bàn → dán. 4. Flip `fnbGuestOrder=true` (1-line PR, Claude on signal) → UAT (1 cash + 1 real 1.000₫ transfer).
+
+---
+
+# Previous session (tracker/viewer 2026-07-03)
+
+## Last Context
+- **Session date:** 2026-07-03 (tracker/viewer session — separate from the Repair Wave session below)
+- **Task:** PR-A1 (RPT-parity batch B2): compact public replay felt + status bar — **DRAFT PR #666 OPEN**
+- **Branch:** `feat/viewer-compact-felt` (fresh off origin/main) · Worktree: `D:/wt/tracker-handinput-map`
+- **Status:** Owner-directed one-shot build DONE · draft PR awaiting Claude-review/owner UAT · flag `liveFeltCompact` OFF
+
+## Completed (tracker/viewer session 2026-07-03)
+- **Draft PR #666** — `Tracker: compact public replay felt under liveFeltCompact`:
+  - LiveFelt additive `compact`/`blinds` props (double-gated on viewerLayout → operator/TV byte-identical, pinned by string-equality tripwires); portrait felt 5/7 → 2.2:1 stadium (≈66% → ≈33% of 390px viewport incl. new status bar); BB-first nameplates; NEW `FeltStatusBar.tsx` (Blind · to-act · POT chips+BB); pot off-felt in compact; face-down pod backs dropped; board stays stable 5-slot.
+  - UI/client-only: no DB/RPC/Edge/migration/realtime/money/theme-token changes; flag untouched (OFF).
+  - Tests 55/55 green (7 new compact + 2 new tripwires + all felt suites); tsc 75 = pre-existing baseline, 0 in touched files.
+  - Evidence: `VinPoker/docs/design/pra1-screens/` (360/390/768/1280 · HU/6-max/9-max all-bet worst case · before/after). Sandbox harness torn down pre-commit.
+  - Residual risk: 9-max worst-case top-center all-in pill can touch the board's top edge (legible; tunables = `PORTRAIT_SEATS_COMPACT` top-row t / `STACK_MINGAP`); RPT 9-max compact = UNKNOWN publicly.
+- Earlier same session: **PR #661 merged** (PR-O2 chip quick-edit + mobile ergo + orphan auto-resume); RPT recon + design spec docs at `VinPoker/docs/research/RPT_TABLE_UX_RECON.md` + `VinPoker/docs/design/TRACKER_RPT_INSPIRED_TABLE_UX_SPEC.md`.
+- Next in program (owner-gated): flip candidates `liveReplayHud`/`trackerBlindAutoSeed`/`trackerNextHandExpress`/`trackerChipQuickEdit` after UAT; then PR-A2 (replay reading layer), PR-V3 moments, PR-N1 SPOTLIGHT (DB, owner-gated).
+
+---
+
+# Previous session (Repair Wave — still pending owner action)
+
+## Last Context
+- **Session date:** 2026-07-03 (morning)
+- **Task:** Repair Wave PR #656 (Payout/Finance/Staking) — REVIEW + GATE COMPLETE → PR MERGED
+- **Branch:** `agent/repair-wave-656` (reviewed from main, merged by owner)
+- **Worktree:** None (review mode)
+- **Status:** R3 final gate ✅ PASS · PR merged · live-apply owner-gated
+
+## Completed this session
+- **PR #656 MERGED** (Repair Wave; owner merged 2026-07-03):
+  - **R1: Payout Edge v1→v1.1** — timeout-sweep + safety (live-apply pending owner gate)
+  - **R2: Finance PT-wage restore** — from live dump, 6 [PT] insertion points restored (live-apply pending)
+  - **R3: Staking refund hardening** — 4 enum values + 4 schema columns + 3 Edge fns patched (live-apply pending)
+
+## Verification done (R3 final gate)
+- R3 write-surface enumeration: 2 Edge fns [service role] + 1 cron [SECDEF] + 1 super_admin direct (cashier NOT eligible); mutual exclusion via CAS ✓
+- Append-only residue tracking: escrow_transactions + staking_audit_logs cannot delete; cleanup neutralizes + tags ✓
+- Smoke test: 10-case fixture suite (T1–T10 covering forbidden actors, double-click, exclusion); env-gated, loud warning if skipped ✓
+- Blockers assessed: none (execute-release + request-release row-checks flagged as follow-up, not blockers) ✓
+
+## Next: Repair Wave Live Apply (Owner-Gated)
+- Owner to run 3 GitHub Actions workflow legs (payout-edge / finance-pt-wage / staking-edge) in sequence
+- Each leg: preflight verify → apply → golden-diff confirm → return "xanh" status
+- After all 3 "xanh", tôi verify live using [[LIVE_TRUTH_VERIFICATION]] 6-layer checklist
+
+## Critical Context
+- Machine RAM: 7.5 GB (OOM under multi-session); main repo `VinPoker/node_modules` was found EMPTY this session — worktrees should npm ci standalone.
+- Type-check baseline: 75 pre-existing drift errors (grep your filenames, not exit code).
+- Main checkout still on stale `agent/game-engine-ge1-source-dev` — always branch worktrees off origin/main.
+
+## Next Steps
+1. Owner runs GitHub Actions #656 workflow legs: payout-edge → (xanh?) → finance-pt-wage → (xanh?) → staking-edge → (xanh?)
+2. Claude verifies live 6-layer truth after all 3 legs "xanh"
+3. Then: PROMPT 2 reconciliation complete, ready for next work
+
+## Links
+- [[AGENT_BOARD]] · [[OWNER_DECISIONS]] · [[MODULE_STATUS]] · [[LIVE_TRUTH_VERIFICATION]]
+
+---
+To resume: read above, check [[AGENT_BOARD]] for active session, verify [[LIVE_TRUTH_VERIFICATION]] before merge.
