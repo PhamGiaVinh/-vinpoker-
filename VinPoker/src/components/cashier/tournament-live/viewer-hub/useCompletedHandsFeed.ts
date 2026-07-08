@@ -119,9 +119,9 @@ export function useCompletedHandsFeed(
 
     // Fallback roster (keyed by player_id, handFeedDerive already looks up by player_id)
     // — only for rows whose snapshot is missing, so the query is free once all snapshotted.
-    const needIds = (hp ?? [])
-      .filter((p: { player_name?: string | null }) => !p.player_name)
-      .map((p: { player_id: string }) => p.player_id);
+    const needIds = ((hp ?? []) as any[])
+      .filter((p: any) => !p.player_name)
+      .map((p: any) => p.player_id);
     const display = await fetchHandPlayerDisplay(tournamentId, needIds);
     if (seq !== seqRef.current) return;
 
