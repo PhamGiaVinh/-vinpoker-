@@ -134,7 +134,7 @@ export default function OpsTournamentCockpit() {
             <Metric label="Entries" v={vnd(d.totalEntries)} />
             <Metric label={<span>Pool <span className="text-amber-300">(Tạm tính)</span></span>} v={<span className="text-[#c9a86a]">{vnd(d.prizePool)}</span>} />
           </div>
-          <button onClick={() => navigate("/ops/tables")} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
+          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
             <LayoutGrid className="h-[18px] w-[18px]" /> Sơ đồ bàn
           </button>
           <DesktopNote text="Sửa clock / blind — trên máy tính." />
@@ -147,7 +147,7 @@ export default function OpsTournamentCockpit() {
           <LayoutGrid className="h-8 w-8 text-[#c9a86a]" />
           <div className="text-[15px] font-semibold text-[#f2ece6]">Sơ đồ bàn theo giải</div>
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Xem ghế/người/chip thật + thao tác ở màn Bàn.</div>
-          <button onClick={() => navigate("/ops/tables")} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
+          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Search, Plus, Shuffle, PauseCircle, XCircle, Loader2, LogIn, ChevronLeft, Users, Trophy, RefreshCw, AlertTriangle,
@@ -158,14 +158,28 @@ export default function OpsTables() {
   }, [scopedIds.join(",")]);
 
   const { data: tournaments, isLoading: toursLoading } = useTournaments(clubId ?? undefined);
+
+  // Deep-link giải: ?tour=<id> khi vào từ cockpit/Hôm nay ("Mở màn Bàn"). Đọc MỘT LẦN (ref) để
+  // URL đổi về sau không tự chọn lại → không đè lựa chọn thủ công của người dùng.
+  const [searchParams] = useSearchParams();
+  const deepLinkTourIdRef = useRef<string | null>(searchParams.get("tour"));
+
   const tourOptions = useMemo(() => {
     const list = (tournaments ?? []) as unknown as Tournament[];
     const primary = list.filter((t) => LIVEISH_PRIMARY.includes(t.status));
-    return primary.length > 0 ? primary : list.filter((t) => LIVEISH_FALLBACK.includes(t.status));
+    const base = primary.length > 0 ? primary : list.filter((t) => LIVEISH_FALLBACK.includes(t.status));
+    // Giải được deep-link phải chọn được ngay cả khi chưa live (VD giải "test" upcoming): thêm vào đầu.
+    const deep = deepLinkTourIdRef.current;
+    if (deep && !base.some((t) => t.id === deep)) {
+      const match = list.find((t) => t.id === deep);
+      if (match) return [match, ...base];
+    }
+    return base;
   }, [tournaments]);
 
   // P0-3: auto-select CHỈ khi chưa chọn hoặc giải đã chọn biến mất — không clobber lựa chọn user.
-  const [tourId, setTourId] = useState<string | null>(null);
+  // Seed từ deep-link (nếu có) thay cho null; giải này nằm trong tourOptions nên guard không đè.
+  const [tourId, setTourId] = useState<string | null>(deepLinkTourIdRef.current);
   useEffect(() => {
     if (tourOptions.length === 0) { setTourId(null); return; }
     if (tourId == null || !tourOptions.some((t) => t.id === tourId)) setTourId(tourOptions[0].id);

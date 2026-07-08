@@ -105,7 +105,7 @@ export default function OpsToday() {
               </div>
             </div>
             <div className="mt-4 flex items-center gap-2.5">
-              <button onClick={() => navigate("/ops/tables")} className="ios-press ios-tinted flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
+              <button onClick={() => navigate(`/ops/tables?tour=${liveTour.id}`)} className="ios-press ios-tinted flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
                 <LayoutGrid className="h-[18px] w-[18px]" /> Sơ đồ bàn
               </button>
               <button onClick={() => navigate(`/ops/tournaments/${liveTour.id}`)} className="ios-press ios-fill flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">
