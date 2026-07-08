@@ -40,6 +40,9 @@ export function PlayerActionSheets({
   onClose,
   pendingNotice,
   onSaveChip,
+  onBustPlayer,
+  onOpenBust,
+  bustInfo,
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
@@ -50,12 +53,19 @@ export function PlayerActionSheets({
   /** Nếu có → nút "Sửa chip" mở numpad THẬT; xác nhận gọi callback này (màn chủ ghi update_seats
    *  với identity ghế thật) và trả về true nếu thành công. Các nút khác vẫn theo pendingNotice. */
   onSaveChip?: (newChip: number) => Promise<boolean>;
+  /** Nếu có → nút "Loại" mở xác nhận THẬT (💰 ITM). onOpenBust: màn chủ ĐỌC LẠI hạng+thưởng tạm
+   *  tính ngay lúc mở (P0-5, không dùng cache). bustInfo: kết quả đọc lại. onBustPlayer: ghi
+   *  update_seats is_active:false, trả true nếu thành công. */
+  onBustPlayer?: () => Promise<boolean>;
+  onOpenBust?: () => void;
+  bustInfo?: { loading: boolean; place: number | null; prize: number | null } | null;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
   const [moveReason, setMoveReason] = useState(MOVE_REASONS[0]);
   const [chipValue, setChipValue] = useState("62500");
   const [chipBusy, setChipBusy] = useState(false);
+  const [bustBusy, setBustBusy] = useState(false);
 
   const open = target !== null;
   const s = target?.seat;
@@ -82,6 +92,11 @@ export function PlayerActionSheets({
     if (next === "chip" && onSaveChip) {
       setChipValue(String(target?.chipCount ?? 0));
       go("chip");
+      return;
+    }
+    if (next === "bust" && onBustPlayer) {
+      onOpenBust?.();          // P0-5: đọc lại hạng + thưởng tạm tính NGAY khi mở
+      go("bust");
       return;
     }
     if (pendingNotice) {
@@ -296,8 +311,8 @@ export function PlayerActionSheets({
         </SheetContent>
       </Sheet>
 
-      {/* S10 — xác nhận Loại (restate hạng + tiền) */}
-      <AlertDialog open={sheetOpen("bust")} onOpenChange={(v) => { if (!v) close(); }}>
+      {/* S10 — xác nhận Loại (restate hạng + tiền tạm tính). onBustPlayer → THẬT (💰). */}
+      <AlertDialog open={sheetOpen("bust")} onOpenChange={(v) => { if (!v && !bustBusy) close(); }}>
         <AlertDialogContent className="max-w-[340px] rounded-[24px] border-none bg-[#0d0913]">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-[#f2ece6]">
@@ -310,15 +325,46 @@ export function PlayerActionSheets({
           </AlertDialogHeader>
           <div className="ios-card p-5 text-center">
             <div className="text-[17px] font-semibold text-[#f2ece6]">{s?.name}</div>
-            <div className="mt-2 text-[13px] uppercase tracking-wider text-[#9b8e97]">Về hạng</div>
-            <div className="font-mono text-[40px] font-bold leading-none text-[#f2ece6]">84</div>
-            <div className="mx-auto my-3 h-px w-16 bg-white/8" />
-            <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng (mẫu)</div>
+            {onBustPlayer ? (
+              !bustInfo || bustInfo.loading ? (
+                <div className="flex flex-col items-center gap-2 py-4"><Loader2 className="h-6 w-6 animate-spin text-[#c9a86a]" /><span className="text-[13px] text-[#9b8e97]">Đang đọc lại hạng…</span></div>
+              ) : (
+                <>
+                  <div className="mt-2 text-[13px] uppercase tracking-wider text-[#9b8e97]">Về hạng (tạm tính)</div>
+                  <div className="font-mono text-[40px] font-bold leading-none text-[#f2ece6]">{bustInfo.place ?? "—"}</div>
+                  <div className="mx-auto my-3 h-px w-16 bg-white/8" />
+                  {bustInfo.prize && bustInfo.prize > 0 ? (
+                    <div className="text-[14px] text-[#9b8e97]">Thưởng <span className="text-amber-300">(tạm tính)</span>: <b className="font-mono text-[#c9a86a]">{bustInfo.prize.toLocaleString("vi-VN")}</b></div>
+                  ) : (
+                    <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng</div>
+                  )}
+                </>
+              )
+            ) : (
+              <>
+                <div className="mt-2 text-[13px] uppercase tracking-wider text-[#9b8e97]">Về hạng</div>
+                <div className="font-mono text-[40px] font-bold leading-none text-[#f2ece6]">84</div>
+                <div className="mx-auto my-3 h-px w-16 bg-white/8" />
+                <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng (mẫu)</div>
+              </>
+            )}
           </div>
           <AlertDialogFooter className="gap-2 sm:gap-2">
-            <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-            <button onClick={() => done("Đã loại")} className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white">
-              <UserMinus className="h-4 w-4" /> Xác nhận
+            <button onClick={close} disabled={bustBusy} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
+            <button
+              disabled={bustBusy || (!!onBustPlayer && (!bustInfo || bustInfo.loading))}
+              onClick={async () => {
+                if (onBustPlayer) {
+                  setBustBusy(true);
+                  const ok = await onBustPlayer();
+                  setBustBusy(false);
+                  if (ok) close();              // refetch do màn chủ lo; không optimistic
+                } else {
+                  done("Đã loại");
+                }
+              }}
+              className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
+              {bustBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />} {bustBusy ? "Đang loại…" : "Xác nhận loại"}
             </button>
           </AlertDialogFooter>
         </AlertDialogContent>
