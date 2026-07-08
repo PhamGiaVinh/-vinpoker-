@@ -203,7 +203,25 @@ export async function fillEmptyTables(
   const hhmm = (d: Date) =>
     d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
+  // Wall-clock budget per invocation (2026-07-09 bugfix): a manual "mở 50 bàn" burst runs
+  // this loop over every empty table with up to 3 pickNextDealer rebuilds each — hundreds
+  // of serial round-trips that can blow the edge timeout and get killed mid-loop (some
+  // tables committed, the rest left "Chưa gán · Thiếu dealer", and the post-loop Telegram
+  // never runs). Stop CLEANLY when the budget is hit and return what committed; the client
+  // re-invokes in bounded passes and the per-minute cron backfills the remainder.
+  const fillDeadline = Date.now() + 20_000;
   for (const [index, table] of emptyTables.entries()) {
+    if (Date.now() > fillDeadline) {
+      slog("empty_table_fill_budget_exceeded", {
+        assigned_so_far: result.assignments.length,
+        remaining_tables: emptyTables.length - index,
+      });
+      break;
+    }
+    // Per-table fault isolation: one rejected query / RPC (or a slow pickNextDealer) must
+    // skip THIS table only, never throw out of the whole batch (root of "some tables never
+    // filled + no Telegram" — a single reject used to abort every remaining table).
+    try {
     let assigned = false;
 
     const effectiveDuration = tableOverrideConfig.get(table.id)
@@ -366,6 +384,13 @@ export async function fillEmptyTables(
         table_id: table.id,
         table_name: table.table_name,
         available_only: availableOnly,
+      });
+    }
+    } catch (e) {
+      console.warn(`[fillEmptyTables] table ${table.id} errored, skipping:`, e instanceof Error ? e.message : String(e));
+      slog("empty_table_fill_error", {
+        table_id: table.id,
+        error: e instanceof Error ? e.message : String(e),
       });
     }
   }

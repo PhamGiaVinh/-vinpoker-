@@ -72,6 +72,7 @@ jobs:
         run: |
           supabase functions deploy process-swing --no-verify-jwt
           supabase functions deploy assign-dealer --no-verify-jwt
+          supabase functions deploy mass-assign --no-verify-jwt
           supabase functions deploy close-table --no-verify-jwt
           supabase functions deploy swing-metrics --no-verify-jwt
           supabase functions deploy process-swing-on-dealer-ready --no-verify-jwt
