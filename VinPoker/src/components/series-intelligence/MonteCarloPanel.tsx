@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { FlaskConical, Dices, AlertTriangle, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
 import { formatVndShort } from "@/lib/clubFinance";
 import type { Series } from "@/lib/series-intelligence/seriesLibrary";
 import { groupEvents, computeGroupStats } from "@/lib/series-intelligence/referenceDistribution";
@@ -137,10 +138,27 @@ export function MonteCarloPanel({
     if (usingForecast) {
       // Explicit forecast-centered adapter: ONE layer, σ = the forecast band's own uncertainty.
       // No epistemic √n term and no synthetic n — a forecast is not "n observations".
-      return simulateOverlayFromForecast({ baseEntries: forecastFeed.base, logSd: forecastFeed.logSd, buyinPrize: forecastFeed.buyIn, fee: forecastFeed.fee, gtd: effGtd, seed });
+      return simulateOverlayFromForecast({
+        baseEntries: forecastFeed.base,
+        logSd: forecastFeed.logSd,
+        buyinPrize: forecastFeed.buyIn,
+        fee: forecastFeed.fee,
+        gtd: effGtd,
+        seed,
+        smallFieldDist: FEATURES.seriesSmallFieldDist,
+      });
     }
     return selected
-      ? simulateOverlayRisk({ observedEntries: selected.observedEntries, buyinPrize: selected.buyinPrize, fee: selected.fee, gtd: effGtd, n: nEff, sd, seed })
+      ? simulateOverlayRisk({
+        observedEntries: selected.observedEntries,
+        buyinPrize: selected.buyinPrize,
+        fee: selected.fee,
+        gtd: effGtd,
+        n: nEff,
+        sd,
+        seed,
+        smallFieldDist: FEATURES.seriesSmallFieldDist,
+      })
       : null;
   }, [usingForecast, forecastFeed, selected, effGtd, nEff, sd, seed]);
 
@@ -249,6 +267,9 @@ export function MonteCarloPanel({
               Cần <b className="text-[var(--cream)]">~{Math.ceil(result.thresholdEntries).toLocaleString("vi-VN")}</b> khách để đủ GTD (không phải bù)
               {usingForecast && <> · dự đoán turnout: <b className="text-[var(--gold2)]">{Math.round(forecastFeed!.base)}</b> (từ màn Dự báo)</>}.
             </div>
+            <div className="text-[10px] text-[var(--mut)] font-sans">
+              GTD tự phản: treo cao có thể đổi kỳ vọng field; cùng một GTD có thể ra hai kết cục tùy kỳ vọng của khách.
+            </div>
           </div>
 
           {/* n-toggle (HONEST) — history mode only: in forecast mode there is NO observation count to
@@ -327,7 +348,8 @@ export function MonteCarloPanel({
             <ExplainHint tone="felt" term="SD">
               SD = mức <b className="text-[var(--cream)]">dao động lượng khách giữa các lần tổ chức</b> cùng một giải.
               Vì CLB mới có ít giải nên chưa đo được từ dữ liệu — đây đang là <b className="text-[var(--cream)]">giả định</b>;
-              kéo thử để xem rủi ro nhạy thế nào với mức dao động.
+              kéo thử để xem rủi ro nhạy thế nào với mức dao động. Sàn σ=0.35 trong engine tồn tại vì khách thường đi theo
+              <b className="text-[var(--cream)]"> nhóm</b>, làm variance thật cao hơn mô hình coi từng khách độc lập — không hạ chỉ để số đẹp hơn.
             </ExplainHint>
           </div>
           ) : (
