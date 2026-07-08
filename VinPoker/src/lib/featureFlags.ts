@@ -528,6 +528,18 @@ export const FEATURES = {
    */
   trackerHandHistoryEdit: true,
   /**
+   * Sửa hand đã hoàn thành + TỰ TÍNH LẠI CHIP (Đợt G). When ON, the completed-hand
+   * editor can re-score the winner and propagate corrected chip stacks forward through
+   * later hands via the pure resettle-forward engine (resettleForward.ts), then commit
+   * the result through the SECURITY DEFINER RPC `apply_resettle_forward`
+   * (mig 20261226000000) — a chips-only, conservation-guarded atomic write that NEVER
+   * changes who is eliminated (any bust flip is refused and routed to void+re-enter) and
+   * logs an immutable resettle_forward_log row. TWO-TIER GATE: OFF (default) → no
+   * re-settle path (F2 display-only edit unchanged). ON but the RPC not applied → 42883
+   * caught → "chưa áp dụng" degrade. Money-path: owner applies the migration + UATs.
+   */
+  trackerResettleForward: false,
+  /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
    * `get_tracker_table_locks`, and offers a "Tiếp quản" button for a STALE lock
