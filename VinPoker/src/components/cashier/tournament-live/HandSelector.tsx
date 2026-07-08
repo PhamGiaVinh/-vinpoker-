@@ -7,7 +7,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
-import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
+import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 
 interface HandRow {
   id: string;
@@ -74,24 +74,26 @@ export function HandSelector({
     async (row: HandRow) => {
       setLoadingHand(true);
       try {
+        // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) when the
+        // migration is applied; the columns are selected only if present (feature-detect).
+        const snap = await handPlayersHasSnapshot();
+        const hpCols = snap
+          ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
+          : "player_id, seat_number, starting_stack, ending_stack, hole_cards";
         const [{ data: actionData }, { data: handPlayers }] = await Promise.all([
           supabase
             .from("hand_actions")
             .select("player_id, street, action_type, action_amount, action_order")
             .eq("hand_id", row.id)
             .order("action_order"),
-          supabase
-            .from("hand_players")
-            .select("player_id, seat_number, starting_stack, ending_stack, hole_cards")
-            .eq("hand_id", row.id),
+          supabase.from("hand_players").select(hpCols).eq("hand_id", row.id),
         ]);
 
-        const playerIds = [...new Set((handPlayers ?? []).map((p: any) => p.player_id))];
-        // Names + avatars come from tournament_seats.player_name / avatar_url keyed by
-        // player_id — the SAME source LIVE uses. The old profiles.user_id join always
-        // missed (player_id is a tournament-entry id, not an auth user_id) → showed the
-        // raw short id.
-        const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
+        // Fall back to the live tournament_seats roster ONLY for rows the snapshot didn't
+        // capture (old hands) — the helper no-ops on an empty id list, so this is free
+        // once every hand is snapshotted.
+        const needIds = (handPlayers ?? []).filter((p: any) => !p.player_name).map((p: any) => p.player_id);
+        const display = await fetchHandPlayerDisplay(tournamentId, needIds);
 
         const hand: ReplayHand = {
           hand_number: row.hand_number,
@@ -100,10 +102,10 @@ export function HandSelector({
           players: (handPlayers ?? []).map((p: any) => ({
             player_id: p.player_id,
             seat_number: p.seat_number,
-            display_name: display.get(p.player_id)?.name || p.player_id.slice(0, 6),
+            display_name: p.player_name || display.get(p.player_id)?.name || p.player_id.slice(0, 6),
             starting_stack: p.starting_stack ?? 0,
             ending_stack: p.ending_stack ?? null,
-            avatar_url: display.get(p.player_id)?.avatar ?? null,
+            avatar_url: p.avatar_url ?? display.get(p.player_id)?.avatar ?? null,
             hole_cards:
               p.hole_cards && (p.hole_cards as string[]).length > 0
                 ? (p.hole_cards as string[])

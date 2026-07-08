@@ -11,9 +11,19 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 import { supabase } from "@/integrations/supabase/client";
-import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
+import {
+  fetchHandPlayerDisplay,
+  handPlayersHasSnapshot,
+  __resetHandPlayersSnapshotProbe,
+} from "@/lib/tracker-poker/handPlayerNames";
 
 const from = vi.mocked(supabase.from);
+
+/** Stub for the probe `.from(t).select("player_name").limit(1)` resolving to `{error}`. */
+function probeQuery(result: { error?: any }) {
+  const limitFn = vi.fn().mockResolvedValue(result);
+  return { select: vi.fn(() => ({ limit: limitFn })) };
+}
 
 /** A chainable stub for `.from(t).select(...).eq(...).in(...)` resolving to `result`. */
 function seatQuery(result: { data?: any[] | null; error?: any }) {
@@ -79,5 +89,21 @@ describe("fetchHandPlayerDisplay", () => {
     from.mockReturnValue(q as any);
     await fetchHandPlayerDisplay("t1", ["p1", "p1", "p2"]);
     expect(q._in).toHaveBeenCalledWith("player_id", ["p1", "p2"]);
+  });
+});
+
+describe("handPlayersHasSnapshot (E1 feature-detect)", () => {
+  beforeEach(() => __resetHandPlayersSnapshotProbe());
+
+  it("true when the probe succeeds; cached (one query for repeated calls)", async () => {
+    from.mockReturnValue(probeQuery({ error: null }) as any);
+    expect(await handPlayersHasSnapshot()).toBe(true);
+    expect(await handPlayersHasSnapshot()).toBe(true); // memoised
+    expect(from).toHaveBeenCalledTimes(1);
+  });
+
+  it("false when the snapshot column is missing (42703) — safe pre-apply", async () => {
+    from.mockReturnValue(probeQuery({ error: { code: "42703", message: "column does not exist" } }) as any);
+    expect(await handPlayersHasSnapshot()).toBe(false);
   });
 });
