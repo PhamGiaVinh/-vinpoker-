@@ -921,6 +921,15 @@ export const FEATURES = {
    */
   seriesRegistrationPace: true,
   /**
+   * Series Intelligence — TP1 nowcast (P1-8). When ON, the registration-pace panel adds a real-data
+   * nowcast: pick an upcoming giải → it pulls live sign-ups from the auto-captured series_registration_
+   * events (read-only) + learns the pace curve τ from PAST completed events (leakage-safe) + blends that
+   * with the owner's model forecast in log space (weight rises near the event + with pace reliability).
+   * Falls back to model-only / manual when pace data isn't reachable. Hypothesis-labeled, no fake curve.
+   * Default **OFF**; kill-switch: false (panel keeps the crude manual pace of W6).
+   */
+  seriesNowcast: false,
+  /**
    * Series Intelligence — W7 "nhập chiến dịch Telegram 1 chạm" in the ⑥ CAPTURE console. When ON, reads
    * the club's already-SENT marketing posts (read-only) and lets the owner pick one + type its spend +
    * link it to a giải, saving a `series_campaign_logs` row via the existing capture insert — so marketing
