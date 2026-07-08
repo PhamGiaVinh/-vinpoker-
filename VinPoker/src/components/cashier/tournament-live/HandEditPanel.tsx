@@ -13,6 +13,8 @@ import {
   type EditHolePlayer,
   type HandEditPatch,
 } from "./handEditDiff";
+import { buildEditedTarget } from "./resettleApply";
+import type { EditedTargetHand } from "@/lib/tracker-poker/resettleForward";
 
 export interface HandEditPanelPlayer {
   player_id: string;
@@ -27,6 +29,16 @@ export interface HandEditPanelProps {
   saving?: boolean;
   onCancel: () => void;
   onSave: (patch: HandEditPatch, reason: string, summary: string[]) => void;
+  /** Đợt G3: when true, also offer "Sửa & tính lại chip" (runs the resettle engine). */
+  resettleEnabled?: boolean;
+  /** Đợt G3: emit the engine-ready edited target + the display patch for the parent to
+   *  run resettle-forward and (on confirm) commit chips. */
+  onResettle?: (
+    editedTarget: EditedTargetHand,
+    patch: HandEditPatch,
+    reason: string,
+    summary: string[],
+  ) => void;
 }
 
 const toSlots = (cards: string[], n: number): (Card | null)[] =>
@@ -35,7 +47,7 @@ const fromSlots = (slots: (Card | null)[]): string[] => slots.filter((c): c is C
 
 const ACTION_TYPES = ["fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante"];
 
-export function HandEditPanel({ board, players, actions, saving, onCancel, onSave }: HandEditPanelProps) {
+export function HandEditPanel({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};
@@ -69,12 +81,36 @@ export function HandEditPanel({ board, players, actions, saving, onCancel, onSav
   const patch = buildHandEditPatch(original, edited);
   const dirty = hasHandEdit(patch);
   const canSave = dirty && reason.trim().length >= 3 && !saving;
+  const canResettle = !!resettleEnabled && !!onResettle && dirty && reason.trim().length >= 3 && !saving;
 
   const submit = () => {
     if (!canSave) return;
     const summary = buildHandEditSummary(original, edited);
     if (!window.confirm(["Xác nhận sửa hand?", "", ...summary].join("\n"))) return;
     onSave(patch, reason.trim(), summary);
+  };
+
+  // Đợt G3 — hand the edited state to the parent, which runs the resettle engine and
+  // shows a chip-change preview before committing. Holes are keyed by player_id here
+  // (a player_id is unique within one hand).
+  const resettle = () => {
+    if (!canResettle) return;
+    const holeCardsByPlayer: Record<string, (string | null)[]> = {};
+    players.forEach((p) => {
+      holeCardsByPlayer[p.player_id] = holes[`${p.player_id}:${p.entry_number}`] ?? [null, null];
+    });
+    const editedTarget = buildEditedTarget({
+      board: fromSlots(boardSlots),
+      holeCardsByPlayer,
+      actions: rows.map((r) => ({
+        player_id: r.player_id,
+        street: r.street,
+        action_type: r.action_type,
+        action_amount: r.action_amount,
+        action_order: r.action_order,
+      })),
+    });
+    onResettle!(editedTarget, patch, reason.trim(), buildHandEditSummary(original, edited));
   };
 
   const nameOf = (a: EditAction) =>
@@ -166,22 +202,40 @@ export function HandEditPanel({ board, players, actions, saving, onCancel, onSav
         />
       </div>
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!canSave}
-          onClick={submit}
-          className="text-xs font-medium text-emerald-300 border border-emerald-500/50 rounded-lg px-3 py-1.5 hover:bg-emerald-500/10 disabled:opacity-40"
-        >
-          {saving ? "Đang lưu…" : "Xem lại & lưu"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-xs font-medium text-muted-foreground border border-border rounded-lg px-3 py-1.5 hover:text-foreground"
-        >
-          Huỷ
-        </button>
+      <div className="space-y-1.5">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={submit}
+            className="text-xs font-medium text-emerald-300 border border-emerald-500/50 rounded-lg px-3 py-1.5 hover:bg-emerald-500/10 disabled:opacity-40"
+          >
+            {saving ? "Đang lưu…" : resettleEnabled ? "Chỉ lưu hiển thị" : "Xem lại & lưu"}
+          </button>
+          {resettleEnabled && (
+            <button
+              type="button"
+              disabled={!canResettle}
+              onClick={resettle}
+              className="text-xs font-semibold text-amber-200 border border-amber-500/60 bg-amber-500/10 rounded-lg px-3 py-1.5 hover:bg-amber-500/20 disabled:opacity-40"
+            >
+              Sửa &amp; tính lại chip
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-xs font-medium text-muted-foreground border border-border rounded-lg px-3 py-1.5 hover:text-foreground"
+          >
+            Huỷ
+          </button>
+        </div>
+        {resettleEnabled && (
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            <span className="text-amber-300 font-medium">Tính lại chip</span> sẽ chấm lại người thắng và dời chip cho ván này + các ván sau (có xem trước).{" "}
+            <span className="text-emerald-300 font-medium">Chỉ lưu hiển thị</span> chỉ sửa lá/hành động, không đổi chip.
+          </p>
+        )}
       </div>
     </div>
   );
