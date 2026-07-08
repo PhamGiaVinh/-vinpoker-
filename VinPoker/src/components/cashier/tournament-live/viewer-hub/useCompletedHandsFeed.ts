@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
 import {
   buildHandFeedItems,
   filterByTags,
@@ -113,14 +114,16 @@ export function useCompletedHandsFeed(
     if (seq !== seqRef.current) return;
 
     const playerIds = [...new Set((hp ?? []).map((p: { player_id: string }) => p.player_id))];
-    const { data: profs } = playerIds.length
-      ? await supabase.from("profiles").select("user_id, display_name, avatar_url").in("user_id", playerIds)
-      : { data: [] as RawProfile[] };
+    // Names + avatars come from tournament_seats.player_name / avatar_url keyed by
+    // player_id (the LIVE source), NOT profiles.user_id — hand_players.player_id is a
+    // tournament-entry id, so the old profiles join missed and the feed showed short ids.
+    // profMap stays keyed by player_id (handFeedDerive already looks up by player_id).
+    const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
     if (seq !== seqRef.current) return;
 
     const profMap = new Map<string, RawProfile>();
-    (profs ?? []).forEach((p: RawProfile) =>
-      profMap.set(p.user_id, { user_id: p.user_id, display_name: p.display_name ?? null, avatar_url: p.avatar_url ?? null }),
+    display.forEach((d, pid) =>
+      profMap.set(pid, { user_id: pid, display_name: d.name ?? null, avatar_url: d.avatar ?? null }),
     );
 
     const items = buildHandFeedItems(

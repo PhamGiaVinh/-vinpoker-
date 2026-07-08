@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
+import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
 
 interface HandRecord {
   id: string;
@@ -119,7 +120,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       return;
     }
 
-    const [playersRes, actionsRes, namesRes] = await Promise.all([
+    const [playersRes, actionsRes] = await Promise.all([
       supabase
         .from("hand_players")
         .select("hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards")
@@ -129,19 +130,16 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         .select("hand_id, player_id, street, action_type, action_amount, action_order")
         .in("hand_id", handIds)
         .order("action_order"),
-      supabase
-        .from("profiles")
-        .select("user_id, display_name")
-        .in(
-          "user_id",
-          [...new Set(((await supabase.from("hand_players").select("player_id").in("hand_id", handIds)).data || []).map((p: any) => p.player_id))]
-        ),
     ]);
 
+    // Names come from tournament_seats.player_name keyed by player_id (the LIVE source),
+    // NOT profiles.user_id — hand_players.player_id is a tournament-entry id, so the old
+    // profiles join always missed and history showed short ids for walk-in players.
+    const playerIds = [...new Set((playersRes.data || []).map((p: any) => p.player_id))];
+    const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
     const nameMap = new Map<string, string>();
-    (namesRes.data || []).forEach((p: any) => nameMap.set(p.user_id, p.display_name || "—"));
     (playersRes.data || []).forEach((p: any) => {
-      if (!nameMap.has(p.player_id)) nameMap.set(p.player_id, p.player_id.slice(0, 6));
+      nameMap.set(p.player_id, display.get(p.player_id)?.name || p.player_id.slice(0, 6));
     });
 
     const playerMap = new Map<string, any[]>();

@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
+import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
 
 interface HandRow {
   id: string;
@@ -86,19 +87,11 @@ export function HandSelector({
         ]);
 
         const playerIds = [...new Set((handPlayers ?? []).map((p: any) => p.player_id))];
-        const { data: profiles } = playerIds.length
-          ? await supabase
-              .from("profiles")
-              .select("user_id, display_name, avatar_url")
-              .in("user_id", playerIds)
-          : { data: [] as any[] };
-
-        const nameMap = new Map<string, string>();
-        const avatarMap = new Map<string, string | null>();
-        (profiles ?? []).forEach((p: any) => {
-          nameMap.set(p.user_id, p.display_name || "");
-          avatarMap.set(p.user_id, p.avatar_url ?? null);
-        });
+        // Names + avatars come from tournament_seats.player_name / avatar_url keyed by
+        // player_id — the SAME source LIVE uses. The old profiles.user_id join always
+        // missed (player_id is a tournament-entry id, not an auth user_id) → showed the
+        // raw short id.
+        const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
 
         const hand: ReplayHand = {
           hand_number: row.hand_number,
@@ -107,10 +100,10 @@ export function HandSelector({
           players: (handPlayers ?? []).map((p: any) => ({
             player_id: p.player_id,
             seat_number: p.seat_number,
-            display_name: nameMap.get(p.player_id) || p.player_id.slice(0, 6),
+            display_name: display.get(p.player_id)?.name || p.player_id.slice(0, 6),
             starting_stack: p.starting_stack ?? 0,
             ending_stack: p.ending_stack ?? null,
-            avatar_url: avatarMap.get(p.player_id) ?? null,
+            avatar_url: display.get(p.player_id)?.avatar ?? null,
             hole_cards:
               p.hole_cards && (p.hole_cards as string[]).length > 0
                 ? (p.hole_cards as string[])
@@ -129,7 +122,7 @@ export function HandSelector({
         setLoadingHand(false);
       }
     },
-    [onSelectHand]
+    [onSelectHand, tournamentId]
   );
 
   // Select the deep-linked hand if given, else auto-select the most recent once the
