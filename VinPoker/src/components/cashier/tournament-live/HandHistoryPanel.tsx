@@ -4,6 +4,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
+import { toast } from "sonner";
+import { FEATURES } from "@/lib/featureFlags";
+import { HandEditPanel } from "./HandEditPanel";
+import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 
 interface HandRecord {
@@ -33,6 +37,8 @@ interface HandRecord {
     action_type: string;
     action_amount: number;
     action_order: number;
+    player_id: string;
+    entry_number: number;
   }[];
 }
 
@@ -69,6 +75,11 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const [hands, setHands] = useState<HandRecord[]>([]);
   const [selectedHandId, setSelectedHandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // F2 — completed-hand editor (flag trackerHandHistoryEdit). editSupported degrades to
+  // false on a 42883 (RPC not applied) so the button hides honestly.
+  const [editMode, setEditMode] = useState(false);
+  const [editSupported, setEditSupported] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string>("all");
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
@@ -132,7 +143,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         .in("hand_id", handIds),
       supabase
         .from("hand_actions")
-        .select("hand_id, player_id, street, action_type, action_amount, action_order")
+        .select("hand_id, player_id, entry_number, street, action_type, action_amount, action_order")
         .in("hand_id", handIds)
         .order("action_order"),
     ]);
@@ -169,6 +180,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         action_type: a.action_type,
         action_amount: a.action_amount,
         action_order: a.action_order,
+        player_id: a.player_id,
+        entry_number: a.entry_number ?? 1,
       });
     });
 
@@ -191,6 +204,35 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   }, [tournamentId, selectedTableId]);
 
   useEffect(() => { loadHands(); }, [loadHands]);
+  useEffect(() => { setEditMode(false); }, [selectedHandId]);
+
+  const handleSaveEdit = async (patch: HandEditPatch, reason: string) => {
+    const hand = hands.find((h) => h.id === selectedHandId);
+    if (!hand) return;
+    setSavingEdit(true);
+    try {
+      const args = buildEditCompletedHandArgs({ tournamentId, handId: hand.id, reason, patch });
+      const { data, error } = await supabase.rpc("edit_completed_hand" as any, args as any);
+      if (error) {
+        if ((error as any).code === "42883") {
+          setEditSupported(false);
+          toast.error("Tính năng sửa hand chưa được áp dụng trên máy chủ.");
+        } else {
+          toast.error("Lỗi khi lưu: " + error.message);
+        }
+        return;
+      }
+      if (data && (data as any).ok === false) {
+        toast.error("Không lưu được: " + (data as any).error);
+        return;
+      }
+      toast.success("Đã lưu chỉnh sửa hand.");
+      setEditMode(false);
+      loadHands();
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const selectedHand = hands.find((h) => h.id === selectedHandId);
 
@@ -301,11 +343,46 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                   </span>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(selectedHand.hand_time || selectedHand.created_at).toLocaleString()}
+              <div className="flex items-center gap-2">
+                {FEATURES.trackerHandHistoryEdit && editSupported && !editMode &&
+                  selectedHand.status === "completed" && !selectedHand.is_voided && (
+                    <button
+                      type="button"
+                      onClick={() => setEditMode(true)}
+                      className="text-[11px] font-medium text-emerald-300 border border-emerald-500/50 rounded px-2 py-1 hover:bg-emerald-500/10"
+                    >
+                      Sửa hand
+                    </button>
+                  )}
+                <div className="text-xs text-muted-foreground">
+                  {new Date(selectedHand.hand_time || selectedHand.created_at).toLocaleString()}
+                </div>
               </div>
             </div>
 
+            {editMode ? (
+              <HandEditPanel
+                board={selectedHand.community_cards}
+                players={selectedHand.players.map((p) => ({
+                  player_id: p.player_id,
+                  entry_number: p.entry_number,
+                  display_name: p.display_name,
+                  hole_cards: p.hole_cards || [],
+                }))}
+                actions={selectedHand.actions.map((a) => ({
+                  player_id: a.player_id,
+                  entry_number: a.entry_number,
+                  street: a.street,
+                  action_type: a.action_type,
+                  action_amount: a.action_amount,
+                  action_order: a.action_order,
+                }))}
+                saving={savingEdit}
+                onCancel={() => setEditMode(false)}
+                onSave={handleSaveEdit}
+              />
+            ) : (
+            <>
             {selectedHand.community_cards.length > 0 && (
               <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-gradient-to-br from-emerald-950/50 to-emerald-900/30 border border-emerald-700/30">
                 {selectedHand.community_cards.map((card, i) => (
@@ -383,6 +460,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                 ))}
               </div>
             </div>
+            </>
+            )}
           </>
         ) : (
           <Card className="p-10 text-center">

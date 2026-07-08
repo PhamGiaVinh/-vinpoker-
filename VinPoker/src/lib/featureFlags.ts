@@ -517,6 +517,17 @@ export const FEATURES = {
    */
   trackerMidHandEdit: true,
   /**
+   * Sửa hand ĐÃ HOÀN THÀNH từ lịch sử (F2). A "Sửa hand" button in HandHistoryPanel
+   * opens a DISPLAY-ONLY editor for a completed, non-voided hand: board cards, hole
+   * cards, and the action list (edit type/amount, delete a row). Writes go through the
+   * narrow SECURITY DEFINER RPC `edit_completed_hand` (mig 20261225000000) which touches
+   * ONLY community_cards / hole_cards / hand_actions and NEVER chips/results, binds the
+   * actor to auth.uid() itself, and logs an immutable hand_edit_log row. TWO-TIER GATE:
+   * OFF (default) → HandHistoryPanel byte-identical (no button). ON but the RPC not
+   * applied → 42883 caught → "chưa áp dụng" degrade + the button hides.
+   */
+  trackerHandHistoryEdit: false,
+  /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
    * `get_tracker_table_locks`, and offers a "Tiếp quản" button for a STALE lock
