@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft, Repeat, Users, Coffee, ArrowRightLeft, History, Lightbulb, QrCode,
   Monitor, LogOut, ArrowRight, Clock, FlagTriangleRight, Loader2, LogIn,
+  CalendarDays, CheckCircle2, AlertTriangle, Send, UserPlus,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,8 @@ const BREAK_PRESETS = [15, 30, 45, 60];
 const PILLS = [
   { key: "tables", label: "Bàn" },
   { key: "dealers", label: "Dealer" },
+  { key: "schedule", label: "Lịch" },
+  { key: "requests", label: "Yêu cầu" },
   { key: "staff", label: "Nhân sự" },
   { key: "close", label: "Kết ca" },
 ] as const;
@@ -39,6 +42,9 @@ type EnrichedAssignment = DealerAssignment & {
   secondsLeft: number | null;
   showNextDealerSoon: boolean;
   isOverdue: boolean;
+  pre_assigned?: {
+    dealers?: { full_name?: string | null } | null;
+  } | null;
 };
 
 const hhmm = (iso: string | null | undefined) =>
@@ -51,6 +57,153 @@ const DEALER_CHIP: Record<string, { label: string; cls: string }> = {
   pre_assigned: { label: "Sắp vào", cls: "bg-pink-400/12 text-pink-300" },
   checked_out: { label: "Đã về", cls: "bg-white/6 text-[#7c7079]" },
 };
+
+type ScheduleTone = "ok" | "warn" | "danger" | "final" | "info";
+
+const toneCls: Record<ScheduleTone, string> = {
+  ok: "bg-emerald-400/12 text-emerald-300",
+  warn: "bg-amber-400/12 text-amber-300",
+  danger: "bg-rose-400/12 text-rose-300",
+  final: "bg-pink-400/12 text-pink-300",
+  info: "bg-sky-400/12 text-sky-300",
+};
+
+const toneTextCls: Record<ScheduleTone, string> = {
+  ok: "text-emerald-300",
+  warn: "text-amber-300",
+  danger: "text-rose-300",
+  final: "text-pink-300",
+  info: "text-sky-300",
+};
+
+const SCHEDULE_DAYS = [
+  { label: "T2", day: "06", status: "normal" },
+  { label: "T3", day: "07", status: "active" },
+  { label: "T4", day: "08", status: "issue" },
+  { label: "T5", day: "09", status: "normal" },
+  { label: "T6", day: "10", status: "normal" },
+  { label: "T7", day: "11", status: "issue" },
+  { label: "CN", day: "12", status: "normal" },
+] as const;
+
+const SCHEDULE_STATS = [
+  { label: "dealer đi làm", value: "18", tone: "ok" as const },
+  { label: "lượt ca cần", value: "21", tone: "info" as const },
+  { label: "thiếu người", value: "3", tone: "danger" as const },
+  { label: "xin nghỉ/đổi", value: "2", tone: "warn" as const },
+];
+
+const SHIFT_BLOCKS = [
+  {
+    id: "early",
+    label: "Ca sớm",
+    from: "12:00",
+    to: "18:00",
+    need: 7,
+    assigned: 7,
+    note: "7 cần · 7 đã xếp · 1 dealer final",
+    tags: [
+      { label: "Đủ", tone: "ok" as const },
+      { label: "Lan final", tone: "final" as const },
+    ],
+  },
+  {
+    id: "night",
+    label: "Ca tối",
+    from: "18:00",
+    to: "02:00",
+    need: 11,
+    assigned: 8,
+    note: "11 cần · 8 đã xếp · thiếu bàn 12/15/20",
+    tags: [
+      { label: "Thiếu 3", tone: "danger" as const },
+      { label: "OT cao", tone: "warn" as const },
+    ],
+  },
+] as const;
+
+const TIMELINE_BLOCKS = [
+  {
+    time: "18:00",
+    title: "Mở ca tối",
+    note: "Cần 6 dealer bắt đầu ca · 5 đã có mặt",
+    dealers: [
+      { name: "Minh", detail: "B7" },
+      { name: "Hoa", detail: "B8" },
+      { name: "Tú", detail: "B9" },
+      { name: "Trang", detail: "B10" },
+      { name: "Vy", detail: "B11" },
+      { name: "+ thiếu", detail: "B12", empty: true },
+    ],
+  },
+  {
+    time: "20:30",
+    title: "Swing wave 1",
+    note: "4 bàn tới giờ thay · ưu tiên dealer đã nghỉ đủ",
+    dealers: [
+      { name: "Quang", detail: "vào B8" },
+      { name: "Hằng", detail: "vào B10" },
+      { name: "+ chọn", detail: "B12", empty: true },
+    ],
+  },
+  {
+    time: "21:30",
+    title: "Final table",
+    note: "Cần dealer chỉ định · không tự thay người",
+    dealers: [
+      { name: "Lan", detail: "Final", final: true },
+      { name: "+ backup", detail: "dự phòng", empty: true },
+    ],
+  },
+] as const;
+
+const REQUESTS = [
+  {
+    initials: "Q",
+    title: "Quang xin ca tối",
+    note: "Ưu tiên 18:00-02:00 · đang rảnh · phù hợp bàn thường",
+    status: "Có thể xếp",
+    statusTone: "ok" as const,
+    tags: [
+      { label: "khớp nhu cầu", tone: "ok" as const },
+      { label: "Telegram linked", tone: "info" as const },
+    ],
+    primary: "Duyệt & xếp",
+    secondary: "Để sau",
+  },
+  {
+    initials: "L",
+    title: "Lan xin nghỉ 20:00",
+    note: "Lan đang được pin chia final 21:30 · cần người thay có quyền final",
+    status: "Đụng final",
+    statusTone: "danger" as const,
+    tags: [
+      { label: "final pinned", tone: "final" as const },
+      { label: "không auto thay", tone: "danger" as const },
+    ],
+    primary: "Tìm người thay",
+    secondary: "Từ chối",
+  },
+  {
+    initials: "T",
+    title: "Tùng đổi ca với Hằng",
+    note: "Tùng muốn ca sớm · Hằng đồng ý trong app lúc 11:20",
+    status: "Cần xác nhận",
+    statusTone: "warn" as const,
+    tags: [
+      { label: "swap pair", tone: "info" as const },
+      { label: "không thiếu ca", tone: "ok" as const },
+    ],
+    primary: "Duyệt đổi",
+    secondary: "Xem chi tiết",
+  },
+] as const;
+
+const CANDIDATES = [
+  { name: "Quang", score: 96, note: "Đã nghỉ 43p · ưu tiên ca tối · Telegram linked", tags: ["best fit", "sẵn sàng"], locked: false },
+  { name: "Hằng", score: 88, note: "Đang free · có thể vào ngay · chưa linked app", tags: ["free", "app chưa link"], locked: false },
+  { name: "Lan", score: 72, note: "Được pin final 21:30 · không nên dùng cho bàn thường", tags: ["final pinned", "rủi ro"], locked: true },
+] as const;
 
 export default function OpsDealerSwing() {
   const navigate = useNavigate();
@@ -69,11 +222,12 @@ export default function OpsDealerSwing() {
   const [pickFor, setPickFor] = useState<TableVM | null>(null);
   const [breakFor, setBreakFor] = useState<string | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  const [schedulePickOpen, setSchedulePickOpen] = useState(false);
   const [dongTour, setDongTour] = useState("");
   const [checkout, setCheckout] = useState<Set<string>>(new Set());
 
-  const assignments = (asgQ.data ?? []) as EnrichedAssignment[];
-  const roster = rosterQ.data ?? [];
+  const assignments = useMemo(() => (asgQ.data ?? []) as EnrichedAssignment[], [asgQ.data]);
+  const roster = useMemo(() => rosterQ.data ?? [], [rosterQ.data]);
 
   // table_id → assignment (with timeline)
   const asgByTable = useMemo(() => {
@@ -93,7 +247,7 @@ export default function OpsDealerSwing() {
     return open.map((t) => {
       const a = asgByTable.get(t.id);
       const dealer = a?.dealer_attendance?.dealers?.full_name ?? null;
-      const next = (a as any)?.pre_assigned?.dealers?.full_name ?? null;
+      const next = a?.pre_assigned?.dealers?.full_name ?? null;
       return {
         id: t.id, clubId: t.club_id, name: t.table_name, assignment: a ?? null,
         dealer, next, missing: !a,
@@ -109,7 +263,7 @@ export default function OpsDealerSwing() {
   }, [roster, tableVMs.length]);
 
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
-  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
+  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSchedulePickOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
   // ---- guards (ordered: auth → login → clubs → permission) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
@@ -125,7 +279,7 @@ export default function OpsDealerSwing() {
         <button onClick={() => navigate("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
           <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
         </button>
-        <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Dealer Swing</h1>
+        <h1 className="mt-1 text-[26px] font-bold leading-tight text-[#f2ece6]">Dealer Swing</h1>
         <p className="mt-0.5 text-[14px] text-[#9b8e97]">{clubName} · việc gấp tự nổi lên đầu</p>
       </header>
 
@@ -133,10 +287,10 @@ export default function OpsDealerSwing() {
         Dữ liệu <b>thật</b>. Các nút hành động đang được nối — bấm sẽ nhắc; sẽ bật sau khi anh xác nhận bảng đúng.
       </div>
 
-      <div className="flex gap-1.5 px-1">
+      <div className="flex gap-1.5 overflow-x-auto px-1 pb-1">
         {PILLS.map((p) => (
           <button key={p.key} onClick={() => setPill(p.key)}
-            className={cn("ios-press-sm rounded-full px-3.5 py-1.5 text-[13px] font-medium", pill === p.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
+            className={cn("ios-press-sm shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium", pill === p.key ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
             {p.label}
           </button>
         ))}
@@ -164,7 +318,7 @@ export default function OpsDealerSwing() {
                     </span>
                     {t.missing
                       ? <span className="rounded-full bg-rose-400/12 px-2.5 py-1 text-[11px] font-semibold text-rose-300">Gán ngay</span>
-                      : <span className={cn("font-mono text-[13px]", c.cls)}>{c.text}</span>}
+                      : <span className={cn("text-[13px] font-semibold tabular-nums", c.cls)}>{c.text}</span>}
                   </button>
                 );
               })}
@@ -185,7 +339,7 @@ export default function OpsDealerSwing() {
                   className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
-                    <span className="block font-mono text-[12px] text-[#9b8e97]">vào ca {hhmm(d.check_in_time)}{table ? ` · ${table}` : ""}{d.current_state === "on_break" ? " · đang nghỉ" : ""}</span>
+                    <span className="block text-[12px] tabular-nums text-[#9b8e97]">vào ca {hhmm(d.check_in_time)}{table ? ` · ${table}` : ""}{d.current_state === "on_break" ? " · đang nghỉ" : ""}</span>
                   </span>
                   <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", chip.cls)}>{chip.label}</span>
                 </button>
@@ -193,6 +347,176 @@ export default function OpsDealerSwing() {
             })}
           </div>
         )
+      )}
+
+      {/* D4a — Lịch dealer swing (UI mobile mock, không đổi logic xếp ca) */}
+      {pill === "schedule" && (
+        <div className="space-y-3">
+          <div className="ios-card overflow-hidden p-4">
+            <div className="flex items-start justify-between gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#c9a86a]/12 text-[#c9a86a]">
+                <CalendarDays className="h-5 w-5" />
+              </span>
+              <span className="rounded-full bg-emerald-400/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">mobile draft</span>
+            </div>
+            <h2 className="mt-3 text-[18px] font-semibold leading-tight text-[#f2ece6]">Lịch Dealer Swing</h2>
+            <p className="mt-1 text-[13px] leading-5 text-[#9b8e97]">Bản UI mobile để floor xem coverage, thiếu ca, final table và yêu cầu đổi lịch trong cùng một luồng.</p>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {SCHEDULE_STATS.map((stat) => (
+                <div key={stat.label} className="rounded-2xl border border-white/8 bg-black/20 px-2.5 py-2">
+                  <div className={cn("text-[20px] font-bold leading-none tabular-nums", toneTextCls[stat.tone])}>{stat.value}</div>
+                  <div className="mt-1 min-h-[26px] text-[10.5px] font-medium leading-[13px] text-[#91a49b]">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="ios-card p-3.5">
+            <SectionLabel>Tuần này</SectionLabel>
+            <div className="mt-2 grid grid-cols-7 gap-1.5">
+              {SCHEDULE_DAYS.map((day) => (
+                <button
+                  key={`${day.label}-${day.day}`}
+                  onClick={soon}
+                  className={cn(
+                    "ios-press-sm rounded-2xl border px-1.5 py-2 text-center",
+                    day.status === "active" && "border-[#c9a86a]/60 bg-[#c9a86a]/15 text-[#f2ece6]",
+                    day.status === "issue" && "border-rose-400/30 bg-rose-400/10 text-rose-200",
+                    day.status === "normal" && "border-white/8 bg-white/[0.035] text-[#9b8e97]",
+                  )}
+                >
+                  <span className="block text-[10px] font-semibold uppercase leading-none">{day.label}</span>
+                  <span className="mt-1 block text-[15px] font-semibold leading-none tabular-nums">{day.day}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="ios-card p-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionLabel>Coverage theo ca</SectionLabel>
+              <span className="rounded-full bg-rose-400/12 px-2 py-0.5 text-[11px] font-semibold text-rose-300">thiếu 3</span>
+            </div>
+            <div className="mt-3 space-y-2.5">
+              {SHIFT_BLOCKS.map((shift) => {
+                const pct = Math.min(100, Math.round((shift.assigned / shift.need) * 100));
+                const isShort = shift.assigned < shift.need;
+                return (
+                  <div key={shift.id} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-semibold text-[#f2ece6]">{shift.label}</div>
+                        <div className="mt-0.5 text-[12px] leading-4 text-[#9b8e97]">{shift.note}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className={cn("text-[18px] font-bold leading-none tabular-nums", isShort ? "text-rose-300" : "text-emerald-300")}>{shift.assigned}/{shift.need}</div>
+                        <div className="mt-1 text-[10px] font-medium text-[#6f8078]">{shift.from}-{shift.to}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
+                      <div className={cn("h-full rounded-full", isShort ? "bg-rose-400" : "bg-[#c9a86a]")} style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {shift.tags.map((tag) => <ToneChip key={tag.label} label={tag.label} tone={tag.tone} />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="ios-card p-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionLabel>Timeline tối nay</SectionLabel>
+              <span className="text-[11px] font-semibold text-[#c9a86a]">18:00-02:00</span>
+            </div>
+            <div className="mt-3 space-y-3">
+              {TIMELINE_BLOCKS.map((block) => (
+                <div key={block.time} className="flex gap-3">
+                  <div className="w-[48px] shrink-0 text-[14px] font-semibold leading-6 tabular-nums text-[#c9a86a]">{block.time}</div>
+                  <div className="min-w-0 flex-1 rounded-2xl border border-white/8 bg-black/18 p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[15px] font-semibold leading-tight text-[#f2ece6]">{block.title}</div>
+                      {block.title.includes("Final") && <ToneChip label="final" tone="final" />}
+                    </div>
+                    <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{block.note}</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {block.dealers.map((dealer) => (
+                        <button
+                          key={`${block.time}-${dealer.name}-${dealer.detail}`}
+                          onClick={dealer.empty ? () => setSchedulePickOpen(true) : soon}
+                          className={cn(
+                            "ios-press-sm rounded-full border px-2.5 py-1.5 text-left",
+                            dealer.empty && "border-dashed border-[#c9a86a]/45 bg-[#c9a86a]/10 text-[#c9a86a]",
+                            dealer.final && "border-pink-400/30 bg-pink-400/10 text-pink-200",
+                            !dealer.empty && !dealer.final && "border-white/8 bg-white/[0.04] text-[#f2ece6]",
+                          )}
+                        >
+                          <span className="block text-[11px] font-semibold leading-none">{dealer.name}</span>
+                          <span className="mt-1 block text-[10px] leading-none text-[#91a49b]">{dealer.detail}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setSchedulePickOpen(true)} className="ios-press ios-primary flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold">
+              <UserPlus className="h-4 w-4" /> Chọn dealer
+            </button>
+            <button onClick={() => setPill("requests")} className="ios-press ios-fill flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-semibold text-[#f2ece6]">
+              <Send className="h-4 w-4 text-[#c9a86a]" /> Yêu cầu
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* D4b — Yêu cầu đổi ca/nghỉ/xin lịch (UI mobile mock, action chưa nối) */}
+      {pill === "requests" && (
+        <div className="space-y-3">
+          <div className="ios-card p-3.5">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-amber-400/12 text-amber-300">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[16px] font-semibold text-[#f2ece6]">Yêu cầu lịch hôm nay</div>
+                <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">Giữ semantic rõ: xanh là có thể xếp, vàng cần xác nhận, đỏ đụng final/thiếu người.</div>
+              </div>
+            </div>
+          </div>
+
+          {REQUESTS.map((request) => (
+            <div key={request.title} className="ios-card p-3.5">
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#c9a86a]/25 bg-[#c9a86a]/10 text-[15px] font-bold text-[#c9a86a]">{request.initials}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-[15px] font-semibold text-[#f2ece6]">{request.title}</div>
+                      <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{request.note}</div>
+                    </div>
+                    <ToneChip label={request.status} tone={request.statusTone} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {request.tags.map((tag) => <ToneChip key={tag.label} label={tag.label} tone={tag.tone} />)}
+                  </div>
+                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                    <button onClick={soon} className="ios-press ios-primary min-h-[42px] rounded-2xl px-3 text-[13px] font-bold">{request.primary}</button>
+                    <button onClick={soon} className="ios-press ios-fill min-h-[42px] rounded-2xl px-3 text-[13px] font-semibold text-[#f2ece6]">{request.secondary}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button onClick={() => setPill("schedule")} className="ios-press ios-fill flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold text-[#f2ece6]">
+            <CalendarDays className="h-4 w-4 text-[#c9a86a]" /> Quay lại lịch ca
+          </button>
+        </div>
       )}
 
       {/* D5 — Nhân sự ca (thật, số đếm) */}
@@ -210,9 +534,9 @@ export default function OpsDealerSwing() {
               <QrCode className="h-5 w-5 text-[#d8bc85]" />
               <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Check-in dealer mới</span><span className="block text-[12px] text-[#9b8e97]">quét QR hoặc chọn từ danh sách</span></span>
             </button>
-            <button onClick={() => toast("Mở planner trên máy tính")} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <button onClick={() => setPill("schedule")} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <Monitor className="h-5 w-5 text-[#9b8e97]" />
-              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Gợi ý điều phối &amp; xếp lịch</span><span className="block text-[12px] text-[#9b8e97]">bản đầy đủ trên máy tính</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Gợi ý điều phối &amp; xếp lịch</span><span className="block text-[12px] text-[#9b8e97]">xem bản mobile trong tab Lịch</span></span>
             </button>
           </div>
         </div>
@@ -228,11 +552,16 @@ export default function OpsDealerSwing() {
               {roster.length === 0 ? <div className="py-4 text-center text-[13px] text-[#9b8e97]">Không có dealer đang trong ca.</div> : roster.map((d) => {
                 const on = checkout.has(d.id);
                 return (
-                  <button key={d.id} onClick={() => setCheckout((s) => { const n = new Set(s); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n; })}
+                  <button key={d.id} onClick={() => setCheckout((s) => {
+                    const n = new Set(s);
+                    if (n.has(d.id)) n.delete(d.id);
+                    else n.add(d.id);
+                    return n;
+                  })}
                     className="ios-press-sm flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left">
                     <span className={cn("grid h-5 w-5 place-items-center rounded-md border", on ? "border-[#c9a86a] bg-[#c9a86a] text-[#241A08]" : "border-white/20 text-transparent")}>✓</span>
                     <span className="flex-1 text-[14px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
-                    <span className="font-mono text-[12px] text-[#9b8e97]">vào {hhmm(d.check_in_time)}</span>
+                    <span className="text-[12px] tabular-nums text-[#9b8e97]">vào {hhmm(d.check_in_time)}</span>
                   </button>
                 );
               })}
@@ -249,7 +578,7 @@ export default function OpsDealerSwing() {
                 {(outQ.data ?? []).map((d) => (
                   <div key={d.id} className="flex items-center justify-between py-0.5 text-[14px]">
                     <span className="text-[#9b8e97]">{d.dealers?.full_name ?? "—"}</span>
-                    <span className="font-mono text-[12px] text-[#7c7079]">ra {hhmm(d.check_out_time)}</span>
+                    <span className="text-[12px] tabular-nums text-[#7c7079]">ra {hhmm(d.check_out_time)}</span>
                   </div>
                 ))}
               </div>
@@ -259,7 +588,7 @@ export default function OpsDealerSwing() {
             <div className="flex items-center gap-1.5 text-[15px] font-semibold text-rose-300"><FlagTriangleRight className="h-4 w-4" /> Đóng tour</div>
             <div className="mt-0.5 text-[12px] text-[#9b8e97]">lưu trữ toàn bộ ca + trả bàn về trống. Không hoàn tác.</div>
             <input value={dongTour} onChange={(e) => setDongTour(e.target.value.toUpperCase())} placeholder="gõ  DONG TOUR  để mở khoá"
-              className="ios-fill mt-2.5 w-full rounded-xl px-3 py-2.5 text-center font-mono text-[14px] tracking-wider text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
+              className="ios-fill mt-2.5 w-full rounded-xl px-3 py-2.5 text-center text-[14px] font-semibold tracking-normal text-[#f2ece6] outline-none placeholder:text-[#7c7079]" />
             <button onClick={() => { soon(); setDongTour(""); }} disabled={dongTour.trim() !== "DONG TOUR"}
               className={cn("ios-press mt-2.5 w-full rounded-2xl py-3 text-[15px] font-bold", dongTour.trim() === "DONG TOUR" ? "bg-rose-500/90 text-white" : "bg-white/5 text-[#5f545c]")}>
               Đóng tour {dongTour.trim() !== "DONG TOUR" && "(đang khoá)"}
@@ -270,7 +599,7 @@ export default function OpsDealerSwing() {
 
       {/* D2 — sheet bàn */}
       <Sheet open={tableSheet !== null} onOpenChange={(v) => { if (!v) setTableSheet(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center">
             <SheetTitle className="text-[#f2ece6]">
@@ -278,7 +607,7 @@ export default function OpsDealerSwing() {
               {tableSheet && (tableSheet.missing || tableSheet.assignment?.isOverdue) && <span className="ml-2 rounded-full bg-rose-400/12 px-2 py-0.5 text-[11px] font-semibold text-rose-300">{tableSheet.missing ? "Thiếu dealer" : "OT"}</span>}
             </SheetTitle>
           </SheetHeader>
-          <div className="mt-0.5 text-center font-mono text-[13px] text-[#9b8e97]">{tableSheet?.dealer ?? "—"} · vào {tableSheet?.since}</div>
+          <div className="mt-0.5 text-center text-[13px] tabular-nums text-[#9b8e97]">{tableSheet?.dealer ?? "—"} · vào {tableSheet?.since}</div>
           {tableSheet?.next && (
             <div className="ios-card mt-3 flex items-center gap-2 px-3.5 py-2.5 text-[13px]">
               <Lightbulb className="h-4 w-4 text-[#d8bc85]" />
@@ -300,7 +629,7 @@ export default function OpsDealerSwing() {
 
       {/* D4 — sheet dealer */}
       <Sheet open={dealerSheet !== null} onOpenChange={(v) => { if (!v) setDealerSheet(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="items-center text-center">
             <div className="mx-auto grid h-11 w-11 place-items-center rounded-full border border-sky-400 bg-[#241A2C] text-[15px] font-semibold text-sky-300">
@@ -309,7 +638,7 @@ export default function OpsDealerSwing() {
             <SheetTitle className="mt-1.5 text-[16px] font-semibold text-[#f2ece6]">
               {dealerSheet?.dealers?.full_name} {dealerSheet && <span className={cn("ml-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", (DEALER_CHIP[dealerSheet.current_state] ?? DEALER_CHIP.available).cls)}>{(DEALER_CHIP[dealerSheet.current_state] ?? DEALER_CHIP.available).label}</span>}
             </SheetTitle>
-            <div className="font-mono text-[12px] text-[#9b8e97]">vào ca {hhmm(dealerSheet?.check_in_time)}{dealerSheet && tableByAttendance.get(dealerSheet.id) ? ` · ${tableByAttendance.get(dealerSheet.id)}` : ""}</div>
+            <div className="text-[12px] tabular-nums text-[#9b8e97]">vào ca {hhmm(dealerSheet?.check_in_time)}{dealerSheet && tableByAttendance.get(dealerSheet.id) ? ` · ${tableByAttendance.get(dealerSheet.id)}` : ""}</div>
           </SheetHeader>
           <div className="mt-3 space-y-1.5">
             <button onClick={soon} className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
@@ -324,7 +653,7 @@ export default function OpsDealerSwing() {
 
       {/* P1 — chọn dealer khác (roster sẵn sàng) */}
       <Sheet open={pickFor !== null} onOpenChange={(v) => { if (!v) setPickFor(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Chọn dealer vào {pickFor?.name}</SheetTitle></SheetHeader>
           <div className="ios-group mt-3">
@@ -337,7 +666,7 @@ export default function OpsDealerSwing() {
                     className={cn("ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left", !locked && "ios-press-sm", locked && "opacity-55")}>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
-                      <span className="block font-mono text-[12px] text-[#9b8e97]">vào ca {hhmm(d.check_in_time)}{locked ? " · đang nghỉ" : ""}</span>
+                      <span className="block text-[12px] tabular-nums text-[#9b8e97]">vào ca {hhmm(d.check_in_time)}{locked ? " · đang nghỉ" : ""}</span>
                     </span>
                     {locked ? <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-[#9b8e97]">nghỉ</span> : <span className="text-[13px] text-[#c9a86a]">chọn</span>}
                   </button>
@@ -350,7 +679,7 @@ export default function OpsDealerSwing() {
 
       {/* break picker */}
       <Sheet open={breakFor !== null} onOpenChange={(v) => { if (!v) setBreakFor(null); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Cho {breakFor} nghỉ</SheetTitle></SheetHeader>
           <div className="mt-3 grid grid-cols-4 gap-2">
@@ -361,9 +690,52 @@ export default function OpsDealerSwing() {
         </SheetContent>
       </Sheet>
 
+      {/* schedule picker mock */}
+      <Sheet open={schedulePickOpen} onOpenChange={setSchedulePickOpen}>
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center">
+            <SheetTitle className="text-[#f2ece6]">Chọn dealer vào Bàn 12</SheetTitle>
+          </SheetHeader>
+          <div className="mt-1 text-center text-[12px] leading-4 text-[#9b8e97]">Gợi ý UI theo lịch ca, nghỉ đủ và ràng buộc final. Chưa nối hành động thật.</div>
+          <div className="ios-group mt-3">
+            {CANDIDATES.map((candidate) => (
+              <button
+                key={candidate.name}
+                disabled={candidate.locked}
+                onClick={soon}
+                className={cn("ios-row-inset flex w-full items-start gap-3 px-4 py-3 text-left", !candidate.locked && "ios-press-sm", candidate.locked && "opacity-55")}
+              >
+                <span className={cn("mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full border text-[13px] font-bold", candidate.locked ? "border-pink-400/25 bg-pink-400/10 text-pink-200" : "border-[#c9a86a]/35 bg-[#c9a86a]/12 text-[#c9a86a]")}>
+                  {candidate.score}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-[#f2ece6]">{candidate.name}</span>
+                  <span className="mt-1 block text-[12px] leading-4 text-[#9b8e97]">{candidate.note}</span>
+                  <span className="mt-2 flex flex-wrap gap-1.5">
+                    {candidate.tags.map((tag) => (
+                      <span key={tag} className={cn(
+                        "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
+                        tag.includes("rủi") || tag.includes("final") ? "bg-pink-400/12 text-pink-300" : tag.includes("chưa") ? "bg-amber-400/12 text-amber-300" : "bg-emerald-400/12 text-emerald-300",
+                      )}>{tag}</span>
+                    ))}
+                  </span>
+                </span>
+                <span className={cn("mt-1 rounded-full px-2.5 py-1 text-[11px] font-semibold", candidate.locked ? "bg-white/6 text-[#9b8e97]" : "bg-[#c9a86a]/12 text-[#c9a86a]")}>
+                  {candidate.locked ? "khóa" : "chọn"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <button onClick={soon} className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold">
+            <CheckCircle2 className="h-4 w-4" /> Xác nhận chọn dealer
+          </button>
+        </SheetContent>
+      </Sheet>
+
       {/* P2 — check-in */}
       <Sheet open={checkinOpen} onOpenChange={setCheckinOpen}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Check-in dealer</SheetTitle></SheetHeader>
           <div className="mt-3 grid h-[76px] place-items-center rounded-2xl border border-dashed border-white/15 text-[13px] text-[#9b8e97]">
@@ -397,11 +769,19 @@ function countdown(t: TableVM) {
   return { text: `còn ${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`, cls };
 }
 
+function ToneChip({ label, tone }: { label: string; tone: ScheduleTone }) {
+  return <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold", toneCls[tone])}>{label}</span>;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div className="text-[11px] font-semibold uppercase leading-none text-[#91a49b]">{children}</div>;
+}
+
 function Line({ l, v, vCls }: { l: string; v: string; vCls?: string }) {
   return (
     <div className="flex items-center justify-between py-1 text-[14px]">
       <span className="text-[#9b8e97]">{l}</span>
-      <span className={cn("font-mono text-[16px] font-semibold", vCls ?? "text-[#f2ece6]")}>{v}</span>
+      <span className={cn("text-[16px] font-semibold tabular-nums", vCls ?? "text-[#f2ece6]")}>{v}</span>
     </div>
   );
 }
@@ -422,7 +802,7 @@ function Guard({ icon, title, sub, onBack }: { icon: React.ReactNode; title: str
         <button onClick={onBack} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
           <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
         </button>
-        <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Dealer Swing</h1>
+        <h1 className="mt-1 text-[26px] font-bold leading-tight text-[#f2ece6]">Dealer Swing</h1>
       </header>
       <div className="ios-card flex flex-col items-center gap-2 py-12 text-center">
         {icon}
