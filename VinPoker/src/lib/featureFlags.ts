@@ -926,6 +926,13 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
+   * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
+   * log-normal draw, so tiny fields keep realistic integer count mass. Fields at/above 60 stay on the
+   * existing log-normal path. Default **OFF**; flag-off must remain byte-identical for risk outputs.
+   */
+  seriesSmallFieldDist: false,
+  /**
    * Series Intelligence — W6 registration-pace check (Bước ④). When ON, a panel lets the owner compare
    * sign-ups-so-far to a CRUDE linear pace toward the forecast, to spot "đang chậm → đẩy bài/satellite"
    * early. All inputs owner-entered; the pace reference is an honest crude assumption (real sign-up

@@ -6,6 +6,8 @@
 // Total log-variance = sd²·(1/n + 1) → as n→∞ it floors at the aleatoric sd² (never a point). At n=1 the
 // epistemic SD equals the aleatoric SD (widest — no false precision). `meanLog` = geometric mean of the
 // observed entries (mean of logs). Money is by formula: overlay = max(0, GTD − ent·buyinPrize); rake = ent·fee.
+// Keep the σ-floor doctrine intact in the wider Monte Carlo stack: the floor exists because guests arrive
+// in correlated groups, so real variance is higher than an independent-customer model would imply.
 //
 // Output is a SCENARIO / risk decomposition, NOT a forecast. Deterministic seeded PRNG → stable tests.
 // Pure: no DB, no localStorage, no imports of the multi-event engine (PRNG/stats duplicated to keep that
@@ -23,6 +25,7 @@ export interface OverlayRiskInput {
   clampLo?: number; // entries floor (default 150)
   clampHi?: number; // entries ceiling (default 4600)
   bins?: number; // histogram bins (default 38)
+  smallFieldDist?: boolean; // TP3 flag: use discrete Negative Binomial when the center is below 60 entries
 }
 
 export interface OverlayBin {
@@ -52,6 +55,7 @@ const MAX_SIMS = 50000;
 const LO_DEFAULT = 150;
 const HI_DEFAULT = 4600;
 const BINS_DEFAULT = 38;
+export const SMALL_FIELD_CUTOFF = 60;
 
 // --- deterministic PRNG + normal (duplicated from monteCarloEngine to keep it untouched) ---
 function mulberry32(seed: number): () => number {
@@ -74,6 +78,9 @@ function makeNormal(rng: () => number): () => number {
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
+function entriesSdFromLogSd(mean: number, logSd: number): number {
+  return mean * Math.sqrt(Math.max(0, Math.exp(logSd * logSd) - 1));
+}
 function percentileSorted(sorted: Float64Array, p: number): number {
   const n = sorted.length;
   if (n === 0) return 0;
@@ -87,6 +94,74 @@ function percentileSorted(sorted: Float64Array, p: number): number {
 function deriveSeed(): number {
   return (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
 }
+function logFactorial(n: number): number {
+  if (n < 2) return 0;
+  if (n > 254) {
+    const x = n + 1;
+    return (x - 0.5) * Math.log(x) - x + 0.5 * Math.log(2 * Math.PI) + 1 / (12 * x);
+  }
+  let s = 0;
+  for (let i = 2; i <= n; i++) s += Math.log(i);
+  return s;
+}
+function sampleGamma(shape: number, scale: number, rng: () => number, normal: () => number): number {
+  if (!(shape > 0) || !(scale > 0)) return 0;
+  if (shape < 1) {
+    const u = Math.max(1e-12, rng());
+    return sampleGamma(shape + 1, scale, rng, normal) * Math.pow(u, 1 / shape);
+  }
+
+  const d = shape - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    const x = normal();
+    const vBase = 1 + c * x;
+    if (vBase <= 0) continue;
+    const v = vBase * vBase * vBase;
+    const u = rng();
+    if (u < 1 - 0.0331 * x ** 4) return scale * d * v;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return scale * d * v;
+  }
+}
+function samplePoisson(lambda: number, rng: () => number): number {
+  if (!(lambda > 0)) return 0;
+  if (lambda < 30) {
+    const limit = Math.exp(-lambda);
+    let p = 1;
+    let k = 0;
+    do {
+      k++;
+      p *= rng();
+    } while (p > limit);
+    return k - 1;
+  }
+
+  const c = 0.767 - 3.36 / lambda;
+  const beta = Math.PI / Math.sqrt(3 * lambda);
+  const alpha = beta * lambda;
+  const k = Math.log(c) - lambda - Math.log(beta);
+  for (;;) {
+    const u = Math.min(1 - 1e-12, Math.max(1e-12, rng()));
+    const x = (alpha - Math.log((1 - u) / u)) / beta;
+    const n = Math.floor(x + 0.5);
+    if (n < 0) continue;
+    const v = Math.max(1e-12, rng());
+    const y = alpha - beta * x;
+    const lhs = y + Math.log(v / ((1 + Math.exp(y)) ** 2));
+    const rhs = k + n * Math.log(lambda) - logFactorial(n);
+    if (lhs <= rhs) return n;
+  }
+}
+export function sampleNegBin(mean: number, sd: number, rng: () => number): number {
+  if (!(mean > 0)) return 0;
+  const variance = sd * sd;
+  if (!(variance > mean)) return samplePoisson(mean, rng);
+
+  const r = (mean * mean) / (variance - mean);
+  const scale = mean / r;
+  const lambda = sampleGamma(r, scale, rng, makeNormal(rng));
+  return samplePoisson(lambda, rng);
+}
 
 /**
  * Simulate the overlay risk of one tournament vs a GTD. `n` drives ONLY the epistemic √n term (so a what-if
@@ -94,8 +169,6 @@ function deriveSeed(): number {
  */
 export function simulateOverlayRisk(input: OverlayRiskInput): OverlayRiskResult {
   const sd = input.sd ?? SD_DEFAULT;
-  const lo = input.clampLo ?? LO_DEFAULT;
-  const hi = input.clampHi ?? HI_DEFAULT;
   const binCount = Math.max(1, Math.floor(input.bins ?? BINS_DEFAULT));
   const nSims = Math.min(Math.max(1, Math.floor(input.nSims ?? N_SIMS_DEFAULT)), MAX_SIMS);
   const buyin = input.buyinPrize;
@@ -111,6 +184,11 @@ export function simulateOverlayRisk(input: OverlayRiskInput): OverlayRiskResult 
   const meanLog = obs.reduce((acc, c) => acc + Math.log(c), 0) / obs.length;
   const nEff = Math.max(1, input.n);
   const epi = sd / Math.sqrt(nEff);
+  const baseEntries = Math.exp(meanLog);
+  const useSmallFieldDist = input.smallFieldDist === true && baseEntries < SMALL_FIELD_CUTOFF;
+  const nbHi = Math.ceil(baseEntries + 6 * entriesSdFromLogSd(baseEntries, Math.sqrt(epi * epi + sd * sd)));
+  const lo = input.clampLo ?? (useSmallFieldDist ? 1 : LO_DEFAULT);
+  const hi = input.clampHi ?? (useSmallFieldDist ? Math.max(lo + 1, SMALL_FIELD_CUTOFF + 1, nbHi) : HI_DEFAULT);
 
   const rng = mulberry32(input.seed ?? deriveSeed());
   const normal = makeNormal(rng);
@@ -125,7 +203,9 @@ export function simulateOverlayRisk(input: OverlayRiskInput): OverlayRiskResult 
   let ovCnt = 0;
   for (let i = 0; i < nSims; i++) {
     const mu = meanLog + normal() * epi;
-    const ent = clamp(Math.exp(mu + normal() * sd), lo, hi);
+    const ent = useSmallFieldDist
+      ? clamp(sampleNegBin(Math.exp(mu), entriesSdFromLogSd(Math.exp(mu), sd), rng), lo, hi)
+      : clamp(Math.exp(mu + normal() * sd), lo, hi);
     ents[i] = ent;
     rakes[i] = ent * fee;
     const prize = ent * buyin;
@@ -173,6 +253,7 @@ export interface ForecastOverlayInput {
   clampLo?: number;
   clampHi?: number;
   bins?: number;
+  smallFieldDist?: boolean; // TP3 flag: use discrete Negative Binomial when baseEntries is below 60
 }
 
 /**
@@ -199,6 +280,7 @@ export function simulateOverlayFromForecast(input: ForecastOverlayInput): Overla
   // Clamp bounds scale WITH the forecast (base·e^±4σ ≈ beyond p99.99), NOT the group engine's fixed
   // festival-scale [150, 4600] — a small-club forecast (e.g. 80 entries) must not be silently pinned to a
   // 150-entry floor, which would hide near-certain overlay as ~0%.
+  const useSmallFieldDist = input.smallFieldDist === true && input.baseEntries < SMALL_FIELD_CUTOFF;
   const lo = input.clampLo ?? Math.max(1, Math.floor(input.baseEntries * Math.exp(-4 * sd)));
   const hi = input.clampHi ?? Math.max(lo + 1, Math.ceil(input.baseEntries * Math.exp(4 * sd)));
 
@@ -215,7 +297,9 @@ export function simulateOverlayFromForecast(input: ForecastOverlayInput): Overla
   let ovSum = 0;
   let ovCnt = 0;
   for (let i = 0; i < nSims; i++) {
-    const ent = clamp(Math.exp(meanLog + normal() * sd), lo, hi);
+    const ent = useSmallFieldDist
+      ? clamp(sampleNegBin(input.baseEntries, entriesSdFromLogSd(input.baseEntries, sd), rng), lo, hi)
+      : clamp(Math.exp(meanLog + normal() * sd), lo, hi);
     ents[i] = ent;
     rakes[i] = ent * fee;
     const prize = ent * buyin;

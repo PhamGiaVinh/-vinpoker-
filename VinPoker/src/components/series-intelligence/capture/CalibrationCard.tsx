@@ -40,6 +40,9 @@ export function CalibrationCard({
         </h3>
         <InsightLabelBadge label="Observed Pattern" />
       </div>
+      <p className="text-[10px] text-muted-foreground">
+        Đèn &amp; hiệu chỉnh để HỌC, KHÔNG phải KPI thưởng/phạt; đọc metric theo cặp đối trọng (vd tỷ lệ khách mới ↔ retention của họ).
+      </p>
 
       {!cal.enough ? (
         <div className="space-y-1.5">

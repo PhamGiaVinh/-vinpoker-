@@ -16,6 +16,9 @@ export function RiskInsightCards({ risks }: { risks: RiskFlag[] }) {
       <h3 className="font-display text-base flex items-center gap-2">
         <ShieldAlert className="h-4 w-4 text-primary" /> Rủi ro &amp; insight
       </h3>
+      <p className="text-[10px] text-muted-foreground">
+        Đèn &amp; hiệu chỉnh để HỌC, KHÔNG phải KPI thưởng/phạt; đọc metric theo cặp đối trọng (vd tỷ lệ khách mới ↔ retention của họ).
+      </p>
       {risks.length === 0 ? (
         <Card className="p-4 border-primary/30 text-xs text-muted-foreground">
           Chưa đủ dữ liệu để nêu rủi ro nổi bật. Bổ sung thêm giải/entry để có insight rõ hơn.
