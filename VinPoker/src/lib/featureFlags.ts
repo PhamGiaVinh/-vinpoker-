@@ -538,7 +538,7 @@ export const FEATURES = {
    * re-settle path (F2 display-only edit unchanged). ON but the RPC not applied → 42883
    * caught → "chưa áp dụng" degrade. Money-path: owner applies the migration + UATs.
    */
-  trackerResettleForward: false,
+  trackerResettleForward: true, // GO-LIVE 2026-07-09 (owner-requested); RPC 20261226000000 applied live (#815). Kill-switch: set false.
   /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
