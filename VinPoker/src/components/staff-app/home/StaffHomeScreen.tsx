@@ -73,7 +73,7 @@ export function StaffHomeScreen() {
             Ca gần nhất
           </div>
           <div className="mt-1 text-lg font-bold text-foreground">
-            {latestClosed ? minutesLabel(latestClosed.totalWorkedMinutesToday) : "—"}
+            {latestClosed ? minutesLabel(latestClosed.totalWorkedMinutesToday) : "-"}
           </div>
         </Card>
         <Card className="p-3 border-border bg-card">
@@ -81,7 +81,7 @@ export function StaffHomeScreen() {
             <Timer className="w-3.5 h-3.5 text-primary" />
             Lượt đã ghi
           </div>
-          <div className="mt-1 text-lg font-bold text-foreground">{isLoading ? "…" : rows.length}</div>
+          <div className="mt-1 text-lg font-bold text-foreground">{isLoading ? "..." : rows.length}</div>
         </Card>
       </div>
     </div>
@@ -100,4 +100,3 @@ function HomeSkeleton() {
     </div>
   );
 }
-

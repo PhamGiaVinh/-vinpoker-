@@ -51,7 +51,7 @@ export function StaffAccountScreen() {
 
       <div className="rounded-2xl border border-border bg-card divide-y divide-border">
         <InfoRow Icon={Building2} label="CLB hiện tại" value={staff.clubName} />
-        <InfoRow Icon={Phone} label="Điện thoại" value={staff.phone || "—"} />
+        <InfoRow Icon={Phone} label="Điện thoại" value={staff.phone || "-"} />
         <InfoRow Icon={WalletCards} label="Cấu hình lương" value={payLabel} />
       </div>
 

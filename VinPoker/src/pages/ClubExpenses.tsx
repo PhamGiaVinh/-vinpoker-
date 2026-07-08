@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Banknote, CalendarDays, ClipboardList, Landmark, Plus, ReceiptText, WalletCards } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
@@ -38,11 +38,13 @@ function currentMonthKey(): string {
 
 export default function ClubExpenses() {
   const { loading: authLoading, isAdmin, isClubAdmin, isClubOwner, isCashier } = useAuth();
+  const [searchParams] = useSearchParams();
   const source = clubExpensesSource();
   const preview = source === "mock";
+  const mockPreview = preview && searchParams.get("preview") === "mock";
   const liveAllowed = isAdmin || isClubAdmin || isClubOwner || isCashier;
   const previewAllowed = isAdmin || isClubOwner;
-  const allowed = FEATURES.clubExpenses ? liveAllowed : previewAllowed;
+  const allowed = FEATURES.clubExpenses ? liveAllowed : previewAllowed || mockPreview;
   const [clubId, setClubId] = useState<string>("");
   const [monthKey, setMonthKey] = useState(currentMonthKey);
   const { from, to } = useMemo(() => monthBounds(monthKey), [monthKey]);
@@ -69,7 +71,7 @@ export default function ClubExpenses() {
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-2xl text-primary">Sổ chi phí</h1>
-            <Badge variant="outline" className={preview ? "text-[10px] border-amber-500/40 text-amber-400" : "text-[10px]"}>
+            <Badge variant="outline" className={preview ? "text-[10px] border-primary/40 text-primary" : "text-[10px]"}>
               {preview ? "PREVIEW · MOCK" : "LIVE"}
             </Badge>
           </div>
@@ -91,7 +93,7 @@ export default function ClubExpenses() {
       </header>
 
       {preview && (
-        <Card className="p-3 border-amber-500/30 bg-amber-500/10 text-[12px] text-amber-200">
+        <Card className="p-3 border-primary/30 bg-primary/10 text-[12px] text-primary">
           Flag <span className="font-mono">clubExpenses</span> đang OFF. Trang này đang chạy preview bằng local mock, không gọi Supabase và chưa lên live.
         </Card>
       )}
@@ -99,82 +101,80 @@ export default function ClubExpenses() {
       {clubs.length === 0 ? (
         <Card className="p-6 border-border text-sm text-muted-foreground">Bạn chưa có CLB hoặc quyền thu ngân để ghi chi phí.</Card>
       ) : (
-        <>
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard icon={ReceiptText} label="Tổng chi" value={formatVND(summary?.totalVnd ?? 0)} />
-                <MetricCard icon={Banknote} label="Đã trả" value={formatVND(summary?.paidVnd ?? 0)} />
-                <MetricCard icon={WalletCards} label="Chưa trả" value={formatVND(summary?.unpaidVnd ?? 0)} />
-                <MetricCard icon={ClipboardList} label="Số dòng" value={`${rows.length}`} />
-              </div>
-
-              <Card className="p-4 border-border bg-card">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                  <div>
-                    <h2 className="text-sm font-bold text-foreground">Chi tiết tháng</h2>
-                    <p className="text-[12px] text-muted-foreground">{activeClub?.name ?? "Chưa chọn CLB"}</p>
-                  </div>
-                  {clubs.length > 1 && (
-                    <div className="w-full sm:w-64">
-                      <Select value={activeClubId ?? ""} onValueChange={setClubId}>
-                        <SelectTrigger className="bg-background border-border">
-                          <SelectValue placeholder="Chọn CLB" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clubs.map((club) => (
-                            <SelectItem key={club.id} value={club.id}>{club.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-
-                {expensesQuery.isLoading ? (
-                  <div className="space-y-2">
-                    {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-                  </div>
-                ) : rows.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                    Chưa có chi phí trong tháng này.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {rows.map((row) => (
-                      <div key={row.id} className="py-3 flex items-start gap-3">
-                        <span className="grid place-items-center w-10 h-10 rounded-xl bg-muted text-muted-foreground shrink-0">
-                          <CalendarDays className="w-5 h-5" />
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-foreground">{EXPENSE_CATEGORY_LABELS[row.category]}</span>
-                            <Badge variant="outline" className="text-[10px]">
-                              {row.paymentStatus === "paid" ? "Đã trả" : "Chưa trả"}
-                            </Badge>
-                            {row.paymentSource && <span className="text-[11px] text-muted-foreground uppercase">{row.paymentSource}</span>}
-                          </div>
-                          <p className="text-[12px] text-muted-foreground truncate">{row.description || "Không có mô tả"}</p>
-                          <p className="text-[11px] text-muted-foreground">{formatShortDate(row.incurredAt)}</p>
-                        </div>
-                        <div className={row.amountVnd < 0 ? "text-right font-bold tabular-nums text-red-400" : "text-right font-bold tabular-nums text-foreground"}>
-                          {formatVND(row.amountVnd)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard icon={ReceiptText} label="Tổng chi" value={formatVND(summary?.totalVnd ?? 0)} />
+              <MetricCard icon={Banknote} label="Đã trả" value={formatVND(summary?.paidVnd ?? 0)} />
+              <MetricCard icon={WalletCards} label="Chưa trả" value={formatVND(summary?.unpaidVnd ?? 0)} />
+              <MetricCard icon={ClipboardList} label="Số dòng" value={`${rows.length}`} />
             </div>
 
-            <ExpenseEntryForm
-              disabled={!activeClubId}
-              pending={recordExpense.isPending}
-              preview={preview}
-              onSubmit={(input) => recordExpense.mutate(input)}
-            />
+            <Card className="p-4 border-border bg-card">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-foreground">Chi tiết tháng</h2>
+                  <p className="text-[12px] text-muted-foreground">{activeClub?.name ?? "Chưa chọn CLB"}</p>
+                </div>
+                {clubs.length > 1 && (
+                  <div className="w-full sm:w-64">
+                    <Select value={activeClubId ?? ""} onValueChange={setClubId}>
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue placeholder="Chọn CLB" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clubs.map((club) => (
+                          <SelectItem key={club.id} value={club.id}>{club.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {expensesQuery.isLoading ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  Chưa có chi phí trong tháng này.
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {rows.map((row) => (
+                    <div key={row.id} className="py-3 flex items-start gap-3">
+                      <span className="grid place-items-center w-10 h-10 rounded-xl bg-muted text-muted-foreground shrink-0">
+                        <CalendarDays className="w-5 h-5" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-foreground">{EXPENSE_CATEGORY_LABELS[row.category]}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {row.paymentStatus === "paid" ? "Đã trả" : "Chưa trả"}
+                          </Badge>
+                          {row.paymentSource && <span className="text-[11px] text-muted-foreground uppercase">{row.paymentSource}</span>}
+                        </div>
+                        <p className="text-[12px] text-muted-foreground truncate">{row.description || "Không có mô tả"}</p>
+                        <p className="text-[11px] text-muted-foreground">{formatShortDate(row.incurredAt)}</p>
+                      </div>
+                      <div className={row.amountVnd < 0 ? "text-right font-bold tabular-nums text-red-400" : "text-right font-bold tabular-nums text-foreground"}>
+                        {formatVND(row.amountVnd)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
-        </>
+
+          <ExpenseEntryForm
+            disabled={!activeClubId}
+            pending={recordExpense.isPending}
+            preview={preview}
+            onSubmit={(input) => recordExpense.mutate(input)}
+          />
+        </div>
       )}
     </div>
   );

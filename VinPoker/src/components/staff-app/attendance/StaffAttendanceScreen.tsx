@@ -49,7 +49,7 @@ export function StaffAttendanceScreen() {
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="w-3.5 h-3.5" />
-                        {formatTime(row.checkInTime)} → {row.checkOutTime ? formatTime(row.checkOutTime) : "—"}
+                        {formatTime(row.checkInTime)} - {row.checkOutTime ? formatTime(row.checkOutTime) : "-"}
                       </span>
                       <span>{minutesLabel(row.totalWorkedMinutesToday)}</span>
                     </div>
@@ -74,4 +74,3 @@ function AttendanceSkeleton() {
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useSearchParams } from "react-router-dom";
 import { IdCard } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useStaffLink } from "@/hooks/staff/useStaffLink";
@@ -13,7 +13,9 @@ import { StaffComingSoon } from "./StaffComingSoon";
 export default function StaffAppShell() {
   const { user, isAdmin, isClubOwner, loading: authLoading } = useAuth();
   const { loading, source } = useStaffLink();
-  const allowPreview = isAdmin || isClubOwner;
+  const [searchParams] = useSearchParams();
+  const mockPreview = !FEATURES.staffApp && searchParams.get("preview") === "mock";
+  const allowPreview = isAdmin || isClubOwner || mockPreview;
 
   if (authLoading || loading) return <RouteLoader />;
   if (source === "live" && !user) return <Navigate to="/auth" replace />;
@@ -42,7 +44,7 @@ export default function StaffAppShell() {
       <main className="flex-1 mx-auto w-full max-w-md px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] animate-fade-in">
         <BackButton to="/" label="Về app chính" className="mb-2" />
         {!FEATURES.staffApp && allowPreview && (
-          <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200">
+          <div className="mb-3 rounded-xl border border-primary/35 bg-primary/10 px-3 py-2 text-[12px] text-primary">
             Preview nội bộ: flag staffApp đang OFF, dữ liệu chấm công là mock và không ghi Supabase.
           </div>
         )}
