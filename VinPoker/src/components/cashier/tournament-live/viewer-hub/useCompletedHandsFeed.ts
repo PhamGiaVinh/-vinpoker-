@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
+import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import {
   buildHandFeedItems,
   filterByTags,
@@ -96,11 +96,15 @@ export function useCompletedHandsFeed(
       return;
     }
 
+    // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) — selected
+    // only if present (feature-detect). handFeedDerive reads it per-row; the profMap below
+    // is the tournament_seats fallback for rows the snapshot didn't capture (old hands).
+    const snap = await handPlayersHasSnapshot();
+    const hpCols = snap
+      ? "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated, player_name, avatar_url"
+      : "hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated";
     const [{ data: hp }, { data: ha }, { data: el }] = await Promise.all([
-      supabase
-        .from("hand_players")
-        .select("hand_id, player_id, seat_number, starting_stack, ending_stack, hole_cards, is_eliminated")
-        .in("hand_id", ids),
+      supabase.from("hand_players").select(hpCols).in("hand_id", ids),
       supabase
         .from("hand_actions")
         .select("hand_id, player_id, action_type, action_amount, action_order")
@@ -113,12 +117,12 @@ export function useCompletedHandsFeed(
     ]);
     if (seq !== seqRef.current) return;
 
-    const playerIds = [...new Set((hp ?? []).map((p: { player_id: string }) => p.player_id))];
-    // Names + avatars come from tournament_seats.player_name / avatar_url keyed by
-    // player_id (the LIVE source), NOT profiles.user_id — hand_players.player_id is a
-    // tournament-entry id, so the old profiles join missed and the feed showed short ids.
-    // profMap stays keyed by player_id (handFeedDerive already looks up by player_id).
-    const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
+    // Fallback roster (keyed by player_id, handFeedDerive already looks up by player_id)
+    // — only for rows whose snapshot is missing, so the query is free once all snapshotted.
+    const needIds = ((hp ?? []) as any[])
+      .filter((p: any) => !p.player_name)
+      .map((p: any) => p.player_id);
+    const display = await fetchHandPlayerDisplay(tournamentId, needIds);
     if (seq !== seqRef.current) return;
 
     const profMap = new Map<string, RawProfile>();

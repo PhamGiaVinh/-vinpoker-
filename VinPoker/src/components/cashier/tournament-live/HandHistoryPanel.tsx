@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
-import { fetchHandPlayerDisplay } from "@/lib/tracker-poker/handPlayerNames";
+import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 
 interface HandRecord {
   id: string;
@@ -120,10 +120,15 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       return;
     }
 
+    // E1: prefer the per-hand snapshot (hand_players.player_name) when the migration is
+    // applied; the column is selected only if present (feature-detect). Fall back to the
+    // tournament_seats roster only for old rows the snapshot didn't capture.
+    const snap = await handPlayersHasSnapshot();
+    const baseHpCols = "hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards";
     const [playersRes, actionsRes] = await Promise.all([
       supabase
         .from("hand_players")
-        .select("hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated, hole_cards")
+        .select(snap ? `${baseHpCols}, player_name` : baseHpCols)
         .in("hand_id", handIds),
       supabase
         .from("hand_actions")
@@ -132,14 +137,11 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         .order("action_order"),
     ]);
 
-    // Names come from tournament_seats.player_name keyed by player_id (the LIVE source),
-    // NOT profiles.user_id — hand_players.player_id is a tournament-entry id, so the old
-    // profiles join always missed and history showed short ids for walk-in players.
-    const playerIds = [...new Set((playersRes.data || []).map((p: any) => p.player_id))];
-    const display = await fetchHandPlayerDisplay(tournamentId, playerIds);
+    const needIds = (playersRes.data || []).filter((p: any) => !p.player_name).map((p: any) => p.player_id);
+    const display = await fetchHandPlayerDisplay(tournamentId, needIds);
     const nameMap = new Map<string, string>();
     (playersRes.data || []).forEach((p: any) => {
-      nameMap.set(p.player_id, display.get(p.player_id)?.name || p.player_id.slice(0, 6));
+      nameMap.set(p.player_id, p.player_name || display.get(p.player_id)?.name || p.player_id.slice(0, 6));
     });
 
     const playerMap = new Map<string, any[]>();
