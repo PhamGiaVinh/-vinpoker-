@@ -86,19 +86,33 @@ export function HandSelector({
         ]);
 
         const playerIds = [...new Set((handPlayers ?? []).map((p: any) => p.player_id))];
-        const { data: profiles } = playerIds.length
-          ? await supabase
-              .from("profiles")
-              .select("user_id, display_name, avatar_url")
-              .in("user_id", playerIds)
-          : { data: [] as any[] };
-
+        // Names + avatars come from tournament_seats.player_name / avatar_url — the SAME
+        // source LIVE uses (TournamentLiveView), keyed by player_id. The old code joined
+        // profiles.user_id, but hand_players.player_id is a tournament-ENTRY id, not an
+        // auth user_id, so the join always missed → the pod showed the raw id.
         const nameMap = new Map<string, string>();
         const avatarMap = new Map<string, string | null>();
-        (profiles ?? []).forEach((p: any) => {
-          nameMap.set(p.user_id, p.display_name || "");
-          avatarMap.set(p.user_id, p.avatar_url ?? null);
-        });
+        if (playerIds.length) {
+          // avatar_url may be absent on some deployments — try with it, fall back without.
+          const withAvatar = await supabase
+            .from("tournament_seats")
+            .select("player_id, player_name, avatar_url")
+            .eq("tournament_id", tournamentId)
+            .in("player_id", playerIds);
+          const seatRows = withAvatar.error
+            ? (
+                await supabase
+                  .from("tournament_seats")
+                  .select("player_id, player_name")
+                  .eq("tournament_id", tournamentId)
+                  .in("player_id", playerIds)
+              ).data
+            : withAvatar.data;
+          (seatRows ?? []).forEach((s: any) => {
+            if (s.player_name) nameMap.set(s.player_id, s.player_name);
+            avatarMap.set(s.player_id, s.avatar_url ?? null);
+          });
+        }
 
         const hand: ReplayHand = {
           hand_number: row.hand_number,
@@ -129,7 +143,7 @@ export function HandSelector({
         setLoadingHand(false);
       }
     },
-    [onSelectHand]
+    [onSelectHand, tournamentId]
   );
 
   // Select the deep-linked hand if given, else auto-select the most recent once the
