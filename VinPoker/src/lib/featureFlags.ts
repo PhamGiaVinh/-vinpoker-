@@ -1203,6 +1203,40 @@ export const FEATURES = {
    * real-data wiring is a separate owner-gated step. Kill-switch: set false. Spec: docs/design/ios-floor-ux-spec.md.
    */
   mobileOpsV2: true,
+  /**
+   * staffApp — NEW `/staff/*` self-service portal for NON-dealer staff (floor, cashier,
+   * tracker, service, security). Mirrors the dealer app shell but reads a SEPARATE `staff`
+   * table + `staff_attendance` (never `dealers` / `dealer_attendance`), so the live dealer
+   * app is untouched. MVP screens: Home + app check-in/out button, Attendance list, Account.
+   * Default **OFF** (per flag policy): while false the `/staff/*` routes show a "chưa bật"
+   * notice (except admin/owner preview) and nothing mounts → prod unchanged. The backing
+   * migrations (staff_directory + staff_attendance) are SOURCE-ONLY / not applied live yet,
+   * so even under admin preview the write RPCs stay preview-only (mock) — no missing-table
+   * crashes. Flip to true ONLY after the schema is applied live + types regenerated + owner UAT.
+   * Kill-switch: set false to re-hide the portal.
+   */
+  staffApp: false,
+  /**
+   * staffSelfSalary — the "Lương của tôi" screen inside the /staff portal (READ-ONLY),
+   * parallel to `dealerSelfSalary` for the dealer app. Gates both the bottom-nav "Lương"
+   * tab AND the /staff/salary route (direct navigation redirects to /staff when off).
+   * Depends on the LATER staff-payroll increment (a parallel `staff_pt_wage_payments`
+   * twin + FT rollup — NOT the dealer payroll objects). Default **OFF**; keep false until
+   * that backend is applied live + types regenerated. Kill-switch: set false.
+   */
+  staffSelfSalary: false,
+  /**
+   * clubExpenses — NEW "Sổ chi phí" operating-expense ledger. Gates the owner/cashier
+   * WRITE entry page (`/club/admin/expenses`) where a club records operating costs (rent,
+   * utilities, marketing, supplies…). The ledger is APPEND-ONLY (corrections = a new
+   * adjustment row, never edit/delete); writes go through the `record_club_expense` RPC
+   * (Owner+Cashier, actor=auth.uid()). Default **OFF** (per flag policy): while false the
+   * route shows "chưa bật" (except admin/owner preview) and nothing mounts. The backing
+   * `club_expenses` migration is SOURCE-ONLY / not applied live yet. The READ display in
+   * Accounting Control's "Lương & chi phí" tab and the get_club_finance_summary fold are
+   * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
+   */
+  clubExpenses: false,
 } as const;
 
 /**
