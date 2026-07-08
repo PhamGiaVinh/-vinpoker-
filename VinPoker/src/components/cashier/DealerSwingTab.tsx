@@ -289,6 +289,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [checkoutAttendanceId, setCheckoutAttendanceId] = useState("");
   // Pool-based table creation state
   const [createTableOpen, setCreateTableOpen] = useState(false);
+  // "Đóng bàn" bulk close (scope-aware). Targets are a FRESH snapshot taken when the
+  // dialog opens (never the possibly-stale render list) → the RPC closes exactly these.
+  const [closeTablesConfirmOpen, setCloseTablesConfirmOpen] = useState(false);
+  const [closeTablesTargets, setCloseTablesTargets] = useState<{ id: string; table_name: string }[]>([]);
+  const [closingTables, setClosingTables] = useState(false);
   const [poolSearch, setPoolSearch] = useState("");
   const [selectedPoolTableIds, setSelectedPoolTableIds] = useState<string[]>([]);
   const [newTableType, setNewTableType] = useState("tournament");
@@ -940,6 +945,65 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       toast.error(`Đóng tour thất bại: ${e.message}`);
     } finally {
       setClosingTour(false);
+    }
+  };
+
+  // "Đóng bàn" — open the confirm with a FRESH scoped list (P0#2: re-read so a table
+  // opened after the dialog was shown can't sneak in). Scope: selectedTour null = all
+  // active tables of the club; else only that tour's (game_tables.shift_id).
+  const closeTables = async () => {
+    const clubId = clubFilter ?? filteredClubIds[0];
+    if (!clubId) { toast.error("Thiếu thông tin club."); return; }
+    setClosingTables(true);
+    try {
+      const { data: fresh, error } = await supabase
+        .from("game_tables")
+        .select("id, table_name, shift_id")
+        .eq("club_id", clubId)
+        .eq("status", "active")
+        .order("table_name");
+      if (error) throw new Error(error.message);
+      const targets = (fresh ?? [])
+        .filter((t: any) => !selectedTour || t.shift_id === selectedTour)
+        .map((t: any) => ({ id: t.id as string, table_name: (t.table_name as string) ?? "?" }));
+      if (targets.length === 0) { toast.info("Không có bàn active nào trong phạm vi này."); return; }
+      setCloseTablesTargets(targets);
+      setCloseTablesConfirmOpen(true);
+    } catch (e: any) {
+      toast.error(`Không tải được danh sách bàn: ${e.message}`);
+    } finally {
+      setClosingTables(false);
+    }
+  };
+
+  // Confirm → close EXACTLY the snapshotted ids via the RPC (which re-validates
+  // in-club/active/scope server-side and skips anything that changed).
+  const doCloseTables = async () => {
+    const clubId = clubFilter ?? filteredClubIds[0];
+    if (!clubId || closeTablesTargets.length === 0) return;
+    setClosingTables(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("close_dealer_tables", {
+        p_club_id: clubId,
+        p_shift_id: selectedTour,
+        p_table_ids: closeTablesTargets.map((t) => t.id),
+      });
+      if (error) throw new Error(error.message);
+      const r = data as any;
+      if (!r?.ok) {
+        toast.error(r?.outcome === "permission_denied"
+          ? "Bạn không có quyền đóng bàn của CLB này."
+          : `Đóng bàn thất bại: ${r?.outcome ?? "lỗi không xác định"}`);
+        return;
+      }
+      toast.success(`Đã đóng ${r.tables_closed ?? 0} bàn · ${r.dealers_released ?? 0} dealer về Break Pool`);
+      setCloseTablesConfirmOpen(false);
+      setCloseTablesTargets([]);
+      await Promise.all([refetchTables(), refetchBreakPool?.()]);
+    } catch (e: any) {
+      toast.error(`Đóng bàn thất bại: ${e.message}`);
+    } finally {
+      setClosingTables(false);
     }
   };
 
@@ -1616,6 +1680,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                    selectedTour={selectedTour}
                   searchTerm={tableSearch}
                   onCreateTable={() => setCreateTableOpen(true)}
+                  onCloseTables={closeTables}
                   closeTableConfirmId={closeTableConfirmId}
                   onCloseTableClick={setCloseTableConfirmId}
                   onCloseTableConfirm={closeTable}
@@ -2045,6 +2110,41 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
               }}
             >
               Xác nhận Checkout {batchCheckoutPending.length} dealer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* "Đóng bàn" — scope-aware bulk close confirm */}
+      <Dialog open={closeTablesConfirmOpen} onOpenChange={setCloseTablesConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Đóng bàn — {selectedTour
+                ? ((tours ?? []).find((t) => t.id === selectedTour)?.tour_name ?? "Tour")
+                : "Tổng thể"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Đóng bàn trong phạm vi hiện tại — KHÔNG đóng tour, KHÔNG lưu archive.
+              {selectedTour ? " Chỉ đóng bàn thuộc tour đang xem." : " Đóng tất cả bàn đang active trong CLB."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Xác nhận đóng {closeTablesTargets.length} bàn sau:</p>
+            <div className="flex max-h-48 flex-wrap gap-1 overflow-y-auto rounded-md border border-border p-2">
+              {closeTablesTargets.map((t) => (
+                <span key={t.id} className="rounded bg-muted px-1.5 py-0.5 text-[11px]">{t.table_name}</span>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Dự kiến {closeTablesTargets.filter((t) => tableAssignmentMap[t.id]).length} dealer đang chia sẽ
+              về Break Pool (dùng nút "Kết thúc nghỉ" để gọi lại nếu cần).
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloseTablesConfirmOpen(false)}>Huỷ</Button>
+            <Button variant="destructive" disabled={closingTables} onClick={doCloseTables}>
+              {closingTables ? "Đang đóng..." : `Đóng ${closeTablesTargets.length} bàn`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3204,7 +3304,7 @@ function BreakPoolCard({
    TABLE GRID — Center Column
    ============================================================== */
 function TableGrid({
-  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, scheduleByTableId, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, searchTerm, onCreateTable,
+  tables, tableAssignmentMap, nextDealerMap, preAssignedMap, scheduleByTableId, timelineByTableId, swingConfigs, tournaments, processing, onAssign, onSendToBreak, onAutoBreak, selectedTour, searchTerm, onCreateTable, onCloseTables,
   closeTableConfirmId, onCloseTableClick, onCloseTableConfirm, onCloseTableCancel, closingTable,
   onManualSwing, onForceClose, isAnimating, focusedTableId,
   onSwingTable, swingingAssignmentId,
@@ -3225,6 +3325,7 @@ function TableGrid({
   selectedTour: string | null;
   searchTerm?: string;
   onCreateTable: () => void;
+  onCloseTables: () => void;
   closeTableConfirmId: string | null;
   onCloseTableClick: (tableId: string) => void;
   onCloseTableConfirm: () => void;
@@ -3341,6 +3442,15 @@ function TableGrid({
         )}
         <Button size="sm" variant="outline" className="text-xs h-9" onClick={onCreateTable}>
           + Thêm bàn
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-9 text-destructive border-destructive/40 hover:bg-destructive/10"
+          title={selectedTour ? "Đóng bàn của tour đang xem" : "Đóng tất cả bàn active của CLB"}
+          onClick={onCloseTables}
+        >
+          Đóng bàn
         </Button>
       </div>
 
