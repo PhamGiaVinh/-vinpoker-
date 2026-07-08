@@ -570,26 +570,36 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     if (!cid) { toast.error("Vui lòng chọn CLB"); return 0; }
     setMassAssignBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("mass-assign", {
-        // B1.3 — per-action idempotency key: a retried/duplicate delivery returns the cached
-        // "N assigned" instead of re-running fillEmptyTables (no double-assign).
-        body: { club_id: cid, shift_id: selectedTour ?? undefined, idempotency_key: crypto.randomUUID() },
-      });
-      if (error) {
-        const ctx = (error as any)?.context;
-        let detail = `Lỗi ${ctx?.status ?? '?'}`;
-        try { const rb = await ctx?.text?.(); if (rb) detail += `: ${rb}`; } catch {}
-        toast.error(detail);
-        console.error("[massAssign]", detail, error);
-        return 0;
+      // Fill in BOUNDED PASSES (2026-07-09 bugfix): each mass-assign call is now
+      // wall-clock-budgeted server-side (fillEmptyTables stops cleanly at ~20s), so a big
+      // "mở 50 bàn" burst can't time out mid-loop and strand tables. Re-invoke until a pass
+      // assigns nothing more (all filled, or the rest need the per-minute cron), capped at 8
+      // passes to avoid any loop. Each pass uses a FRESH idempotency key so it runs a new
+      // fill over the still-empty tables (fillEmptyTables only touches empty tables → no
+      // double-assign); the key still dedupes an accidental retry of the SAME pass.
+      let total = 0;
+      for (let pass = 0; pass < 8; pass++) {
+        const { data, error } = await supabase.functions.invoke("mass-assign", {
+          body: { club_id: cid, shift_id: selectedTour ?? undefined, idempotency_key: crypto.randomUUID() },
+        });
+        if (error) {
+          const ctx = (error as any)?.context;
+          let detail = `Lỗi ${ctx?.status ?? '?'}`;
+          try { const rb = await ctx?.text?.(); if (rb) detail += `: ${rb}`; } catch {}
+          toast.error(detail);
+          console.error("[massAssign]", detail, error);
+          break; // keep whatever earlier passes committed
+        }
+        const n = (data as any)?.assigned ?? 0;
+        total += n;
+        if (n === 0) break; // nothing more to fill this pass → done
       }
-      const r = data as any;
-      toast.success(`Đã gán ${r.assigned ?? 0} bàn trống`);
+      toast.success(`Đã gán ${total} bàn trống`);
       await Promise.all([
         refetchAssignments(),
         refetchDealers(),
       ]);
-      return r.assigned ?? 0;
+      return total;
     } catch (e: any) {
       toast.error(e.message);
       return 0;
