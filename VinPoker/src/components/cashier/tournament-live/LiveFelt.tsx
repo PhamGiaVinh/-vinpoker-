@@ -362,10 +362,13 @@ export function LiveFelt({
   // container-type set on the oval below) so they never overlap on mobile. Inline
   // width/height beats the fixed Tailwind size class. When viewerLayout is off these
   // are `undefined` → every card keeps its current size (operator/TV byte-identical).
+  // Hole cards are sized to ≈85% of the board clamps below (owner: showdown cards were
+  // too small — wanted 80-90% of the board). Each term = 0.85 × the matching boardStyle
+  // term. viewerLayout-gated only → operator/TV/replay-without-V2 stay byte-identical.
   const holeStyle: CSSProperties | undefined = viewerLayout
     ? portrait
-      ? { width: "clamp(15px,6.2cqi,26px)", height: "clamp(21px,8.7cqi,36px)" }
-      : { width: "clamp(16px,3.0cqi,30px)", height: "clamp(22px,4.2cqi,42px)" }
+      ? { width: "clamp(19px,7.1cqi,34px)", height: "clamp(26px,10cqi,48px)" }
+      : { width: "clamp(22px,3.9cqi,41px)", height: "clamp(31px,5.4cqi,56px)" }
     : undefined;
   const boardStyle: CSSProperties | undefined = viewerLayout
     ? portrait
