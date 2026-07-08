@@ -18,6 +18,30 @@ export interface HandPlayerDisplay {
   avatar?: string | null;
 }
 
+// ── E1 snapshot feature-detect ───────────────────────────────────────────────
+// hand_players.player_name / avatar_url (the historical snapshot, migration
+// 20261224000000) may not exist yet if the owner-gated apply hasn't run. Probe ONCE
+// (cached) so the read sites can add the columns to their select only when present —
+// selecting a missing column would 42703 the whole query and break the hand load. The
+// promise is memoised so this costs one tiny query per session.
+let snapshotProbe: Promise<boolean> | null = null;
+export function handPlayersHasSnapshot(): Promise<boolean> {
+  if (!snapshotProbe) {
+    snapshotProbe = supabase
+      .from("hand_players")
+      .select("player_name")
+      .limit(1)
+      .then(({ error }) => !error)
+      .then(undefined, () => false);
+  }
+  return snapshotProbe;
+}
+
+/** Test-only: reset the cached probe. */
+export function __resetHandPlayersSnapshotProbe(): void {
+  snapshotProbe = null;
+}
+
 /**
  * Map player_id → { name, avatar } for a recorded hand's players, read from
  * tournament_seats (NOT profiles). Not filtered by is_active, so eliminated players

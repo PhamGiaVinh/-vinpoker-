@@ -65,6 +65,9 @@ export interface RawHandPlayer {
   ending_stack: number | null;
   hole_cards: string[] | null;
   is_eliminated: boolean | null;
+  /** E1 per-hand snapshot (hand_players.player_name/avatar_url); undefined pre-apply. */
+  player_name?: string | null;
+  avatar_url?: string | null;
 }
 export interface RawHandAction {
   hand_id: string;
@@ -214,8 +217,8 @@ export function buildHandFeedItems(
         return {
           playerId: p.player_id,
           seatNumber: p.seat_number,
-          name: prof?.display_name || p.player_id.slice(0, 6),
-          avatarUrl: prof?.avatar_url ?? null,
+          name: p.player_name || prof?.display_name || p.player_id.slice(0, 6),
+          avatarUrl: p.avatar_url ?? prof?.avatar_url ?? null,
           endingStack: end,
           deltaChips,
           deltaBB: bb > 0 && end != null ? Math.round((deltaChips / bb) * 10) / 10 : null,
