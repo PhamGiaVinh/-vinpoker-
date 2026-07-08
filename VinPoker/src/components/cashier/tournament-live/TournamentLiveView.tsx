@@ -270,18 +270,22 @@ export function TournamentLiveView({
       if (seq !== requestSeqRef.current) return;
 
       if (actionData && actionData.length > 0) {
-        const actionPlayerIds = [...new Set(actionData.map((a: any) => a.player_id))];
-        const [{ data: actionProfiles }, { data: handPlayers }] = await Promise.all([
-          supabase.from("profiles").select("user_id, display_name").in("user_id", actionPlayerIds),
-          supabase.from("hand_players").select("player_id, seat_number, hole_cards").eq("hand_id", hand.id),
-        ]);
+        const { data: handPlayers } = await supabase
+          .from("hand_players")
+          .select("player_id, seat_number, hole_cards")
+          .eq("hand_id", hand.id);
 
         if (seq !== requestSeqRef.current) return;
 
+        // Action-author names come from tournament_seats.player_name — the SAME source the
+        // LIVE seats use (see seatInfos above), keyed by player_id. The old code joined
+        // profiles.user_id IN (player_ids), but hand_actions.player_id is a tournament-ENTRY
+        // id, not an auth user_id, so the join always missed → the feed showed the raw short
+        // id. Reuse the already-loaded seat roster instead of a mis-keyed profiles fetch.
         const actionNameMap = new Map<string, string>();
-        (actionProfiles || []).forEach((p: any) =>
-          actionNameMap.set(p.user_id, p.display_name || "—")
-        );
+        seatRows.forEach((s: any) => {
+          if (s.player_name) actionNameMap.set(s.player_id, s.player_name);
+        });
 
         const seatMap = new Map<string, number>();
         const holeCardsMap = new Map<string, string[]>();
