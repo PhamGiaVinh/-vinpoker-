@@ -1,26 +1,84 @@
-// Tracker hand-state reducer — replays the trusted hand_actions stream over the
-// hand_players seeds to reconstruct per-player stacks/commitments and the
-// current betting situation. Pure; no DB, no IO.
+// Tracker hand-state reducer — CLIENT display/compute copy.
 //
-// This is the SERVER authority. A verbatim client copy lives at
-//   src/lib/tracker-poker/handState.ts   (the client Vite build cannot import this
-// server tree — that guardrail forces the copy). The Phase G3 resettle-forward UI
-// runs the reducer in the browser via that copy. The two are kept identical by a
-// parity test: tests/trackerEngine/handState.parity.test.ts — if you change the
-// reducer, change BOTH files in the same PR.
+// This is a verbatim copy of the server reducer in
+//   supabase/functions/_shared/trackerEngine/handState.ts
+// kept here because that module is deliberately UNreachable from the client Vite
+// build (the `@tracker-engine` alias exists ONLY in vitest.config.ts, never in
+// vite.config.ts — that build failure is the server-authoritative guardrail). The
+// resettle-forward engine (resettleForward.ts, Phase G1) INJECTS `reduceHand`, and
+// the Phase G3 UI must run it in the browser bundle, so it needs a client-reachable
+// copy that stays byte-for-byte behaviourally identical to the server authority.
 //
-// Action-amount convention (matches HandInputPanel + T3A potEngine): every
-// action_amount is the chips ADDED by that action this street, never a
-// "raise-to" total. So total_bet === Σ contributing action_amounts.
+// The two copies are kept identical by a parity test:
+//   tests/trackerEngine/handState.parity.test.ts
+// If you change the reducer, change BOTH files in the same PR.
+//
+// Action-amount convention (matches HandInputPanel + potEngine): every action_amount
+// is the chips ADDED by that action this street, never a "raise-to" total. So
+// total_bet === Σ contributing action_amounts.
 
-import type {
-  ActionRow,
-  HandRuntime,
-  PlayerRuntime,
-  PlayerSeed,
-  Street,
-} from "./types.ts";
-import { POSTING_ACTIONS, STREET_ORDER } from "./types.ts";
+export type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
+
+export type TrackerActionType =
+  | "fold"
+  | "check"
+  | "call"
+  | "bet"
+  | "raise"
+  | "all_in"
+  | "post_sb"
+  | "post_bb"
+  | "post_ante";
+
+export const STREET_ORDER: Street[] = ["preflop", "flop", "turn", "river", "showdown"];
+
+/** Per-player seed as start_hand wrote it into hand_players. */
+export interface PlayerSeed {
+  player_id: string;
+  seat_number: number;
+  starting_stack: number;
+}
+
+/** One row from the hand_actions stream (server-trusted, already persisted). */
+export interface ActionRow {
+  player_id: string;
+  street: Street;
+  action_type: TrackerActionType;
+  action_amount: number;
+  action_order: number;
+}
+
+/** Reconstructed runtime state for one player after replaying the action stream. */
+export interface PlayerRuntime {
+  player_id: string;
+  seat_number: number;
+  starting_stack: number;
+  /** Chips still behind. */
+  stack: number;
+  /** Chips committed on the CURRENT street. */
+  street_bet: number;
+  /** Chips committed across ALL streets (drives pot/side-pot math). */
+  total_bet: number;
+  is_folded: boolean;
+  is_all_in: boolean;
+  /** Has voluntarily acted (not just posted a blind) on the current street. */
+  has_acted_this_street: boolean;
+}
+
+/** Reconstructed hand-level runtime. */
+export interface HandRuntime {
+  players: PlayerRuntime[];
+  buttonSeat: number;
+  street: Street;
+  /** Highest street_bet anyone has committed this street. */
+  highestBet: number;
+  /** Minimum legal raise INCREMENT for the next raise this street. */
+  minRaise: number;
+  /** Number of voluntary bets/raises seen this street (re-open tracking). */
+  aggressionCount: number;
+  /** Big blind as posted this hand (0 if no post_bb seen). Anchors min bet/raise. */
+  bigBlind: number;
+}
 
 function clampChips(n: unknown): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0;
@@ -217,5 +275,3 @@ export function isBettingRoundComplete(runtime: HandRuntime): boolean {
 export function findPlayer(runtime: HandRuntime, playerId: string): PlayerRuntime | undefined {
   return runtime.players.find((p) => p.player_id === playerId);
 }
-
-export { STREET_ORDER };

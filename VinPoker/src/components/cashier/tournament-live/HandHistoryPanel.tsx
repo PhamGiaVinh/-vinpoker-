@@ -9,6 +9,13 @@ import { FEATURES } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
 import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import {
+  runClientResettle,
+  buildApplyResettleArgs,
+  resettleChipChanges,
+  type ResettleHandRow,
+} from "./resettleApply";
+import type { EditedTargetHand, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
 
 interface HandRecord {
   id: string;
@@ -83,6 +90,18 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string>("all");
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
+  // Đợt G3 — resettle-forward (chips). resettleSupported degrades to false on a 42883
+  // (apply RPC not applied) so the flow shows "chưa áp dụng" instead of crashing.
+  const [resettleSupported, setResettleSupported] = useState(true);
+  const [resettleBusy, setResettleBusy] = useState(false);
+  const [resettleView, setResettleView] = useState<{
+    result: ResettleForwardResult;
+    entryByPlayer: Map<string, number>;
+    entryByHandPlayer: Map<string, number>;
+    patch: HandEditPatch;
+    reason: string;
+    targetHandId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -204,7 +223,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
   }, [tournamentId, selectedTableId]);
 
   useEffect(() => { loadHands(); }, [loadHands]);
-  useEffect(() => { setEditMode(false); }, [selectedHandId]);
+  useEffect(() => { setEditMode(false); setResettleView(null); }, [selectedHandId]);
 
   const handleSaveEdit = async (patch: HandEditPatch, reason: string) => {
     const hand = hands.find((h) => h.id === selectedHandId);
@@ -231,6 +250,149 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       loadHands();
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Đợt G3 — run the resettle engine over the full forward chain and preview the result.
+  const handleResettle = async (editedTarget: EditedTargetHand, patch: HandEditPatch, reason: string) => {
+    const target = hands.find((h) => h.id === selectedHandId);
+    if (!target) return;
+    setResettleBusy(true);
+    setResettleView(null);
+    try {
+      // Full forward chain: target + every later completed, non-voided hand in the
+      // tournament, chronological. The engine needs the whole chain so its final stacks
+      // equal the live chip counts (conservation) for players it doesn't move.
+      const { data: handRows, error: hErr } = await supabase
+        .from("tournament_hands")
+        .select("id, hand_number, table_id, button_seat, created_at")
+        .eq("tournament_id", tournamentId)
+        .eq("status", "completed")
+        .eq("is_voided", false)
+        .gte("created_at", target.created_at)
+        .order("created_at", { ascending: true });
+      if (hErr || !handRows) {
+        toast.error("Không tải được chuỗi ván để tính lại: " + (hErr?.message ?? ""));
+        return;
+      }
+      const ids = handRows.map((h: any) => h.id);
+      const [pRes, aRes] = await Promise.all([
+        supabase
+          .from("hand_players")
+          .select("hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated")
+          .in("hand_id", ids),
+        supabase
+          .from("hand_actions")
+          .select("hand_id, player_id, street, action_type, action_amount, action_order")
+          .in("hand_id", ids)
+          .order("action_order"),
+      ]);
+      const playersByHand = new Map<string, any[]>();
+      (pRes.data || []).forEach((p: any) => {
+        if (!playersByHand.has(p.hand_id)) playersByHand.set(p.hand_id, []);
+        playersByHand.get(p.hand_id)!.push(p);
+      });
+      const actionsByHand = new Map<string, any[]>();
+      (aRes.data || []).forEach((a: any) => {
+        if (!actionsByHand.has(a.hand_id)) actionsByHand.set(a.hand_id, []);
+        actionsByHand.get(a.hand_id)!.push(a);
+      });
+      const toRow = (h: any): ResettleHandRow => ({
+        id: h.id,
+        hand_number: h.hand_number,
+        table_id: h.table_id,
+        button_seat: h.button_seat ?? 0,
+        created_at: h.created_at,
+        players: (playersByHand.get(h.id) || []).map((p: any) => ({
+          player_id: p.player_id,
+          entry_number: p.entry_number ?? 1,
+          seat_number: p.seat_number,
+          starting_stack: p.starting_stack ?? 0,
+          ending_stack: p.ending_stack ?? 0,
+          is_eliminated: !!p.is_eliminated,
+        })),
+        actions: (actionsByHand.get(h.id) || []).map((a: any) => ({
+          player_id: a.player_id,
+          street: a.street || "preflop",
+          action_type: a.action_type,
+          action_amount: a.action_amount ?? 0,
+          action_order: a.action_order,
+        })),
+      });
+      const targetRaw = handRows.find((h: any) => h.id === target.id);
+      if (!targetRaw) {
+        toast.error("Không tìm thấy ván gốc trong chuỗi để tính lại.");
+        return;
+      }
+      const laterRows = handRows.filter((h: any) => h.id !== target.id).map(toRow);
+      const { result, entryByPlayer, entryByHandPlayer } = runClientResettle({
+        target: toRow(targetRaw),
+        later: laterRows,
+        editedTarget,
+      });
+      setResettleView({ result, entryByPlayer, entryByHandPlayer, patch, reason, targetHandId: target.id });
+    } finally {
+      setResettleBusy(false);
+    }
+  };
+
+  // Đợt G3 — commit: save display edits (F2 edit_completed_hand) THEN apply the chip
+  // re-attribution (G2 apply_resettle_forward). Two-tier degrade on 42883; a latest-hand
+  // bust flip is refused by the RPC (elimination_change_use_void) → route to void.
+  const handleResettleConfirm = async () => {
+    if (!resettleView || !resettleView.result.ok) return;
+    const rv = resettleView;
+    const ok = rv.result as ResettleOk;
+    setResettleBusy(true);
+    try {
+      const editArgs = buildEditCompletedHandArgs({ tournamentId, handId: rv.targetHandId, reason: rv.reason, patch: rv.patch });
+      const { data: editData, error: editErr } = await supabase.rpc("edit_completed_hand" as any, editArgs as any);
+      if (editErr) {
+        if ((editErr as any).code === "42883") {
+          setEditSupported(false);
+          toast.error("Tính năng sửa hand chưa được áp dụng trên máy chủ.");
+        } else {
+          toast.error("Lỗi khi lưu hiển thị: " + editErr.message);
+        }
+        return;
+      }
+      if (editData && (editData as any).ok === false) {
+        toast.error("Không lưu được hiển thị: " + (editData as any).error);
+        return;
+      }
+      const applyArgs = buildApplyResettleArgs({
+        tournamentId,
+        targetHandId: rv.targetHandId,
+        reason: rv.reason,
+        result: ok,
+        entryByPlayer: rv.entryByPlayer,
+        entryByHandPlayer: rv.entryByHandPlayer,
+      });
+      const { data: applyData, error: applyErr } = await supabase.rpc("apply_resettle_forward" as any, applyArgs as any);
+      if (applyErr) {
+        if ((applyErr as any).code === "42883") {
+          setResettleSupported(false);
+          toast.error("Tính lại chip chưa được áp dụng trên máy chủ.");
+        } else {
+          toast.error("Lỗi khi tính lại chip: " + applyErr.message);
+        }
+        return;
+      }
+      const res = applyData as any;
+      if (res && res.ok === false) {
+        if (res.error === "elimination_change_use_void") {
+          toast.error("Đây là thay đổi loại/còn sống ở ván mới nhất — hãy dùng 'Hoàn tác ván' (void) rồi nhập lại, không dùng tính lại chip.");
+        } else {
+          toast.error("Không tính lại chip được: " + res.error);
+        }
+        return;
+      }
+      toast.success(`Đã tính lại chip — ${res?.changed_players ?? 0} người đổi chip.`);
+      setResettleView(null);
+      setEditMode(false);
+      loadHands();
+    } finally {
+      setResettleBusy(false);
     }
   };
 
@@ -361,6 +523,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
             </div>
 
             {editMode ? (
+              <>
               <HandEditPanel
                 board={selectedHand.community_cards}
                 players={selectedHand.players.map((p) => ({
@@ -377,10 +540,22 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                   action_amount: a.action_amount,
                   action_order: a.action_order,
                 }))}
-                saving={savingEdit}
-                onCancel={() => setEditMode(false)}
+                saving={savingEdit || resettleBusy}
+                onCancel={() => { setEditMode(false); setResettleView(null); }}
                 onSave={handleSaveEdit}
+                resettleEnabled={FEATURES.trackerResettleForward && resettleSupported}
+                onResettle={handleResettle}
               />
+              {resettleView && (
+                <ResettlePreview
+                  view={resettleView}
+                  busy={resettleBusy}
+                  players={selectedHand.players.map((p) => ({ player_id: p.player_id, display_name: p.display_name }))}
+                  onConfirm={handleResettleConfirm}
+                  onClose={() => setResettleView(null)}
+                />
+              )}
+              </>
             ) : (
             <>
             {selectedHand.community_cards.length > 0 && (
@@ -469,6 +644,105 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+// Đợt G3 — chip-change preview shown after "Sửa & tính lại chip". Prop-driven so the
+// money-path parent owns the RPC calls; this only renders the engine's decision + the
+// per-player current→new chips, or the engine's Vietnamese block reason.
+function ResettlePreview({
+  view,
+  busy,
+  players,
+  onConfirm,
+  onClose,
+}: {
+  view: { result: ResettleForwardResult };
+  busy: boolean;
+  players: { player_id: string; display_name: string }[];
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const nameOf = (pid: string) => players.find((p) => p.player_id === pid)?.display_name ?? pid.slice(0, 6);
+  const result = view.result;
+
+  if (!result.ok) {
+    return (
+      <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-950/20 space-y-1.5">
+        <div className="text-xs font-bold text-amber-300">Không thể tự tính lại chip</div>
+        <div className="text-xs text-foreground/90">{result.message}</div>
+        {result.hand_number != null && (
+          <div className="text-[11px] text-muted-foreground">Ván lệch: #{result.hand_number}</div>
+        )}
+        {result.affected_player_ids.length > 0 && (
+          <div className="text-[11px] text-muted-foreground">
+            Người liên quan: {result.affected_player_ids.map(nameOf).join(", ")}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-[11px] text-muted-foreground border border-border rounded px-2 py-1 hover:text-foreground mt-1"
+        >
+          Đóng xem trước
+        </button>
+      </div>
+    );
+  }
+
+  const ok = result as ResettleOk;
+  const changes = resettleChipChanges(ok);
+  const noChange = changes.length === 0;
+  return (
+    <div className="p-3 rounded-lg border border-emerald-500/40 bg-emerald-950/20 space-y-2">
+      <div className="text-xs font-bold text-emerald-300">Xem trước — tính lại chip</div>
+      <div className="text-[11px] text-muted-foreground">
+        Người thắng ván này:{" "}
+        <span className="text-foreground font-medium">{ok.targetWinnerIds.map(nameOf).join(", ") || "(không có)"}</span>
+      </div>
+      {noChange ? (
+        <div className="text-[11px] text-muted-foreground">
+          Không có thay đổi chip — dùng “Chỉ lưu hiển thị” nếu chỉ muốn sửa lá/hành động.
+        </div>
+      ) : (
+        <div className="space-y-0.5">
+          {changes.map((c) => (
+            <div key={c.player_id} className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground truncate mr-2">{nameOf(c.player_id)}</span>
+              <span className="font-mono whitespace-nowrap">
+                {formatStack(c.before)}
+                <span className="mx-0.5">→</span>
+                <span className={c.after === 0 ? "text-red-400 font-bold" : "text-emerald-400"}>{formatStack(c.after)}</span>
+                <span className={`ml-1 ${c.delta >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  ({c.delta >= 0 ? "+" : ""}
+                  {formatStack(c.delta)})
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="text-[10px] text-muted-foreground leading-snug">{ok.summary}</div>
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          disabled={busy || noChange}
+          onClick={onConfirm}
+          className="text-xs font-semibold text-amber-100 border border-amber-500/60 bg-amber-500/15 rounded-lg px-3 py-1.5 hover:bg-amber-500/25 disabled:opacity-40"
+        >
+          {busy ? "Đang áp dụng…" : "Xác nhận đổi chip"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="text-xs text-muted-foreground border border-border rounded-lg px-3 py-1.5 hover:text-foreground disabled:opacity-40"
+        >
+          Huỷ xem trước
+        </button>
+      </div>
+      <div className="text-[10px] text-amber-300/80">Sẽ lưu hiển thị (lá/hành động) rồi dời chip. Không thay đổi ai bị loại.</div>
     </div>
   );
 }
