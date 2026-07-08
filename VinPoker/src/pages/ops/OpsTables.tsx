@@ -270,6 +270,47 @@ export default function OpsTables() {
   }, [playerReal, tourId, floor]);
 
   // ── Floor-A1: Thêm người → RPC floor_assign_player_to_seat (gate floorTableOps) ──
+  // Floor-B: Loại (💰 ITM). openBust ĐỌC LẠI số người còn + cơ cấu thưởng NGAY khi mở (P0-5, không cache);
+  // bustPlayer ghi update_seats is_active:false (đúng FloorTableMapPanel). Server tự ghi hạng/thưởng chính thức.
+  const [bustInfo, setBustInfo] = useState<{ loading: boolean; place: number | null; prize: number | null } | null>(null);
+  const openBust = useCallback(async () => {
+    if (!tourId) return;
+    setBustInfo({ loading: true, place: null, prize: null });
+    try {
+      const [seatsRes, prizeRes] = await Promise.all([
+        supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tourId, action: "get_seats" } }),
+        supabase.from("tournament_prizes").select("position, amount").eq("tournament_id", tourId),
+      ]);
+      const active = (((seatsRes.data as { data?: MapSeat[] } | null)?.data ?? []) as MapSeat[]).filter((x) => x.is_active).length;
+      const place = active > 0 ? active : null;   // người vừa loại về hạng = số người còn active lúc này
+      const prize = place != null ? (((prizeRes.data ?? []) as { position: number; amount: number }[]).find((p) => p.position === place)?.amount ?? null) : null;
+      setBustInfo({ loading: false, place, prize });
+    } catch {
+      setBustInfo({ loading: false, place: null, prize: null });
+    }
+  }, [tourId]);
+  const bustPlayer = useCallback(async (): Promise<boolean> => {
+    if (!playerReal || !tourId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
+    try {
+      const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
+        body: {
+          tournament_id: tourId, action: "update_seats",
+          seats: [{
+            seat_id: playerReal.seat_id, player_id: playerReal.player_id, entry_number: playerReal.entry_number,
+            table_id: playerReal.table_id, seat_number: playerReal.seat_number, chip_count: playerReal.chip_count ?? 0,
+            is_active: false, player_name: playerReal.player_name,
+          }],
+        },
+      });
+      if (error) { toast.error(typeof error === "string" ? error : (error as Error).message ?? "Loại thất bại"); return false; }
+      const res = data as { error?: string } | null;
+      if (res?.error) { toast.error(`Loại thất bại (${res.error})`); return false; }
+      toast.success(`Đã loại ${playerReal.player_name || "người chơi"}`);
+      floor.reload();
+      return true;
+    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
+  }, [playerReal, tourId, floor]);
+
   const ADD_LIVE = FEATURES.floorTableOps;
   const [addTable, setAddTable] = useState<TableVM | null>(null); // bàn đang thêm
   const [addName, setAddName] = useState("");
@@ -735,7 +776,7 @@ export default function OpsTables() {
       </Sheet>
 
       {/* S7 — tap người: hiện danh tính thật. Sửa chip = NỐI THẬT (onSaveChip); nút khác vẫn "đang nối". */}
-      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} />
+      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); setBustInfo(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} onBustPlayer={bustPlayer} onOpenBust={openBust} bustInfo={bustInfo} />
     </div>
   );
 }
