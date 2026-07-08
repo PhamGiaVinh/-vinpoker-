@@ -526,7 +526,7 @@ export const FEATURES = {
    * OFF (default) → HandHistoryPanel byte-identical (no button). ON but the RPC not
    * applied → 42883 caught → "chưa áp dụng" degrade + the button hides.
    */
-  trackerHandHistoryEdit: false,
+  trackerHandHistoryEdit: true,
   /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
