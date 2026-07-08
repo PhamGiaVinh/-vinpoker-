@@ -53,6 +53,9 @@ type EnrichedAssignment = DealerAssignment & {
 /** Target cho break picker — cần attendance_id + club_id (edge manage-break yêu cầu). */
 type BreakTarget = { attendanceId: string; clubId: string; name: string };
 
+/** Dealer đủ điều kiện check-in (mirror loadCheckinDealers desktop). */
+type CheckinDealer = { id: string; full_name: string; tier: string; wasCheckedOut: boolean };
+
 const hhmm = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
 
@@ -229,6 +232,10 @@ export default function OpsDealerSwing() {
   const [breakFor, setBreakFor] = useState<BreakTarget | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [schedulePickOpen, setSchedulePickOpen] = useState(false);
+  const [placeFor, setPlaceFor] = useState<DealerAttendance | null>(null);   // đưa dealer này vào 1 bàn
+  const [checkinList, setCheckinList] = useState<CheckinDealer[] | null>(null); // null = chưa tải
+  const [checkinSel, setCheckinSel] = useState<Set<string>>(new Set());
+  const [checkinLoading, setCheckinLoading] = useState(false);
   const [dongTour, setDongTour] = useState("");
   const [checkout, setCheckout] = useState<Set<string>>(new Set());
 
@@ -367,6 +374,63 @@ export default function OpsDealerSwing() {
     reloadAll();
   });
 
+  // Tải danh sách dealer đủ điều kiện check-in (mirror loadCheckinDealers desktop; read-only)
+  const loadCheckin = async () => {
+    setCheckinLoading(true);
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: activeDealers } = await supabase.from("dealers")
+        .select("id, full_name, tier, club_id").in("club_id", scopedIds).eq("status", "active").order("full_name");
+      const map = new Map<string, { id: string; full_name: string; tier: string }>();
+      for (const d of activeDealers ?? []) map.set(d.id, { id: d.id, full_name: d.full_name, tier: d.tier });
+      const dealerIds = [...map.keys()];
+      if (!dealerIds.length) { setCheckinList([]); return; }
+      // loại dealer đang checked-in / đang ở bàn
+      const { data: activeAtt } = await supabase.from("dealer_attendance").select("dealer_id")
+        .in("dealer_id", dealerIds).eq("status", "checked_in").in("current_state", ["available", "assigned", "on_break", "pre_assigned"]);
+      const skip = new Set((activeAtt ?? []).map((a) => a.dealer_id));
+      const { data: activeAssigns } = await supabase.from("dealer_assignments").select("dealer_id").eq("status", "assigned").in("dealer_id", dealerIds);
+      for (const a of activeAssigns ?? []) skip.add(a.dealer_id);
+      // phân loại: checked-out hôm nay → re-check-in; chưa có attendance → mới
+      const { data: todayAtt } = await supabase.from("dealer_attendance").select("dealer_id, status").eq("shift_date", today).in("dealer_id", dealerIds);
+      const checkedOut = new Set((todayAtt ?? []).filter((a) => a.status === "checked_out").map((a) => a.dealer_id));
+      const withAtt = new Set((todayAtt ?? []).map((a) => a.dealer_id));
+      const out: CheckinDealer[] = [];
+      for (const id of dealerIds) {
+        if (skip.has(id)) continue;
+        const d = map.get(id)!;
+        if (checkedOut.has(id)) out.push({ ...d, wasCheckedOut: true });
+        else if (!withAtt.has(id)) out.push({ ...d, wasCheckedOut: false });
+      }
+      setCheckinList(out);
+    } catch (e: any) { toast.error(e?.message ?? "Lỗi tải danh sách"); setCheckinList([]); }
+    finally { setCheckinLoading(false); }
+  };
+
+  // Check-in các dealer đã chọn → INSERT dealer_attendance (mirror doCheckin desktop; giữ lịch sử)
+  const doCheckin = (ids: string[]) => runAction(async () => {
+    if (!ids.length) return;
+    const today = new Date().toISOString().split("T")[0];
+    const { data: shifts } = await supabase.from("dealer_shifts").select("id").in("club_id", scopedIds).order("start_time").limit(1);
+    const shiftId = (shifts ?? [])[0]?.id ?? null;
+    let ok = 0, fail = 0;
+    for (const dealerId of ids) {
+      const { data: active } = await supabase.from("dealer_attendance").select("id")
+        .eq("dealer_id", dealerId).eq("shift_date", today).eq("status", "checked_in").maybeSingle();
+      if (active) { ok++; continue; }               // idempotency: đã check-in
+      const { error } = await supabase.from("dealer_attendance").insert({
+        dealer_id: dealerId, shift_id: shiftId, shift_date: today, status: "checked_in",
+        current_state: "available", check_in_time: new Date().toISOString(),
+      });
+      if (error) { if (error.code === "23505") { ok++; continue; } fail++; continue; }  // 23505 = đã check-in đồng thời
+      ok++;
+    }
+    if (fail > 0) toast.warning(`Check-in: ${ok} thành công, ${fail} thất bại`);
+    else toast.success(`Đã check-in ${ok} dealer`);
+    setCheckinOpen(false); setCheckinSel(new Set()); setCheckinList(null);
+    reloadAll();
+  });
+
   // ---- guards (ordered: auth → login → clubs → permission) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
@@ -387,7 +451,7 @@ export default function OpsDealerSwing() {
 
       {LIVE ? (
         <div className="rounded-xl bg-emerald-400/8 px-3 py-2 text-[12px] text-emerald-300/90">
-          Nút <b>swing · gán · nghỉ · check-out</b> đã bật (chạy trên dữ liệu thật). Đóng tour / check-in QR vẫn làm trên máy tính.
+          Nút <b>swing · gán · nghỉ · đưa vào bàn · check-in · check-out</b> đã bật (dữ liệu thật). Đóng tour / sửa nhầm bàn vẫn làm trên máy tính.
         </div>
       ) : (
         <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
@@ -638,9 +702,9 @@ export default function OpsDealerSwing() {
             <Line l="Sẵn sàng" v={String(staff.available)} />
           </div>
           <div className="ios-group">
-            <button onClick={() => setCheckinOpen(true)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <button onClick={() => { setCheckinOpen(true); loadCheckin(); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <QrCode className="h-5 w-5 text-[#d8bc85]" />
-              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Check-in dealer mới</span><span className="block text-[12px] text-[#9b8e97]">quét QR hoặc chọn từ danh sách</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">Check-in dealer mới</span><span className="block text-[12px] text-[#9b8e97]">chọn từ danh sách dealer đang rảnh</span></span>
             </button>
             <button onClick={() => setPill("schedule")} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3.5 text-left">
               <Monitor className="h-5 w-5 text-[#9b8e97]" />
@@ -753,7 +817,8 @@ export default function OpsDealerSwing() {
             <div className="text-[12px] tabular-nums text-[#9b8e97]">vào ca {hhmm(dealerSheet?.check_in_time)}{dealerSheet && tableByAttendance.get(dealerSheet.id) ? ` · ${tableByAttendance.get(dealerSheet.id)}` : ""}</div>
           </SheetHeader>
           <div className="mt-3 space-y-1.5">
-            <button onClick={soon} className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left">
+            <button disabled={busy} onClick={() => dealerSheet && go(setPlaceFor, dealerSheet)}
+              className="ios-press ios-primary flex w-full items-center gap-3 rounded-2xl p-3.5 text-left disabled:opacity-50">
               <ArrowRight className="h-5 w-5 shrink-0" /><span className="text-[15px] font-bold">Đưa vào bàn…</span>
             </button>
             <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label="Cho nghỉ ưu tiên"
@@ -846,15 +911,63 @@ export default function OpsDealerSwing() {
         </SheetContent>
       </Sheet>
 
-      {/* P2 — check-in */}
-      <Sheet open={checkinOpen} onOpenChange={setCheckinOpen}>
+      {/* đưa dealer vào bàn — chọn bàn đang thiếu người */}
+      <Sheet open={placeFor !== null} onOpenChange={(v) => { if (!v) setPlaceFor(null); }}>
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Đưa {placeFor?.dealers?.full_name} vào bàn</SheetTitle></SheetHeader>
+          <div className="ios-group mt-3">
+            {tableVMs.filter((t) => t.missing).length === 0
+              ? <div className="px-4 py-6 text-center text-[13px] text-[#9b8e97]">Không có bàn nào đang thiếu dealer.</div>
+              : tableVMs.filter((t) => t.missing).map((t) => (
+                <button key={t.id} disabled={busy} onClick={() => { const d = placeFor; setPlaceFor(null); if (d) doAssign(t, d); }}
+                  className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left disabled:opacity-50">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] text-[#f2ece6]">{t.name}</span>
+                    <span className="block text-[12px] text-rose-300">chưa có dealer</span>
+                  </span>
+                  <span className="text-[13px] text-[#c9a86a]">chọn</span>
+                </button>
+              ))}
+          </div>
+          <div className="mt-2.5 text-center text-[12px] text-[#7c7079]">chỉ hiện bàn đang thiếu dealer · luật nghỉ do server kiểm</div>
+        </SheetContent>
+      </Sheet>
+
+      {/* P2 — check-in (chọn từ danh sách dealer đủ điều kiện) */}
+      <Sheet open={checkinOpen} onOpenChange={(v) => { setCheckinOpen(v); if (!v) { setCheckinSel(new Set()); setCheckinList(null); } }}>
         <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Check-in dealer</SheetTitle></SheetHeader>
-          <div className="mt-3 grid h-[76px] place-items-center rounded-2xl border border-dashed border-white/15 text-[13px] text-[#9b8e97]">
-            <span className="flex flex-col items-center gap-1"><QrCode className="h-6 w-6 text-[#d8bc85]" /> đưa QR dealer vào khung</span>
+          <div className="mt-3 grid h-[56px] place-items-center rounded-2xl border border-dashed border-white/12 text-[12px] text-[#7c7079]">
+            <span className="flex items-center gap-1.5"><QrCode className="h-4 w-4" /> Quét QR sẽ bổ sung sau — chọn từ danh sách bên dưới</span>
           </div>
-          <button onClick={soon} className="ios-press ios-fill mt-3 w-full rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">Chọn từ danh sách theo lịch</button>
+          {checkinLoading ? (
+            <div className="mt-3 flex items-center justify-center gap-2 py-6 text-[13px] text-[#9b8e97]"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải…</div>
+          ) : !checkinList || checkinList.length === 0 ? (
+            <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Không có dealer nào để check-in (tất cả đang trong ca).</div>
+          ) : (
+            <>
+              <div className="ios-group mt-3 max-h-[46vh] overflow-y-auto">
+                {checkinList.map((d) => {
+                  const on = checkinSel.has(d.id);
+                  return (
+                    <button key={d.id} onClick={() => setCheckinSel((s) => { const n = new Set(s); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n; })}
+                      className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                      <span className={cn("grid h-5 w-5 place-items-center rounded-md border", on ? "border-[#c9a86a] bg-[#c9a86a] text-[#241A08]" : "border-white/20 text-transparent")}>✓</span>
+                      <span className="min-w-0 flex-1 text-[15px] text-[#f2ece6]">{d.full_name}</span>
+                      {d.wasCheckedOut && <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-[#9b8e97]">vào lại</span>}
+                      <span className="rounded-full bg-white/6 px-1.5 py-0.5 text-[11px] text-[#9b8e97]">{d.tier}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button disabled={checkinSel.size === 0 || busy} onClick={() => doCheckin([...checkinSel])}
+                className="ios-press ios-fill mt-3 w-full rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6] disabled:opacity-40">
+                Check-in {checkinSel.size} dealer đã chọn
+              </button>
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </div>
