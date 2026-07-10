@@ -53,7 +53,7 @@ export interface ApplyResettleArgs {
   p_target_hand_id: string;
   p_reason: string;
   // `starting_stack` + `expected_current` are OPTIONAL server-guard fields (G3 hardening
-  // migration 20261227000000). The pre-migration RPC ignores them → fully backward-compatible.
+  // migration 20261230000000). The pre-migration RPC ignores them → fully backward-compatible.
   p_hand_changes: { hand_id: string; player_id: string; entry_number: number; ending_stack: number; starting_stack: number }[];
   p_final_stacks: { player_id: string; entry_number: number; chip_count: number; expected_current: number }[];
   p_target_winner_ids: string[];
