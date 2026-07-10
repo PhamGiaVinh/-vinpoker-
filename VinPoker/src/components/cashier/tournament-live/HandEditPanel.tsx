@@ -2,7 +2,7 @@
 // testable; the parent (HandHistoryPanel) runs the edit_completed_hand RPC on save.
 // v1 action scope: edit type/amount + delete a row. NO add-row, NO reorder — a deleted
 // row's action_order gap is kept (never renumbered).
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CardSlotPicker, type Card } from "@/components/shared/CardSlotPicker";
 import {
   buildHandEditPatch,
@@ -39,6 +39,9 @@ export interface HandEditPanelProps {
     reason: string,
     summary: string[],
   ) => void;
+  /** Đợt G3: called when the edited board/holes/actions change, so the parent invalidates a
+   *  stale resettle preview and forces a re-run before confirming. */
+  onEditChange?: () => void;
 }
 
 const toSlots = (cards: string[], n: number): (Card | null)[] =>
@@ -47,7 +50,7 @@ const fromSlots = (slots: (Card | null)[]): string[] => slots.filter((c): c is C
 
 const ACTION_TYPES = ["fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante"];
 
-export function HandEditPanel({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle }: HandEditPanelProps) {
+export function HandEditPanel({ board, players, actions, saving, onCancel, onSave, resettleEnabled, onResettle, onEditChange }: HandEditPanelProps) {
   const [boardSlots, setBoardSlots] = useState<(Card | null)[]>(toSlots(board, 5));
   const [holes, setHoles] = useState<Record<string, (Card | null)[]>>(() => {
     const m: Record<string, (Card | null)[]> = {};
@@ -56,6 +59,20 @@ export function HandEditPanel({ board, players, actions, saving, onCancel, onSav
   });
   const [rows, setRows] = useState<EditAction[]>(actions.map((a) => ({ ...a })));
   const [reason, setReason] = useState("");
+
+  // Đợt G3: whenever the edited cards/actions change, tell the parent so it drops any stale
+  // resettle preview (a preview computed before this edit must not be confirmed). Reason text
+  // is excluded — it doesn't affect the chip computation. Skips the initial mount.
+  const editSignature = JSON.stringify([boardSlots, holes, rows]);
+  const firstEditRun = useRef(true);
+  useEffect(() => {
+    if (firstEditRun.current) {
+      firstEditRun.current = false;
+      return;
+    }
+    onEditChange?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editSignature]);
 
   const usedCards = new Set<Card>([
     ...boardSlots.filter((c): c is Card => !!c),

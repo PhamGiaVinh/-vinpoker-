@@ -6,6 +6,9 @@ import {
   buildApplyResettleArgs,
   buildEditedTarget,
   buildResettleSnapshots,
+  contenders,
+  manualWinnerUnsafe,
+  reentryPlayers,
   resettleChipChanges,
   runClientResettle,
   type ResettleHandRow,
@@ -172,5 +175,102 @@ describe("resettleChipChanges", () => {
         { player_id: "P2", before: 1000, after: 800, delta: -200 },
       ]),
     );
+  });
+});
+
+describe("contenders", () => {
+  it("lists non-folded players in seat order", () => {
+    const players = [
+      { player_id: "P3", seat_number: 3 },
+      { player_id: "P1", seat_number: 1 },
+      { player_id: "P2", seat_number: 2 },
+    ];
+    const actions = [{ player_id: "P2", action_type: "fold" }];
+    expect(contenders(players, actions)).toEqual(["P1", "P3"]);
+  });
+});
+
+describe("reentryPlayers + re-entry guard (finding [4])", () => {
+  it("flags a player_id that spans two entry_numbers across the chain", () => {
+    const t = row({ id: "h1", hand_number: 1, players: [rp("P1", 1, 1000, 900, false, 1), rp("P2", 2, 1000, 1100)], actions: [] });
+    const l = row({ id: "h2", hand_number: 2, players: [rp("P1", 1, 900, 1000, false, 2)], actions: [] });
+    expect(reentryPlayers(t, [l])).toEqual(["P1"]);
+    expect(reentryPlayers(t, [])).toEqual([]);
+  });
+
+  it("runClientResettle refuses a re-entry chain with reason reentry_boundary (no engine run)", () => {
+    const t = row({
+      id: "h1",
+      hand_number: 1,
+      players: [rp("P1", 1, 1000, 900, false, 1), rp("P2", 2, 1000, 1100)],
+      actions: [ra("P1", "post_sb", 50, 1), ra("P2", "post_bb", 100, 2), ra("P1", "call", 50, 3), ra("P2", "check", 0, 4)],
+    });
+    const l = row({
+      id: "h2",
+      hand_number: 2,
+      players: [rp("P1", 1, 900, 1000, false, 2), rp("P2", 2, 1100, 1000)],
+      actions: [ra("P1", "post_sb", 50, 1), ra("P2", "post_bb", 100, 2), ra("P1", "call", 50, 3), ra("P2", "check", 0, 4)],
+    });
+    const et = buildEditedTarget({ board: BOARD5, holeCardsByPlayer: { P1: ["As", "Ac"], P2: ["Kd", "Kh"] }, actions: t.actions });
+    const { result } = runClientResettle({ target: t, later: [l], editedTarget: et });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected block");
+    expect(result.reason).toBe("reentry_boundary");
+    expect(result.affected_player_ids).toContain("P1");
+  });
+});
+
+describe("manualWinnerUnsafe (finding [10]/[3] side-pot guard)", () => {
+  it("true when a contender is all-in for less than the top commitment (side pot)", () => {
+    const t = row({
+      id: "h1",
+      hand_number: 1,
+      players: [rp("P1", 1, 2000, 0), rp("P2", 2, 2000, 0), rp("P3", 3, 300, 0)],
+      actions: [
+        ra("P1", "post_sb", 50, 1),
+        ra("P2", "post_bb", 100, 2),
+        ra("P3", "all_in", 300, 3),
+        ra("P1", "all_in", 1950, 4),
+        ra("P2", "all_in", 1900, 5),
+      ],
+    });
+    expect(manualWinnerUnsafe(t)).toBe(true);
+  });
+
+  it("false for a flat pot with no short all-in", () => {
+    const t = row({
+      id: "h1",
+      hand_number: 1,
+      players: [rp("P1", 1, 1000, 900), rp("P2", 2, 1000, 1100)],
+      actions: [ra("P1", "post_sb", 50, 1), ra("P2", "post_bb", 100, 2), ra("P1", "call", 50, 3), ra("P2", "check", 0, 4)],
+    });
+    expect(manualWinnerUnsafe(t)).toBe(false);
+  });
+});
+
+describe("manual-winner path", () => {
+  const t = row({
+    id: "h1",
+    hand_number: 1,
+    players: [rp("P1", 1, 1000, 900), rp("P2", 2, 1000, 1100)],
+    actions: [ra("P1", "post_sb", 50, 1), ra("P2", "post_bb", 100, 2), ra("P1", "call", 50, 3), ra("P2", "check", 0, 4)],
+  });
+
+  it("incomplete board + no winner → blocks needs_manual_winner (picker trigger)", () => {
+    const et = buildEditedTarget({ board: ["2c", "3d", "7h"], holeCardsByPlayer: {}, actions: t.actions });
+    const { result } = runClientResettle({ target: t, later: [], editedTarget: et });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected block");
+    expect(result.reason).toBe("needs_manual_winner");
+  });
+
+  it("re-run with manualWinnerIds → resettles to the picked winner", () => {
+    const et = buildEditedTarget({ board: ["2c", "3d", "7h"], holeCardsByPlayer: {}, actions: t.actions, manualWinnerIds: ["P1"] });
+    const { result } = runClientResettle({ target: t, later: [], editedTarget: et });
+    expect(result.ok).toBe(true);
+    const ok = result as ResettleOk;
+    expect(ok.targetWinnerIds).toEqual(["P1"]);
+    expect(ok.finalStacks.find((s) => s.player_id === "P1")?.chip_count).toBe(1100);
+    expect(ok.finalStacks.find((s) => s.player_id === "P2")?.chip_count).toBe(900);
   });
 });
