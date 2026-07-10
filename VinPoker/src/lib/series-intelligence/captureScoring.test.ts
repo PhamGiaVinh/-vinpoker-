@@ -5,6 +5,9 @@ import {
   findScoredDecision,
   summarizeCapture,
   registrationFunnel,
+  isShadowDecision,
+  countShadowDecisions,
+  SHADOW_PREFIX,
 } from "./captureScoring";
 import type { DecisionLog, ForecastSnapshot, RegistrationEvent } from "./captureTypes";
 
@@ -128,6 +131,39 @@ describe("summarizeCapture", () => {
     ];
     const s = summarizeCapture(decisions, [snap()]);
     expect(s).toEqual({ events: 1, decisions: 2, scoredEvents: 1, gtdCoveredEvents: 0 });
+  });
+});
+
+describe("shadow decisions (TP9)", () => {
+  it("isShadowDecision detects the text convention and the is_shadow flag", () => {
+    expect(isShadowDecision(dec({ owner_decision: SHADOW_PREFIX + "hoãn giải" }))).toBe(true);
+    expect(isShadowDecision(dec({ owner_decision: "[SHADOW] " }))).toBe(true);
+    expect(isShadowDecision({ ...dec(), is_shadow: true } as DecisionLog)).toBe(true);
+    expect(isShadowDecision(dec({ owner_decision: "giữ GTD" }))).toBe(false);
+    expect(isShadowDecision(dec({ owner_decision: null }))).toBe(false);
+  });
+
+  it("countShadowDecisions counts only shadow rows", () => {
+    const ds = [
+      dec({ owner_decision: SHADOW_PREFIX + "a" }),
+      dec({ owner_decision: "b" }),
+      dec({ owner_decision: SHADOW_PREFIX + "c" }),
+    ];
+    expect(countShadowDecisions(ds)).toBe(2);
+  });
+
+  it("findScoredDecision never scores a shadow decision (even with actuals)", () => {
+    const shadowWithActuals = dec({ id: "sh", decision_horizon: "post", owner_decision: SHADOW_PREFIX + "hoãn", actual_entries: 200 });
+    expect(findScoredDecision([shadowWithActuals])).toBeNull(); // shadow is never scored
+    const real = dec({ id: "real", decision_horizon: "post", actual_entries: 200 });
+    expect(findScoredDecision([shadowWithActuals, real])?.id).toBe("real");
+  });
+
+  it("no shadow present ⇒ findScoredDecision behaves exactly as before", () => {
+    const t7 = dec({ id: "t7", decision_horizon: "T-7" });
+    const post = dec({ id: "post", decision_horizon: "post", actual_entries: 205 });
+    expect(findScoredDecision([t7, post])?.id).toBe("post");
+    expect(countShadowDecisions([t7, post])).toBe(0);
   });
 });
 

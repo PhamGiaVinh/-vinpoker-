@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
 import { DECISION_HORIZONS, HORIZON_SHORT } from "@/lib/series-intelligence/captureTypes";
 import type { DecisionLog, ForecastSnapshot } from "@/lib/series-intelligence/captureTypes";
+import { FEATURES } from "@/lib/featureFlags";
+import { countShadowDecisions } from "@/lib/series-intelligence/captureScoring";
 
 /**
  * The signature T-minus rail for one event: T-21 · T-7 · T-1 · T-0 · post. Each node counts the forecast
@@ -19,6 +21,7 @@ export function DecisionTimeline({
     forecasts: snapshots.filter((s) => s.horizon === h).length,
     decisions: decisions.filter((d) => d.decision_horizon === h).length,
   }));
+  const shadowCount = FEATURES.seriesShadowDecision ? countShadowDecisions(decisions) : 0; // TP9
 
   return (
     <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
@@ -58,6 +61,12 @@ export function DecisionTimeline({
           );
         })}
       </div>
+      {shadowCount > 0 && (
+        <div className="mt-3 flex items-center gap-1.5 border-t border-border/40 pt-2 text-[10px] text-muted-foreground">
+          <span className="rounded bg-warning/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning">shadow</span>
+          {shadowCount} quyết định "không tổ chức" — ghi để học, không tính điểm.
+        </div>
+      )}
     </div>
   );
 }
