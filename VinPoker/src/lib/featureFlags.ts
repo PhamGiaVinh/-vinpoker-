@@ -940,7 +940,7 @@ export const FEATURES = {
    * only strictly-earlier editions — leakage-safe). Below 8 events, or with the flag off, the design matrix
    * is byte-identical to before. Labeled Observed Pattern, never causal. Default **OFF**; kill-switch: false.
    */
-  seriesCalendarFeatures: false,
+  seriesCalendarFeatures: true,
   /**
    * Series Intelligence — W6 registration-pace check (Bước ④). When ON, a panel lets the owner compare
    * sign-ups-so-far to a CRUDE linear pace toward the forecast, to spot "đang chậm → đẩy bài/satellite"
@@ -973,7 +973,7 @@ export const FEATURES = {
    * when they already expect a big field), NEVER a causal/tested claim. Pure client-side, no DB. Default
    * **OFF**; kill-switch: false.
    */
-  seriesPriceElasticity: false,
+  seriesPriceElasticity: true,
   /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
