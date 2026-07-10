@@ -957,6 +957,15 @@ export const FEATURES = {
    */
   seriesMarketingImport: true,
   /**
+   * Series Intelligence — TP4 within-series price sensitivity (P0-1). When ON, a card in Bước ② fits a
+   * per-brand 2-variable OLS (ln entries = c − γ·ln buy_in + δ·edition) over the club's OWN event history
+   * and reports γ per brand + a pooled median, for brands with ≥3 editions and ≥2 distinct buy-in levels.
+   * Descriptive only — labeled Observed Pattern with a bold endogeneity disclaimer (organizers price high
+   * when they already expect a big field), NEVER a causal/tested claim. Pure client-side, no DB. Default
+   * **OFF**; kill-switch: false.
+   */
+  seriesPriceElasticity: false,
+  /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
    * + how far the model's number sits from it, so the owner can feel whether the model earns its
