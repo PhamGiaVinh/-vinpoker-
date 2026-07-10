@@ -1297,9 +1297,14 @@ export const FEATURES = {
    * tab AND the /staff/salary route (direct navigation redirects to /staff when off).
    * Depends on the LATER staff-payroll increment (a parallel `staff_pt_wage_payments`
    * twin + FT rollup — NOT the dealer payroll objects). Default **OFF**; keep false until
-   * that backend is applied live + types regenerated. Kill-switch: set false.
+   * that backend is applied live + types regenerated.
+   * **ON** (2026-07-10, owner-approved): PR-S4 `staff_pt_wage_payments` + `get_my_staff_salary`
+   * applied live + verified (6/6), types regenerated (#835), and `StaffSalaryScreen` wired
+   * (read-only). NOTE: the whole `/staff` portal is still gated by `staffApp` (OFF), so flipping
+   * this only surfaces the "Lương" tab in owner/admin preview with MOCK data — no real-user
+   * exposure until `staffApp` is flipped after UAT. Kill-switch: set false.
    */
-  staffSelfSalary: false,
+  staffSelfSalary: true,
   /**
    * clubExpenses — NEW "Sổ chi phí" operating-expense ledger. Gates the owner/cashier
    * WRITE entry page (`/club/admin/expenses`) where a club records operating costs (rent,
