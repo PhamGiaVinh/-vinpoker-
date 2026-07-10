@@ -24,8 +24,8 @@ export const CSV_REQUIRED_COLUMNS = [
   "reentries",
 ] as const;
 
-/** Optional columns: event_id (internal reference) + service_fee (reported, never summed). */
-export const CSV_OPTIONAL_COLUMNS = ["event_id", "service_fee", "service_fee_amount"] as const;
+/** Optional columns: event_id (internal reference), service_fee (reported, never summed), capacity (TP6). */
+export const CSV_OPTIONAL_COLUMNS = ["event_id", "service_fee", "service_fee_amount", "capacity"] as const;
 
 export interface CsvParseError {
   row: number; // 1-based data row number (header excluded); 0 = file-level
@@ -218,6 +218,7 @@ export function parseSeriesCsv(text: string): CsvParseResult {
     const total_entries = num(cells, "total_entries", rowNo);
     const unique_entries = num(cells, "unique_entries", rowNo);
     const reentries = num(cells, "reentries", rowNo);
+    const capacity = num(cells, "capacity", rowNo); // TP6 — optional; absent ⇒ null (no censoring effect)
 
     const rawId = cellAt(cells, "event_id");
     const event_id = rawId && rawId.trim() !== "" ? rawId.trim() : `csv-${rowNo}`;
@@ -248,6 +249,7 @@ export function parseSeriesCsv(text: string): CsvParseResult {
       total_entries,
       unique_entries,
       reentries,
+      capacity,
       source: "csv",
       clubId: "csv-test",
       missingFields,

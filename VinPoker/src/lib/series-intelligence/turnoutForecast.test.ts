@@ -250,3 +250,35 @@ describe("forecastTurnout — TP2 calendar/edition features", () => {
     expect(JSON.stringify(polluted)).toBe(JSON.stringify(clean));
   });
 });
+
+// TP6 — capacity / censoring (flag seriesCensoring). Golden byte-identity when off; sold-out events dropped
+// from the fit when on; forecast band capped at the target capacity.
+describe("forecastTurnout — TP6 censoring", () => {
+  const set12 = exactSet([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]); // entries cycle 200/100/40
+
+  it("GOLDEN — censoring off (default) byte-identical to explicit false, even with capacity on events", () => {
+    const withCap = set12.map((e) => ({ ...e, capacity: 250 }));
+    const def = forecastTurnout(withCap, future(1_000_000));
+    const off = forecastTurnout(withCap, future(1_000_000), { censoring: false });
+    expect(JSON.stringify(def)).toBe(JSON.stringify(off));
+  });
+
+  it("drops capacity-hit (sold-out) events from the fit and notes the count", () => {
+    // days 1,4,7 have entries 200 (2e8/1e6); set their capacity to 200 → they hit capacity.
+    const events = set12.map((e, i) => ([0, 3, 6].includes(i) ? { ...e, capacity: 200 } : e));
+    const on = forecastTurnout(events, future(1_000_000), { censoring: true });
+    const off = forecastTurnout(events, future(1_000_000));
+    expect(on.sampleSize).toBe(off.sampleSize - 3); // 3 sold-out editions excluded
+    expect(on.missingDataNotes.some((n) => /loại khỏi mô hình|truncated/.test(n))).toBe(true);
+  });
+
+  it("caps the forecast band at the target's capacity + notes the sell-out risk", () => {
+    // buy_in 1e6 ⇒ base ≈ 200; a 120-seat room must cap the band (and flag demand > capacity).
+    const on = forecastTurnout(set12, { event_date: "2026-02-15T19:00:00+07:00", buy_in: 1_000_000, gtd: null, capacity: 120 }, { censoring: true });
+    expect(on.high!).toBeLessThanOrEqual(120);
+    expect(on.base!).toBeLessThanOrEqual(120);
+    expect(on.low!).toBeLessThanOrEqual(on.high!);
+    expect(on.missingDataNotes.some((n) => /sức chứa/.test(n))).toBe(true);
+    expect(on.missingDataNotes.some((n) => /cháy vé|vượt sức chứa/.test(n))).toBe(true);
+  });
+});
