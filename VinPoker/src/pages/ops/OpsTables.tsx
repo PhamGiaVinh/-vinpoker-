@@ -13,6 +13,8 @@ import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { PlayerActionSheets, type PlayerTarget } from "@/components/ops/shared/PlayerActionSheets";
+import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
+import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
 import {
   buildSeatsByTable, toMockTable, toMockSeat,
   type MapSeat, type MapTable,
@@ -249,6 +251,7 @@ export default function OpsTables() {
   const pending = () => toast(PENDING_NOTICE);
   // Floor-A2: giữ identity ghế THẬT (seat_id/player_id/table_id…) để ghi update_seats.
   const [playerReal, setPlayerReal] = useState<MapSeat | null>(null);
+  const [receiptData, setReceiptData] = useState<SeatReceiptData | null>(null);
   const openPlayer = (s: MockSeat) => {
     const vm = openVM;
     const tableNo = vm?.mock.tableNo ?? 0;
@@ -353,6 +356,30 @@ export default function OpsTables() {
       return true;
     } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Chuyển thất bại"); return false; }
   }, [playerReal, tourId, user, floor]);
+
+  // Phiếu (READ-ONLY): tái dùng SeatReceiptDialog desktop (QR + in lại). Mirror FloorTableMapPanel.openReceipt —
+  // receiptCode/qrValue = entry_id (tra tournament_seats theo seat_id, fallback seat_id). KHÔNG ghi DB.
+  const openReceipt = useCallback(async () => {
+    const real = playerReal;
+    const tour = selectedTour;
+    const tableNo = player?.tableNo ?? null;   // capture đồng bộ trước await (act() gọi close() ngay sau)
+    if (!real || !tour) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
+    let code = real.seat_id;                    // fallback nếu chưa tra được entry_id
+    try {
+      const { data } = await supabase.from("tournament_seats").select("entry_id").eq("id", real.seat_id).maybeSingle();
+      if (data?.entry_id) code = data.entry_id as string;
+    } catch { /* giữ fallback seat_id */ }
+    setReceiptData({
+      tournamentName: tour.name,
+      tournamentDate: (tour as Tournament & { start_time?: string | null }).start_time ?? null,
+      playerName: real.player_name || real.player_id.slice(0, 8),
+      tableNumber: tableNo,
+      seatNumber: real.seat_number,
+      receiptCode: code,
+      startingStack: real.chip_count,
+      qrValue: code,
+    });
+  }, [playerReal, selectedTour, player]);
 
   const ADD_LIVE = FEATURES.floorTableOps;
   const [addTable, setAddTable] = useState<TableVM | null>(null); // bàn đang thêm
@@ -818,8 +845,12 @@ export default function OpsTables() {
         </SheetContent>
       </Sheet>
 
-      {/* S7 — tap người: hiện danh tính thật. Sửa chip = NỐI THẬT (onSaveChip); nút khác vẫn "đang nối". */}
-      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); setBustInfo(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} onBustPlayer={bustPlayer} onOpenBust={openBust} bustInfo={bustInfo} moveTargets={moveTargets} onMovePlayer={movePlayer} />
+      {/* S7 — tap người: hiện danh tính thật. Sửa chip/Chuyển/Loại/Thông tin/Phiếu = NỐI THẬT (read
+          hoặc write theo callback tương ứng). pendingNotice chỉ còn cho nút chưa nối (Tạm dừng). */}
+      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); setBustInfo(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} onBustPlayer={bustPlayer} onOpenBust={openBust} bustInfo={bustInfo} moveTargets={moveTargets} onMovePlayer={movePlayer} onOpenReceipt={openReceipt} infoLive />
+
+      {/* Phiếu xếp ghế (read-only): QR + in lại, tái dùng nguyên component desktop. */}
+      <SeatReceiptDialog open={receiptData !== null} onOpenChange={(v) => { if (!v) setReceiptData(null); }} receipt={receiptData} />
     </div>
   );
 }
