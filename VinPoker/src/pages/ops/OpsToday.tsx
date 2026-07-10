@@ -113,7 +113,7 @@ export default function OpsToday() {
               </button>
             </div>
             <div className="mt-2.5 flex items-center justify-center gap-1 text-[12px] text-[#7c7079]">
-              <Lock className="h-3 w-3" /> Sửa blind/level — mở trên máy tính
+              <Lock className="h-3 w-3" /> Điều khiển đồng hồ trong "Vào giải" · sửa cấu trúc blind — trên máy tính
             </div>
           </div>
         </section>
