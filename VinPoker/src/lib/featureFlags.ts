@@ -984,6 +984,15 @@ export const FEATURES = {
    */
   seriesCensoring: false,
   /**
+   * Series Intelligence — TP5 rival clash (P0-2). When ON, the turnout-forecast form gets two manual inputs —
+   * "đối thủ có giải lớn cùng ngày?" + optional rival GTD — and, when the owner marks a clash, the result shows
+   * a caution chip: the forecast is likely biased HIGH because the model has NOT learned rival-event competition
+   * (players are split). The forecast number is NOT changed — this is an honest manual reminder (Hypothesis),
+   * never a causal adjustment. Recording the rival context to the snapshot's rival_* columns is deferred to the
+   * capture flow after the TP-M migration is applied (text convention until then). Default **OFF**; kill-switch: false.
+   */
+  seriesRivalClash: false,
+  /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
    * + how far the model's number sits from it, so the owner can feel whether the model earns its
