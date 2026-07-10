@@ -1283,14 +1283,14 @@ export const FEATURES = {
    * tracker, service, security). Mirrors the dealer app shell but reads a SEPARATE `staff`
    * table + `staff_attendance` (never `dealers` / `dealer_attendance`), so the live dealer
    * app is untouched. MVP screens: Home + app check-in/out button, Attendance list, Account.
-   * Default **OFF** (per flag policy): while false the `/staff/*` routes show a "chưa bật"
-   * notice (except admin/owner preview) and nothing mounts → prod unchanged. The backing
-   * migrations (staff_directory + staff_attendance) are SOURCE-ONLY / not applied live yet,
-   * so even under admin preview the write RPCs stay preview-only (mock) — no missing-table
-   * crashes. Flip to true ONLY after the schema is applied live + types regenerated + owner UAT.
-   * Kill-switch: set false to re-hide the portal.
+   * **ON** (2026-07-11, owner-approved): staff_directory + staff_attendance (+ staff payroll)
+   * applied live + verified, types regenerated (#829/#835) → the portal now uses LIVE data. Real
+   * staff whose auth account is linked (staff.user_id) can open `/staff`, check in/out (writes
+   * staff_attendance), and view attendance + salary; non-linked users see "chưa liên kết". Until
+   * staff records are added + linked, the portal is live-but-empty by design. Kill-switch: set
+   * false to instantly re-hide the whole portal (source objects stay, just unused by the UI).
    */
-  staffApp: false,
+  staffApp: true,
   /**
    * staffSelfSalary — the "Lương của tôi" screen inside the /staff portal (READ-ONLY),
    * parallel to `dealerSelfSalary` for the dealer app. Gates both the bottom-nav "Lương"
