@@ -29,6 +29,30 @@ export interface StaffAttendanceView {
   totalWorkedMinutesToday?: number | null;
 }
 
+export interface StaffSalaryPaymentView {
+  id: string;
+  amountVnd: number;
+  minutesPaid: number;
+  paidAt: string;
+  coveredFrom?: string | null;
+  coveredTo?: string | null;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+}
+
+export interface StaffSalaryView {
+  staffId: string;
+  employmentType: StaffEmploymentType;
+  hourlyRateVnd: number;
+  accruedMinutes: number;
+  balanceVnd: number;
+  lastResetAt?: string | null;
+  currentShiftOpen: boolean;
+  currentShiftStart?: string | null;
+  monthlySalaryVnd?: number | null;
+  recentPayments: StaffSalaryPaymentView[];
+}
+
 export const STAFF_DEPARTMENT_LABELS: Record<StaffDepartment, string> = {
   floor: "Floor",
   cashier: "Thu ngân",

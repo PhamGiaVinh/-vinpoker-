@@ -1,5 +1,5 @@
 import { addDays, localTodayDate } from "@/lib/dealerApp/clock";
-import type { StaffAttendanceView, StaffProfileView } from "@/types/staffApp";
+import type { StaffAttendanceView, StaffProfileView, StaffSalaryView } from "@/types/staffApp";
 
 const ATT_KEY = "vinpoker.staff.mockAttendance";
 
@@ -125,3 +125,44 @@ export function mockStaffCheckOut(staffId: string): StaffAttendanceView {
   return updated;
 }
 
+export function readMockSalary(profile: StaffProfileView): StaffSalaryView {
+  const isPartTime = profile.employmentType === "part_time";
+  const rate = profile.hourlyRateVnd ?? 55_000;
+  const accrued = isPartTime ? 495 : 0; // 8h 15p demo balance
+  const today = localTodayDate();
+  return {
+    staffId: profile.staffId,
+    employmentType: profile.employmentType,
+    hourlyRateVnd: rate,
+    accruedMinutes: accrued,
+    balanceVnd: isPartTime ? Math.floor((accrued / 60) * rate) : 0,
+    lastResetAt: null,
+    currentShiftOpen: isPartTime,
+    currentShiftStart: isPartTime ? new Date(Date.now() - accrued * 60_000).toISOString() : null,
+    monthlySalaryVnd: profile.monthlySalaryVnd ?? null,
+    recentPayments: isPartTime
+      ? [
+          {
+            id: `${profile.staffId}-pay-1`,
+            amountVnd: 2_000_000,
+            minutesPaid: 1500,
+            paidAt: `${addDays(today, -5)}T18:00:00+07:00`,
+            coveredFrom: null,
+            coveredTo: null,
+            paymentMethod: "cash",
+            paymentReference: null,
+          },
+          {
+            id: `${profile.staffId}-pay-2`,
+            amountVnd: 1_800_000,
+            minutesPaid: 1350,
+            paidAt: `${addDays(today, -12)}T18:00:00+07:00`,
+            coveredFrom: null,
+            coveredTo: null,
+            paymentMethod: "bank",
+            paymentReference: "VCB-0092",
+          },
+        ]
+      : [],
+  };
+}
