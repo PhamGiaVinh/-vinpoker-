@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy } from "lucide-react";
+import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy, Play, Pause, SkipForward, SkipBack, Minus, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
@@ -30,6 +31,8 @@ const mmss = (s: number) => {
 };
 
 interface LevelRow { level_number: number; small_blind: number; big_blind: number; ante: number; duration_minutes: number; is_break: boolean }
+/** Nhánh dữ liệu đồng hồ dùng cho ĐIỀU KHIỂN (from `get_tournament_clock`, giống ClockPanel). */
+interface OpsClock { is_running: boolean; remaining_seconds: number; clock_paused_at?: string | null; current_level: { level_number: number } | null }
 
 export default function OpsTournamentCockpit() {
   const navigate = useNavigate();
@@ -75,6 +78,36 @@ export default function OpsTournamentCockpit() {
     })();
     return () => { alive = false; };
   }, [tab, id]);
+
+  // ── Điều khiển đồng hồ (S1) — mirror desktop ClockPanel: Edge `tournament-live-clock`
+  //    actions start/pause/resume/previous_level/next_level/adjust_time. Server-authoritative
+  //    (Edge enforces quyền). Trạng thái nút đọc từ `get_tournament_clock` (nguồn desktop dùng);
+  //    sau mỗi lệnh reload clock + tv.refetch() để đồng hồ lớn cập nhật. KHÔNG auto-advance (thủ
+  //    công — auto để desktop/TV lo, tránh 2 client cùng nhảy level).
+  const [clk, setClk] = useState<OpsClock | null>(null);
+  const [clkBusy, setClkBusy] = useState(false);
+  const loadClk = useCallback(async () => {
+    if (!id) return;
+    const { data, error } = await supabase.rpc("get_tournament_clock", { p_tournament_id: id });
+    if (error) return;                       // read best-effort; đồng hồ lớn đã có từ tv.data
+    setClk(data as unknown as OpsClock);
+  }, [id]);
+  useEffect(() => { if (tab === "status") loadClk(); }, [tab, loadClk]);
+  const clockAct = useCallback(async (action: string, extra?: Record<string, unknown>) => {
+    if (!id || clkBusy) return;
+    setClkBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tournament-live-clock", { body: { tournament_id: id, action, ...extra } });
+      const err = error?.message || (data as { error?: string } | null)?.error;
+      if (err) { toast.error(/permission|denied|allowed/i.test(err) ? "Không có quyền điều khiển đồng hồ." : `Không thực hiện được: ${err}`); return; }
+      await Promise.all([loadClk(), tv.refetch()]);   // không optimistic
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Không thực hiện được");
+    } finally {
+      setClkBusy(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, clkBusy, loadClk]);
 
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
@@ -134,10 +167,57 @@ export default function OpsTournamentCockpit() {
             <Metric label="Entries" v={vnd(d.totalEntries)} />
             <Metric label={<span>Pool <span className="text-amber-300">(Tạm tính)</span></span>} v={<span className="text-[#c9a86a]">{vnd(d.prizePool)}</span>} />
           </div>
+          {/* Điều khiển đồng hồ — Tạm dừng/Tiếp tục/Bắt đầu · Level trước-tiếp · Chỉnh giờ ±1 phút.
+              Cả giải (không phải 1 bàn). Server tự kiểm quyền; nút disable khi đang chạy lệnh. */}
+          {clk && (
+            <div className="ios-card space-y-2.5 p-3.5">
+              <div className="flex items-center gap-2">
+                {!clk.is_running ? (
+                  <button disabled={clkBusy} onClick={() => clockAct("start")}
+                    className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
+                    <Play className="h-[18px] w-[18px]" /> Bắt đầu
+                  </button>
+                ) : (
+                  <button disabled={clkBusy} onClick={() => clockAct("pause")}
+                    className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-amber-400/15 py-3 text-[15px] font-bold text-amber-300 disabled:opacity-40">
+                    <Pause className="h-[18px] w-[18px]" /> Tạm dừng
+                  </button>
+                )}
+                {clk.clock_paused_at && (
+                  <button disabled={clkBusy} onClick={() => clockAct("resume")}
+                    className="ios-press ios-primary flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
+                    <Play className="h-[18px] w-[18px]" /> Tiếp tục
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button disabled={clkBusy || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
+                  className="ios-press ios-fill flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
+                  <SkipBack className="h-4 w-4" /> Level trước
+                </button>
+                <button disabled={clkBusy} onClick={() => clockAct("next_level", { current_level: (clk.current_level?.level_number ?? 0) + 1 })}
+                  className="ios-press ios-fill flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
+                  <SkipForward className="h-4 w-4" /> Level tiếp
+                </button>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-[12px] text-[#9b8e97]">Chỉnh giờ:</span>
+                <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
+                  className="ios-press-sm ios-fill flex items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
+                  <Minus className="h-3.5 w-3.5" /> 1 phút
+                </button>
+                <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
+                  className="ios-press-sm ios-fill flex items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
+                  <Plus className="h-3.5 w-3.5" /> 1 phút
+                </button>
+              </div>
+              {clkBusy && <div className="flex items-center justify-center gap-1.5 text-[12px] text-[#9b8e97]"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang cập nhật…</div>}
+            </div>
+          )}
           <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-tinted flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-semibold">
             <LayoutGrid className="h-[18px] w-[18px]" /> Sơ đồ bàn
           </button>
-          <DesktopNote text="Sửa clock / blind — trên máy tính." />
+          <DesktopNote text="Sửa cấu trúc blind — trên máy tính." />
         </div>
       )}
 

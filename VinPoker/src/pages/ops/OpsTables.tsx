@@ -669,8 +669,11 @@ export default function OpsTables() {
               className={cn("ios-press ios-tinted flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-semibold", !ADD_LIVE && "opacity-50")}>
               <Plus className="h-4 w-4" /> {ADD_LIVE ? "Thêm người" : "Cần bật cờ"}
             </button>
-            <button onClick={pending} className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
-              <PauseCircle className="h-4 w-4" /> Tạm dừng
+            {/* "Tạm dừng" không có ở mức 1 bàn (server chỉ pause CẢ GIẢI) → mở đồng hồ giải ở cockpit
+                (nơi có Tạm dừng/Tiếp tục/chỉnh giờ), không giả lập pause-per-table. */}
+            <button onClick={() => { if (!tourId) { pending(); return; } setOpenNo(null); navigate(`/ops/tournaments/${tourId}?tab=status`); }}
+              className="ios-press ios-fill flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-medium text-amber-300">
+              <PauseCircle className="h-4 w-4" /> Đồng hồ
             </button>
             <button onClick={() => { if (!ADD_LIVE) { pending(); return; } const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
               className="ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300">
