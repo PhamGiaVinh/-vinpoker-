@@ -64,6 +64,25 @@ export function scoreOutcome(snapshot: ForecastSnapshot | null, actuals: Actuals
 const hasActualsOn = (d: DecisionLog): boolean =>
   d.actual_entries != null || d.actual_prize_pool != null || d.actual_overlay_amount != null;
 
+/** TP9 — the pre-migration text convention for a shadow (did-not-run) decision, stamped on owner_decision. */
+export const SHADOW_PREFIX = "[SHADOW] ";
+
+/**
+ * TP9 — a "shadow" decision is a decision NOT to run / a dry-run recommendation, recorded for learning but
+ * never scored (it has no real outcome to compare against). Detected via the future `is_shadow` column when
+ * present, else the pre-migration text convention on owner_decision. Cast is defensive: types.ts is not
+ * regenerated until the owner applies the TP-M migration, so `is_shadow` may not exist on DecisionLog yet.
+ */
+export function isShadowDecision(d: DecisionLog): boolean {
+  if ((d as { is_shadow?: boolean | null }).is_shadow === true) return true;
+  return (d.owner_decision ?? "").startsWith("[SHADOW]");
+}
+
+/** How many shadow (did-not-run) decisions exist — surfaced as "counted, but not scored". */
+export function countShadowDecisions(decisions: DecisionLog[]): number {
+  return decisions.filter(isShadowDecision).length;
+}
+
 /**
  * Which snapshot to SCORE against — an event can have several. Prefer the one the post-event decision linked;
  * otherwise the latest PRE-event snapshot (smallest days_before, then newest created_at). The caller must show
@@ -87,11 +106,13 @@ export function pickScoringSnapshot(
   return sorted[0] ?? null;
 }
 
-/** Find the decision that carries post-event actuals for an event (prefer horizon='post'). */
+/** Find the decision that carries post-event actuals for an event (prefer horizon='post'). Shadow
+ *  (did-not-run) decisions are never scored — filtered out (TP9). No shadow present ⇒ identical to before. */
 export function findScoredDecision(eventDecisions: DecisionLog[]): DecisionLog | null {
+  const scorable = eventDecisions.filter((d) => !isShadowDecision(d));
   return (
-    eventDecisions.find((d) => d.decision_horizon === "post" && hasActualsOn(d)) ??
-    eventDecisions.find(hasActualsOn) ??
+    scorable.find((d) => d.decision_horizon === "post" && hasActualsOn(d)) ??
+    scorable.find(hasActualsOn) ??
     null
   );
 }

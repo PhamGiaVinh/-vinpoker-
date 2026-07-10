@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { Target, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { collectOutcomeScores } from "@/lib/series-intelligence/captureScoring";
+import { collectOutcomeScores, countShadowDecisions } from "@/lib/series-intelligence/captureScoring";
 import { computeCalibration, type CalibrationVerdict } from "@/lib/series-intelligence/calibration";
+import { FEATURES } from "@/lib/featureFlags";
 import type { DecisionLog, ForecastSnapshot } from "@/lib/series-intelligence/captureTypes";
 import { InsightLabelBadge } from "../InsightLabelBadge";
 import { ExplainHint } from "../ExplainHint";
@@ -29,6 +30,8 @@ export function CalibrationCard({
   snapshots: ForecastSnapshot[];
 }) {
   const cal = computeCalibration(collectOutcomeScores(decisions, snapshots));
+  // TP9 — shadow (did-not-run) decisions are excluded from scoring (no real outcome) but counted + shown.
+  const shadowCount = FEATURES.seriesShadowDecision ? countShadowDecisions(decisions) : 0;
   const pct = (v: number | null): string => (v === null ? "—" : `${Math.round(v * 100)}%`);
   const BiasIcon = cal.biasDirection === "under" ? TrendingUp : cal.biasDirection === "over" ? TrendingDown : Minus;
 
@@ -89,6 +92,13 @@ export function CalibrationCard({
             ))}
           </ul>
         </>
+      )}
+
+      {shadowCount > 0 && (
+        <p className="rounded-md border border-border/60 bg-muted/20 p-2 text-[10px] text-muted-foreground">
+          <b className="text-foreground">{shadowCount} quyết định không-làm (shadow)</b> — không chấm điểm được (không
+          có kết quả thật) nhưng vẫn được đếm &amp; nhìn thấy.
+        </p>
       )}
 
       <ExplainHint term="hiệu chỉnh dự báo">

@@ -918,6 +918,15 @@ export const FEATURES = {
    */
   seriesCalibration: true,
   /**
+   * Series Intelligence — TP9 shadow decisions (P2-12). When ON, the decision dialog gets a "quyết định
+   * KHÔNG tổ chức (shadow)" toggle; a shadow decision is a recorded did-not-run choice (stamped with the
+   * "[SHADOW] " text convention until the is_shadow column is applied + types regenerated). Shadow decisions
+   * are EXCLUDED from calibration scoring (no real outcome to grade) but COUNTED and shown ("N quyết định
+   * không-làm"). Pure client-side; no new DB write path (uses the existing decision insert). Default **OFF**;
+   * kill-switch: false.
+   */
+  seriesShadowDecision: false,
+  /**
    * Series Intelligence — W1 "Trợ lý Series" at the top of the SI page. When ON, shows the fixed 8-step
    * workflow ring (next step highlighted) + up to 3 concrete "hôm nay cần làm gì" tasks derived from the
    * loaded data (upcoming giải with no forecast · finished giải with no result · GTD gaps · weekly
