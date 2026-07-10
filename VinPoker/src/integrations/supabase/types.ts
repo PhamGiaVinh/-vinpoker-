@@ -9708,6 +9708,91 @@ export type Database = {
           },
         ]
       }
+      staff_pt_wage_payments: {
+        Row: {
+          amount_vnd: number
+          club_id: string
+          covered_from: string
+          covered_to: string
+          created_at: string
+          created_by: string
+          hourly_rate_vnd_snapshot: number
+          id: string
+          idempotency_key: string
+          minutes_paid: number
+          note: string | null
+          paid_at: string
+          paid_by: string
+          payment_method: string | null
+          payment_reference: string | null
+          staff_id: string
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          amount_vnd: number
+          club_id: string
+          covered_from: string
+          covered_to: string
+          created_at?: string
+          created_by: string
+          hourly_rate_vnd_snapshot: number
+          id?: string
+          idempotency_key: string
+          minutes_paid: number
+          note?: string | null
+          paid_at?: string
+          paid_by: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          staff_id: string
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          amount_vnd?: number
+          club_id?: string
+          covered_from?: string
+          covered_to?: string
+          created_at?: string
+          created_by?: string
+          hourly_rate_vnd_snapshot?: number
+          id?: string
+          idempotency_key?: string
+          minutes_paid?: number
+          note?: string | null
+          paid_at?: string
+          paid_by?: string
+          payment_method?: string | null
+          payment_reference?: string | null
+          staff_id?: string
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_pt_wage_payments_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_pt_wage_payments_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_pt_wage_payments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staking_audit_logs: {
         Row: {
           action: Database["public"]["Enums"]["staking_audit_action"]
@@ -13224,6 +13309,7 @@ export type Database = {
         Returns: boolean
       }
       _pt_wage_balance: { Args: { p_dealer_id: string }; Returns: Json }
+      _staff_pt_wage_balance: { Args: { p_staff_id: string }; Returns: Json }
       accept_group_invite: { Args: { _token: string }; Returns: string }
       add_player_with_reentry:
         | {
@@ -13965,6 +14051,14 @@ export type Database = {
           unique_entries: number
         }[]
       }
+      get_club_staff_payroll: {
+        Args: {
+          p_club_id: string
+          p_period_end?: string
+          p_period_start?: string
+        }
+        Returns: Json
+      }
       get_color_up_history: { Args: { p_tournament_id: string }; Returns: Json }
       get_current_chip_inventory: {
         Args: { p_tournament_id: string }
@@ -14069,6 +14163,7 @@ export type Database = {
         Returns: Json
       }
       get_my_pt_wage: { Args: { p_dealer_id: string }; Returns: Json }
+      get_my_staff_salary: { Args: { p_staff_id: string }; Returns: Json }
       get_next_hand_number: {
         Args: { p_table_id: string; p_tournament_id: string }
         Returns: number
@@ -14527,6 +14622,16 @@ export type Database = {
           p_note?: string
           p_payment_method: string
           p_payment_reference?: string
+        }
+        Returns: Json
+      }
+      pay_staff_pt_balance: {
+        Args: {
+          p_idempotency_key?: string
+          p_note?: string
+          p_payment_method: string
+          p_payment_reference?: string
+          p_staff_id: string
         }
         Returns: Json
       }
