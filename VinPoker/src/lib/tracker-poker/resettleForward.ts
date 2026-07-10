@@ -142,6 +142,11 @@ export interface ResettleChange {
   player_id: string;
   before_ending: number;
   after_ending: number;
+  /** Starting stack before/after the re-settle. Unchanged for the target hand; for a LATER
+   *  hand the new starting = the corrected incoming stack. Lets the write keep hand_players
+   *  internally consistent (see G3 server-guards migration, finding #11). */
+  before_starting: number;
+  after_starting: number;
 }
 
 export interface ResettleBlock {
@@ -360,6 +365,9 @@ export function resettleForward(input: ResettleForwardInput): ResettleForwardRes
       player_id: p.player_id,
       before_ending: p.ending_stack,
       after_ending: after,
+      // The edit changes the target's OUTCOME, not its starting stacks.
+      before_starting: p.starting_stack,
+      after_starting: p.starting_stack,
     });
     if (after !== p.ending_stack) changedPlayerIds.add(p.player_id);
   }
@@ -435,6 +443,9 @@ export function resettleForward(input: ResettleForwardInput): ResettleForwardRes
         player_id: p.player_id,
         before_ending: p.ending_stack,
         after_ending: after,
+        // A later hand's new starting stack = the corrected incoming (carried) stack.
+        before_starting: p.starting_stack,
+        after_starting: incoming,
       });
       if (after !== p.ending_stack) changedPlayerIds.add(p.player_id);
       if (after === 0) eliminatedSoFar.add(p.player_id);

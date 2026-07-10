@@ -443,7 +443,7 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         return liveMap.get(`${c.player_id}:${entry}`) !== c.before;
       });
       if (drifted) {
-        toast.error("Chip đã thay đổi từ lúc xem trước (có ván mới hoặc chỉnh chip). Bấm 'Sửa & tính lại chip' lại để tính trên dữ liệu mới.");
+        toast.error("Chip hiện tại khác lúc xem trước (có ván mới, nạp thêm chip, hoặc chỉnh tay). Bấm 'Sửa & tính lại chip' lại — nếu vẫn báo thế này thì chip đã đổi NGOÀI ván bài, phải chỉnh tay hoặc void, không tính lại tự động được.");
         setResettleView(null);
         loadHands();
         return;
@@ -491,8 +491,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       if (res && res.ok === false) {
         if (res.error === "elimination_change_use_void") {
           toast.error("Đây là thay đổi loại/còn sống ở ván mới nhất — hãy dùng 'Hoàn tác ván' (void) rồi nhập lại, không dùng tính lại chip.");
-        } else if (res.error === "not_conserved") {
-          toast.error("Chip không khớp (dữ liệu đã đổi) — CHƯA đổi chip. Đã lưu hiển thị; hãy tính lại.");
+        } else if (res.error === "stale_state" || res.error === "not_conserved") {
+          toast.error("Chip khác lúc xem trước — CHƯA đổi chip (đã lưu hiển thị). Bấm 'Sửa & tính lại chip' lại; nếu vẫn thế thì chip đã đổi NGOÀI ván bài (nạp thêm/chỉnh tay) — chỉnh tay hoặc void.");
         } else {
           toast.error("Đã lưu hiển thị nhưng CHƯA đổi chip (lý do: " + res.error + ").");
         }

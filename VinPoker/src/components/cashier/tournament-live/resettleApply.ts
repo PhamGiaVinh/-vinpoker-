@@ -52,8 +52,10 @@ export interface ApplyResettleArgs {
   p_tournament_id: string;
   p_target_hand_id: string;
   p_reason: string;
-  p_hand_changes: { hand_id: string; player_id: string; entry_number: number; ending_stack: number }[];
-  p_final_stacks: { player_id: string; entry_number: number; chip_count: number }[];
+  // `starting_stack` + `expected_current` are OPTIONAL server-guard fields (G3 hardening
+  // migration 20261227000000). The pre-migration RPC ignores them → fully backward-compatible.
+  p_hand_changes: { hand_id: string; player_id: string; entry_number: number; ending_stack: number; starting_stack: number }[];
+  p_final_stacks: { player_id: string; entry_number: number; chip_count: number; expected_current: number }[];
   p_target_winner_ids: string[];
 }
 
@@ -214,6 +216,9 @@ export function buildApplyResettleArgs(input: {
 }): ApplyResettleArgs {
   const { result, entryByPlayer, entryByHandPlayer } = input;
   const changed = new Set(result.changedPlayerIds);
+  // Per-player live baseline the finals were computed from (the operator's preview value) —
+  // the server freshness belt refuses if the live chip drifted from it.
+  const baseline = new Map(resettleChipChanges(result).map((c) => [c.player_id, c.before]));
   return {
     p_tournament_id: input.tournamentId,
     p_target_hand_id: input.targetHandId,
@@ -225,6 +230,7 @@ export function buildApplyResettleArgs(input: {
         player_id: c.player_id,
         entry_number: entryByHandPlayer.get(`${c.hand_id}:${c.player_id}`) ?? 1,
         ending_stack: c.after_ending,
+        starting_stack: c.after_starting,
       })),
     p_final_stacks: result.finalStacks
       .filter((f) => changed.has(f.player_id))
@@ -232,6 +238,7 @@ export function buildApplyResettleArgs(input: {
         player_id: f.player_id,
         entry_number: entryByPlayer.get(f.player_id) ?? 1,
         chip_count: f.chip_count,
+        expected_current: baseline.get(f.player_id) ?? f.chip_count,
       })),
     p_target_winner_ids: result.targetWinnerIds,
   };
