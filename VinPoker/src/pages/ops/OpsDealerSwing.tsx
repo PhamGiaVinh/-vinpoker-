@@ -7,7 +7,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import {
   ChevronLeft, Repeat, Users, Coffee, ArrowRightLeft, History, Lightbulb, QrCode,
   Monitor, LogOut, ArrowRight, Clock, FlagTriangleRight, Loader2, LogIn,
-  CalendarDays, CheckCircle2, AlertTriangle, Send, UserPlus,
+  CalendarDays, AlertTriangle, Send, UserPlus,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,8 @@ import {
   useTodayCheckedOutDealers,
   type DealerAttendance, type DealerAssignment,
 } from "@/hooks/useDealerSwing";
+import { useShiftPlanner } from "@/hooks/useShiftPlanner";
+import type { AvailabilityRequest } from "@/types/shiftPlanner";
 
 /**
  * Dealer Swing (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads).
@@ -25,9 +27,11 @@ import {
  * bàn/dealer/đếm ngược đọc từ các hook thật `useActiveTables` / `useActiveAssignmentsWithTimeline`
  * / `useCheckedInDealers` / `useTodayCheckedOutDealers` (realtime).
  *
- * ⚠️ CÁC NÚT HÀNH ĐỘNG (swing/nghỉ/check-in/check-out/đóng tour) CHƯA nối — bước sau sẽ gắn
- * vào đúng Edge Function/RPC (perform_swing / assign-dealer / manage-break / checkout-dealer)
- * SAU KHI owner xác nhận bảng thật hiển thị đúng (UAT). Hiện bấm chỉ hiện nhắc "đang nối".
+ * Hành động THẬT đã nối (gate opsSwingActions): swing / gán / nghỉ / đưa-vào-bàn / check-in /
+ * check-out / đóng-tour / sửa-nhầm-bàn / duyệt-yêu-cầu / gợi-ý-dealer — mirror desktop DealerSwingTab
+ * (perform_swing / assign-dealer / manage-break / checkout-dealer / archive_and_close_dealer_tour /
+ * reconcile_dealer_room_state / review_availability_request). Đọc chi tiết (lịch sử bàn / ca hôm nay)
+ * là read-only luôn live. Lưới lịch tuần (SCHEDULE_DAYS) giữ dạng xem trước — xếp lịch trên máy tính.
  */
 const BREAK_PRESETS = [15, 30, 45, 60];
 const PILLS = [
@@ -55,6 +59,9 @@ type BreakTarget = { attendanceId: string; clubId: string; name: string };
 
 /** Dealer đủ điều kiện check-in (mirror loadCheckinDealers desktop). */
 type CheckinDealer = { id: string; full_name: string; tier: string; wasCheckedOut: boolean };
+
+/** Gợi ý dealer từ edge assign-dealer (return_suggestions_only=true). */
+type Sug = { dealer_id: string; dealer_name: string; tier?: string | null; score?: number | null; reason?: string | null };
 
 const hhmm = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -166,54 +173,6 @@ const TIMELINE_BLOCKS = [
   },
 ] as const;
 
-const REQUESTS = [
-  {
-    initials: "Q",
-    title: "Quang xin ca tối",
-    note: "Ưu tiên 18:00-02:00 · đang rảnh · phù hợp bàn thường",
-    status: "Có thể xếp",
-    statusTone: "ok" as const,
-    tags: [
-      { label: "khớp nhu cầu", tone: "ok" as const },
-      { label: "Telegram linked", tone: "info" as const },
-    ],
-    primary: "Duyệt & xếp",
-    secondary: "Để sau",
-  },
-  {
-    initials: "L",
-    title: "Lan xin nghỉ 20:00",
-    note: "Lan đang được pin chia final 21:30 · cần người thay có quyền final",
-    status: "Đụng final",
-    statusTone: "danger" as const,
-    tags: [
-      { label: "final pinned", tone: "final" as const },
-      { label: "không auto thay", tone: "danger" as const },
-    ],
-    primary: "Tìm người thay",
-    secondary: "Từ chối",
-  },
-  {
-    initials: "T",
-    title: "Tùng đổi ca với Hằng",
-    note: "Tùng muốn ca sớm · Hằng đồng ý trong app lúc 11:20",
-    status: "Cần xác nhận",
-    statusTone: "warn" as const,
-    tags: [
-      { label: "swap pair", tone: "info" as const },
-      { label: "không thiếu ca", tone: "ok" as const },
-    ],
-    primary: "Duyệt đổi",
-    secondary: "Xem chi tiết",
-  },
-] as const;
-
-const CANDIDATES = [
-  { name: "Quang", score: 96, note: "Đã nghỉ 43p · ưu tiên ca tối · Telegram linked", tags: ["best fit", "sẵn sàng"], locked: false },
-  { name: "Hằng", score: 88, note: "Đang free · có thể vào ngay · chưa linked app", tags: ["free", "app chưa link"], locked: false },
-  { name: "Lan", score: 72, note: "Được pin final 21:30 · không nên dùng cho bàn thường", tags: ["final pinned", "rủi ro"], locked: true },
-] as const;
-
 export default function OpsDealerSwing() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -224,6 +183,8 @@ export default function OpsDealerSwing() {
   const asgQ = useActiveAssignmentsWithTimeline(scopedIds);
   const rosterQ = useCheckedInDealers(scopedIds);
   const outQ = useTodayCheckedOutDealers(scopedIds);
+  const todayVN = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10); // YYYY-MM-DD giờ VN
+  const planQ = useShiftPlanner({ clubIds: scopedIds, workDate: todayVN, mode: "live" }); // yêu cầu xin ca/nghỉ
 
   const [pill, setPill] = useState<Pill>("tables");
   const [tableSheet, setTableSheet] = useState<TableVM | null>(null);
@@ -231,7 +192,7 @@ export default function OpsDealerSwing() {
   const [pickFor, setPickFor] = useState<TableVM | null>(null);
   const [breakFor, setBreakFor] = useState<BreakTarget | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
-  const [schedulePickOpen, setSchedulePickOpen] = useState(false);
+  const [suggestTableOpen, setSuggestTableOpen] = useState(false); // chọn bàn thiếu người để gợi ý dealer
   const [placeFor, setPlaceFor] = useState<DealerAttendance | null>(null);   // đưa dealer này vào 1 bàn
   const [checkinList, setCheckinList] = useState<CheckinDealer[] | null>(null); // null = chưa tải
   const [checkinSel, setCheckinSel] = useState<Set<string>>(new Set());
@@ -241,9 +202,24 @@ export default function OpsDealerSwing() {
   const [tourToClose, setTourToClose] = useState<string | null>(null);
   const [dongTour, setDongTour] = useState("");
   const [checkout, setCheckout] = useState<Set<string>>(new Set());
+  const [histTable, setHistTable] = useState<TableVM | null>(null);      // "Lịch sử bàn này"
+  const [histRows, setHistRows] = useState<any[] | null>(null);          // null = đang tải
+  const [shiftDealer, setShiftDealer] = useState<DealerAttendance | null>(null); // "Ca hôm nay"
+  const [shiftRows, setShiftRows] = useState<any[] | null>(null);
+  const [pickSuggestFor, setPickSuggestFor] = useState<TableVM | null>(null);    // gợi ý dealer cho 1 bàn
+  const [suggests, setSuggests] = useState<Sug[] | null>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [reqDecided, setReqDecided] = useState<Record<string, "acknowledged" | "rejected">>({}); // dealerId → quyết định vừa bấm
 
   const assignments = useMemo(() => (asgQ.data ?? []) as EnrichedAssignment[], [asgQ.data]);
   const roster = useMemo(() => rosterQ.data ?? [], [rosterQ.data]);
+
+  // Yêu cầu xin ca/nghỉ (đọc live qua useShiftPlanner) + resolve tên dealer / nhãn ca
+  const reqDealers = planQ.data?.dealers ?? [];
+  const reqTemplates = planQ.data?.templates ?? [];
+  const nameOf = (id: string) => reqDealers.find((d) => d.id === id)?.fullName ?? "Dealer";
+  const labelOf = (id: string) => reqTemplates.find((t) => t.id === id)?.label ?? id;
+  const pendingReqs = (planQ.data?.availability ?? []).filter((r) => (r.status ?? "submitted") === "submitted" || reqDecided[r.dealerId]);
 
   // table_id → assignment (with timeline)
   const asgByTable = useMemo(() => {
@@ -279,7 +255,7 @@ export default function OpsDealerSwing() {
   }, [roster, tableVMs.length]);
 
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
-  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSchedulePickOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
+  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSuggestTableOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
   // ── Nối hành động THẬT (gate opsSwingActions). Cờ OFF → mọi nút giữ nhắc "đang nối"
   // (soon), 0 gọi RPC/edge. Handlers mirror desktop DealerSwingTab 1:1 (perform_swing /
@@ -510,6 +486,78 @@ export default function OpsDealerSwing() {
     reloadAll();
   });
 
+  // ── Đọc chi tiết (read-only, luôn live — reads trên trang này không gate cờ) ──
+  // "Lịch sử bàn này": chuỗi dealer đã ngồi bàn này (dealer_assignments theo table_id)
+  const openTableHistory = (t: TableVM) => {
+    setTableSheet(null); setHistTable(t); setHistRows(null);
+    requestAnimationFrame(async () => {
+      const { data, error } = await supabase.from("dealer_assignments")
+        .select("id, assigned_at, released_at, status, dealer_attendance!attendance_id(dealers(full_name))")
+        .eq("table_id", t.id).order("assigned_at", { ascending: false }).limit(30);
+      setHistRows(error ? [] : ((data ?? []) as any[]));
+    });
+  };
+  // "Ca hôm nay": giờ vào/ra (đã có trên dealerSheet) + danh sách bàn đã chia (theo attendance_id)
+  const openShiftToday = (d: DealerAttendance) => {
+    setDealerSheet(null); setShiftDealer(d); setShiftRows(null);
+    requestAnimationFrame(async () => {
+      const { data, error } = await supabase.from("dealer_assignments")
+        .select("id, table_id, assigned_at, released_at, status, game_tables!inner(table_name)")
+        .eq("attendance_id", d.id).order("assigned_at", { ascending: true });
+      setShiftRows(error ? [] : ((data ?? []) as any[]));
+    });
+  };
+
+  // ── Gợi ý dealer cho 1 bàn: đọc điểm từ edge assign-dealer (return_suggestions_only — không ghi) ──
+  const openSuggest = (t: TableVM) => {
+    setSuggestTableOpen(false); setPickSuggestFor(t); setSuggests(null); setSuggestLoading(true);
+    requestAnimationFrame(async () => {
+      try {
+        const { data } = await supabase.functions.invoke("assign-dealer", {
+          body: { table_id: t.id, requested_by: user?.id, return_suggestions_only: true },
+        });
+        setSuggests(((data as any)?.suggestions ?? []) as Sug[]);
+      } catch { setSuggests([]); }
+      finally { setSuggestLoading(false); }
+    });
+  };
+  // Gán theo dealer_id đã chọn từ gợi ý → edge assign-dealer force_dealer_id (clone doAssign)
+  const doAssignById = (t: TableVM, dealerId: string, name: string) => runAction(async () => {
+    const { data, error } = await supabase.functions.invoke("assign-dealer", {
+      body: { table_id: t.id, force_dealer_id: dealerId, requested_by: user?.id, idempotency_key: crypto.randomUUID() },
+    });
+    if (error) {
+      let detail = error.message;
+      if (error instanceof FunctionsHttpError) {
+        const body = await error.context.json().catch(() => null);
+        if (error.context.status === 409) { toast.info("Bàn đã có dealer — đang cập nhật."); setPickSuggestFor(null); reloadAll(); return; }
+        detail = body?.error ?? body?.message ?? detail;
+      }
+      toast.error(`Lỗi gán: ${detail}`); return;
+    }
+    if ((data as any)?.error) { toast.error((data as any).error); return; }
+    toast.success(`Đã gán ${name} → ${t.name}`);
+    setPickSuggestFor(null);
+    reloadAll();
+  });
+
+  // Duyệt / từ chối yêu cầu xin ca-nghỉ → RPC review_availability_request (mirror RequestsActionPanel).
+  // p_decision: acknowledged = duyệt · rejected = từ chối. RPC source-only → nếu chưa apply, báo trung thực.
+  const doReviewRequest = (r: AvailabilityRequest, decision: "acknowledged" | "rejected") => runAction(async () => {
+    const clubId = scopedIds[0];
+    const { data, error } = await (supabase.rpc as any)("review_availability_request", {
+      p_club_id: clubId, p_dealer_id: r.dealerId, p_work_date: todayVN, p_decision: decision,
+    });
+    if (error) { toast.error(`Lỗi duyệt: ${error.message}`); return; }
+    if (!(data as any)?.ok) {
+      toast.error((data as any)?.error === "actor_not_allowed" ? "Không có quyền duyệt yêu cầu CLB này." : "Chưa lưu được trạng thái (cần áp dụng RPC trên DB).");
+      return;
+    }
+    setReqDecided((p) => ({ ...p, [r.dealerId]: decision }));
+    toast.success(decision === "acknowledged" ? `Đã duyệt yêu cầu của ${nameOf(r.dealerId)}` : `Đã từ chối yêu cầu của ${nameOf(r.dealerId)}`);
+    planQ.refetch();
+  });
+
   // ---- guards (ordered: auth → login → clubs → permission) ----
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản có quyền dealer để xem bảng xoay ca thật." onBack={() => navigate("/")} />;
@@ -695,7 +743,7 @@ export default function OpsDealerSwing() {
                       {block.dealers.map((dealer) => (
                         <button
                           key={`${block.time}-${dealer.name}-${dealer.detail}`}
-                          onClick={dealer.empty ? () => setSchedulePickOpen(true) : soon}
+                          onClick={dealer.empty ? () => setSuggestTableOpen(true) : soon}
                           className={cn(
                             "ios-press-sm rounded-full border px-2.5 py-1.5 text-left",
                             dealer.empty && "border-dashed border-[#c9a86a]/45 bg-[#c9a86a]/10 text-[#c9a86a]",
@@ -715,7 +763,7 @@ export default function OpsDealerSwing() {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSchedulePickOpen(true)} className="ios-press ios-primary flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold">
+            <button onClick={() => setSuggestTableOpen(true)} className="ios-press ios-primary flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold">
               <UserPlus className="h-4 w-4" /> Chọn dealer
             </button>
             <button onClick={() => setPill("requests")} className="ios-press ios-fill flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-semibold text-[#f2ece6]">
@@ -725,7 +773,7 @@ export default function OpsDealerSwing() {
         </div>
       )}
 
-      {/* D4b — Yêu cầu đổi ca/nghỉ/xin lịch (UI mobile mock, action chưa nối) */}
+      {/* D4b — Yêu cầu xin ca/nghỉ: đọc live (useShiftPlanner) + duyệt/từ chối qua review_availability_request */}
       {pill === "requests" && (
         <div className="space-y-3">
           <div className="ios-card p-3.5">
@@ -740,29 +788,44 @@ export default function OpsDealerSwing() {
             </div>
           </div>
 
-          {REQUESTS.map((request) => (
-            <div key={request.title} className="ios-card p-3.5">
-              <div className="flex items-start gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#c9a86a]/25 bg-[#c9a86a]/10 text-[15px] font-bold text-[#c9a86a]">{request.initials}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-[15px] font-semibold text-[#f2ece6]">{request.title}</div>
-                      <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{request.note}</div>
+          {planQ.loading ? (
+            <div className="ios-card p-6 text-center text-[13px] text-[#9b8e97]"><Loader2 className="mx-auto h-4 w-4 animate-spin" /> Đang tải yêu cầu…</div>
+          ) : pendingReqs.length === 0 ? (
+            <div className="ios-card p-6 text-center text-[13px] text-[#9b8e97]">Chưa có yêu cầu xin ca / nghỉ hôm nay.</div>
+          ) : pendingReqs.map((r) => {
+            const name = nameOf(r.dealerId);
+            const decided = reqDecided[r.dealerId];
+            const parts: string[] = [];
+            if (r.preferredTemplateIds.length) parts.push(`Ưu tiên: ${r.preferredTemplateIds.map(labelOf).join(", ")}`);
+            if (r.availableTemplateIds.length) parts.push(`Có thể: ${r.availableTemplateIds.map(labelOf).join(", ")}`);
+            if (r.note) parts.push(r.note);
+            return (
+              <div key={r.dealerId} className="ios-card p-3.5">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#c9a86a]/25 bg-[#c9a86a]/10 text-[15px] font-bold text-[#c9a86a]">{name[0] ?? "?"}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[15px] font-semibold text-[#f2ece6]">{name} · {r.leaveRequested ? "Xin nghỉ" : "Xin ca"}</div>
+                        <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{parts.join(" · ") || "—"}</div>
+                      </div>
+                      <ToneChip label={r.leaveRequested ? "nghỉ" : "xin ca"} tone={r.leaveRequested ? "warn" : "ok"} />
                     </div>
-                    <ToneChip label={request.status} tone={request.statusTone} />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {request.tags.map((tag) => <ToneChip key={tag.label} label={tag.label} tone={tag.tone} />)}
-                  </div>
-                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                    <button onClick={soon} className="ios-press ios-primary min-h-[42px] rounded-2xl px-3 text-[13px] font-bold">{request.primary}</button>
-                    <button onClick={soon} className="ios-press ios-fill min-h-[42px] rounded-2xl px-3 text-[13px] font-semibold text-[#f2ece6]">{request.secondary}</button>
+                    {decided ? (
+                      <div className={cn("mt-3 text-[13px] font-semibold", decided === "acknowledged" ? "text-emerald-300" : "text-rose-300")}>
+                        {decided === "acknowledged" ? "✓ Đã duyệt" : "✕ Đã từ chối"}
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                        <button disabled={busy} onClick={() => doReviewRequest(r, "acknowledged")} className="ios-press ios-primary min-h-[42px] rounded-2xl px-3 text-[13px] font-bold disabled:opacity-50">Duyệt</button>
+                        <button disabled={busy} onClick={() => doReviewRequest(r, "rejected")} className="ios-press ios-fill min-h-[42px] rounded-2xl px-3 text-[13px] font-semibold text-[#f2ece6] disabled:opacity-50">Từ chối</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <button onClick={() => setPill("schedule")} className="ios-press ios-fill flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold text-[#f2ece6]">
             <CalendarDays className="h-4 w-4 text-[#c9a86a]" /> Quay lại lịch ca
@@ -899,7 +962,7 @@ export default function OpsDealerSwing() {
                 onTap={() => go(setBreakFor, { attendanceId: tableSheet.assignment!.attendance_id, clubId: tableSheet.clubId, name: tableSheet.dealer ?? "dealer" })} />
             )}
             <SheetRow icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />} label="Sửa nhầm bàn (chọn dealer thật)" onTap={() => tableSheet && go(setFixTable, tableSheet)} />
-            <SheetRow icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử bàn này" onTap={soon} />
+            <SheetRow icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử bàn này" onTap={() => tableSheet && openTableHistory(tableSheet)} />
           </div>
         </SheetContent>
       </Sheet>
@@ -924,7 +987,7 @@ export default function OpsDealerSwing() {
             </button>
             <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label="Cho nghỉ ưu tiên"
               onTap={() => dealerSheet && go(setBreakFor, { attendanceId: dealerSheet.id, clubId: dealerSheet.dealers.club_id, name: dealerSheet.dealers.full_name })} />
-            <SheetRow icon={<Clock className="h-5 w-5 text-[#9b8e97]" />} label="Ca hôm nay — giờ vào/ra, số bàn đã chia" onTap={soon} />
+            <SheetRow icon={<Clock className="h-5 w-5 text-[#9b8e97]" />} label="Ca hôm nay — giờ vào/ra, số bàn đã chia" onTap={() => dealerSheet && openShiftToday(dealerSheet)} />
             <SheetRow icon={<LogOut className="h-5 w-5 text-rose-300" />} label={<span className="text-rose-300">Check-out khỏi ca</span>} onTap={() => dealerSheet && doCheckoutOne(dealerSheet)} />
           </div>
         </SheetContent>
@@ -969,46 +1032,101 @@ export default function OpsDealerSwing() {
         </SheetContent>
       </Sheet>
 
-      {/* schedule picker mock */}
-      <Sheet open={schedulePickOpen} onOpenChange={setSchedulePickOpen}>
+      {/* gợi ý dealer — bước 1: chọn bàn đang thiếu người */}
+      <Sheet open={suggestTableOpen} onOpenChange={setSuggestTableOpen}>
         <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">Chọn dealer vào Bàn 12</SheetTitle>
-          </SheetHeader>
-          <div className="mt-1 text-center text-[12px] leading-4 text-[#9b8e97]">Gợi ý UI theo lịch ca, nghỉ đủ và ràng buộc final. Chưa nối hành động thật.</div>
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Gợi ý dealer cho bàn nào?</SheetTitle></SheetHeader>
           <div className="ios-group mt-3">
-            {CANDIDATES.map((candidate) => (
-              <button
-                key={candidate.name}
-                disabled={candidate.locked}
-                onClick={soon}
-                className={cn("ios-row-inset flex w-full items-start gap-3 px-4 py-3 text-left", !candidate.locked && "ios-press-sm", candidate.locked && "opacity-55")}
-              >
-                <span className={cn("mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full border text-[13px] font-bold", candidate.locked ? "border-pink-400/25 bg-pink-400/10 text-pink-200" : "border-[#c9a86a]/35 bg-[#c9a86a]/12 text-[#c9a86a]")}>
-                  {candidate.score}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold text-[#f2ece6]">{candidate.name}</span>
-                  <span className="mt-1 block text-[12px] leading-4 text-[#9b8e97]">{candidate.note}</span>
-                  <span className="mt-2 flex flex-wrap gap-1.5">
-                    {candidate.tags.map((tag) => (
-                      <span key={tag} className={cn(
-                        "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
-                        tag.includes("rủi") || tag.includes("final") ? "bg-pink-400/12 text-pink-300" : tag.includes("chưa") ? "bg-amber-400/12 text-amber-300" : "bg-emerald-400/12 text-emerald-300",
-                      )}>{tag}</span>
-                    ))}
-                  </span>
-                </span>
-                <span className={cn("mt-1 rounded-full px-2.5 py-1 text-[11px] font-semibold", candidate.locked ? "bg-white/6 text-[#9b8e97]" : "bg-[#c9a86a]/12 text-[#c9a86a]")}>
-                  {candidate.locked ? "khóa" : "chọn"}
-                </span>
-              </button>
-            ))}
+            {tableVMs.filter((t) => t.missing).length === 0
+              ? <div className="px-4 py-6 text-center text-[13px] text-[#9b8e97]">Không có bàn nào đang thiếu dealer.</div>
+              : tableVMs.filter((t) => t.missing).map((t) => (
+                <button key={t.id} onClick={() => { setSuggestTableOpen(false); openSuggest(t); }}
+                  className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <span className="min-w-0 flex-1"><span className="block text-[15px] text-[#f2ece6]">{t.name}</span><span className="block text-[12px] text-rose-300">chưa có dealer</span></span>
+                  <span className="text-[13px] text-[#c9a86a]">chọn</span>
+                </button>
+              ))}
           </div>
-          <button onClick={soon} className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold">
-            <CheckCircle2 className="h-4 w-4" /> Xác nhận chọn dealer
-          </button>
+        </SheetContent>
+      </Sheet>
+
+      {/* gợi ý dealer — bước 2: xếp hạng thật từ edge assign-dealer (chạm 1 dealer = gán) */}
+      <Sheet open={pickSuggestFor !== null} onOpenChange={(v) => { if (!v) { setPickSuggestFor(null); setSuggests(null); } }}>
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Chọn dealer vào {pickSuggestFor?.name}</SheetTitle></SheetHeader>
+          <div className="mt-1 text-center text-[12px] leading-4 text-[#9b8e97]">Điểm xếp hạng theo nghỉ đủ · ưu tiên ca · tier (server tính). Chạm 1 dealer để gán.</div>
+          {suggestLoading ? (
+            <div className="mt-3 flex items-center justify-center gap-2 py-6 text-[13px] text-[#9b8e97]"><Loader2 className="h-4 w-4 animate-spin" /> Đang xếp hạng…</div>
+          ) : !suggests || suggests.length === 0 ? (
+            <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Không có dealer sẵn sàng cho bàn này.</div>
+          ) : (
+            <div className="ios-group mt-3 max-h-[52vh] overflow-y-auto">
+              {suggests.map((s) => (
+                <button key={s.dealer_id} disabled={busy}
+                  onClick={() => pickSuggestFor && doAssignById(pickSuggestFor, s.dealer_id, s.dealer_name)}
+                  className="ios-press-sm ios-row-inset flex w-full items-start gap-3 px-4 py-3 text-left disabled:opacity-50">
+                  <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#c9a86a]/35 bg-[#c9a86a]/12 text-[13px] font-bold text-[#c9a86a]">{s.score ?? "—"}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-semibold text-[#f2ece6]">{s.dealer_name}{s.tier ? ` · ${s.tier}` : ""}</span>
+                    {s.reason && <span className="mt-1 block text-[12px] leading-4 text-[#9b8e97]">{s.reason}</span>}
+                  </span>
+                  <span className="mt-1 rounded-full bg-[#c9a86a]/12 px-2.5 py-1 text-[11px] font-semibold text-[#c9a86a]">gán</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Lịch sử bàn này — chuỗi dealer đã ngồi (read-only) */}
+      <Sheet open={histTable !== null} onOpenChange={(v) => { if (!v) { setHistTable(null); setHistRows(null); } }}>
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Lịch sử {histTable?.name}</SheetTitle></SheetHeader>
+          {histRows === null ? (
+            <div className="mt-3 flex items-center justify-center gap-2 py-6 text-[13px] text-[#9b8e97]"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải…</div>
+          ) : histRows.length === 0 ? (
+            <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Chưa có lịch sử bàn này.</div>
+          ) : (
+            <div className="ios-group mt-3 max-h-[56vh] overflow-y-auto">
+              {histRows.map((h) => (
+                <div key={h.id} className="ios-row-inset flex items-center gap-3 px-4 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] text-[#f2ece6]">{h.dealer_attendance?.dealers?.full_name ?? "—"}</span>
+                    <span className="block text-[12px] tabular-nums text-[#9b8e97]">vào {hhmm(h.assigned_at)} → {h.released_at ? `ra ${hhmm(h.released_at)}` : "đang chia"}</span>
+                  </span>
+                  <span className="text-[11px] text-[#7c7079]">{h.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Ca hôm nay — giờ vào/ra + bàn đã chia (read-only) */}
+      <Sheet open={shiftDealer !== null} onOpenChange={(v) => { if (!v) { setShiftDealer(null); setShiftRows(null); } }}>
+        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Ca hôm nay — {shiftDealer?.dealers?.full_name}</SheetTitle></SheetHeader>
+          <div className="mt-1 text-center text-[12px] tabular-nums text-[#9b8e97]">
+            vào {hhmm(shiftDealer?.check_in_time)} · ra {shiftDealer?.check_out_time ? hhmm(shiftDealer.check_out_time) : "—"} · số bàn đã chia: {shiftRows?.length ?? "…"}
+          </div>
+          {shiftRows === null ? (
+            <div className="mt-3 flex items-center justify-center gap-2 py-6 text-[13px] text-[#9b8e97]"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải…</div>
+          ) : shiftRows.length === 0 ? (
+            <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Chưa chia bàn nào hôm nay.</div>
+          ) : (
+            <div className="ios-group mt-3 max-h-[52vh] overflow-y-auto">
+              {shiftRows.map((s) => (
+                <div key={s.id} className="ios-row-inset flex items-center gap-3 px-4 py-3">
+                  <span className="min-w-0 flex-1 text-[15px] text-[#f2ece6]">{s.game_tables?.table_name ?? "—"}</span>
+                  <span className="text-[12px] tabular-nums text-[#9b8e97]">{hhmm(s.assigned_at)} → {s.released_at ? hhmm(s.released_at) : "đang chia"}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
