@@ -70,6 +70,10 @@ export function TurnoutForecastPanel({
   const [seriesName, setSeriesName] = useState("");
   // TP6 — optional venue capacity of the upcoming event; the field only appears when seriesCensoring is on.
   const [capacity, setCapacity] = useState<number | null>(null);
+  // TP5 — rival clash: a manual "đối thủ có giải lớn cùng ngày?" reminder. Does NOT feed the model (it hasn't
+  // learned this factor); it only surfaces a caution + records context. Fields appear when seriesRivalClash is on.
+  const [rival, setRival] = useState(false);
+  const [rivalGtd, setRivalGtd] = useState<number | null>(null);
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
   // Local datetime (never date-only) so the hour-slot feature matches the training rows' bucketing.
@@ -138,6 +142,14 @@ export function TurnoutForecastPanel({
               {FEATURES.seriesCensoring && (
                 <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Sức chứa phòng (số ghế tối đa — chặn trần dự báo, tùy chọn)</span><Input type="number" className="h-8" placeholder="vd 300" value={capacity ?? ""} onChange={(e) => setCapacity(numOrNull(e.target.value))} /></label>
               )}
+              {FEATURES.seriesRivalClash && (
+                <>
+                  <label className="col-span-2 flex items-center gap-2 text-[11px]"><input type="checkbox" className="h-3.5 w-3.5 accent-[hsl(var(--warning))]" checked={rival} onChange={(e) => setRival(e.target.checked)} /><span>Đối thủ có giải lớn cùng ngày?</span></label>
+                  {rival && (
+                    <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">GTD đối thủ (nếu biết — tùy chọn)</span><Input type="number" className="h-8" placeholder="vd 500000000" value={rivalGtd ?? ""} onChange={(e) => setRivalGtd(numOrNull(e.target.value))} /></label>
+                  )}
+                </>
+              )}
             </div>
           </Card>
 
@@ -202,6 +214,19 @@ export function TurnoutForecastPanel({
                   Độ tin: {CONF[fc.confidence].label} · N={fc.sampleSize} giải
                 </span>
               </div>
+
+              {/* TP5 — rival clash caution. The forecast number is NOT changed; this is a manual reminder that
+                  the model hasn't learned rival-event competition (so it likely reads high on a clash day). */}
+              {FEATURES.seriesRivalClash && rival && (
+                <div className="flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                  <span>
+                    Có đối thủ lớn cùng ngày{rivalGtd ? ` (GTD ~${formatVndShort(rivalGtd)})` : ""} — dự báo dễ{" "}
+                    <b>lệch xuống</b>, model chưa học yếu tố này. Con số <b>giữ nguyên</b>; đây là nhắc tay để cân nhắc
+                    hạ GTD / đẩy vệ tinh.
+                  </span>
+                </div>
+              )}
 
               {/* W5 — naive baseline: the plain "just average the last few" guess, next to the model */}
               {FEATURES.seriesNaiveBaseline && baseline && baseline.value !== null && (
