@@ -931,7 +931,7 @@ export const FEATURES = {
    * log-normal draw, so tiny fields keep realistic integer count mass. Fields at/above 60 stay on the
    * existing log-normal path. Default **OFF**; flag-off must remain byte-identical for risk outputs.
    */
-  seriesSmallFieldDist: false,
+  seriesSmallFieldDist: true,
   /**
    * Series Intelligence — TP2 calendar/edition forecast features (P1-4). When ON, the turnout model adds
    * three known-before-the-event numeric features at the full tier (n ≥ 8): isHoliday (VN holiday/Tết
