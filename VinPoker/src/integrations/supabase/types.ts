@@ -1389,6 +1389,132 @@ export type Database = {
           },
         ]
       }
+      club_expenses: {
+        Row: {
+          adjusts_id: string | null
+          amount_vnd: number
+          attachment_url: string | null
+          category: Database["public"]["Enums"]["expense_category"]
+          club_id: string
+          created_at: string
+          description: string | null
+          entered_by: string
+          id: string
+          idempotency_key: string | null
+          incurred_at: string
+          payment_source: string | null
+          payment_status: string
+          series_id: string | null
+          tournament_id: string | null
+        }
+        Insert: {
+          adjusts_id?: string | null
+          amount_vnd: number
+          attachment_url?: string | null
+          category: Database["public"]["Enums"]["expense_category"]
+          club_id: string
+          created_at?: string
+          description?: string | null
+          entered_by?: string
+          id?: string
+          idempotency_key?: string | null
+          incurred_at: string
+          payment_source?: string | null
+          payment_status?: string
+          series_id?: string | null
+          tournament_id?: string | null
+        }
+        Update: {
+          adjusts_id?: string | null
+          amount_vnd?: number
+          attachment_url?: string | null
+          category?: Database["public"]["Enums"]["expense_category"]
+          club_id?: string
+          created_at?: string
+          description?: string | null
+          entered_by?: string
+          id?: string
+          idempotency_key?: string | null
+          incurred_at?: string
+          payment_source?: string | null
+          payment_status?: string
+          series_id?: string | null
+          tournament_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_expenses_adjusts_id_fkey"
+            columns: ["adjusts_id"]
+            isOneToOne: false
+            referencedRelation: "club_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_expenses_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_expenses_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_expenses_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "club_expenses_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_floors: {
+        Row: {
+          club_id: string
+          created_at: string
+          granted_by: string | null
+          user_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          granted_by?: string | null
+          user_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          granted_by?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_floors_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_floors_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_fnb_staff: {
         Row: {
           club_id: string
@@ -1763,6 +1889,7 @@ export type Database = {
           id: string
           member_card_id: string
           phone: string | null
+          phone_canonical: string | null
           player_user_id: string | null
           source: string
           synced_at: string
@@ -1776,6 +1903,7 @@ export type Database = {
           id?: string
           member_card_id: string
           phone?: string | null
+          phone_canonical?: string | null
           player_user_id?: string | null
           source?: string
           synced_at?: string
@@ -1789,6 +1917,7 @@ export type Database = {
           id?: string
           member_card_id?: string
           phone?: string | null
+          phone_canonical?: string | null
           player_user_id?: string | null
           source?: string
           synced_at?: string
@@ -1983,6 +2112,7 @@ export type Database = {
           created_at: string
           floor_manager_chat_id: string | null
           id: string
+          player_history_enabled: boolean
           shortage_auto_close_enabled: boolean
           shortage_close_threshold: number
           shortage_notify_telegram: boolean
@@ -1996,6 +2126,7 @@ export type Database = {
           created_at?: string
           floor_manager_chat_id?: string | null
           id?: string
+          player_history_enabled?: boolean
           shortage_auto_close_enabled?: boolean
           shortage_close_threshold?: number
           shortage_notify_telegram?: boolean
@@ -2009,6 +2140,7 @@ export type Database = {
           created_at?: string
           floor_manager_chat_id?: string | null
           id?: string
+          player_history_enabled?: boolean
           shortage_auto_close_enabled?: boolean
           shortage_close_threshold?: number
           shortage_notify_telegram?: boolean
@@ -4858,6 +4990,7 @@ export type Database = {
           notes: string | null
           ot_multiplier: number | null
           phone: string | null
+          shift_preference: string | null
           skills: string[]
           standard_hours_per_shift: number | null
           status: string
@@ -4885,6 +5018,7 @@ export type Database = {
           notes?: string | null
           ot_multiplier?: number | null
           phone?: string | null
+          shift_preference?: string | null
           skills?: string[]
           standard_hours_per_shift?: number | null
           status?: string
@@ -4912,6 +5046,7 @@ export type Database = {
           notes?: string | null
           ot_multiplier?: number | null
           phone?: string | null
+          shift_preference?: string | null
           skills?: string[]
           standard_hours_per_shift?: number | null
           status?: string
@@ -5561,18 +5696,27 @@ export type Database = {
           client_request_id: string
           club_id: string
           cogs_vnd: number
+          comp_authorized_by: string | null
+          comp_reason: string | null
           created_at: string
           created_by: string | null
           customer_name: string | null
+          guest_seat: number | null
           id: string
+          is_comp: boolean
           note: string | null
           paid_at: string | null
           paid_by: string | null
+          payment_method: Database["public"]["Enums"]["fnb_payment_method"]
+          player_ref: string | null
+          qr_token_id: string | null
+          reference_code: string | null
           shipped_at: string | null
           source: Database["public"]["Enums"]["fnb_order_source"]
           status: Database["public"]["Enums"]["fnb_order_status"]
           subtotal_vnd: number
           table_label: string | null
+          table_ref: string | null
           updated_at: string
         }
         Insert: {
@@ -5582,18 +5726,27 @@ export type Database = {
           client_request_id?: string
           club_id: string
           cogs_vnd?: number
+          comp_authorized_by?: string | null
+          comp_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
+          guest_seat?: number | null
           id?: string
+          is_comp?: boolean
           note?: string | null
           paid_at?: string | null
           paid_by?: string | null
+          payment_method?: Database["public"]["Enums"]["fnb_payment_method"]
+          player_ref?: string | null
+          qr_token_id?: string | null
+          reference_code?: string | null
           shipped_at?: string | null
           source: Database["public"]["Enums"]["fnb_order_source"]
           status?: Database["public"]["Enums"]["fnb_order_status"]
           subtotal_vnd?: number
           table_label?: string | null
+          table_ref?: string | null
           updated_at?: string
         }
         Update: {
@@ -5603,18 +5756,27 @@ export type Database = {
           client_request_id?: string
           club_id?: string
           cogs_vnd?: number
+          comp_authorized_by?: string | null
+          comp_reason?: string | null
           created_at?: string
           created_by?: string | null
           customer_name?: string | null
+          guest_seat?: number | null
           id?: string
+          is_comp?: boolean
           note?: string | null
           paid_at?: string | null
           paid_by?: string | null
+          payment_method?: Database["public"]["Enums"]["fnb_payment_method"]
+          player_ref?: string | null
+          qr_token_id?: string | null
+          reference_code?: string | null
           shipped_at?: string | null
           source?: Database["public"]["Enums"]["fnb_order_source"]
           status?: Database["public"]["Enums"]["fnb_order_status"]
           subtotal_vnd?: number
           table_label?: string | null
+          table_ref?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -5691,6 +5853,9 @@ export type Database = {
         Row: {
           club_id: string
           fnb_in_club_net: boolean
+          guest_bank_auto_confirm: boolean
+          guest_bank_ttl_secs: number
+          guest_order_enabled: boolean
           pending_ttl_secs: number
           restock_on_shipped_cancel: boolean
           updated_at: string
@@ -5699,6 +5864,9 @@ export type Database = {
         Insert: {
           club_id: string
           fnb_in_club_net?: boolean
+          guest_bank_auto_confirm?: boolean
+          guest_bank_ttl_secs?: number
+          guest_order_enabled?: boolean
           pending_ttl_secs?: number
           restock_on_shipped_cancel?: boolean
           updated_at?: string
@@ -5707,6 +5875,9 @@ export type Database = {
         Update: {
           club_id?: string
           fnb_in_club_net?: boolean
+          guest_bank_auto_confirm?: boolean
+          guest_bank_ttl_secs?: number
+          guest_order_enabled?: boolean
           pending_ttl_secs?: number
           restock_on_shipped_cancel?: boolean
           updated_at?: string
@@ -5902,6 +6073,60 @@ export type Database = {
           },
           {
             foreignKeyName: "fnb_stocktakes_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fnb_table_qr_tokens: {
+        Row: {
+          club_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          table_ref: string
+          token: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          table_ref: string
+          token: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          table_ref?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fnb_table_qr_tokens_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fnb_table_qr_tokens_club_id_fkey"
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
@@ -6154,6 +6379,63 @@ export type Database = {
             columns: ["hand_id"]
             isOneToOne: false
             referencedRelation: "tournament_hands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hand_edit_log: {
+        Row: {
+          actor_user_id: string
+          after: Json
+          before: Json
+          club_id: string
+          created_at: string
+          hand_id: string
+          hand_number: number | null
+          id: string
+          reason: string
+          table_id: string | null
+          tournament_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          after: Json
+          before: Json
+          club_id: string
+          created_at?: string
+          hand_id: string
+          hand_number?: number | null
+          id?: string
+          reason: string
+          table_id?: string | null
+          tournament_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          after?: Json
+          before?: Json
+          club_id?: string
+          created_at?: string
+          hand_id?: string
+          hand_number?: number | null
+          id?: string
+          reason?: string
+          table_id?: string | null
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hand_edit_log_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hand_edit_log_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
             referencedColumns: ["id"]
           },
         ]
@@ -7297,6 +7579,7 @@ export type Database = {
           confirmed_by: string | null
           created_at: string
           expected_amount: number | null
+          fnb_order_id: string | null
           id: string
           outcome: string
           reason: string | null
@@ -7310,6 +7593,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string
           expected_amount?: number | null
+          fnb_order_id?: string | null
           id?: string
           outcome: string
           reason?: string | null
@@ -7323,6 +7607,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string
           expected_amount?: number | null
+          fnb_order_id?: string | null
           id?: string
           outcome?: string
           reason?: string | null
@@ -7349,6 +7634,13 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_settlements_fnb_order_id_fkey"
+            columns: ["fnb_order_id"]
+            isOneToOne: false
+            referencedRelation: "fnb_orders"
             referencedColumns: ["id"]
           },
           {
@@ -7777,6 +8069,30 @@ export type Database = {
         }
         Relationships: []
       }
+      player_history_link_errors: {
+        Row: {
+          club_id: string | null
+          context: string
+          created_at: string
+          detail: string | null
+          id: string
+        }
+        Insert: {
+          club_id?: string | null
+          context: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+        }
+        Update: {
+          club_id?: string | null
+          context?: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
       player_results: {
         Row: {
           buy_in: number
@@ -8183,6 +8499,51 @@ export type Database = {
           },
         ]
       }
+      resettle_forward_log: {
+        Row: {
+          actor_user_id: string
+          after: Json
+          before: Json
+          changed_players: number
+          club_id: string
+          created_at: string
+          id: string
+          reason: string
+          target_hand_id: string
+          target_hand_number: number | null
+          target_winner_ids: Json
+          tournament_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          after: Json
+          before: Json
+          changed_players?: number
+          club_id: string
+          created_at?: string
+          id?: string
+          reason: string
+          target_hand_id: string
+          target_hand_number?: number | null
+          target_winner_ids?: Json
+          tournament_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          after?: Json
+          before?: Json
+          changed_players?: number
+          club_id?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          target_hand_id?: string
+          target_hand_number?: number | null
+          target_winner_ids?: Json
+          tournament_id?: string
+        }
+        Relationships: []
+      }
       seat_assignment_history: {
         Row: {
           actor_user_id: string
@@ -8463,6 +8824,75 @@ export type Database = {
           },
         ]
       }
+      series_capture_runs: {
+        Row: {
+          club_id: string | null
+          error_sample: string | null
+          id: string
+          rows_actuals_upserted: number
+          rows_errored: number
+          rows_reg_captured: number
+          run_at: string
+          scope: string
+        }
+        Insert: {
+          club_id?: string | null
+          error_sample?: string | null
+          id?: string
+          rows_actuals_upserted?: number
+          rows_errored?: number
+          rows_reg_captured?: number
+          run_at?: string
+          scope: string
+        }
+        Update: {
+          club_id?: string | null
+          error_sample?: string | null
+          id?: string
+          rows_actuals_upserted?: number
+          rows_errored?: number
+          rows_reg_captured?: number
+          run_at?: string
+          scope?: string
+        }
+        Relationships: []
+      }
+      series_capture_settings: {
+        Row: {
+          autosync_enabled: boolean
+          club_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          autosync_enabled?: boolean
+          club_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          autosync_enabled?: boolean
+          club_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_capture_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_capture_settings_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       series_decision_logs: {
         Row: {
           actual_entries: number | null
@@ -8558,6 +8988,71 @@ export type Database = {
             columns: ["forecast_snapshot_id"]
             isOneToOne: false
             referencedRelation: "series_forecast_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_event_actuals: {
+        Row: {
+          actual_entries: number
+          actual_overlay_amount: number
+          actual_prize_pool: number
+          actual_reentries: number
+          actual_unique_players: number
+          captured_at: string
+          club_id: string
+          event_id: string
+          source: string
+        }
+        Insert: {
+          actual_entries?: number
+          actual_overlay_amount?: number
+          actual_prize_pool?: number
+          actual_reentries?: number
+          actual_unique_players?: number
+          captured_at?: string
+          club_id: string
+          event_id: string
+          source?: string
+        }
+        Update: {
+          actual_entries?: number
+          actual_overlay_amount?: number
+          actual_prize_pool?: number
+          actual_reentries?: number
+          actual_unique_players?: number
+          captured_at?: string
+          club_id?: string
+          event_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "series_event_actuals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "series_event_actuals_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
             referencedColumns: ["id"]
           },
         ]
@@ -8700,6 +9195,7 @@ export type Database = {
           player_ref_hash: string | null
           player_ref_type: string | null
           registered_at: string
+          source_entry_id: string | null
         }
         Insert: {
           bullet?: number | null
@@ -8714,6 +9210,7 @@ export type Database = {
           player_ref_hash?: string | null
           player_ref_type?: string | null
           registered_at?: string
+          source_entry_id?: string | null
         }
         Update: {
           bullet?: number | null
@@ -8728,6 +9225,7 @@ export type Database = {
           player_ref_hash?: string | null
           player_ref_type?: string | null
           registered_at?: string
+          source_entry_id?: string | null
         }
         Relationships: [
           {
@@ -9094,6 +9592,122 @@ export type Database = {
           },
         ]
       }
+      staff: {
+        Row: {
+          club_id: string
+          created_at: string
+          deleted_at: string | null
+          department: Database["public"]["Enums"]["staff_department"]
+          employment_type: string
+          full_name: string
+          hourly_rate_vnd: number | null
+          id: string
+          manual_bhxh_vnd: number | null
+          manual_tax_vnd: number | null
+          monthly_salary_vnd: number | null
+          phone: string | null
+          standard_hours_per_shift: number | null
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          deleted_at?: string | null
+          department: Database["public"]["Enums"]["staff_department"]
+          employment_type?: string
+          full_name: string
+          hourly_rate_vnd?: number | null
+          id?: string
+          manual_bhxh_vnd?: number | null
+          manual_tax_vnd?: number | null
+          monthly_salary_vnd?: number | null
+          phone?: string | null
+          standard_hours_per_shift?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          department?: Database["public"]["Enums"]["staff_department"]
+          employment_type?: string
+          full_name?: string
+          hourly_rate_vnd?: number | null
+          id?: string
+          manual_bhxh_vnd?: number | null
+          manual_tax_vnd?: number | null
+          monthly_salary_vnd?: number | null
+          phone?: string | null
+          standard_hours_per_shift?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_attendance: {
+        Row: {
+          check_in_time: string
+          check_out_time: string | null
+          created_at: string
+          id: string
+          shift_date: string
+          staff_id: string
+          status: string
+          total_worked_minutes_today: number | null
+          updated_at: string
+        }
+        Insert: {
+          check_in_time?: string
+          check_out_time?: string | null
+          created_at?: string
+          id?: string
+          shift_date?: string
+          staff_id: string
+          status?: string
+          total_worked_minutes_today?: number | null
+          updated_at?: string
+        }
+        Update: {
+          check_in_time?: string
+          check_out_time?: string | null
+          created_at?: string
+          id?: string
+          shift_date?: string
+          staff_id?: string
+          status?: string
+          total_worked_minutes_today?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_attendance_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staking_audit_logs: {
         Row: {
           action: Database["public"]["Enums"]["staking_audit_action"]
@@ -9179,6 +9793,10 @@ export type Database = {
           player_confirmed_release: boolean
           player_id: string
           player_payout_vnd: number | null
+          refund_reason: string | null
+          refund_status: string | null
+          refunded_at: string | null
+          refunded_by: string | null
           registration_deadline: string | null
           release_condition_type: Database["public"]["Enums"]["release_condition_type"]
           result_data: Json | null
@@ -9239,6 +9857,10 @@ export type Database = {
           player_confirmed_release?: boolean
           player_id: string
           player_payout_vnd?: number | null
+          refund_reason?: string | null
+          refund_status?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           registration_deadline?: string | null
           release_condition_type?: Database["public"]["Enums"]["release_condition_type"]
           result_data?: Json | null
@@ -9299,6 +9921,10 @@ export type Database = {
           player_confirmed_release?: boolean
           player_id?: string
           player_payout_vnd?: number | null
+          refund_reason?: string | null
+          refund_status?: string | null
+          refunded_at?: string | null
+          refunded_by?: string | null
           registration_deadline?: string | null
           release_condition_type?: Database["public"]["Enums"]["release_condition_type"]
           result_data?: Json | null
@@ -10234,6 +10860,75 @@ export type Database = {
           },
         ]
       }
+      tournament_close_report: {
+        Row: {
+          buy_in_total: number
+          cash_in_total: number
+          cashier_balance: number
+          closed_at: string
+          closed_by: string | null
+          club_id: string | null
+          club_revenue: number
+          detail: Json
+          entry_count: number
+          id: string
+          prize_total: number
+          reason: string | null
+          reconcile_delta: number
+          reconciled: boolean
+          tournament_id: string
+        }
+        Insert: {
+          buy_in_total?: number
+          cash_in_total?: number
+          cashier_balance?: number
+          closed_at?: string
+          closed_by?: string | null
+          club_id?: string | null
+          club_revenue?: number
+          detail?: Json
+          entry_count?: number
+          id?: string
+          prize_total?: number
+          reason?: string | null
+          reconcile_delta?: number
+          reconciled?: boolean
+          tournament_id: string
+        }
+        Update: {
+          buy_in_total?: number
+          cash_in_total?: number
+          cashier_balance?: number
+          closed_at?: string
+          closed_by?: string | null
+          club_id?: string | null
+          club_revenue?: number
+          detail?: Json
+          entry_count?: number
+          id?: string
+          prize_total?: number
+          reason?: string | null
+          reconcile_delta?: number
+          reconciled?: boolean
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_close_report_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_close_report_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: true
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_economic_audit_log: {
         Row: {
           changed_at: string
@@ -10345,6 +11040,7 @@ export type Database = {
       }
       tournament_entries: {
         Row: {
+          bust_order: number | null
           busted_at: string | null
           checked_in_at: string | null
           created_at: string
@@ -10352,6 +11048,7 @@ export type Database = {
           entry_no: number
           finished_place: number | null
           id: string
+          member_id: string | null
           player_id: string
           registration_id: string | null
           seat_id: string | null
@@ -10364,6 +11061,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bust_order?: number | null
           busted_at?: string | null
           checked_in_at?: string | null
           created_at?: string
@@ -10371,6 +11069,7 @@ export type Database = {
           entry_no: number
           finished_place?: number | null
           id?: string
+          member_id?: string | null
           player_id: string
           registration_id?: string | null
           seat_id?: string | null
@@ -10383,6 +11082,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bust_order?: number | null
           busted_at?: string | null
           checked_in_at?: string | null
           created_at?: string
@@ -10390,6 +11090,7 @@ export type Database = {
           entry_no?: number
           finished_place?: number | null
           id?: string
+          member_id?: string | null
           player_id?: string
           registration_id?: string | null
           seat_id?: string | null
@@ -10402,6 +11103,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tournament_entries_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "club_members"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tournament_entries_registration_id_fkey"
             columns: ["registration_id"]
@@ -10920,6 +11628,72 @@ export type Database = {
           },
         ]
       }
+      tournament_prize_payments: {
+        Row: {
+          club_id: string
+          created_at: string
+          finished_place: number
+          id: string
+          method: string | null
+          notes: string | null
+          paid_at: string
+          paid_by: string | null
+          prize_amount: number
+          proof_url: string | null
+          recipient_name: string | null
+          recipient_ref: string | null
+          status: string
+          tournament_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          finished_place: number
+          id?: string
+          method?: string | null
+          notes?: string | null
+          paid_at?: string
+          paid_by?: string | null
+          prize_amount: number
+          proof_url?: string | null
+          recipient_name?: string | null
+          recipient_ref?: string | null
+          status?: string
+          tournament_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          finished_place?: number
+          id?: string
+          method?: string | null
+          notes?: string | null
+          paid_at?: string
+          paid_by?: string | null
+          prize_amount?: number
+          proof_url?: string | null
+          recipient_name?: string | null
+          recipient_ref?: string | null
+          status?: string
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_prize_payments_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournament_leaderboard_view"
+            referencedColumns: ["tournament_id"]
+          },
+          {
+            foreignKeyName: "tournament_prize_payments_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_prizes: {
         Row: {
           amount: number
@@ -11046,6 +11820,7 @@ export type Database = {
         Row: {
           assigned_at: string | null
           assigned_by: string | null
+          avatar_url: string | null
           chip_count: number
           created_at: string
           entry_id: string | null
@@ -11063,6 +11838,7 @@ export type Database = {
         Insert: {
           assigned_at?: string | null
           assigned_by?: string | null
+          avatar_url?: string | null
           chip_count?: number
           created_at?: string
           entry_id?: string | null
@@ -11080,6 +11856,7 @@ export type Database = {
         Update: {
           assigned_at?: string | null
           assigned_by?: string | null
+          avatar_url?: string | null
           chip_count?: number
           created_at?: string
           entry_id?: string | null
@@ -11329,6 +12106,7 @@ export type Database = {
       tournaments: {
         Row: {
           average_stack: number | null
+          bust_seq: number
           buy_in: number
           clock_paused_at: string | null
           clock_started_at: string | null
@@ -11375,6 +12153,7 @@ export type Database = {
         }
         Insert: {
           average_stack?: number | null
+          bust_seq?: number
           buy_in?: number
           clock_paused_at?: string | null
           clock_started_at?: string | null
@@ -11421,6 +12200,7 @@ export type Database = {
         }
         Update: {
           average_stack?: number | null
+          bust_seq?: number
           buy_in?: number
           clock_paused_at?: string | null
           clock_started_at?: string | null
@@ -12484,6 +13264,17 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_resettle_forward: {
+        Args: {
+          p_final_stacks: Json
+          p_hand_changes: Json
+          p_reason: string
+          p_target_hand_id: string
+          p_target_winner_ids?: Json
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       approve_verification: {
         Args: {
           p_action: string
@@ -12549,6 +13340,10 @@ export type Database = {
         Returns: number
       }
       calculate_pit_vn: { Args: { p_taxable_income: number }; Returns: number }
+      can_upload_seat_avatar: {
+        Args: { _name: string; _uid: string }
+        Returns: boolean
+      }
       canary_health_check: { Args: { p_club_id: string }; Returns: Json }
       cancel_empty_table_reservation: {
         Args: { p_reason?: string; p_reservation_id: string }
@@ -12718,8 +13513,16 @@ export type Database = {
         Args: { p_club_id?: string; p_stale_threshold_hours?: number }
         Returns: Json
       }
+      close_dealer_tables: {
+        Args: { p_club_id: string; p_shift_id?: string; p_table_ids?: string[] }
+        Returns: Json
+      }
       close_shift_assignment: {
         Args: { p_assignment_id: string; p_outcome: string }
+        Returns: Json
+      }
+      close_tournament: {
+        Args: { p_reason?: string; p_tournament_id: string }
         Returns: Json
       }
       close_tournament_table: {
@@ -12773,6 +13576,7 @@ export type Database = {
           p_buy_in: number
           p_draw_mode?: string
           p_fee: number
+          p_phone?: string
           p_player_name: string
           p_tournament_id: string
         }
@@ -12842,6 +13646,19 @@ export type Database = {
         Args: { p_stale_after_hours?: number }
         Returns: number
       }
+      edit_completed_hand: {
+        Args: {
+          p_actions?: Json
+          p_community_cards?: Json
+          p_hand_id: string
+          p_hole_cards?: Json
+          p_pot_size?: number
+          p_reason: string
+          p_side_pots?: Json
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       enable_audit_for_stuck_rows: {
         Args: { p_club_id: string; p_min_overdue_min?: number }
         Returns: number
@@ -12901,6 +13718,19 @@ export type Database = {
         }
         Returns: Json
       }
+      finalize_tournament_results: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
+      find_or_create_club_member: {
+        Args: {
+          p_club_id: string
+          p_full_name: string
+          p_phone: string
+          p_player_user_id: string
+        }
+        Returns: Json
+      }
       floor_assign_player_to_seat: {
         Args: {
           p_player_name: string
@@ -12910,6 +13740,7 @@ export type Database = {
         }
         Returns: Json
       }
+      floor_club_ids: { Args: { _user_id: string }; Returns: string[] }
       fn_compute_staking_payouts: {
         Args: { _markup: number; _percentage: number; _prize_vnd: number }
         Returns: Json
@@ -12920,6 +13751,19 @@ export type Database = {
       }
       fnb_club_ids: { Args: { _user_id: string }; Returns: string[] }
       fnb_commit_stocktake: { Args: { p_stocktake_id: string }; Returns: Json }
+      fnb_create_comp_order: {
+        Args: {
+          p_client_request_id?: string
+          p_club_id: string
+          p_comp_reason?: string
+          p_customer_name?: string
+          p_lines?: Json
+          p_note?: string
+          p_source: Database["public"]["Enums"]["fnb_order_source"]
+          p_table_label?: string
+        }
+        Returns: Json
+      }
       fnb_create_order: {
         Args: {
           p_client_request_id?: string
@@ -12927,8 +13771,10 @@ export type Database = {
           p_customer_name: string
           p_lines: Json
           p_note: string
+          p_player_ref?: string
           p_source: Database["public"]["Enums"]["fnb_order_source"]
           p_table_label: string
+          p_table_ref?: string
         }
         Returns: Json
       }
@@ -12945,10 +13791,33 @@ export type Database = {
         }
         Returns: Json
       }
+      fnb_guest_create_order: {
+        Args: {
+          p_client_request_id?: string
+          p_customer_name?: string
+          p_lines?: Json
+          p_note?: string
+          p_payment_method?: string
+          p_seat?: number
+          p_token: string
+        }
+        Returns: Json
+      }
+      fnb_guest_lookup: { Args: { p_token: string }; Returns: Json }
+      fnb_guest_order_status: {
+        Args: { p_order_id: string; p_token: string }
+        Returns: Json
+      }
+      fnb_issue_table_qr_token: {
+        Args: { p_club_id: string; p_label?: string; p_table_ref: string }
+        Returns: Json
+      }
       fnb_list_club_members: {
         Args: { p_club_id: string; p_query: string }
         Returns: Json
       }
+      fnb_list_link_targets: { Args: { p_club_id: string }; Returns: Json }
+      fnb_list_table_qr_tokens: { Args: { p_club_id: string }; Returns: Json }
       fnb_mark_paid: {
         Args: { p_client_request_id?: string; p_order_id: string }
         Returns: Json
@@ -12973,6 +13842,7 @@ export type Database = {
         }
         Returns: Json
       }
+      fnb_revoke_table_qr_token: { Args: { p_token_id: string }; Returns: Json }
       fnb_set_recipe: {
         Args: { p_items: Json; p_menu_item_id: string }
         Returns: Json
@@ -12983,6 +13853,10 @@ export type Database = {
           p_ingredient_id: string
           p_stocktake_id: string
         }
+        Returns: Json
+      }
+      fnb_settle_bank_paid: {
+        Args: { p_bank_transaction_id: string; p_order_id: string }
         Returns: Json
       }
       fnb_stock_in: {
@@ -12999,6 +13873,9 @@ export type Database = {
         Args: {
           p_club_id: string
           p_fnb_in_club_net?: boolean
+          p_guest_bank_auto_confirm?: boolean
+          p_guest_bank_ttl_secs?: number
+          p_guest_order_enabled?: boolean
           p_pending_ttl_secs?: number
           p_restock_on_shipped_cancel?: boolean
         }
@@ -13058,7 +13935,15 @@ export type Database = {
         Returns: Json
       }
       get_chip_bank: { Args: { p_club_id: string }; Returns: Json }
+      get_club_expenses: {
+        Args: { p_club_id: string; p_from: string; p_to: string }
+        Returns: Json
+      }
       get_club_finance_summary: {
+        Args: { p_club_id?: string; p_from: string; p_to: string }
+        Returns: Json
+      }
+      get_club_payout_liability: {
         Args: { p_club_id?: string; p_from: string; p_to: string }
         Returns: Json
       }
@@ -13178,6 +14063,7 @@ export type Database = {
         Args: { p_tournament_id: string }
         Returns: Json
       }
+      get_member_history: { Args: { p_member_id: string }; Returns: Json }
       get_my_dealer_payroll: {
         Args: { p_dealer_id: string; p_month?: number; p_year?: number }
         Returns: Json
@@ -13299,6 +14185,10 @@ export type Database = {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
       }
+      is_club_floor: {
+        Args: { _club_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_club_fnb: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
@@ -13343,6 +14233,10 @@ export type Database = {
       }
       lock_rotation_slot: {
         Args: { p_schedule_id: string; p_schedule_version: number }
+        Returns: Json
+      }
+      lookup_member_for_buyin: {
+        Args: { p_club_id: string; p_phone: string }
         Returns: Json
       }
       manual_confirm_bank_transaction: {
@@ -13533,6 +14427,7 @@ export type Database = {
         }
         Returns: Json
       }
+      normalize_phone: { Args: { p: string }; Returns: string }
       notify_expiring_commits: { Args: never; Returns: number }
       op_claim_daily_chips: { Args: never; Returns: Json }
       op_create_open_table: {
@@ -13783,6 +14678,23 @@ export type Database = {
         }
         Returns: Json
       }
+      record_club_expense: {
+        Args: {
+          p_adjusts_id?: string
+          p_amount_vnd: number
+          p_attachment_url?: string
+          p_category: Database["public"]["Enums"]["expense_category"]
+          p_club_id: string
+          p_description?: string
+          p_idempotency_key?: string
+          p_incurred_at: string
+          p_payment_source?: string
+          p_payment_status?: string
+          p_series_id?: string
+          p_tournament_id?: string
+        }
+        Returns: Json
+      }
       record_hand:
         | {
             Args: {
@@ -13811,6 +14723,16 @@ export type Database = {
             }
             Returns: Json
           }
+      record_tournament_prize_payment: {
+        Args: {
+          p_finished_place: number
+          p_method?: string
+          p_notes?: string
+          p_proof_url?: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       redraw_tournament: {
         Args: {
           p_draw_mode?: string
@@ -13857,6 +14779,15 @@ export type Database = {
           p_club_id: string
           p_predicted_arrival: string
           p_table_id: string
+        }
+        Returns: Json
+      }
+      review_availability_request: {
+        Args: {
+          p_club_id: string
+          p_dealer_id: string
+          p_decision: string
+          p_work_date: string
         }
         Returns: Json
       }
@@ -13956,6 +14887,15 @@ export type Database = {
         Returns: Json
       }
       sepay_set_system_actor: { Args: { p_actor_id: string }; Returns: Json }
+      series_capture_autosync: { Args: never; Returns: undefined }
+      series_capture_autosync_club: {
+        Args: { p_club_id: string }
+        Returns: Json
+      }
+      series_capture_sync_one_club: {
+        Args: { p_club_id: string; p_limit?: number }
+        Returns: Record<string, unknown>
+      }
       series_event_in_club: {
         Args: { _club: string; _event: string }
         Returns: boolean
@@ -13986,6 +14926,20 @@ export type Database = {
         Args: { p_members: Json; p_table_id: string }
         Returns: Json
       }
+      set_tracker_table_roster_seat: {
+        Args: {
+          p_actor_user_id?: string
+          p_avatar_url?: string
+          p_chip_count: number
+          p_existing_player_id?: string
+          p_player_name: string
+          p_seat_number: number
+          p_table_id: string
+          p_touch_avatar?: boolean
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       settle_bank_transaction: {
         Args: { p_auto_confirm?: boolean; p_bank_transaction_id: string }
         Returns: Json
@@ -14000,6 +14954,33 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      staff_check_in: { Args: { p_staff_id: string }; Returns: Json }
+      staff_check_out: { Args: { p_staff_id: string }; Returns: Json }
+      staff_cleanup_stale_attendance: {
+        Args: { p_stale_threshold_hours?: number }
+        Returns: Json
+      }
+      staff_link_user: {
+        Args: { p_staff_id: string; p_user_id: string }
+        Returns: Json
+      }
+      staff_upsert: {
+        Args: {
+          p_club_id: string
+          p_department: Database["public"]["Enums"]["staff_department"]
+          p_employment_type?: string
+          p_full_name: string
+          p_hourly_rate_vnd?: number
+          p_manual_bhxh_vnd?: number
+          p_manual_tax_vnd?: number
+          p_monthly_salary_vnd?: number
+          p_phone?: string
+          p_staff_id?: string
+          p_standard_hours_per_shift?: number
+          p_status?: string
+        }
+        Returns: Json
+      }
       start_hand: {
         Args: {
           p_button_seat?: number
@@ -14148,8 +15129,18 @@ export type Database = {
         | "platform_fee"
         | "refund"
       escrow_type: "manual_bank_vnd" | "smart_contract_usdt"
+      expense_category:
+        | "rent"
+        | "utilities"
+        | "salary_topup"
+        | "marketing"
+        | "supplies"
+        | "maintenance"
+        | "tax_fee"
+        | "misc"
       fnb_order_source: "table" | "counter"
       fnb_order_status: "pending" | "paid" | "shipped" | "cancelled" | "expired"
+      fnb_payment_method: "cash" | "bank_transfer"
       fnb_role_kind: "cashier" | "server" | "kitchen"
       fnb_stock_reason:
         | "stock_in"
@@ -14194,6 +15185,7 @@ export type Database = {
         | "club_schedule_updated"
         | "tournament_created"
         | "stream_live"
+        | "deal_refunded"
       registration_status: "pending" | "confirmed" | "rejected" | "cancelled"
       release_condition_type: "both_confirm" | "admin_override"
       release_request_status:
@@ -14201,6 +15193,7 @@ export type Database = {
         | "approved"
         | "executed"
         | "cancelled"
+      staff_department: "floor" | "cashier" | "tracker" | "service" | "security"
       staking_admin_review_status: "pending" | "approved" | "rejected"
       staking_audit_action:
         | "created"
@@ -14223,6 +15216,8 @@ export type Database = {
         | "admin_override_applied"
         | "payout_executed"
         | "auto_closed_deadline"
+        | "refunded"
+        | "release_cosign_state_mismatch"
       staking_deal_status:
         | "listing"
         | "committed"
@@ -14238,7 +15233,13 @@ export type Database = {
         | "cosigned"
         | "completed"
         | "committing"
-      tournament_status: "scheduled" | "live" | "finished" | "cancelled"
+        | "deal_refunded"
+      tournament_status:
+        | "scheduled"
+        | "live"
+        | "finished"
+        | "cancelled"
+        | "completed"
       upcoming_event_status: "open" | "closed" | "completed"
     }
     CompositeTypes: {
@@ -14400,8 +15401,19 @@ export const Constants = {
         "refund",
       ],
       escrow_type: ["manual_bank_vnd", "smart_contract_usdt"],
+      expense_category: [
+        "rent",
+        "utilities",
+        "salary_topup",
+        "marketing",
+        "supplies",
+        "maintenance",
+        "tax_fee",
+        "misc",
+      ],
       fnb_order_source: ["table", "counter"],
       fnb_order_status: ["pending", "paid", "shipped", "cancelled", "expired"],
+      fnb_payment_method: ["cash", "bank_transfer"],
       fnb_role_kind: ["cashier", "server", "kitchen"],
       fnb_stock_reason: [
         "stock_in",
@@ -14449,6 +15461,7 @@ export const Constants = {
         "club_schedule_updated",
         "tournament_created",
         "stream_live",
+        "deal_refunded",
       ],
       registration_status: ["pending", "confirmed", "rejected", "cancelled"],
       release_condition_type: ["both_confirm", "admin_override"],
@@ -14458,6 +15471,7 @@ export const Constants = {
         "executed",
         "cancelled",
       ],
+      staff_department: ["floor", "cashier", "tracker", "service", "security"],
       staking_admin_review_status: ["pending", "approved", "rejected"],
       staking_audit_action: [
         "created",
@@ -14480,6 +15494,8 @@ export const Constants = {
         "admin_override_applied",
         "payout_executed",
         "auto_closed_deadline",
+        "refunded",
+        "release_cosign_state_mismatch",
       ],
       staking_deal_status: [
         "listing",
@@ -14496,8 +15512,15 @@ export const Constants = {
         "cosigned",
         "completed",
         "committing",
+        "deal_refunded",
       ],
-      tournament_status: ["scheduled", "live", "finished", "cancelled"],
+      tournament_status: [
+        "scheduled",
+        "live",
+        "finished",
+        "cancelled",
+        "completed",
+      ],
       upcoming_event_status: ["open", "closed", "completed"],
     },
   },
