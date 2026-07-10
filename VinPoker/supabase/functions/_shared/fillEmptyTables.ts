@@ -16,7 +16,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer, type DealerCandidate } from "./pickNextDealer.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
-import { OPEN_TABLE_GRACE_MINUTES } from "./openTableGrace.ts";
+import { OPEN_TABLE_GRACE_MINUTES, bulkOpenStaggerMs } from "./openTableGrace.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -203,20 +203,38 @@ export async function fillEmptyTables(
   const hhmm = (d: Date) =>
     d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
 
+  // Wall-clock budget per invocation (2026-07-09 bugfix): a manual "mở 50 bàn" burst runs
+  // this loop over every empty table with up to 3 pickNextDealer rebuilds each — hundreds
+  // of serial round-trips that can blow the edge timeout and get killed mid-loop (some
+  // tables committed, the rest left "Chưa gán · Thiếu dealer", and the post-loop Telegram
+  // never runs). Stop CLEANLY when the budget is hit and return what committed; the client
+  // re-invokes in bounded passes and the per-minute cron backfills the remainder.
+  const fillDeadline = Date.now() + 20_000;
   for (const [index, table] of emptyTables.entries()) {
+    if (Date.now() > fillDeadline) {
+      slog("empty_table_fill_budget_exceeded", {
+        assigned_so_far: result.assignments.length,
+        remaining_tables: emptyTables.length - index,
+      });
+      break;
+    }
+    // Per-table fault isolation: one rejected query / RPC (or a slow pickNextDealer) must
+    // skip THIS table only, never throw out of the whole batch (root of "some tables never
+    // filled + no Telegram" — a single reject used to abort every remaining table).
+    try {
     let assigned = false;
 
     const effectiveDuration = tableOverrideConfig.get(table.id)
       ?? tournamentConfig.get(table.id)
       ?? null;
 
-    // Deterministic stagger: (index % 10) * 30s prevents synchronized OT entry.
-    // Max 4.5min drift for any table regardless of club size.
-    // Recycles cleanly for 20-30 table clubs.
-    // NOT on the AUTO path: the floor card reads ANY swing_due_at excess over
-    // swing_duration as WARMUP (SwingTableCard hasGrace), so a staggered auto-refill
-    // would also flash warmup. Manual opens keep the stagger.
-    const stagger = availableOnly ? 0 : (index % 10) * 30_000;
+    // Centered per-table stagger (F1 2026-07-08): spread the TARGET swing_due_at
+    // so a manual "Gán loạt" of N tables doesn't come due as one wave (root of the
+    // OT spiral). offset = (i − (n−1)/2) * step, clamped (bulkOpenStaggerMs). This
+    // only moves the moment the engine STARTS trying to swap — it NEVER force-
+    // releases anyone. NOT on the AUTO path (availableOnly): auto re-fill must show
+    // no warmup/drift (owner 2026-07-06) — kept at 0.
+    const stagger = availableOnly ? 0 : bulkOpenStaggerMs(index, emptyTables.length);
 
     // Open-table grace: OPENING a table (manual "Gán" / "Gán loạt", availableOnly=false)
     // gives the incoming dealer an OPEN_TABLE_GRACE_MINUTES warmup before the swing
@@ -226,10 +244,13 @@ export async function fillEmptyTables(
     // "warmup chỉ dành cho mở bàn"; before this, every post-swing auto re-fill
     // re-flashed a fresh 6-min WARMUP → tables looked like they kept re-opening.)
     const graceMs = availableOnly ? 0 : OPEN_TABLE_GRACE_MINUTES * 60_000;
+    // Floor: a negative (earlier) stagger offset must never pull the first stint
+    // below grace + minFirstStint — protects short-duration / large-batch corners.
+    const minDueMs = now.getTime() + graceMs + SWING_POLICY.bulkOpen.minFirstStintMinutes * 60_000;
     const tableSwingDueAt = effectiveDuration != null
-      ? new Date(now.getTime() + graceMs + effectiveDuration * 60_000 + stagger).toISOString()
+      ? new Date(Math.max(now.getTime() + graceMs + effectiveDuration * 60_000 + stagger, minDueMs)).toISOString()
       : swingDueAt
-        ? new Date(new Date(swingDueAt).getTime() + graceMs + stagger).toISOString()
+        ? new Date(Math.max(new Date(swingDueAt).getTime() + graceMs + stagger, minDueMs)).toISOString()
         : undefined;
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -363,6 +384,13 @@ export async function fillEmptyTables(
         table_id: table.id,
         table_name: table.table_name,
         available_only: availableOnly,
+      });
+    }
+    } catch (e) {
+      console.warn(`[fillEmptyTables] table ${table.id} errored, skipping:`, e instanceof Error ? e.message : String(e));
+      slog("empty_table_fill_error", {
+        table_id: table.id,
+        error: e instanceof Error ? e.message : String(e),
       });
     }
   }

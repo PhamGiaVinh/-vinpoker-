@@ -1,64 +1,126 @@
 /*
- * ops-ios.css — native-iOS material language for the mobileOpsV2 /ops screens.
- * Midnight Sakura dark (sumi #07050A · plum #120C18 · gold #C9A86A · sakura #E2718F · ivory #F2ECE6).
- * Scoped: only used inside /ops (imported by OpsShell). Borderless elevated surfaces, grouped lists,
- * grabbers, spring press, frosted bars — replaces the flat bordered "web app" look. No new tokens; just craft.
+ * ops-ios.css - native-iOS material language for the mobileOpsV2 /ops screens.
+ * Neon floor direction: black table surfaces, electric green accents, readable dense ops UI.
+ * Scoped: only used inside /ops (imported by OpsShell). Presentation-only; business/status semantics stay in components.
  */
 
 /* System font for authentic iOS feel + smooth momentum scroll */
 .ops-root {
+  --ops-bg: #030604;
+  --ops-bg-soft: #050a08;
+  --ops-surface: #09110e;
+  --ops-surface-hi: #0f1d17;
+  --ops-line: rgba(0, 255, 136, 0.12);
+  --ops-line-strong: rgba(0, 255, 136, 0.34);
+  --ops-neon: #00ff88;
+  --ops-neon-soft: #63ffb5;
+  --ops-neon-deep: #00b862;
+  --ops-neon-ink: #03110a;
+  --ops-text: #f2fff8;
+  --ops-muted: #91a49b;
+  --ops-muted-2: #6f8078;
+  --ops-danger: #ff4d6d;
+  --ops-warning: #ffbf47;
+  --ops-info: #38bdf8;
+
+  min-height: 100vh;
+  background:
+    radial-gradient(110% 62% at 50% -14%, rgba(0, 255, 136, 0.12), transparent 58%),
+    radial-gradient(80% 46% at 88% 8%, rgba(56, 189, 248, 0.07), transparent 60%),
+    linear-gradient(180deg, #07100c 0%, var(--ops-bg) 44%, #010302 100%);
+  color: var(--ops-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "case" 1;
+  letter-spacing: 0;
 }
 
-/* Elevated "material" card — borderless, lifts off the sumi background */
+.ops-root,
+.ops-root * {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "case" 1;
+  letter-spacing: 0;
+}
+
+.ops-sheet,
+.ops-sheet * {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "case" 1;
+  letter-spacing: 0;
+}
+
+/* Elevated material card - black felt surface with a restrained neon rim */
 .ios-card {
-  background: linear-gradient(180deg, rgba(32, 23, 41, 0.96) 0%, rgba(20, 14, 27, 0.96) 100%);
+  background:
+    linear-gradient(180deg, rgba(16, 29, 24, 0.96) 0%, rgba(7, 13, 11, 0.98) 100%),
+    var(--ops-surface);
+  border: 1px solid rgba(0, 255, 136, 0.08);
   border-radius: 22px;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
-    0 10px 30px -16px rgba(0, 0, 0, 0.8),
-    0 2px 6px -2px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.045),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.32),
+    0 18px 38px -24px rgba(0, 255, 136, 0.28),
+    0 14px 34px -18px rgba(0, 0, 0, 0.9);
 }
 
 /* Grouped inset list (iOS Settings style) */
 .ios-group {
-  background: linear-gradient(180deg, rgba(32, 23, 41, 0.94), rgba(20, 14, 27, 0.94));
+  background:
+    linear-gradient(180deg, rgba(15, 29, 23, 0.94), rgba(6, 12, 10, 0.96)),
+    var(--ops-surface);
+  border: 1px solid rgba(0, 255, 136, 0.07);
   border-radius: 20px;
   overflow: hidden;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
-    0 10px 30px -18px rgba(0, 0, 0, 0.8);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.045),
+    0 16px 34px -22px rgba(0, 255, 136, 0.22),
+    0 10px 30px -18px rgba(0, 0, 0, 0.86);
 }
 .ios-row { min-height: 54px; }
-.ios-row + .ios-row { border-top: 0.5px solid rgba(255, 255, 255, 0.075); }
-.ios-row-inset + .ios-row-inset { border-top: 0.5px solid rgba(255, 255, 255, 0.075); }
-/* divider inset so it aligns under the text, not the icon (iOS convention) */
+.ios-row + .ios-row { border-top: 0.5px solid rgba(0, 255, 136, 0.075); }
+.ios-row-inset + .ios-row-inset { border-top: 0.5px solid rgba(0, 255, 136, 0.075); }
+/* Divider inset so it aligns under the text, not the icon (iOS convention) */
 .ios-row-inset + .ios-row-inset { background-clip: padding-box; }
 
-/* Press feedback — springy scale-down, the single biggest "native" tell */
-.ios-press { transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1.2), opacity 0.16s ease; will-change: transform; }
+/* Press feedback - springy scale-down, the single biggest native tell */
+.ios-press { transition: transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1.2), opacity 0.16s ease, box-shadow 0.16s ease; will-change: transform; }
 .ios-press:active { transform: scale(0.96); opacity: 0.92; }
 .ios-press-sm:active { transform: scale(0.98); opacity: 0.9; transition: transform 0.12s ease; }
 
 /* Sheet grabber handle */
-.ios-grabber { width: 36px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.22); margin: 0 auto; }
+.ios-grabber { width: 36px; height: 5px; border-radius: 999px; background: rgba(99, 255, 181, 0.28); margin: 0 auto; }
 
-/* Tactile gold primary button — inner light + ambient glow */
+/* Tactile neon primary button - inner light + electric ambient glow */
 .ios-primary {
-  background: linear-gradient(180deg, #dcc08c 0%, #c9a86a 100%);
-  color: #1b1206;
+  background: linear-gradient(180deg, #86ffd0 0%, var(--ops-neon) 46%, var(--ops-neon-deep) 100%);
+  color: var(--ops-neon-ink);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 8px 22px -8px rgba(201, 168, 106, 0.6);
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 0 0 1px rgba(0, 255, 136, 0.28),
+    0 10px 28px -10px rgba(0, 255, 136, 0.72),
+    0 0 22px rgba(0, 255, 136, 0.22);
 }
+.ios-primary:disabled,
+.ios-primary[aria-disabled="true"] {
+  opacity: 0.48;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: none;
+}
+
 /* Tinted secondary (accent at low opacity per the design standard) */
 .ios-tinted {
-  background: rgba(201, 168, 106, 0.12);
-  color: #d8bc85;
+  background: rgba(0, 255, 136, 0.11);
+  color: var(--ops-neon-soft);
+  border: 1px solid rgba(0, 255, 136, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
-.ios-fill { background: rgba(255, 255, 255, 0.05); }
+.ios-fill {
+  background: rgba(0, 255, 136, 0.055);
+  border: 1px solid rgba(0, 255, 136, 0.07);
+}
 
 /* Frosted material bar (nav + tab bar) */
 .ios-blur {
@@ -73,11 +135,62 @@
   position: absolute;
   inset: -30% -12% auto -12%;
   height: 70%;
-  background: radial-gradient(60% 90% at 50% 0%, rgba(201, 168, 106, 0.18), transparent 72%);
+  background: radial-gradient(60% 90% at 50% 0%, rgba(0, 255, 136, 0.2), transparent 72%);
   pointer-events: none;
   z-index: 0;
 }
 .ios-glow > * { position: relative; z-index: 1; }
+
+/* Floor app neon remap for legacy gold/plum Tailwind utility tokens scoped to /ops only. */
+.ops-root [class~="text-[#c9a86a]"] {
+  color: var(--ops-neon) !important;
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.24);
+}
+.ops-root [class~="text-[#d8bc85]"] { color: var(--ops-neon-soft) !important; }
+.ops-root [class~="text-[#f2ece6]"] { color: var(--ops-text) !important; }
+.ops-root [class~="text-[#9b8e97]"] { color: var(--ops-muted) !important; }
+.ops-root [class~="text-[#241A08]"],
+.ops-root [class~="text-[#241a0c]"] { color: var(--ops-neon-ink) !important; }
+
+.ops-root [class~="bg-[#07050A]"],
+.ops-root [class~="bg-[#0b0810]"],
+.ops-root [class~="bg-[#120C18]"],
+.ops-root [class~="bg-[#171122]"],
+.ops-root [class~="bg-[#241a0c]"],
+.ops-root [class~="bg-[#241A2C]"] {
+  background-color: rgba(4, 12, 9, 0.94) !important;
+}
+.ops-root [class~="bg-[#07050A]/70"] { background-color: rgba(3, 6, 4, 0.7) !important; }
+.ops-root [class~="bg-[#0b0810]/80"] { background-color: rgba(2, 4, 3, 0.86) !important; }
+.ops-root [class~="bg-[#241A08]"] { background-color: var(--ops-neon-ink) !important; }
+.ops-root [class~="bg-[#c9a86a]"] { background-color: var(--ops-neon) !important; }
+.ops-root [class~="bg-[#c9a86a]/70"] { background-color: rgba(0, 255, 136, 0.7) !important; }
+.ops-root [class~="bg-[#c9a86a]/20"] { background-color: rgba(0, 255, 136, 0.2) !important; }
+.ops-root [class~="bg-[#c9a86a]/15"] { background-color: rgba(0, 255, 136, 0.15) !important; }
+.ops-root [class~="bg-[#c9a86a]/14"] { background-color: rgba(0, 255, 136, 0.14) !important; }
+.ops-root [class~="bg-[#c9a86a]/12"] { background-color: rgba(0, 255, 136, 0.12) !important; }
+.ops-root [class~="bg-[#c9a86a]/10"] { background-color: rgba(0, 255, 136, 0.1) !important; }
+.ops-root [class~="hover:bg-[#d8bc85]"]:hover { background-color: var(--ops-neon-soft) !important; }
+
+.ops-root [class~="border-[#c9a86a]"] { border-color: var(--ops-neon) !important; }
+.ops-root [class~="border-[#c9a86a]/50"] { border-color: rgba(0, 255, 136, 0.5) !important; }
+.ops-root [class~="border-[#c9a86a]/40"] { border-color: rgba(0, 255, 136, 0.4) !important; }
+.ops-root [class~="border-[#c9a86a]/30"] { border-color: rgba(0, 255, 136, 0.3) !important; }
+.ops-root [class~="border-[#c9a86a]/25"] { border-color: rgba(0, 255, 136, 0.25) !important; }
+.ops-root [class~="border-[#c9a86a]/20"] { border-color: rgba(0, 255, 136, 0.2) !important; }
+.ops-root [class~="border-[#c9a86a]/15"] { border-color: rgba(0, 255, 136, 0.15) !important; }
+.ops-root [class~="ring-[#c9a86a]/40"] { --tw-ring-color: rgba(0, 255, 136, 0.4) !important; }
+.ops-root [class~="ring-[#c9a86a]/30"] { --tw-ring-color: rgba(0, 255, 136, 0.3) !important; }
+
+.ops-root [class~="shadow-[0_0_0_1px_rgba(201,168,106,0.35)]"] {
+  box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.34) !important;
+}
+.ops-root [class~="shadow-[0_10px_24px_-12px_rgba(201,168,106,0.45)]"] {
+  box-shadow: 0 10px 24px -12px rgba(0, 255, 136, 0.48) !important;
+}
+.ops-root [class~="[text-shadow:0_2px_16px_rgba(201,168,106,0.35)]"] {
+  text-shadow: 0 0 18px rgba(0, 255, 136, 0.42) !important;
+}
 
 /* Entrance + live pulse (respect reduced motion) */
 @keyframes iosUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }

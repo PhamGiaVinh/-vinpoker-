@@ -33,6 +33,7 @@ import { HandControlsStrip } from "./HandControlsStrip";
 import { ViewerSyncStatus } from "./ViewerSyncStatus";
 import { WorkflowProgressRail } from "./WorkflowProgressRail";
 import { HandGuideDrawer } from "./HandGuideDrawer";
+import { TrackerSoundToggle } from "./TrackerSoundToggle";
 import { OperatorActionLog } from "./OperatorActionLog";
 import { formatStack } from "./format";
 import type { PlayerState, StandaloneHandInput } from "./useStandaloneHandInput";
@@ -348,6 +349,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <TrackerSoundToggle />
         <HandGuideDrawer />
         <ViewerSyncStatus phase={hook.syncPhase} lastLabel={hook.syncLabel} />
       </div>
@@ -407,6 +409,7 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
         waiting={rich ? !hook.handStarted : undefined}
         betChips={FEATURES.liveBetChips}
         dealerFix={FEATURES.trackerFeltDealerFix}
+        feltV2={FEATURES.trackerFeltV2}
       />
     );
 
@@ -422,6 +425,8 @@ export function RacetrackHandInputConsole({ hook }: { hook: StandaloneHandInput 
             onVoid={hook.handleVoid}
             hasVoidTarget={!!(hook.lastHandId || hook.handStarted)}
             disabled={hook.submitting}
+            streetRollback={hook.streetRollbackUi}
+            onStreetRollback={hook.handleStreetRollback}
           />
         )}
         {hook.handStarted && !hook.isSummary && hook.blindLevelChanged && (

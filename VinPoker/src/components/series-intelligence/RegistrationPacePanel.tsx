@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { Users, AlertTriangle, FlaskConical } from "lucide-react";
+import { Users, AlertTriangle, FlaskConical, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
 import { registrationPace, type RegPaceStatus } from "@/lib/series-intelligence/registrationPace";
+import { useNativeSeriesEvents } from "@/lib/series-intelligence/useNativeSeriesEvents";
+import { useEventPace } from "@/lib/series-intelligence/useEventPace";
+import { estimatePaceFraction, nowcastBlend } from "@/lib/series-intelligence/nowcast";
 import { ExplainHint } from "./ExplainHint";
 
 const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s));
@@ -36,6 +41,26 @@ export function RegistrationPacePanel() {
     current !== null
       ? registrationPace({ forecast, current, daysOpen: daysOpen ?? 0, daysLeft: daysLeft ?? 0 })
       : null;
+
+  // TP1 — nowcast: when the club's real data is reachable, blend model (owner's "dự báo cuối") with what
+  // sign-ups so far imply, learning the pace curve from past events. Hooks always run; query self-gates.
+  const native = useNativeSeriesEvents();
+  const pace = useEventPace(native.events[0]?.clubId, native.events);
+  const [nowcastEventId, setNowcastEventId] = useState("");
+  const nowcastEvent = native.events.find((e) => e.event_id === nowcastEventId) ?? null;
+  const nowcast = (() => {
+    if (!FEATURES.seriesNowcast || !pace.available || !nowcastEvent?.event_date) return null;
+    const start = new Date(nowcastEvent.event_date).getTime();
+    if (Number.isNaN(start)) return null;
+    const daysToEvent = Math.max(0, Math.ceil((start - Date.now()) / 86_400_000));
+    const registrationsSoFar = pace.regCountByEvent.get(nowcastEvent.event_id) ?? 0;
+    const paceFraction = estimatePaceFraction(pace.paceHistory, daysToEvent);
+    return {
+      daysToEvent,
+      registrationsSoFar,
+      result: nowcastBlend({ registrationsSoFar, daysToEvent, paceFraction, modelForecast: forecast }),
+    };
+  })();
 
   return (
     <Card className="p-3 border-primary/30 space-y-2.5 text-xs">
@@ -91,6 +116,46 @@ export function RegistrationPacePanel() {
             </div>
           )}
           <div className="text-[10px] text-muted-foreground/90">{r.caveat}</div>
+        </div>
+      )}
+
+      {/* TP1 — nowcast từ đăng ký thật (chỉ hiện khi đọc được dữ liệu autosync của CLB) */}
+      {FEATURES.seriesNowcast && pace.available && native.events.length > 0 && (
+        <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium">
+            <Zap className="h-3.5 w-3.5 text-primary" /> Nowcast — tự lấy đăng ký thật + học nhịp từ giải cũ
+          </div>
+          <Select value={nowcastEventId || undefined} onValueChange={setNowcastEventId}>
+            <SelectTrigger className="h-8"><SelectValue placeholder="Chọn giải sắp tới (tự điền số đăng ký)" /></SelectTrigger>
+            <SelectContent>
+              {native.events.map((e) => (
+                <SelectItem key={e.event_id} value={e.event_id}>{e.event_name ?? e.event_id}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {nowcast && nowcast.result.available && (
+            <div className="text-[11px] leading-relaxed">
+              Đăng ký thật: <b className="tabular-nums">{nowcast.registrationsSoFar}</b> · còn{" "}
+              <b className="tabular-nums">{nowcast.daysToEvent}</b> ngày ·{" "}
+              {nowcast.result.paceImplied !== null && (
+                <>nhịp đang ngụ ý <b className="tabular-nums">{nowcast.result.paceImplied}</b> · </>
+              )}
+              <b className="text-primary tabular-nums">
+                nowcast {nowcast.result.blended}
+              </b>{" "}
+              <span className="text-muted-foreground">
+                ({nowcast.result.basis === "blend"
+                  ? `pha trộn, trọng số pace ${Math.round(nowcast.result.weightPace * 100)}%`
+                  : nowcast.result.basis === "model-only"
+                    ? "chưa đủ lịch sử nhịp → dùng dự báo model"
+                    : "chưa nhập dự báo → chỉ theo nhịp"})
+              </span>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground/90">
+            Nowcast trộn dự báo model với đăng ký thật; càng gần ngày giải + càng nhiều người đã đăng ký thì càng
+            tin nhịp thật. τ (tỷ lệ đã đăng ký tới mốc này) học từ các giải ĐÃ XONG của CLB. Nhãn Giả thuyết.
+          </p>
         </div>
       )}
 

@@ -13,9 +13,23 @@ interface HandControlsStripProps {
   onVoid: () => void;
   hasVoidTarget: boolean;
   disabled?: boolean;
+  // C2 (trackerStreetRollback) — OPTIONAL: when absent/null the strip renders
+  // byte-identically to today. busy shows "k/N" progress; disabledReason renders
+  // the button disabled with the plain-VN reason as title/aria-label.
+  streetRollback?: { label: string; busy: boolean; progress?: string; disabledReason?: string } | null;
+  onStreetRollback?: () => void;
 }
 
-export function HandControlsStrip({ onUndo, canUndo, onReset, onVoid, hasVoidTarget, disabled }: HandControlsStripProps) {
+export function HandControlsStrip({
+  onUndo,
+  canUndo,
+  onReset,
+  onVoid,
+  hasVoidTarget,
+  disabled,
+  streetRollback,
+  onStreetRollback,
+}: HandControlsStripProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 bg-popover">
       <button
@@ -27,6 +41,23 @@ export function HandControlsStrip({ onUndo, canUndo, onReset, onVoid, hasVoidTar
       >
         <Undo2 className="w-4 h-4" aria-hidden="true" /> Hoàn tác
       </button>
+      {streetRollback && (
+        <button
+          type="button"
+          onClick={onStreetRollback}
+          disabled={disabled || streetRollback.busy || !!streetRollback.disabledReason}
+          title={streetRollback.disabledReason}
+          aria-label={
+            streetRollback.disabledReason ?? `Hoàn tác cả vòng ${streetRollback.label}`
+          }
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-300 border border-amber-500/50 rounded-lg px-3 py-2 hover:bg-amber-500/10 transition disabled:opacity-35"
+        >
+          <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+          {streetRollback.busy
+            ? `Đang hoàn tác… (${streetRollback.progress ?? ""})`
+            : `Hoàn tác cả vòng ${streetRollback.label}`}
+        </button>
+      )}
       <button
         type="button"
         onClick={onReset}

@@ -28,6 +28,7 @@ import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { OverviewCards, type OverlayCostSummary } from "./OverviewCards";
 import { ContributionByTypeCard } from "./ContributionByTypeCard";
 import { FnbClubContributionCard } from "./FnbClubContributionCard";
+import { WithinSeriesElasticityCard } from "./WithinSeriesElasticityCard";
 import { QuarterlyBreakdownCard } from "./QuarterlyBreakdownCard";
 import { RegimeSwitch } from "./RegimeSwitch";
 import { DataQualityCard } from "./DataQualityCard";
@@ -126,6 +127,9 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
     fnbEnabled && fnbWindow ? (
       <FnbClubContributionCard window={fnbWindow} report={fnbReport.data} loading={fnbReport.isLoading} error={fnbReport.isError} />
     ) : null;
+  // TP4 — within-series price sensitivity (γ per brand + pooled). Gated OFF by default; a null card renders
+  // nothing so the flag-off layout is unchanged.
+  const cardElasticity = FEATURES.seriesPriceElasticity ? <WithinSeriesElasticityCard events={events} /> : null;
   const cardRisk = <RiskInsightCards risks={view.risks} />;
   const cardScenario = <ScenarioOutlook outlook={view.scenarios} actions={view.scenarioActions} />;
   const cardGtd = <GtdOverlayCard overlay={view.gtdOverlay} truePrizeByEvent={truePrizeByEvent} />;
@@ -138,6 +142,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
       <CommandGroup icon={Coins} title="Tiền" subtitle="biên theo loại · F&B · theo quý" defaultOpen>
         {cardContribution}
         {cardFnb}
+        {cardElasticity}
         {cardQuarterly}
       </CommandGroup>
       <CommandGroup icon={ShieldAlert} title="Rủi ro và dữ liệu" subtitle="độ phủ · rủi ro · GTD · kịch bản · việc cần làm">
@@ -158,6 +163,7 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
       {cardEconomics}
       {cardContribution}
       {cardFnb}
+      {cardElasticity}
       {cardRisk}
       {cardScenario}
       {cardGtd}

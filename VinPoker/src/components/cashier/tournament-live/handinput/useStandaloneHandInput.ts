@@ -26,7 +26,7 @@ import {
   nextActionOrderFrom,
   type ResumeActionRow,
 } from "./resumeHand";
-import { computePotBreakdown, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
+import { computePotBreakdown, contributionsFromActions, toSidePotsJson } from "@/lib/tracker-poker/potEngine";
 import { actorView } from "@/lib/tracker-poker/handFlow";
 import {
   actorToAct,
@@ -48,7 +48,7 @@ import {
 import { FEATURES } from "@/lib/featureFlags";
 import { settleShowdown, type ShowdownLayerResult } from "@/lib/tracker-poker/trackerShowdown";
 import { computeRankShifts } from "@/lib/tracker-poker/rankShift";
-import { survivorsAfterHand } from "./postHand";
+import { clearBettingState, survivorsAfterHand } from "./postHand";
 import {
   deriveTrackerWorkflowState,
   isActionState,
@@ -73,6 +73,20 @@ import {
   readEdgeError,
   type EdgePlayer,
 } from "./handInputEdge";
+import {
+  ROLLBACK_CLEAR_FROM,
+  ROLLBACK_STREET_LABELS,
+  nextRollbackStep,
+  planStreetRollback,
+  rollbackTargetFrom,
+  type StreetRollbackState,
+} from "./streetRollback";
+import {
+  ACTION_SOUND_KINDS,
+  playTrackerSound,
+  playTrackerSoundOnce,
+} from "@/lib/trackerSound";
+import type { PokerLiveSound } from "@/lib/pokerLiveSound";
 
 type Street = "preflop" | "flop" | "turn" | "river" | "showdown";
 
@@ -199,6 +213,15 @@ export function useStandaloneHandInput(tournamentId: string) {
   >([]);
   const [sentCommunityStreets, setSentCommunityStreets] = useState<Set<Street>>(new Set());
   const [persistedBoardCount, setPersistedBoardCount] = useState(0);
+  // C2 (trackerStreetRollback) — the running "Hoàn tác cả vòng" chain (null = idle).
+  // The ref mirror lets stable callbacks (resetHand's useCallback) hard-gate without
+  // adding the chain to their dep lists.
+  const [streetRollback, setStreetRollback] = useState<StreetRollbackState | null>(null);
+  const streetRollbackRef = useRef<StreetRollbackState | null>(null);
+  streetRollbackRef.current = streetRollback;
+  // C4 (trackerActionSounds) — owner P0 dedupe: deal/pot-collect sounds fire once per
+  // (handId, street, kind) tuple, so a retried send or replayed state never double-plays.
+  const playedSoundsRef = useRef<Set<string>>(new Set());
   // trackerSeatSetup: false once we learn tournament_seats.avatar_url is absent (migration
   // not applied) → the roster panel disables the avatar control ("chưa áp dụng") but keeps
   // name/chip. Stays true when the flag is off (irrelevant).
@@ -383,7 +406,13 @@ export function useStandaloneHandInput(tournamentId: string) {
     if (label !== undefined) setSyncLabel(label);
   }, []);
 
-  const resetHand = useCallback(() => {
+  const resetHand = useCallback((opts?: { restoreStacks?: boolean }) => {
+    // C2 hard-gate (ref: stable callback, no dep churn): never wipe local state while
+    // the rollback chain is mid-flight — server deletes would keep landing on it.
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     setCurrentStreet("preflop");
     setActions([]);
     setCommunityCards([null, null, null, null, null]);
@@ -404,8 +433,14 @@ export function useStandaloneHandInput(tournamentId: string) {
     setButtonOverridden(false); // P2-5: new hand → the dead-button suggestion drives the button again
     setSentCommunityStreets(new Set());
     setPersistedBoardCount(0);
+    playedSoundsRef.current.clear(); // C4: fresh dedupe window per hand
     setSyncPhase("idle");
     setSyncLabel(null);
+    // BUGFIX: the previous hand's betting state MUST NOT leak into the next hand
+    // (stale total_bet → inflated side_pots on submit + ghost Main/Side pills on a
+    // not-yet-started felt). restoreStacks is true ONLY from handleVoid — see
+    // clearBettingState's doc for why any other restore would be wrong.
+    setPlayers((prev) => clearBettingState(prev, opts?.restoreStacks === true));
     if (tableId) {
       supabase
         .rpc("get_next_hand_number", { p_tournament_id: tournamentId, p_table_id: tableId })
@@ -1257,6 +1292,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("Phiên làm việc đã hết hạn");
       return false;
     }
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return false;
+    }
     // Workflow v2 HARD-GATE: blind posts only during setup_blinds; betting actions
     // only during an action state. Never bypass the state machine.
     const isPost = actionType.startsWith("post_");
@@ -1392,6 +1431,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       },
     ]);
     setBetAmount("");
+    // C4: audible press feedback the moment the action is accepted locally (flag-gated
+    // + mute-gated inside; action_type strings map 1:1 onto PokerLiveSound kinds).
+    if (ACTION_SOUND_KINDS.has(actionType)) playTrackerSound(actionType as PokerLiveSound);
 
     if (handId) {
       markSync("sending", `S${player.seat_number} ${actionType}`);
@@ -1509,6 +1551,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       return;
     }
     if (autoBlindStep !== null) return; // chain already running (double-tap guard)
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     const sbPlayer = players.find((p) => p.seat_number === blindSbSeat);
     const bbPlayer = players.find((p) => p.seat_number === blindBbSeat);
     if (!bbPlayer || bbAmount <= 0 || (!effectiveDeadSb && (!sbPlayer || sbAmount <= 0))) {
@@ -1613,6 +1659,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("Phiên làm việc đã hết hạn");
       return;
     }
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     if (undoStack.length === 0) {
       toast.error("Không có hành động nào để hoàn tác");
       return;
@@ -1633,8 +1683,191 @@ export function useStandaloneHandInput(tournamentId: string) {
     toast.success("Đã hoàn tác hành động cuối");
   };
 
+  // ── C2 (trackerStreetRollback) — "Hoàn tác cả vòng" ────────────────────────────
+  // Decision logic lives in streetRollback.ts (pure, unit-tested); this block is the
+  // trigger + the one-step-per-render executor (A1 blind-chain pattern).
+  const streetRollbackPlan = useMemo(
+    () =>
+      planStreetRollback({
+        persistedBoardCount,
+        actions,
+        undoStackLength: undoStack.length,
+        isReadOnly,
+        submitting,
+        chainRunning: streetRollback !== null || autoBlindStep !== null,
+        isRunout: allInRunout,
+        currentStreet,
+        isSummary,
+        handId,
+      }),
+    [
+      persistedBoardCount,
+      actions,
+      undoStack.length,
+      isReadOnly,
+      submitting,
+      streetRollback,
+      autoBlindStep,
+      allInRunout,
+      currentStreet,
+      isSummary,
+      handId,
+    ],
+  );
+
+  const handleStreetRollback = () => {
+    const plan = streetRollbackPlan;
+    if (!plan) return;
+    if ("blocked" in plan) {
+      toast.error(plan.blocked);
+      return;
+    }
+    const label = ROLLBACK_STREET_LABELS[plan.street];
+    // Owner P1 — the confirm states explicitly: how many actions get deleted, which
+    // street reverts, that the cards return to the editable slots, and that the
+    // viewer sees the cards disappear.
+    const lines = [
+      `Hoàn tác cả vòng ${label}?`,
+      ...(plan.deletes > 0 ? [`• Xoá ${plan.deletes} hành động của vòng ${label}`] : []),
+      `• Thu hồi bài ${label} trên viewer — người xem sẽ thấy bài biến mất`,
+      `• Bài ${label} quay lại ô nhập để sửa / gửi lại`,
+      `Sau đó bạn quay về bước nhập bài ${label}. Để sửa hành động ở vòng trước, bấm tiếp "Hoàn tác" từng bước.`,
+    ];
+    if (!confirm(lines.join("\n"))) return;
+    setSubmitting(true);
+    markSync("sending", `Hoàn tác vòng ${label}`);
+    setStreetRollback({
+      street: plan.street,
+      phase: plan.deletes === 0 ? "shrinking" : "deleting",
+      deletesRemaining: plan.deletes,
+      total: plan.deletes,
+    });
+  };
+
+  // The executor: ONE async step per render — MANDATORY, because restoreLastSnapshot
+  // reads undoStack from its render's closure; a while-loop would pop the same stale
+  // snapshot N times. Deletes run strictly BEFORE the board shrink (D4: resume derives
+  // its street from MAX(board, actions), so every crash point resolves consistently).
+  useEffect(() => {
+    if (!streetRollback || !handId) return;
+    let cancelled = false;
+    const { street } = streetRollback;
+    const label = ROLLBACK_STREET_LABELS[street];
+    const failChain = (msg: string) => {
+      setStreetRollback(null);
+      setSubmitting(false);
+      markSync("error");
+      toast.error(msg);
+    };
+    const step = nextRollbackStep(streetRollback);
+    if (step.kind === "transition_to_shrink") {
+      setStreetRollback((s) => (s ? { ...s, phase: "shrinking" } : s));
+      return;
+    }
+    if (step.kind === "delete") {
+      const stepNo = streetRollback.total - streetRollback.deletesRemaining + 1;
+      markSync("sending", `Hoàn tác ${label} (${stepNo}/${streetRollback.total})`);
+      supabase.functions
+        .invoke("tournament-live-update", {
+          body: buildDeleteLastActionBody({ tournamentId, handId }),
+        })
+        .then(({ data, error }) => {
+          if (cancelled) return;
+          const rejection = (error as any)?.context?.body?.error || (data as any)?.error;
+          if (error || rejection) {
+            // Earlier confirmed deletes stand and were each mirrored by a pop —
+            // local == server. Re-tap recomputes the remaining count and resumes.
+            const done = streetRollback.total - streetRollback.deletesRemaining;
+            failChain(
+              `Hoàn tác dừng giữa chừng — đã xoá ${done}/${streetRollback.total} hành động. Bấm "Hoàn tác cả vòng" lần nữa để tiếp tục.`,
+            );
+            return;
+          }
+          restoreLastSnapshot(); // ONE pop — this render's fresh closure
+          setStreetRollback((s) => (s ? { ...s, deletesRemaining: s.deletesRemaining - 1 } : s));
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    // step.kind === "shrink" — direct invoke with buildUpdateCommunityCardsBody:
+    // handleUpdateCommunityCards must NOT be reused (its isBoardEntryState hard-gate
+    // would reject — workflowState is still {street}_action at this moment).
+    const slice = communityCards.slice(0, step.keepCount).filter((c): c is Card => c !== null);
+    supabase.functions
+      .invoke("tournament-live-update", {
+        body: buildUpdateCommunityCardsBody({ tournamentId, handId, communityCards: slice }),
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || (data as any)?.error) {
+          // All deletes already landed; board flags untouched → a coherent
+          // "{street} dealt, awaiting first action" state. Re-tap goes straight to
+          // shrinking (deletes recompute to 0) — the operation is resumable.
+          failChain(
+            `Đã xoá hành động nhưng chưa thu hồi được bài ${label} — bấm "Hoàn tác cả vòng" lần nữa để thử lại.`,
+          );
+          return;
+        }
+        // Synchronous local rewind — ONE batched commit (D2/D3). currentStreet was
+        // already left at the target by the pops (n>0); setting it covers n=0.
+        setSentCommunityStreets((prev) => {
+          const nx = new Set(prev);
+          nx.delete(street);
+          return nx;
+        });
+        setPersistedBoardCount(step.keepCount);
+        setCommunityCards((prev) => prev.map((c, idx) => (idx >= step.clearFrom ? null : c)));
+        setCurrentStreet(street);
+        setSelectedActorId(null);
+        setBetAmount("");
+        setStreetRollback(null);
+        setSubmitting(false);
+        markSync("sent", `Đã hoàn tác vòng ${label}`);
+        toast.success(
+          `Đã hoàn tác cả vòng ${label} — nhập lại bài ${label} hoặc bấm Hoàn tác để sửa vòng trước.`,
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+    // One step per render; every other input is read from this render's closure by
+    // design (the A1 chain pattern).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streetRollback]);
+
+  // View-model for the HandControlsStrip button. null when the flag is off / no
+  // rollback target — the strip renders byte-identically to today.
+  const streetRollbackUi = useMemo(() => {
+    if (!FEATURES.trackerStreetRollback || !handStarted || isSummary) return null;
+    if (streetRollback) {
+      return {
+        label: ROLLBACK_STREET_LABELS[streetRollback.street],
+        busy: true,
+        progress: `${streetRollback.total - streetRollback.deletesRemaining}/${streetRollback.total}`,
+      };
+    }
+    const target = rollbackTargetFrom(persistedBoardCount);
+    if (!target || currentStreet === "showdown") return null;
+    if (streetRollbackPlan && "blocked" in streetRollbackPlan) {
+      // submitting is transient noise (the strip's own `disabled` covers it) — hide
+      // instead of flashing a disabled-reason tooltip mid-send.
+      if (submitting) return null;
+      return {
+        label: ROLLBACK_STREET_LABELS[target],
+        busy: false,
+        disabledReason: streetRollbackPlan.blocked,
+      };
+    }
+    return { label: ROLLBACK_STREET_LABELS[target], busy: false };
+  }, [handStarted, isSummary, streetRollback, persistedBoardCount, currentStreet, streetRollbackPlan, submitting]);
+
   const handleUpdateCommunityCards = async () => {
     if (!handId || isReadOnly) return;
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     const cards = communityCards.filter((c): c is Card => c !== null);
     // Workflow v2 HARD-GATE: only in the matching enter_* state, count COMPLETE
     // (3/1/1), no duplicate, street must match.
@@ -1669,6 +1902,14 @@ export function useStandaloneHandInput(tournamentId: string) {
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
       setSentCommunityStreets((prev) => new Set(prev).add(currentStreet));
       setPersistedBoardCount(cards.length);
+      // C4: chips gather into the pot, then the street's cards hit the felt.
+      playTrackerSoundOnce(playedSoundsRef.current, handId, currentStreet, "pot_collect");
+      playTrackerSoundOnce(
+        playedSoundsRef.current,
+        handId,
+        currentStreet,
+        cards.length >= 5 ? "deal_river" : cards.length === 4 ? "deal_turn" : "deal_flop",
+      );
       toast.success(`Đã gửi ${STREET_LABELS[currentStreet]} lên viewer (${cards.length} lá)`);
       markSync("sent", `${STREET_LABELS[currentStreet]} (${cards.length} lá)`);
     } catch (e: any) {
@@ -1689,6 +1930,10 @@ export function useStandaloneHandInput(tournamentId: string) {
   const RUNOUT_STAGE_MS = 900;
   const handleRunoutDealAll = async () => {
     if (!handId || isReadOnly) return;
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     if (!isBoardEntryState(workflowState)) {
       toast.error("Chưa tới bước chia bài board");
       return;
@@ -1725,6 +1970,15 @@ export function useStandaloneHandInput(tournamentId: string) {
         setSentCommunityStreets((prev) => new Set(prev).add(street));
         setCurrentStreet(street);
         setPlayers((prev) => prev.map((p) => ({ ...p, current_bet: 0 })));
+        // C4: one pot-collect when the runout starts (bets were gathered once), then
+        // a deal sound per staged street reveal.
+        if (k === 0) playTrackerSoundOnce(playedSoundsRef.current, handId, street, "pot_collect");
+        playTrackerSoundOnce(
+          playedSoundsRef.current,
+          handId,
+          street,
+          count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop",
+        );
         markSync("sent", `${STREET_LABELS[street]} (${count} lá)`);
         // Space the reveals so the viewer sees flop → turn → river, not all-at-once.
         if (k < stages.length - 1) await new Promise((r) => setTimeout(r, RUNOUT_STAGE_MS));
@@ -1899,6 +2153,17 @@ export function useStandaloneHandInput(tournamentId: string) {
         starting_stack: p.starting_stack,
         current_stack: p.current_stack,
       }));
+      // BUGFIX: derive the submitted side_pots from the SAME action stream the server
+      // recomputes from (reconcileSidePots runs contributionsFromActions over the
+      // payload's actions). The old source — players[].total_bet — could drift from the
+      // actions (stale carryover) and trip "side_pots không khớp" in enforce mode.
+      // `actions` is the CURRENT hand only (reset per hand); the on-felt potBreakdown
+      // display memo is unchanged.
+      const submitBreakdown = computePotBreakdown(
+        contributionsFromActions(
+          actions.map((a) => ({ player_id: a.player_id, action_type: a.action_type, action_amount: a.amount }))
+        )
+      );
       const { data, error } = await supabase.functions.invoke("tournament-live-update", {
         body: buildRecordHandBody({
           tournamentId,
@@ -1910,7 +2175,7 @@ export function useStandaloneHandInput(tournamentId: string) {
           players: edgePlayers,
           endingStacks,
           playerHoleCards,
-          sidePots: toSidePotsJson(potBreakdown),
+          sidePots: toSidePotsJson(submitBreakdown),
           actions: actions.map((a) => ({
             player_id: a.player_id,
             action_type: a.action_type,
@@ -1922,6 +2187,8 @@ export function useStandaloneHandInput(tournamentId: string) {
       });
       if (error || data?.error) throw new Error(await readEdgeError(error, data));
       toast.success("Hand recorded successfully");
+      // C4: the final pot is pushed to the winner — one collect per recorded hand.
+      playTrackerSoundOnce(playedSoundsRef.current, handId, "hand_end", "pot_collect");
       markSync("sent", `Hand #${Number(handNumber)} đã lưu`);
       setLastHandId(data?.data?.hand_id ?? null);
       const { data: refreshedSeats } = await supabase
@@ -1964,6 +2231,10 @@ export function useStandaloneHandInput(tournamentId: string) {
       toast.error("No hand to void");
       return;
     }
+    if (streetRollbackRef.current) {
+      toast.error("Đang hoàn tác vòng — chờ xong đã");
+      return;
+    }
     if (!confirm("CONFIRM VOID: Toàn bộ chip sẽ hoàn về trạng thái trước hand?")) return;
     setSubmitting(true);
     try {
@@ -1975,7 +2246,9 @@ export function useStandaloneHandInput(tournamentId: string) {
       setLastHandId(null);
       setHandId(null);
       setHandStarted(false);
-      resetHand();
+      // Void is the ONLY path that restores stacks: the server put every chip back to
+      // the pre-hand state, so the felt mirrors it (see resetHand's restoreStacks note).
+      resetHand({ restoreStacks: true });
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -2023,6 +2296,9 @@ export function useStandaloneHandInput(tournamentId: string) {
   // ----- Engine auto-advance (local state only; viewer driven by persisted path) --
   useEffect(() => {
     if (!handStarted || isSummary || isReadOnly) return;
+    // C2 defensive gate: never auto-advance (or auto-settle a fold-win) while the
+    // rollback chain is mid-flight — transients between pops must not re-advance.
+    if (streetRollback) return;
     if (currentStreet === "showdown") return;
     const winner = foldWinner(engineState.seats);
     if (winner && actions.length > 0) {
@@ -2041,7 +2317,7 @@ export function useStandaloneHandInput(tournamentId: string) {
       nextStreet();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handStarted, isSummary, isReadOnly, currentStreet, players, actions, engineState, blindsConfirmed, sentCommunityStreets]);
+  }, [handStarted, isSummary, isReadOnly, currentStreet, players, actions, engineState, blindsConfirmed, sentCommunityStreets, streetRollback]);
 
   return {
     // identity / status
@@ -2154,6 +2430,9 @@ export function useStandaloneHandInput(tournamentId: string) {
     handleUndo,
     handleUpdateCommunityCards,
     handleRunoutDealAll,
+    // C2 (trackerStreetRollback)
+    streetRollbackUi,
+    handleStreetRollback,
     persistedBoardCount,
     handleShowHoleCards,
     handleRevealRunout,

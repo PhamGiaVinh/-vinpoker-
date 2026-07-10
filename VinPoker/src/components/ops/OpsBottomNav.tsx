@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * OpsBottomNav — frosted native-iOS tab bar cho mobileOpsV2 (Hôm nay/Giải đấu/Bàn/Cảnh báo/Thêm).
- * Translucent material, gold active tint, hairline top edge. docs/design/ios-operations-components.md §2.
+ * Translucent material, neon active tint, hairline top edge. docs/design/ios-operations-components.md §2.
  */
 type OpsTab = { to: string; end: boolean; icon: LucideIcon; label: string; badge?: number };
 
@@ -18,7 +18,7 @@ const TABS: OpsTab[] = [
 
 export function OpsBottomNav() {
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 ios-blur bg-[#0b0810]/80 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+    <nav className="fixed bottom-0 inset-x-0 z-40 ios-blur bg-[#020403]/88 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/8" />
       <div className="mx-auto grid h-[58px] max-w-md grid-cols-5 items-stretch">
         {TABS.map((tab) => (
@@ -29,7 +29,7 @@ export function OpsBottomNav() {
             className={({ isActive }) =>
               cn(
                 "ios-press-sm flex flex-col items-center justify-center gap-1 pt-1 text-[10px] font-medium transition-colors",
-                isActive ? "text-[#c9a86a]" : "text-[#9b8e97]",
+                isActive ? "text-[#00ff88]" : "text-[#91a49b]",
               )
             }
           >
@@ -39,7 +39,7 @@ export function OpsBottomNav() {
                   <tab.icon
                     className="h-[23px] w-[23px]"
                     strokeWidth={isActive ? 2.4 : 2}
-                    style={isActive ? { filter: "drop-shadow(0 0 8px rgba(201,168,106,0.55))" } : undefined}
+                    style={isActive ? { filter: "drop-shadow(0 0 8px rgba(0,255,136,0.65))" } : undefined}
                   />
                   {tab.badge ? (
                     <span className="absolute -right-2 -top-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-[#e2718f] px-1 text-[9px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(226,113,143,0.7)]">

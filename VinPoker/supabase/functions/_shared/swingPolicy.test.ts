@@ -36,6 +36,12 @@ Deno.test("pre-assign window match original literals", () => {
   assertEquals(P.preAssignWindow.emergencyOtPreAnnounceMinutes, 5);  // EMERGENCY_OT_PRE_ANNOUNCE_MINUTES (raised 3→5 on 2026-07-05)
 });
 
+Deno.test("bulk-open stagger policy (F1)", () => {
+  assertEquals(P.bulkOpen.staggerStepMinutes, 2);
+  assertEquals(P.bulkOpen.minFirstStintMinutes, 15);
+  assertEquals(P.bulkOpen.maxStaggerMinutes, 20);
+});
+
 Deno.test("scoring weights match original literals", () => {
   assertEquals(P.scoring.onBreakPenalty, -50);
   assertEquals(P.scoring.restBonusHighMinutes, 20);

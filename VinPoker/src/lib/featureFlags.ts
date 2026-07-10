@@ -419,6 +419,54 @@ export const FEATURES = {
    */
   trackerTabletLayout: false,
   /**
+   * Felt UI v2 (owner "fix UI UX toàn bộ" wave): bigger seat pods on the RICH operator
+   * felt — 44px avatars (was 32px), full player names on up to 2 lines (no more
+   * "Adrian …" ellipsis), wider pod clamps, re-tuned seat anchors so the taller pods
+   * still fit the oval — AND the owner's Sakura card back (gold 5-petal medallion on a
+   * wine lattice, from vinpoker-card-back.html) replacing the guilloché design in the
+   * SHARED CardBack (operator hole backs + /live viewer + hand feed change together —
+   * owner-approved; colors ride the --poker-card-* tokens so dark↔warm still works).
+   * OFF (default): pods AND card back byte-identical to today. Presentational only.
+   */
+  trackerFeltV2: true,
+  /**
+   * Owner-recorded action sounds for the tracker (operator console + /live viewer).
+   * When ON: check / fold / deal flop / deal turn+river / gom-chip-về-pot play the
+   * owner's MP3 clips (public/sounds/tracker/, see LICENSES.md there); the operator
+   * console gains action sounds (today it is silent) + a mute toggle sharing the
+   * viewer's `tracker_sound_muted` localStorage key; bet/call/raise/all_in keep the
+   * existing poker-bet.mp3. OFF (default): the sound engine's MP3 mapping and both
+   * surfaces' audio behavior are byte-identical to today (operator stays silent).
+   */
+  trackerActionSounds: true,
+  /**
+   * "Hoàn tác cả vòng" (street rollback) for the operator console: rolls back a SENT
+   * flop/turn/river — deletes all of that street's actions server-side (the existing
+   * delete_last_action, one per action, each mirrored by one local undo pop), THEN
+   * shrinks the persisted board (the existing update_community_cards wholesale
+   * replace), landing back on enter_{street} so the operator can fix an earlier
+   * action or edit + resend the cards. The /live viewer sees the street's cards
+   * disappear (owner-approved). Blocked after a page reload when the street already
+   * has recorded actions (the local undo stack can't mirror the deletes — owner P0),
+   * and during all-in runout / showdown / review. No DB/Edge change (reuses two
+   * existing endpoints). **ON 2026-07-08** (Đợt F0, owner-approved) — was OFF (controls
+   * strip + every handler byte-identical); the flip only surfaces the already-built
+   * "Hoàn tác cả vòng" button on active hands.
+   */
+  trackerStreetRollback: true,
+  /**
+   * xCards face deck (owner "fix UI UX toàn bộ" wave): replaces the built-in text card
+   * FACE (rank + suit on a cream card) with the owner-chosen xCards vector deck
+   * (public/cards/xcards/, LGPL v3 — see LICENSES.md there) inside the SHARED PokerCard
+   * component, so the operator felt + /live viewer + hand feed all change together. Only
+   * the FACE-UP branch is touched — the empty slot + the face-DOWN back are untouched
+   * (the Sakura back stays), and a face image that fails to load falls back to today's
+   * text face. When OFF: PokerCard renders the text face byte-identical to today.
+   * Presentational only — no data/handler change; never renders for a hidden card.
+   * Shipped ON at the owner's request ("bật hết") after they picked the xCards deck.
+   */
+  trackerCardFaces: true,
+  /**
    * Showdown reveal ORDER (viewer): at showdown the showing players' hole cards
    * flip IN SEQUENCE (last aggressor on the final street first, else first-to-act
    * from the SB, then clockwise) ~0.5s apart, instead of all at once. Implemented
@@ -462,8 +510,35 @@ export const FEATURES = {
    * editor surfaces at all (byte-identical). ON but migration `20261220000000` NOT
    * applied → the RPC 42883 is caught → "chưa áp dụng" degrade. Owner applies the
    * migration in a gated session, THEN flips this. Kill-switch: set false.
+   * **ON 2026-07-08** (Đợt F0, owner-approved) — migration 20261220000000 apply status
+   * unconfirmed; the 42883 degrade (useStandaloneHandInput.ts:577 → midHandEditSupported
+   * false → console gate at RacetrackHandInputConsole.tsx:454 hides the editor) makes the
+   * flip safe either way: honest "chưa áp dụng" instead of a crash.
    */
-  trackerMidHandEdit: false,
+  trackerMidHandEdit: true,
+  /**
+   * Sửa hand ĐÃ HOÀN THÀNH từ lịch sử (F2). A "Sửa hand" button in HandHistoryPanel
+   * opens a DISPLAY-ONLY editor for a completed, non-voided hand: board cards, hole
+   * cards, and the action list (edit type/amount, delete a row). Writes go through the
+   * narrow SECURITY DEFINER RPC `edit_completed_hand` (mig 20261225000000) which touches
+   * ONLY community_cards / hole_cards / hand_actions and NEVER chips/results, binds the
+   * actor to auth.uid() itself, and logs an immutable hand_edit_log row. TWO-TIER GATE:
+   * OFF (default) → HandHistoryPanel byte-identical (no button). ON but the RPC not
+   * applied → 42883 caught → "chưa áp dụng" degrade + the button hides.
+   */
+  trackerHandHistoryEdit: true,
+  /**
+   * Sửa hand đã hoàn thành + TỰ TÍNH LẠI CHIP (Đợt G). When ON, the completed-hand
+   * editor can re-score the winner and propagate corrected chip stacks forward through
+   * later hands via the pure resettle-forward engine (resettleForward.ts), then commit
+   * the result through the SECURITY DEFINER RPC `apply_resettle_forward`
+   * (mig 20261226000000) — a chips-only, conservation-guarded atomic write that NEVER
+   * changes who is eliminated (any bust flip is refused and routed to void+re-enter) and
+   * logs an immutable resettle_forward_log row. TWO-TIER GATE: OFF (default) → no
+   * re-settle path (F2 display-only edit unchanged). ON but the RPC not applied → 42883
+   * caught → "chưa áp dụng" degrade. Money-path: owner applies the migration + UATs.
+   */
+  trackerResettleForward: true, // GO-LIVE 2026-07-09 (owner-requested); RPC 20261226000000 applied live (#815). Kill-switch: set false.
   /**
    * Multi-table lock visibility + takeover (operator). The table picker shows who
    * holds each in-progress hand ("khóa bởi <tên> · X phút") via the read-only RPC
@@ -699,6 +774,19 @@ export const FEATURES = {
    */
   floorTableOps: true,
   /**
+   * Ops phone app (mobileOpsV2) — Dealer Swing action wiring. The `/ops/dealer-swing`
+   * page renders every operator action (swing 1 table, assign a specific dealer via the
+   * picker, send-to-break, single + batch check-out) but keeps each button on a stub
+   * "đang nối" toast until this flag is ON. Flip to true ONLY after the owner UATs on
+   * Preview and confirms the real board is correct. The wired handlers mirror the desktop
+   * DealerSwingTab handlers 1:1 (perform_swing / assign-dealer force_dealer_id /
+   * manage-break start / checkout-dealer) — same server RPCs/edge fns, same RLS
+   * (`is_club_dealer_control`); no new write path, no migration. Kill-switch: set false →
+   * every button reverts to the stub. Đóng tour / sửa nhầm bàn / check-in QR stay stubbed
+   * (need a shift/club selector the phone does not track yet). Default **OFF**.
+   */
+  opsSwingActions: false,
+  /**
    * Club "Lịch series" — a per-club gallery of MANY series-schedule images (posters +
    * match schedules) shown as a swipeable carousel on the public ClubDetail page and
    * managed by admins in Media Center (MediaClubSchedules), alongside the single
@@ -839,12 +927,36 @@ export const FEATURES = {
    */
   seriesAssistant: true,
   /**
+   * Series Intelligence — TP3 small-field overlay distribution. When ON, overlay simulations whose
+   * central field is below 60 entries use a discrete Negative Binomial sampler instead of a continuous
+   * log-normal draw, so tiny fields keep realistic integer count mass. Fields at/above 60 stay on the
+   * existing log-normal path. Default **OFF**; flag-off must remain byte-identical for risk outputs.
+   */
+  seriesSmallFieldDist: false,
+  /**
+   * Series Intelligence — TP2 calendar/edition forecast features (P1-4). When ON, the turnout model adds
+   * three known-before-the-event numeric features at the full tier (n ≥ 8): isHoliday (VN holiday/Tết
+   * window), isPayday (1st–10th of month), and editionTrend (ln of this brand's edition number, counting
+   * only strictly-earlier editions — leakage-safe). Below 8 events, or with the flag off, the design matrix
+   * is byte-identical to before. Labeled Observed Pattern, never causal. Default **OFF**; kill-switch: false.
+   */
+  seriesCalendarFeatures: false,
+  /**
    * Series Intelligence — W6 registration-pace check (Bước ④). When ON, a panel lets the owner compare
    * sign-ups-so-far to a CRUDE linear pace toward the forecast, to spot "đang chậm → đẩy bài/satellite"
    * early. All inputs owner-entered; the pace reference is an honest crude assumption (real sign-up
    * back-loads, stated plainly) — Hypothesis, not a claim. No DB/registration read. Default **OFF**.
    */
   seriesRegistrationPace: true,
+  /**
+   * Series Intelligence — TP1 nowcast (P1-8). When ON, the registration-pace panel adds a real-data
+   * nowcast: pick an upcoming giải → it pulls live sign-ups from the auto-captured series_registration_
+   * events (read-only) + learns the pace curve τ from PAST completed events (leakage-safe) + blends that
+   * with the owner's model forecast in log space (weight rises near the event + with pace reliability).
+   * Falls back to model-only / manual when pace data isn't reachable. Hypothesis-labeled, no fake curve.
+   * Default **OFF**; kill-switch: false (panel keeps the crude manual pace of W6).
+   */
+  seriesNowcast: false,
   /**
    * Series Intelligence — W7 "nhập chiến dịch Telegram 1 chạm" in the ⑥ CAPTURE console. When ON, reads
    * the club's already-SENT marketing posts (read-only) and lets the owner pick one + type its spend +
@@ -853,6 +965,15 @@ export const FEATURES = {
    * (no role / RLS). Reads marketing_posts read-only; no new RPC/migration. Default **OFF**; kill-switch: false.
    */
   seriesMarketingImport: true,
+  /**
+   * Series Intelligence — TP4 within-series price sensitivity (P0-1). When ON, a card in Bước ② fits a
+   * per-brand 2-variable OLS (ln entries = c − γ·ln buy_in + δ·edition) over the club's OWN event history
+   * and reports γ per brand + a pooled median, for brands with ≥3 editions and ≥2 distinct buy-in levels.
+   * Descriptive only — labeled Observed Pattern with a bold endogeneity disclaimer (organizers price high
+   * when they already expect a big field), NEVER a causal/tested claim. Pure client-side, no DB. Default
+   * **OFF**; kill-switch: false.
+   */
+  seriesPriceElasticity: false,
   /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
@@ -1157,6 +1278,40 @@ export const FEATURES = {
    * real-data wiring is a separate owner-gated step. Kill-switch: set false. Spec: docs/design/ios-floor-ux-spec.md.
    */
   mobileOpsV2: true,
+  /**
+   * staffApp — NEW `/staff/*` self-service portal for NON-dealer staff (floor, cashier,
+   * tracker, service, security). Mirrors the dealer app shell but reads a SEPARATE `staff`
+   * table + `staff_attendance` (never `dealers` / `dealer_attendance`), so the live dealer
+   * app is untouched. MVP screens: Home + app check-in/out button, Attendance list, Account.
+   * Default **OFF** (per flag policy): while false the `/staff/*` routes show a "chưa bật"
+   * notice (except admin/owner preview) and nothing mounts → prod unchanged. The backing
+   * migrations (staff_directory + staff_attendance) are SOURCE-ONLY / not applied live yet,
+   * so even under admin preview the write RPCs stay preview-only (mock) — no missing-table
+   * crashes. Flip to true ONLY after the schema is applied live + types regenerated + owner UAT.
+   * Kill-switch: set false to re-hide the portal.
+   */
+  staffApp: false,
+  /**
+   * staffSelfSalary — the "Lương của tôi" screen inside the /staff portal (READ-ONLY),
+   * parallel to `dealerSelfSalary` for the dealer app. Gates both the bottom-nav "Lương"
+   * tab AND the /staff/salary route (direct navigation redirects to /staff when off).
+   * Depends on the LATER staff-payroll increment (a parallel `staff_pt_wage_payments`
+   * twin + FT rollup — NOT the dealer payroll objects). Default **OFF**; keep false until
+   * that backend is applied live + types regenerated. Kill-switch: set false.
+   */
+  staffSelfSalary: false,
+  /**
+   * clubExpenses — NEW "Sổ chi phí" operating-expense ledger. Gates the owner/cashier
+   * WRITE entry page (`/club/admin/expenses`) where a club records operating costs (rent,
+   * utilities, marketing, supplies…). The ledger is APPEND-ONLY (corrections = a new
+   * adjustment row, never edit/delete); writes go through the `record_club_expense` RPC
+   * (Owner+Cashier, actor=auth.uid()). Default **OFF** (per flag policy): while false the
+   * route shows "chưa bật" (except admin/owner preview) and nothing mounts. The backing
+   * `club_expenses` migration is SOURCE-ONLY / not applied live yet. The READ display in
+   * Accounting Control's "Lương & chi phí" tab and the get_club_finance_summary fold are
+   * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
+   */
+  clubExpenses: false,
 } as const;
 
 /**

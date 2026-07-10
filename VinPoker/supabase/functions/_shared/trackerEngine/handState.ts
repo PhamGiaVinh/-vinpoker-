@@ -2,6 +2,13 @@
 // hand_players seeds to reconstruct per-player stacks/commitments and the
 // current betting situation. Pure; no DB, no IO.
 //
+// This is the SERVER authority. A verbatim client copy lives at
+//   src/lib/tracker-poker/handState.ts   (the client Vite build cannot import this
+// server tree — that guardrail forces the copy). The Phase G3 resettle-forward UI
+// runs the reducer in the browser via that copy. The two are kept identical by a
+// parity test: tests/trackerEngine/handState.parity.test.ts — if you change the
+// reducer, change BOTH files in the same PR.
+//
 // Action-amount convention (matches HandInputPanel + T3A potEngine): every
 // action_amount is the chips ADDED by that action this street, never a
 // "raise-to" total. So total_bet === Σ contributing action_amounts.

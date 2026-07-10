@@ -101,10 +101,12 @@ function HoleCards({ seat, showFaces, cardStyle }: { seat: SeatVM; showFaces: bo
   );
 }
 
-function SeatAvatar({ seat }: { seat: SeatVM }) {
+function SeatAvatar({ seat, feltV2 = false }: { seat: SeatVM; feltV2?: boolean }) {
   return (
     <div
-      className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full border text-[10px] font-bold"
+      className={`grid shrink-0 place-items-center overflow-hidden rounded-full border font-bold ${
+        feltV2 ? 'h-11 w-11 text-xs' : 'h-8 w-8 text-[10px]'
+      }`}
       style={{
         borderColor: 'hsl(var(--poker-gold) / 0.4)',
         background: 'linear-gradient(180deg,#151922,#030407)',
@@ -131,6 +133,7 @@ function Seat({
   showHoleCards,
   holeCardStyle,
   podStyle,
+  feltV2 = false,
   t,
   onTap,
 }: {
@@ -144,6 +147,7 @@ function Seat({
   showHoleCards: boolean;
   holeCardStyle?: CSSProperties;
   podStyle?: CSSProperties;
+  feltV2?: boolean;
   t: TFunction;
   onTap?: () => void;
 }) {
@@ -268,9 +272,15 @@ function Seat({
           </div>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">
-          <SeatAvatar seat={seat} />
+          <SeatAvatar seat={seat} feltV2={feltV2} />
           <div className="min-w-0">
-            <div className="tracker-display truncate text-xs font-semibold text-[hsl(var(--foreground))]">
+            {/* feltV2: FULL name on up to 2 lines (owner: "tên đang bị che") — the stack
+                line below must never be pushed out, hence the tight clamp. */}
+            <div
+              className={`tracker-display text-xs font-semibold text-[hsl(var(--foreground))] ${
+                feltV2 ? 'line-clamp-2 break-words leading-tight' : 'truncate'
+              }`}
+            >
               {seat.name}
             </div>
             <div className="tracker-num text-sm font-bold leading-tight text-[hsl(var(--poker-stack))]">
@@ -355,16 +365,23 @@ export function TrackerRacetrack({
   portrait: portraitProp,
   betChips = false,
   dealerFix = false,
+  feltV2 = false,
 }: TrackerRacetrackProps) {
   const { t } = useTranslation();
   const detectedPortrait = useIsPortrait(!!rich);
   const portrait = rich && (portraitProp ?? detectedPortrait);
   const geo = portrait ? TRACKER_GEO.portrait : TRACKER_GEO.landscape;
   const seatsMap = geo.seats;
-  const centerTop = rich ? geo.centerTop : 40;
-  // The rich portrait felt with the dealer fix ON uses the de-crowded anchor map + a
+  // feltV2 applies its pod growth on LANDSCAPE only — a 390px portrait oval physically
+  // lacks room for nine 128px pods (measured: 6 pod-pod overlaps + dealer collisions),
+  // so portrait keeps the v1 metrics (already overlap-free since the A1a tuning).
+  const v2 = feltV2 && rich && !portrait;
+  // The rich PORTRAIT felt with the dealer fix ON uses the de-crowded anchor map + a
   // taller oval (see below). Landscape and the flag-OFF path are unaffected.
   const portraitFix = portrait && dealerFix;
+  // v2: the taller pods reach further down from the top row — drop the pot/board
+  // center 4% so the pot label never sits under a pod (measured on /__dev/tracker).
+  const centerTop = rich ? geo.centerTop + (v2 ? 4 : 0) : 40;
 
   // trackerFeltDealerFix: felt-geometry corrections, all gated by the ONE flag.
   //  • RICH PORTRAIT (narrow viewport): the base TRACKER_PORTRAIT_SEATS + the old ±7
@@ -379,12 +396,18 @@ export function TrackerRacetrack({
   // OFF path + every other seat: byte-identical.
   const seatAnchor = (n: number) => {
     const a = seatsMap[n];
-    if (!a || !dealerFix) return a;
+    // v2 (rich landscape): taller pods (44px avatar + 2-line name) need the SAME top-row
+    // drop as dealerFix (the extra height covers the rim on its own) + a bit more bottom
+    // lift off the dealer station; v2 works with OR without dealerFix (independence).
+    if (!a || (!dealerFix && !v2)) return a;
+    // Rich PORTRAIT + dealerFix: swap in the de-crowded portrait anchor map (#827). Reached
+    // only when dealerFix is on (v2 is false in portrait, so the guard above needs dealerFix).
     if (portrait) return TRACKER_PORTRAIT_SEATS_FIX[n] ?? a;
-    if (n === 1 || n === 9) return { left: a.left, top: a.top - 7 };
+    if (n === 1 || n === 9) return { left: a.left, top: a.top - (v2 ? 9 : 7) };
     if (rich && (n === 4 || n === 5 || n === 6)) {
       return { left: a.left, top: a.top + (n === 5 ? 7 : 5) };
     }
+    // dealerFix-only nudges apply to 1/9 + rich 4/5/6 above; nothing else moves.
     return a;
   };
 
@@ -405,9 +428,11 @@ export function TrackerRacetrack({
       : { width: 'clamp(16px,3.0cqi,30px)', height: 'clamp(22px,4.2cqi,42px)' }
     : undefined;
   const podStyle: CSSProperties | undefined = rich
-    ? portrait
-      ? { width: 'clamp(82px,24cqi,112px)' }
-      : { width: 'clamp(92px,12cqi,112px)' }
+    ? v2
+      ? { width: 'clamp(108px,14cqi,132px)' } // v2 is landscape-only (see above)
+      : portrait
+        ? { width: 'clamp(82px,24cqi,112px)' }
+        : { width: 'clamp(92px,12cqi,112px)' }
     : undefined;
 
   return (
@@ -516,6 +541,7 @@ export function TrackerRacetrack({
           showHoleCards={showHoleCards}
           holeCardStyle={holeCardStyle}
           podStyle={podStyle}
+          feltV2={v2}
           t={t}
           onTap={onSeatTap ? () => onSeatTap(seat.seatNumber) : undefined}
         />

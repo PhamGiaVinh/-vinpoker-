@@ -270,18 +270,22 @@ export function TournamentLiveView({
       if (seq !== requestSeqRef.current) return;
 
       if (actionData && actionData.length > 0) {
-        const actionPlayerIds = [...new Set(actionData.map((a: any) => a.player_id))];
-        const [{ data: actionProfiles }, { data: handPlayers }] = await Promise.all([
-          supabase.from("profiles").select("user_id, display_name").in("user_id", actionPlayerIds),
-          supabase.from("hand_players").select("player_id, seat_number, hole_cards").eq("hand_id", hand.id),
-        ]);
+        const { data: handPlayers } = await supabase
+          .from("hand_players")
+          .select("player_id, seat_number, hole_cards")
+          .eq("hand_id", hand.id);
 
         if (seq !== requestSeqRef.current) return;
 
+        // Action-author names come from tournament_seats.player_name — the SAME source the
+        // LIVE seats use (see seatInfos above), keyed by player_id. The old code joined
+        // profiles.user_id IN (player_ids), but hand_actions.player_id is a tournament-ENTRY
+        // id, not an auth user_id, so the join always missed → the feed showed the raw short
+        // id. Reuse the already-loaded seat roster instead of a mis-keyed profiles fetch.
         const actionNameMap = new Map<string, string>();
-        (actionProfiles || []).forEach((p: any) =>
-          actionNameMap.set(p.user_id, p.display_name || "—")
-        );
+        seatRows.forEach((s: any) => {
+          if (s.player_name) actionNameMap.set(s.player_id, s.player_name);
+        });
 
         const seatMap = new Map<string, number>();
         const holeCardsMap = new Map<string, string[]>();
@@ -643,8 +647,14 @@ export function TournamentLiveView({
     const prev = prevBoardCountRef.current;
     prevBoardCountRef.current = count;
     if (soundMuted || prev === null || count <= prev) return;
-    if (FEATURES.liveTableFx) {
-      // flop riffles in (deal_flop = 3 bursts), turn/river = a single card.
+    // C4 (trackerActionSounds): a street change means the finished street's bets were
+    // gathered — play the owner's pot-collect clip before the deal. The prev-count
+    // guard above IS the dedupe (fires once per board growth; polling echoes and
+    // re-renders keep count unchanged and return early).
+    if (FEATURES.trackerActionSounds) playPokerLiveSound("pot_collect");
+    if (FEATURES.liveTableFx || FEATURES.trackerActionSounds) {
+      // flop riffles in (deal_flop = 3 bursts), turn/river = a single card — with
+      // trackerActionSounds on, these kinds resolve to the owner's MP3 clips.
       playPokerLiveSound(count >= 5 ? "deal_river" : count === 4 ? "deal_turn" : "deal_flop");
     } else {
       playPokerLiveSound("deal");

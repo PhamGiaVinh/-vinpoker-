@@ -57,6 +57,8 @@ export interface PassRResult {
   reconciledCancels: number;
   shortageTables: number;
   otMarked: number;
+  /** F2: dealers whose comp break was ended early this tick because supply was short. */
+  earlyBreakEnds: number;
   errors: Array<{ scope: string; error: string }>;
   solverDurationMs: number;
 }
@@ -492,7 +494,7 @@ export async function passRRotationPlanner(
   const started = Date.now();
   const result: PassRResult = {
     planned: 0, locked: 0, adopted: 0, reconciledCancels: 0,
-    shortageTables: 0, otMarked: 0, errors: [], solverDurationMs: 0,
+    shortageTables: 0, otMarked: 0, earlyBreakEnds: 0, errors: [], solverDurationMs: 0,
   };
   const planRunId = crypto.randomUUID();
 
@@ -514,6 +516,49 @@ export async function passRRotationPlanner(
 
     // Phase B2 — honest OT marking
     result.otMarked = await markOvertime(admin, assignments);
+
+    // Phase B2.5 — F2 demand-driven early break end (owner 2026-07-08).
+    // "khi cần người thì không cần nghỉ bù — nghỉ TỔNG 15' là đủ": when tables are
+    // due (or overdue) without a live pre-assign and raw available supply is below
+    // that demand, free up to `shortage` dealers whose AUTO comp break already has
+    // ≥15' rest. Runs BEFORE buildRotationSupply so the freed dealers join THIS
+    // tick's plan. NEVER force-releases a seated dealer. Non-fatal if the RPC isn't
+    // applied yet (apply order is free).
+    try {
+      const horizonMs = Date.now() + Math.max(ctx.preAnnounceMinutes, 3) * 60_000;
+      const demand = assignments.filter((a) =>
+        !a.pre_assigned_attendance_id && new Date(a.swing_due_at).getTime() <= horizonMs
+      ).length;
+      if (demand > 0) {
+        const { data: availData } = await admin.rpc("count_available_dealers", { p_club_id: ctx.clubId });
+        const available = typeof availData === "number" ? availData : 0;
+        const requestedRelease = Math.max(0, Math.min(demand - available, 20));
+        if (requestedRelease > 0) {
+          const { data: ended, error: endErr } = await admin.rpc("end_breaks_on_demand", {
+            p_club_id: ctx.clubId,
+            p_min_rest_minutes: SWING_POLICY.rest.executeMinRestFloorMinutes,
+            p_max_count: requestedRelease,
+          });
+          if (endErr) {
+            // Merge-order safety: RPC not applied yet → non-fatal, quiet one-liner.
+            console.warn(`[Pass R] F2 end_breaks_on_demand unavailable; skipping (${endErr.message})`);
+          } else {
+            const releasedCount = (ended ?? []).length;
+            result.earlyBreakEnds = releasedCount;
+            if (releasedCount > 0) {
+              console.log(
+                `[Pass R] F2 early break end: demand=${demand} available=${available} ` +
+                `requestedRelease=${requestedRelease} releasedCount=${releasedCount} — ` +
+                (ended as Array<{ dealer_name: string; rested_minutes: number }>)
+                  .map((b) => `${b.dealer_name}(${b.rested_minutes}p)`).join(", ")
+              );
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[Pass R] F2 end_breaks_on_demand skipped (non-fatal): ${(err as Error)?.message ?? err}`);
+    }
 
     // Phase B — snapshot
     const tournamentInfo = await fetchTournamentInfo(admin, assignments.map((a) => a.table_id));
@@ -592,7 +637,7 @@ export async function passRRotationPlanner(
     console.log(
       `[Pass R] ✅ planned=${result.planned} locked=${result.locked} adopted=${result.adopted} ` +
       `reconciled=${result.reconciledCancels} shortage=${result.shortageTables} ` +
-      `otMarked=${result.otMarked} durationMs=${result.solverDurationMs}`
+      `otMarked=${result.otMarked} earlyBreakEnds=${result.earlyBreakEnds} durationMs=${result.solverDurationMs}`
     );
     return result;
   } catch (err: any) {

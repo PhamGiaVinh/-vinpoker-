@@ -440,6 +440,8 @@ export function StandaloneHandInputConsole({ hook }: { hook: StandaloneHandInput
               onVoid={hook.handleVoid}
               hasVoidTarget={!!(hook.lastHandId || hook.handStarted)}
               disabled={hook.submitting}
+              streetRollback={hook.streetRollbackUi}
+              onStreetRollback={hook.handleStreetRollback}
             />
           )}
           {hook.handStarted && !hook.isSummary && hook.blindLevelChanged && (

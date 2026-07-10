@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { simulateOverlayRisk, simulateOverlayFromForecast, type OverlayRiskInput } from "./overlayRiskEngine";
+import { sampleNegBin, simulateOverlayRisk, simulateOverlayFromForecast, SMALL_FIELD_CUTOFF, type OverlayRiskInput } from "./overlayRiskEngine";
 
 const DEMO = { observedEntries: [795, 2350], buyinPrize: 31_428_571, fee: 4_571_428, sd: 0.55, nSims: 20000, seed: 42 };
 const inp = (over: Partial<OverlayRiskInput>): OverlayRiskInput => ({ ...DEMO, gtd: 25e9, n: 2, ...over });
@@ -129,5 +129,57 @@ describe("simulateOverlayFromForecast — explicit forecast-centered adapter (no
     const r = simulateOverlayRisk(inp({ gtd: 25e9, n: 6 }));
     expect(r.pOverlay).toBeGreaterThan(0.14);
     expect(r.pOverlay).toBeLessThan(0.22);
+  });
+});
+
+describe("small-field Negative Binomial sampler", () => {
+  function rng(seed: number): () => number {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  it("sampleNegBin approximately tracks requested mean and variance", () => {
+    const mean = 40;
+    const sd = 24;
+    const seeded = rng(1234);
+    const draws = Array.from({ length: 50000 }, () => sampleNegBin(mean, sd, seeded));
+    const avg = draws.reduce((s, x) => s + x, 0) / draws.length;
+    const variance = draws.reduce((s, x) => s + (x - avg) ** 2, 0) / draws.length;
+    expect(avg).toBeGreaterThan(mean * 0.95);
+    expect(avg).toBeLessThan(mean * 1.05);
+    expect(variance).toBeGreaterThan(sd * sd * 0.85);
+    expect(variance).toBeLessThan(sd * sd * 1.15);
+  });
+
+  it("flag off/default stays on the old log-normal path for small forecast fields", () => {
+    const base = { baseEntries: SMALL_FIELD_CUTOFF - 20, logSd: 0.45, buyinPrize: 1_000_000, fee: 100_000, gtd: 55_000_000, seed: 77, nSims: 12000 };
+    expect(JSON.stringify(simulateOverlayFromForecast(base))).toBe(JSON.stringify(simulateOverlayFromForecast({ ...base, smallFieldDist: false })));
+  });
+
+  it("uses a deterministic discrete distribution when the small-field flag is on", () => {
+    const base = { baseEntries: SMALL_FIELD_CUTOFF - 20, logSd: 0.45, buyinPrize: 1_000_000, fee: 100_000, gtd: 55_000_000, seed: 77, nSims: 12000 };
+    const a = simulateOverlayFromForecast({ ...base, smallFieldDist: true });
+    const b = simulateOverlayFromForecast({ ...base, smallFieldDist: true });
+    const off = simulateOverlayFromForecast(base);
+
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.entP50).not.toBe(off.entP50);
+    expect(a.entP50).toBeGreaterThan(30);
+    expect(a.entP50).toBeLessThan(50);
+  });
+
+  it("keeps fields at or above the cutoff on the log-normal path even when the flag is on", () => {
+    const base = { baseEntries: SMALL_FIELD_CUTOFF, logSd: 0.45, buyinPrize: 1_000_000, fee: 100_000, gtd: 55_000_000, seed: 77, nSims: 12000 };
+    expect(JSON.stringify(simulateOverlayFromForecast({ ...base, smallFieldDist: true }))).toBe(JSON.stringify(simulateOverlayFromForecast(base)));
+  });
+
+  it("flag off/default stays byte-identical for the two-layer history engine", () => {
+    const base = inp({ observedEntries: [36, 44, 52], gtd: 55_000_000, buyinPrize: 1_000_000, fee: 100_000, seed: 88, nSims: 12000, clampLo: 1, clampHi: 180 });
+    expect(JSON.stringify(simulateOverlayRisk(base))).toBe(JSON.stringify(simulateOverlayRisk({ ...base, smallFieldDist: false })));
   });
 });
