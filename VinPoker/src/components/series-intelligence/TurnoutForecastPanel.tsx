@@ -65,13 +65,23 @@ export function TurnoutForecastPanel({
   const [gtd, setGtd] = useState<number | null>(null);
   const [typeKeyword, setTypeKeyword] = useState("");
   const [override, setOverride] = useState<number | null>(null);
+  // TP2 — optional brand/series name; ONLY feeds the edition-trend feature, and the field only appears when
+  // seriesCalendarFeatures is on (so the default UI is unchanged).
+  const [seriesName, setSeriesName] = useState("");
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
   // Local datetime (never date-only) so the hour-slot feature matches the training rows' bucketing.
   const eventDateTime = `${date}T${/^\d{2}:\d{2}$/.test(startTime) ? startTime : "19:00"}:00`;
   const fc = useMemo(
-    () => (ready ? forecastTurnout(events, { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null }) : null),
-    [events, eventDateTime, buyIn, gtd, typeKeyword, ready],
+    () =>
+      ready
+        ? forecastTurnout(
+            events,
+            { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null, event_name: seriesName.trim() || null },
+            { calendarFeatures: FEATURES.seriesCalendarFeatures },
+          )
+        : null,
+    [events, eventDateTime, buyIn, gtd, typeKeyword, seriesName, ready],
   );
   const medianFee = useMemo(() => median(events.map((e) => e.fee)) ?? 0, [events]);
 
@@ -120,6 +130,9 @@ export function TurnoutForecastPanel({
               <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Buy-in (prize)</span><Input type="number" className="h-8" placeholder="vd 3000000" value={buyIn ?? ""} onChange={(e) => setBuyIn(numOrNull(e.target.value))} /></label>
               <label className="flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">GTD dự kiến</span><Input type="number" className="h-8" placeholder="(tùy chọn)" value={gtd ?? ""} onChange={(e) => setGtd(numOrNull(e.target.value))} /></label>
               <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Loại giải (vd Main, Turbo — auto từ tên nếu trống)</span><Input className="h-8" value={typeKeyword} onChange={(e) => setTypeKeyword(e.target.value)} /></label>
+              {FEATURES.seriesCalendarFeatures && (
+                <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Tên giải/thương hiệu (vd APT Main — để tính "kỳ thứ mấy", tùy chọn)</span><Input className="h-8" value={seriesName} onChange={(e) => setSeriesName(e.target.value)} /></label>
+              )}
             </div>
           </Card>
 

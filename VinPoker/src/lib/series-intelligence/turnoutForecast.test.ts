@@ -177,4 +177,76 @@ describe("describeFeature (plain-VN factor names for the owner)", () => {
   it("falls back to the raw code for unknown features", () => {
     expect(describeFeature("mystery-col")).toBe("mystery-col");
   });
+  it("translates the TP2 calendar/edition features", () => {
+    expect(describeFeature("isHoliday")).toBe("Rơi vào dịp lễ/Tết");
+    expect(describeFeature("isPayday")).toBe("Đầu tháng (ngày lương)");
+    expect(describeFeature("editionTrend")).toBe("Kỳ tổ chức thứ mấy (xu hướng qua các kỳ)");
+  });
+});
+
+// TP2 — calendar/edition features (flag seriesCalendarFeatures). The #1 safety condition is GOLDEN
+// byte-identity when the flag is off; the rest prove the feature is wired, gated at n≥MIN_FULL, and leakage-safe.
+describe("forecastTurnout — TP2 calendar/edition features", () => {
+  const full = exactSet([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  const featureNames = (r: ReturnType<typeof forecastTurnout>) => r.coefContributions.map((c) => c.feature);
+
+  it("GOLDEN — flag off (default) is byte-identical to explicit calendarFeatures:false", () => {
+    const def = forecastTurnout(full, future(1_000_000));
+    const off = forecastTurnout(full, future(1_000_000), { calendarFeatures: false });
+    expect(JSON.stringify(def)).toBe(JSON.stringify(off));
+  });
+
+  it("GOLDEN — byte-identical off even on the full numeric path (GTD present)", () => {
+    const withGtd = full.map((e) => ({ ...e, gtd: 30_000_000_000 }));
+    const def = forecastTurnout(withGtd, future(2_000_000, 30_000_000_000));
+    const off = forecastTurnout(withGtd, future(2_000_000, 30_000_000_000), { calendarFeatures: false });
+    expect(JSON.stringify(def)).toBe(JSON.stringify(off));
+  });
+
+  it("adds the three calendar/edition columns when ON (n≥MIN_FULL); OFF has none of them", () => {
+    const on = forecastTurnout(full, future(1_000_000), { calendarFeatures: true });
+    const off = forecastTurnout(full, future(1_000_000));
+    for (const f of ["isHoliday", "isPayday", "editionTrend"]) {
+      expect(featureNames(off)).not.toContain(f);
+      expect(featureNames(on)).toContain(f);
+    }
+    // CV must still run with the extra columns.
+    expect(on.modelMapePct).not.toBeNull();
+    expect(Number.isFinite(on.modelMapePct!)).toBe(true);
+  });
+
+  it("does NOT activate below MIN_FULL even with the flag ON (gated by n≥8) — byte-identical to off", () => {
+    const small = exactSet([1, 2, 3, 4, 5, 6, 7]); // 7 events before the Feb target → low tier, degraded
+    const on = forecastTurnout(small, future(1_500_000), { calendarFeatures: true });
+    const off = forecastTurnout(small, future(1_500_000));
+    expect(on.confidence).toBe("low");
+    expect(JSON.stringify(on)).toBe(JSON.stringify(off));
+  });
+
+  // One same-brand event every 7 days (constant weekday/quarter/hour/type/buy-in) so the ONLY monotone
+  // signal is the edition number; entries grow with edition. Isolates editionTrend.
+  const EDITION_DATES = [
+    "2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26", "2026-02-02", "2026-02-09",
+    "2026-02-16", "2026-02-23", "2026-03-02", "2026-03-09", "2026-03-16", "2026-03-23",
+  ].map((d) => `${d}T19:00:00+07:00`);
+  const editionSet = EDITION_DATES.map((iso, i) => ev(i + 1, 1_000_000, 40 * (i + 1), { event_date: iso, event_name: "APT Main" }));
+  const editionTarget = { event_date: "2026-03-30T19:00:00+07:00", buy_in: 1_000_000, gtd: null, event_name: "APT Main" };
+
+  it("editionTrend picks up a real per-edition growth signal (positive coefficient, higher forecast)", () => {
+    const on = forecastTurnout(editionSet, editionTarget, { calendarFeatures: true });
+    const off = forecastTurnout(editionSet, editionTarget);
+    const ed = on.coefContributions.find((c) => c.feature === "editionTrend");
+    expect(ed).toBeDefined();
+    expect(ed!.beta).toBeGreaterThan(0); // later editions ⇒ higher predicted turnout
+    expect(on.base!).toBeGreaterThan(off.base!); // edition-aware model extrapolates the growth
+  });
+
+  it("editionTrend is leakage-safe — a strictly-later same-brand event never changes the forecast", () => {
+    const clean = forecastTurnout(editionSet, editionTarget, { calendarFeatures: true });
+    // append an edition AFTER the target date (2026-04-06 > 2026-03-30): excluded from `past` AND never
+    // counted in any strictly-earlier edition tally.
+    const withFuture = [...editionSet, ev(99, 1_000_000, 9999, { event_date: "2026-04-06T19:00:00+07:00", event_name: "APT Main" })];
+    const polluted = forecastTurnout(withFuture, editionTarget, { calendarFeatures: true });
+    expect(JSON.stringify(polluted)).toBe(JSON.stringify(clean));
+  });
 });
