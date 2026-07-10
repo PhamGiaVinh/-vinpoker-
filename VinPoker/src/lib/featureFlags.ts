@@ -589,11 +589,12 @@ export const FEATURES = {
    * trackerFeltDealerFix — operator `TrackerRacetrack` geometry fix for the bottom
    * "DEALER / người chia cố định" station overlapping Ghế 1/9 and the "▲ Tracker đứng
    * đây" cue. When ON: bottom seats (1, 9) are nudged up and the cue merges into the
-   * dealer block (one bottom-center element, no self-overlap). Falsy ⇒ today's geometry
-   * (byte-identical). Presentational only. Ships OFF pending owner before/after visual
-   * check at /__dev/tracker (rich ON). Kill-switch: false.
+   * dealer block (one bottom-center element, no self-overlap); the RICH portrait felt
+   * also uses the de-crowded TRACKER_PORTRAIT_SEATS_FIX map on a taller oval so the 9
+   * pods fit without overlap at 390px (pinned by TrackerRacetrack.geometry.test). Falsy
+   * ⇒ today's geometry (byte-identical). Presentational only. Kill-switch: flip to false.
    */
-  trackerFeltDealerFix: false,
+  trackerFeltDealerFix: true,
   /**
    * PR-V3 (B3): viewer "moments" — pot-collect sweep at street end, elimination
    * moment, level-up toast, header Reload. Reduced-motion guarded; no auto-sound;

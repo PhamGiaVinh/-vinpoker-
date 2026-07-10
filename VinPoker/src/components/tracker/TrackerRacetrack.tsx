@@ -17,6 +17,9 @@ import {
   RICH_FELT,
   CARD_FACE,
   TRACKER_GEO,
+  TRACKER_PORTRAIT_SEATS_FIX,
+  PORTRAIT_FIX_ASPECT,
+  PORTRAIT_FIX_MIN_H,
   formatChips,
   toBB,
   isRedCard,
@@ -373,25 +376,33 @@ export function TrackerRacetrack({
   // lacks room for nine 128px pods (measured: 6 pod-pod overlaps + dealer collisions),
   // so portrait keeps the v1 metrics (already overlap-free since the A1a tuning).
   const v2 = feltV2 && rich && !portrait;
+  // The rich PORTRAIT felt with the dealer fix ON uses the de-crowded anchor map + a
+  // taller oval (see below). Landscape and the flag-OFF path are unaffected.
+  const portraitFix = portrait && dealerFix;
   // v2: the taller pods reach further down from the top row — drop the pot/board
   // center 4% so the pot label never sits under a pod (measured on /__dev/tracker).
   const centerTop = rich ? geo.centerTop + (v2 ? 4 : 0) : 40;
 
   // trackerFeltDealerFix: felt-geometry corrections, all gated by the ONE flag.
-  //  • Bottom seats 1 (dealer-left) / 9 (dealer-right) sit in the dealer station's lane
-  //    → lift them up off it (~7% of the felt).
-  //  • RICH top-row seats 4/5/6 carry face-down hole-card backs ABOVE the pod, which
-  //    overflow the oval's top rim and get clipped (measured 6–19px on /__dev/tracker,
-  //    seat 5 worst) → nudge the top row DOWN into the felt. Non-rich pods have no cards
-  //    (short) so they never clip → left untouched.
+  //  • RICH PORTRAIT (narrow viewport): the base TRACKER_PORTRAIT_SEATS + the old ±7
+  //    nudges left the 9 rich pods overlapping at 390px (5 pod-pod overlaps + seats 1/9
+  //    hitting the dealer block). Swap in the bespoke TRACKER_PORTRAIT_SEATS_FIX map,
+  //    which pairs with the taller PORTRAIT_FIX_ASPECT oval (below) for a clean fit.
+  //  • LANDSCAPE — unchanged, byte-identical:
+  //    · Bottom seats 1 (dealer-left) / 9 (dealer-right) sit in the dealer station's lane
+  //      → lift them up off it (~7% of the felt).
+  //    · RICH top-row seats 4/5/6 carry face-down hole-card backs ABOVE the pod, which
+  //      overflow the oval's top rim and get clipped → nudge the top row DOWN into the felt.
   // OFF path + every other seat: byte-identical.
   const seatAnchor = (n: number) => {
     const a = seatsMap[n];
-    // v2 (rich landscape): taller pods (44px avatar + 2-line name) need the SAME
-    // top-row drop as dealerFix (the extra height covers the rim on its own — pushing
-    // further down landed the pods on the pot label, measured) and a bit more bottom
-    // lift off the dealer station. v2 works with OR without dealerFix (independence).
+    // v2 (rich landscape): taller pods (44px avatar + 2-line name) need the SAME top-row
+    // drop as dealerFix (the extra height covers the rim on its own) + a bit more bottom
+    // lift off the dealer station; v2 works with OR without dealerFix (independence).
     if (!a || (!dealerFix && !v2)) return a;
+    // Rich PORTRAIT + dealerFix: swap in the de-crowded portrait anchor map (#827). Reached
+    // only when dealerFix is on (v2 is false in portrait, so the guard above needs dealerFix).
+    if (portrait) return TRACKER_PORTRAIT_SEATS_FIX[n] ?? a;
     if (n === 1 || n === 9) return { left: a.left, top: a.top - (v2 ? 9 : 7) };
     if (rich && (n === 4 || n === 5 || n === 6)) {
       return { left: a.left, top: a.top + (n === 5 ? 7 : 5) };
@@ -427,7 +438,7 @@ export function TrackerRacetrack({
   return (
     <div
       className={`relative w-full rounded-[9999px] min-h-[360px] ${rich ? (portrait ? 'overflow-visible' : 'overflow-hidden') : 'overflow-hidden aspect-[13/6]'}`}
-      style={rich ? { ...RICH_FELT, aspectRatio: geo.aspect, containerType: 'inline-size' } : FELT}
+      style={rich ? { ...RICH_FELT, aspectRatio: portraitFix ? PORTRAIT_FIX_ASPECT : geo.aspect, minHeight: portraitFix ? PORTRAIT_FIX_MIN_H : undefined, containerType: 'inline-size' } : FELT}
     >
       {/* Center: pot + board */}
       <div
