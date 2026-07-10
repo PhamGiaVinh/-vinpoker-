@@ -54,6 +54,42 @@ export const TRACKER_GEO = {
   portrait: { aspect: '5 / 6', seats: TRACKER_PORTRAIT_SEATS, centerTop: 44 },
 } as const;
 
+/**
+ * Portrait rich-felt DE-CROWDED anchors — used ONLY by the rich felt on narrow
+ * viewports when `trackerFeltDealerFix` is ON. The base TRACKER_PORTRAIT_SEATS + the
+ * old ±7 nudges left the 9 rich pods overlapping at 390px portrait (5 pod-pod overlaps
+ * for seats 1×2/2×3/3×4/6×7/8×9, and seats 1/9 intersecting the dealer block — measured
+ * on /__dev/tracker). A rich pod is ~84×125px (incl. the hole-card backs shown at
+ * showdown reveal), so 4 pods per side cannot stack on the 5/6 oval. This map spreads
+ * each side into an inner→outer→inner→outer arc and pulls seats 1/9 clear of the dealer,
+ * and pairs with the taller PORTRAIT_FIX_ASPECT oval so every pod gets a clear box
+ * (≥14px pairwise clearance at 390px). Base TRACKER_PORTRAIT_SEATS is the flag-OFF
+ * kill-switch path and stays byte-identical. Pinned by TrackerRacetrack.geometry.test.
+ */
+export const TRACKER_PORTRAIT_SEATS_FIX: Record<number, { left: number; top: number }> = {
+  1: { left: 14, top: 86 },
+  2: { left: 24, top: 62 },
+  3: { left: 11, top: 38 },
+  4: { left: 22, top: 13 },
+  5: { left: 50, top: 11 },
+  6: { left: 78, top: 13 },
+  7: { left: 89, top: 38 },
+  8: { left: 76, top: 62 },
+  9: { left: 86, top: 86 },
+};
+
+/** Taller portrait oval that pairs with TRACKER_PORTRAIT_SEATS_FIX (flag-ON only) so the
+ *  9 rich pods get the vertical room to sit without overlap. Flag-OFF keeps '5 / 6'. */
+export const PORTRAIT_FIX_ASPECT = '5 / 8';
+
+/**
+ * Height floor (px) for the fixed portrait oval. Pods are a fixed pixel height but the
+ * aspect-driven oval shrinks with viewport width, so on narrow phones (≤ ~385px) the
+ * vertical gaps close up. This floor keeps the oval tall enough to preserve the gaps.
+ * Inert at 390px (aspect already gives ~562px), only binds below it. Flag-ON only.
+ */
+export const PORTRAIT_FIX_MIN_H = 560;
+
 /** Felt center, and how far a committed-chip puck sits from its seat toward the center. */
 export const FELT_CENTER = { left: 50, top: 44 };
 export const BET_LERP = 0.34;
