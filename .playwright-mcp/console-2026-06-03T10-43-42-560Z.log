@@ -1,6 +1,0 @@
-[    1060ms] Error: supabaseUrl is required.
-    at vI (https://vinpoker.vercel.app/assets/index-CtNodh8S.js:112:45292)
-    at new wI (https://vinpoker.vercel.app/assets/index-CtNodh8S.js:112:45662)
-    at kI (https://vinpoker.vercel.app/assets/index-CtNodh8S.js:112:49132)
-    at https://vinpoker.vercel.app/assets/index-CtNodh8S.js:112:49612
-[    1064ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ https://vinpoker.vercel.app/:0
