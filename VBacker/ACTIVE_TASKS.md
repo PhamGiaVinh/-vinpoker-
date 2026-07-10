@@ -17,9 +17,12 @@ type: tracked
 | F2 "Sửa hand" (display-only) | ✅ LIVE | Claude/Owner | #806 merged · mig `20261225000000` applied · flag `trackerHandHistoryEdit` ON (#807) · owner UAT ✅ |
 | G1 resettle engine (pure, inert) | ✅ MERGED LIVE | Claude | #813 · `resettleForward.ts` + 10 tests · 6 block reasons · nothing calls it yet |
 | G2 apply RPC (chips-only atomic) | ✅ MERGED + APPLIED LIVE | Claude/Owner | #815 · mig `20261226000000` applied 2026-07-09 (anon-execute=false ✓) · auditor PASS · flag `trackerResettleForward` OFF |
-| **G3: "Sửa & tính lại chip" UI** | ⏳ NEXT | Claude | Wire engine G1 → RPC G2; needs client-copy `reduceHand`; owner UAT on TEST tournament before flag ON |
+| **G3: "Sửa & tính lại chip" UI** | ✅ MERGED + LIVE | Claude/Owner | #818 merged · flag `trackerResettleForward` ON (#820) · client `reduceHand` copy + `resettleApply` mapping; entry_number re-attach; changed-only conservation subset |
+| G3 hardening (post-go-live review) | ✅ MERGED + LIVE | Claude/Owner | #823 · 36-agent adversarial review → 11 real bugs/15 fixed: intra-subset drift re-check, re-entry block, paged fetch, side-pot manual guard, atomic UX; **manual-winner picker** added (v1 gap closed); 28/28 tests |
+| G3-A: RPC per-player baseline check | ⏳ owner-gated | Claude/Owner | Belt for the client drift re-check (closes sub-second TOCTOU). Backward-compat migration + client follow-up. Spec: [[resettle-forward-server-hardening]] |
+| G3-B: propagate later-hand starting_stack | ⏳ owner-gated | Claude/Owner | Fixes double-resettle history bug (finding #11). 3-part migration+client change. Spec: [[resettle-forward-server-hardening]] |
 
-**Why:** owner wants editing an old completed hand to auto re-score the winner + reverse chips. Foundation (engine + RPC + audit) is LIVE; only the button (G3) remains. See [[project-resettle-forward-engine]] + [[CLAUDE_LATEST]].
+**Why:** owner wants editing an old completed hand to auto re-score the winner + reverse chips. **LIVE + client-hardened**; only 2 defense-in-depth server migrations remain (owner-gated coordinated deploy). See [[project-resettle-forward-g3-ui]] + [[CLAUDE_LATEST]].
 
 ---
 
@@ -122,6 +125,6 @@ type: tracked
 
 ---
 
-**Auto-updated by:** Claude agent end-of-session  
+**Primary operator:** Grok (from 2026-07-09) — auto-update end-of-session via [[GROK_LATEST]]  
 **Owner review:** Sprint planning + on-demand  
 **Stale if:** >3 days old + no merges or deployment
