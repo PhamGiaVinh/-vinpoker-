@@ -137,11 +137,11 @@ describe("buildApplyResettleArgs", () => {
     expect(args.p_target_hand_id).toBe("h1");
     expect(args.p_reason).toBe("nhập nhầm người thắng");
     expect(args.p_target_winner_ids).toEqual(["P1"]);
-    // final stacks: changed players only, each with entry_number.
+    // final stacks: changed players only, each with entry_number + baseline (expected_current).
     expect(args.p_final_stacks).toEqual(
       expect.arrayContaining([
-        { player_id: "P1", entry_number: 1, chip_count: 1200 },
-        { player_id: "P2", entry_number: 1, chip_count: 800 },
+        { player_id: "P1", entry_number: 1, chip_count: 1200, expected_current: 1000 },
+        { player_id: "P2", entry_number: 1, chip_count: 800, expected_current: 1000 },
       ]),
     );
     expect(args.p_final_stacks).toHaveLength(2);
@@ -157,11 +157,20 @@ describe("buildApplyResettleArgs", () => {
     expect(args.p_hand_changes).toHaveLength(4);
     expect(args.p_hand_changes).toEqual(
       expect.arrayContaining([
-        { hand_id: "h1", player_id: "P1", entry_number: 1, ending_stack: 1100 },
-        { hand_id: "h2", player_id: "P2", entry_number: 1, ending_stack: 800 },
+        // target: starting unchanged; later hand h2: new starting = corrected incoming.
+        { hand_id: "h1", player_id: "P1", entry_number: 1, ending_stack: 1100, starting_stack: 1000 },
+        { hand_id: "h2", player_id: "P2", entry_number: 1, ending_stack: 800, starting_stack: 900 },
       ]),
     );
     for (const c of args.p_hand_changes) expect(c.entry_number).toBe(1);
+  });
+
+  it("server-guard fields present: expected_current baseline + later-hand starting_stack", () => {
+    for (const f of args.p_final_stacks) expect(typeof f.expected_current).toBe("number");
+    for (const c of args.p_hand_changes) expect(typeof c.starting_stack).toBe("number");
+    // A later hand (h2) whose incoming changed must carry the NEW starting stack.
+    const h2p1 = args.p_hand_changes.find((c) => c.hand_id === "h2" && c.player_id === "P1");
+    expect(h2p1?.starting_stack).toBe(1100);
   });
 });
 
