@@ -1007,6 +1007,20 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
         return;
       }
       toast.success(`Đã đóng ${r.tables_closed ?? 0} bàn · ${r.dealers_released ?? 0} dealer về Break Pool`);
+
+      // Telegram summary to the club group (only on a real close, fire-and-forget) —
+      // mirrors closeTour's whole-tour notification. ONE summary message listing the
+      // closed tables (NOT one per table) so a 50-table bulk close never spams the group.
+      if ((r.tables_closed ?? 0) > 0) {
+        const names = ((r.closed_tables as Array<{ table_name?: string }> | undefined) ?? [])
+          .map((t) => t.table_name ?? "?");
+        const list = names.length ? names.join(", ") : `${r.tables_closed} bàn`;
+        sendTelegram(
+          `🔒 Đóng bàn (${r.tables_closed ?? names.length} bàn): ${list}` +
+          ` — ${r.dealers_released ?? 0} dealer về Break Pool.`
+        );
+      }
+
       setCloseTablesConfirmOpen(false);
       setCloseTablesTargets([]);
       await Promise.all([refetchTables(), refetchBreakPool?.()]);
