@@ -19,8 +19,7 @@ type: tracked
 | G2 apply RPC (chips-only atomic) | ✅ MERGED + APPLIED LIVE | Claude/Owner | #815 · mig `20261226000000` applied 2026-07-09 (anon-execute=false ✓) · auditor PASS · flag `trackerResettleForward` OFF |
 | **G3: "Sửa & tính lại chip" UI** | ✅ MERGED + LIVE | Claude/Owner | #818 merged · flag `trackerResettleForward` ON (#820) · client `reduceHand` copy + `resettleApply` mapping; entry_number re-attach; changed-only conservation subset |
 | G3 hardening (post-go-live review) | ✅ MERGED + LIVE | Claude/Owner | #823 · 36-agent adversarial review → 11 real bugs/15 fixed: intra-subset drift re-check, re-entry block, paged fetch, side-pot manual guard, atomic UX; **manual-winner picker** added (v1 gap closed); 28/28 tests |
-| G3-A: RPC per-player baseline check | ⏳ owner-gated | Claude/Owner | Belt for the client drift re-check (closes sub-second TOCTOU). Backward-compat migration + client follow-up. Spec: [[resettle-forward-server-hardening]] |
-| G3-B: propagate later-hand starting_stack | ⏳ owner-gated | Claude/Owner | Fixes double-resettle history bug (finding #11). 3-part migration+client change. Spec: [[resettle-forward-server-hardening]] |
+| G3-A+B: server guards (belt + starting_stack) | ✅ BUILT #824 · ⏳ owner apply | Claude/Owner | **#824 source-only** — freshness belt (`expected_current`) + `starting_stack` via OPTIONAL jsonb fields → signature UNCHANGED, backward-compat, zero ordering hazard. 2 adversarial reviewers clean; tsc 0; 29/29. Owner applies mig `20261227000000` (controlled). Spec: [[resettle-forward-server-hardening]] |
 
 **Why:** owner wants editing an old completed hand to auto re-score the winner + reverse chips. **LIVE + client-hardened**; only 2 defense-in-depth server migrations remain (owner-gated coordinated deploy). See [[project-resettle-forward-g3-ui]] + [[CLAUDE_LATEST]].
 
