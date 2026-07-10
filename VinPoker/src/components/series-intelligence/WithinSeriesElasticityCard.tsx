@@ -22,7 +22,10 @@ const fmtGamma = (g: number) => (g >= 0 ? "" : "−") + Math.abs(g).toFixed(2);
  * disclaimer — this is a correlation over the club's own history, never a causal "raise price → lose players".
  */
 export function WithinSeriesElasticityCard({ events }: { events: SeriesEvent[] }) {
-  const result = useMemo(() => computeWithinSeriesElasticity(events), [events]);
+  const result = useMemo(
+    () => computeWithinSeriesElasticity(events, { censoring: FEATURES.seriesCensoring }),
+    [events],
+  );
 
   return (
     <Card className="p-4 gradient-card border-primary/40 space-y-3">

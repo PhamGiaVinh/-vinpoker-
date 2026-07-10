@@ -975,6 +975,15 @@ export const FEATURES = {
    */
   seriesPriceElasticity: true,
   /**
+   * Series Intelligence — TP6 capacity / censoring (P1-5). When ON: (a) events that HIT their venue capacity
+   * (entries ≥ capacity, a truncated/censored observation) are DROPPED from the turnout-forecast fit and the
+   * within-series elasticity, so the model doesn't learn a false ceiling; (b) an upcoming event with a known
+   * capacity has its forecast band capped at the seat count (attendance can't exceed seats). Capacity is read
+   * from the optional CSV `capacity` column (native has no source yet → null, no effect). Flag off ⇒ byte-
+   * identical outputs. Methodology transparency, not a new claim. Default **OFF**; kill-switch: false.
+   */
+  seriesCensoring: false,
+  /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)
    * + how far the model's number sits from it, so the owner can feel whether the model earns its

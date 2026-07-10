@@ -68,6 +68,8 @@ export function TurnoutForecastPanel({
   // TP2 — optional brand/series name; ONLY feeds the edition-trend feature, and the field only appears when
   // seriesCalendarFeatures is on (so the default UI is unchanged).
   const [seriesName, setSeriesName] = useState("");
+  // TP6 — optional venue capacity of the upcoming event; the field only appears when seriesCensoring is on.
+  const [capacity, setCapacity] = useState<number | null>(null);
 
   const ready = date.trim() !== "" && buyIn !== null && buyIn > 0;
   // Local datetime (never date-only) so the hour-slot feature matches the training rows' bucketing.
@@ -77,11 +79,11 @@ export function TurnoutForecastPanel({
       ready
         ? forecastTurnout(
             events,
-            { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null, event_name: seriesName.trim() || null },
-            { calendarFeatures: FEATURES.seriesCalendarFeatures },
+            { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null, event_name: seriesName.trim() || null, capacity },
+            { calendarFeatures: FEATURES.seriesCalendarFeatures, censoring: FEATURES.seriesCensoring },
           )
         : null,
-    [events, eventDateTime, buyIn, gtd, typeKeyword, seriesName, ready],
+    [events, eventDateTime, buyIn, gtd, typeKeyword, seriesName, capacity, ready],
   );
   const medianFee = useMemo(() => median(events.map((e) => e.fee)) ?? 0, [events]);
 
@@ -132,6 +134,9 @@ export function TurnoutForecastPanel({
               <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Loại giải (vd Main, Turbo — auto từ tên nếu trống)</span><Input className="h-8" value={typeKeyword} onChange={(e) => setTypeKeyword(e.target.value)} /></label>
               {FEATURES.seriesCalendarFeatures && (
                 <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Tên giải/thương hiệu (vd APT Main — để tính "kỳ thứ mấy", tùy chọn)</span><Input className="h-8" value={seriesName} onChange={(e) => setSeriesName(e.target.value)} /></label>
+              )}
+              {FEATURES.seriesCensoring && (
+                <label className="col-span-2 flex flex-col gap-0.5"><span className="text-[10px] text-muted-foreground">Sức chứa phòng (số ghế tối đa — chặn trần dự báo, tùy chọn)</span><Input type="number" className="h-8" placeholder="vd 300" value={capacity ?? ""} onChange={(e) => setCapacity(numOrNull(e.target.value))} /></label>
               )}
             </div>
           </Card>

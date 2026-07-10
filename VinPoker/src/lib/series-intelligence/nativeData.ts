@@ -37,6 +37,7 @@ export interface SeriesEvent {
   total_entries: number | null;
   unique_entries: number | null;
   reentries: number | null;
+  capacity?: number | null; // TP6 — venue/seat capacity (CSV optional column; native has no source → null)
   source: EventSource;
   clubId: string;
   missingFields: string[];
@@ -90,6 +91,7 @@ export function mapTournamentToEvent(
     total_entries,
     unique_entries,
     reentries,
+    capacity: null, // native tournaments have no capacity column yet (TP6: entered via CSV / future DB col)
     source: 'native',
     clubId: row.club_id,
     missingFields,

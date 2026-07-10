@@ -148,3 +148,25 @@ describe("ELASTICITY_DISCLAIMER — endogeneity honesty (always present)", () =>
     expect(STABLE_EDITIONS).toBeGreaterThan(MIN_EDITIONS);
   });
 });
+
+describe("computeWithinSeriesElasticity — TP6 censoring", () => {
+  it("GOLDEN — censoring off (default) is byte-identical to explicit false", () => {
+    const events = planarBrand("Brand X", 0.8, 0.15, Math.log(200), [1_000_000, 2_000_000, 3_000_000, 1_000_000, 2_000_000, 3_000_000]);
+    expect(JSON.stringify(computeWithinSeriesElasticity(events))).toBe(JSON.stringify(computeWithinSeriesElasticity(events, { censoring: false })));
+  });
+
+  it("drops a sold-out edition when censoring is on (4→3 editions ⇒ brand falls below MIN_EDITIONS)", () => {
+    // Realistic integer entries (not the planar helper, whose entries are tiny fractions); edition 2 is sold
+    // out (entries === capacity). 4 editions qualify OFF; censoring removes the sold-out one → 3 < MIN_EDITIONS.
+    const events = [
+      mkEvent("Censor Brand", 1, 1_000_000, 100, "cb-1"),
+      { ...mkEvent("Censor Brand", 2, 2_000_000, 90, "cb-2"), capacity: 90 }, // sold out (90 >= 90)
+      mkEvent("Censor Brand", 3, 1_000_000, 110, "cb-3"),
+      mkEvent("Censor Brand", 4, 3_000_000, 80, "cb-4"),
+    ];
+    const off = computeWithinSeriesElasticity(events);
+    const on = computeWithinSeriesElasticity(events, { censoring: true });
+    expect(off.perBrand.map((b) => b.displayName)).toContain("Censor Brand"); // 4 editions qualify
+    expect(on.enough).toBe(false); // 3 editions after dropping the sold-out one → below MIN_EDITIONS(4)
+  });
+});

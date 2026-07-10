@@ -15,6 +15,7 @@ import type { SeriesEvent } from "./nativeData";
 import { typeOf, TYPE_LABEL } from "./seriesEventType";
 import { editionOf } from "./editionIndex";
 import { isHolidayWindow, isPaydayWindow } from "./viCalendar";
+import { hitCapacity } from "./censoring";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -73,6 +74,9 @@ export interface UpcomingEvent {
   /** Optional brand/series name — used ONLY (TP2) to derive the edition-trend feature for the target when
    *  seriesCalendarFeatures is on. Never affects the event-type classification (that stays typeKeyword-driven). */
   event_name?: string | null;
+  /** Optional venue/seat capacity of the upcoming event (TP6). When seriesCensoring is on, the forecast band
+   *  is capped at this — attendance can't exceed the number of seats. Ignored when censoring is off. */
+  capacity?: number | null;
 }
 
 export interface CoefContribution {
@@ -319,10 +323,13 @@ interface TrainRow {
   entries: number;
 }
 
-function trainRows(events: SeriesEvent[], calendarFeatures = false): TrainRow[] {
+function trainRows(events: SeriesEvent[], calendarFeatures = false, censoring = false): TrainRow[] {
   const rows: TrainRow[] = [];
+  // allEvents is the FULL history for editionTrend — a censored (sold-out) event still counts as a prior
+  // edition even though it is not itself a training row.
   const allEvents = calendarFeatures ? events : undefined; // supplied ⇒ editionTrend computed; else 0 (off path)
   for (const e of events) {
+    if (censoring && hitCapacity(e)) continue; // TP6: sold-out = truncated observation → excluded from the fit
     if (e.total_entries === null || !(e.total_entries > 0)) continue;
     if (e.buy_in === null || !(e.buy_in > 0) || e.event_date === null) continue;
     const t = new Date(e.event_date).getTime();
@@ -376,12 +383,19 @@ export interface ForecastOptions {
    *  trend) to the design matrix at the full-model tier (n ≥ MIN_FULL). Off (default) ⇒ every output is
    *  byte-identical to the pre-TP2 engine. Wired from FEATURES.seriesCalendarFeatures by the panel. */
   calendarFeatures?: boolean;
+  /** TP6 — when true, DROP sold-out (capacity-hit) events from the fit (their entries are a censored ceiling,
+   *  not true demand) and cap the forecast band at the target's capacity. Off (default) ⇒ byte-identical. */
+  censoring?: boolean;
 }
 
 export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): TurnoutForecast {
   const calendarFeatures = opts.calendarFeatures === true;
+  const censoring = opts.censoring === true;
   const targetTime = new Date(target.event_date).getTime();
-  const all = trainRows(events, calendarFeatures);
+  // Censoring drops capacity-hit events from the FIT (their entries are a truncated ceiling, not true demand),
+  // but they still count as prior editions for editionTrend — trainRows handles that. Off ⇒ byte-identical.
+  const excludedCount = censoring ? events.filter((e) => hitCapacity(e)).length : 0;
+  const all = trainRows(events, calendarFeatures, censoring);
   const past = Number.isNaN(targetTime) ? all : all.filter((r) => r.date < targetTime);
   const n = past.length;
   const notes: string[] = [];
@@ -413,9 +427,9 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
   const degraded = !model.useOneHot;
   const yh = predictLog(model, tf);
   const sigma = model.rmse * Math.sqrt(1 + 1 / n) * widenFor(tier);
-  const base = Math.round(Math.exp(yh));
-  const low = Math.round(Math.exp(yh - Z * sigma));
-  const high = Math.round(Math.exp(yh + Z * sigma));
+  let base = Math.round(Math.exp(yh));
+  let low = Math.round(Math.exp(yh - Z * sigma));
+  let high = Math.round(Math.exp(yh + Z * sigma));
 
   const { modelMape, baselineMape } = walkForwardCv(past, calendarFeatures);
   const delta = modelMape !== null && baselineMape !== null ? baselineMape - modelMape : null;
@@ -428,6 +442,22 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
   if (degraded) notes.push(`Ít dữ liệu (${n} giải) — chỉ dùng buy-in, dải nới rộng, chỉ tham khảo.`);
   if (n < HIGH_N) notes.push(`Cần ≥${HIGH_N} giải để đạt độ tin cậy cao (hiện ${n}).`);
   if (tf.logGtd === null) notes.push("Giải sắp tới chưa đặt GTD — overlay sẽ không tính được.");
+
+  // TP6 censoring — note the truncated events dropped from the fit, and cap the band at the target's capacity
+  // (attendance can't exceed seats). Surfacing when the demand estimate itself exceeds capacity = sell-out risk.
+  if (censoring) {
+    if (excludedCount > 0)
+      notes.push(`${excludedCount} giải chạm trần sức chứa đã loại khỏi mô hình (dữ liệu bị cắt — truncated).`);
+    const cap = target.capacity;
+    if (cap != null && cap > 0) {
+      const preCapBase = base;
+      high = Math.min(high, cap);
+      base = Math.min(base, high);
+      low = Math.min(low, high);
+      notes.push(`Giới hạn theo sức chứa ${cap} — dải & dự báo không vượt số ghế.`);
+      if (preCapBase > cap) notes.push(`Cầu ước tính (~${preCapBase}) vượt sức chứa → nhiều khả năng cháy vé.`);
+    }
+  }
 
   return {
     available: true,

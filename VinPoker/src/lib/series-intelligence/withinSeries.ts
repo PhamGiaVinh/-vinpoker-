@@ -18,6 +18,7 @@
 
 import type { SeriesEvent } from "./nativeData";
 import { editionOf, groupByBrand } from "./editionIndex";
+import { hitCapacity } from "./censoring";
 
 const OLS_PARAMS = 3; // the fit has 3 parameters: intercept + ln(buy_in) + edition
 // A brand needs strictly MORE editions than parameters, so the fit has >= 1 residual degree of freedom and is
@@ -109,8 +110,14 @@ function pearson(xs: number[], ys: number[]): number {
  * Descriptive only; leakage is not a concern here (this is a retrospective correlation over completed
  * events, not a forecast). Returns qualifying brands, dropped brands with reasons, and a pooled γ.
  */
-export function computeWithinSeriesElasticity(events: SeriesEvent[]): WithinSeriesElasticity {
-  const groups = groupByBrand(events);
+export function computeWithinSeriesElasticity(
+  events: SeriesEvent[],
+  opts: { censoring?: boolean } = {},
+): WithinSeriesElasticity {
+  // TP6 — when censoring is on, drop sold-out (capacity-hit) editions: their entries are a truncated ceiling,
+  // not true demand, so they'd bias γ. Off (default) ⇒ same events ⇒ byte-identical.
+  const usable = opts.censoring === true ? events.filter((e) => !hitCapacity(e)) : events;
+  const groups = groupByBrand(usable);
   const perBrand: BrandElasticity[] = [];
   const dropped: DroppedBrand[] = [];
 
