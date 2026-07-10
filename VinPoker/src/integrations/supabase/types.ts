@@ -1227,6 +1227,45 @@ export type Database = {
           },
         ]
       }
+      club_accountants: {
+        Row: {
+          club_id: string
+          created_at: string
+          granted_by: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_accountants_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_accountants_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_cashiers: {
         Row: {
           club_id: string
@@ -9793,6 +9832,185 @@ export type Database = {
           },
         ]
       }
+      staff_salary_periods: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          club_id: string
+          created_at: string
+          id: string
+          note: string | null
+          period_month: number
+          period_year: number
+          prepared_at: string | null
+          prepared_by: string | null
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          club_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          period_month: number
+          period_year: number
+          prepared_at?: string | null
+          prepared_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          club_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          period_month?: number
+          period_year?: number
+          prepared_at?: string | null
+          prepared_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_salary_periods_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_salary_periods_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_salary_runs: {
+        Row: {
+          adjusts_id: string | null
+          club_id: string
+          created_at: string
+          employment_type: string
+          gross_vnd: number
+          id: string
+          locked_at: string
+          locked_by: string
+          manual_bhxh_vnd: number
+          manual_tax_vnd: number
+          net_vnd: number
+          note: string | null
+          paid_at: string | null
+          paid_by: string | null
+          payment_method: string | null
+          payment_reference: string | null
+          period_month: number
+          period_year: number
+          staff_id: string
+          status: string
+          worked_days: number | null
+          worked_minutes: number | null
+        }
+        Insert: {
+          adjusts_id?: string | null
+          club_id: string
+          created_at?: string
+          employment_type: string
+          gross_vnd: number
+          id?: string
+          locked_at?: string
+          locked_by: string
+          manual_bhxh_vnd?: number
+          manual_tax_vnd?: number
+          net_vnd: number
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          period_month: number
+          period_year: number
+          staff_id: string
+          status?: string
+          worked_days?: number | null
+          worked_minutes?: number | null
+        }
+        Update: {
+          adjusts_id?: string | null
+          club_id?: string
+          created_at?: string
+          employment_type?: string
+          gross_vnd?: number
+          id?: string
+          locked_at?: string
+          locked_by?: string
+          manual_bhxh_vnd?: number
+          manual_tax_vnd?: number
+          net_vnd?: number
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          period_month?: number
+          period_year?: number
+          staff_id?: string
+          status?: string
+          worked_days?: number | null
+          worked_minutes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_salary_runs_adjusts_id_fkey"
+            columns: ["adjusts_id"]
+            isOneToOne: false
+            referencedRelation: "staff_salary_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_salary_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_salary_runs_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_salary_runs_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staking_audit_logs: {
         Row: {
           action: Database["public"]["Enums"]["staking_audit_action"]
@@ -13310,6 +13528,10 @@ export type Database = {
       }
       _pt_wage_balance: { Args: { p_dealer_id: string }; Returns: Json }
       _staff_pt_wage_balance: { Args: { p_staff_id: string }; Returns: Json }
+      _staff_salary_authorised: {
+        Args: { p_club_id: string; p_uid: string }
+        Returns: boolean
+      }
       accept_group_invite: { Args: { _token: string }; Returns: string }
       add_player_with_reentry:
         | {
@@ -13359,6 +13581,10 @@ export type Database = {
           p_target_winner_ids?: Json
           p_tournament_id: string
         }
+        Returns: Json
+      }
+      approve_staff_salary_month: {
+        Args: { p_club_id: string; p_month: number; p_year: number }
         Returns: Json
       }
       approve_verification: {
@@ -13591,6 +13817,10 @@ export type Database = {
         Returns: number
       }
       chip_ops_unseal_bag: { Args: { p_bag_id: string }; Returns: Json }
+      chot_staff_salary_month: {
+        Args: { p_club_id: string; p_month: number; p_year: number }
+        Returns: Json
+      }
       ci_dataset_readiness: { Args: { _dataset_id: string }; Returns: Json }
       cleanup_expired_club_locks: { Args: never; Returns: undefined }
       cleanup_old_diagnostic_logs: { Args: never; Returns: undefined }
@@ -14184,6 +14414,14 @@ export type Database = {
           total_minutes: number
         }[]
       }
+      get_staff_salary_month: {
+        Args: { p_club_id: string; p_month: number; p_year: number }
+        Returns: Json
+      }
+      get_staff_salary_report: {
+        Args: { p_club_id: string; p_month: number; p_year: number }
+        Returns: Json
+      }
       get_swing_metrics: { Args: never; Returns: Json }
       get_table_assignments_with_next: {
         Args: { p_club_id: string }
@@ -14229,6 +14467,10 @@ export type Database = {
         Returns: Json
       }
       get_tv_display_state: { Args: { p_display_token: string }; Returns: Json }
+      grant_club_accountant: {
+        Args: { p_club_id: string; p_user_id: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -14264,6 +14506,10 @@ export type Database = {
         Returns: Json
       }
       is_ci_enabled: { Args: { _club_id: string }; Returns: boolean }
+      is_club_accountant: {
+        Args: { p_club_id: string; p_uid: string }
+        Returns: boolean
+      }
       is_club_admin: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
@@ -14351,6 +14597,14 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      mark_staff_salary_paid: {
+        Args: {
+          p_payment_method?: string
+          p_payment_reference?: string
+          p_run_id: string
+        }
+        Returns: Json
       }
       marketer_club_ids: { Args: { _user_id: string }; Returns: string[] }
       marketing_add_blocked_term: {
@@ -14859,6 +15113,15 @@ export type Database = {
         Returns: Json
       }
       refresh_dealer_pool_summary: { Args: never; Returns: undefined }
+      reject_staff_salary_month: {
+        Args: {
+          p_club_id: string
+          p_month: number
+          p_reason?: string
+          p_year: number
+        }
+        Returns: Json
+      }
       release_club_lock: { Args: { p_club_id: string }; Returns: undefined }
       release_club_lock_if_owner: {
         Args: { p_club_id: string; p_lock_token: string }
@@ -14894,6 +15157,10 @@ export type Database = {
           p_decision: string
           p_work_date: string
         }
+        Returns: Json
+      }
+      revoke_club_accountant: {
+        Args: { p_club_id: string; p_user_id: string }
         Returns: Json
       }
       save_payroll_period: {
@@ -15094,6 +15361,15 @@ export type Database = {
           p_hand_time?: string
           p_table_id: string
           p_tournament_id: string
+        }
+        Returns: Json
+      }
+      submit_staff_salary_month: {
+        Args: {
+          p_club_id: string
+          p_month: number
+          p_note?: string
+          p_year: number
         }
         Returns: Json
       }
