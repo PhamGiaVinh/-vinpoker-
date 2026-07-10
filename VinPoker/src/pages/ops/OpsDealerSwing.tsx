@@ -427,6 +427,17 @@ export default function OpsDealerSwing() {
     }
     if (r.outcome === "already_closed") toast.info("Tour đã đóng trước đó.");
     else toast.success(`Đã đóng tour ${tour.name} · giải phóng ${r.tables_released ?? 0} bàn · ${r.dealers_released ?? 0} dealer về pool`);
+    // Telegram tổng hợp cho nhóm CLB (chỉ khi đóng THẬT, fire-and-forget) — đồng bộ với
+    // desktop closeTour; dùng edge telegram-swing-notifier đã LIVE (__club__ → chat CLB).
+    if (r.outcome === "ok") {
+      supabase.functions.invoke("telegram-swing-notifier", {
+        body: {
+          chat_id: "__club__", club_id: tour.clubId,
+          message: `📦 Đóng tour ${tour.name}: đã lưu trữ Swing, giải phóng ${r.tables_released ?? 0} bàn`
+            + ` và đưa ${r.dealers_released ?? 0} dealer về Break Pool.`,
+        },
+      }).catch(() => {});
+    }
     setDongTour(""); setTourToClose(null); setTourList(null);
     reloadAll();
   });
