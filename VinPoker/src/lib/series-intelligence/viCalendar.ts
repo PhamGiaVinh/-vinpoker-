@@ -1,5 +1,5 @@
-// Series Intelligence — Vietnamese calendar features (PURE, deterministic, TZ-free). Poker turnout moves
-// with holidays (people travel/gather) and paydays (money in pocket). Rather than pull a lunar-calendar
+// Series Intelligence — Vietnamese calendar features (PURE, deterministic, TZ-free). Poker turnout tends to
+// co-move with holiday and payday windows — an OBSERVED pattern fed as a feature, NOT a causal claim. Rather than pull a lunar-calendar
 // library, we hard-code the STATIC holiday windows 2024–2028 (incl. Tết's solar dates), and derive
 // payday from the day-of-month. Comparison is string-based on the ISO date's "YYYY-MM-DD" prefix, so it
 // never shifts with timezone. These are Known-Rule calendar facts fed as forecast features (TP2).

@@ -13,6 +13,8 @@
 
 import type { SeriesEvent } from "./nativeData";
 import { typeOf, TYPE_LABEL } from "./seriesEventType";
+import { editionOf } from "./editionIndex";
+import { isHolidayWindow, isPaydayWindow } from "./viCalendar";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -68,6 +70,9 @@ export interface UpcomingEvent {
   buy_in: number;
   gtd: number | null;
   typeKeyword?: string | null;
+  /** Optional brand/series name — used ONLY (TP2) to derive the edition-trend feature for the target when
+   *  seriesCalendarFeatures is on. Never affects the event-type classification (that stays typeKeyword-driven). */
+  event_name?: string | null;
 }
 
 export interface CoefContribution {
@@ -101,6 +106,12 @@ export function describeFeature(feature: string): string {
       return HOUR_SLOT_VN[Number(level.replace("hs", ""))] ?? level;
     case "type":
       return `Loại ${(TYPE_LABEL as Record<string, string>)[level] ?? level}`;
+    case "isHoliday":
+      return "Rơi vào dịp lễ/Tết";
+    case "isPayday":
+      return "Đầu tháng (ngày lương)";
+    case "editionTrend":
+      return "Kỳ tổ chức thứ mấy (xu hướng qua các kỳ)";
     default:
       return feature;
   }
@@ -140,10 +151,29 @@ interface PreFeatures {
   quarter: string;
   hourSlot: string;
   type: string;
+  // TP2 calendar/edition numerics — only enter the design matrix when seriesCalendarFeatures is on AND
+  // n ≥ MIN_FULL; computed harmlessly (and cheaply) otherwise. isHoliday/isPayday ∈ {0,1}; editionTrend = ln(edition).
+  isHoliday: number;
+  isPayday: number;
+  editionTrend: number;
 }
-function preFeatures(buyIn: number, gtd: number | null, iso: string, name: string | null, explicitType?: string | null): PreFeatures | null {
+function preFeatures(
+  buyIn: number,
+  gtd: number | null,
+  iso: string,
+  name: string | null,
+  explicitType?: string | null,
+  allEvents?: SeriesEvent[],
+  editionName?: string | null,
+): PreFeatures | null {
   const parts = localParts(iso);
   if (!parts || !(buyIn > 0)) return null;
+  // editionTrend counts only STRICTLY-earlier same-brand editions (leakage-safe by date). It is derived
+  // ONLY when allEvents is supplied (i.e. calendar features are on) so the OFF path does no edition work and
+  // stays byte-identical. `editionName ?? name` lets the target pass a brand distinct from its type input.
+  const brand = editionName !== undefined ? editionName : name;
+  const editionTrend =
+    allEvents && brand && brand.trim() !== "" ? Math.log(editionOf(allEvents, brand, iso).edition) : 0;
   return {
     logBuyin: Math.log(buyIn),
     logGtd: gtd != null && gtd > 0 ? Math.log(gtd) : null,
@@ -151,6 +181,9 @@ function preFeatures(buyIn: number, gtd: number | null, iso: string, name: strin
     quarter: `q${parts.quarter}`,
     hourSlot: `hs${parts.hourSlot}`,
     type: typeOf(name, explicitType),
+    isHoliday: isHolidayWindow(iso) ? 1 : 0,
+    isPayday: isPaydayWindow(iso) ? 1 : 0,
+    editionTrend,
   };
 }
 
@@ -163,27 +196,40 @@ interface Model {
   meanLogGtd: number; // imputation for missing GTD
   useGtd: boolean;
   useOneHot: boolean;
+  useCalendar: boolean; // TP2: whether the calendar/edition numeric columns are in this model
   beta: number[];
   rmse: number;
   n: number;
 }
 
 const NUM_COLS_FULL = ["logBuyin", "logGtd", "gtdMissing"];
+const CAL_COLS = ["isHoliday", "isPayday", "editionTrend"]; // TP2 numeric calendar/edition features (appended last)
 const ONE_HOT_GROUPS: Array<keyof Pick<PreFeatures, "weekday" | "quarter" | "hourSlot" | "type">> = ["weekday", "quarter", "hourSlot", "type"];
 
-function buildModel(rows: Array<{ f: PreFeatures; y: number }>): Model | null {
+/** Numeric column order for a model. Calendar cols are appended AFTER the base cols so that with the flag
+ *  off the list is byte-identical to before (never reordering the existing coefficients). */
+function numColsFor(useGtd: boolean, useCalendar: boolean): string[] {
+  const base = useGtd ? NUM_COLS_FULL : ["logBuyin"];
+  return useCalendar ? [...base, ...CAL_COLS] : base;
+}
+
+function buildModel(rows: Array<{ f: PreFeatures; y: number }>, calendarFeatures = false): Model | null {
   const n = rows.length;
   if (n < 2) return null;
   const useOneHot = n >= MIN_FULL;
   const useGtd = useOneHot && rows.some((r) => r.f.logGtd !== null);
+  const useCalendar = calendarFeatures && useOneHot; // gated identically to the full one-hot tier
 
   // numeric columns
-  const numCols = useGtd ? NUM_COLS_FULL : ["logBuyin"];
+  const numCols = numColsFor(useGtd, useCalendar);
   const meanLogGtd = useGtd ? mean(rows.map((r) => r.f.logGtd).filter((v): v is number => v !== null)) : 0;
   const numValue = (f: PreFeatures, c: string): number => {
     if (c === "logBuyin") return f.logBuyin;
     if (c === "logGtd") return f.logGtd ?? meanLogGtd;
     if (c === "gtdMissing") return f.logGtd === null ? 1 : 0;
+    if (c === "isHoliday") return f.isHoliday;
+    if (c === "isPayday") return f.isPayday;
+    if (c === "editionTrend") return f.editionTrend;
     return 0;
   };
   const numMean: Record<string, number> = {};
@@ -241,15 +287,18 @@ function buildModel(rows: Array<{ f: PreFeatures; y: number }>): Model | null {
     sse += (y[i] - yh) * (y[i] - yh);
   }
   const rmse = Math.sqrt(sse / n);
-  return { cols, oneHot, numMean, numStd, meanLogGtd, useGtd, useOneHot, beta, rmse, n };
+  return { cols, oneHot, numMean, numStd, meanLogGtd, useGtd, useOneHot, useCalendar, beta, rmse, n };
 }
 
 function predictLog(model: Model, f: PreFeatures): number {
-  const numCols = model.useGtd ? NUM_COLS_FULL : ["logBuyin"];
+  const numCols = numColsFor(model.useGtd, model.useCalendar);
   const numValue = (c: string): number => {
     if (c === "logBuyin") return f.logBuyin;
     if (c === "logGtd") return f.logGtd ?? model.meanLogGtd;
     if (c === "gtdMissing") return f.logGtd === null ? 1 : 0;
+    if (c === "isHoliday") return f.isHoliday;
+    if (c === "isPayday") return f.isPayday;
+    if (c === "editionTrend") return f.editionTrend;
     return 0;
   };
   let yh = model.beta[0];
@@ -270,14 +319,15 @@ interface TrainRow {
   entries: number;
 }
 
-function trainRows(events: SeriesEvent[]): TrainRow[] {
+function trainRows(events: SeriesEvent[], calendarFeatures = false): TrainRow[] {
   const rows: TrainRow[] = [];
+  const allEvents = calendarFeatures ? events : undefined; // supplied ⇒ editionTrend computed; else 0 (off path)
   for (const e of events) {
     if (e.total_entries === null || !(e.total_entries > 0)) continue;
     if (e.buy_in === null || !(e.buy_in > 0) || e.event_date === null) continue;
     const t = new Date(e.event_date).getTime();
     if (Number.isNaN(t)) continue;
-    const f = preFeatures(e.buy_in, e.gtd, e.event_date, e.event_name);
+    const f = preFeatures(e.buy_in, e.gtd, e.event_date, e.event_name, undefined, allEvents);
     if (!f) continue;
     rows.push({ f, y: Math.log(e.total_entries), date: t, entries: e.total_entries });
   }
@@ -286,7 +336,7 @@ function trainRows(events: SeriesEvent[]): TrainRow[] {
 
 /** Walk-forward CV: for each event predict it from ONLY earlier events (pipeline rebuilt per fold). Honest
  *  out-of-sample. Returns null mapes when too few folds. Baseline = median of past entries (same protocol). */
-function walkForwardCv(rows: TrainRow[]): { modelMape: number | null; baselineMape: number | null } {
+function walkForwardCv(rows: TrainRow[], calendarFeatures = false): { modelMape: number | null; baselineMape: number | null } {
   const mApe: number[] = [];
   const bApe: number[] = [];
   for (let i = CV_MIN_TRAIN; i < rows.length; i++) {
@@ -295,7 +345,7 @@ function walkForwardCv(rows: TrainRow[]): { modelMape: number | null; baselineMa
     const train = rows.filter((r) => r.date < rows[i].date);
     if (train.length < CV_MIN_TRAIN) continue;
     const actual = rows[i].entries;
-    const model = buildModel(train.map((r) => ({ f: r.f, y: r.y })));
+    const model = buildModel(train.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
     if (model) {
       const pred = Math.exp(predictLog(model, rows[i].f));
       if (Number.isFinite(pred) && pred > 0) mApe.push(Math.abs(pred - actual) / actual);
@@ -321,9 +371,17 @@ function widenFor(tier: ForecastConfidence): number {
  * Degrade ladder: N≤1 → unavailable ("cần thêm dữ liệu"); 2≤N<8 → intercept + log(buy-in) only (low);
  * N≥8 → full ridge. Always returns a band + tier + disclaimer; never a bare number, never NaN.
  */
-export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent): TurnoutForecast {
+export interface ForecastOptions {
+  /** TP2 — when true, add the calendar/edition numeric features (holiday window, payday window, edition
+   *  trend) to the design matrix at the full-model tier (n ≥ MIN_FULL). Off (default) ⇒ every output is
+   *  byte-identical to the pre-TP2 engine. Wired from FEATURES.seriesCalendarFeatures by the panel. */
+  calendarFeatures?: boolean;
+}
+
+export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): TurnoutForecast {
+  const calendarFeatures = opts.calendarFeatures === true;
   const targetTime = new Date(target.event_date).getTime();
-  const all = trainRows(events);
+  const all = trainRows(events, calendarFeatures);
   const past = Number.isNaN(targetTime) ? all : all.filter((r) => r.date < targetTime);
   const n = past.length;
   const notes: string[] = [];
@@ -335,10 +393,20 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent): T
 
   if (n <= 1) return empty(`Chỉ có ${n} giải trước ngày này — cần thêm dữ liệu để dự báo.`);
 
-  const tf = preFeatures(target.buy_in, target.gtd, target.event_date, null, target.typeKeyword);
+  // Target features: type stays typeKeyword-driven (name = null, unchanged); the brand name is passed
+  // ONLY as editionName so editionTrend can count the target's prior editions. allEvents supplied only when on.
+  const tf = preFeatures(
+    target.buy_in,
+    target.gtd,
+    target.event_date,
+    null,
+    target.typeKeyword,
+    calendarFeatures ? events : undefined,
+    target.event_name ?? null,
+  );
   if (!tf) return empty("Thông số giải sắp tới chưa hợp lệ (cần buy-in > 0 và ngày hợp lệ).");
 
-  const model = buildModel(past.map((r) => ({ f: r.f, y: r.y })));
+  const model = buildModel(past.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
   if (!model) return empty("Không dựng được mô hình từ dữ liệu hiện có.");
 
   const tier = tierFor(n);
@@ -349,7 +417,7 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent): T
   const low = Math.round(Math.exp(yh - Z * sigma));
   const high = Math.round(Math.exp(yh + Z * sigma));
 
-  const { modelMape, baselineMape } = walkForwardCv(past);
+  const { modelMape, baselineMape } = walkForwardCv(past, calendarFeatures);
   const delta = modelMape !== null && baselineMape !== null ? baselineMape - modelMape : null;
 
   const coefContributions: CoefContribution[] = model.cols.slice(1).map((feature, i) => {
