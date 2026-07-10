@@ -13,9 +13,31 @@ import {
   runClientResettle,
   buildApplyResettleArgs,
   resettleChipChanges,
+  contenders,
+  manualWinnerUnsafe,
   type ResettleHandRow,
 } from "./resettleApply";
 import type { EditedTargetHand, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
+
+/** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
+ *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a
+ *  UNIQUE total order (else a non-unique order can skip/dupe rows at page boundaries). */
+async function pageAll<T = any>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+): Promise<{ data: T[]; error: any }> {
+  const PAGE = 1000;
+  let from = 0;
+  const acc: T[] = [];
+  for (;;) {
+    const { data, error } = await makeQuery(from, from + PAGE - 1);
+    if (error) return { data: [], error };
+    const rows = data || [];
+    acc.push(...rows);
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: acc, error: null };
+}
 
 interface HandRecord {
   id: string;
@@ -101,6 +123,10 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     patch: HandEditPatch;
     reason: string;
     targetHandId: string;
+    // Kept so a manual-winner re-run can re-invoke the engine without re-fetching.
+    targetRow: ResettleHandRow;
+    laterRows: ResettleHandRow[];
+    editedTarget: EditedTargetHand;
   } | null>(null);
 
   useEffect(() => {
@@ -261,42 +287,74 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     setResettleView(null);
     try {
       // Full forward chain: target + every later completed, non-voided hand in the
-      // tournament, chronological. The engine needs the whole chain so its final stacks
-      // equal the live chip counts (conservation) for players it doesn't move.
-      const { data: handRows, error: hErr } = await supabase
-        .from("tournament_hands")
-        .select("id, hand_number, table_id, button_seat, created_at")
-        .eq("tournament_id", tournamentId)
-        .eq("status", "completed")
-        .eq("is_voided", false)
-        .gte("created_at", target.created_at)
-        .order("created_at", { ascending: true });
-      if (hErr || !handRows) {
-        toast.error("Không tải được chuỗi ván để tính lại: " + (hErr?.message ?? ""));
+      // tournament, chronological. The engine needs the WHOLE chain so its final stacks
+      // equal the live chip counts (conservation) for players it doesn't move. All three
+      // reads are PAGED with unique total orders — a silently-truncated chain would corrupt
+      // the replay + the all-in-cap divergence guard and let conserved-but-wrong chips slip.
+      const handsRes = await pageAll<any>((from, to) =>
+        supabase
+          .from("tournament_hands")
+          .select("id, hand_number, table_id, button_seat, created_at")
+          .eq("tournament_id", tournamentId)
+          .eq("status", "completed")
+          .eq("is_voided", false)
+          .gte("created_at", target.created_at)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
+      if (handsRes.error) {
+        toast.error("Không tải được chuỗi ván để tính lại: " + (handsRes.error.message ?? ""));
         return;
       }
+      const handRows = handsRes.data;
       const ids = handRows.map((h: any) => h.id);
+      if (ids.length === 0) {
+        toast.error("Không tìm thấy ván nào để tính lại.");
+        return;
+      }
       const [pRes, aRes] = await Promise.all([
-        supabase
-          .from("hand_players")
-          .select("hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated")
-          .in("hand_id", ids),
-        supabase
-          .from("hand_actions")
-          .select("hand_id, player_id, street, action_type, action_amount, action_order")
-          .in("hand_id", ids)
-          .order("action_order"),
+        pageAll<any>((from, to) =>
+          supabase
+            .from("hand_players")
+            .select("hand_id, player_id, entry_number, seat_number, starting_stack, ending_stack, is_eliminated")
+            .in("hand_id", ids)
+            .order("hand_id", { ascending: true })
+            .order("player_id", { ascending: true })
+            .order("entry_number", { ascending: true })
+            .range(from, to),
+        ),
+        pageAll<any>((from, to) =>
+          supabase
+            .from("hand_actions")
+            .select("hand_id, player_id, street, action_type, action_amount, action_order")
+            .in("hand_id", ids)
+            .order("hand_id", { ascending: true })
+            .order("action_order", { ascending: true })
+            .range(from, to),
+        ),
       ]);
+      if (pRes.error || aRes.error) {
+        toast.error("Không tải được chi tiết ván để tính lại: " + ((pRes.error || aRes.error)?.message ?? ""));
+        return;
+      }
       const playersByHand = new Map<string, any[]>();
-      (pRes.data || []).forEach((p: any) => {
+      pRes.data.forEach((p: any) => {
         if (!playersByHand.has(p.hand_id)) playersByHand.set(p.hand_id, []);
         playersByHand.get(p.hand_id)!.push(p);
       });
       const actionsByHand = new Map<string, any[]>();
-      (aRes.data || []).forEach((a: any) => {
+      aRes.data.forEach((a: any) => {
         if (!actionsByHand.has(a.hand_id)) actionsByHand.set(a.hand_id, []);
         actionsByHand.get(a.hand_id)!.push(a);
       });
+      // Completeness: every completed hand in the chain must have its player rows, else the
+      // carry is missing data → refuse rather than move chips on a partial chain.
+      const missing = handRows.filter((h: any) => (playersByHand.get(h.id) || []).length === 0);
+      if (missing.length > 0) {
+        toast.error(`Dữ liệu ván không đầy đủ (thiếu người chơi ở ${missing.length} ván) — không thể tính lại an toàn.`);
+        return;
+      }
       const toRow = (h: any): ResettleHandRow => ({
         id: h.id,
         hand_number: h.hand_number,
@@ -324,13 +382,24 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         toast.error("Không tìm thấy ván gốc trong chuỗi để tính lại.");
         return;
       }
+      const targetRow = toRow(targetRaw);
       const laterRows = handRows.filter((h: any) => h.id !== target.id).map(toRow);
       const { result, entryByPlayer, entryByHandPlayer } = runClientResettle({
-        target: toRow(targetRaw),
+        target: targetRow,
         later: laterRows,
         editedTarget,
       });
-      setResettleView({ result, entryByPlayer, entryByHandPlayer, patch, reason, targetHandId: target.id });
+      setResettleView({
+        result,
+        entryByPlayer,
+        entryByHandPlayer,
+        patch,
+        reason,
+        targetHandId: target.id,
+        targetRow,
+        laterRows,
+        editedTarget,
+      });
     } finally {
       setResettleBusy(false);
     }
@@ -343,8 +412,44 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     if (!resettleView || !resettleView.result.ok) return;
     const rv = resettleView;
     const ok = rv.result as ResettleOk;
+    const changes = resettleChipChanges(ok);
     setResettleBusy(true);
     try {
+      // Guard 1 — a bust flip (alive<->busted) is NOT a chip re-attribution; the RPC would
+      // refuse it AFTER the display edit already committed. Detect it up front and route to
+      // void so we never leave display-edited-but-chips-unchanged on this path.
+      if (changes.some((c) => (c.before === 0) !== (c.after === 0))) {
+        toast.error("Có người chơi đổi trạng thái loại/còn sống — hãy dùng 'Hoàn tác ván' (void) rồi nhập lại, không dùng tính lại chip.");
+        return;
+      }
+      // Guard 2 — FRESHNESS: the preview was computed from a snapshot. Re-fetch the changed
+      // players' LIVE chips and require each to still equal the engine baseline. This closes
+      // the preview->confirm race where an intra-subset (net-zero) chip move would satisfy the
+      // RPC's subset-SUM guard yet silently erase that move (confirmed HIGH finding).
+      const changedIds = [...new Set(changes.map((c) => c.player_id))];
+      const { data: liveRows, error: liveErr } = await supabase
+        .from("tournament_chip_counts")
+        .select("player_id, entry_number, chip_count")
+        .eq("tournament_id", tournamentId)
+        .in("player_id", changedIds);
+      if (liveErr) {
+        toast.error("Không kiểm tra được chip hiện tại: " + liveErr.message);
+        return;
+      }
+      const liveMap = new Map<string, number>();
+      (liveRows || []).forEach((r: any) => liveMap.set(`${r.player_id}:${r.entry_number}`, r.chip_count));
+      const drifted = changes.some((c) => {
+        const entry = rv.entryByPlayer.get(c.player_id) ?? 1;
+        return liveMap.get(`${c.player_id}:${entry}`) !== c.before;
+      });
+      if (drifted) {
+        toast.error("Chip đã thay đổi từ lúc xem trước (có ván mới hoặc chỉnh chip). Bấm 'Sửa & tính lại chip' lại để tính trên dữ liệu mới.");
+        setResettleView(null);
+        loadHands();
+        return;
+      }
+
+      // 1) Display edits (board/holes/actions) — never touches chips.
       const editArgs = buildEditCompletedHandArgs({ tournamentId, handId: rv.targetHandId, reason: rv.reason, patch: rv.patch });
       const { data: editData, error: editErr } = await supabase.rpc("edit_completed_hand" as any, editArgs as any);
       if (editErr) {
@@ -360,6 +465,8 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
         toast.error("Không lưu được hiển thị: " + (editData as any).error);
         return;
       }
+      // 2) Chip re-attribution. If this fails AFTER the display edit committed, reload so the
+      // panel reflects the saved display + unchanged chips (honest, never silently stale).
       const applyArgs = buildApplyResettleArgs({
         tournamentId,
         targetHandId: rv.targetHandId,
@@ -374,17 +481,23 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
           setResettleSupported(false);
           toast.error("Tính lại chip chưa được áp dụng trên máy chủ.");
         } else {
-          toast.error("Lỗi khi tính lại chip: " + applyErr.message);
+          toast.error("Đã lưu hiển thị nhưng CHƯA đổi chip (lỗi: " + applyErr.message + "). Chip giữ nguyên.");
         }
+        setResettleView(null);
+        loadHands();
         return;
       }
       const res = applyData as any;
       if (res && res.ok === false) {
         if (res.error === "elimination_change_use_void") {
           toast.error("Đây là thay đổi loại/còn sống ở ván mới nhất — hãy dùng 'Hoàn tác ván' (void) rồi nhập lại, không dùng tính lại chip.");
+        } else if (res.error === "not_conserved") {
+          toast.error("Chip không khớp (dữ liệu đã đổi) — CHƯA đổi chip. Đã lưu hiển thị; hãy tính lại.");
         } else {
-          toast.error("Không tính lại chip được: " + res.error);
+          toast.error("Đã lưu hiển thị nhưng CHƯA đổi chip (lý do: " + res.error + ").");
         }
+        setResettleView(null);
+        loadHands();
         return;
       }
       toast.success(`Đã tính lại chip — ${res?.changed_players ?? 0} người đổi chip.`);
@@ -394,6 +507,25 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     } finally {
       setResettleBusy(false);
     }
+  };
+
+  // Đợt G3 — manual-winner path: re-run the engine with operator-picked winner(s),
+  // reusing the already-fetched chain (no re-fetch). Used when the engine returns
+  // needs_manual_winner (incomplete cards / holes not recorded) or when the operator
+  // overrides the auto-evaluated winner. Empty selection clears the override.
+  const handlePickWinners = (winnerIds: string[]) => {
+    const rv = resettleView;
+    if (!rv) return;
+    const editedTarget: EditedTargetHand = {
+      ...rv.editedTarget,
+      manualWinnerIds: winnerIds.length > 0 ? winnerIds : undefined,
+    };
+    const { result, entryByPlayer, entryByHandPlayer } = runClientResettle({
+      target: rv.targetRow,
+      later: rv.laterRows,
+      editedTarget,
+    });
+    setResettleView({ ...rv, editedTarget, result, entryByPlayer, entryByHandPlayer });
   };
 
   const selectedHand = hands.find((h) => h.id === selectedHandId);
@@ -545,12 +677,23 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                 onSave={handleSaveEdit}
                 resettleEnabled={FEATURES.trackerResettleForward && resettleSupported}
                 onResettle={handleResettle}
+                onEditChange={() => setResettleView(null)}
               />
               {resettleView && (
                 <ResettlePreview
                   view={resettleView}
                   busy={resettleBusy}
                   players={selectedHand.players.map((p) => ({ player_id: p.player_id, display_name: p.display_name }))}
+                  contenderIds={contenders(
+                    resettleView.targetRow.players,
+                    resettleView.editedTarget.actions ?? resettleView.targetRow.actions,
+                  )}
+                  currentWinnerIds={resettleView.editedTarget.manualWinnerIds ?? []}
+                  sidePotUnsafe={manualWinnerUnsafe(
+                    resettleView.targetRow,
+                    resettleView.editedTarget.actions ?? resettleView.targetRow.actions,
+                  )}
+                  onPickWinners={handlePickWinners}
                   onConfirm={handleResettleConfirm}
                   onClose={() => setResettleView(null)}
                 />
@@ -655,17 +798,82 @@ function ResettlePreview({
   view,
   busy,
   players,
+  contenderIds,
+  currentWinnerIds,
+  sidePotUnsafe,
+  onPickWinners,
   onConfirm,
   onClose,
 }: {
   view: { result: ResettleForwardResult };
   busy: boolean;
   players: { player_id: string; display_name: string }[];
+  /** Non-folded players in the edited hand — the manual-winner candidates. */
+  contenderIds: string[];
+  /** Winners currently applied via manual pick (empty = auto-evaluated). */
+  currentWinnerIds: string[];
+  /** Target hand has a side pot → whole-pot even split would mis-distribute; block manual pick. */
+  sidePotUnsafe: boolean;
+  onPickWinners: (ids: string[]) => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
   const nameOf = (pid: string) => players.find((p) => p.player_id === pid)?.display_name ?? pid.slice(0, 6);
   const result = view.result;
+  const needsManual = !result.ok && result.reason === "needs_manual_winner";
+  const [picked, setPicked] = useState<string[]>(currentWinnerIds);
+  const [showOverride, setShowOverride] = useState(false);
+  // Re-sync the local selection whenever the APPLIED winners change (after a re-run).
+  useEffect(() => { setPicked(currentWinnerIds); }, [currentWinnerIds.join(",")]);
+
+  const toggle = (pid: string) =>
+    setPicked((prev) => (prev.includes(pid) ? prev.filter((x) => x !== pid) : [...prev, pid]));
+
+  const picker = (heading: string, cta: string) =>
+    sidePotUnsafe ? (
+      <div className="rounded-md border border-amber-500/40 bg-amber-950/20 p-2 text-[11px] text-amber-200 leading-snug">
+        Ván này có <span className="font-semibold">side pot</span> (có người all-in ít hơn) — chọn người thắng bằng tay sẽ chia sai
+        (chia đều toàn bộ pot). Hãy nhập đủ bài để tự chấm (chính xác side pot), hoặc dùng “Hoàn tác ván” + nhập lại.
+      </div>
+    ) : (
+    <div className="rounded-md border border-border/50 bg-card/60 p-2 space-y-1.5">
+      <div className="text-[11px] font-medium text-foreground/90">{heading}</div>
+      {contenderIds.length === 0 ? (
+        <div className="text-[11px] text-muted-foreground">Không có người chơi đủ điều kiện để chọn.</div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {contenderIds.map((pid) => {
+            const on = picked.includes(pid);
+            return (
+              <button
+                key={pid}
+                type="button"
+                onClick={() => toggle(pid)}
+                className={`text-[11px] rounded px-2 py-1 border ${
+                  on
+                    ? "border-emerald-500/70 bg-emerald-500/20 text-emerald-200"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {on ? "✓ " : ""}{nameOf(pid)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="text-[10px] text-muted-foreground leading-snug">
+        Chọn nhiều người = chia đều pot (chop). Người thắng thủ công chia đều TOÀN BỘ pot — không tách side-pot; hãy đối chiếu bảng chip xem trước.
+      </div>
+      <button
+        type="button"
+        disabled={busy || picked.length === 0}
+        onClick={() => onPickWinners(picked)}
+        className="text-[11px] font-medium text-amber-100 border border-amber-500/60 bg-amber-500/15 rounded px-2 py-1 hover:bg-amber-500/25 disabled:opacity-40"
+      >
+        {cta}
+      </button>
+    </div>
+  );
 
   if (!result.ok) {
     return (
@@ -680,6 +888,7 @@ function ResettlePreview({
             Người liên quan: {result.affected_player_ids.map(nameOf).join(", ")}
           </div>
         )}
+        {needsManual && picker("Chọn người thắng ván này (bài không đủ để tự chấm):", "Tính lại với người thắng đã chọn")}
         <button
           type="button"
           onClick={onClose}
@@ -700,6 +909,7 @@ function ResettlePreview({
       <div className="text-[11px] text-muted-foreground">
         Người thắng ván này:{" "}
         <span className="text-foreground font-medium">{ok.targetWinnerIds.map(nameOf).join(", ") || "(không có)"}</span>
+        {currentWinnerIds.length > 0 && <span className="ml-1 text-amber-300/80">(chọn tay)</span>}
       </div>
       {noChange ? (
         <div className="text-[11px] text-muted-foreground">
@@ -724,6 +934,17 @@ function ResettlePreview({
         </div>
       )}
       <div className="text-[10px] text-muted-foreground leading-snug">{ok.summary}</div>
+      {showOverride ? (
+        picker("Chọn người thắng bằng tay:", "Tính lại với người thắng đã chọn")
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowOverride(true)}
+          className="text-[10px] text-muted-foreground underline hover:text-foreground"
+        >
+          Người thắng không đúng? Chọn bằng tay
+        </button>
+      )}
       <div className="flex gap-2 pt-0.5">
         <button
           type="button"

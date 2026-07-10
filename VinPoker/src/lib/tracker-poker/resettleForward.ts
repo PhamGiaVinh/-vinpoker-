@@ -128,7 +128,13 @@ export type ResettleBlockReason =
   | "all_in_cap_changed"
   | "elimination_changed"
   | "eliminated_player_has_future_actions"
-  | "action_replay_invalid";
+  | "action_replay_invalid"
+  // The engine carries chips forward keyed by player_id ONLY (ResettlePlayerRecord has no
+  // entry_number), so a re-entry — the same player_id appearing under a DIFFERENT
+  // entry_number later in the chain — cannot be re-settled soundly. The caller detects it
+  // from the entry_number-bearing rows and blocks with this reason (the engine never sees
+  // two entries for one id in a safe chain).
+  | "reentry_boundary";
 
 export interface ResettleChange {
   hand_id: string;

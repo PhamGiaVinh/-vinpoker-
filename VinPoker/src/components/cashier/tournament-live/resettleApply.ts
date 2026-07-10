@@ -137,18 +137,68 @@ export interface ClientResettle extends ResettleSnapshots {
 
 /** Run the pure G1 engine with the client reduceHand injected. Returns the result plus
  *  the entry lookups (needed to map an OK result to RPC args). */
+/** The same player_id appearing under >1 entry_number across the chain — a re-entry the
+ *  engine (which carries chips by player_id only) cannot re-settle soundly. */
+export function reentryPlayers(target: ResettleHandRow, later: ResettleHandRow[]): string[] {
+  const entries = new Map<string, Set<number>>();
+  for (const row of [target, ...later]) {
+    for (const p of row.players) {
+      if (!entries.has(p.player_id)) entries.set(p.player_id, new Set());
+      entries.get(p.player_id)!.add(p.entry_number);
+    }
+  }
+  return [...entries.entries()].filter(([, s]) => s.size > 1).map(([pid]) => pid);
+}
+
 export function runClientResettle(input: {
   target: ResettleHandRow;
   later: ResettleHandRow[];
   editedTarget: EditedTargetHand;
 }): ClientResettle {
   const built = buildResettleSnapshots(input.target, input.later);
+  // Re-entry guard: the engine keys carry-forward by player_id only, so a chain where one
+  // player_id spans two entry_numbers would silently mis-carry chips. Refuse it up front
+  // (safeToWrite:false) instead of feeding the engine an ambiguous chain.
+  const reentry = reentryPlayers(input.target, input.later);
+  if (reentry.length > 0) {
+    return {
+      ...built,
+      result: {
+        ok: false,
+        safeToWrite: false,
+        reason: "reentry_boundary",
+        hand_id: null,
+        hand_number: null,
+        affected_player_ids: reentry,
+        message:
+          "Chuỗi ván có người chơi tái nhập (cùng người, khác lượt vào) — không thể tự tính lại chip. Hãy dùng void + nhập lại hoặc chỉnh tay.",
+      },
+    };
+  }
   const result = resettleForward({
     hands: built.snapshots,
     editedTarget: input.editedTarget,
     reduceHand,
   });
   return { ...built, result };
+}
+
+/** True when the target hand has a SIDE POT among contenders (a non-folded player all-in
+ *  for strictly less than the top commitment). settleSelectedWinners splits the WHOLE pot
+ *  evenly, so a MANUAL winner pick would mis-distribute across side pots — the UI must block
+ *  manual selection in that case and require full cards (auto side-pot-exact) or void. */
+export function manualWinnerUnsafe(target: ResettleHandRow, editedActions?: ResettleHandRow["actions"]): boolean {
+  const actions = toActions(editedActions ?? target.actions);
+  const seeds = target.players.map((p) => ({
+    player_id: p.player_id,
+    seat_number: p.seat_number,
+    starting_stack: p.starting_stack,
+  }));
+  const runtime = reduceHand(seeds, actions, target.button_seat);
+  const live = runtime.players.filter((p) => !p.is_folded);
+  if (live.length < 2) return false;
+  const topCommit = Math.max(...live.map((p) => p.total_bet));
+  return live.some((p) => p.is_all_in && p.total_bet < topCommit);
 }
 
 /** Map a SAFE (ok) engine result to the apply_resettle_forward RPC arg object. Sends the
@@ -185,6 +235,19 @@ export function buildApplyResettleArgs(input: {
       })),
     p_target_winner_ids: result.targetWinnerIds,
   };
+}
+
+/** Player_ids still in the hand (did not fold) in the given action stream, in seat
+ *  order — the candidates the operator can pick as a manual winner. */
+export function contenders(
+  players: { player_id: string; seat_number: number }[],
+  actions: { player_id: string; action_type: string }[],
+): string[] {
+  const folded = new Set(actions.filter((a) => a.action_type === "fold").map((a) => a.player_id));
+  return [...players]
+    .sort((a, b) => a.seat_number - b.seat_number)
+    .filter((p) => !folded.has(p.player_id))
+    .map((p) => p.player_id);
 }
 
 export interface ChipChange {
