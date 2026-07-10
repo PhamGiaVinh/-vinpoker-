@@ -45,6 +45,8 @@ export function PlayerActionSheets({
   bustInfo,
   moveTargets,
   onMovePlayer,
+  onOpenReceipt,
+  infoLive,
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
@@ -65,6 +67,12 @@ export function PlayerActionSheets({
    *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
   moveTargets?: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
   onMovePlayer?: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
+  /** Nếu có → nút "Phiếu" mở phiếu THẬT (SeatReceiptDialog ở màn chủ: QR + in, read-only). act()
+   *  gọi callback này rồi đóng — KHÔNG mở N6 mock. Bỏ trống = hành vi cũ (pendingNotice/mock). */
+  onOpenReceipt?: () => void;
+  /** true → nút "Thông tin" mở thẻ S8 với DỮ LIỆU THẬT (tên/bàn·ghế/chip/lượt vào từ target),
+   *  không còn chặn bởi pendingNotice. Mặc định (false) → theo pendingNotice (chưa nối). */
+  infoLive?: boolean;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
@@ -112,6 +120,15 @@ export function PlayerActionSheets({
       setMoveTableId(first?.tt_id ?? null);
       setMoveSeat(first && first.freeSeats.length > 0 ? first.freeSeats[0] : null);
       go("move");
+      return;
+    }
+    if (next === "info" && infoLive) {
+      go("info");                // S8 hiện dữ liệu thật từ target — read-only
+      return;
+    }
+    if (next === "receipt" && onOpenReceipt) {
+      onOpenReceipt();           // màn chủ mở SeatReceiptDialog (QR + in); đọc entry_id, không ghi
+      close();
       return;
     }
     if (pendingNotice) {
@@ -179,16 +196,14 @@ export function PlayerActionSheets({
               {(s?.name ?? "?").split(" ").map((w) => w[0]).slice(-2).join("")}
             </div>
             <SheetTitle className="mt-1.5 text-[16px] font-semibold text-[#f2ece6]">{s?.name}</SheetTitle>
-            <div className="font-mono text-[12px] text-[#9b8e97]">090•••••23 · vào 13:20</div>
           </SheetHeader>
+          {/* Chỉ dữ liệu THẬT từ target (tên/bàn·ghế/chip/lượt vào). SĐT/hạng/thưởng/mã thẻ không có
+              trên floor → không hiện số giả. Phiếu → mở SeatReceiptDialog thật; Ghế → chuyển bàn/ghế. */}
           <div className="mt-3 space-y-1.5">
-            <Band cls="bg-[#241a0c]" l={<span className="text-[#d8bc85]">Phiếu</span>} r={<span className="font-mono text-[#f2ece6]">#72</span>} />
-            <Band cls="bg-emerald-400/10" l={<span className="text-emerald-300">Ghế</span>} r={<span className="font-mono text-[#f2ece6]">{t}-{s?.seat} <span className="text-[#9b8e97]">· chạm để đổi</span></span>} onTap={() => go("move")} />
-            <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Vị trí hiện tại</span>} r={<span className="font-mono text-[#f2ece6]">#31/84</span>} />
+            <Band cls="bg-[#241a0c]" l={<span className="text-[#d8bc85]">Phiếu</span>} r={<span className="text-[#9b8e97]">xem / in lại →</span>} onTap={() => act("receipt")} />
+            <Band cls="bg-emerald-400/10" l={<span className="text-emerald-300">Ghế</span>} r={<span className="font-mono text-[#f2ece6]">{t}-{s?.seat} <span className="text-[#9b8e97]">· chạm để đổi</span></span>} onTap={() => act("move")} />
             <Band cls="bg-[#241a0c]" l={<span className="text-[#d8bc85]">Chip</span>} r={<span className="font-mono text-[#c9a86a]">{s?.chip}</span>} />
-            <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Tiền thưởng <span className="text-amber-300">(Tạm tính)</span></span>} r={<span className="font-mono text-[#f2ece6]">0 đ</span>} />
-            <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Mã thẻ hội viên</span>} r={<span className="font-mono text-[#f2ece6]">VB-2607-A3F2</span>} />
-            <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Lượt vào</span>} r={<span className="font-mono text-[#f2ece6]">#{s?.entryNo ?? 1} · re-entry 0</span>} />
+            <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Lượt vào</span>} r={<span className="font-mono text-[#f2ece6]">#{s?.entryNo ?? 1}</span>} />
           </div>
           <button onClick={() => toast("Cấp lại thẻ — mở Cashier (bản mẫu)")} className="ios-press ios-fill mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] text-[#9b8e97]">
             <IdCard className="h-4 w-4" /> Cấp lại thẻ — mở Cashier
