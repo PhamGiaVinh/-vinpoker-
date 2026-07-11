@@ -17,6 +17,7 @@ import { editionOf } from "./editionIndex";
 import { isHolidayWindow, isPaydayWindow } from "./viCalendar";
 import { hitCapacity } from "./censoring";
 import { buildFeatures, makeOrigin, type ForecastOrigin, type StaticFeature } from "./featureBoundary";
+import { evaluateModelCapability, MIN_TRAIN_LENGTH, type ModelCapability } from "./modelCapability";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -57,9 +58,9 @@ export function forecastToOverlayFeed(
   };
 }
 
-const MIN_FULL = 8; // ≥ this → full ridge with one-hot; below → intercept + log(buy-in) fallback
-const HIGH_N = 12; // ≥ this → "high" tier (also the Phase-5 data gate)
-const CV_MIN_TRAIN = 4; // a walk-forward fold needs at least this many past events to fit
+// A4a: the sample-size / data-capability thresholds (MIN_FULL=8, HIGH_N=12, CV_MIN_TRAIN=4) now live ONLY in
+// modelCapability.ts as FULL_FEATURE_THRESHOLD / HIGH_N_THRESHOLD / MIN_TRAIN_LENGTH; every decision below is
+// routed through evaluateModelCapability so no threshold is re-derived here.
 const LAMBDA = 1.0; // ridge strength (intercept unpenalised); mainly shrinks sparse one-hot levels
 const Z = 1.2816; // ~p10–p90 band
 
@@ -241,7 +242,7 @@ function numColsFor(useGtd: boolean, useCalendar: boolean): string[] {
 function buildModel(rows: Array<{ f: PreFeatures; y: number }>, calendarFeatures = false): Model | null {
   const n = rows.length;
   if (n < 2) return null;
-  const useOneHot = n >= MIN_FULL;
+  const useOneHot = evaluateModelCapability({ kind: "sample_size", sampleSize: n }).supportsFullFeatures;
   const useGtd = useOneHot && rows.some((r) => r.f.logGtd !== null);
   const useCalendar = calendarFeatures && useOneHot; // gated identically to the full one-hot tier
 
@@ -396,11 +397,14 @@ function walkForwardFolds(
   calendarFeatures = false,
 ): { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] {
   const folds: { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] = [];
-  for (let i = CV_MIN_TRAIN; i < rows.length; i++) {
+  // A4a: the fold minimum is the gate's canonical MIN_TRAIN_LENGTH (was the local CV_MIN_TRAIN). Starting at
+  // i = MIN_TRAIN_LENGTH is a behaviour-preserving optimisation: for i < MIN_TRAIN_LENGTH the strictly-earlier
+  // train set has ≤ i < MIN_TRAIN_LENGTH rows and would be skipped anyway.
+  for (let i = MIN_TRAIN_LENGTH; i < rows.length; i++) {
     // STRICTLY earlier by DATE, not by index — CSV dates are date-only, so festival days produce ties;
     // an index slice would let same-day events leak into the fold and flatter the CV (the flip gate).
     const train = rows.filter((r) => r.date < rows[i].date);
-    if (train.length < CV_MIN_TRAIN) continue;
+    if (train.length < MIN_TRAIN_LENGTH) continue;
     const model = buildModel(train.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
     let forecast: number | null = null;
     if (model) {
@@ -487,8 +491,9 @@ function walkForwardCv(rows: TrainRow[], calendarFeatures = false): { modelMape:
   };
 }
 
-function tierFor(n: number): ForecastConfidence {
-  return n >= HIGH_N ? "high" : n >= MIN_FULL ? "medium" : "low";
+function tierFor(cap: ModelCapability): ForecastConfidence {
+  // Same ladder as before via the gate: n >= HIGH_N ⇒ high; n >= MIN_FULL (supportsFullFeatures) ⇒ medium; else low.
+  return cap.sampleSize >= cap.highNThreshold ? "high" : cap.supportsFullFeatures ? "medium" : "low";
 }
 function widenFor(tier: ForecastConfidence): number {
   return tier === "high" ? 1.0 : tier === "medium" ? 1.2 : 1.5;
@@ -519,14 +524,17 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
   const all = trainRows(events, calendarFeatures, censoring);
   const past = Number.isNaN(targetTime) ? all : all.filter((r) => r.date < targetTime);
   const n = past.length;
+  // A4a: one capability evaluation drives every sample-size decision below (unavailable gate, degraded flag,
+  // tier, and the ≥HIGH_N note). Same thresholds as before, sourced only from the gate.
+  const capability = evaluateModelCapability({ kind: "sample_size", sampleSize: n });
   const notes: string[] = [];
 
   const empty = (note: string): TurnoutForecast => ({
-    available: false, base: null, low: null, high: null, confidence: "low", sampleSize: n, degraded: n < MIN_FULL,
+    available: false, base: null, low: null, high: null, confidence: "low", sampleSize: n, degraded: !capability.supportsFullFeatures,
     modelMapePct: null, baselineMapePct: null, deltaVsBaselinePct: null, coefContributions: [], missingDataNotes: [note], disclaimer: DISCLAIMER,
   });
 
-  if (n <= 1) return empty(`Chỉ có ${n} giải trước ngày này — cần thêm dữ liệu để dự báo.`);
+  if (!capability.supportsForecast) return empty(`Chỉ có ${n} giải trước ngày này — cần thêm dữ liệu để dự báo.`);
 
   // Target features: type stays typeKeyword-driven (name = null, unchanged); the brand name is passed
   // ONLY as editionName so editionTrend can count the target's prior editions. allEvents supplied only when on.
@@ -549,7 +557,7 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
   const model = buildModel(past.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
   if (!model) return empty("Không dựng được mô hình từ dữ liệu hiện có.");
 
-  const tier = tierFor(n);
+  const tier = tierFor(capability);
   const degraded = !model.useOneHot;
   const yh = predictLog(model, tf);
   const sigma = model.rmse * Math.sqrt(1 + 1 / n) * widenFor(tier);
@@ -566,7 +574,8 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
   });
 
   if (degraded) notes.push(`Ít dữ liệu (${n} giải) — chỉ dùng buy-in, dải nới rộng, chỉ tham khảo.`);
-  if (n < HIGH_N) notes.push(`Cần ≥${HIGH_N} giải để đạt độ tin cậy cao (hiện ${n}).`);
+  // `tier !== "high"` ⟺ the old `n < HIGH_N`; the display number reads the gate's canonical highNThreshold.
+  if (tier !== "high") notes.push(`Cần ≥${capability.highNThreshold} giải để đạt độ tin cậy cao (hiện ${n}).`);
   if (tf.logGtd === null) notes.push("Giải sắp tới chưa đặt GTD — overlay sẽ không tính được.");
 
   // TP6 censoring — note the truncated events dropped from the fit, and cap the band at the target's capacity
