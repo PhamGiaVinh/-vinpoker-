@@ -182,8 +182,9 @@ export function OwnerCommandCenter({ csvEvents }: { csvEvents?: SeriesEvent[] | 
           </span>
         </Card>
       )}
-      {/* Local-only regime switch (self-gates on seriesRegimeSwitch) — escalates the RegimeNotice caveats. */}
-      <RegimeSwitch />
+      {/* Local-only regime switch (self-gates on seriesRegimeSwitch) — escalates the RegimeNotice caveats.
+          TP8: pass the club so the mark is scoped per-club when seriesRegimeTripwire is on. */}
+      <RegimeSwitch clubId={events.find((e) => e.clubId)?.clubId} />
       {/* BI pyramid: overview → data quality → economics → risk → scenario → GTD overlay → actions */}
       <section className="space-y-2">
         <h3 className="font-display text-base flex items-center gap-2">

@@ -910,6 +910,15 @@ export const FEATURES = {
    */
   seriesRegimeSwitch: true,
   /**
+   * Series Intelligence — TP8 regime tripwire + per-club (P2-11). When ON: (a) the LOCAL "regime changed"
+   * mark is scoped PER-CLUB (keyed by clubId, with a one-time migration of any legacy global mark + read-old-
+   * key backward-compat) so one owner's clubs don't share it; (b) RegimeSwitch shows a static local WATCHLIST
+   * of 5 regime-change signals — ticking ≥2 SUGGESTS the owner consider marking the regime changed (a nudge,
+   * never auto-flips). Off (default) ⇒ the mark stays on the legacy global key = pre-TP8 behavior, and the
+   * watchlist is hidden. LOCAL-only (localStorage), never the DB. Default **OFF**; kill-switch: false.
+   */
+  seriesRegimeTripwire: false,
+  /**
    * Series Intelligence — G7 forecast calibration card in the ⑥ CAPTURE console. When ON, it scores past
    * forecast snapshots against real actuals (client-side, reads the existing capture tables — NO new DB)
    * and reports in-band rate vs the 90% target + systematic bias. Under-powered by design: below 10
