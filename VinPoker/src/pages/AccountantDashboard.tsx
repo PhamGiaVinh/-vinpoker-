@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Calculator, Table2, Wallet } from "lucide-react";
+import { Calculator, Table2, Users, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
@@ -12,6 +12,7 @@ import { useSalaryClubs } from "@/hooks/staffSalary/useStaffSalary";
 import { useAccountantCapabilities } from "@/hooks/accountant/useAccountantCapabilities";
 import { PendingDbNotice } from "@/components/accountant/PendingDbNotice";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
+import { StaffDirectoryManager } from "@/components/accountant/StaffDirectoryManager";
 import StaffSalaryChot from "./StaffSalaryChot";
 
 /**
@@ -51,6 +52,7 @@ export default function AccountantDashboard() {
   // users need migration 20261236000000 (probe says so). Approve/lock stays owner/admin.
   const hasOwnerAdmin = isAdmin || clubs.some((c) => c.role === "owner" || c.role === "admin");
   const dealerAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.payroll);
+  const staffAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.staff);
   const hideApprovalActions = !hasOwnerAdmin;
 
   return (
@@ -98,6 +100,10 @@ export default function AccountantDashboard() {
             <Table2 className="w-4 h-4" />
             Lương dealer
           </TabsTrigger>
+          <TabsTrigger value="staff" className="gap-1.5">
+            <Users className="w-4 h-4" />
+            Nhân viên &amp; lương
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="salary">
@@ -111,6 +117,14 @@ export default function AccountantDashboard() {
               clubs={clubs.map((c) => ({ id: c.id, name: c.name }))}
               hideApprovalActions={hideApprovalActions}
             />
+          ) : (
+            <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="staff">
+          {staffAvailable ? (
+            <StaffDirectoryManager clubId={activeClubId} />
           ) : (
             <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
           )}
