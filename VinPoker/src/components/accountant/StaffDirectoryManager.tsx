@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { BadgeCheck, Link2, Pencil, Plus, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { BadgeCheck, Copy, KeyRound, Link2, Pencil, Plus, UserRound } from "lucide-react";
 import { formatVND } from "@/lib/format";
 import { STAFF_DEPARTMENT_LABELS, type StaffDepartment, type StaffEmploymentType } from "@/types/staffApp";
 import {
   useLinkCandidates,
   useStaffDirectory,
+  useStaffGenerateCode,
   useStaffLinkUser,
   useStaffUpsert,
   type DirectoryStaff,
@@ -31,9 +33,11 @@ const DEPARTMENTS = Object.keys(STAFF_DEPARTMENT_LABELS) as StaffDepartment[];
 export function StaffDirectoryManager({ clubId }: { clubId: string | null }) {
   const { staff, isLoading } = useStaffDirectory(clubId);
   const upsert = useStaffUpsert(clubId);
+  const genCode = useStaffGenerateCode();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<DirectoryStaff | null>(null);
   const [linking, setLinking] = useState<DirectoryStaff | null>(null);
+  const [codeInfo, setCodeInfo] = useState<{ name: string; code: string; expiresAt: string } | null>(null);
 
   const byDepartment = useMemo(() => {
     const map = new Map<StaffDepartment, DirectoryStaff[]>();
@@ -94,6 +98,12 @@ export function StaffDirectoryManager({ clubId }: { clubId: string | null }) {
                       setEditorOpen(true);
                     }}
                     onLink={() => setLinking(s)}
+                    onGenerateCode={() =>
+                      genCode.mutate(s.id, {
+                        onSuccess: (r) => setCodeInfo({ name: s.fullName, code: r.code, expiresAt: r.expires_at }),
+                      })
+                    }
+                    generating={genCode.isPending}
                   />
                 ))}
               </div>
@@ -114,11 +124,60 @@ export function StaffDirectoryManager({ clubId }: { clubId: string | null }) {
         }
       />
       <LinkAccountDialog clubId={clubId} staff={linking} onClose={() => setLinking(null)} />
+      <CodeDialog info={codeInfo} onClose={() => setCodeInfo(null)} />
     </div>
   );
 }
 
-function StaffRow({ staff, onEdit, onLink }: { staff: DirectoryStaff; onEdit: () => void; onLink: () => void }) {
+function CodeDialog({
+  info,
+  onClose,
+}: {
+  info: { name: string; code: string; expiresAt: string } | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={!!info} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Mã mời — {info?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => { if (info) navigator.clipboard?.writeText(info.code).then(() => toast.success("Đã copy mã.")); }}
+            className="w-full rounded-xl border border-primary/40 bg-primary/10 px-4 py-4 text-center transition-colors hover:bg-primary/15"
+          >
+            <div className="text-3xl font-display font-black tracking-[0.3em] text-primary">{info?.code}</div>
+            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Copy className="w-3 h-3" /> Bấm để copy
+            </div>
+          </button>
+          <ol className="space-y-1 text-[12px] text-muted-foreground list-decimal pl-4">
+            <li>Gửi mã này cho nhân viên.</li>
+            <li>Nhân viên đăng nhập app → vào mục <span className="font-medium text-foreground">Nhân viên</span> (/staff).</li>
+            <li>Nhập mã ở màn "Chưa liên kết" → tự liên kết xong.</li>
+          </ol>
+          <p className="text-[11px] text-muted-foreground">Mã dùng 1 lần, hết hạn sau 14 ngày. Tạo lại nếu cần mã mới.</p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StaffRow({
+  staff,
+  onEdit,
+  onLink,
+  onGenerateCode,
+  generating,
+}: {
+  staff: DirectoryStaff;
+  onEdit: () => void;
+  onLink: () => void;
+  onGenerateCode: () => void;
+  generating: boolean;
+}) {
   const pay =
     staff.employmentType === "part_time"
       ? `${formatVND(staff.hourlyRateVnd ?? 0)}/giờ`
@@ -155,10 +214,22 @@ function StaffRow({ staff, onEdit, onLink }: { staff: DirectoryStaff; onEdit: ()
         </div>
       </div>
       {!staff.userId && (
-        <Button variant="outline" size="sm" className="shrink-0" onClick={onLink}>
-          <Link2 className="w-3.5 h-3.5 mr-1" />
-          Gán tài khoản
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={onGenerateCode}
+            disabled={generating}
+          >
+            <KeyRound className="w-3.5 h-3.5 mr-1" />
+            Tạo mã
+          </Button>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={onLink}>
+            <Link2 className="w-3.5 h-3.5 mr-1" />
+            Gán tài khoản
+          </Button>
+        </>
       )}
       <Button variant="outline" size="sm" className="shrink-0" onClick={onEdit}>
         <Pencil className="w-3.5 h-3.5 mr-1" />
