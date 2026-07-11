@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Calculator, Table2, Users, Wallet } from "lucide-react";
+import { BarChart3, Calculator, ReceiptText, Table2, Users, UtensilsCrossed, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
@@ -13,6 +13,9 @@ import { useAccountantCapabilities } from "@/hooks/accountant/useAccountantCapab
 import { PendingDbNotice } from "@/components/accountant/PendingDbNotice";
 import DealerPayrollTab from "@/components/cashier/DealerPayrollTab";
 import { StaffDirectoryManager } from "@/components/accountant/StaffDirectoryManager";
+import { AccountantFnbTab } from "@/components/accountant/AccountantFnbTab";
+import { AccountantFinanceTab } from "@/components/accountant/AccountantFinanceTab";
+import ClubExpenses from "./ClubExpenses";
 import StaffSalaryChot from "./StaffSalaryChot";
 
 /**
@@ -53,6 +56,9 @@ export default function AccountantDashboard() {
   const hasOwnerAdmin = isAdmin || clubs.some((c) => c.role === "owner" || c.role === "admin");
   const dealerAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.payroll);
   const staffAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.staff);
+  const expensesAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.expenses);
+  const fnbAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.fnbReport);
+  const financeAvailable = hasOwnerAdmin || (caps.state === "ok" && caps.financeSummary);
   const hideApprovalActions = !hasOwnerAdmin;
 
   return (
@@ -104,6 +110,18 @@ export default function AccountantDashboard() {
             <Users className="w-4 h-4" />
             Nhân viên &amp; lương
           </TabsTrigger>
+          <TabsTrigger value="expenses" className="gap-1.5">
+            <ReceiptText className="w-4 h-4" />
+            Sổ chi phí
+          </TabsTrigger>
+          <TabsTrigger value="fnb" className="gap-1.5">
+            <UtensilsCrossed className="w-4 h-4" />
+            F&amp;B thu chi
+          </TabsTrigger>
+          <TabsTrigger value="report" className="gap-1.5">
+            <BarChart3 className="w-4 h-4" />
+            Báo cáo
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="salary">
@@ -125,6 +143,30 @@ export default function AccountantDashboard() {
         <TabsContent value="staff">
           {staffAvailable ? (
             <StaffDirectoryManager clubId={activeClubId} />
+          ) : (
+            <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="expenses">
+          {expensesAvailable ? (
+            <ClubExpenses embedded />
+          ) : (
+            <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="fnb">
+          {fnbAvailable ? (
+            <AccountantFnbTab clubId={activeClubId} />
+          ) : (
+            <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="report">
+          {financeAvailable ? (
+            <AccountantFinanceTab clubId={activeClubId} />
           ) : (
             <PendingDbNotice state={caps.state === "ok" ? "forbidden" : caps.state} />
           )}
