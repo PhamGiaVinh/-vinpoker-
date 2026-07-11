@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy, Play, Pause, SkipForward, SkipBack, Minus, Plus } from "lucide-react";
+import { ChevronLeft, Lock, LayoutGrid, Loader2, LogIn, Monitor, AlertTriangle, Trophy, Play, Pause, SkipForward, SkipBack, Minus, Plus, Users, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/featureFlags";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
+import { RoomGrid } from "@/components/ops/shared/RoomGrid";
+import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
+import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
+import { toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
+import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 
 /**
@@ -34,6 +42,8 @@ const mmss = (s: number) => {
 interface LevelRow { level_number: number; small_blind: number; big_blind: number; ante: number; duration_minutes: number; is_break: boolean }
 /** Nhánh dữ liệu đồng hồ dùng cho ĐIỀU KHIỂN (from `get_tournament_clock`, giống ClockPanel). */
 interface OpsClock { is_running: boolean; remaining_seconds: number; clock_paused_at?: string | null; current_level: { level_number: number } | null }
+/** Người đã bị loại — từ `tournament_entries` (status='busted') + prize join (không có ghế active). */
+interface BustedRow { entry_id: string; player_id: string; entry_number: number; player_name: string; finished_place: number | null; prize: number | null; last_chip: number | null }
 
 export default function OpsTournamentCockpit() {
   const navigate = useNavigate();
@@ -45,10 +55,10 @@ export default function OpsTournamentCockpit() {
   const tv = useTournamentTvData(id, { enabled: !!id });
   const d = tv.data;
 
-  // S3 leaderboard — lazy khi mở tab
+  // S3 leaderboard cũ (read-only) — CHỈ khi cờ cockpitFloorActions OFF (ON dùng nguồn seats + busted mới).
   const [players, setPlayers] = useState<{ loading: boolean; error: string | null; rows: TournamentLeaderboardPlayer[] }>({ loading: false, error: null, rows: [] });
   useEffect(() => {
-    if (tab !== "players" || !id) return;
+    if (FEATURES.cockpitFloorActions || tab !== "players" || !id) return;
     let alive = true;
     setPlayers({ loading: true, error: null, rows: [] });
     (async () => {
@@ -109,6 +119,69 @@ export default function OpsTournamentCockpit() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, clkBusy, loadClk]);
+
+  // ── Floor cockpit (cờ cockpitFloorActions): S2 sơ đồ bàn inline + S3 danh sách 3-tab thao tác ──
+  const { user } = useAuth();
+  const cockpitOn = FEATURES.cockpitFloorActions;
+  const [floorSeen, setFloorSeen] = useState(false); // sticky: chỉ fetch floor sau khi vào tab Bàn/Người chơi
+  useEffect(() => { if (cockpitOn && (tab === "tables" || tab === "players")) setFloorSeen(true); }, [cockpitOn, tab]);
+  const floor = useFloorSeats(id ?? null, { enabled: cockpitOn && floorSeen });
+  const [seatTarget, setSeatTarget] = useState<FloorSeatTarget | null>(null);
+  const [tableSheet, setTableSheet] = useState<string | null>(null); // table_id bàn đang mở
+  const [ptab, setPtab] = useState<"all" | "playing" | "busted">("all");
+
+  const cockVms = useMemo(() => floor.tables.map((t, i) => {
+    const seats = floor.seatsByTable[t.table_id] ?? [];
+    return { mock: toMockTable(t, seats.length, !!d?.isBreak, 1000 + i), name: t.table_name, seats, raw: t };
+  }), [floor.tables, floor.seatsByTable, d?.isBreak]);
+  const tableNoById = useMemo(() => { const m = new Map<string, number | null>(); for (const t of floor.tables) m.set(t.table_id, t.table_number); return m; }, [floor.tables]);
+  const playing = useMemo(() => {
+    const all: MapSeat[] = [];
+    for (const k of Object.keys(floor.seatsByTable)) for (const s of floor.seatsByTable[k]) if (s.is_active) all.push(s);
+    return all.sort((a, b) => (b.chip_count ?? 0) - (a.chip_count ?? 0));
+  }, [floor.seatsByTable]);
+  const openSeat = (s: MapSeat) => setSeatTarget({ seat: toMockSeat(s), tableNo: tableNoById.get(s.table_id) ?? 0, real: s });
+
+  // Busted list — lazy khi tab Người chơi (cờ ON). Tên lấy từ ghế inactive (giữ player_name) → profiles → id.
+  const [busted, setBusted] = useState<{ loading: boolean; rows: BustedRow[] }>({ loading: false, rows: [] });
+  useEffect(() => {
+    if (!cockpitOn || tab !== "players" || !id) return;
+    let alive = true;
+    setBusted({ loading: true, rows: [] });
+    (async () => {
+      try {
+        const [entRes, prizeRes, seatRes] = await Promise.all([
+          (supabase as any).from("tournament_entries").select("id, player_id, entry_no, seat_number, finished_place, current_stack, status").eq("tournament_id", id).eq("status", "busted"),
+          supabase.from("tournament_prizes").select("position, amount").eq("tournament_id", id),
+          supabase.from("tournament_seats").select("player_id, entry_number, player_name, is_active").eq("tournament_id", id),
+        ]);
+        const prizeByPos = new Map(((prizeRes.data ?? []) as { position: number; amount: number }[]).map((p) => [p.position, p.amount]));
+        const nameBySeat = new Map<string, string>();
+        for (const s of (seatRes.data ?? []) as { player_id: string; entry_number: number; player_name: string | null; is_active: boolean }[]) {
+          if (s.player_name) nameBySeat.set(`${s.player_id}:${s.entry_number}`, s.player_name);
+        }
+        const ent = (entRes.data ?? []) as { id: string; player_id: string; entry_no: number | null; seat_number: number | null; finished_place: number | null; current_stack: number | null }[];
+        const needProfile = [...new Set(ent.filter((e) => !nameBySeat.has(`${e.player_id}:${e.entry_no ?? 1}`)).map((e) => e.player_id))];
+        const profileName = new Map<string, string>();
+        if (needProfile.length) {
+          const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", needProfile);
+          for (const p of (profs ?? []) as { user_id: string; display_name: string | null }[]) if (p.display_name) profileName.set(p.user_id, p.display_name);
+        }
+        const rows: BustedRow[] = ent.map((e) => {
+          const key = `${e.player_id}:${e.entry_no ?? 1}`;
+          return {
+            entry_id: e.id, player_id: e.player_id, entry_number: e.entry_no ?? 1,
+            player_name: nameBySeat.get(key) ?? profileName.get(e.player_id) ?? e.player_id.slice(0, 8),
+            finished_place: e.finished_place,
+            prize: e.finished_place != null ? (prizeByPos.get(e.finished_place) ?? null) : null,
+            last_chip: e.current_stack ?? null,
+          };
+        }).sort((a, b) => (a.finished_place ?? 1e9) - (b.finished_place ?? 1e9));
+        if (alive) setBusted({ loading: false, rows });
+      } catch { if (alive) setBusted({ loading: false, rows: [] }); }
+    })();
+    return () => { alive = false; };
+  }, [cockpitOn, tab, id]);
 
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
@@ -222,18 +295,84 @@ export default function OpsTournamentCockpit() {
         </div>
       )}
 
-      {/* S2 — Bàn → màn Bàn */}
-      {tab === "tables" && (
+      {/* S2 — Bàn: cờ ON → sơ đồ inline (tap bàn → ghế → thao tác); cờ OFF → redirect cũ */}
+      {tab === "tables" && (cockpitOn ? (
+        <div className="space-y-3">
+          {floor.loading && cockVms.length === 0 ? (
+            <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải sơ đồ bàn…" />
+          ) : floor.error ? (
+            <div className="ios-card flex flex-col items-center gap-2 py-8 text-center">
+              <AlertTriangle className="h-7 w-7 text-rose-300" />
+              <div className="text-[14px] font-semibold text-[#f2ece6]">Không tải được sơ đồ bàn</div>
+              <div className="max-w-[280px] text-[12px] text-[#9b8e97]">{floor.error}</div>
+              <button onClick={() => floor.reload()} className="ios-press-sm mt-1 flex items-center gap-1.5 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]"><RefreshCw className="h-3.5 w-3.5" /> Thử lại</button>
+            </div>
+          ) : cockVms.length === 0 ? (
+            <CenterCard icon={<Users className="h-7 w-7 text-[#9b8e97]" />} title="Giải này chưa có bàn/ghế" />
+          ) : (
+            <RoomGrid tables={cockVms.map((v) => v.mock)} onTap={(m) => setTableSheet(cockVms.find((v) => v.mock.tableNo === m.tableNo)?.raw.table_id ?? null)} />
+          )}
+          <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-fill flex w-full items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] font-medium text-[#f2ece6]">
+            <LayoutGrid className="h-[18px] w-[18px]" /> Mở màn Bàn (thêm/đóng bàn · bốc lại)
+          </button>
+        </div>
+      ) : (
         <div className="ios-card flex flex-col items-center gap-3 py-10 text-center">
           <LayoutGrid className="h-8 w-8 text-[#c9a86a]" />
           <div className="text-[15px] font-semibold text-[#f2ece6]">Sơ đồ bàn theo giải</div>
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Xem ghế/người/chip thật + thao tác ở màn Bàn.</div>
           <button onClick={() => navigate(`/ops/tables?tour=${id}`)} className="ios-press ios-primary rounded-2xl px-5 py-2.5 text-[14px] font-bold">Mở màn Bàn</button>
         </div>
-      )}
+      ))}
 
-      {/* S3 — Người chơi (thật, read-only) */}
-      {tab === "players" && (
+      {/* S3 — Người chơi: cờ ON → 3-tab (Tất cả/Đang chơi/Busted); Đang chơi chạm để thao tác,
+          Busted chỉ xem (không còn ghế active). Cờ OFF → leaderboard cũ (read-only). */}
+      {tab === "players" && (cockpitOn ? (() => {
+        const bust = busted.rows;
+        const counts = { all: playing.length + bust.length, playing: playing.length, busted: bust.length };
+        const showPlaying = ptab === "all" || ptab === "playing";
+        const showBusted = ptab === "all" || ptab === "busted";
+        const empty = !floor.loading && !busted.loading && counts.all === 0;
+        return (
+          <div className="space-y-2">
+            <div className="flex gap-1.5">
+              {([["all", "Tất cả"], ["playing", "Đang chơi"], ["busted", "Busted"]] as ["all" | "playing" | "busted", string][]).map(([k, label]) => (
+                <button key={k} onClick={() => setPtab(k)}
+                  className={cn("ios-press-sm flex-1 rounded-full px-2 py-1.5 text-[12px] font-medium", ptab === k ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
+                  {label} <span className="opacity-70">{counts[k]}</span>
+                </button>
+              ))}
+            </div>
+            {(floor.loading || busted.loading) && counts.all === 0 ? (
+              <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải…" />
+            ) : empty ? (
+              <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có người chơi" />
+            ) : (
+              <div className="ios-group">
+                {showPlaying && playing.map((s) => (
+                  <button key={`p-${s.seat_id}`} onClick={() => openSeat(s)} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] text-[#f2ece6]">{s.player_name || s.player_id.slice(0, 8)}</span>
+                      <span className="block font-mono text-[12px] text-[#9b8e97]">Bàn {tableNoById.get(s.table_id) ?? "?"} · ghế {s.seat_number}</span>
+                    </span>
+                    <span className="font-mono text-[13px] text-[#c9a86a]">{vnd(s.chip_count)}</span>
+                  </button>
+                ))}
+                {showBusted && bust.map((b) => (
+                  <div key={`b-${b.entry_id}`} className="ios-row-inset flex w-full items-center gap-3 px-4 py-3">
+                    <span className="w-7 text-center font-mono text-[13px] text-[#9b8e97]">{b.finished_place != null ? `#${b.finished_place}` : "—"}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] text-[#9b8e97] line-through">{b.player_name}</span>
+                      <span className="block text-[12px] text-[#7c7079]">Đã loại{b.prize ? ` · thưởng ${vnd(b.prize)}` : ""}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="text-center text-[12px] text-[#7c7079]">Đang chơi: chạm để thao tác · Busted: chỉ xem</div>
+          </div>
+        );
+      })() : (
         players.loading ? <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải…" />
           : players.error ? <CenterCard icon={<AlertTriangle className="h-7 w-7 text-rose-300" />} title="Không tải được" sub={players.error} />
           : players.rows.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có người chơi" />
@@ -253,7 +392,7 @@ export default function OpsTournamentCockpit() {
               <div className="text-center text-[12px] text-[#7c7079]">chỉ xem · thao tác người chơi ở màn Bàn</div>
             </div>
           )
-      )}
+      ))}
 
       {/* S4 — Levels (thật) */}
       {tab === "levels" && (
@@ -322,6 +461,46 @@ export default function OpsTournamentCockpit() {
           <div className="text-[15px] font-semibold text-[#f2ece6]">Lịch sử chi tiết trên máy tính</div>
           <div className="max-w-[260px] text-[12px] text-[#9b8e97]">Nhật ký loại/chuyển/level/chip đầy đủ (ai · lúc nào) xem trên bản máy tính.</div>
         </div>
+      )}
+
+      {/* Sheet ghế 1 bàn (S2 inline) → tap ghế → thao tác người chơi */}
+      <Sheet open={cockpitOn && tableSheet !== null} onOpenChange={(v) => { if (!v) setTableSheet(null); }}>
+        <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-center">
+            <SheetTitle className="text-[#f2ece6]">{cockVms.find((v) => v.raw.table_id === tableSheet)?.name ?? "Bàn"}</SheetTitle>
+          </SheetHeader>
+          {(() => {
+            const seats = tableSheet ? (floor.seatsByTable[tableSheet] ?? []) : [];
+            return seats.length === 0 ? (
+              <div className="mt-3 py-6 text-center text-[13px] text-[#9b8e97]">Bàn trống — chưa có người ngồi.</div>
+            ) : (
+              <div className="ios-group mt-3">
+                {seats.map((s) => (
+                  <button key={s.seat_id} onClick={() => { setTableSheet(null); requestAnimationFrame(() => openSeat(s)); }} className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <span className="w-5 font-mono text-[13px] text-[#9b8e97]">{s.seat_number}</span>
+                    <span className="flex-1 truncate text-[15px] text-[#f2ece6]">{s.player_name || s.player_id.slice(0, 8)}</span>
+                    <span className="font-mono text-[13px] text-[#c9a86a]">{vnd(s.chip_count)}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="mt-2 text-center text-[11px] text-[#7c7079]">chạm 1 ghế → thao tác người chơi</div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Thao tác người chơi (dùng chung màn Bàn) — chỉ khi cờ ON */}
+      {cockpitOn && (
+        <FloorPlayerActions
+          tournamentId={id}
+          tournamentName={d.tournamentName}
+          tournamentDate={null}
+          userId={user?.id}
+          floor={floor}
+          target={seatTarget}
+          onClose={() => setSeatTarget(null)}
+        />
       )}
     </div>
   );

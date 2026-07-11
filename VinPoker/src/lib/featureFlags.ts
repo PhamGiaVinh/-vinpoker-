@@ -1339,6 +1339,15 @@ export const FEATURES = {
    */
   mobileOpsV2: true,
   /**
+   * cockpitFloorActions — nâng cấp cockpit giải trên điện thoại (`OpsTournamentCockpit`): tab "Bàn"
+   * hiện sơ đồ bàn INLINE (thay redirect) + tab "Người chơi" 3 tab Tất cả/Đang chơi/Busted, người
+   * đang chơi CHẠM ĐỂ THAO TÁC (Sửa chip/Loại/Chuyển/Phiếu — dùng chung `FloorPlayerActions` với màn
+   * Bàn), busted chỉ xem. Client-only, tái dùng Edge/RPC đã live (không backend/migration mới).
+   * Default **OFF** (kill-switch): while false cockpit S2 = redirect cũ, S3 = leaderboard read-only cũ.
+   * Flip true sau UAT Preview. (Refactor OpsTables tách hook/handlers ship live, hành vi y nguyên.)
+   */
+  cockpitFloorActions: false,
+  /**
    * staffApp — NEW `/staff/*` self-service portal for NON-dealer staff (floor, cashier,
    * tracker, service, security). Mirrors the dealer app shell but reads a SEPARATE `staff`
    * table + `staff_attendance` (never `dealers` / `dealer_attendance`), so the live dealer
