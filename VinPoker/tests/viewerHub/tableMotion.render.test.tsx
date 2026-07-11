@@ -48,7 +48,7 @@ describe("TableMotionVisual", () => {
       />,
     );
 
-    expect(FEATURES.liveTableMotionV2).toBe(false);
+    expect(FEATURES.liveTableMotionV2).toBe(true);
     expect(html).toBe("");
   });
 
