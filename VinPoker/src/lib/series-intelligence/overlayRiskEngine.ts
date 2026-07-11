@@ -13,6 +13,8 @@
 // Pure: no DB, no localStorage, no imports of the multi-event engine (PRNG/stats duplicated to keep that
 // engine decoupled + untouched).
 
+import { evaluateModelCapability } from "./modelCapability";
+
 export interface OverlayRiskInput {
   observedEntries: number[]; // observed total_entries across the group's series
   buyinPrize: number; // prize contribution per entry (> 0)
@@ -177,7 +179,10 @@ export function simulateOverlayRisk(input: OverlayRiskInput): OverlayRiskResult 
 
   const obs = input.observedEntries.filter((x) => typeof x === "number" && Number.isFinite(x) && x > 0);
   const thresholdEntries = buyin > 0 ? gtd / buyin : 0;
-  if (obs.length === 0 || !(buyin > 0)) {
+  // A4a: usability routed through the capability gate (OVERLAY_INPUT_INCOMPLETE). Same guard — needs ≥1 usable
+  // observation AND a positive prize contribution; `obs.length > 0 && buyin > 0` ≡ `!(obs.length === 0 || !(buyin > 0))`.
+  const capability = evaluateModelCapability({ kind: "overlay_inputs", inputsComplete: obs.length > 0 && buyin > 0 });
+  if (!capability.supportsForecast) {
     return { pOverlay: 0, eOverlay: 0, entP5: 0, entP50: 0, entP95: 0, rakeP5: 0, rakeP95: 0, bins: [], thresholdEntries, usable: false, meanLog: 0 };
   }
 
@@ -273,7 +278,13 @@ export function simulateOverlayFromForecast(input: ForecastOverlayInput): Overla
   const sd = input.logSd;
 
   const thresholdEntries = buyin > 0 ? gtd / buyin : 0;
-  if (!(input.baseEntries > 0) || !(buyin > 0) || !(sd > 0)) {
+  // A4a: usability routed through the capability gate (OVERLAY_INPUT_INCOMPLETE). Same guard —
+  // `baseEntries > 0 && buyin > 0 && sd > 0` ≡ `!(!(baseEntries>0) || !(buyin>0) || !(sd>0))` (De Morgan).
+  const capability = evaluateModelCapability({
+    kind: "overlay_inputs",
+    inputsComplete: input.baseEntries > 0 && buyin > 0 && sd > 0,
+  });
+  if (!capability.supportsForecast) {
     return { pOverlay: 0, eOverlay: 0, entP5: 0, entP50: 0, entP95: 0, rakeP5: 0, rakeP95: 0, bins: [], thresholdEntries, usable: false, meanLog: 0 };
   }
 
