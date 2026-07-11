@@ -385,6 +385,35 @@ export interface ScoredForecast extends ForecastPoint {
   baselineError: number | null; // |baseline − actual| / actual
 }
 
+// ---------- A3: canonical fold context reused by the baseline battery ----------
+/** A lean prior-row projection (no PreFeatures) so sibling modules read a fold's training basis without
+ *  touching engine internals. `weekday` is the PreFeatures code (wd0..wd6). */
+export interface LeanFoldRow {
+  entries: number;
+  date: number; // ms
+  weekday: string;
+}
+/** One canonical walk-forward fold, exposed for the A3 baseline battery — the SAME folds/origins the model CV
+ *  uses (produced by the ONE walkForwardFolds machinery). Carries the already-computed model forecast + median
+ *  baseline, the fold's strictly-earlier training rows, and the fold target's own outcome. `targetEntries` is
+ *  for the SEPARATE scoring layer ONLY — a predictor must read `train`, never `targetEntries`. */
+export interface CvFold {
+  eventId: string;
+  originTs: string;
+  targetWeekday: string;
+  targetEntries: number;
+  modelForecast: number | null;
+  medianBaseline: number | null;
+  train: readonly LeanFoldRow[];
+}
+interface WalkForwardFold {
+  point: ForecastPoint;
+  actual: number;
+  origin: ForecastOrigin;
+  targetWeekday: string;
+  train: readonly LeanFoldRow[];
+}
+
 /** Shared walk-forward engine over pre-built rows: for each row from CV_MIN_TRAIN on, forecast it from ONLY
  *  strictly-earlier rows (pipeline rebuilt per fold). Returns each fold's ForecastPoint paired with the
  *  POSITIONAL actual of that fold's own row (rows[i].entries). The pairing lives ONLY in this internal
@@ -392,11 +421,8 @@ export interface ScoredForecast extends ForecastPoint {
  *  emits the target (P0-2). Positional actuals (not id-keyed) keep the internal CV byte-identical to the
  *  pre-A2 loop even when event_id is not unique — CSV import accepts a user-supplied event_id column with
  *  no dedup, so a malformed sheet can repeat an id; positional scoring is immune to that collision. */
-function walkForwardFolds(
-  rows: TrainRow[],
-  calendarFeatures = false,
-): { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] {
-  const folds: { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] = [];
+function walkForwardFolds(rows: TrainRow[], calendarFeatures = false): WalkForwardFold[] {
+  const folds: WalkForwardFold[] = [];
   // A4a: the fold minimum is the gate's canonical MIN_TRAIN_LENGTH (was the local CV_MIN_TRAIN). Starting at
   // i = MIN_TRAIN_LENGTH is a behaviour-preserving optimisation: for i < MIN_TRAIN_LENGTH the strictly-earlier
   // train set has ≤ i < MIN_TRAIN_LENGTH rows and would be skipped anyway.
@@ -429,6 +455,11 @@ function walkForwardFolds(
       },
       actual: rows[i].entries, // positional — the fold's OWN row; never surfaced in the public artifact
       origin, // A1: point-in-time availability anchor retained per fold (internal; not on the artifact)
+      // A3: the fold's target weekday + strictly-earlier training rows (lean projection) so the baseline
+      // battery reduces over the SAME folds without a second loop/split. Additive — existing consumers
+      // (walkForwardRows/walkForwardCv) read only .point/.actual, so this is byte-identical.
+      targetWeekday: rows[i].f.weekday,
+      train: train.map((r) => ({ entries: r.entries, date: r.date, weekday: r.f.weekday })),
     });
   }
   return folds;
@@ -491,6 +522,49 @@ function walkForwardCv(rows: TrainRow[], calendarFeatures = false): { modelMape:
   };
 }
 
+// ---------- A3: canonical inputs for the baseline battery (shared past-split + fold machinery) ----------
+/** Rows strictly before the target — the SAME past set forecastTurnout trains its target forecast + CV on.
+ *  Single-sourced so the baseline battery and the model reduce over identical folds (no second date split). */
+function pastTrainRows(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): TrainRow[] {
+  const all = trainRows(events, opts.calendarFeatures === true, opts.censoring === true);
+  const targetTime = new Date(target.event_date).getTime();
+  return Number.isNaN(targetTime) ? all : all.filter((r) => r.date < targetTime);
+}
+
+/** Lean prior rows (entries/date/weekday) strictly before the target — the training basis for the baseline
+ *  battery's TARGET-point predictions. Same past set as the model's target forecast; no separate split. */
+export function pastLeanRows(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): LeanFoldRow[] {
+  return pastTrainRows(events, target, opts).map((r) => ({ entries: r.entries, date: r.date, weekday: r.f.weekday }));
+}
+
+/** The upcoming target's weekday code (wd0..wd6), matching the fold/PreFeatures encoding — lets the
+ *  same-weekday baseline group folds and the target consistently. null when the date is unparseable. */
+export function targetWeekdayCode(target: UpcomingEvent): string | null {
+  const parts = localParts(target.event_date);
+  return parts ? `wd${parts.weekday}` : null;
+}
+
+/** Median of a numeric list (deterministic even-count handling) — the ONE median implementation, reused by
+ *  the baseline battery's historical-median so there is never a duplicate. */
+export function medianOf(v: number[]): number | null {
+  return median(v);
+}
+
+/** THE canonical walk-forward fold set the model CV scores over, exposed for the A3 baseline battery so every
+ *  baseline reduces the SAME folds/origins/actuals as the model — no second CV loop, date split, or actual
+ *  join. Each fold already carries the model forecast + median baseline; predictors read `train` only. */
+export function canonicalCvFolds(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): CvFold[] {
+  return walkForwardFolds(pastTrainRows(events, target, opts), opts.calendarFeatures === true).map((f) => ({
+    eventId: f.point.eventId,
+    originTs: f.point.originTs,
+    targetWeekday: f.targetWeekday,
+    targetEntries: f.actual,
+    modelForecast: f.point.forecast,
+    medianBaseline: f.point.baseline,
+    train: f.train,
+  }));
+}
+
 function tierFor(cap: ModelCapability): ForecastConfidence {
   // Same ladder as before via the gate: n >= HIGH_N ⇒ high; n >= MIN_FULL (supportsFullFeatures) ⇒ medium; else low.
   return cap.sampleSize >= cap.highNThreshold ? "high" : cap.supportsFullFeatures ? "medium" : "low";
@@ -517,12 +591,12 @@ export interface ForecastOptions {
 export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, opts: ForecastOptions = {}): TurnoutForecast {
   const calendarFeatures = opts.calendarFeatures === true;
   const censoring = opts.censoring === true;
-  const targetTime = new Date(target.event_date).getTime();
   // Censoring drops capacity-hit events from the FIT (their entries are a truncated ceiling, not true demand),
   // but they still count as prior editions for editionTrend — trainRows handles that. Off ⇒ byte-identical.
   const excludedCount = censoring ? events.filter((e) => hitCapacity(e)).length : 0;
-  const all = trainRows(events, calendarFeatures, censoring);
-  const past = Number.isNaN(targetTime) ? all : all.filter((r) => r.date < targetTime);
+  // A3: `past` is single-sourced via pastTrainRows so the baseline battery reduces the identical fold set
+  // (byte-identical to the previous inline trainRows + strictly-before-target filter).
+  const past = pastTrainRows(events, target, opts);
   const n = past.length;
   // A4a: one capability evaluation drives every sample-size decision below (unavailable gate, degraded flag,
   // tier, and the ≥HIGH_N note). Same thresholds as before, sourced only from the gate.
