@@ -96,7 +96,7 @@ export function useTournamentTvData(
       return;
     }
 
-    const [clockRes, levelsRes, regsRes, seatsRes, prizesRes] = await Promise.all([
+    const [clockRes, levelsRes, regsRes, seatsRes, prizesRes, satRes] = await Promise.all([
       supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId }),
       supabase
         .from("tournament_levels")
@@ -118,6 +118,12 @@ export function useTournamentTvData(
         .select("position, amount")
         .eq("tournament_id", tournamentId)
         .order("position"),
+      // satellite_payout: cột source-only (chưa apply trên vài DB) → best-effort, lỗi (thiếu cột) → null.
+      (supabase as any)
+        .from("tournaments")
+        .select("satellite_payout")
+        .eq("id", tournamentId)
+        .maybeSingle(),
     ]);
     if (seq !== requestSeqRef.current) return;
 
@@ -134,6 +140,10 @@ export function useTournamentTvData(
     };
 
     const row = tournament as unknown as TvTournamentRow;
+    // Best-effort satellite (source-only column): missing-column error → null, không phá màn hình.
+    row.satellite_payout = satRes.error
+      ? null
+      : ((satRes.data as { satellite_payout?: unknown } | null)?.satellite_payout ?? null);
     const regs = regsRes.error ? null : (regsRes.data ?? []);
     // Walk-in entries may not exist in tournament_registrations, so the
     // confirmed-registration count can undercount; never show fewer total

@@ -1282,6 +1282,15 @@ export const FEATURES = {
    */
   payoutCustomSuggest: true,
   /**
+   * Satellite manual payout — giải vé (satellite): thêm khối "Satellite (nhập tay)" trong
+   * PayoutEnginePanel (máy tính) để operator TỰ NHẬP cơ cấu vé + tiền (mỗi dòng: khoảng hạng +
+   * phần thưởng tự do), lưu ở `tournaments.satellite_payout` (jsonb) qua RLS UPDATE sẵn có — KHÔNG
+   * qua payout engine (không Σ=pool/snapshot/close), KHÔNG RPC mới. Hiện lại ở Trả thưởng (cockpit
+   * điện thoại + panel máy tính + màn TV). Default **OFF** (kill-switch): while false khối satellite
+   * ẩn, payout không đổi. Flip true sau khi apply migration 20261238000000 + UAT Preview.
+   */
+  payoutSatelliteManual: false,
+  /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
    * shown-rows cap (grouped, so a 19-ITM LIVE_STANDARD run now fits without truncation). Pure

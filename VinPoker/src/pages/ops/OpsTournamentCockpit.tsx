@@ -487,6 +487,23 @@ export default function OpsTournamentCockpit() {
       {/* S5 — Trả thưởng (thật) */}
       {tab === "payout" && (
         <div className="space-y-3">
+          {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble — KHÔNG qua payout engine.
+              Chỉ hiện khi cờ payoutSatelliteManual ON và giải có cơ cấu satellite. Chỉ xem;
+              sửa trên máy tính (Bảng Payout Engine). */}
+          {FEATURES.payoutSatelliteManual && d.satellitePayout && d.satellitePayout.rows.length > 0 && (
+            <div className="ios-card overflow-hidden p-0">
+              <div className="border-b border-[#241a2e] px-4 py-2.5 text-[13px] font-semibold text-[#d8bc85]">🎟️ Satellite — trả vé (nhập tay)</div>
+              <div className="ios-group">
+                {d.satellitePayout.rows.map((r, i) => (
+                  <div key={i} className="ios-row-inset flex items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
+                    <span className="text-[#f2ece6]">Hạng {r.label}</span>
+                    <span className="font-mono text-[#c9a86a]">{r.prize}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2 text-[11px] text-[#7c7079]">Sửa cơ cấu satellite trên máy tính.</div>
+            </div>
+          )}
           <div className="ios-card p-4 text-center">
             <div className="text-[13px] text-[#9b8e97]">Prize pool <span className="text-amber-300">(Tạm tính)</span></div>
             <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>

@@ -20,19 +20,36 @@ export function TvPayoutsScreen({ data }: { data: TvData }) {
   const grouped = banded ? groupPayoutRows(data.prizes, 15) : null;
   const prizes = grouped ? grouped.rows : data.prizes.slice(0, 12).map((p) => ({ label: `${p.position}`, amount: p.amount }));
 
+  // Satellite (nhập tay): giải vé trả ghế + tiền bubble — không qua payout engine (không phải VND).
+  // Khi cờ payoutSatelliteManual ON và giải có cơ cấu satellite → hiện bảng vé thay cho ladder tiền.
+  const satellite = FEATURES.payoutSatelliteManual ? data.satellitePayout : null;
+  const satRows = satellite && satellite.rows.length > 0 ? satellite.rows : null;
+
   return (
     <div className="flex h-full min-h-screen w-full flex-col bg-background text-foreground">
       <TvHeader data={data} />
       <main className="flex flex-col items-center justify-center gap-[2.6vmin] px-[4vmin] py-[2vmin] lg:min-h-0 lg:flex-1">
         <div className="text-[3.2vmin] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-          {t("tv.payoutsTitle")}
+          {satRows ? "🎟️ Satellite" : t("tv.payoutsTitle")}
         </div>
         {data.currentLevel ? (
           <div className="text-[2.2vmin] tabular-nums text-muted-foreground">
             {t("tv.level")} {data.currentLevel.levelNumber} · {formatClock(data.remainingSeconds)}
           </div>
         ) : null}
-        {prizes.length > 0 ? (
+        {satRows ? (
+          <div className="grid w-full max-w-[150vmin] grid-cols-1 gap-x-[6vmin] gap-y-[1.6vmin] sm:grid-cols-2 lg:grid-cols-3">
+            {satRows.map((r, i) => (
+              <div
+                key={i}
+                className="flex items-baseline justify-between gap-[2vmin] border-b border-border/40 pb-[0.8vmin]"
+              >
+                <span className="text-[3.4vmin] font-bold tabular-nums text-primary">{r.label}</span>
+                <span className="text-[3.6vmin] font-bold">{r.prize}</span>
+              </div>
+            ))}
+          </div>
+        ) : prizes.length > 0 ? (
           <div className="grid w-full max-w-[150vmin] grid-cols-1 gap-x-[6vmin] gap-y-[1.6vmin] sm:grid-cols-2 lg:grid-cols-3">
             {prizes.map((prize) => (
               <div
@@ -51,7 +68,7 @@ export function TvPayoutsScreen({ data }: { data: TvData }) {
         ) : (
           <div className="text-[2.6vmin] text-muted-foreground">{t("tv.noPayouts")}</div>
         )}
-        {banded && grouped && grouped.truncatedCount > 0 ? (
+        {!satRows && banded && grouped && grouped.truncatedCount > 0 ? (
           <div className="text-[2vmin] text-muted-foreground">+{grouped.truncatedCount} hạng khác</div>
         ) : null}
         {data.prizePool != null ? (
