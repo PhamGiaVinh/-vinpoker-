@@ -89,6 +89,11 @@ const FEATURE_REGISTRY: Readonly<Record<string, AvailabilityClass>> = {
   outcomeLabel: "outcome_only",
 };
 
+/** The version of the model feature set / registry (B2 provenance). Bump this whenever MODEL_FEATURE_KEYS,
+ *  their derivation, or their availability classes change — so a stored forecast's provenance can be told
+ *  apart by which feature schema produced it (B1 pools residuals only within one featureSchemaVersion). */
+export const FEATURE_SCHEMA_VERSION = "feat-1";
+
 /** The model feature keys the turnout forecast consumes — ALL must be static_known (enforced by
  *  assertModelFeaturesStatic + a test). Any future non-static feature must instead be admitted through
  *  buildFeatures with an observedAt, never appended here. */
