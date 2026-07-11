@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   appliedRun: null as any,
   entriesCount: 10,
   tournamentsUpdateError: null as { message: string } | null,
+  // RETURNING rows của UPDATE tournaments (RLS lọc → []). Mặc định 1 row = update thành công.
+  tournamentsUpdateRows: [{ id: "t1" }] as { id: string }[],
   lastTournamentsUpdatePayload: null as any,
   invoke: vi.fn(async (_n: string, _o: any): Promise<any> => ({
     data: { result: { rows: [{ position: 1, amount: 7_600_000, percentage: 76 }, { position: 2, amount: 2_400_000, percentage: 24 }], itmPlaces: 2, effectiveFloor: 2_400_000, archetype: "DAILY", warnings: [] }, prizePool: 10_000_000 },
@@ -47,7 +49,9 @@ vi.mock("@/integrations/supabase/client", () => {
     chain.update = vi.fn((payload: any) => { isUpdate = true; if (table === "tournaments") h.lastTournamentsUpdatePayload = payload; return chain; });
     chain.delete = vi.fn(() => chain);
     chain.then = (resolve: any) => resolve(
-      table === "tournaments" && isUpdate ? { data: null, error: h.tournamentsUpdateError } : { data: [], count: h.entriesCount, error: null },
+      table === "tournaments" && isUpdate
+        ? { data: h.tournamentsUpdateError ? null : h.tournamentsUpdateRows, error: h.tournamentsUpdateError }
+        : { data: [], count: h.entriesCount, error: null },
     ); // entries/templates/planned-save awaited directly
     return chain;
   };
@@ -69,6 +73,7 @@ beforeEach(() => {
   h.tour.planned_itm_percent = null; h.tour.planned_payout_archetype = null;
   h.tour.planned_min_cash_x = null; h.tour.planned_rounding_unit = null;
   h.prizes = []; h.appliedRun = null; h.entriesCount = 10; h.tournamentsUpdateError = null;
+  h.tournamentsUpdateRows = [{ id: "t1" }];
   flags.payoutCustomMode = false; flags.payoutCustomTemplates = false; flags.payoutPlannedSettings = false;
   h.invoke.mockClear(); h.rpc.mockClear();
   (toast.error as any).mockClear(); (toast.success as any).mockClear();
@@ -281,5 +286,18 @@ describe("PayoutEnginePanel — planned settings gated by FEATURES.payoutPlanned
     fireEvent.click(screen.getByRole("button", { name: /Lưu mặc định cho giải này/ }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect((toast.error as any).mock.calls.at(-1)[0]).toMatch(/không có quyền lưu mặc định/);
+  });
+
+  it("zero-row RLS-filtered save (no error, data=[]) shows error toast — NOT fake success", async () => {
+    // UPDATE bị RLS USING lọc hết row: PostgREST trả data=[] KHÔNG error. Trước fix, code
+    // toast success giả. Sau fix: bắt data.length===0 → báo không có quyền.
+    flags.payoutPlannedSettings = true;
+    h.tournamentsUpdateRows = [];
+    render(<PayoutEnginePanel tournamentId="t1" />);
+    await screen.findByText(/Cơ cấu giải thưởng/);
+    fireEvent.click(screen.getByRole("button", { name: /Lưu mặc định cho giải này/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect((toast.error as any).mock.calls.at(-1)[0]).toMatch(/Không có quyền lưu mặc định/);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

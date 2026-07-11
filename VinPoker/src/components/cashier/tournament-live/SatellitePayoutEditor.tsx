@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,20 +23,30 @@ const isMissingColumn = (msg?: string) =>
 export function SatellitePayoutEditor({ tournamentId }: { tournamentId: string }) {
   const [rows, setRows] = useState<SatellitePrizeRow[]>([{ ...EMPTY_ROW }]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [dbMissing, setDbMissing] = useState(false);
+  // Stale-request token (mẫu requestSeqRef của useTournamentTvData): đổi giải / "Thử lại" liên tiếp
+  // → response cũ về muộn KHÔNG được ghi đè state của request mới.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
-    // best-effort: cột source-only → lỗi thiếu cột coi như "chưa có cơ cấu".
+    setLoadError(null);
     const { data, error } = await (supabase as any)
       .from("tournaments")
       .select("satellite_payout")
       .eq("id", tournamentId)
       .maybeSingle();
+    if (seq !== loadSeqRef.current) return; // stale — request mới hơn đang chạy
     if (error) {
-      setDbMissing(isMissingColumn(error.message));
+      // Thiếu cột (CSDL chưa apply) = nhánh tương thích, KHÔNG phải lỗi chung.
+      // Lỗi khác → chặn editor (tránh Lưu đè dữ liệu thật bằng bảng trống).
+      const missing = isMissingColumn(error.message);
+      setDbMissing(missing);
+      setLoadError(missing ? null : (error.message || "Không tải được cơ cấu satellite"));
       setRows([{ ...EMPTY_ROW }]);
       setDirty(false);
       setLoading(false);
@@ -74,10 +84,15 @@ export function SatellitePayoutEditor({ tournamentId }: { tournamentId: string }
         .filter((r) => r.label !== "" || r.prize !== "");
       // Rỗng hết → xoá cơ cấu (NULL) = không dùng satellite.
       const payload = clean.length > 0 ? { rows: clean } : null;
-      const { error } = await (supabase as any)
+      // .select("id") = RETURNING: UPDATE bị RLS lọc (0 row) trả data=[] KHÔNG error → phải bắt
+      // tay, nếu không sẽ toast success giả rồi load() xoá sạch dữ liệu operator vừa gõ.
+      // An toàn không báo lỗi giả: SELECT trên tournaments rộng hơn UPDATE (anon-read qual=true
+      // + tournaments_select) → ai UPDATE được chắc chắn SELECT được row RETURNING.
+      const { data, error } = await (supabase as any)
         .from("tournaments")
         .update({ satellite_payout: payload })
-        .eq("id", tournamentId);
+        .eq("id", tournamentId)
+        .select("id");
       if (error) {
         if (isMissingColumn(error.message)) {
           setDbMissing(true);
@@ -85,6 +100,11 @@ export function SatellitePayoutEditor({ tournamentId }: { tournamentId: string }
         } else {
           toast.error(error.message || "Không lưu được cơ cấu satellite");
         }
+        return;
+      }
+      if (!data || data.length === 0) {
+        if (import.meta.env.DEV) console.warn("[save_satellite_payout] zero-row update", { tournamentId, returnedRows: 0 });
+        toast.error("Không có quyền lưu — cần tài khoản chủ CLB hoặc quyền điều hành sàn.");
         return;
       }
       toast.success(payload ? "Đã lưu cơ cấu satellite" : "Đã xoá cơ cấu satellite");
@@ -115,6 +135,15 @@ export function SatellitePayoutEditor({ tournamentId }: { tournamentId: string }
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" /> Đang tải…
+        </div>
+      ) : loadError ? (
+        // Lỗi tải THẬT (không phải thiếu cột) → chặn editor: nếu cho sửa trên bảng trống,
+        // Lưu sẽ đè dữ liệu thật bằng bảng trống. Chỉ cho Thử lại.
+        <div className="space-y-2 py-3 text-center">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+            Thử lại
+          </Button>
         </div>
       ) : (
         <>
