@@ -20,8 +20,10 @@
 // Truthfulness + fail-closed (all throw ProvenanceError with a stable `code`): asOfTs truthful (no
 // training/calendar/edition input later than asOfTs ⇒ AS_OF_INPUT_MISMATCH — REJECT, never silently filter);
 // timing.targetEventTs must match target.event_date (TARGET_TIME_MISMATCH); asOfTs<=forecastIssuedAt; trialCount
-// a positive integer; codeSha and selectionProtocolId normalized+validated; manual_override requires a 64-hex
-// derivedFromInputHash and engine/manual forbid it.
+// a positive integer; codeSha normalized+validated; selectionProtocolId trimmed+LOWERCASED+validated (casing can
+// never mint a second pool); target.capacity enters targetInputHash when (and only when) censoring caps the band
+// (non-finite capacity ⇒ INVALID_CAPACITY); manual_override requires a 64-hex derivedFromInputHash, engine/manual
+// forbid it.
 //
 // Does NOT extend ForecastPoint or touch forecastTurnout's output (A2/A5 byte-identity preserved).
 
@@ -127,10 +129,12 @@ function normalizeCodeSha(raw: string): string {
   return s;
 }
 
-/** Normalize + validate a selection-protocol id as a stable machine identifier. */
+/** Canonicalize + validate a selection-protocol id as a stable machine identifier. Trim + LOWERCASE so
+ *  casing can never accidentally mint a second calibration pool (e.g. "Direct-1" and "direct-1" collapse to
+ *  the same id). Enforce a strict, length-capped shape. */
 function normalizeSelectionProtocol(raw: string): string {
-  const s = raw.trim();
-  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(s)) {
+  const s = raw.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9._-]{0,63}$/.test(s)) {
     throw new ProvenanceError(`invalid selectionProtocolId ${JSON.stringify(raw)}`, "INVALID_SELECTION_PROTOCOL");
   }
   return s;
@@ -141,6 +145,21 @@ function canonTime(x: string, label: string): { iso: string; ms: number } {
   const ms = new Date(x).getTime();
   if (!Number.isFinite(ms)) throw new ProvenanceError(`invalid ${label} timestamp ${JSON.stringify(x)}`, "INVALID_TIMESTAMP");
   return { iso: new Date(ms).toISOString(), ms };
+}
+
+/** The target's capacity as it can ACTUALLY affect the forecast output, mirroring the engine contract
+ *  (turnoutForecast: the band is capped only when `censoring` is on AND `capacity != null && capacity > 0`).
+ *  ⇒ censoring off, or a null / non-positive capacity, cannot move the output ⇒ hashes as null (identity must
+ *  not change when the output cannot). A non-finite capacity (NaN/Infinity) can never be a valid seat count and
+ *  is a data bug ⇒ fail closed (INVALID_CAPACITY) rather than silently hashing it. */
+function effectiveTargetCapacity(opts: ForecastOptions, target: UpcomingEvent): number | null {
+  if (opts.censoring !== true) return null;
+  const cap = target.capacity;
+  if (cap == null) return null;
+  if (typeof cap !== "number" || !Number.isFinite(cap)) {
+    throw new ProvenanceError(`invalid target.capacity ${JSON.stringify(cap)}`, "INVALID_CAPACITY");
+  }
+  return cap > 0 ? cap : null; // engine caps only on a positive capacity
 }
 
 const eventMs = (e: SeriesEvent): number | null => {
@@ -270,7 +289,12 @@ export async function buildForecastProvenance(
   });
   const calibrationPoolId = await canonicalHash({ predictorId, trialCount, selectionProtocolId });
 
-  const targetInputHash = await canonicalHash(fii.targetFeatures ?? null);
+  // targetInputHash covers EVERY target input that can change the output: the admitted feature vector AND the
+  // target capacity when censoring caps the band (else null — see effectiveTargetCapacity).
+  const targetInputHash = await canonicalHash({
+    features: fii.targetFeatures ?? null,
+    capacity: effectiveTargetCapacity(opts, target),
+  });
   const trainingDataHash = await canonicalHash(
     fii.trainingRows.map((r) => ({
       eventId: r.eventId,

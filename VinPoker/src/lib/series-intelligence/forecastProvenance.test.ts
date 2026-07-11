@@ -205,7 +205,46 @@ describe("B2 fail-closed validations (rule 5 + fix 4)", () => {
       expect(await codeOf(build(EVENTS, TARGET, {}, { codeSha: "abc1234", selectionProtocolId: bad }))).toBe("INVALID_SELECTION_PROTOCOL");
     }
     const ok = eng(await build(EVENTS, TARGET, {}, { codeSha: "abc1234", selectionProtocolId: "  tuned_v2-1  " }));
-    expect(ok.predictor.selectionProtocolId).toBe("tuned_v2-1"); // trimmed
+    expect(ok.predictor.selectionProtocolId).toBe("tuned_v2-1"); // trimmed + lowercased
+  });
+  it("selectionProtocolId casing cannot accidentally mint a second calibration pool (fix 3)", async () => {
+    const lower = eng(await build(EVENTS, TARGET, {}, { codeSha: "abc1234", selectionProtocolId: "tuned-1" }));
+    const upper = eng(await build(EVENTS, TARGET, {}, { codeSha: "abc1234", selectionProtocolId: "  TUNED-1  " }));
+    expect(upper.predictor.selectionProtocolId).toBe("tuned-1"); // trimmed + lowercased to the same id
+    expect(upper.input.calibrationPoolId).toBe(lower.input.calibrationPoolId); // ⇒ same pool
+  });
+});
+
+describe("B2 target capacity — censoring caps the band, so it enters identity (fix 1)", () => {
+  const cap = (c: number | null | undefined): UpcomingEvent => ({ ...TARGET, capacity: c });
+  it("censoring ON: changing target.capacity changes targetInputHash AND inputContentHash", async () => {
+    const a = eng(await build(EVENTS, cap(500), { censoring: true }));
+    const b = eng(await build(EVENTS, cap(600), { censoring: true }));
+    expect(a.input.targetInputHash).not.toBe(b.input.targetInputHash);
+    expect(a.input.inputContentHash).not.toBe(b.input.inputContentHash);
+  });
+  it("censoring OFF: changing target.capacity leaves the hashes unchanged (capacity cannot move the output)", async () => {
+    const a = eng(await build(EVENTS, cap(500), {}));
+    const b = eng(await build(EVENTS, cap(600), {}));
+    expect(a.input.targetInputHash).toBe(b.input.targetInputHash);
+    expect(a.input.inputContentHash).toBe(b.input.inputContentHash);
+  });
+  it("null / absent capacity is deterministic (both hash as the no-cap identity)", async () => {
+    const noCap = eng(await build(EVENTS, TARGET, { censoring: true }));
+    const nullCap1 = eng(await build(EVENTS, cap(null), { censoring: true }));
+    const nullCap2 = eng(await build(EVENTS, cap(null), { censoring: true }));
+    expect(nullCap1.input.targetInputHash).toBe(noCap.input.targetInputHash);
+    expect(nullCap1.input.targetInputHash).toBe(nullCap2.input.targetInputHash);
+  });
+  it("invalid capacity: non-positive follows the engine contract (no cap); non-finite fails closed", async () => {
+    const noCap = eng(await build(EVENTS, TARGET, { censoring: true })); // undefined ⇒ null ⇒ no cap
+    for (const z of [0, -50]) {
+      // engine ignores capacity <= 0 ⇒ identity MUST equal the no-cap hash (no false identity change)
+      expect(eng(await build(EVENTS, cap(z), { censoring: true })).input.targetInputHash).toBe(noCap.input.targetInputHash);
+    }
+    // NaN / Infinity can never be a seat count ⇒ fail closed explicitly
+    expect(await codeOf(build(EVENTS, cap(Number.NaN), { censoring: true }))).toBe("INVALID_CAPACITY");
+    expect(await codeOf(build(EVENTS, cap(Number.POSITIVE_INFINITY), { censoring: true }))).toBe("INVALID_CAPACITY");
   });
 });
 
