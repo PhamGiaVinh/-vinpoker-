@@ -54,7 +54,7 @@ function shiftYM(year: number, month: number, delta: number): { year: number; mo
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-export default function StaffSalaryChot() {
+export default function StaffSalaryChot({ embedded }: { embedded?: boolean } = {}) {
   const { loading: authLoading, user, isAdmin, isClubAdmin, isClubOwner } = useAuth();
   const [searchParams] = useSearchParams();
   const source = staffSalarySource();
@@ -80,7 +80,8 @@ export default function StaffSalaryChot() {
   }, [clubId, clubs]);
 
   if (authLoading || clubsQuery.isLoading) return <ChotSkeleton />;
-  if (!allowed) return <Navigate to="/club/admin" replace />;
+  // Embedded (accountant workspace): the parent already gates access — never redirect.
+  if (!allowed && !embedded) return <Navigate to="/club/admin" replace />;
 
   const view = monthQuery.data;
   const status: SalaryPeriodStatus = view?.status ?? "prepared";
@@ -94,7 +95,7 @@ export default function StaffSalaryChot() {
     actions.reject.isPending;
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-6 space-y-4">
+    <div className={embedded ? "space-y-4" : "container mx-auto max-w-5xl px-4 py-6 space-y-4"}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">

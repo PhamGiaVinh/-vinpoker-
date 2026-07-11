@@ -1395,6 +1395,16 @@ export const FEATURES = {
    * PR #844 was meant to ship but never merged). Kill-switch: set false to re-hide.
    */
   staffSalaryChot: true,
+  /**
+   * accountantWorkspace — the full multi-tab "Kế toán" workspace at `/accountant` (Bảng
+   * lương NV · Lương dealer · Nhân viên & lương · Sổ chi phí · F&B thu chi · Báo cáo).
+   * Tabs whose backend authz needs migration 20261236000000 self-detect via
+   * `get_accountant_capabilities` and show an explicit "chờ áp DB" notice — never a crash,
+   * never a silently-empty screen. Default **OFF** (review P0-5): while false, `/accountant`
+   * renders exactly the pre-workspace page (StaffSalaryChot). Flip to true is a SEPARATE PR
+   * after the owner-gated DB apply + UAT. Kill-switch: set false to restore today's page.
+   */
+  accountantWorkspace: false,
 } as const;
 
 /**

@@ -311,9 +311,16 @@ function getMonthYearOptions(): { value: string; label: string; start: string; e
 interface DealerPayrollTabProps {
   clubIds: string[];
   clubs: ClubRow[];
+  /**
+   * Accountant workspace: hide the approve/reject/lock controls so the UI matches the
+   * permission matrix (accountant submits; only owner/admin approves & locks). The
+   * server-side transition gate (transition_payroll_status_secure) remains the real
+   * boundary — this is presentation only.
+   */
+  hideApprovalActions?: boolean;
 }
 
-export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabProps) {
+export default function DealerPayrollTab({ clubIds, clubs, hideApprovalActions }: DealerPayrollTabProps) {
   const { user } = useAuth();
   const monthOptions = useMemo(() => getMonthYearOptions(), []);
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value ?? "");
@@ -1513,6 +1520,11 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 </button>
               )}
               {payrollStatus === "submitted" && (
+                hideApprovalActions ? (
+                  <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-warning">
+                    Đã gửi — chờ chủ CLB duyệt bảng lương.
+                  </div>
+                ) : (
                 <>
                   <textarea
                     placeholder="Nhập lý do từ chối..."
@@ -1535,14 +1547,21 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                     </button>
                   </div>
                 </>
+                )
               )}
               {payrollStatus === "approved" && (
+                hideApprovalActions ? (
+                  <div className="rounded-md border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
+                    Đã duyệt — chờ chủ CLB khoá sổ.
+                  </div>
+                ) : (
                 <button
                   onClick={handleLock}
                   className="h-8 px-3 rounded-md bg-destructive hover:bg-destructive text-white text-xs font-medium"
                 >
                   Khoá sổ
                 </button>
+                )
               )}
               {payrollStatus === "rejected" && (
                 <button
