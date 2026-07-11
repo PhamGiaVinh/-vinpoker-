@@ -64,4 +64,16 @@ describe("LiveFelt showdown winner — under tableFx", () => {
     expect(html).not.toContain("tracker-win-glow");
     expect(html).not.toContain("seat-net-won");
   });
+
+  it("verified chop glows both winners and shows each credited pot share", () => {
+    const chopA = seat({ player_id: "a", seat_number: 1, hole_cards: ["Ah", "Kd"], pot_winner: true, payout_award: 1000, net_won: 0 });
+    const chopB = seat({ player_id: "b", seat_number: 2, hole_cards: ["As", "Kc"], pot_winner: true, payout_award: 1000, net_won: 0 });
+    const html = renderToStaticMarkup(
+      <LiveFelt seats={[chopA, chopB]} {...baseProps} tableFx showdownResult="chop" />,
+    );
+    expect((html.match(/tracker-win-glow/g) || []).length).toBe(4);
+    expect((html.match(/seat-pot-award/g) || []).length).toBe(2);
+    expect((html.match(/CHOP POT/g) || []).length).toBe(2);
+    expect((html.match(/\+1k/g) || []).length).toBe(2);
+  });
 });
