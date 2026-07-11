@@ -406,15 +406,20 @@ export default function OpsTables() {
         <button onClick={() => { setSearchOn((v) => !v); if (searchOn) setQuery(""); }} className="ios-press ios-fill grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#f2ece6]">
           <Search className="h-5 w-5" />
         </button>
+        {/* Cờ OFF: giữ NHÃN THẬT + disabled (trước đây 2 nút cạnh nhau cùng chữ "Cần bật cờ"
+            → nhìn như UI lỗi/trùng); 1 dòng hint chung bên dưới thay chữ trên từng nút. */}
         <button onClick={() => (ADD_LIVE ? (setNewTableNo(""), setNewMaxSeats(9), setOpenTableOpen(true)) : undefined)} disabled={!ADD_LIVE}
+          aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
           className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
-          <Plus className="h-[18px] w-[18px]" /> {ADD_LIVE ? "Bàn" : "Cần bật cờ"}
+          <Plus className="h-[18px] w-[18px]" /> Bàn
         </button>
         <button onClick={() => (ADD_LIVE ? openRedraw() : pending())} disabled={!ADD_LIVE}
+          aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
           className={cn("ios-press ios-fill flex h-12 flex-1 items-center justify-center gap-1.5 rounded-2xl text-[15px] font-medium text-[#f2ece6]", !ADD_LIVE && "opacity-50")}>
-          <Shuffle className="h-[18px] w-[18px]" /> {ADD_LIVE ? "Bốc lại" : "Cần bật cờ"}
+          <Shuffle className="h-[18px] w-[18px]" /> Bốc lại
         </button>
       </div>
+      {!ADD_LIVE && <p className="px-1 text-center text-[11px] text-[#7c7079]">Các thao tác bàn đang tạm khóa. Cần bật floorTableOps.</p>}
 
       {/* B2 — sheet bàn: ghế + người thật */}
       <Sheet open={openVM !== null} onOpenChange={(v) => { if (!v) setOpenNo(null); }}>
@@ -459,8 +464,9 @@ export default function OpsTables() {
           <div className="mt-3 grid grid-cols-3 gap-2">
             {/* Floor-A1: LIVE (floorTableOps). Cờ OFF → disable "Cần bật cờ" y desktop, 0 gọi RPC. */}
             <button onClick={() => (ADD_LIVE ? openVM && openAdd(openVM) : undefined)} disabled={!ADD_LIVE}
+              aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
               className={cn("ios-press ios-tinted flex items-center justify-center gap-1 rounded-2xl py-3 text-[13px] font-semibold", !ADD_LIVE && "opacity-50")}>
-              <Plus className="h-4 w-4" /> {ADD_LIVE ? "Thêm người" : "Cần bật cờ"}
+              <Plus className="h-4 w-4" /> Thêm người
             </button>
             {/* "Tạm dừng" không có ở mức 1 bàn (server chỉ pause CẢ GIẢI) → mở đồng hồ giải ở cockpit
                 (nơi có Tạm dừng/Tiếp tục/chỉnh giờ), không giả lập pause-per-table. */}
@@ -469,10 +475,12 @@ export default function OpsTables() {
               <PauseCircle className="h-4 w-4" /> Đồng hồ
             </button>
             <button onClick={() => { if (!ADD_LIVE) { pending(); return; } const vm = openVM; setOpenNo(null); setCloseMode("redraw_balanced"); requestAnimationFrame(() => setCloseTable(vm)); }}
-              className="ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300">
-              <XCircle className="h-4 w-4" /> {ADD_LIVE ? "Đóng bàn" : "Cần bật cờ"}
+              aria-disabled={!ADD_LIVE} title={ADD_LIVE ? undefined : "Cần bật cờ floorTableOps"}
+              className={cn("ios-press flex items-center justify-center gap-1 rounded-2xl bg-rose-500/12 py-3 text-[13px] font-semibold text-rose-300", !ADD_LIVE && "opacity-50")}>
+              <XCircle className="h-4 w-4" /> Đóng bàn
             </button>
           </div>
+          {!ADD_LIVE && <p className="mt-2 text-center text-[11px] text-[#7c7079]">Các thao tác bàn đang tạm khóa. Cần bật floorTableOps.</p>}
         </SheetContent>
       </Sheet>
 

@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { DealerStatusCard } from "@/components/ops/shared/DealerStatusCard";
 import { PlayerLookupCard } from "@/components/ops/shared/PlayerLookupCard";
 import { RoleLockedAction } from "@/components/ops/shared/RoleLockedAction";
+import { MockChip } from "@/components/ops/shared/MockChip";
 import { MOCK_DEALERS, MOCK_PLAYERS } from "@/components/ops/mock/opsData";
 
 /**
@@ -28,7 +29,10 @@ export default function OpsMore() {
   return (
     <div className="ios-in space-y-6 pt-2">
       <header className="px-1">
-        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Thêm</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="min-w-0 truncate text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Thêm</h1>
+          <MockChip />
+        </div>
       </header>
 
       <button

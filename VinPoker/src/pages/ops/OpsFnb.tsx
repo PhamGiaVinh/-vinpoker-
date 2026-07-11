@@ -11,6 +11,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { MockChip } from "@/components/ops/shared/MockChip";
 import {
   FNB_CATS, FNB_MENU, FNB_ORDERS, FNB_KITCHEN, FNB_SHIFT, FNB_QR_TABLES, FNB_STOCK, vnd,
   type FnbOrder, type MenuItem, type PayMethod,
@@ -67,7 +68,10 @@ export default function OpsFnb() {
         <button onClick={() => navigate("/")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
           <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> App chính
         </button>
-        <h1 className="mt-1 text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">F&amp;B</h1>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <h1 className="min-w-0 truncate text-[26px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">F&amp;B</h1>
+          <MockChip />
+        </div>
         <p className="mt-0.5 text-[14px] text-[#9b8e97]">Hanoi Royal · đồ uống &amp; đồ ăn · số trong ca là <span className="text-[#d8bc85]">tạm tính</span></p>
       </header>
 

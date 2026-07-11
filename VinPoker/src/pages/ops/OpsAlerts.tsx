@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { AlertQueueItem } from "@/components/ops/shared/AlertQueueItem";
 import { FinancialWarningCard } from "@/components/ops/shared/FinancialWarningCard";
 import { RoleLockedAction } from "@/components/ops/shared/RoleLockedAction";
+import { MockChip } from "@/components/ops/shared/MockChip";
 import { MOCK_OP_ALERTS, MOCK_FIN_LINES } from "@/components/ops/mock/opsData";
 
 /**
@@ -12,7 +13,10 @@ export default function OpsAlerts() {
   return (
     <div className="ios-in space-y-6 pt-2">
       <header className="px-1">
-        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cảnh báo</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="min-w-0 truncate text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Cảnh báo</h1>
+          <MockChip />
+        </div>
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{MOCK_OP_ALERTS.length} việc cần xử lý</p>
       </header>
 
