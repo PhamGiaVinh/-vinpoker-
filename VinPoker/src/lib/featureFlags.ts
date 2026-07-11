@@ -1317,7 +1317,7 @@ export const FEATURES = {
    * điện thoại + panel máy tính + màn TV). Default **OFF** (kill-switch): while false khối satellite
    * ẩn, payout không đổi. Flip true sau khi apply migration 20261238000000 + UAT Preview.
    */
-  payoutSatelliteManual: false,
+  payoutSatelliteManual: true,
   /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
