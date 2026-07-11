@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
+import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
 
 /**
@@ -292,15 +293,22 @@ export default function OpsTournamentCockpit() {
             <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>
             <div className="mt-0.5 text-[12px] text-[#9b8e97]">{d.prizes.length ? `Trả ${d.prizes.length} hạng · ` : ""}Tiền chuyển hộ — nợ phải trả</div>
           </div>
+          {/* Grouped payout: các hạng liền kề cùng mức tiền gom thành 1 dải ("Hạng 4–6 · X / suất").
+              groupPayoutRows KHÔNG gộp qua khoảng trống → không giấu hạng thiếu; không cắt bớt
+              (maxRows = số hạng) vì danh sách cuộn được. Dùng chung util với màn TV. */}
           {d.prizes.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cơ cấu thưởng" />
             : (
               <div className="ios-group">
-                {d.prizes.slice().sort((a, b) => a.position - b.position).map((p) => (
-                  <div key={p.position} className="ios-row-inset flex items-center justify-between px-4 py-2.5 text-[14px]">
-                    <span className={p.position <= 3 ? "font-semibold text-[#d8bc85]" : "text-[#f2ece6]"}>Hạng {p.position}</span>
-                    <span className="font-mono text-[#f2ece6]">{vnd(p.amount)}</span>
-                  </div>
-                ))}
+                {groupPayoutRows(d.prizes, d.prizes.length).rows.map((b) => {
+                  const isBand = /\D/.test(b.label);              // "4–6" có ký tự ngăn cách → là dải
+                  const startPos = parseInt(b.label, 10);
+                  return (
+                    <div key={b.label} className="ios-row-inset flex items-center justify-between px-4 py-2.5 text-[14px]">
+                      <span className={startPos <= 3 ? "font-semibold text-[#d8bc85]" : "text-[#f2ece6]"}>Hạng {b.label}</span>
+                      <span className="font-mono text-[#f2ece6]">{vnd(b.amount)}{isBand && <span className="text-[12px] text-[#9b8e97]"> / suất</span>}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           <DesktopNote text="Chỉ xem — sửa cơ cấu trên máy tính." />

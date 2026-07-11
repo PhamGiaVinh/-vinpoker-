@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2, Upload } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseFileToCustomRows } from "@/lib/customPayoutImport";
+import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { PrizePayoutTrackingSection } from "./PrizePayoutTrackingSection";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
@@ -337,31 +338,45 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
     </Card>
   );
 
-  const RowsTable = ({ rows, pool }: { rows: PayoutRow[]; pool: number }) => (
-    <div className="max-h-[44vh] overflow-y-auto rounded border border-border">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-secondary text-muted-foreground"><tr>
-          <th className="text-left px-3 py-1.5 font-medium">Hạng</th>
-          <th className="text-right px-3 py-1.5 font-medium">Tiền thưởng</th>
-          <th className="text-right px-3 py-1.5 font-medium">%</th>
-        </tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.position} className="border-t border-border/60">
-              <td className="px-3 py-1.5">{r.position}</td>
-              <td className="px-3 py-1.5 text-right font-mono tabular-nums text-foreground">{vnd(r.amount)}</td>
-              <td className="px-3 py-1.5 text-right text-muted-foreground">{r.percentage.toFixed(2)}%</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot><tr className="border-t border-border bg-secondary/50">
-          <td className="px-3 py-1.5 font-medium">Σ ({rows.length} suất)</td>
-          <td className="px-3 py-1.5 text-right font-mono tabular-nums text-primary">{vnd(rows.reduce((s, r) => s + r.amount, 0))}</td>
-          <td className="px-3 py-1.5 text-right text-muted-foreground">/ {vnd(pool)}</td>
-        </tr></tfoot>
-      </table>
-    </div>
-  );
+  // Grouped payout: gộp hạng LIỀN KỀ cùng mức tiền thành 1 dải ("13–15") — dùng chung
+  // groupPayoutRows với màn TV + cockpit (đã test; KHÔNG gộp qua khoảng trống → không giấu hạng
+  // thiếu). % lấy theo hạng ĐẦU dải (các hạng cùng tiền → cùng %). Σ footer vẫn tính trên TỪNG
+  // hạng gốc (rows) nên tổng tiền/số suất KHÔNG đổi. Chỉ gộp hiển thị, không đụng số liệu.
+  const RowsTable = ({ rows, pool }: { rows: PayoutRow[]; pool: number }) => {
+    const bands = groupPayoutRows(rows, rows.length).rows;
+    const pctByPos = new Map(rows.map((r) => [r.position, r.percentage]));
+    return (
+      <div className="max-h-[44vh] overflow-y-auto rounded border border-border">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-secondary text-muted-foreground"><tr>
+            <th className="text-left px-3 py-1.5 font-medium">Hạng</th>
+            <th className="text-right px-3 py-1.5 font-medium">Tiền thưởng</th>
+            <th className="text-right px-3 py-1.5 font-medium">%</th>
+          </tr></thead>
+          <tbody>
+            {bands.map((b) => {
+              const startPos = parseInt(b.label, 10);
+              const isBand = /\D/.test(b.label);   // "13–15" có ký tự ngăn cách → là dải
+              return (
+                <tr key={b.label} className="border-t border-border/60">
+                  <td className="px-3 py-1.5">{b.label}</td>
+                  <td className="px-3 py-1.5 text-right font-mono tabular-nums text-foreground">
+                    {vnd(b.amount)}{isBand && <span className="font-sans text-muted-foreground"> /suất</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-muted-foreground">{(pctByPos.get(startPos) ?? 0).toFixed(2)}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr className="border-t border-border bg-secondary/50">
+            <td className="px-3 py-1.5 font-medium">Σ ({rows.length} suất)</td>
+            <td className="px-3 py-1.5 text-right font-mono tabular-nums text-primary">{vnd(rows.reduce((s, r) => s + r.amount, 0))}</td>
+            <td className="px-3 py-1.5 text-right text-muted-foreground">/ {vnd(pool)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <Card className="p-4 space-y-4">
