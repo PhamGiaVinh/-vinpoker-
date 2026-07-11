@@ -75,6 +75,27 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(s).toContain("all-in 2.1M"); // bullet from the all_in action
   });
 
+  it("hud → final summary shows verified hand ranking and action digest", () => {
+    const { getByTitle, getByTestId } = render(<ReplayScrubber hand={hand} onFrame={() => {}} hud />);
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    const rankings = getByTestId("replay-hud-rankings").textContent || "";
+    expect(rankings).toMatch(/One Pair|Một đôi/);
+    expect(rankings).toMatch(/KI.{1,2}N/);
+    expect(rankings).toMatch(/Winner|Thắng|ÄÃ£ xÃ¡c nháº­n|Đã xác nhận/);
+    expect(getByTestId("replay-hud-action-summary").textContent).toMatch(/hành động|actions/);
+  });
+
+  it("hud → payout mismatch keeps ranking visible without inventing a winner", () => {
+    const mismatchHand: ReplayHand = {
+      ...hand,
+      players: hand.players.map((player) => player.player_id === "b" ? { ...player, ending_stack: 4_000_000 } : player),
+    };
+    const { getByTitle, getByTestId } = render(<ReplayScrubber hand={mismatchHand} onFrame={() => {}} hud />);
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    expect(getByTestId("replay-hud-needs-resettle")).toBeTruthy();
+    expect(getByTestId("replay-hud-rankings").textContent).toMatch(/Winner not confirmed|ChÆ°a xÃ¡c nháº­n winner|Chưa xác nhận winner/);
+  });
+
   it("hud → jump-to-end lands on the final frame (step N/N)", () => {
     const { getByTitle, container } = render(<ReplayScrubber hand={hand} onFrame={() => {}} hud />);
     fireEvent.click(getByTitle("Tới cuối (showdown)"));

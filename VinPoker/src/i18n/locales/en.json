@@ -3022,7 +3022,28 @@
       "unknownPlayer": "Player",
       "noResult": "No result yet — open Actions.",
       "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
-      "winnerSummary": "{{name}} +{{amount}}{{bb}}"
+      "winnerSummary": "{{name}} +{{amount}}{{bb}}",
+      "rankTitle": "Hand ranking",
+      "rankUnverified": "Winner not confirmed",
+      "resultVerified": "Verified",
+      "winner": "Winner",
+      "kicker": "kicker",
+      "actionSummary": "Hand action summary",
+      "actionCount": "actions",
+      "noActions": "No recorded actions.",
+      "showAllActions": "Show all {{count}} actions",
+      "rank": {
+        "royal_flush": "Royal Flush",
+        "straight_flush": "Straight Flush",
+        "quads": "Four of a Kind",
+        "full_house": "Full House",
+        "flush": "Flush",
+        "straight": "Straight",
+        "trips": "Three of a Kind",
+        "two_pair": "Two Pair",
+        "pair": "One Pair",
+        "high_card": "High Card"
+      }
     },
     "felt": {
       "pot": "Pot",

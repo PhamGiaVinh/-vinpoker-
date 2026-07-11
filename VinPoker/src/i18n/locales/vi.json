@@ -3022,7 +3022,28 @@
       "unknownPlayer": "Người chơi",
       "noResult": "Chưa có kết quả — xem tab Hành động.",
       "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
-      "winnerSummary": "{{name}} +{{amount}}{{bb}}"
+      "winnerSummary": "{{name}} +{{amount}}{{bb}}",
+      "rankTitle": "Xếp hạng hand",
+      "rankUnverified": "Chưa xác nhận winner",
+      "resultVerified": "Đã xác nhận",
+      "winner": "Thắng",
+      "kicker": "kicker",
+      "actionSummary": "Diễn biến ván",
+      "actionCount": "hành động",
+      "noActions": "Chưa có hành động được ghi.",
+      "showAllActions": "Xem tất cả {{count}} hành động",
+      "rank": {
+        "royal_flush": "Royal Flush",
+        "straight_flush": "Straight Flush",
+        "quads": "Tứ quý",
+        "full_house": "Cù lũ",
+        "flush": "Thùng",
+        "straight": "Sảnh",
+        "trips": "Bộ ba",
+        "two_pair": "Hai đôi",
+        "pair": "Một đôi",
+        "high_card": "Mậu thầu"
+      }
     },
     "felt": {
       "pot": "Pot",

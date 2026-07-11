@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw, ChevronsRight } from "lucide-react";
+import { PokerCard } from "./PokerVisuals";
 import {
   buildReplayFrames,
   streetFrameIndex,
@@ -14,6 +15,7 @@ import {
   type ReplayFrame,
   type ReplayHand,
 } from "@/lib/tracker-poker/replayEngine";
+import { buildHandRankView } from "./viewer-hub/handRankView";
 import { formatActionLabel, formatStack, type ActionLog } from "./LiveFelt";
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -24,6 +26,23 @@ const STREET_LABELS: Record<string, string> = {
   river: "River",
   showdown: "Showdown",
 };
+
+const HAND_CATEGORY_LABEL: Record<string, string> = {
+  royal_flush: "Royal Flush",
+  straight_flush: "Straight Flush",
+  quads: "Four of a Kind",
+  full_house: "Full House",
+  flush: "Flush",
+  straight: "Straight",
+  trips: "Three of a Kind",
+  two_pair: "Two Pair",
+  pair: "One Pair",
+  high_card: "High Card",
+};
+
+function initials(name: string): string {
+  return (name.trim() || "?").slice(0, 2).toUpperCase();
+}
 
 export type ReplayFrameSource = "playback" | "scrub" | "jump";
 
@@ -124,6 +143,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
   const currentStreet = frames[Math.min(step, lastIndex)]?.currentStreet;
   const current = frames[Math.min(step, lastIndex)];
   const finalFrame = frames[lastIndex];
+  const isAtEnd = step >= lastIndex;
   const publicName = (name: string | null | undefined, playerId: string): string => {
     const trimmed = name?.trim() || "";
     const rawPrefix = playerId.slice(0, 6).toLowerCase();
@@ -149,6 +169,27 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
       .filter((p) => p.net !== 0)
       .sort((a, b) => b.net - a.net);
   }, [hud, hand, finalFrame?.payoutVerified]);
+
+  // Ranking is a display-only evaluator view. It remains visible when the stored
+  // payout is inconsistent, but winner/chop labels stay gated by payoutVerified.
+  const rankedPlayers = useMemo(() => {
+    if (!hud || !isAtEnd || !finalFrame) return [];
+    const finalSeats = new Map(finalFrame.seats.map((seat) => [seat.player_id, seat]));
+    return hand.players
+      .filter((player) => {
+        const seat = finalSeats.get(player.player_id);
+        return player.hole_cards?.length === 2 && !seat?.is_folded;
+      })
+      .map((player) => ({
+        player,
+        rank: buildHandRankView(player.hole_cards ?? [], hand.community_cards ?? []),
+        verifiedWinner: finalFrame.payoutVerified === true && finalFrame.showdownWinnerIds?.includes(player.player_id) === true,
+      }))
+      .filter((row) => row.rank !== null)
+      .sort((a, b) => (b.rank?.score ?? 0) - (a.rank?.score ?? 0));
+  }, [finalFrame, hand, hud, isAtEnd]);
+
+  const summaryActions = sortedActions.slice(0, 6);
   // Hand-summary bullets — derived from ACTIONS + nets only (revealed data; no
   // hole-card source → no leak). All-in facts first, then winner lines.
   const bullets = (() => {
@@ -331,15 +372,66 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
 
       {hud && hudTab === "summary" && (
         <div data-testid="replay-hud-summary" className="space-y-2">
-          {current?.showdownResult === "chop" ? (
+          {isAtEnd && current?.showdownResult === "chop" ? (
             <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
               {t("liveHub.felt.chopPot", "Chop pot")} · {t("liveHub.replay.splitPot", "Pot được chia đều")}
             </div>
-          ) : current?.showdownResult === "needs_resettle" ? (
+          ) : null}
+          {isAtEnd && current?.showdownResult === "needs_resettle" && (
             <div data-testid="replay-hud-needs-resettle" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
               {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
             </div>
-          ) : nets.length > 0 ? (
+          )}
+          {isAtEnd && rankedPlayers.length > 0 && (
+            <section data-testid="replay-hud-rankings" className="space-y-2 rounded-xl border border-[hsl(var(--poker-gold)_/_0.28)] bg-[hsl(var(--poker-gold)_/_0.05)] p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[hsl(var(--poker-gold))]">
+                  {t("liveHub.replay.rankTitle", "Xếp hạng hand")}
+                </span>
+                {finalFrame?.payoutVerified ? (
+                  <span className="text-[10px] font-semibold text-[hsl(var(--viewer-neon))]">
+                    {t("liveHub.replay.resultVerified", "Đã xác nhận")}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-amber-300">
+                    {t("liveHub.replay.rankUnverified", "Chưa xác nhận winner")}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {rankedPlayers.map((row, index) => {
+                  if (!row.rank) return null;
+                  const rankLabel = t(`liveHub.replay.rank.${row.rank.category}`, HAND_CATEGORY_LABEL[row.rank.category] ?? row.rank.category);
+                  return (
+                    <div key={row.player.player_id} className={`rounded-xl border px-2.5 py-2 ${row.verifiedWinner ? "border-[hsl(var(--viewer-neon)_/_0.55)] bg-[hsl(var(--viewer-neon)_/_0.1)]" : "border-border/35 bg-background/25"}`}>
+                      <div className="flex items-start gap-2">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-secondary/80 text-[10px] font-black text-muted-foreground">{index + 1}</span>
+                        <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg border border-border/70 bg-secondary text-[9px] font-bold text-muted-foreground">
+                          {row.player.avatar_url ? <img src={row.player.avatar_url} alt="" loading="lazy" className="h-full w-full object-cover" /> : initials(publicName(row.player.display_name, row.player.player_id))}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="truncate text-xs font-bold text-foreground">{publicName(row.player.display_name, row.player.player_id)}</span>
+                            {row.player.seat_number > 0 && <span className="text-[9px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: row.player.seat_number })}</span>}
+                            {row.verifiedWinner && <span className="rounded-md bg-[hsl(var(--viewer-neon)_/_0.16)] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-[hsl(var(--viewer-neon))]">{t("liveHub.replay.winner", "Thắng")}</span>}
+                          </div>
+                          <div className="mt-0.5 text-[11px] font-semibold text-[hsl(var(--poker-gold))]">
+                            {rankLabel}
+                            {row.rank.primaryRanks.length > 0 ? ` · ${row.rank.primaryRanks.join("-")}` : ""}
+                            {row.rank.kickerRanks.length > 0 ? ` · ${t("liveHub.replay.kicker", "kicker")} ${row.rank.kickerRanks.join("-")}` : ""}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            {row.rank.bestFive.map((card, cardIndex) => <PokerCard key={`${row.player.player_id}-${cardIndex}`} card={card} size="xs" className="h-8 w-6" />)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {isAtEnd && finalFrame?.payoutVerified && nets.length > 0 ? (
             <div className="space-y-1">
               {nets.map((p) => (
                 <div key={p.player_id} className="flex min-h-11 items-center justify-between rounded-xl bg-background/35 px-3 py-2 text-xs">
@@ -357,9 +449,9 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
                 </div>
               ))}
             </div>
-          ) : (
+          ) : isAtEnd && rankedPlayers.length === 0 && current?.showdownResult !== "chop" && current?.showdownResult !== "needs_resettle" ? (
             <div className="text-[11px] text-muted-foreground">{t("liveHub.replay.noResult", "Chưa có kết quả — xem tab Hành động.")}</div>
-          )}
+          ) : null}
           {bullets.length > 0 && (
             <ul className="space-y-0.5 text-[11px] text-muted-foreground">
               {bullets.map((b, i) => (
@@ -370,6 +462,35 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
               ))}
             </ul>
           )}
+          <div data-testid="replay-hud-action-summary" className="space-y-1.5 border-t border-border/20 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">{t("liveHub.replay.actionSummary", "Diễn biến ván")}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">{sortedActions.length} {t("liveHub.replay.actionCount", "hành động")}</span>
+            </div>
+            {summaryActions.length > 0 ? summaryActions.map((action, actionIndex) => {
+              const rawName = hand.players.find((player) => player.player_id === action.player_id)?.display_name;
+              const label = formatActionLabel({
+                street: action.street,
+                display_name: "",
+                seat_number: 0,
+                action_type: action.action_type,
+                action_amount: action.action_amount,
+                action_order: action.action_order,
+              } as ActionLog);
+              return (
+                <button key={`summary-${action.action_order}`} type="button" onClick={() => { setHudTab("actions"); pauseAnd(() => setStep(actionIndex + 1)); }} className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[11px] transition-colors hover:bg-secondary/35">
+                  <span className="w-12 shrink-0 text-[9px] uppercase tracking-wider text-muted-foreground">{STREET_LABELS[action.street] ?? action.street}</span>
+                  <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{publicName(rawName, action.player_id)}</span>
+                  <span className="shrink-0 font-semibold text-[hsl(var(--viewer-neon-bright))]">{label}</span>
+                </button>
+              );
+            }) : <div className="rounded-lg bg-background/25 px-2 py-2 text-[11px] text-muted-foreground">{t("liveHub.replay.noActions", "Chưa có hành động được ghi.")}</div>}
+            {sortedActions.length > summaryActions.length && (
+              <button type="button" onClick={() => setHudTab("actions")} className="min-h-9 w-full rounded-lg border border-border/35 text-[10px] font-bold text-[hsl(var(--viewer-neon))] transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.45)]">
+                {t("liveHub.replay.showAllActions", "Xem tất cả {{count}} hành động", { count: sortedActions.length })}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

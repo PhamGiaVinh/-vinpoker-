@@ -44,3 +44,14 @@ test("mobile hand history exposes named actions and verified ranking", async ({ 
   await expect(page.getByText(/Pot 18.6M/).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
+
+test("mobile replay final summary keeps ranking and action digest visible", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/__dev/viewer-rpt?view=replay&lang=vi");
+  await expect(page.locator("[data-dev-viewer-rpt]")).toBeVisible();
+  await page.getByTitle(/Tới cuối|Go to showdown/).click();
+  await expect(page.getByTestId("replay-hud-rankings")).toBeVisible();
+  await expect(page.getByTestId("replay-hud-action-summary")).toBeVisible();
+  await expect(page.getByTestId("replay-hud-needs-resettle")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
