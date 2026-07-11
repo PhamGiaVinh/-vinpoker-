@@ -27,13 +27,142 @@ function initials(name: string): string {
 
 export interface HandFeedCardProps {
   item: HandFeedItem;
+  /** New Viewer shell composition. False preserves the current card markup. */
+  rpt?: boolean;
+  /** Human table name from the already-loaded hub table map. */
+  tableName?: string | null;
   /** Open this hand in replay (wired in a later increment). */
   onViewHand?: (handNumber: number) => void;
   onShare?: (handNumber: number) => void;
 }
 
-export function HandFeedCard({ item, onViewHand, onShare }: HandFeedCardProps) {
-  const { t } = useTranslation();
+function publicPlayerName(name: string, playerId: string, fallback: string): string {
+  const trimmed = name.trim();
+  const prefix = playerId.slice(0, 6).toLowerCase();
+  const looksLikeOpaqueId = /^[a-f0-9]{6}$/i.test(trimmed) || /^[a-f0-9-]{24,}$/i.test(trimmed);
+  return !trimmed || trimmed.toLowerCase() === prefix || looksLikeOpaqueId ? fallback : trimmed;
+}
+
+export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare }: HandFeedCardProps) {
+  const { t, i18n } = useTranslation();
+
+  if (rpt) {
+    const created = new Date(item.createdAt);
+    const validDate = Number.isFinite(created.getTime());
+    return (
+      <article data-testid="viewer-rpt-hand-card" className="overflow-hidden rounded-[18px] border border-[hsl(var(--viewer-neon)_/_0.3)] bg-card/80 shadow-[0_18px_46px_hsl(var(--background)_/_0.34)]">
+        <div className="h-0.5 bg-gradient-to-r from-[hsl(var(--viewer-neon))] via-[hsl(var(--viewer-neon)_/_0.34)] to-transparent" />
+        <div className="space-y-3 p-3.5 sm:p-4">
+          <header className="flex flex-wrap items-center gap-1.5">
+            {item.tags.map((tag) => {
+              const meta = TAG_META[tag];
+              return (
+                <span key={tag} className={`rounded-md border px-1.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] ${meta.cls}`}>
+                  {t(`liveHub.handFeed.tag.${tag}`, meta.label)}
+                </span>
+              );
+            })}
+            {item.handNumber > 0 && (
+              <span className="tracker-num rounded-md bg-secondary/60 px-1.5 py-1 text-[9px] font-bold text-foreground/80">
+                {t("liveHub.handFeed.hand", "Ván #{{n}}", { n: item.handNumber })}
+              </span>
+            )}
+            {tableName && (
+              <span className="rounded-md bg-secondary/60 px-1.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                {tableName}
+              </span>
+            )}
+            {validDate && (
+              <time className="ml-auto text-[10px] text-muted-foreground" dateTime={item.createdAt}>
+                {new Intl.DateTimeFormat(i18n.language, { dateStyle: "short", timeStyle: "short" }).format(created)}
+              </time>
+            )}
+          </header>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-[hsl(var(--viewer-neon)_/_0.18)] bg-[hsl(var(--viewer-neon)_/_0.06)] px-3 py-2">
+            {item.bigBlind > 0 && (
+              <span className="tracker-num text-xs font-semibold text-muted-foreground">
+                BB <strong className="text-foreground">{fmtCompact(item.bigBlind)}</strong>
+              </span>
+            )}
+            <span className="tracker-num text-sm font-bold text-[hsl(var(--viewer-neon))]">
+              {t("liveHub.handFeed.pot", "POT")} {fmtCompact(item.potChips)}
+            </span>
+            {item.potBB != null && <span className="text-[11px] text-muted-foreground">({item.potBB} BB)</span>}
+            {item.sidePotCount > 0 && (
+              <span className="tracker-num ml-auto text-[10px] font-bold text-warning">
+                +{item.sidePotCount} {t("liveHub.handFeed.sidePot", "side")}
+              </span>
+            )}
+          </div>
+
+          <div data-testid="viewer-rpt-board" className="flex min-h-16 items-center gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t("liveHub.handFeed.board", "Bài chung") }>
+            {pad5(item.board).map((card, index) => (
+              <PokerCard
+                key={index}
+                card={card}
+                size="md"
+                className={card
+                  ? "min-[390px]:h-20 min-[390px]:w-14 min-[390px]:text-lg ring-1 ring-white/10 shadow-[0_7px_18px_rgba(0,0,0,0.45)]"
+                  : "min-[390px]:h-20 min-[390px]:w-14 opacity-45"}
+              />
+            ))}
+          </div>
+
+          <div className="divide-y divide-border/35 rounded-xl bg-background/20 px-2">
+            {item.players.map((player) => {
+              const name = publicPlayerName(player.name, player.playerId, t("liveHub.handFeed.unknownPlayer", "Người chơi"));
+              const showFinish = player.isEliminated && player.finishPosition != null && player.finishPosition > 0;
+              return (
+                <div key={player.playerId} className="flex min-h-14 flex-wrap items-center gap-x-2 gap-y-1 py-2">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-border/70 bg-secondary text-[10px] font-bold text-muted-foreground">
+                    {player.avatarUrl ? (
+                      <img src={player.avatarUrl} alt={name} loading="lazy" className="h-full w-full object-cover" />
+                    ) : initials(name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-xs font-bold text-foreground">{name}</span>
+                      {player.isWinner && <Crown className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--viewer-neon))]" aria-label={t("liveHub.handFeed.winner", "Người thắng")} />}
+                      {showFinish && <span className="rounded bg-destructive/15 px-1 text-[9px] font-bold text-destructive">#{player.finishPosition}</span>}
+                    </div>
+                    {player.seatNumber > 0 && <span className="text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: player.seatNumber })}</span>}
+                  </div>
+                  <span data-testid="viewer-rpt-hole-cards" className="flex shrink-0 gap-1" aria-label={player.holeCards ? t("liveHub.handFeed.revealedCards", "Bài đã lộ") : t("liveHub.handFeed.hiddenCards", "Bài không được lộ")}>
+                    {player.holeCards ? player.holeCards.map((card, index) => (
+                      <PokerCard key={index} card={card} size="sm" className="h-12 w-9 text-sm min-[390px]:h-14 min-[390px]:w-10 ring-1 ring-white/10 shadow-[0_5px_14px_rgba(0,0,0,0.42)]" />
+                    )) : <><CardBack size="sm" className="h-12 w-9 min-[390px]:h-14 min-[390px]:w-10 shadow-[0_5px_14px_rgba(0,0,0,0.42)]" /><CardBack size="sm" className="h-12 w-9 min-[390px]:h-14 min-[390px]:w-10 shadow-[0_5px_14px_rgba(0,0,0,0.42)]" /></>}
+                  </span>
+                  <span className={`tracker-num ml-auto min-w-[78px] text-right text-xs font-bold ${
+                    player.deltaChips > 0 ? "text-success" : player.deltaChips < 0 ? "text-destructive" : "text-muted-foreground"
+                  }`}>
+                    {player.deltaChips > 0 ? "+" : player.deltaChips < 0 ? "−" : ""}{fmtCompact(Math.abs(player.deltaChips))}
+                    {player.deltaBB != null && <span className="block text-[9px] font-medium opacity-75">{player.deltaBB > 0 ? "+" : player.deltaBB < 0 ? "−" : ""}{Math.abs(player.deltaBB)} BB</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {item.handNumber > 0 && (onShare || onViewHand) && (
+            <div className="flex gap-2 border-t border-border/40 pt-3">
+              {onShare && (
+                <button type="button" onClick={() => onShare(item.handNumber)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-[hsl(var(--viewer-neon)_/_0.5)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Share2 className="h-4 w-4" aria-hidden="true" /> {t("liveHub.handFeed.share", "Chia sẻ")}
+                </button>
+              )}
+              {onViewHand && (
+                <button data-testid="viewer-view-hand-button" type="button" onClick={() => onViewHand(item.handNumber)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(var(--viewer-neon))] px-3 text-xs font-bold text-[hsl(var(--viewer-neon-ink))] shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.32),0_0_22px_hsl(var(--viewer-neon)_/_0.34)] transition-[background-color,box-shadow,transform] duration-200 hover:bg-[hsl(var(--viewer-neon-bright))] hover:shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.5),0_0_34px_hsl(var(--viewer-neon)_/_0.52)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
+                  <Play className="h-4 w-4 drop-shadow-[0_0_5px_hsl(var(--viewer-neon-ink)_/_0.3)]" aria-hidden="true" /> {t("liveHub.handFeed.viewHand", "Xem ván")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-border/60 bg-card/80 p-3 shadow-[0_0_18px_rgba(0,0,0,0.25)]">
       {/* header: tags + hand # */}

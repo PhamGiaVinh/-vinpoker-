@@ -8,7 +8,11 @@ import { LiveStatsBar } from "@/components/cashier/tournament-live/viewer-hub/Li
 import { LiveStoryFeed } from "@/components/cashier/tournament-live/viewer-hub/LiveStoryFeed";
 import { LiveTablesMap } from "@/components/cashier/tournament-live/viewer-hub/LiveTablesMap";
 import { HandBreakdown } from "@/components/cashier/tournament-live/viewer-hub/HandBreakdown";
+import { HandFeedCard } from "@/components/cashier/tournament-live/viewer-hub/HandFeedCard";
+import { TournamentPostCard } from "@/components/cashier/tournament-live/viewer-hub/TournamentPostCard";
 import type { HubFeedItem, HubStoryItem, HubTableSummary } from "@/components/cashier/tournament-live/viewer-hub/hubDerive";
+import type { HandFeedItem } from "@/components/cashier/tournament-live/viewer-hub/handFeedDerive";
+import type { TournamentPostViewModel } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
 import type { BreakdownAction } from "@/lib/tracker-poker/handBreakdown";
 
 const breakdownActions: BreakdownAction[] = [
@@ -35,6 +39,34 @@ const tables: HubTableSummary[] = [
   { tableId: "tA", name: "Bàn 1", playerCount: 8 },
   { tableId: "tB", name: "Bàn 2", playerCount: 6 },
 ];
+
+const handCard: HandFeedItem = {
+  handId: "hand-safe",
+  handNumber: 12,
+  tableId: "tA",
+  createdAt: "2026-07-10T10:00:00.000Z",
+  board: ["As", "Kd", "7h"],
+  potChips: 24_000,
+  potBB: 48,
+  sidePotCount: 0,
+  bigBlind: 500,
+  tags: ["big_pot"],
+  players: [{
+    playerId: "abcdef00-0000-0000-0000-000000000000",
+    seatNumber: 0,
+    name: "abcdef",
+    avatarUrl: null,
+    endingStack: 20_000,
+    deltaChips: 2_000,
+    deltaBB: 4,
+    holeCards: null,
+    isWinner: true,
+    isEliminated: false,
+    finishPosition: 0,
+    prize: null,
+  }],
+  highHand: null,
+};
 
 describe("LiveTablesStrip", () => {
   it("renders a mini card per table when >1 table", () => {
@@ -80,6 +112,15 @@ describe("LiveUpdatesFeed", () => {
   it("shows an empty state when no actions", () => {
     const html = renderToStaticMarkup(<LiveUpdatesFeed feed={[]} />);
     expect(html).toContain("Chưa có hành động");
+  });
+
+  it("RPT rail hides Seat 0 and opaque player-id fragments", () => {
+    const html = renderToStaticMarkup(
+      <LiveUpdatesFeed rpt feed={[{ id: "unsafe", seatNumber: 0, playerName: "abcdef", label: "Check", kind: "check" }]} />,
+    );
+    expect(html).toContain("Người chơi");
+    expect(html).not.toContain("Ghế 0");
+    expect(html).not.toContain(">abcdef<");
   });
 });
 
@@ -137,6 +178,61 @@ describe("LiveStoryFeed", () => {
   });
   it("renders nothing when there are no story items", () => {
     expect(renderToStaticMarkup(<LiveStoryFeed items={[]} />)).toBe("");
+  });
+
+  it("RPT moment rail replaces opaque eliminated-player names", () => {
+    const html = renderToStaticMarkup(
+      <LiveStoryFeed rpt items={[{ id: "unsafe", kind: "elimination", name: "abcdef", count: 7, label: "unsafe" }]} />,
+    );
+    expect(html).toContain("Người chơi bị loại");
+    expect(html).not.toContain("abcdef");
+  });
+});
+
+describe("RPT hand and editorial cards", () => {
+  it("never renders #0, Seat 0 or opaque IDs and shows card backs for hidden cards", () => {
+    const html = renderToStaticMarkup(<HandFeedCard rpt item={{ ...handCard, handNumber: 0 }} tableName="Bàn A" />);
+    expect(html).toContain("Người chơi");
+    expect(html).toContain("Bài không được lộ");
+    expect(html).not.toContain("#0");
+    expect(html).not.toContain("Ghế 0");
+    expect(html).not.toContain("abcdef");
+  });
+
+  it("uses readable viewer card sizes and a neon-glow View hand CTA", () => {
+    const html = renderToStaticMarkup(<HandFeedCard rpt item={handCard} onViewHand={() => {}} />);
+    expect(html).toContain('data-testid="viewer-rpt-board"');
+    expect(html).toContain("h-16 w-12");
+    expect(html).toContain("min-[390px]:h-20");
+    expect(html).toContain('data-testid="viewer-rpt-hole-cards"');
+    expect(html).toContain("h-12 w-9");
+    expect(html).toContain("min-[390px]:h-14");
+    expect(html).toContain('data-testid="viewer-view-hand-button"');
+    expect(html).toContain("0_0_22px_hsl");
+  });
+
+  it("English chrome falls back to Vietnamese editorial copy only when English copy is absent", async () => {
+    const post: TournamentPostViewModel = {
+      id: "post-1",
+      tournamentId: "t1",
+      kind: "commentary",
+      titleVi: "Bàn chung kết bắt đầu",
+      titleEn: null,
+      bodyVi: "Còn chín người chơi.",
+      bodyEn: null,
+      coverPhotoUrl: null,
+      linkedHandNumber: null,
+      isPinned: false,
+      publishedAt: "2026-07-10T10:00:00.000Z",
+      sourceLabel: "VinPoker Media",
+    };
+    await i18n.changeLanguage("en");
+    const html = renderToStaticMarkup(<TournamentPostCard post={post} onShare={() => {}} />);
+    expect(html).toContain("Commentary");
+    expect(html).toContain("Bàn chung kết bắt đầu");
+    expect(html).toContain("Còn chín người chơi.");
+    expect(html).not.toContain("Bình luận");
+    await i18n.changeLanguage("vi");
   });
 });
 

@@ -9,9 +9,9 @@
 // chơi" to watch live, or a hand to replay. OFF: today's stacked layout (felt
 // always shown), byte-identical.
 
-import { cloneElement, isValidElement, useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, History, Trophy, Layers3, Image as ImageIcon, ArrowLeft } from "lucide-react";
+import { Activity, History, Trophy, Layers3, Image as ImageIcon, ArrowLeft, Share2, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiveHubHeader } from "./LiveHubHeader";
 import { LiveStatsBar } from "./LiveStatsBar";
@@ -27,6 +27,8 @@ import { PhotosPanel } from "./PhotosPanel";
 import { useLiveTrackerData } from "./useLiveTrackerData";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { FEATURES } from "@/lib/featureFlags";
+import { panelToViewerTab, viewerTabToPanel } from "./viewerUrlState";
+import type { TournamentPostViewModel, ViewerTab } from "./viewerTypes";
 
 type Orientation = "landscape" | "portrait";
 type Watch = { kind: "live"; tableId: string } | { kind: "replay"; handNumber: number } | null;
@@ -55,6 +57,13 @@ export interface LiveHubProps {
   onViewHand?: (handNumber: number) => void;
   /** Hand-feed "Chia sẻ" → share a link to that specific hand. */
   onShareHand?: (handNumber: number) => void;
+  /** URL-backed tab state for the new focus shell. */
+  activeTab?: ViewerTab;
+  onTabChange?: (tab: ViewerTab) => void;
+  /** Optional editorial view-models. No query is made by this component. */
+  editorialPosts?: TournamentPostViewModel[];
+  focusedPostId?: string | null;
+  onSharePost?: (postId: string) => void;
   /** Clear the ?hand param when leaving the felt (back to the tabs). */
   onCloseHand?: () => void;
   /** The live table view (e.g. <TournamentLiveView/>). */
@@ -64,7 +73,9 @@ export interface LiveHubProps {
 export function LiveHub({
   tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, currentLevel,
   guarantee, buyIn, startingStack,
-  onShare, initialReplayHandNumber = null, onViewHand, onShareHand, onCloseHand, children,
+  onShare, initialReplayHandNumber = null, onViewHand, onShareHand,
+  activeTab = "updates", onTabChange, editorialPosts = [], focusedPostId = null, onSharePost,
+  onCloseHand, children,
 }: LiveHubProps) {
   // Isolated hub data (count / all-tables / feed / chip leader). Does NOT touch
   // TournamentLiveView — the featured felt still renders the real viewer when watched.
@@ -79,11 +90,24 @@ export function LiveHub({
   // Public table-map picker (legacy stacked layout): which table to feature.
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const featuredTableId = selectedTableId ?? activeHandTableId;
+  const tableNames = useMemo(
+    () => Object.fromEntries(tables.map((table) => [table.tableId, table.name])),
+    [tables],
+  );
+  const rptChipLeader = chipLeader && chipLeader.seatNumber > 0
+    ? {
+        ...chipLeader,
+        playerName: /^[a-f0-9]{6}$/i.test(chipLeader.playerName) || /^[a-f0-9-]{24,}$/i.test(chipLeader.playerName)
+          ? t("liveHub.handFeed.unknownPlayer", "Người chơi")
+          : chipLeader.playerName,
+      }
+    : null;
 
   // Orientation: default to the device, but let the viewer flip Ngang/Dọc.
   const isMobile = useIsMobile();
   const [orientation, setOrientation] = useState<Orientation | null>(null);
   const effectiveOrientation: Orientation = orientation ?? (isMobile ? "portrait" : "landscape");
+  const viewerOrientation: Orientation = FEATURES.liveViewerRPTShell ? "portrait" : effectiveOrientation;
 
   // Event-tabs: which felt (if any) the viewer is actively watching. null → tabs.
   // Seeded synchronously from a deep-linked hand (?hand=N) so it opens its replay
@@ -102,7 +126,7 @@ export function LiveHub({
   // plus the table/hand to show). Guard: only inject into component children.
   const cloneViewer = (extra: ViewerProps): ReactNode =>
     isValidElement(children) && typeof children.type !== "string"
-      ? cloneElement(children as ReactElement<ViewerProps>, { orientationOverride: effectiveOrientation, spectator: true, ...extra })
+      ? cloneElement(children as ReactElement<ViewerProps>, { orientationOverride: viewerOrientation, spectator: true, ...extra })
       : children;
 
   // ── Legacy stacked layout (flag OFF) — byte-identical to before ────────────────
@@ -152,7 +176,7 @@ export function LiveHub({
   const TAB_TRIGGER =
     "relative rounded-none border-b-2 border-transparent bg-transparent px-2.5 py-2 text-[12px] font-semibold text-muted-foreground shadow-none data-[state=active]:border-[hsl(var(--poker-gold))] data-[state=active]:bg-transparent data-[state=active]:text-[hsl(var(--poker-gold))] data-[state=active]:shadow-none sm:px-3.5 sm:text-sm";
 
-  return (
+  if (!FEATURES.liveViewerRPTShell) return (
     <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
       <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} onShare={onShare} />
       <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={chipLeader} />
@@ -211,6 +235,153 @@ export function LiveHub({
 
           <TabsContent value="photos" className="mt-3">
             <PhotosPanel tournamentId={tournamentId} />
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+
+  const RPT_TAB_TRIGGER =
+    "min-h-11 shrink-0 snap-start rounded-none border-b-2 border-transparent bg-transparent px-3 text-xs font-bold text-muted-foreground shadow-none transition data-[state=active]:border-[hsl(var(--viewer-neon))] data-[state=active]:bg-[hsl(var(--viewer-neon)_/_0.08)] data-[state=active]:text-[hsl(var(--viewer-neon))] data-[state=active]:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4 sm:text-sm";
+  const panelValue = viewerTabToPanel(activeTab);
+
+  return (
+    <div data-testid="viewer-rpt-shell" data-viewer-shell="rpt" className="min-w-0 space-y-3 animate-in fade-in-0 duration-500 motion-reduce:animate-none sm:space-y-4">
+      <LiveHubHeader
+        title={title}
+        clubName={clubName}
+        clubId={clubId}
+        subtitle={subtitle}
+        liveTableCount={liveTableCount}
+        guarantee={guarantee}
+        buyIn={buyIn}
+        startingStack={startingStack}
+        playersRemaining={playersRemaining}
+        lastUpdated={lastUpdated}
+        rpt
+        onShare={onShare}
+      />
+      <LiveStatsBar prizePool={prizePool} playersRemaining={playersRemaining} chipLeader={rptChipLeader} rpt />
+
+      {watch ? (
+        <section className="min-w-0 space-y-3 animate-in fade-in-0 duration-300 motion-reduce:animate-none" aria-label={t("liveHub.watch.viewer", "Trình xem ván đấu")}>
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/55 bg-card/55 p-2 sm:p-2.5">
+            <button
+              type="button"
+              onClick={closeWatch}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border/65 bg-background/35 px-3 text-xs font-bold text-foreground transition hover:border-[hsl(var(--viewer-neon)_/_0.48)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("liveHub.tabs.back", "Quay lại")}
+            </button>
+
+            <div className="min-w-0 flex-1 px-1">
+              <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-[hsl(var(--viewer-neon))]">
+                {watch.kind === "replay" ? t("liveHub.tabs.handHistory", "Lịch sử ván") : t("liveHub.watch.title", "Bàn đang chơi")}
+              </p>
+              <p className="truncate text-sm font-semibold text-foreground">
+                {watch.kind === "replay"
+                  ? t("liveHub.watch.handNumber", "Ván #{{n}}", { n: watch.handNumber })
+                  : tableNames[watch.tableId] || t("liveHub.watch.liveTable", "Bàn trực tiếp")}
+              </p>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => watch.kind === "replay" ? onShareHand?.(watch.handNumber) : onShare()}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-border/65 px-3 text-xs font-semibold text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t("liveHub.header.share", "Chia sẻ")}
+              >
+                <Share2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{t("liveHub.header.share", "Chia sẻ")}</span>
+              </button>
+              <button
+                type="button"
+                onClick={closeWatch}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border/65 text-muted-foreground transition hover:border-destructive/45 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t("liveHub.watch.close", "Đóng trình xem")}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <FeaturedTableCard
+            badge={watch.kind === "replay" ? t("liveHub.watch.replay", "PHÁT LẠI VÁN") : t("liveHub.featured.badge", "TRỰC TIẾP • BÀN ĐANG DIỄN RA")}
+            rpt
+          >
+            {watchViewer}
+          </FeaturedTableCard>
+        </section>
+      ) : (
+        <Tabs value={panelValue} onValueChange={(value) => onTabChange?.(panelToViewerTab(value))} className="min-w-0 w-full">
+          <div className="sticky top-[env(safe-area-inset-top)] z-30 -mx-3 border-y border-border/45 bg-background/88 px-3 backdrop-blur-xl sm:-mx-1 sm:rounded-2xl sm:border sm:px-1">
+            <div className="relative after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8 after:bg-gradient-to-l after:from-background after:to-transparent sm:after:hidden">
+              <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <TabsList className="inline-flex h-12 w-max min-w-full snap-x snap-mandatory justify-start gap-0 bg-transparent p-0">
+                  <TabsTrigger value="updates" className={RPT_TAB_TRIGGER}><Activity className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.updates", "Cập nhật")}</TabsTrigger>
+                  <TabsTrigger value="history" className={RPT_TAB_TRIGGER}><History className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.handHistory", "Lịch sử ván")}</TabsTrigger>
+                  <TabsTrigger value="prizes" className={RPT_TAB_TRIGGER}><Trophy className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.prizes", "Giải thưởng")}</TabsTrigger>
+                  <TabsTrigger value="structure" className={RPT_TAB_TRIGGER}><Layers3 className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.structure", "Cấu trúc")}</TabsTrigger>
+                  <TabsTrigger value="photos" className={RPT_TAB_TRIGGER}><ImageIcon className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("liveHub.tabs.photos", "Hình ảnh")}</TabsTrigger>
+                </TabsList>
+              </div>
+            </div>
+          </div>
+
+          <TabsContent value="updates" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)] xl:items-start">
+              <aside className={`min-w-0 space-y-4 xl:col-start-2 xl:row-start-1 ${FEATURES.liveHandFeed ? "" : "xl:col-span-2 xl:col-start-1"}`}>
+                <LiveTablesMap
+                  tables={tables}
+                  activeTableId={null}
+                  onSelect={(id) => setWatch({ kind: "live", tableId: id })}
+                  minToShow={1}
+                  title={t("liveHub.watch.title", "Bàn đang chơi")}
+                  rpt
+                />
+                <LiveStoryFeed items={storyFeed} rpt />
+                <LiveUpdatesFeed feed={feed} rpt />
+              </aside>
+              {FEATURES.liveHandFeed && (
+                <div className="min-w-0 xl:col-start-1 xl:row-start-1">
+                  <LiveHandFeed
+                    tournamentId={tournamentId}
+                    featuredTableId={activeHandTableId}
+                    variant="updates"
+                    tableNames={tableNames}
+                    editorialPosts={editorialPosts}
+                    focusedPostId={focusedPostId}
+                    onViewHand={handleViewHand}
+                    onShare={onShareHand}
+                    onSharePost={onSharePost}
+                  />
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-3 min-w-0 focus-visible:outline-none sm:mt-4">
+            <LiveHandFeed
+              tournamentId={tournamentId}
+              featuredTableId={activeHandTableId}
+              variant="history"
+              tableNames={tableNames}
+              onViewHand={handleViewHand}
+              onShare={onShareHand}
+            />
+          </TabsContent>
+
+          <TabsContent value="prizes" className="mt-3 focus-visible:outline-none sm:mt-4">
+            <PrizesPanel tournamentId={tournamentId} rpt />
+          </TabsContent>
+
+          <TabsContent value="structure" className="mt-3 focus-visible:outline-none sm:mt-4">
+            <StructurePanel tournamentId={tournamentId} currentLevel={currentLevel} rpt />
+          </TabsContent>
+
+          <TabsContent value="photos" className="mt-3 focus-visible:outline-none sm:mt-4">
+            <PhotosPanel tournamentId={tournamentId} rpt />
           </TabsContent>
         </Tabs>
       )}

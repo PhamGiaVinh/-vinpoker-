@@ -17,6 +17,8 @@ export interface FeaturedTableCardProps {
   headerAction?: ReactNode;
   /** Optional footer area (e.g. a "Xem tất cả bàn" CTA — wired in a later increment). */
   footer?: ReactNode;
+  /** Neon viewer chrome; absent preserves the existing operator/event chrome. */
+  rpt?: boolean;
 }
 
 export function FeaturedTableCard({
@@ -25,17 +27,20 @@ export function FeaturedTableCard({
   children,
   headerAction,
   footer,
+  rpt = false,
 }: FeaturedTableCardProps) {
+  const accentVar = rpt ? "var(--viewer-neon)" : "var(--poker-accent)";
+  const accent = rpt ? "text-[hsl(var(--viewer-neon))]" : "text-warning";
   return (
     <div
       className="rounded-2xl border bg-card/60 overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.35)] animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
-      style={{ borderColor: "hsl(var(--poker-accent) / 0.3)" }}
+      style={{ borderColor: `hsl(${accentVar} / 0.3)` }}
     >
       <div
         className="flex items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 border-b border-border"
-        style={{ background: "linear-gradient(90deg, hsl(var(--poker-accent) / 0.12), transparent)" }}
+        style={{ background: `linear-gradient(90deg, hsl(${accentVar} / 0.12), transparent)` }}
       >
-        <div className="tracker-display flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-warning uppercase tracking-wide min-w-0">
+        <div className={`tracker-display flex items-center gap-1.5 text-[11px] sm:text-xs font-bold ${accent} uppercase tracking-wide min-w-0`}>
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
           <span className="truncate">{badge}</span>
         </div>

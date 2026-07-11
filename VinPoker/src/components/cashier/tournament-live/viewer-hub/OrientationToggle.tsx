@@ -15,9 +15,10 @@ export interface OrientationToggleProps {
   value?: Orientation;
   defaultValue?: Orientation;
   onChange?: (value: Orientation) => void;
+  rpt?: boolean;
 }
 
-export function OrientationToggle({ value: controlled, defaultValue = "landscape", onChange }: OrientationToggleProps) {
+export function OrientationToggle({ value: controlled, defaultValue = "landscape", onChange, rpt = false }: OrientationToggleProps) {
   const { t } = useTranslation();
   const [internal, setInternal] = useState<Orientation>(defaultValue);
   const value = controlled ?? internal;
@@ -32,7 +33,9 @@ export function OrientationToggle({ value: controlled, defaultValue = "landscape
       aria-label={label}
       onClick={() => pick(o)}
       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition ${
-        value === o ? "bg-warning/20 text-warning" : "text-muted-foreground hover:text-foreground"
+        value === o
+          ? rpt ? "bg-[hsl(var(--viewer-neon)_/_0.16)] text-[hsl(var(--viewer-neon))]" : "bg-warning/20 text-warning"
+          : "text-muted-foreground hover:text-foreground"
       }`}
     >
       <Icon className="w-3 h-3" aria-hidden="true" /> {label}

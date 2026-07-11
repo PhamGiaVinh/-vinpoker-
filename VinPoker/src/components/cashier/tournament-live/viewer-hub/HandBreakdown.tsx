@@ -34,6 +34,8 @@ export interface HandBreakdownProps {
   bigBlind: number;
   /** Replay: action_order of the frame's current action → row is highlighted. */
   highlightActionOrder?: number;
+  /** Replay-only display state from the pure settlement check. */
+  showdownResult?: "winner" | "chop" | "needs_resettle" | null;
 }
 
 const STREET_LABELS: Record<string, string> = {
@@ -75,6 +77,7 @@ export function HandBreakdown({
   buttonSeat,
   bigBlind,
   highlightActionOrder,
+  showdownResult = null,
 }: HandBreakdownProps) {
   const { t } = useTranslation();
   const streets = deriveHandBreakdown(actions, bigBlind);
@@ -106,6 +109,22 @@ export function HandBreakdown({
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
         {t("liveHub.breakdown.title", "Phân tích ván")}
       </div>
+
+      {showdownResult && (
+        <div className={`w-fit rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
+          showdownResult === "chop"
+            ? "border-[hsl(var(--viewer-neon)_/_0.5)] bg-[hsl(var(--viewer-neon)_/_0.1)] text-[hsl(var(--viewer-neon))]"
+            : showdownResult === "needs_resettle"
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+              : "border-[hsl(var(--poker-gold)_/_0.5)] bg-[hsl(var(--poker-gold)_/_0.1)] text-[hsl(var(--poker-gold))]"
+        }`}>
+          {showdownResult === "chop"
+            ? t("liveHub.felt.chopPot", "Chop pot")
+            : showdownResult === "needs_resettle"
+              ? t("liveHub.felt.needsResettle", "Cần tính lại kết quả")
+              : t("liveHub.felt.showdown", "Showdown")}
+        </div>
+      )}
 
       {winners.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

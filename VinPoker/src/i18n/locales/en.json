@@ -2874,10 +2874,18 @@
   },
   "liveHub": {
     "tabs": { "updates": "Updates", "handHistory": "Hand History", "prizes": "Prizes", "structure": "Structure", "photos": "Photos", "back": "Back" },
-    "watch": { "title": "Live tables", "replay": "HAND REPLAY" },
+    "watch": {
+      "title": "Live tables",
+      "replay": "HAND REPLAY",
+      "viewer": "Hand viewer",
+      "handNumber": "Hand #{{n}}",
+      "liveTable": "Live table",
+      "close": "Close viewer"
+    },
+    "state": { "error": "Updates could not be loaded. Please try again." },
     "prizes": { "empty": "No prize structure yet", "total": "Total prizes", "position": "Place", "amount": "Prize", "rank": "#{{n}}" },
     "structure": { "empty": "No blind structure yet", "level": "Lv", "blinds": "Blinds (SB/BB)", "ante": "Ante", "time": "Min", "break": "Break" },
-    "photos": { "empty": "No photos yet", "soon": "Event photos coming soon" },
+    "photos": { "empty": "No photos yet", "soon": "Event photos coming soon", "photoAlt": "Tournament photo" },
     "breakdown": {
       "title": "Hand breakdown",
       "pot": "Pot",
@@ -2891,6 +2899,8 @@
       "bubble": "On the bubble — {{count}} left",
       "itm": "In the money — {{count}} left",
       "title": "Tournament feed",
+      "liveTitle": "Live moments",
+      "unknownPlayer": "Player",
       "eliminated": "{{name}} eliminated — {{count}} left",
       "eliminatedNoCount": "{{name}} eliminated",
       "remaining": "{{count}} players left",
@@ -2901,7 +2911,14 @@
     "header": {
       "live": "LIVE",
       "tables": "{{count}} tables",
-      "share": "Share"
+      "share": "Share",
+      "buyIn": "BUY-IN",
+      "remaining": "REMAINING",
+      "updated": "Updated",
+      "justNow": "just now",
+      "minsAgo": "{{n}} min ago",
+      "hoursAgo": "{{n}} hr ago",
+      "daysAgo": "{{n}} days ago"
     },
     "featured": {
       "badge": "LIVE • TABLE IN PLAY"
@@ -2922,6 +2939,8 @@
     },
     "feed": {
       "title": "Updates • Live",
+      "currentHand": "Current hand",
+      "latest": "Newest first",
       "empty": "No action in the current hand yet",
       "badge": {
         "allin": "ALL-IN",
@@ -2945,6 +2964,66 @@
         "post_ante": "Ante {{amount}}"
       }
     },
+    "handFeed": {
+      "title": "Completed hands",
+      "updatesTitle": "Latest news and featured hands",
+      "eventLabel": "Event feed",
+      "archiveLabel": "Hand archive",
+      "kindAll": "All",
+      "kindNews": "News",
+      "kindHands": "Hands",
+      "allTables": "All tables",
+      "thisTable": "Current table",
+      "searchLabel": "Search the event feed",
+      "search": "Search by hand number or player…",
+      "searchMixed": "Search news, players, tables or hands…",
+      "loading": "Loading hands…",
+      "empty": "No completed hands yet",
+      "noMatch": "No content matches these filters",
+      "more": "Show more",
+      "hand": "Hand #{{n}}",
+      "pot": "POT",
+      "bbPot": "BB pot",
+      "sidePot": "side",
+      "board": "Board",
+      "unknownPlayer": "Player",
+      "winner": "Winner",
+      "revealedCards": "Revealed cards",
+      "hiddenCards": "Hidden cards",
+      "share": "Share",
+      "viewHand": "View hand",
+      "tag": {
+        "all_in": "ALL-IN",
+        "big_pot": "BIG POT",
+        "high_hand": "HIGH HAND",
+        "eliminated": "ELIMINATED"
+      }
+    },
+    "editorial": {
+      "announcement": "Announcement",
+      "commentary": "Commentary",
+      "pinned": "Pinned",
+      "share": "Share",
+      "viewHand": "View hand #{{n}}",
+      "photoAlt": "Tournament update photo"
+    },
+    "replay": {
+      "summary": "Summary",
+      "actions": "Actions",
+      "splitPot": "Pot split evenly",
+      "scrub": "Scrub hand replay",
+      "rewind": "Go to start",
+      "previous": "Previous action",
+      "play": "Play",
+      "pause": "Pause",
+      "next": "Next action",
+      "toEnd": "Go to showdown",
+      "speed": "Speed",
+      "unknownPlayer": "Player",
+      "noResult": "No result yet — open Actions.",
+      "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
+      "winnerSummary": "{{name}} +{{amount}}{{bb}}"
+    },
     "felt": {
       "pot": "Pot",
       "main": "Main",
@@ -2958,6 +3037,9 @@
       "waiting": "Waiting for the dealer to start the hand...",
       "empty": "empty",
       "potTotal": "Total Pot",
+      "chopPot": "Chop pot",
+      "needsResettle": "Result needs recalculation",
+      "showdown": "Showdown",
       "dealerHere": "dealer · fixed",
       "trackerHere": "Tracker stands here",
       "engineHint": "suggested"

@@ -11,7 +11,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 interface PhotoRow { id: string; photo_url: string }
 
-export function PhotosPanel({ tournamentId }: { tournamentId: string }) {
+export function PhotosPanel({ tournamentId, rpt = false }: { tournamentId: string; rpt?: boolean }) {
   const { t } = useTranslation();
   const [photos, setPhotos] = useState<PhotoRow[] | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -52,15 +52,17 @@ export function PhotosPanel({ tournamentId }: { tournamentId: string }) {
             key={p.id}
             type="button"
             onClick={() => setActive(p.photo_url)}
-            className="group relative overflow-hidden rounded-lg border border-border/50 bg-muted/30"
+            className={rpt
+              ? "group relative min-h-11 overflow-hidden rounded-xl border border-[hsl(var(--viewer-neon)_/_0.24)] bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              : "group relative overflow-hidden rounded-lg border border-border/50 bg-muted/30"}
           >
-            <img src={p.photo_url} alt="" loading="lazy" className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transform-none sm:h-32" />
+            <img src={p.photo_url} alt={rpt ? t("liveHub.photos.photoAlt", "Ảnh giải đấu") : ""} loading="lazy" className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transform-none sm:h-32" />
           </button>
         ))}
       </div>
       <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
         <DialogContent className="max-w-3xl border-border/60 bg-black/90 p-2">
-          {active && <img src={active} alt="" className="max-h-[80vh] w-full rounded object-contain" />}
+          {active && <img src={active} alt={rpt ? t("liveHub.photos.photoAlt", "Ảnh giải đấu") : ""} className="max-h-[80vh] w-full rounded object-contain" />}
         </DialogContent>
       </Dialog>
     </>

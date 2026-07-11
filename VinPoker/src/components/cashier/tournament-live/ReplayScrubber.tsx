@@ -4,6 +4,7 @@
 // current frame to the parent via onFrame so the existing <LiveFelt> renders it.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, SkipBack, SkipForward, RotateCcw, ChevronsRight } from "lucide-react";
 import {
@@ -43,6 +44,7 @@ interface ReplayScrubberProps {
 }
 
 export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }: ReplayScrubberProps) {
+  const { t } = useTranslation();
   const frames = useMemo(() => buildReplayFrames(hand, { trackBets }), [hand, trackBets]);
   const streetIdx = useMemo(() => streetFrameIndex(frames), [frames]);
   const lastIndex = frames.length - 1;
@@ -109,6 +111,13 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
   const currentStreet = frames[Math.min(step, lastIndex)]?.currentStreet;
   const current = frames[Math.min(step, lastIndex)];
+  const publicName = (name: string | null | undefined, playerId: string): string => {
+    const trimmed = name?.trim() || "";
+    const rawPrefix = playerId.slice(0, 6).toLowerCase();
+    return trimmed && trimmed.toLowerCase() !== rawPrefix && !/^[a-f0-9]{6}$/i.test(trimmed)
+      ? trimmed
+      : t("liveHub.replay.unknownPlayer", "Người chơi");
+  };
 
   // ── B1 HUD derivations (hud-only; all from the HAND's own data, never the clock) ──
   const [hudTab, setHudTab] = useState<"summary" | "actions">("summary");
@@ -120,43 +129,71 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
   const inBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1)} BB` : null);
   // Winner rows: net = ending − starting (completed hands only). Sorted by net desc.
   const nets = useMemo(() => {
-    if (!hud) return [];
+    if (!hud || current?.showdownResult === "needs_resettle") return [];
     return hand.players
       .filter((p) => p.ending_stack != null)
       .map((p) => ({ ...p, net: (p.ending_stack as number) - p.starting_stack }))
       .filter((p) => p.net !== 0)
       .sort((a, b) => b.net - a.net);
-  }, [hud, hand]);
+  }, [hud, hand, current?.showdownResult]);
   // Hand-summary bullets — derived from ACTIONS + nets only (revealed data; no
   // hole-card source → no leak). All-in facts first, then winner lines.
-  const bullets = useMemo(() => {
+  const bullets = (() => {
     if (!hud) return [];
     const out: string[] = [];
-    const nameOf = (pid: string) => hand.players.find((p) => p.player_id === pid)?.display_name || pid.slice(0, 6);
+    const nameOf = (pid: string) => publicName(hand.players.find((p) => p.player_id === pid)?.display_name, pid);
     for (const a of sortedActions) {
       if (a.action_type === "all_in") {
-        out.push(`${nameOf(a.player_id)} all-in ${formatStack(a.action_amount)}${inBB(a.action_amount) ? ` (${inBB(a.action_amount)})` : ""}`);
+        out.push(t("liveHub.replay.allInSummary", "{{name}} all-in {{amount}}{{bb}}", {
+          name: nameOf(a.player_id),
+          amount: formatStack(a.action_amount),
+          bb: inBB(a.action_amount) ? ` (${inBB(a.action_amount)})` : "",
+        }));
       }
     }
     for (const p of nets) {
-      if (p.net > 0) out.push(`${p.display_name} +${formatStack(p.net)}${inBB(p.net) ? ` (+${inBB(p.net)})` : ""}`);
+      if (p.net > 0) out.push(t("liveHub.replay.winnerSummary", "{{name}} +{{amount}}{{bb}}", {
+        name: publicName(p.display_name, p.player_id),
+        amount: formatStack(p.net),
+        bb: inBB(p.net) ? ` (+${inBB(p.net)})` : "",
+      }));
     }
     return out.slice(0, 6);
-  }, [hud, sortedActions, nets, hand, bb]);
+  })();
 
   return (
-    <div className="mt-3 bg-card border border-amber-500/25 rounded-xl p-3 space-y-3">
+    <div
+      data-testid={hud ? "replay-action-rail" : undefined}
+      className={hud
+        ? "min-w-0 space-y-3 rounded-2xl border border-[hsl(var(--viewer-neon)_/_0.3)] bg-card/75 p-3.5 shadow-[0_18px_48px_hsl(var(--background)_/_0.35)] sm:p-4"
+        : "mt-3 bg-card border border-amber-500/25 rounded-xl p-3 space-y-3"}
+    >
       {/* B1 HUD strip — the RPT-style BB/ANTE + POT bar (hand's own blind, not the clock) */}
       {hud && (
-        <div data-testid="replay-hud-bar" className="flex items-center justify-between gap-2 rounded-lg bg-black/45 px-2.5 py-1.5 text-[11px]">
-          <span className="tracker-num font-bold text-amber-300">
+        <div data-testid="replay-hud-bar" className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-border/50 bg-background/45 px-3 text-[11px]">
+          <span className="tracker-num font-bold text-[hsl(var(--viewer-neon))]">
             BB{ante > 0 ? "/ANTE" : ""} {bb > 0 ? formatStack(bb) : "—"}
             {ante > 0 ? ` / ${formatStack(ante)}` : ""}
           </span>
-          <span className="tracker-num font-bold text-emerald-300">
+          <span className="tracker-num font-bold text-success">
             POT {formatStack(current?.potSize ?? 0)}
             {current && inBB(current.potSize) ? <span className="ml-1 font-normal opacity-70">({inBB(current.potSize)})</span> : null}
           </span>
+          {current?.showdownResult && (
+            <span className={`rounded-md border px-1.5 py-1 text-[9px] font-black uppercase tracking-wider ${
+              current.showdownResult === "chop"
+                ? "border-[hsl(var(--viewer-neon)_/_0.5)] text-[hsl(var(--viewer-neon))]"
+                : current.showdownResult === "needs_resettle"
+                  ? "border-amber-500/50 text-amber-300"
+                  : "border-[hsl(var(--poker-gold)_/_0.5)] text-[hsl(var(--poker-gold))]"
+            }`}>
+              {current.showdownResult === "chop"
+                ? t("liveHub.felt.chopPot", "Chop pot")
+                : current.showdownResult === "needs_resettle"
+                  ? t("liveHub.felt.needsResettle", "Cần tính lại")
+                  : t("liveHub.felt.showdown", "Showdown")}
+            </span>
+          )}
         </div>
       )}
       {/* Street tabs */}
@@ -165,10 +202,14 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
           <button
             key={s}
             onClick={() => pauseAnd(() => setStep(streetIdx[s]))}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border transition-colors ${
+            className={`${hud ? "min-h-11 rounded-xl px-3 py-1.5" : "px-2.5 py-1 rounded-md"} text-[11px] font-bold uppercase tracking-wider border transition-colors ${
               currentStreet === s
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                : "text-muted-foreground border-border hover:border-amber-500/40"
+                ? hud
+                  ? "bg-[hsl(var(--viewer-neon)_/_0.14)] text-[hsl(var(--viewer-neon))] border-[hsl(var(--viewer-neon)_/_0.45)]"
+                  : "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                : hud
+                  ? "text-muted-foreground border-border hover:border-[hsl(var(--viewer-neon)_/_0.4)]"
+                  : "text-muted-foreground border-border hover:border-amber-500/40"
             }`}
           >
             {STREET_LABELS[s]}
@@ -186,61 +227,68 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
         max={Math.max(lastIndex, 1)}
         step={1}
         onValueChange={(v) => pauseAnd(() => setStep(v[0]))}
-        aria-label="Tua lại hand"
+        aria-label={hud ? t("liveHub.replay.scrub", "Tua lại ván") : "Tua lại hand"}
+        className={hud ? "py-2" : undefined}
       />
 
       {/* Transport + speed */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5">
+        <div className={hud ? "flex items-center gap-1.5" : "flex items-center gap-1.5"}>
           <button
             onClick={() => pauseAnd(() => setStep(0))}
-            title="Về đầu"
-            className="p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"
+            title={hud ? t("liveHub.replay.rewind", "Về đầu") : "Về đầu"}
+            className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => pauseAnd(() => setStep((s) => Math.max(0, s - 1)))}
-            title="Lùi 1 bước"
-            className="p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"
+            title={hud ? t("liveHub.replay.previous", "Lùi 1 bước") : "Lùi 1 bước"}
+            className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
             <SkipBack className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={togglePlay}
-            title={isPlaying ? "Tạm dừng" : "Phát"}
-            className="p-2 rounded-md bg-amber-500/90 hover:bg-amber-400 text-black font-bold transition-colors"
+            title={hud
+              ? isPlaying ? t("liveHub.replay.pause", "Tạm dừng") : t("liveHub.replay.play", "Phát")
+              : isPlaying ? "Tạm dừng" : "Phát"}
+            className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-[hsl(var(--viewer-neon))] text-[hsl(var(--viewer-neon-ink))] font-bold transition hover:bg-[hsl(var(--viewer-neon-bright))]" : "p-2 rounded-md bg-amber-500/90 hover:bg-amber-400 text-black font-bold transition-colors"}
           >
             {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </button>
           <button
             onClick={() => pauseAnd(() => setStep((s) => Math.min(lastIndex, s + 1)))}
-            title="Tiến 1 bước"
-            className="p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"
+            title={hud ? t("liveHub.replay.next", "Tiến 1 bước") : "Tiến 1 bước"}
+            className={hud ? "inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]" : "p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"}
           >
             <SkipForward className="w-3.5 h-3.5" />
           </button>
           {hud && (
             <button
               onClick={() => pauseAnd(() => setStep(lastIndex))}
-              title="Tới cuối (showdown)"
-              className="p-1.5 rounded-md border border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-300 transition-colors"
+              title={t("liveHub.replay.toEnd", "Tới cuối (showdown)")}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--viewer-neon)_/_0.4)] hover:text-[hsl(var(--viewer-neon))]"
             >
               <ChevronsRight className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-muted-foreground mr-1">Tốc độ</span>
+        <div className={hud ? "flex max-w-full items-center gap-1 overflow-x-auto" : "flex items-center gap-1"}>
+          <span className="text-[10px] text-muted-foreground mr-1">{hud ? t("liveHub.replay.speed", "Tốc độ") : "Tốc độ"}</span>
           {SPEEDS.map((sp) => (
             <button
               key={sp}
               onClick={() => setSpeed(sp)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
+              className={`${hud ? "min-h-11 min-w-11 rounded-xl px-2 py-1" : "px-1.5 py-0.5 rounded"} text-[10px] font-mono font-bold border transition-colors ${
                 speed === sp
-                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                  : "text-muted-foreground border-border hover:border-emerald-500/40"
+                  ? hud
+                    ? "bg-[hsl(var(--viewer-neon)_/_0.15)] text-[hsl(var(--viewer-neon))] border-[hsl(var(--viewer-neon)_/_0.4)]"
+                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                  : hud
+                    ? "text-muted-foreground border-border hover:border-[hsl(var(--viewer-neon)_/_0.4)]"
+                    : "text-muted-foreground border-border hover:border-emerald-500/40"
               }`}
             >
               {sp}×
@@ -251,18 +299,18 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
       {/* B1: TÓM TẮT | HÀNH ĐỘNG tabs (hud only; !hud renders the list exactly as today) */}
       {hud && (
-        <div className="flex items-center gap-1 border-t border-border/20 pt-2">
+        <div className="grid grid-cols-2 gap-1.5 border-t border-border/20 pt-3">
           {(["summary", "actions"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setHudTab(tab)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border transition-colors ${
+              className={`min-h-11 rounded-xl border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${
                 hudTab === tab
-                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                  : "text-muted-foreground border-border hover:border-amber-500/40"
+                  ? "bg-[hsl(var(--viewer-neon)_/_0.14)] text-[hsl(var(--viewer-neon))] border-[hsl(var(--viewer-neon)_/_0.45)]"
+                  : "text-muted-foreground border-border hover:border-[hsl(var(--viewer-neon)_/_0.4)]"
               }`}
             >
-              {tab === "summary" ? "Tóm tắt" : "Hành động"}
+              {tab === "summary" ? t("liveHub.replay.summary", "Tóm tắt") : t("liveHub.replay.actions", "Hành động")}
             </button>
           ))}
         </div>
@@ -270,16 +318,23 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
       {hud && hudTab === "summary" && (
         <div data-testid="replay-hud-summary" className="space-y-2">
-          {nets.length > 0 ? (
+          {current?.showdownResult === "chop" ? (
+            <div data-testid="replay-hud-chop" className="rounded-xl border border-[hsl(var(--viewer-neon)_/_0.35)] bg-[hsl(var(--viewer-neon)_/_0.08)] px-3 py-2 text-xs font-semibold text-[hsl(var(--viewer-neon))]">
+              {t("liveHub.felt.chopPot", "Chop pot")} · {t("liveHub.replay.splitPot", "Pot được chia đều")}
+            </div>
+          ) : current?.showdownResult === "needs_resettle" ? (
+            <div data-testid="replay-hud-needs-resettle" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
+              {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
+            </div>
+          ) : nets.length > 0 ? (
             <div className="space-y-1">
               {nets.map((p) => (
-                <div key={p.player_id} className="flex items-center justify-between rounded-lg bg-black/30 px-2.5 py-1.5 text-xs">
+                <div key={p.player_id} className="flex min-h-11 items-center justify-between rounded-xl bg-background/35 px-3 py-2 text-xs">
                   <span className="truncate">
-                    {p.net > 0 && <span className="mr-1">👑</span>}
-                    <span className="font-semibold text-foreground">{p.display_name}</span>
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">Ghế {p.seat_number}</span>
+                    <span className="font-semibold text-foreground">{publicName(p.display_name, p.player_id)}</span>
+                    {p.seat_number > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: p.seat_number })}</span>}
                   </span>
-                  <span className={`tracker-num font-bold ${p.net > 0 ? "text-emerald-300" : "text-red-400"}`}>
+                  <span className={`tracker-num font-bold ${p.net > 0 ? "text-[hsl(var(--viewer-neon-bright))]" : "text-red-400"}`}>
                     {p.net > 0 ? "+" : ""}
                     {formatStack(p.net)}
                     {inBB(Math.abs(p.net)) ? (
@@ -290,7 +345,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
               ))}
             </div>
           ) : (
-            <div className="text-[11px] text-muted-foreground">Chưa có kết quả — xem tab Hành động.</div>
+            <div className="text-[11px] text-muted-foreground">{t("liveHub.replay.noResult", "Chưa có kết quả — xem tab Hành động.")}</div>
           )}
           {bullets.length > 0 && (
             <ul className="space-y-0.5 text-[11px] text-muted-foreground">
@@ -307,15 +362,15 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
       {/* Current action + action list */}
       {(!hud || hudTab === "actions") && current?.latestAction && (
-        <div className="text-xs text-amber-100 border-t border-border/20 pt-2">
-          <span className="text-amber-300/70">Ghế {current.latestAction.seat_number} · </span>
-          <span className="font-semibold text-emerald-300">{current.latestAction.display_name}</span>{" "}
+        <div className={hud ? "border-t border-border/20 pt-3 text-xs text-foreground" : "text-xs text-amber-100 border-t border-border/20 pt-2"}>
+          {(!hud || current.latestAction.seat_number > 0) && <span className={hud ? "text-muted-foreground" : "text-amber-300/70"}>{hud ? t("liveHub.seat", "Ghế {{n}}", { n: current.latestAction.seat_number }) : `Ghế ${current.latestAction.seat_number}`} · </span>}
+          <span className={hud ? "font-semibold text-[hsl(var(--viewer-neon))]" : "font-semibold text-emerald-300"}>{hud ? publicName(current.latestAction.display_name, current.latestAction.player_id) : current.latestAction.display_name}</span>{" "}
           {formatActionLabel(current.latestAction)}
         </div>
       )}
 
       {(!hud || hudTab === "actions") && (
-      <div className="max-h-40 overflow-y-auto space-y-0.5 pr-1">
+      <div className={hud ? "max-h-[min(42vh,460px)] space-y-1 overflow-y-auto pr-1" : "max-h-40 overflow-y-auto space-y-0.5 pr-1"}>
         {sortedActions.map((a, i) => {
           const label = formatActionLabel({
             street: a.street,
@@ -325,26 +380,25 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
             action_amount: a.action_amount,
             action_order: a.action_order,
           } as ActionLog);
-          const name =
-            hand.players.find((p) => p.player_id === a.player_id)?.display_name ||
-            a.player_id.slice(0, 6);
+          const rawName = hand.players.find((p) => p.player_id === a.player_id)?.display_name;
+          const name = hud ? publicName(rawName, a.player_id) : rawName || a.player_id.slice(0, 6);
           const active = step === i + 1;
           return (
             <button
               key={a.action_order}
               onClick={() => pauseAnd(() => setStep(i + 1))}
-              className={`w-full flex justify-between items-center px-1.5 py-1 rounded text-xs border-b border-border/10 last:border-0 transition-colors ${
-                active ? "bg-amber-500/15 text-amber-200" : "hover:bg-secondary/40"
-              }`}
+              className={hud
+                ? `min-h-11 w-full flex justify-between items-center rounded-xl border border-border/35 px-3 py-2 text-left text-xs transition-colors ${active ? "bg-[hsl(var(--viewer-neon)_/_0.14)] text-[hsl(var(--viewer-neon))]" : "hover:bg-secondary/40"}`
+                : `w-full flex justify-between items-center px-1.5 py-1 rounded text-xs border-b border-border/10 last:border-0 transition-colors ${active ? "bg-amber-500/15 text-amber-200" : "hover:bg-secondary/40"}`}
             >
               <span className="text-muted-foreground">
-                <span className="text-[9px] uppercase tracking-wider text-amber-400/60 mr-1.5">
+                <span className={hud ? "text-[9px] uppercase tracking-wider text-[hsl(var(--viewer-neon)_/_0.7)] mr-1.5" : "text-[9px] uppercase tracking-wider text-amber-400/60 mr-1.5"}>
                   {STREET_LABELS[a.street]?.slice(0, 2) || a.street.slice(0, 2)}
                 </span>
-                <span className="text-emerald-400 font-semibold">{name}</span>
+                <span className={hud ? "text-[hsl(var(--viewer-neon-bright))] font-semibold" : "text-emerald-400 font-semibold"}>{name}</span>
               </span>
               <span
-                className={`font-semibold ${a.action_amount > 0 ? "text-amber-400" : "text-muted-foreground"}`}
+                className={`font-semibold ${a.action_amount > 0 ? (hud ? "text-[hsl(var(--viewer-neon-bright))]" : "text-amber-400") : "text-muted-foreground"}`}
               >
                 {label}
               </span>

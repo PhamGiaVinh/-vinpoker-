@@ -979,6 +979,7 @@ export function TournamentLiveView({
           multiTableUnresolved: false,
           handNumber: replayHand?.hand_number ?? null,
           latestAction: replayFrame.latestAction,
+          showdownResult: replayFrame.showdownResult,
           formatBB: replayFormatBB,
           buttonSeat: replayHand?.button_seat ?? null,
         }
@@ -1008,6 +1009,36 @@ export function TournamentLiveView({
         formatBB,
         buttonSeat,
       };
+  const guardViewerIdentity = spectator && FEATURES.liveViewerRPTShell;
+  const safeViewerName = (name: string | null | undefined, playerId: string): string => {
+    if (!guardViewerIdentity) return name || playerId.slice(0, 6);
+    const trimmed = name?.trim() || "";
+    const prefix = playerId.slice(0, 6).toLowerCase();
+    return trimmed && trimmed.toLowerCase() !== prefix && !/^[a-f0-9]{6}$/i.test(trimmed) && !/^[a-f0-9-]{24,}$/i.test(trimmed)
+      ? trimmed
+      : t("liveHub.handFeed.unknownPlayer", "Người chơi");
+  };
+  const viewerFeltProps = guardViewerIdentity
+    ? {
+        ...feltProps,
+        seats: feltProps.seats.map((seat) => ({
+          ...seat,
+          display_name: safeViewerName(seat.display_name, seat.player_id),
+        })),
+        latestAction: feltProps.latestAction
+          ? {
+              ...feltProps.latestAction,
+              display_name: safeViewerName(feltProps.latestAction.display_name, feltProps.latestAction.player_id),
+            }
+          : feltProps.latestAction,
+      }
+    : feltProps;
+  const viewerReplayPlayers = guardViewerIdentity && replayHand
+    ? replayHand.players.map((player) => ({
+        ...player,
+        display_name: safeViewerName(player.display_name, player.player_id),
+      }))
+    : replayHand?.players;
 
   return (
     <div className="space-y-3">
@@ -1134,7 +1165,7 @@ export function TournamentLiveView({
                   : "bg-transparent text-muted-foreground border-border hover:border-emerald-500/40"
               }`}
             >
-              {tableNames[tid] || tid.slice(0, 6)}
+              {tableNames[tid] || (spectator && FEATURES.liveViewerRPTShell ? t("liveHub.watch.liveTable", "Bàn trực tiếp") : tid.slice(0, 6))}
               {handTableId === tid && <span className="ml-1 text-[9px] text-amber-400">● hand</span>}
             </button>
           ))}
@@ -1186,10 +1217,12 @@ export function TournamentLiveView({
         />
       )}
 
-      <div className={spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
-        <div>
+      <div className={spectator && isReplay && replayHand && FEATURES.liveReplayHud
+        ? "grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-start"
+        : spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
+        <div className={spectator && isReplay && replayHand && FEATURES.liveReplayHud ? "min-w-0" : undefined}>
           <LiveFelt
-            {...feltProps}
+            {...viewerFeltProps}
             portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
             viewerNeon={spectator && FEATURES.liveHandFeed}
             viewerLayout={spectator && FEATURES.liveViewerFeltV2}
@@ -1200,7 +1233,7 @@ export function TournamentLiveView({
             runout={!isReplay && liveRunout}
             revealOrder={revealOrder}
           />
-          {isReplay && replayHand && (
+          {isReplay && replayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
               hand={replayHand}
               onFrame={setReplayFrame}
@@ -1211,13 +1244,14 @@ export function TournamentLiveView({
 
           {/* Public spectator-only broadcast action breakdown. Spectator-gated →
               the operator render path emits nothing new. */}
-          {spectator && isReplay && replayHand && (
+          {spectator && isReplay && replayHand && !FEATURES.liveReplayHud && (
             <HandBreakdown
               actions={replayHand.actions}
-              players={replayHand.players}
+              players={viewerReplayPlayers || replayHand.players}
               buttonSeat={replayHand.button_seat}
               bigBlind={replayBigBlind}
               highlightActionOrder={replayFrame?.latestAction?.action_order}
+              showdownResult={replayFrame?.showdownResult}
             />
           )}
           {spectator && !isReplay && liveHandOnView && actions.length > 0 && (
@@ -1226,7 +1260,7 @@ export function TournamentLiveView({
               players={activeSeatsToRender.map((s) => ({
                 player_id: s.player_id,
                 seat_number: s.seat_number,
-                display_name: s.display_name,
+                display_name: guardViewerIdentity ? safeViewerName(s.display_name, s.player_id) : s.display_name,
                 avatar_url: s.avatar_url,
               }))}
               buttonSeat={buttonSeat}
@@ -1234,6 +1268,17 @@ export function TournamentLiveView({
             />
           )}
         </div>
+
+        {spectator && isReplay && replayHand && FEATURES.liveReplayHud && (
+          <aside className="min-w-0 md:sticky md:top-[calc(env(safe-area-inset-top)+3.75rem)]">
+            <ReplayScrubber
+              hand={replayHand}
+              onFrame={setReplayFrame}
+              hud
+              trackBets={FEATURES.liveFeltCompact}
+            />
+          </aside>
+        )}
 
         {!spectator && (
         <div className="space-y-3">

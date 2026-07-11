@@ -13,7 +13,7 @@ import { formatStack } from "../LiveFelt";
 interface PrizeRow { position: number; amount: number; percentage: number }
 interface Finisher { name: string; prize: number }
 
-export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
+export function PrizesPanel({ tournamentId, rpt = false }: { tournamentId: string; rpt?: boolean }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<PrizeRow[] | null>(null);
   const [finishers, setFinishers] = useState<Record<number, Finisher>>({});
@@ -64,15 +64,17 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
   const champion = finishers[1];
   const totalStructure = rows.reduce((s, r) => s + (r.amount || 0), 0);
   const pool = prizePool ?? totalStructure;
+  const accent = rpt ? "hsl(var(--viewer-neon))" : "hsl(var(--poker-gold))";
+  const accentVar = rpt ? "var(--viewer-neon)" : "var(--poker-gold)";
 
   return (
     <div className="space-y-2.5">
       {champion && champion.name && (
         <div
           className="flex items-center gap-3 rounded-xl border px-3.5 py-3"
-          style={{ borderColor: "hsl(var(--poker-gold) / 0.55)", background: "linear-gradient(110deg, hsl(var(--poker-gold)/0.16), transparent 70%)" }}
+          style={{ borderColor: `hsl(${accentVar} / 0.55)`, background: `linear-gradient(110deg, hsl(${accentVar} / 0.16), transparent 70%)` }}
         >
-          <Crown className="h-7 w-7 shrink-0" style={{ color: "hsl(var(--poker-gold))" }} />
+          <Crown className="h-7 w-7 shrink-0" style={{ color: accent }} />
           <div className="min-w-0 flex-1">
             <div className="tracker-display text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               {t("liveHub.prizes.champion", "Nhà vô địch")}
@@ -80,7 +82,7 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
             <div className="truncate text-base font-extrabold text-foreground">{champion.name}</div>
           </div>
           {champion.prize > 0 && (
-            <div className="tracker-num shrink-0 text-lg font-bold" style={{ color: "hsl(var(--poker-gold))" }}>{formatStack(champion.prize)}</div>
+            <div className="tracker-num shrink-0 text-lg font-bold" style={{ color: accent }}>{formatStack(champion.prize)}</div>
           )}
         </div>
       )}
@@ -89,7 +91,7 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
         {entries != null && entries > 0 && (
           <span className="text-muted-foreground">{t("liveHub.prizes.entries", "Entries")}: <b className="tracker-num text-foreground">{entries}</b></span>
         )}
-        <span className="text-muted-foreground">{t("liveHub.prizes.total", "Tổng thưởng")}: <b className="tracker-num" style={{ color: "hsl(var(--poker-gold))" }}>{formatStack(pool)}</b></span>
+        <span className="text-muted-foreground">{t("liveHub.prizes.total", "Tổng thưởng")}: <b className="tracker-num" style={{ color: accent }}>{formatStack(pool)}</b></span>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border/50">
@@ -109,13 +111,13 @@ export function PrizesPanel({ tournamentId }: { tournamentId: string }) {
                 <tr key={r.position} className="border-t border-border/30">
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                      {top && <Trophy className="h-3.5 w-3.5" style={{ color: "hsl(var(--poker-gold))" }} />}
+                      {top && <Trophy className="h-3.5 w-3.5" style={{ color: accent }} />}
                       {t("liveHub.prizes.rank", "#{{n}}", { n: r.position })}
                     </span>
                   </td>
                   <td className="px-3 py-2 truncate text-foreground">{who || <span className="text-muted-foreground/60">—</span>}</td>
                   <td className="px-3 py-2 text-right">
-                    <span className="tracker-num font-bold" style={{ color: top ? "hsl(var(--poker-gold))" : "hsl(var(--success))" }}>
+                    <span className="tracker-num font-bold" style={{ color: top ? accent : "hsl(var(--success))" }}>
                       {formatStack(r.amount)}
                     </span>
                   </td>

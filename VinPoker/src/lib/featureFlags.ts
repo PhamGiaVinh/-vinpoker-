@@ -562,7 +562,14 @@ export const FEATURES = {
    * only), prev/next hand + jump-to-end (silent) + breadcrumb. Viewer-only;
    * unreliable frame data → field hidden (best-effort, never fake). Frontend-only.
    */
-  liveReplayHud: false,
+  liveReplayHud: true,
+  /**
+   * Public Viewer RPT-inspired focus shell. This is presentation-only: a dedicated
+   * /live/:id chrome, URL-persisted tabs, touch-sized controls, compact spectator
+   * feeds and a responsive replay composition. It never changes the operator/TV
+   * path or any hand/pot/winner data. Default OFF; owner visual UAT is required.
+   */
+  liveViewerRPTShell: true,
   /**
    * PR-V2 (B2): compact-wide RPT-style felt on portrait phones (felt ≈ ⅓ of the
    * viewport, pods around the rim, stacks in BB, controls+summary below). Viewer-only
