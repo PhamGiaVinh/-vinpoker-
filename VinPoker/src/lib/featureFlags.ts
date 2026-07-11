@@ -783,9 +783,9 @@ export const FEATURES = {
    * manage-break start / checkout-dealer) — same server RPCs/edge fns, same RLS
    * (`is_club_dealer_control`); no new write path, no migration. Kill-switch: set false →
    * every button reverts to the stub. Đóng tour / sửa nhầm bàn / check-in QR stay stubbed
-   * (need a shift/club selector the phone does not track yet). Default **OFF**.
+   * (need a shift/club selector the phone does not track yet). Owner-approved live rollout: **ON**.
    */
-  opsSwingActions: false,
+  opsSwingActions: true,
   /**
    * Club "Lịch series" — a per-club gallery of MANY series-schedule images (posters +
    * match schedules) shown as a swipeable carousel on the public ClubDetail page and
