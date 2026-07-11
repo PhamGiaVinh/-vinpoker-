@@ -22,8 +22,8 @@ const hand: ReplayHand = {
   community_cards: ["Th", "7c", "6d", "7s", "Ah"],
   big_blind: 300000, // the HAND's own level — ±BB must use this
   players: [
-    { player_id: "a", seat_number: 1, display_name: "GUIDO", starting_stack: 12300000, ending_stack: 10200000 },
-    { player_id: "b", seat_number: 2, display_name: "KIÊN", starting_stack: 2400000, ending_stack: 4500000 },
+    { player_id: "a", seat_number: 1, display_name: "GUIDO", starting_stack: 12300000, ending_stack: 10200000, hole_cards: ["Qh", "Jd"] },
+    { player_id: "b", seat_number: 2, display_name: "KIÊN", starting_stack: 2400000, ending_stack: 4500000, hole_cards: ["Kh", "Kc"] },
   ],
   actions: [
     { player_id: "a", street: "preflop", action_type: "post_sb", action_amount: 150000, action_order: 1 },
@@ -98,6 +98,7 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(allIn!.className).toContain("min-h-11");
     fireEvent.click(allIn!);
     expect(onFrame.mock.calls.at(-1)?.[0].index).toBe(3);
+    expect(onFrame.mock.calls.at(-1)?.[1]).toBe("scrub");
     expect(getByTestId("replay-action-rail").className).toContain("rounded-2xl");
   });
 

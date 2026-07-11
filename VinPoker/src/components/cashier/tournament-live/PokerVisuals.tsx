@@ -479,6 +479,29 @@ export function TrackerVisualStyles() {
           from { box-shadow: 0 0 0 0 hsl(var(--poker-gold) / 0); }
           to   { box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6); }
         }
+        @keyframes tracker-motion-deal {
+          from { transform: translate(0, 0) rotate(-5deg) scale(.82); opacity: 0; }
+          18% { opacity: 1; }
+          to { transform: translate(var(--tm-dx), var(--tm-dy)) rotate(0) scale(.72); opacity: 0; }
+        }
+        @keyframes tracker-motion-fold {
+          from { transform: translate(0, 0) rotate(-7deg) scale(.82); opacity: .95; }
+          to { transform: translate(var(--tm-dx), var(--tm-dy)) rotate(14deg) scale(.42); opacity: 0; }
+        }
+        @keyframes tracker-motion-board {
+          from { transform: translate(0, 0) rotateY(0deg) scale(.76); opacity: 0; }
+          22% { opacity: 1; }
+          to { transform: translate(var(--tm-dx), var(--tm-dy)) rotateY(180deg) scale(.74); opacity: 0; }
+        }
+        @keyframes tracker-motion-showdown {
+          from { transform: translate(-50%, -50%) rotateY(90deg) scale(.82); opacity: 0; }
+          to { transform: translate(-50%, -50%) rotateY(0deg) scale(1); opacity: 0; }
+        }
+        @keyframes tracker-motion-award {
+          from { transform: translate(0, 0) scale(.7); opacity: 0; }
+          16% { opacity: 1; }
+          to { transform: translate(var(--tm-dx), var(--tm-dy)) scale(.9); opacity: 0; }
+        }
         .tracker-card-reveal { animation: tracker-card-reveal .36s cubic-bezier(.2,.7,.2,1) both; }
         .tracker-seat-pop { animation: tracker-seat-pop .22s ease-out both; }
         .tracker-pot-pulse { animation: tracker-pot-pulse 1.4s ease-in-out infinite; }
@@ -496,6 +519,36 @@ export function TrackerVisualStyles() {
         .tracker-win-glow {
           box-shadow: 0 0 16px 1px hsl(var(--poker-gold) / 0.5), 0 0 0 2px hsl(var(--poker-gold) / 0.6);
           animation: tracker-win-glow .45s ease-out both;
+        }
+        .tracker-motion-card {
+          position: absolute;
+          left: 50%; top: 50%;
+          width: clamp(12px, 3.5cqi, 22px); aspect-ratio: 5 / 7;
+          border-radius: 4px;
+          border: 1px solid hsl(var(--poker-gold) / .65);
+          background: radial-gradient(circle at 35% 25%, #244b3d, #07110f 72%);
+          box-shadow: 0 2px 7px rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.06);
+          transform-style: preserve-3d;
+          animation-fill-mode: both;
+          animation-timing-function: cubic-bezier(.22,1,.36,1);
+        }
+        .tracker-motion-deal { left: 50%; top: var(--tm-pot-top, 46%); animation-name: tracker-motion-deal; }
+        .tracker-motion-fold { animation-name: tracker-motion-fold; animation-timing-function: cubic-bezier(.4,0,1,1); }
+        .tracker-motion-board { animation-name: tracker-motion-board; }
+        .tracker-motion-showdown {
+          position: absolute; width: clamp(42px, 12cqi, 72px); aspect-ratio: 1;
+          border-radius: 9999px; border: 2px solid hsl(var(--viewer-neon) / .72);
+          box-shadow: 0 0 18px hsl(var(--viewer-neon) / .4);
+          animation-name: tracker-motion-showdown; animation-fill-mode: both;
+          animation-timing-function: cubic-bezier(.22,1,.36,1);
+        }
+        .tracker-motion-chip {
+          position: absolute; left: 50%; top: var(--tm-pot-top, 46%);
+          width: clamp(7px, 2cqi, 13px); aspect-ratio: 1; border-radius: 9999px;
+          background: radial-gradient(circle at 35% 30%, #b4ffcc, #00e676 58%, #08753c 100%);
+          box-shadow: 0 0 0 1px rgba(255,255,255,.2), 0 0 10px rgba(0,230,118,.48);
+          animation-name: tracker-motion-award; animation-fill-mode: both;
+          animation-timing-function: cubic-bezier(.22,1,.36,1);
         }
         .tracker-felt {
           background:
@@ -525,6 +578,9 @@ export function TrackerVisualStyles() {
           .tracker-bet-pulse,
           .tracker-chip-push,
           .tracker-win-glow,
+          .tracker-motion-card,
+          .tracker-motion-showdown,
+          .tracker-motion-chip,
           .tracker-shine::before {
             animation: none !important;
           }

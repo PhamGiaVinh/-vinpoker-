@@ -33,6 +33,7 @@ export interface ReplayHandPlayer {
 }
 
 export interface ReplayHandAction {
+  action_id?: string;
   player_id: string;
   street: string;
   action_type: string;
@@ -41,9 +42,12 @@ export interface ReplayHandAction {
 }
 
 export interface ReplayHand {
+  hand_id?: string;
   hand_number: number;
   button_seat: number;
   community_cards: string[];
+  /** Persisted display fallback, used only when the action stream is absent. */
+  stored_pot_size?: number | null;
   /** Big blind for BB display (0/undefined → no BB shown). */
   big_blind?: number;
   players: ReplayHandPlayer[];
@@ -69,6 +73,10 @@ export interface ReplayFrame {
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /** Display-only winner ids, present only when the recorded payout matches the pure settlement. */
   showdownWinnerIds?: string[];
+  /** Verified only when engine settlement matches every recorded ending stack. */
+  potAwards?: { potIndex: number; amount: number; winnerPlayerIds: string[] }[];
+  /** True only when reconstructed settlement matches every persisted ending stack. */
+  payoutVerified?: boolean;
 }
 
 const STREETS = ["preflop", "flop", "turn", "river", "showdown"];
@@ -105,7 +113,12 @@ function deriveShowdownResult(
   runtime: Map<string, SeatRuntime>,
   actions: ReplayHandAction[],
   board: string[],
-): { result: "winner" | "chop" | "needs_resettle"; winnerIds: string[]; payoutMatches: boolean } | null {
+): {
+  result: "winner" | "chop" | "needs_resettle";
+  winnerIds: string[];
+  payoutMatches: boolean;
+  potAwards: { potIndex: number; amount: number; winnerPlayerIds: string[] }[];
+} | null {
   if (board.length !== 5) return null;
 
   const contributors = new Map(
@@ -140,9 +153,16 @@ function deriveShowdownResult(
   });
   const allLayersAreTied = settlement.layers.every((layer) => layer.winner_player_ids.length > 1);
   return {
-    result: !payoutMatches && allLayersAreTied ? "needs_resettle" : allLayersAreTied ? "chop" : "winner",
+    result: !payoutMatches ? "needs_resettle" : allLayersAreTied ? "chop" : "winner",
     winnerIds: payoutMatches ? winnerIds : [],
     payoutMatches,
+    potAwards: payoutMatches
+      ? settlement.layers.map((layer) => ({
+          potIndex: layer.index,
+          amount: layer.amount,
+          winnerPlayerIds: layer.winner_player_ids,
+        }))
+      : [],
   };
 }
 
@@ -218,18 +238,28 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
     // engine doesn't evaluate hands). When ending_stack is absent, fall back to the
     // fold-win case: a single un-folded seat takes the whole pot, so NON-showdown
     // wins (A bets, B folds) light up too. Either way it is final-frame-only.
-    const pot = showdown ? breakdown.totalPot : breakdown.totalCommitted;
+    const pot = isFinal
+      ? breakdown.totalCommitted > 0 ? breakdown.totalPot : clampChips(hand.stored_pot_size)
+      : breakdown.totalCommitted;
     const stillIn = isFinal ? players.filter((p) => !runtime.get(p.player_id)?.folded) : [];
     const soleWinnerId = isFinal && stillIn.length === 1 ? stillIn[0].player_id : null;
+    const foldPayoutMatches = !!soleWinnerId && !reveal && players.every((p) => {
+      if (p.ending_stack == null) return false;
+      const refund = breakdown.uncalled?.player_id === p.player_id ? breakdown.uncalled.amount : 0;
+      const award = p.player_id === soleWinnerId ? breakdown.totalPot : 0;
+      return runtime.get(p.player_id)!.chip + refund + award === p.ending_stack;
+    });
+    const payoutVerified = showdown?.payoutMatches ?? foldPayoutMatches;
+    const foldPotAwards = foldPayoutMatches && soleWinnerId
+      ? breakdown.pots.map((layer, potIndex) => ({
+          potIndex,
+          amount: layer.amount,
+          winnerPlayerIds: [soleWinnerId],
+        }))
+      : [];
     const netWonFor = (p: ReplayHandPlayer): number | null => {
-      if (!isFinal) return null;
-      if (showdown?.result === "needs_resettle") return null;
-      if (p.ending_stack != null) return p.ending_stack - clampChips(p.starting_stack);
-      if (p.player_id === soleWinnerId) {
-        // Profit = whole pot − this seat's own contribution (start − remaining chips).
-        return pot - (clampChips(p.starting_stack) - runtime.get(p.player_id)!.chip);
-      }
-      return null;
+      if (!isFinal || !payoutVerified || p.ending_stack == null) return null;
+      return p.ending_stack - clampChips(p.starting_stack);
     };
 
     const seats: SeatInfo[] = players.map((p) => {
@@ -248,7 +278,11 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
         net_won: netWonFor(p),
-        pot_winner: showdown?.payoutMatches ? showdown.winnerIds.includes(p.player_id) : undefined,
+        pot_winner: payoutVerified
+          ? showdown?.payoutMatches
+            ? showdown.winnerIds.includes(p.player_id)
+            : p.player_id === soleWinnerId
+          : undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
         ...(trackBets ? { current_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
@@ -257,6 +291,7 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
 
     const latestAction: ActionLog | null = lastAction
       ? {
+          action_id: lastAction.action_id,
           street: lastAction.street,
           player_id: lastAction.player_id,
           display_name: nameOf(lastAction.player_id),
@@ -271,14 +306,16 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       index: k,
       seats,
       displayCards: boardForStreet(streetIndex),
-      potSize: showdown ? breakdown.totalPot : breakdown.totalCommitted,
-      potBreakdown: breakdown,
+      potSize: pot,
+      potBreakdown: breakdown.totalCommitted > 0 ? breakdown : null,
       currentStreet: STREETS[streetIndex],
       lastActorId: latestAction?.player_id ?? null,
       latestAction,
       revealHoleCards: reveal,
       showdownResult: showdown?.result ?? null,
       showdownWinnerIds: showdown?.winnerIds ?? [],
+      potAwards: showdown?.potAwards ?? foldPotAwards,
+      payoutVerified,
     };
   };
 

@@ -42,7 +42,7 @@ describe("buildReplayFrames", () => {
     expect(frames[0].seats.every((s) => s.chip_count === 10000)).toBe(true);
   });
 
-  it("fold-walk: pot = blinds, folders flagged, one player left", () => {
+  it("fold-walk: final pot excludes the uncalled part of the big blind", () => {
     const h = hand({
       actions: [
         A("P2", "post_sb", 50),
@@ -53,7 +53,7 @@ describe("buildReplayFrames", () => {
     });
     const frames = buildReplayFrames(h);
     const final = frames[frames.length - 1];
-    expect(final.potSize).toBe(150); // 50 + 100
+    expect(final.potSize).toBe(100); // 50 matched + 50 matched; BB excess is returned
     const byId = Object.fromEntries(final.seats.map((s) => [s.player_id, s]));
     expect(byId.P1.is_folded).toBe(true);
     expect(byId.P2.is_folded).toBe(true);
@@ -220,6 +220,13 @@ describe("buildReplayFrames", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0].potSize).toBe(0);
   });
+
+  it("uses the persisted pot only when the action stream is absent", () => {
+    const frames = buildReplayFrames(hand({ actions: [], stored_pot_size: 5_000 }));
+    expect(frames).toHaveLength(1);
+    expect(frames[0].potSize).toBe(5_000);
+    expect(frames[0].potBreakdown).toBeNull();
+  });
 });
 
 describe("buildReplayFrames — net_won (showdown winner badge)", () => {
@@ -228,7 +235,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     button_seat: 1,
     community_cards: ["As", "Kd", "7c", "2h", "9s"],
     players: [
-      { player_id: "W", seat_number: 1, display_name: "Winner", starting_stack: 10000, ending_stack: 19400, hole_cards: ["Ah", "Ad"] },
+      { player_id: "W", seat_number: 1, display_name: "Winner", starting_stack: 10000, ending_stack: 20000, hole_cards: ["Ah", "Ad"] },
       { player_id: "L", seat_number: 2, display_name: "Loser", starting_stack: 10000, ending_stack: 0, hole_cards: ["Kh", "Qs"] },
     ],
     actions: [
@@ -243,7 +250,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     expect(frames[1].seats.every((s) => s.net_won == null)).toBe(true); // mid-hand
     const final = frames.at(-1)!;
     const by = Object.fromEntries(final.seats.map((s) => [s.player_id, s]));
-    expect(by.W.net_won).toBe(9400); // 19400 − 10000 → winner (>0 drives the badge)
+    expect(by.W.net_won).toBe(10000);
     expect(by.L.net_won).toBe(-10000); // 0 − 10000 → loser (<0, no badge)
   });
 
@@ -264,6 +271,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     const final = buildReplayFrames(h).at(-1)!;
     expect(final.showdownResult).toBe("chop");
     expect(final.showdownWinnerIds).toEqual(["A", "B"]);
+    expect(final.potAwards).toEqual([{ potIndex: 0, amount: 2000, winnerPlayerIds: ["A", "B"] }]);
     expect(final.seats.filter((s) => s.pot_winner)).toHaveLength(2);
     expect(final.seats.every((s) => s.net_won === 0)).toBe(true);
   });
@@ -284,8 +292,19 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     };
     const final = buildReplayFrames(h).at(-1)!;
     expect(final.showdownResult).toBe("needs_resettle");
+    expect(final.potAwards).toEqual([]);
     expect(final.seats.every((s) => s.pot_winner !== true)).toBe(true);
     expect(final.seats.every((s) => s.net_won == null)).toBe(true);
+  });
+
+  it("marks a non-tied payout mismatch as needs_resettle", () => {
+    const h = withEnd();
+    h.players = h.players.map((p) => p.player_id === "W" ? { ...p, ending_stack: 19_400 } : p);
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.showdownResult).toBe("needs_resettle");
+    expect(final.payoutVerified).toBe(false);
+    expect(final.potAwards).toEqual([]);
+    expect(final.seats.every((s) => s.net_won == null && s.pot_winner !== true)).toBe(true);
   });
 
   it("a SHOWDOWN with no ending_stack stays null (engine can't evaluate hands)", () => {
@@ -297,7 +316,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     expect(final.seats.every((s) => s.net_won == null)).toBe(true);
   });
 
-  it("FOLD-WIN with no ending_stack: the lone survivor still gets net_won (non-showdown glow)", () => {
+  it("does not glow a fold winner without persisted ending stacks", () => {
     const h: ReplayHand = {
       hand_number: 1,
       button_seat: 1,
@@ -316,9 +335,31 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     const frames = buildReplayFrames(h);
     // Strictly final-frame-only: no glow on any step before the last.
     expect(frames.slice(0, -1).every((f) => f.seats.every((s) => s.net_won == null))).toBe(true);
-    const by = Object.fromEntries(frames.at(-1)!.seats.map((s) => [s.player_id, s]));
-    expect(by.A.net_won).toBe(100); // pot 400 − A's 300 contribution → winner glows
-    expect(by.B.net_won).toBeNull(); // folder → no glow
+    expect(frames.at(-1)!.seats.every((s) => s.net_won == null && s.pot_winner !== true)).toBe(true);
+    expect(frames.at(-1)!.potAwards).toEqual([]);
+  });
+
+  it("verifies fold-win payout, refund and award against ending stacks", () => {
+    const h: ReplayHand = {
+      hand_number: 2,
+      button_seat: 1,
+      community_cards: [],
+      players: [
+        { player_id: "A", seat_number: 1, display_name: "A", starting_stack: 10000, ending_stack: 10100 },
+        { player_id: "B", seat_number: 2, display_name: "B", starting_stack: 10000, ending_stack: 9900 },
+      ],
+      actions: [
+        { player_id: "A", action_type: "post_sb", action_amount: 50, street: "preflop", action_order: 1 },
+        { player_id: "B", action_type: "post_bb", action_amount: 100, street: "preflop", action_order: 2 },
+        { player_id: "A", action_type: "raise", action_amount: 250, street: "preflop", action_order: 3 },
+        { player_id: "B", action_type: "fold", action_amount: 0, street: "preflop", action_order: 4 },
+      ],
+    };
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.potSize).toBe(200);
+    expect(final.payoutVerified).toBe(true);
+    expect(final.potAwards).toEqual([{ potIndex: 0, amount: 200, winnerPlayerIds: ["A"] }]);
+    expect(final.seats.find((s) => s.player_id === "A")?.net_won).toBe(100);
   });
 });
 
