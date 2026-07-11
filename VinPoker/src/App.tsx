@@ -270,6 +270,7 @@ const App = () => (
                 <Route path="/ops/accounting" element={<OpsAccounting />} />
                 <Route path="/ops/series" element={<OpsSeries />} />
                 <Route path="/ops/cashier" element={<OpsCashier />} />
+                <Route path="/ops/staff-salary" element={<StaffSalaryChot />} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat, Megaphone, Coins, Scale, Sparkles } from "lucide-react";
+import { Search, Users, Wallet, UtensilsCrossed, Boxes, ChevronRight, Repeat, Megaphone, Coins, Scale, Sparkles, Calculator } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DealerStatusCard } from "@/components/ops/shared/DealerStatusCard";
 import { PlayerLookupCard } from "@/components/ops/shared/PlayerLookupCard";
@@ -17,6 +17,7 @@ const LINKS = [
   { icon: UtensilsCrossed, label: "F&B", badge: "2 chờ thu", to: "/ops/fnb" },
   { icon: Boxes, label: "Chip Ops", badge: "", to: "/ops/chip-ops" },
   { icon: Megaphone, label: "Marketing", badge: "", to: "/ops/marketing" },
+  { icon: Calculator, label: "Chốt lương nhân viên", badge: "", to: "/ops/staff-salary" },
 ];
 
 export default function OpsMore() {
