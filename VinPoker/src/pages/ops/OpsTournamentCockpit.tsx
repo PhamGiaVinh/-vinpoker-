@@ -183,6 +183,62 @@ export default function OpsTournamentCockpit() {
     return () => { alive = false; };
   }, [cockpitOn, tab, id]);
 
+  // Restore người bị loại → RPC `restore_busted_player_to_seat` (un-bust + vào ghế trống + chip cũ).
+  // ⚠️ SOURCE-ONLY tới khi owner apply → toast "chưa bật" nếu RPC chưa có (42883/PGRST202).
+  const [restoreTarget, setRestoreTarget] = useState<BustedRow | null>(null);
+  const [restoreTtId, setRestoreTtId] = useState<string | null>(null);
+  const [restoreSeat, setRestoreSeat] = useState<number | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const restoreTargets = useMemo(() => floor.tables.map((tb) => {
+    const occ = new Set((floor.seatsByTable[tb.table_id] ?? []).filter((x) => x.is_active).map((x) => x.seat_number));
+    const freeSeats = Array.from({ length: tb.max_seats }, (_, i) => i + 1).filter((n) => !occ.has(n));
+    return { tt_id: tb.tt_id, table_number: tb.table_number, freeSeats };
+  }).filter((tb) => tb.freeSeats.length > 0), [floor.tables, floor.seatsByTable]);
+  const openRestore = (b: BustedRow) => {
+    const first = restoreTargets[0] ?? null;
+    setRestoreTtId(first?.tt_id ?? null);
+    setRestoreSeat(first && first.freeSeats.length > 0 ? first.freeSeats[0] : null);
+    setRestoreTarget(b);
+  };
+  const doRestore = useCallback(async () => {
+    if (!restoreTarget || !restoreTtId || restoreSeat == null || restoreBusy) return;
+    setRestoreBusy(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("restore_busted_player_to_seat", {
+        p_entry_id: restoreTarget.entry_id,
+        p_to_tournament_table_id: restoreTtId,
+        p_to_seat_number: restoreSeat,
+        p_actor_user_id: user?.id ?? null,
+        p_reason: "floor_restore",
+      });
+      if (error && (error.code === "42883" || error.code === "PGRST202" || /function.*does not exist|could not find the function/i.test(error.message ?? ""))) {
+        toast.error("Chức năng khôi phục chưa được bật trên hệ thống (chờ áp dụng)."); return;
+      }
+      const res = (data ?? null) as { ok?: boolean; error?: string; to_table_number?: number } | null;
+      if (error || !res?.ok) {
+        const code = res?.error ?? error?.message;
+        const map: Record<string, string> = {
+          entry_not_busted: "Người này không còn ở trạng thái bị loại.",
+          actor_not_allowed: "Không có quyền khôi phục cho CLB này.",
+          already_active: "Người này đã đang ngồi ở bàn khác.",
+          seat_occupied: "Ghế vừa có người ngồi — chọn ghế khác.",
+          invalid_destination_table: "Bàn không hợp lệ hoặc đã đóng.",
+          invalid_seat_number: "Số ghế không hợp lệ.",
+          unauthorized: "Bạn cần đăng nhập lại.",
+        };
+        toast.error(code ? (map[code] ?? `Khôi phục thất bại (${code})`) : "Khôi phục thất bại"); return;
+      }
+      toast.success(`Đã cho ${restoreTarget.player_name} vào lại Bàn ${res.to_table_number ?? "?"} · ghế ${restoreSeat}`);
+      setBusted((s) => ({ ...s, rows: s.rows.filter((r) => r.entry_id !== restoreTarget.entry_id) }));
+      setRestoreTarget(null);
+      floor.reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Khôi phục thất bại");
+    } finally {
+      setRestoreBusy(false);
+    }
+  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, user, floor]);
+
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
       <button onClick={() => navigate("/ops/tournaments")} className="ios-press-sm -ml-1 flex items-center gap-0.5 py-1 text-[15px] text-[#c9a86a]">
@@ -365,6 +421,10 @@ export default function OpsTournamentCockpit() {
                       <span className="block truncate text-[15px] text-[#9b8e97] line-through">{b.player_name}</span>
                       <span className="block text-[12px] text-[#7c7079]">Đã loại{b.prize ? ` · thưởng ${vnd(b.prize)}` : ""}</span>
                     </span>
+                    <button onClick={() => openRestore(b)} disabled={restoreTargets.length === 0}
+                      className="ios-press-sm shrink-0 rounded-full bg-emerald-400/12 px-3 py-1.5 text-[12px] font-semibold text-emerald-300 disabled:opacity-40">
+                      Cho vào lại
+                    </button>
                   </div>
                 ))}
               </div>
@@ -487,6 +547,51 @@ export default function OpsTournamentCockpit() {
             );
           })()}
           <div className="mt-2 text-center text-[11px] text-[#7c7079]">chạm 1 ghế → thao tác người chơi</div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Khôi phục người bị loại → chọn bàn·ghế trống → RPC restore_busted_player_to_seat */}
+      <Sheet open={restoreTarget !== null} onOpenChange={(v) => { if (!v && !restoreBusy) setRestoreTarget(null); }}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
+          <div className="ios-grabber mb-3 mt-1" />
+          <SheetHeader className="text-left">
+            <SheetTitle className="text-[#f2ece6]">Cho vào lại: {restoreTarget?.player_name}</SheetTitle>
+          </SheetHeader>
+          <div className="mt-0.5 text-[13px] text-[#9b8e97]">Trả lại <span className="font-mono text-[#c9a86a]">{vnd(restoreTarget?.last_chip)}</span> chip vào 1 ghế trống · un-bust người bị loại nhầm.</div>
+          {restoreTargets.length === 0 ? (
+            <div className="ios-card mt-3 flex flex-col items-center gap-2 py-8 text-center">
+              <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống — mở thêm bàn ở màn Bàn trước.</div>
+              <button onClick={() => setRestoreTarget(null)} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
+            </div>
+          ) : (
+            <>
+              <div className="ios-card mt-3 p-3.5">
+                <div className="text-[12px] text-[#9b8e97]">Chọn bàn (còn ghế trống)</div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {restoreTargets.map((tb) => (
+                    <button key={tb.tt_id} onClick={() => { setRestoreTtId(tb.tt_id); setRestoreSeat(tb.freeSeats[0] ?? null); }}
+                      className={cn("ios-press-sm grid h-8 min-w-9 place-items-center rounded-lg px-2 text-[13px] font-semibold", restoreTtId === tb.tt_id ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
+                      {tb.table_number ?? "?"}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống — chạm để chọn</div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {(restoreTargets.find((x) => x.tt_id === restoreTtId)?.freeSeats ?? []).map((seatNo) => (
+                    <button key={seatNo} onClick={() => setRestoreSeat(seatNo)}
+                      className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold", restoreSeat === seatNo ? "bg-[#c9a86a] text-[#241A08]" : "bg-emerald-400/15 text-emerald-300")}>
+                      {seatNo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button disabled={restoreBusy || restoreTtId === null || restoreSeat === null} onClick={doRestore}
+                className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
+                {restoreBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {restoreBusy ? "Đang khôi phục…" : `Cho vào Bàn ${restoreTargets.find((x) => x.tt_id === restoreTtId)?.table_number ?? "?"} · ghế ${restoreSeat ?? "—"}`}
+              </button>
+            </>
+          )}
         </SheetContent>
       </Sheet>
 
