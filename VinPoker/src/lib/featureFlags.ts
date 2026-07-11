@@ -1345,8 +1345,9 @@ export const FEATURES = {
    * Bàn), busted chỉ xem. Client-only, tái dùng Edge/RPC đã live (không backend/migration mới).
    * Default **OFF** (kill-switch): while false cockpit S2 = redirect cũ, S3 = leaderboard read-only cũ.
    * Flip true sau UAT Preview. (Refactor OpsTables tách hook/handlers ship live, hành vi y nguyên.)
+   * **ON 2026-07-11** (owner-approved sau #863 merged). Kill-switch: set false.
    */
-  cockpitFloorActions: false,
+  cockpitFloorActions: true,
   /**
    * staffApp — NEW `/staff/*` self-service portal for NON-dealer staff (floor, cashier,
    * tracker, service, security). Mirrors the dealer app shell but reads a SEPARATE `staff`
