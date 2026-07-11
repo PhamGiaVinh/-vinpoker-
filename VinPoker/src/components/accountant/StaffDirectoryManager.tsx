@@ -148,7 +148,7 @@ function CodeDialog({
             onClick={() => { if (info) navigator.clipboard?.writeText(info.code).then(() => toast.success("Đã copy mã.")); }}
             className="w-full rounded-xl border border-primary/40 bg-primary/10 px-4 py-4 text-center transition-colors hover:bg-primary/15"
           >
-            <div className="text-3xl font-display font-black tracking-[0.3em] text-primary">{info?.code}</div>
+            <div className="text-2xl font-mono font-black tracking-[0.18em] text-primary break-all">{info?.code}</div>
             <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Copy className="w-3 h-3" /> Bấm để copy
             </div>

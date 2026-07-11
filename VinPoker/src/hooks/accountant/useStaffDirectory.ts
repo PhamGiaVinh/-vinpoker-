@@ -166,6 +166,14 @@ export function useStaffLinkUser(clubId: string | null) {
  * redeems it themselves in the /staff portal (staff_redeem_link_code) — no manual account pick.
  * Needs migration 20261238000000; ERRCODE 42883 → "chưa mở" (migration not applied).
  */
+const GEN_ERRORS: Record<string, string> = {
+  ALREADY_LINKED: "Hồ sơ này đã được liên kết rồi — không cần tạo mã.",
+  NOT_FOUND: "Không tìm thấy hồ sơ nhân viên.",
+  Forbidden: "Bạn không có quyền tạo mã cho hồ sơ này.",
+  CODE_GEN_FAILED: "Không tạo được mã, thử lại lần nữa.",
+  Unauthorized: "Bạn cần đăng nhập trước.",
+};
+
 export function useStaffGenerateCode() {
   return useMutation({
     mutationFn: async (staffId: string) => {
@@ -176,7 +184,7 @@ export function useStaffGenerateCode() {
         }
         throw error;
       }
-      if (data?.error) throw new Error(data.detail ?? data.error);
+      if (data?.error) throw new Error(GEN_ERRORS[data.error] ?? data.detail ?? data.error);
       return data as { status: "ok"; code: string; expires_at: string };
     },
     onError: (e: any) => toast.error(e?.message ?? "Không tạo được mã."),
