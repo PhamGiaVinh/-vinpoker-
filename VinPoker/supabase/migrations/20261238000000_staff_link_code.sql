@@ -1,0 +1,137 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Staff self-link by INVITE CODE (Kế toán / danh bạ) — SOURCE-ONLY: NOT applied live.
+--
+-- Apply is a SEPARATE owner-gated controlled op (Management API -> verify grants/DEFINER/
+-- search_path/RLS -> types regen). NO `supabase db push`, NO deploy_db, NO schema_migrations edit.
+--
+-- WHY: today a staff member is linked ONLY when an owner/accountant runs staff_link_user
+-- (picking the auth user). This adds a self-service path (the "mã mời" promised in
+-- StaffNotLinkedScreen) so staff link THEMSELVES: owner/accountant generates a one-time code
+-- for an unlinked staff row; the staff logs into the app and redeems it in the /staff portal.
+-- NO Telegram, NO edge function (that is a LATER layer that can reuse this same code).
+--
+-- SECURITY: the redeem binds auth.uid() (the caller = the staff themselves), NOT a client id.
+-- First-link-wins is unchanged and concurrency-safe (UPDATE … WHERE user_id IS NULL RETURNING —
+-- exactly one racer wins; the loser gets ALREADY_LINKED). The code is one-time (cleared on
+-- redeem), expires (14 days), unique, and 8 hex chars. Auth link stays SEPARATE from any future
+-- telegram link. Writes the existing staff_link_audit ledger (from 20261236000000).
+--
+-- WHAT (additive, idempotent):
+--   1. staff.link_code + link_code_expires_at columns + partial unique index.
+--   2. staff_generate_link_code(staff_id) — owner/accountant; unlinked staff only; returns code.
+--   3. staff_redeem_link_code(code)      — the staff (auth.uid()) binds themselves; one-time.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+BEGIN;
+
+ALTER TABLE public.staff ADD COLUMN IF NOT EXISTS link_code text;
+ALTER TABLE public.staff ADD COLUMN IF NOT EXISTS link_code_expires_at timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_link_code ON public.staff (link_code) WHERE link_code IS NOT NULL;
+
+-- ── 1. Generate / refresh an invite code (owner + accountant; unlinked staff only) ──
+CREATE OR REPLACE FUNCTION public.staff_generate_link_code(p_staff_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid     uuid := auth.uid();
+  v_club_id uuid;
+  v_user    uuid;
+  v_code    text;
+  v_exp     timestamptz := now() + interval '14 days';
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('error', 'Unauthorized'); END IF;
+
+  SELECT club_id, user_id INTO v_club_id, v_user
+  FROM public.staff WHERE id = p_staff_id AND deleted_at IS NULL;
+  IF v_club_id IS NULL THEN RETURN jsonb_build_object('error', 'NOT_FOUND'); END IF;
+
+  IF NOT (public.is_club_owner(v_uid, v_club_id)
+          OR public.is_club_accountant(v_uid, v_club_id)) THEN
+    RETURN jsonb_build_object('error', 'Forbidden');
+  END IF;
+  IF v_user IS NOT NULL THEN
+    RETURN jsonb_build_object('error', 'ALREADY_LINKED');
+  END IF;
+
+  v_code := upper(substr(md5(gen_random_uuid()::text || clock_timestamp()::text), 1, 8));
+
+  UPDATE public.staff
+  SET link_code = v_code, link_code_expires_at = v_exp, updated_at = now()
+  WHERE id = p_staff_id AND user_id IS NULL AND deleted_at IS NULL;
+
+  RETURN jsonb_build_object('status', 'ok', 'code', v_code, 'expires_at', v_exp);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.staff_generate_link_code(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.staff_generate_link_code(uuid) TO authenticated;
+
+-- ── 2. Redeem — the STAFF (auth.uid()) links themselves; one-time, first-link-wins ──
+CREATE OR REPLACE FUNCTION public.staff_redeem_link_code(p_code text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid   uuid := auth.uid();
+  v_code  text := upper(btrim(coalesce(p_code, '')));
+  v_staff record;
+  v_won   uuid;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('error', 'Unauthorized'); END IF;
+  IF length(v_code) < 6 THEN
+    RETURN jsonb_build_object('error', 'INVALID_INPUT', 'detail', 'code');
+  END IF;
+
+  SELECT id, club_id, user_id, link_code_expires_at INTO v_staff
+  FROM public.staff WHERE link_code = v_code AND deleted_at IS NULL;
+  IF v_staff.id IS NULL THEN RETURN jsonb_build_object('error', 'NOT_FOUND'); END IF;
+  IF v_staff.user_id IS NOT NULL THEN RETURN jsonb_build_object('error', 'ALREADY_LINKED'); END IF;
+  IF v_staff.link_code_expires_at IS NOT NULL AND v_staff.link_code_expires_at < now() THEN
+    RETURN jsonb_build_object('error', 'EXPIRED');
+  END IF;
+
+  -- Concurrency-safe first-link-wins + one-time (clear the code on success).
+  UPDATE public.staff
+  SET user_id = v_uid, link_code = NULL, link_code_expires_at = NULL, updated_at = now()
+  WHERE id = v_staff.id AND user_id IS NULL AND deleted_at IS NULL
+  RETURNING user_id INTO v_won;
+
+  IF v_won IS NULL THEN RETURN jsonb_build_object('error', 'ALREADY_LINKED'); END IF;
+
+  INSERT INTO public.staff_link_audit (staff_id, club_id, user_id, actor)
+  VALUES (v_staff.id, v_staff.club_id, v_uid, v_uid);
+
+  RETURN jsonb_build_object('status', 'ok', 'staff_id', v_staff.id, 'club_id', v_staff.club_id);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.staff_redeem_link_code(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.staff_redeem_link_code(text) TO authenticated;
+
+COMMIT;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Controlled-apply TEST PLAN (tx + ROLLBACK; <owner>/<acct> operate <club>, <emp> is the
+-- staff's own auth user, <staffrow> an unlinked staff of <club>):
+--   BEGIN;
+--     SET LOCAL request.jwt.claim.sub = '<acct>';
+--     SELECT public.staff_generate_link_code('<staffrow>');            -- ok → {code}
+--     SET LOCAL request.jwt.claim.sub = '<emp>';
+--     SELECT public.staff_redeem_link_code('<code>');                  -- ok (binds <emp>)
+--     SELECT public.staff_redeem_link_code('<code>');                  -- NOT_FOUND (one-time, cleared)
+--     SET LOCAL request.jwt.claim.sub = '<acct>';
+--     SELECT public.staff_generate_link_code('<staffrow>');            -- ALREADY_LINKED
+--     SET LOCAL request.jwt.claim.sub = '<other_no_role>';
+--     SELECT public.staff_generate_link_code('<staffrow2>');           -- Forbidden
+--   ROLLBACK;
+-- VERIFY: prosrc has auth.uid() bind; both fns SECURITY DEFINER + search_path=public; no anon EXECUTE.
+-- ROLLBACK (undo):
+--   DROP FUNCTION IF EXISTS public.staff_redeem_link_code(text);
+--   DROP FUNCTION IF EXISTS public.staff_generate_link_code(uuid);
+--   DROP INDEX IF EXISTS public.uq_staff_link_code;
+--   ALTER TABLE public.staff DROP COLUMN IF EXISTS link_code_expires_at;
+--   ALTER TABLE public.staff DROP COLUMN IF EXISTS link_code;
+-- ═══════════════════════════════════════════════════════════════════════════════

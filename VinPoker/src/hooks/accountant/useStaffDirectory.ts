@@ -160,3 +160,25 @@ export function useStaffLinkUser(clubId: string | null) {
     onError: (e: any) => toast.error(e?.message ?? "Không liên kết được."),
   });
 }
+
+/**
+ * Generate a one-time invite CODE for an unlinked staff row (owner/accountant). The staff then
+ * redeems it themselves in the /staff portal (staff_redeem_link_code) — no manual account pick.
+ * Needs migration 20261238000000; ERRCODE 42883 → "chưa mở" (migration not applied).
+ */
+export function useStaffGenerateCode() {
+  return useMutation({
+    mutationFn: async (staffId: string) => {
+      const { data, error } = await rpc("staff_generate_link_code", { p_staff_id: staffId });
+      if (error) {
+        if (error.code === "42883" || `${error.message ?? ""}`.toLowerCase().includes("could not find the function")) {
+          throw new Error("Tính năng mã mời chưa mở — chờ chủ CLB áp DB (20261238000000).");
+        }
+        throw error;
+      }
+      if (data?.error) throw new Error(data.detail ?? data.error);
+      return data as { status: "ok"; code: string; expires_at: string };
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Không tạo được mã."),
+  });
+}
