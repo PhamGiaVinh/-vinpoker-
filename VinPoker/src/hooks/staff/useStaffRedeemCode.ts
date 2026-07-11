@@ -8,6 +8,7 @@ const rpc = (fn: string, args: Record<string, unknown>) => (supabase.rpc as any)
 const ERRORS: Record<string, string> = {
   NOT_FOUND: "Mã không đúng hoặc đã dùng. Kiểm tra lại với chủ CLB.",
   ALREADY_LINKED: "Hồ sơ này đã liên kết với tài khoản khác.",
+  ALREADY_LINKED_ELSEWHERE: "Tài khoản của bạn đã gắn với một hồ sơ khác trong CLB này rồi.",
   EXPIRED: "Mã đã hết hạn — nhờ chủ CLB tạo mã mới.",
   INVALID_INPUT: "Mã không hợp lệ (tối thiểu 6 ký tự).",
   Unauthorized: "Bạn cần đăng nhập trước.",

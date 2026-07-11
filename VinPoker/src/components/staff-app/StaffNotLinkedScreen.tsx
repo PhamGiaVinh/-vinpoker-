@@ -47,18 +47,18 @@ export function StaffNotLinkedScreen() {
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();
             }}
-            placeholder="VD: 3F9A2C7B"
+            placeholder="VD: 3F9A2C7B10E4"
             autoCapitalize="characters"
             autoComplete="off"
             spellCheck={false}
             maxLength={16}
-            className="font-mono tracking-[0.2em] text-center"
+            className="font-mono tracking-[0.15em] text-center"
           />
           <Button onClick={submit} disabled={trimmed.length < 6 || redeem.isPending} className="shrink-0">
             {redeem.isPending ? "Đang liên kết…" : "Liên kết"}
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">Mã 8 ký tự, dùng 1 lần. Không có mã? Hỏi chủ CLB / kế toán.</p>
+        <p className="text-[11px] text-muted-foreground">Mã 12 ký tự, dùng 1 lần. Không có mã? Hỏi chủ CLB / kế toán.</p>
       </div>
 
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-left text-[12px] text-muted-foreground">

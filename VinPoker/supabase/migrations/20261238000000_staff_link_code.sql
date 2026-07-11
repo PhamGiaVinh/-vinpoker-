@@ -13,7 +13,9 @@
 -- SECURITY: the redeem binds auth.uid() (the caller = the staff themselves), NOT a client id.
 -- First-link-wins is unchanged and concurrency-safe (UPDATE … WHERE user_id IS NULL RETURNING —
 -- exactly one racer wins; the loser gets ALREADY_LINKED). The code is one-time (cleared on
--- redeem), expires (14 days), unique, and 8 hex chars. Auth link stays SEPARATE from any future
+-- redeem), expires (14 days), unique, and 12 hex chars (48-bit; widened per review). Redeem also
+-- guards the one-active-row-per-club invariant (uq_staff_user_per_club) with a clean error.
+-- Auth link stays SEPARATE from any future
 -- telegram link. Writes the existing staff_link_audit ledger (from 20261236000000).
 --
 -- WHAT (additive, idempotent):
@@ -41,6 +43,7 @@ DECLARE
   v_user    uuid;
   v_code    text;
   v_exp     timestamptz := now() + interval '14 days';
+  v_rows    int := 0;
 BEGIN
   IF v_uid IS NULL THEN RETURN jsonb_build_object('error', 'Unauthorized'); END IF;
 
@@ -56,11 +59,30 @@ BEGIN
     RETURN jsonb_build_object('error', 'ALREADY_LINKED');
   END IF;
 
-  v_code := upper(substr(md5(gen_random_uuid()::text || clock_timestamp()::text), 1, 8));
+  -- 12 hex chars = 48-bit space (this is a bearer credential to a staff identity; widened per
+  -- review from 8/32-bit). Retry on the astronomically-rare global code collision
+  -- (uq_staff_link_code) instead of letting a raw 23505 escape.
+  FOR i IN 1..5 LOOP
+    v_code := upper(substr(md5(gen_random_uuid()::text || clock_timestamp()::text), 1, 12));
+    BEGIN
+      UPDATE public.staff
+      SET link_code = v_code, link_code_expires_at = v_exp, updated_at = now()
+      WHERE id = p_staff_id AND user_id IS NULL AND deleted_at IS NULL;
+      GET DIAGNOSTICS v_rows = ROW_COUNT;
+      EXIT;  -- no collision → done (v_rows says whether the row was still eligible)
+    EXCEPTION WHEN unique_violation THEN
+      v_code := NULL;  -- code collided with another live code → regenerate and retry
+    END;
+  END LOOP;
 
-  UPDATE public.staff
-  SET link_code = v_code, link_code_expires_at = v_exp, updated_at = now()
-  WHERE id = p_staff_id AND user_id IS NULL AND deleted_at IS NULL;
+  IF v_code IS NULL THEN
+    RETURN jsonb_build_object('error', 'CODE_GEN_FAILED');  -- 5 collisions in a row (never in practice)
+  END IF;
+  IF v_rows = 0 THEN
+    -- The row was linked or removed between the SELECT check and the UPDATE (TOCTOU): the code
+    -- was NOT persisted, so do NOT hand back an unusable code — report the real state instead.
+    RETURN jsonb_build_object('error', 'ALREADY_LINKED');
+  END IF;
 
   RETURN jsonb_build_object('status', 'ok', 'code', v_code, 'expires_at', v_exp);
 END;
@@ -94,11 +116,23 @@ BEGIN
     RETURN jsonb_build_object('error', 'EXPIRED');
   END IF;
 
-  -- Concurrency-safe first-link-wins + one-time (clear the code on success).
-  UPDATE public.staff
-  SET user_id = v_uid, link_code = NULL, link_code_expires_at = NULL, updated_at = now()
-  WHERE id = v_staff.id AND user_id IS NULL AND deleted_at IS NULL
-  RETURNING user_id INTO v_won;
+  -- A uid may hold at most ONE active staff row per club (uq_staff_user_per_club). If the caller
+  -- is already linked to a DIFFERENT active row in THIS club, fail cleanly instead of a raw 23505.
+  IF EXISTS (SELECT 1 FROM public.staff
+             WHERE club_id = v_staff.club_id AND user_id = v_uid AND deleted_at IS NULL) THEN
+    RETURN jsonb_build_object('error', 'ALREADY_LINKED_ELSEWHERE');
+  END IF;
+
+  -- Concurrency-safe first-link-wins + one-time (clear the code on success). The EXCEPTION guards
+  -- the race window where a concurrent link created the (club, uid) pair after the check above.
+  BEGIN
+    UPDATE public.staff
+    SET user_id = v_uid, link_code = NULL, link_code_expires_at = NULL, updated_at = now()
+    WHERE id = v_staff.id AND user_id IS NULL AND deleted_at IS NULL
+    RETURNING user_id INTO v_won;
+  EXCEPTION WHEN unique_violation THEN
+    RETURN jsonb_build_object('error', 'ALREADY_LINKED_ELSEWHERE');
+  END;
 
   IF v_won IS NULL THEN RETURN jsonb_build_object('error', 'ALREADY_LINKED'); END IF;
 
