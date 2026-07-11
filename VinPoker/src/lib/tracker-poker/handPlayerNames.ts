@@ -54,6 +54,7 @@ export function __resetHandPlayersSnapshotProbe(): void {
 export async function fetchHandPlayerDisplay(
   tournamentId: string | undefined | null,
   playerIds: string[],
+  options: { includeProfiles?: boolean } = {},
 ): Promise<Map<string, HandPlayerDisplay>> {
   const map = new Map<string, HandPlayerDisplay>();
   const ids = [...new Set(playerIds)].filter(Boolean);
@@ -78,5 +79,21 @@ export async function fetchHandPlayerDisplay(
   (rows ?? []).forEach((s: any) => {
     map.set(s.player_id, { name: s.player_name || undefined, avatar: s.avatar_url ?? null });
   });
+
+  const missingProfileIds = options.includeProfiles ? ids.filter((playerId) => !map.get(playerId)?.name) : [];
+  if (missingProfileIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, display_name, avatar_url")
+      .in("user_id", missingProfileIds);
+    (profiles ?? []).forEach((profile) => {
+      if (!profile.display_name && !profile.avatar_url) return;
+      const current = map.get(profile.user_id);
+      map.set(profile.user_id, {
+        name: current?.name ?? profile.display_name ?? undefined,
+        avatar: current?.avatar ?? profile.avatar_url ?? null,
+      });
+    });
+  }
   return map;
 }

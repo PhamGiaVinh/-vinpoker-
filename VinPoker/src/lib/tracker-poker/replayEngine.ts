@@ -354,6 +354,7 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       }
       st.last = formatActionLabel({
         street: a.street,
+        player_id: a.player_id,
         display_name: "",
         seat_number: 0,
         action_type: a.action_type,

@@ -6,6 +6,10 @@ export function parseViewerTab(value: string | null, fallback: ViewerTab = "upda
   return value && VIEWER_TABS.has(value as ViewerTab) ? (value as ViewerTab) : fallback;
 }
 
+export function defaultViewerTab(input: { isMobile: boolean; hasDeepLinkedHand: boolean }): ViewerTab {
+  return input.hasDeepLinkedHand || input.isMobile ? "hands" : "updates";
+}
+
 export function viewerTabToPanel(tab: ViewerTab): string {
   return tab === "hands" ? "history" : tab;
 }

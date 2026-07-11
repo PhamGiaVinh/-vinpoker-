@@ -29,7 +29,7 @@ function probeQuery(result: { error?: any }) {
 function seatQuery(result: { data?: any[] | null; error?: any }) {
   const inFn = vi.fn().mockResolvedValue(result);
   const eqFn = vi.fn(() => ({ in: inFn }));
-  const selectFn = vi.fn(() => ({ eq: eqFn }));
+  const selectFn = vi.fn(() => ({ eq: eqFn, in: inFn }));
   return { select: selectFn, _in: inFn };
 }
 
@@ -89,6 +89,15 @@ describe("fetchHandPlayerDisplay", () => {
     from.mockReturnValue(q as any);
     await fetchHandPlayerDisplay("t1", ["p1", "p1", "p2"]);
     expect(q._in).toHaveBeenCalledWith("player_id", ["p1", "p2"]);
+  });
+
+  it("falls back to a valid profile when every seat snapshot is blank", async () => {
+    from
+      .mockReturnValueOnce(seatQuery({ data: [{ player_id: "p1", player_name: "", avatar_url: null }] }) as any)
+      .mockReturnValueOnce(seatQuery({ data: [{ user_id: "p1", display_name: "Profile Name", avatar_url: "profile.png" }] }) as any);
+    const map = await fetchHandPlayerDisplay("t1", ["p1"], { includeProfiles: true });
+    expect(map.get("p1")).toEqual({ name: "Profile Name", avatar: "profile.png" });
+    expect(from).toHaveBeenNthCalledWith(2, "profiles");
   });
 });
 

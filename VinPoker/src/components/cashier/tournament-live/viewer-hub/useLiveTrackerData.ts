@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   activeSeats,
   deriveBubbleItm,
@@ -140,8 +141,9 @@ export function useLiveTrackerData(tournamentId: string | undefined): LiveTracke
 
       const allSeatRows = (seatRows as RawSeat[]) || [];
       const seats = activeSeats(allSeatRows);
-      const nameByPlayer = new Map(seats.map((s) => [s.player_id, s.player_name || s.player_id.slice(0, 6)]));
-      const seatByPlayer = new Map(seats.map((s) => [s.player_id, s.seat_number]));
+      const actionIdentityRows = FEATURES.liveViewerPulseV2 ? allSeatRows : seats;
+      const nameByPlayer = new Map(actionIdentityRows.map((s) => [s.player_id, s.player_name || "Người chơi"]));
+      const seatByPlayer = new Map(actionIdentityRows.map((s) => [s.player_id, s.seat_number]));
       const tables = deriveTables(seats, tableNamesRef.current);
 
       // Eliminated players are no longer ACTIVE seats, but their tournament_seats

@@ -9,12 +9,26 @@ import { Crown, Share2, Play } from "lucide-react";
 import { PokerCard, CardBack } from "../PokerVisuals";
 import { fmtCompact } from "./hubDerive";
 import type { HandFeedItem, HandFeedTag } from "./handFeedDerive";
+import { ViewerActionTimeline } from "./ViewerActionTimeline";
 
 const TAG_META: Record<HandFeedTag, { label: string; cls: string }> = {
   all_in: { label: "ALL-IN", cls: "border-[#991B1B] bg-[#991B1B]/25 text-[#ff9b9b]" },
   big_pot: { label: "BIG POT", cls: "border-success/40 bg-success/15 text-success" },
   high_hand: { label: "HIGH HAND", cls: "border-warning/40 bg-warning/15 text-warning" },
   eliminated: { label: "ELIMINATED", cls: "border-destructive/40 bg-destructive/15 text-destructive" },
+};
+
+const HAND_CATEGORY_LABEL: Record<string, string> = {
+  royal_flush: "Royal Flush",
+  straight_flush: "Straight Flush",
+  quads: "Four of a Kind",
+  full_house: "Full House",
+  flush: "Flush",
+  straight: "Straight",
+  trips: "Three of a Kind",
+  two_pair: "Two Pair",
+  pair: "One Pair",
+  high_card: "High Card",
 };
 
 function pad5(board: string[]): (string | null)[] {
@@ -127,6 +141,13 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
                       {showFinish && <span className="rounded bg-destructive/15 px-1 text-[9px] font-bold text-destructive">#{player.finishPosition}</span>}
                     </div>
                     {player.seatNumber > 0 && <span className="text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: player.seatNumber })}</span>}
+                    {player.handRank && (
+                      <span className="block truncate text-[10px] font-semibold text-[hsl(var(--poker-gold))]">
+                        {HAND_CATEGORY_LABEL[player.handRank.category]}
+                        {player.handRank.primaryRanks.length > 0 ? ` · ${player.handRank.primaryRanks.join("-")}` : ""}
+                        {player.handRank.kickerRanks.length > 0 ? ` · kicker ${player.handRank.kickerRanks.join("-")}` : ""}
+                      </span>
+                    )}
                   </div>
                   <span data-testid="viewer-rpt-hole-cards" className="flex shrink-0 gap-1" aria-label={player.holeCards ? t("liveHub.handFeed.revealedCards", "Bài đã lộ") : t("liveHub.handFeed.hiddenCards", "Bài không được lộ")}>
                     {player.holeCards ? player.holeCards.map((card, index) => (
@@ -143,6 +164,19 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
               );
             })}
           </div>
+
+          {item.showdownResult === "chop" && (
+            <div className="rounded-xl border border-[hsl(var(--poker-gold)_/_0.38)] bg-[hsl(var(--poker-gold)_/_0.09)] px-3 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-[hsl(var(--poker-gold))]">
+              Chop Pot
+            </div>
+          )}
+          {item.showdownResult === "needs_resettle" && (
+            <div className="rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-center text-[11px] font-semibold text-warning">
+              Kết quả đang được kiểm tra lại
+            </div>
+          )}
+
+          <ViewerActionTimeline actions={item.actions ?? []} />
 
           {item.handNumber > 0 && (onShare || onViewHand) && (
             <div className="flex gap-2 border-t border-border/40 pt-3">

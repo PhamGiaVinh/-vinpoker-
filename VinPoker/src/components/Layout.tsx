@@ -81,7 +81,8 @@ export const Layout = () => {
   const nav = useNavigate();
   const hideShellOn = ["/auth"];
   const showShell = !hideShellOn.includes(location.pathname);
-  const isViewerFocusRoute = FEATURES.liveViewerRPTShell && /^\/live\/[^/]+\/?$/.test(location.pathname);
+  const isViewerFocusRoute = (FEATURES.liveViewerRPTShell && /^\/live\/[^/]+\/?$/.test(location.pathname))
+    || /^\/clock\/[^/]+\/?$/.test(location.pathname);
 
   if (!showShell) return <Outlet />;
 

@@ -623,6 +623,21 @@ export const FEATURES = {
    */
   liveSpotlightPosts: false,
   /**
+   * Public Live Center, mobile history-first viewer and public clock adapters.
+   * The flag remains OFF until the read-only RPCs are applied and Preview UAT passes.
+   */
+  liveViewerPulseV2: false,
+  /**
+   * Floor bust + payout confirmation through the server-authoritative atomic RPC.
+   * OFF preserves the current Floor workflow and makes no new write call.
+   */
+  floorAtomicPayout: false,
+  /**
+   * Atomic completed-hand edit and forward resettle through the dedicated Edge path.
+   * OFF preserves the existing operator edit flow; Hand #8 must not use this before UAT.
+   */
+  trackerAtomicResettle: false,
+  /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
    * sizing every card with the felt's own width (CSS container query + clamp), and
