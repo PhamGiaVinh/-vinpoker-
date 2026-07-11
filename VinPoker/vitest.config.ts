@@ -24,6 +24,8 @@ export default defineConfig({
       // Vitest-ONLY: tracker server validation engine. Same guardrail as @engine —
       // it must NOT be reachable from the client Vite build. Do NOT add to vite.config.ts.
       "@tracker-engine": path.resolve(__dirname, "./supabase/functions/_shared/trackerEngine"),
+      // Vitest-only settlement contract. Keep server accounting out of the client bundle.
+      "@settlement": path.resolve(__dirname, "./supabase/functions/_shared/trackerSettlement"),
     },
   },
 });
