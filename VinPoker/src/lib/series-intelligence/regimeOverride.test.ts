@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   emptyRegimeMark,
   parseRegimeMark,
@@ -6,6 +6,14 @@ import {
   setRegimeChanged,
   MAX_REGIME_NOTE_LEN,
   REGIME_OVERRIDE_VERSION,
+  REGIME_OVERRIDE_STORAGE_KEY,
+  keyFor,
+  regimeMarkHasContent,
+  resolveClubMark,
+  loadRegimeMark,
+  watchlistSuggestsRegimeChange,
+  REGIME_WATCHLIST,
+  REGIME_WATCHLIST_THRESHOLD,
 } from "./regimeOverride";
 
 const NOW = "2026-07-03T10:00:00.000Z";
@@ -82,5 +90,85 @@ describe("regimeOverride — round-trip", () => {
 
   it("serialize → parse is identity for an empty mark", () => {
     expect(parseRegimeMark(serializeRegimeMark(emptyRegimeMark()))).toEqual(emptyRegimeMark());
+  });
+});
+
+// TP8 — per-club scoping + migration + watchlist tripwire.
+const changedRaw = (note: string) => serializeRegimeMark(setRegimeChanged(emptyRegimeMark(), true, note, NOW));
+
+describe("regimeOverride — TP8 keyFor + resolveClubMark (pure)", () => {
+  it("keyFor: per-club key vs the legacy global key", () => {
+    expect(keyFor("club-1")).toBe(`${REGIME_OVERRIDE_STORAGE_KEY}.club-1`);
+    expect(keyFor("")).toBe(REGIME_OVERRIDE_STORAGE_KEY);
+    expect(keyFor(null)).toBe(REGIME_OVERRIDE_STORAGE_KEY);
+    expect(keyFor(undefined)).toBe(REGIME_OVERRIDE_STORAGE_KEY);
+  });
+
+  it("regimeMarkHasContent: changed OR note", () => {
+    expect(regimeMarkHasContent(emptyRegimeMark())).toBe(false);
+    expect(regimeMarkHasContent(setRegimeChanged(emptyRegimeMark(), true, "", NOW))).toBe(true);
+    expect(regimeMarkHasContent(setRegimeChanged(emptyRegimeMark(), false, "note", NOW))).toBe(true);
+  });
+
+  it("per-club mark with content wins (no migration)", () => {
+    const r = resolveClubMark(changedRaw("club mark"), changedRaw("legacy"), "club-1");
+    expect(r.migrate).toBe(false);
+    expect(r.mark.note).toBe("club mark");
+  });
+
+  it("empty per-club + legacy-with-content → migrate the legacy mark once", () => {
+    const r = resolveClubMark(null, changedRaw("legacy"), "club-1");
+    expect(r.migrate).toBe(true);
+    expect(r.mark.changed).toBe(true);
+    expect(r.mark.note).toBe("legacy");
+  });
+
+  it("empty per-club + empty legacy → empty, no migration", () => {
+    const r = resolveClubMark(null, null, "club-1");
+    expect(r.migrate).toBe(false);
+    expect(r.mark.changed).toBe(false);
+  });
+
+  it("global context (clubId '') uses its own raw and never migrates", () => {
+    const r = resolveClubMark(changedRaw("global"), changedRaw("legacy"), "");
+    expect(r.migrate).toBe(false);
+    expect(r.mark.note).toBe("global");
+  });
+
+  it("two clubs resolve INDEPENDENTLY (isolation)", () => {
+    const a = resolveClubMark(changedRaw("A-only"), changedRaw("legacy"), "A"); // own mark
+    const b = resolveClubMark(null, changedRaw("legacy"), "B"); // inherits legacy
+    expect(a.mark.note).toBe("A-only");
+    expect(a.migrate).toBe(false);
+    expect(b.mark.note).toBe("legacy");
+    expect(b.migrate).toBe(true);
+  });
+});
+
+describe("regimeOverride — TP8 loadRegimeMark storage (jsdom localStorage)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("migrates a legacy global mark into the club key and persists it", () => {
+    localStorage.setItem(REGIME_OVERRIDE_STORAGE_KEY, changedRaw("legacy"));
+    const m = loadRegimeMark("club-1");
+    expect(m.note).toBe("legacy");
+    expect(parseRegimeMark(localStorage.getItem(keyFor("club-1"))).note).toBe("legacy"); // persisted once
+  });
+
+  it("a club's own mark is isolated from another club", () => {
+    localStorage.setItem(keyFor("A"), changedRaw("A-only"));
+    expect(loadRegimeMark("A").note).toBe("A-only");
+    expect(loadRegimeMark("B").changed).toBe(false); // B: no own mark, no legacy → empty
+  });
+});
+
+describe("regimeOverride — TP8 watchlist tripwire", () => {
+  it("suggests only at/above the threshold", () => {
+    expect(REGIME_WATCHLIST_THRESHOLD).toBe(2);
+    expect(REGIME_WATCHLIST.length).toBe(5);
+    expect(watchlistSuggestsRegimeChange(0)).toBe(false);
+    expect(watchlistSuggestsRegimeChange(1)).toBe(false);
+    expect(watchlistSuggestsRegimeChange(2)).toBe(true);
+    expect(watchlistSuggestsRegimeChange(5)).toBe(true);
   });
 });
