@@ -3038,6 +3038,7 @@
       "empty": "empty",
       "potTotal": "Total Pot",
       "chopPot": "Chop pot",
+      "chopPotShort": "CHOP POT",
       "needsResettle": "Result needs recalculation",
       "showdown": "Showdown",
       "dealerHere": "dealer · fixed",

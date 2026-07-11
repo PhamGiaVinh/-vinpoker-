@@ -51,6 +51,8 @@ export interface SeatInfo {
   net_won?: number | null;
   /** Display-only marker from the replay settlement check. */
   pot_winner?: boolean;
+  /** Verified payout credited to this seat; absent until settlement matches storage. */
+  payout_award?: number | null;
   /** UAT wave 2 (compact viewer only): whole-hand chips committed by an ALL-IN seat —
    * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
    * Absent → the pill falls back to current_bet (today's behavior). */
@@ -755,6 +757,7 @@ export function LiveFelt({
           // operator / TV never trigger this — byte-identical without `tableFx`.
           const netWon = seat.net_won ?? 0;
           const isWinner = tableFx && (seat.pot_winner === true || netWon > 0);
+          const isVerifiedChop = isWinner && showdownResult === "chop" && (seat.payout_award ?? 0) > 0;
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -877,14 +880,23 @@ export function LiveFelt({
                     </div>
                   </>
                 )}
-                {isWinner && (
+                {isWinner && (netWon > 0 || isVerifiedChop) && (
                   <div
                     data-testid="seat-net-won"
                     className="tracker-win-amount tracker-num mt-0.5 text-[9px] font-extrabold leading-tight sm:text-[10px]"
                     style={{ color: "hsl(var(--success))", textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
                   >
-                    +{formatStack(netWon)}
-                    {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
+                    {isVerifiedChop ? (
+                      <>
+                        <span data-testid="seat-pot-award">{t("liveHub.felt.chopPotShort", "CHOP POT")}</span>
+                        <span className="ml-1 font-bold opacity-90">+{formatStack(seat.payout_award ?? 0)}</span>
+                      </>
+                    ) : (
+                      <>
+                        +{formatStack(netWon)}
+                        {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
+                      </>
+                    )}
                   </div>
                 )}
                 {/* Committed-bet indicator. viewerLayout → an RPT-style chip STACK rendered

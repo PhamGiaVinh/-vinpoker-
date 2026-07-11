@@ -118,6 +118,7 @@ function deriveShowdownResult(
   winnerIds: string[];
   payoutMatches: boolean;
   potAwards: { potIndex: number; amount: number; winnerPlayerIds: string[] }[];
+  payoutAwards: Record<string, number>;
 } | null {
   if (board.length !== 5) return null;
 
@@ -152,6 +153,12 @@ function deriveShowdownResult(
     return settlement.results.find((r) => r.player_id === p.player_id)?.ending_stack === p.ending_stack;
   });
   const allLayersAreTied = settlement.layers.every((layer) => layer.winner_player_ids.length > 1);
+  const payoutAwards = Object.fromEntries(
+    settlement.results.map((result) => [
+      result.player_id,
+      Math.max(0, result.ending_stack - (runtime.get(result.player_id)?.chip ?? 0)),
+    ]),
+  );
   return {
     result: !payoutMatches ? "needs_resettle" : allLayersAreTied ? "chop" : "winner",
     winnerIds: payoutMatches ? winnerIds : [],
@@ -163,6 +170,7 @@ function deriveShowdownResult(
           winnerPlayerIds: layer.winner_player_ids,
         }))
       : [],
+    payoutAwards: payoutMatches ? payoutAwards : {},
   };
 }
 
@@ -257,6 +265,14 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
           winnerPlayerIds: [soleWinnerId],
         }))
       : [];
+    const foldPayoutAwards = foldPayoutMatches
+      ? Object.fromEntries(
+          players.map((p) => [
+            p.player_id,
+            Math.max(0, (p.ending_stack ?? 0) - (runtime.get(p.player_id)?.chip ?? 0)),
+          ]),
+        )
+      : {};
     const netWonFor = (p: ReplayHandPlayer): number | null => {
       if (!isFinal || !payoutVerified || p.ending_stack == null) return null;
       return p.ending_stack - clampChips(p.starting_stack);
@@ -283,6 +299,9 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
             ? showdown.winnerIds.includes(p.player_id)
             : p.player_id === soleWinnerId
           : undefined,
+        ...(payoutVerified
+          ? { payout_award: showdown?.payoutAwards[p.player_id] ?? foldPayoutAwards[p.player_id] ?? 0 }
+          : {}),
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
         ...(trackBets ? { current_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),

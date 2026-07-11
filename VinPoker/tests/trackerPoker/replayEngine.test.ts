@@ -273,6 +273,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     expect(final.showdownWinnerIds).toEqual(["A", "B"]);
     expect(final.potAwards).toEqual([{ potIndex: 0, amount: 2000, winnerPlayerIds: ["A", "B"] }]);
     expect(final.seats.filter((s) => s.pot_winner)).toHaveLength(2);
+    expect(final.seats.map((s) => s.payout_award)).toEqual([1000, 1000]);
     expect(final.seats.every((s) => s.net_won === 0)).toBe(true);
   });
 
