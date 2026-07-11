@@ -924,7 +924,7 @@ export const FEATURES = {
    * never auto-flips). Off (default) ⇒ the mark stays on the legacy global key = pre-TP8 behavior, and the
    * watchlist is hidden. LOCAL-only (localStorage), never the DB. Default **OFF**; kill-switch: false.
    */
-  seriesRegimeTripwire: false,
+  seriesRegimeTripwire: true,
   /**
    * Series Intelligence — G7 forecast calibration card in the ⑥ CAPTURE console. When ON, it scores past
    * forecast snapshots against real actuals (client-side, reads the existing capture tables — NO new DB)
@@ -941,7 +941,7 @@ export const FEATURES = {
    * không-làm"). Pure client-side; no new DB write path (uses the existing decision insert). Default **OFF**;
    * kill-switch: false.
    */
-  seriesShadowDecision: false,
+  seriesShadowDecision: true,
   /**
    * Series Intelligence — W1 "Trợ lý Series" at the top of the SI page. When ON, shows the fixed 8-step
    * workflow ring (next step highlighted) + up to 3 concrete "hôm nay cần làm gì" tasks derived from the
@@ -1007,7 +1007,7 @@ export const FEATURES = {
    * from the optional CSV `capacity` column (native has no source yet → null, no effect). Flag off ⇒ byte-
    * identical outputs. Methodology transparency, not a new claim. Default **OFF**; kill-switch: false.
    */
-  seriesCensoring: false,
+  seriesCensoring: true,
   /**
    * Series Intelligence — TP5 rival clash (P0-2). When ON, the turnout-forecast form gets two manual inputs —
    * "đối thủ có giải lớn cùng ngày?" + optional rival GTD — and, when the owner marks a clash, the result shows
@@ -1016,7 +1016,7 @@ export const FEATURES = {
    * never a causal adjustment. Recording the rival context to the snapshot's rival_* columns is deferred to the
    * capture flow after the TP-M migration is applied (text convention until then). Default **OFF**; kill-switch: false.
    */
-  seriesRivalClash: false,
+  seriesRivalClash: true,
   /**
    * Series Intelligence — W5 naive baseline next to the turnout forecast. When ON, the forecast result
    * card shows the "dumbest honest guess" (mean turnout of the last 3 SAME-TYPE past events, leakage-safe)

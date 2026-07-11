@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Landmark, TriangleAlert, MonitorSmartphone } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,13 @@ export function RegimeSwitch({ clubId }: { clubId?: string } = {}) {
   const { mark, setChanged } = useRegimeOverride(FEATURES.seriesRegimeTripwire ? clubId : undefined);
   const [note, setNote] = useState(mark.note);
   const [watch, setWatch] = useState<boolean[]>(() => REGIME_WATCHLIST.map(() => false));
+  // TP8: the active club resolves in an effect AFTER the first render, so on mount `mark` is briefly the global
+  // mark; keep the local note in sync with the resolved (active-club) mark so the textarea can't show + commit a
+  // stale note and overwrite the club's saved note. Typing updates only local `note` (mark unchanged), so this
+  // never clobbers in-progress edits. Gated on the flag → with seriesRegimeTripwire off, behavior is unchanged.
+  useEffect(() => {
+    if (FEATURES.seriesRegimeTripwire) setNote(mark.note);
+  }, [mark]);
   if (!FEATURES.seriesRegimeSwitch || !FEATURES.seriesRegimeNotice) return null;
 
   const on = mark.changed;
