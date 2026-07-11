@@ -14,14 +14,7 @@ import {
   mention,
 } from "../_shared/telegram.ts";
 import { OPEN_TABLE_GRACE_MINUTES } from "../_shared/openTableGrace.ts";
-
-function decodeJWT(token: string): { sub: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
-}
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -34,11 +27,9 @@ Deno.serve(async (req) => {
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const admin = createClient(url, service);
 
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-    const payload = decodeJWT(authHeader.slice(7));
-    if (!payload) return json({ error: "Invalid token" }, 401);
-    const uid = payload.sub;
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
 
     const body = await req.json().catch(() => ({}));
     const { table_id, force_dealer_id, requested_by, idempotency_key, return_suggestions_only, shift_id } = body ?? {};
@@ -60,7 +51,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (te || !table) return json({ error: "Table not found" }, 404);
 
-    // Block assignment if table already has an active dealer (unless force or suggestions-only)
+    // Manual assignment is an open-table operation. A replacement/swing must go
+    // through the dedicated atomic swing RPC, never through this wrapper.
     const { data: activeAssignment } = await admin
       .from("dealer_assignments")
       .select("id, status")
@@ -68,7 +60,7 @@ Deno.serve(async (req) => {
       .in("status", ["assigned", "on_break"])
       .is("released_at", null)
       .maybeSingle();
-    if (activeAssignment && !force_dealer_id && !return_suggestions_only) {
+    if (activeAssignment && !return_suggestions_only) {
       return json({ error: "Table already has an active dealer", assignment_id: activeAssignment.id }, 409);
     }
 
@@ -156,7 +148,9 @@ Deno.serve(async (req) => {
           p_idempotency_key: idempotency_key
             ? `open_manual_${idempotency_key}`
             : `open_manual_${table_id}_${assignedNow}`,
-          p_force_replace: true,
+          // Never replace an existing dealer from the manual-open endpoint.
+          // A true swing uses its own atomic executor and policy checks.
+          p_force_replace: false,
         }
       );
 
@@ -194,7 +188,7 @@ Deno.serve(async (req) => {
 
       await admin.from("audit_logs").insert({
         club_id: table.club_id,
-        actor_id: requested_by ?? uid,
+        actor_id: uid,
         action: "assign",
         entity_type: "dealer_assignment",
         entity_id: assignmentId,

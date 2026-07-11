@@ -536,13 +536,72 @@ async function ensureLockOwnership(
     p_timeout_seconds: leaseSeconds,
   });
   if (error) {
-    console.warn(`[process-swing] extend_club_lock_lease error club=${clubId} (non-fatal):`, error.message);
-    return;
+    console.error(`[process-swing] extend_club_lock_lease failed club=${clubId}; aborting before mutation:`, error.message);
+    throw new LockOwnershipLost(clubId);
   }
   if (data !== true) {
     console.warn(`[process-swing] \U0001F512 lock ownership LOST club=${clubId} — lease reclaimed; aborting remaining passes`);
     throw new LockOwnershipLost(clubId);
   }
+}
+
+type ProcessSwingAuth = { internal: boolean; uid: string | null };
+
+async function authenticateProcessSwingRequest(
+  req: Request,
+  admin: SupabaseClient,
+  requestedClubId: string | null | undefined,
+  manualTrigger: boolean,
+): Promise<ProcessSwingAuth | Response> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const token = authHeader.slice("Bearer ".length).trim();
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const internalSecret = Deno.env.get("PROCESS_SWING_INTERNAL_SECRET") ?? "";
+  // Cron must use the service-role key or a separately provisioned secret. The
+  // public anon key is deliberately not accepted because this function mutates
+  // dealer state and is deployed with verify_jwt disabled.
+  if (token === serviceKey || (internalSecret.length > 0 && token === internalSecret)) {
+    return { internal: true, uid: null };
+  }
+
+  const userClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    serviceKey,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: userData } = await userClient.auth.getUser(token);
+  const uid = userData?.user?.id;
+  if (!uid) {
+    return new Response(JSON.stringify({ error: "Invalid token" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!requestedClubId || !manualTrigger) {
+    return new Response(JSON.stringify({ error: "Manual process-swing requires club_id and manual_trigger" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: isControl } = await admin.rpc("is_club_dealer_control", {
+    _user_id: uid,
+    _club_id: requestedClubId,
+  });
+  if (!isControl) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  return { internal: false, uid };
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -578,6 +637,14 @@ Deno.serve(async (req: Request) => {
       pre_assign_only: preAssignOnly = false,
       manual_window_minutes: manualWindowMinutes = 15,
     } = body;
+
+    const authResult = await authenticateProcessSwingRequest(
+      req,
+      admin,
+      clubId ?? null,
+      manualTrigger === true,
+    );
+    if (authResult instanceof Response) return authResult;
 
     const startTime = Date.now();
     // B2.2b: per-invocation owner id stamped on the fenced club lock (observability).

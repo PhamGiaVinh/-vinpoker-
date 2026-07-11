@@ -58,6 +58,64 @@ const ADJ_TYPE_COLORS: Record<AdjType, string> = {
   TIPS: "border-warning text-warning",
 };
 
+const SAVED_PAYROLL_FIELDS = [
+  "monthly_salary_vnd", "hourly_rate_vnd", "ot_multiplier", "total_shifts",
+  "total_hours", "regular_hours", "ot_hours", "base_salary_vnd",
+  "regular_pay_vnd", "ot_pay_vnd", "gross_pay_vnd", "total_adjustments_vnd",
+  "tips_amount_vnd", "bhxh_deduction_vnd", "bhyt_deduction_vnd",
+  "bhtn_deduction_vnd", "pit_deduction_vnd", "net_pay_vnd",
+  "net_pay_after_tax_vnd",
+] as const;
+
+function mergeSavedPayrollRows(
+  liveRows: DealerPayrollRow[],
+  savedRecords: Record<string, SavedPayrollRecord>,
+): DealerPayrollRow[] {
+  const liveByDealer = new Map(liveRows.map((row) => [row.dealer_id, row]));
+  return Object.values(savedRecords)
+    .filter((saved) => saved.status !== "excluded")
+    .map((saved) => {
+      const live = liveByDealer.get(saved.dealer_id);
+      const row: DealerPayrollRow = live ? { ...live } : {
+        dealer_id: saved.dealer_id,
+        full_name: `Dealer ${saved.dealer_id.slice(0, 8)}`,
+        employment_type: saved.employment_type === "full_time" ? "full_time" : "part_time",
+        monthly_salary_vnd: 0,
+        hourly_rate_vnd: 0,
+        standard_hours_per_shift: 0,
+        ot_multiplier: 0,
+        standard_shifts_per_month: 0,
+        total_shifts: 0,
+        total_hours: 0,
+        regular_hours: 0,
+        ot_hours: 0,
+        base_salary_vnd: 0,
+        regular_pay_vnd: 0,
+        ot_pay_vnd: 0,
+        gross_pay_vnd: 0,
+        total_adjustments_vnd: 0,
+        tips_amount_vnd: 0,
+        bhxh_deduction_vnd: 0,
+        bhyt_deduction_vnd: 0,
+        bhtn_deduction_vnd: 0,
+        pit_deduction_vnd: 0,
+        net_pay_vnd: 0,
+        net_pay_after_tax_vnd: 0,
+        shifts: [],
+      };
+
+      row.employment_type = saved.employment_type === "full_time" ? "full_time" : "part_time";
+      for (const field of SAVED_PAYROLL_FIELDS) {
+        row[field] = Number(saved[field] ?? 0);
+      }
+      return row;
+    })
+    .sort((a, b) => {
+      if (a.employment_type !== b.employment_type) return a.employment_type === "full_time" ? -1 : 1;
+      return a.full_name.localeCompare(b.full_name);
+    });
+}
+
 // ── Column config (single source of truth for table + export + PDF) ──────────
 
 type HideBelow = "md" | "lg" | "xl";
@@ -392,8 +450,15 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  const ftDealers = useMemo(() => payrollRows.filter((d) => d.employment_type === "full_time"), [payrollRows]);
-  const ptDealers = useMemo(() => payrollRows.filter((d) => d.employment_type === "part_time"), [payrollRows]);
+  const displayRows = useMemo(
+    () => savedPeriodId && Object.keys(savedRecords).length > 0
+      ? mergeSavedPayrollRows(payrollRows, savedRecords)
+      : payrollRows,
+    [payrollRows, savedPeriodId, savedRecords],
+  );
+
+  const ftDealers = useMemo(() => displayRows.filter((d) => d.employment_type === "full_time"), [displayRows]);
+  const ptDealers = useMemo(() => displayRows.filter((d) => d.employment_type === "part_time"), [displayRows]);
 
   const filteredFt = useMemo(() => {
     const list = ftDealers
@@ -410,12 +475,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   }, [ptDealers, activeFilter, adjustments, searchQuery, costRankingOn]);
 
   const highOtCount = useMemo(
-    () => payrollRows.filter((r) => r.ot_hours >= 20).length,
-    [payrollRows]
+    () => displayRows.filter((r) => r.ot_hours >= 20).length,
+    [displayRows]
   );
 
   const totals = useMemo(() => {
-    const sum = (key: keyof DealerPayrollRow) => payrollRows.reduce((s, d) => s + (d[key] as number), 0);
+    const sum = (key: keyof DealerPayrollRow) => displayRows.reduce((s, d) => s + (d[key] as number), 0);
     return {
       totalGross: sum("gross_pay_vnd"),
       totalBase: sum("base_salary_vnd"),
@@ -431,19 +496,19 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       totalPit: sum("pit_deduction_vnd"),
       totalNetAfterTax: sum("net_pay_after_tax_vnd"),
     };
-  }, [payrollRows]);
+  }, [displayRows]);
 
   // ── Owner finance summary + anomalies (visibility only — no payroll number is changed) ──
 
   const anomalies = useMemo(() => ({
-    open: openShifts(payrollRows),
-    capped: cappedShifts(payrollRows),
-    mismatches: netAdjustmentMismatches(payrollRows),
-    zeroHours: zeroHoursPaid(payrollRows),
-    largeAdj: largeAdjustments(payrollRows, adjustments),
-    negativeAdj: negativeAdjustments(payrollRows, adjustments),
-    outliers: highCostOutliers(payrollRows),
-  }), [payrollRows, adjustments]);
+    open: openShifts(displayRows),
+    capped: cappedShifts(displayRows),
+    mismatches: netAdjustmentMismatches(displayRows),
+    zeroHours: zeroHoursPaid(displayRows),
+    largeAdj: largeAdjustments(displayRows, adjustments),
+    negativeAdj: negativeAdjustments(displayRows, adjustments),
+    outliers: highCostOutliers(displayRows),
+  }), [displayRows, adjustments]);
 
   const anomalyGroups = useMemo(() => ([
     { label: "Ca chưa checkout — chi phí có thể đang tăng sai", items: anomalies.open, level: "danger" as const },
@@ -457,8 +522,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   [anomalies]);
 
   const finance = useMemo(
-    () => buildPayrollFinanceSummary(payrollRows, adjustments, { periodId: savedPeriodId, status: payrollStatus }),
-    [payrollRows, adjustments, savedPeriodId, payrollStatus]
+    () => buildPayrollFinanceSummary(displayRows, adjustments, { periodId: savedPeriodId, status: payrollStatus }),
+    [displayRows, adjustments, savedPeriodId, payrollStatus]
   );
 
   // ── Save payroll ──────────────────────────────────────────────────────────
@@ -467,7 +532,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     if (!user || !activeClubId || !currentRange || !payrollRows.length) return;
     setSaving(true);
     try {
-      const result = await savePayroll(activeClubId, currentRange.year, currentRange.month, payrollRows, user.id);
+      const result = await savePayroll(activeClubId, currentRange.year, currentRange.month, payrollRows);
       setSavedPeriodId(result.periodId);
       setPayrollStatus("draft");
       toast.success(`Đã lưu bảng lương — ${result.savedCount} dealer`);
@@ -481,7 +546,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
   // ── Status helpers ──────────────────────────────────────────────────────────
 
-  const isLocked = payrollStatus === "locked";
+  const isLocked = ["locked", "payment_prepared", "paid", "reconciled"].includes(payrollStatus ?? "");
+  const canEditAdjustments = payrollStatus === null || payrollStatus === "draft" || payrollStatus === "rejected";
   const isDraft = payrollStatus === "draft" || payrollStatus === null;
   const isSubmitted = payrollStatus === "submitted";
   const isApproved = payrollStatus === "approved";
@@ -491,7 +557,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const handleSubmit = useCallback(async () => {
     if (!user || !savedPeriodId) return;
     try {
-      await submitPayroll(savedPeriodId, user.id);
+      await submitPayroll(savedPeriodId);
       setPayrollStatus("submitted");
       setSubmittedByMeta(user.id);
       setSubmittedAtMeta(new Date().toISOString());
@@ -504,7 +570,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const handleApprove = useCallback(async () => {
     if (!user || !savedPeriodId) return;
     try {
-      await approvePayroll(savedPeriodId, user.id);
+      await approvePayroll(savedPeriodId);
       setPayrollStatus("approved");
       setApprovedByMeta(user.id);
       setApprovedAtMeta(new Date().toISOString());
@@ -517,7 +583,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const handleLock = useCallback(async () => {
     if (!user || !savedPeriodId) return;
     try {
-      await lockPayroll(savedPeriodId, user.id);
+      await lockPayroll(savedPeriodId);
       setPayrollStatus("locked");
       setLockedByMeta(user.id);
       setLockedAtMeta(new Date().toISOString());
@@ -534,7 +600,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       return;
     }
     try {
-      await rejectPayroll(savedPeriodId, user.id, reason);
+      await rejectPayroll(savedPeriodId, reason);
       setPayrollStatus("rejected");
       setRejectedBy(user.id);
       setRejectedAt(new Date().toISOString());
@@ -549,7 +615,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   const handleResubmit = useCallback(async () => {
     if (!user || !savedPeriodId) return;
     try {
-      await resubmitPayroll(savedPeriodId, user.id);
+      await resubmitPayroll(savedPeriodId);
       setPayrollStatus("draft");
       setRejectedBy(null);
       setRejectedAt(null);
@@ -564,7 +630,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     if (!user || !savedPeriodId || paymentBusy) return;
     setPaymentBusy(true);
     try {
-      await preparePayment(savedPeriodId, user.id, paymentMethod);
+      await preparePayment(savedPeriodId, paymentMethod);
       toast.success("Đã chuẩn bị chi trả");
       await refreshAll();
     } catch (e: any) {
@@ -582,7 +648,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     }
     setPaymentBusy(true);
     try {
-      await markPaid(savedPeriodId, user.id, paymentRef.trim());
+      await markPaid(savedPeriodId, paymentRef.trim());
       toast.success("Đã ghi nhận chi trả");
       setPaymentRef("");
       await refreshAll();
@@ -597,7 +663,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
     if (!user || !savedPeriodId || paymentBusy) return;
     setPaymentBusy(true);
     try {
-      await reconcilePayment(savedPeriodId, user.id, reconRef.trim() || undefined);
+      await reconcilePayment(savedPeriodId, reconRef.trim() || undefined);
       toast.success("Đã đối soát");
       setReconRef("");
       await refreshAll();
@@ -690,7 +756,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
   // ── Export ─────────────────────────────────────────────────────────────────
 
   const doExport = useCallback(() => {
-    if (!payrollRows.length) return;
+    if (!displayRows.length) return;
     const clubName = clubs.find((c) => c.id === activeClubId)?.name ?? "club";
     const monthLabel = currentRange?.label ?? selectedMonth;
     const allRows = [...ftDealers, ...ptDealers];
@@ -708,7 +774,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       });
     exportToExcel(allRows, exportColumns, `luong-${clubName}-${monthLabel}`, "Bảng lương");
     toast.success(`Đã tải bảng lương ${monthLabel}`);
-  }, [payrollRows, ftDealers, ptDealers, clubs, activeClubId, currentRange, selectedMonth]);
+  }, [displayRows, ftDealers, ptDealers, clubs, activeClubId, currentRange, selectedMonth]);
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
@@ -722,7 +788,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           <div className="font-medium text-white text-sm">
             <div className="flex items-center gap-1">
               {r.full_name}
-              {!isLocked && savedRecords[r.dealer_id] && (
+              {canEditAdjustments && savedRecords[r.dealer_id] && (
                 <button
                   className="text-[10px] text-muted-foreground hover:text-success ml-1"
                   onClick={() => openAdjustDialog(r.dealer_id)}
@@ -743,7 +809,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                       {(a.adjustment_type === "BONUS" || a.adjustment_type === "OTHER" ? "+" : "-")}{Number(a.amount_vnd).toLocaleString("vi-VN")}
                     </span>
                     <span className="text-muted-foreground">{a.reason}</span>
-                    {!isLocked && (
+                    {canEditAdjustments && (
                       <button
                         className="text-muted-foreground hover:text-destructive ml-0.5"
                         onClick={() => handleDeleteAdjustment(a.id)}
@@ -829,7 +895,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
                 <FileText className="w-3.5 h-3.5" />
               )}
             </button>
-            {!isLocked && savedRecords[r.dealer_id] && (
+            {canEditAdjustments && savedRecords[r.dealer_id] && (
               <button
                 onClick={() => openAdjustDialog(r.dealer_id)}
                 className="p-1 rounded text-muted-foreground hover:text-success"
@@ -898,7 +964,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
           Làm mới
         </Button>
 
-        {payrollRows.length > 0 && (
+        {displayRows.length > 0 && (
           <Button size="sm" className="h-8 text-xs bg-success hover:bg-success text-white" onClick={doExport}>
             <Download className="w-3.5 h-3.5 mr-1" />
             Xuất Excel
@@ -906,7 +972,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         )}
 
         {/* Save button (always in toolbar) */}
-        {payrollRows.length > 0 && !savedPeriodId && (
+        {displayRows.length > 0 && !savedPeriodId && (
           <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
             Lưu bảng lương
@@ -923,8 +989,8 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         <div className="flex-1" />
 
         <div className="text-xs text-muted-foreground flex items-center gap-2">
-          {payrollRows.length > 0 && (
-            <span>{payrollRows.length} dealer · {period.start} → {period.end}</span>
+          {displayRows.length > 0 && (
+            <span>{displayRows.length} dealer · {period.start} → {period.end}</span>
           )}
           {lastRefreshedAt && (
             <span className="text-muted-foreground" title="Thời điểm dữ liệu được tải lần cuối">
@@ -934,7 +1000,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
         </div>
       </div>
 
-      {payrollRows.length > 0 && (
+      {displayRows.length > 0 && (
         <>
           {/* ── Owner Finance Summary — số liệu đối chiếu, không thay đổi số lương đã lưu ── */}
           <div className="border border-border rounded-lg p-3 bg-card/60">
@@ -1073,7 +1139,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
 
           {/* Summary strip */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-            <MetricCard label="Tổng dealer" value={payrollRows.length} sub={`FT: ${ftDealers.length} · PT: ${ptDealers.length}`} />
+            <MetricCard label="Tổng dealer" value={displayRows.length} sub={`FT: ${ftDealers.length} · PT: ${ptDealers.length}`} />
             <MetricCard label="Tổng gross" value={formatVNDShort(totals.totalGross)} sub="Lương cơ bản" />
             <MetricCard label="Tổng OT" value={formatHours(totals.totalOt)} sub={`${highOtCount} người > 20h`} variant={totals.totalOt > 0 ? "danger" : "default"} />
             <MetricCard label="Điều chỉnh" value={formatVND(totals.totalAdjust)} sub="Tips · phạt" />
@@ -1085,12 +1151,12 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             <div className="flex gap-1.5 flex-wrap">
               {FILTERS.map((f) => {
                 const count = f.key === "all"
-                  ? payrollRows.length
+                  ? displayRows.length
                   : f.key === "full_time"
                     ? ftDealers.length
                     : f.key === "part_time"
                       ? ptDealers.length
-                      : payrollRows.filter((r) => passesFilter(r, f.key, adjustments)).length;
+                      : displayRows.filter((r) => passesFilter(r, f.key, adjustments)).length;
                 const isActive = activeFilter === f.key;
                 return (
                   <button
@@ -1166,7 +1232,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       )}
 
       {/* No data */}
-      {!loading && !error && payrollRows.length === 0 && (
+      {!loading && !error && displayRows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Calculator className="w-10 h-10 mb-3 opacity-40" />
           <p className="text-sm">Chưa có dữ liệu lương cho tháng này</p>
@@ -1175,7 +1241,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       )}
 
       {/* Payroll tables */}
-      {!loading && !error && payrollRows.length > 0 && (
+      {!loading && !error && displayRows.length > 0 && (
         <ScrollArea className="flex-1">
           {/* FT Section */}
           {filteredFt.length > 0 && (
@@ -1292,7 +1358,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             <div className="grid grid-cols-4 md:grid-cols-10 gap-3 text-center">
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Dealer</div>
-                <div className="text-lg font-bold text-white">{payrollRows.length}</div>
+                <div className="text-lg font-bold text-white">{displayRows.length}</div>
               </div>
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Ca</div>
@@ -1336,7 +1402,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
       )}
 
       {/* Approval footer */}
-      {!loading && !error && payrollRows.length > 0 && savedPeriodId && (
+      {!loading && !error && displayRows.length > 0 && savedPeriodId && (
         <div className="border border-border rounded-lg p-3 bg-card/50 mt-2">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             {/* Left: status + history */}
@@ -1608,7 +1674,7 @@ export default function DealerPayrollTab({ clubIds, clubs }: DealerPayrollTabPro
             <DialogTitle>Thêm điều chỉnh</DialogTitle>
             <DialogDescription>
               Thêm thưởng/phạt/khấu trừ cho{" "}
-              {payrollRows.find((r) => r.dealer_id === adjustingDealerId)?.full_name ?? "dealer"}
+              {displayRows.find((r) => r.dealer_id === adjustingDealerId)?.full_name ?? "dealer"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

@@ -1,13 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatCloseTableMessage, sendTelegramNotification, getClubTelegramChatId, mention } from "../_shared/telegram.ts";
-
-function decodeJWT(token: string): { sub: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
-}
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,11 +20,9 @@ Deno.serve(async (req) => {
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
     const admin = createClient(url, service);
 
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-    const payload = decodeJWT(authHeader.slice(7));
-    if (!payload) return json({ error: "Invalid token" }, 401);
-    const uid = payload.sub;
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
 
     const body = await req.json().catch(() => ({}));
     const { table_id, requested_by } = body ?? {};
@@ -221,12 +212,12 @@ Deno.serve(async (req) => {
         had_dealer: hadDealer,
         dealer_break_id: dealerBreakId,
       },
-      triggered_by: requested_by ?? uid,
+      triggered_by: uid,
     });
 
     await admin.from("audit_logs").insert({
       club_id: table.club_id,
-      actor_id: requested_by ?? uid,
+      actor_id: uid,
       action: "table_closed",
       entity_type: "game_table",
       entity_id: table_id,

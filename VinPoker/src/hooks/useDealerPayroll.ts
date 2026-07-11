@@ -149,21 +149,19 @@ export async function savePayroll(
   clubId: string,
   year: number,
   month: number,
-  payrollRows: DealerPayrollRow[],
-  userId: string
+  payrollRows: DealerPayrollRow[]
 ): Promise<{ periodId: string; savedCount: number }> {
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
 
-  const { data: periodId, error } = await (supabase as any).rpc("save_payroll_period", {
+  const { data: periodId, error } = await (supabase as any).rpc("save_payroll_period_secure", {
     p_club_id: clubId,
     p_year: year,
     p_month: month,
     p_start_date: startDate,
     p_end_date: endDate,
     p_payroll_rows: payrollRows,
-    p_user_id: userId,
   });
 
   if (error) throw error;
@@ -174,14 +172,12 @@ export async function savePayroll(
  * Submit payroll period for approval (draft → submitted).
  */
 export async function submitPayroll(
-  periodId: string,
-  userId: string
+  periodId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc("transition_payroll_status", {
+  const { data, error } = await (supabase as any).rpc("transition_payroll_status_secure", {
     p_period_id: periodId,
     p_expected_status: "draft",
     p_new_status: "submitted",
-    p_user_id: userId,
   });
   if (error) throw error;
   return data as boolean;
@@ -191,14 +187,12 @@ export async function submitPayroll(
  * Approve payroll period (submitted → approved).
  */
 export async function approvePayroll(
-  periodId: string,
-  userId: string
+  periodId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc("transition_payroll_status", {
+  const { data, error } = await (supabase as any).rpc("transition_payroll_status_secure", {
     p_period_id: periodId,
     p_expected_status: "submitted",
     p_new_status: "approved",
-    p_user_id: userId,
   });
   if (error) throw error;
   return data as boolean;
@@ -208,14 +202,12 @@ export async function approvePayroll(
  * Lock payroll period (approved → locked). No more edits allowed.
  */
 export async function lockPayroll(
-  periodId: string,
-  userId: string
+  periodId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc("transition_payroll_status", {
+  const { data, error } = await (supabase as any).rpc("transition_payroll_status_secure", {
     p_period_id: periodId,
     p_expected_status: "approved",
     p_new_status: "locked",
-    p_user_id: userId,
   });
   if (error) throw error;
   return data as boolean;
@@ -226,14 +218,12 @@ export async function lockPayroll(
  */
 export async function rejectPayroll(
   periodId: string,
-  userId: string,
   reason: string
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc("transition_payroll_status", {
+  const { data, error } = await (supabase as any).rpc("transition_payroll_status_secure", {
     p_period_id: periodId,
     p_expected_status: "submitted",
     p_new_status: "rejected",
-    p_user_id: userId,
     p_rejection_reason: reason,
   });
   if (error) throw error;
@@ -244,14 +234,12 @@ export async function rejectPayroll(
  * Resubmit rejected payroll (rejected → draft). Clears reject metadata.
  */
 export async function resubmitPayroll(
-  periodId: string,
-  userId: string
+  periodId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc("transition_payroll_status", {
+  const { data, error } = await (supabase as any).rpc("transition_payroll_status_secure", {
     p_period_id: periodId,
     p_expected_status: "rejected",
     p_new_status: "draft",
-    p_user_id: userId,
   });
   if (error) throw error;
   return data as boolean;
@@ -282,13 +270,11 @@ export interface PaymentRecord {
 /** Prepare payment (locked → payment_prepared). Returns new payment_records id. */
 export async function preparePayment(
   periodId: string,
-  userId: string,
   paymentMethod: string,
   note?: string
 ): Promise<string> {
-  const { data, error } = await (supabase as any).rpc("prepare_payroll_payment", {
+  const { data, error } = await (supabase as any).rpc("prepare_payroll_payment_secure", {
     p_period_id: periodId,
-    p_user_id: userId,
     p_payment_method: paymentMethod,
     p_note: note ?? null,
   });
@@ -299,13 +285,11 @@ export async function preparePayment(
 /** Mark payroll paid (payment_prepared → paid). payment_ref required. */
 export async function markPaid(
   periodId: string,
-  userId: string,
   paymentRef: string,
   note?: string
 ): Promise<boolean> {
-  const { data, error } = await (supabase as any).rpc("mark_payroll_paid", {
+  const { data, error } = await (supabase as any).rpc("mark_payroll_paid_secure", {
     p_period_id: periodId,
-    p_user_id: userId,
     p_payment_ref: paymentRef,
     p_note: note ?? null,
   });
@@ -316,13 +300,11 @@ export async function markPaid(
 /** Reconcile payment (paid → reconciled). Reconciler must differ from payer. */
 export async function reconcilePayment(
   periodId: string,
-  userId: string,
   reconciliationRef?: string,
   note?: string
 ): Promise<boolean> {
-  const { data, error } = await (supabase as any).rpc("reconcile_payroll_payment", {
+  const { data, error } = await (supabase as any).rpc("reconcile_payroll_payment_secure", {
     p_period_id: periodId,
-    p_user_id: userId,
     p_reconciliation_ref: reconciliationRef ?? null,
     p_note: note ?? null,
   });
