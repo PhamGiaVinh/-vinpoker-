@@ -22,11 +22,12 @@ const AdminUsers = () => {
   const [trackerClubsByUser, setTrackerClubsByUser] = useState<Record<string, string[]>>({});
   const [mediaClubsByUser, setMediaClubsByUser] = useState<Record<string, string[]>>({});
   const [floorClubsByUser, setFloorClubsByUser] = useState<Record<string, string[]>>({});
+  const [accountantClubsByUser, setAccountantClubsByUser] = useState<Record<string, string[]>>({});
   const [search, setSearch] = useState("");
 
   const load = async () => {
     setBusy(true);
-    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes, mcRes, fcRes] = await Promise.all([
+    const [profsRes, rolesRes, csRes, ccRes, dcRes, tcRes, mcRes, fcRes, acRes] = await Promise.all([
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("user_roles").select("user_id, role"),
       supabase.from("clubs").select("id, name, owner_id"),
@@ -35,6 +36,7 @@ const AdminUsers = () => {
       supabase.from("club_trackers" as any).select("user_id, club_id"),
       supabase.from("club_media" as any).select("user_id, club_id"),
       supabase.from("club_floors" as any).select("user_id, club_id"),
+      supabase.from("club_accountants" as any).select("user_id, club_id"),
     ]);
     if (profsRes.error) {
       toast.error("Lỗi tải user: " + profsRes.error.message);
@@ -73,6 +75,11 @@ const AdminUsers = () => {
       (fcMap[r.user_id] ??= []).push(r.club_id);
     }
     setFloorClubsByUser(fcMap);
+    const acMap: Record<string, string[]> = {};
+    for (const r of (acRes.data ?? []) as any[]) {
+      (acMap[r.user_id] ??= []).push(r.club_id);
+    }
+    setAccountantClubsByUser(acMap);
     setBusy(false);
   };
 
@@ -201,6 +208,15 @@ const AdminUsers = () => {
     }
   };
 
+  const toggleAccountantClub = async (uid: string, clubId: string, currentlyAssigned: boolean) => {
+    const fn = currentlyAssigned ? "revoke_club_accountant" : "grant_club_accountant";
+    const { data, error } = await (supabase.rpc as any)(fn, { p_club_id: clubId, p_user_id: uid });
+    if (error) { toast.error(error.message); return; }
+    if (data?.error) { toast.error(data.detail ?? data.error); return; }
+    toast.success(currentlyAssigned ? "Đã bỏ kế toán" : "Đã gán kế toán cho CLB");
+    load();
+  };
+
   const assignClub = async (uid: string, clubId: string) => {
     const { error } = await supabase.from("clubs").update({ owner_id: uid }).eq("id", clubId);
     if (error) toast.error(error.message);
@@ -255,6 +271,9 @@ const AdminUsers = () => {
                     </span>
                   ))}
                   {roles.length === 0 && <span className="text-[10px] text-muted-foreground">player</span>}
+                  {(accountantClubsByUser[u.user_id] ?? []).length > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-primary/15 text-primary border-primary/30">kế toán</span>
+                  )}
                 </div>
               </div>
 
@@ -449,6 +468,26 @@ const AdminUsers = () => {
                   {(floorClubsByUser[u.user_id] ?? []).length === 0 && (
                     <div className="text-[10px] text-warning mt-1">⚠ Chưa được gán CLB nào — floor sẽ không up được ảnh giải nào.</div>
                   )}
+                </div>
+              )}
+              {clubs.length > 0 && (
+                <div className="pt-2 border-t border-border/50">
+                  <div className="text-xs font-medium text-primary mb-1.5">Kế toán (duyệt lương) cho CLB:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {clubs.map(c => {
+                      const assigned = (accountantClubsByUser[u.user_id] ?? []).includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => toggleAccountantClub(u.user_id, c.id, assigned)}
+                          className={`text-[11px] px-2 py-1 rounded-md border transition ${assigned ? "bg-primary/20 text-primary border-primary/50" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+                        >
+                          {assigned ? "✓ " : ""}{c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">Kế toán được gán CLB nào sẽ chốt + gửi bảng lương CLB đó (chủ CLB duyệt).</div>
                 </div>
               )}
               {clubs.length > 0 && (
