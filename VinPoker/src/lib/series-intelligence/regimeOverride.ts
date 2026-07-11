@@ -179,9 +179,13 @@ export function getRegimeSnapshot(): RegimeMark {
 export function subscribeRegime(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (e: StorageEvent): void => {
-    if (e.key && e.key === keyFor(activeClubId)) {
+    if (!e.key || !e.key.startsWith(REGIME_OVERRIDE_STORAGE_KEY)) return;
+    if (e.key === keyFor(activeClubId)) {
       snapshots.set(e.key, loadRegimeMark(activeClubId));
       listeners.forEach((l) => l());
+    } else {
+      // an INACTIVE club's mark changed in another tab → drop its cached snapshot so it reloads on switch-back.
+      snapshots.delete(e.key);
     }
   };
   if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
