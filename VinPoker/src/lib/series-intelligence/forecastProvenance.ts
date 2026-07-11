@@ -1,20 +1,27 @@
-// Series Intelligence — structured forecast provenance (B2, part 2). PURE adapter; no DB, no flag, no wiring.
+// Series Intelligence — structured forecast provenance (B2). PURE adapter; no DB, no flag, no wiring.
 //
 // Identity is layered (owner review):
 //   • PredictorIdentity → predictorId  — engine/config identity (stable across many forecasts).
 //   • calibrationPoolId = hash(predictorId, trialCount, selectionProtocolId) — B1 pools residuals by THIS
-//     (NOT predictorId alone), and only when the forecast is calibrationEligible.
+//     (NOT predictorId alone), and only when the forecast is forecastIdentityEligible.
 //   • inputContentHash — the semantic input identity, EXCLUDING forecastIssuedAt.
 //   • forecastInstanceId = hash(inputContentHash, forecastIssuedAt) — same input issued twice ⇒ same
 //     inputContentHash, different forecastInstanceId.
 //
-// Truthfulness + fail-closed rules (all throw ProvenanceError with a stable `code`):
-//   • asOfTs must be truthful: any model-consumed training / calendar / edition input later than asOfTs ⇒
-//     AS_OF_INPUT_MISMATCH (we REJECT, we never silently filter the provenance copy while the forecast used more).
-//   • trialCount must be a positive integer; asOfTs <= forecastIssuedAt; manual_override requires a valid
-//     64-hex derivedFromInputHash; engine/manual must NOT carry derivedFromInputHash; codeSha normalized+validated.
-//   • The TARGET's own outcome is never hashed (A2 P0-2); a HISTORICAL training row's entries IS (P0-3);
-//     only model-consumed data is hashed, never UI labels (P0-4).
+// A kind=manual forecast is a hand-typed number: it has NO engine/training identity (no predictorId, no pool
+// id, no target/training hashes) and is never forecast-identity-eligible. kind=engine and kind=manual_override
+// both carry the engine input hashes (manual_override additionally keeps its engine lineage via
+// derivedFromInputHash), but only a pure engine forecast is forecast-identity-eligible.
+//
+// forecastIdentityEligible is a B2-SIDE gate only. Final B1 calibration eligibility ADDITIONALLY requires a
+// current final/revised B3 actual revision published after asOfTs — no B2 boolean alone implies a residual is
+// calibration-ready.
+//
+// Truthfulness + fail-closed (all throw ProvenanceError with a stable `code`): asOfTs truthful (no
+// training/calendar/edition input later than asOfTs ⇒ AS_OF_INPUT_MISMATCH — REJECT, never silently filter);
+// timing.targetEventTs must match target.event_date (TARGET_TIME_MISMATCH); asOfTs<=forecastIssuedAt; trialCount
+// a positive integer; codeSha and selectionProtocolId normalized+validated; manual_override requires a 64-hex
+// derivedFromInputHash and engine/manual forbid it.
 //
 // Does NOT extend ForecastPoint or touch forecastTurnout's output (A2/A5 byte-identity preserved).
 
@@ -37,14 +44,14 @@ export const SELECTION_PROTOCOL_DIRECT = "direct-1";
 export interface ForecastTiming {
   forecastIssuedAt: string; // when the snapshot was created
   asOfTs: string; // information cutoff — data observable up to this instant (features frozen)
-  targetEventTs: string; // the target event's scheduled start
+  targetEventTs: string; // the target event's scheduled start (must equal target.event_date)
 }
 
 /** Stable predictor identity. predictorId hashes only engine/config; the pool key adds trialCount + protocol. */
 export interface PredictorIdentity {
   engineVersion: string;
   featureSchemaVersion: string;
-  codeSha: string; // normalized; "unknown" ⇒ completeness missing_code_sha (not poolable)
+  codeSha: string; // normalized; "unknown" ⇒ completeness missing_code_sha (not eligible)
   modelConfigHash: string;
   trialCount: number; // multiple-testing record (positive integer)
   selectionProtocolId: string; // how the predictor was selected (direct vs a tuning protocol)
@@ -62,37 +69,51 @@ export interface ForecastIdentity {
 export type ProvenanceCompleteness = "complete" | "missing_code_sha" | "legacy" | "manual";
 export type ForecastProvenanceKind = "engine" | "manual_override" | "manual";
 
-export interface ForecastProvenance {
+/** Engine-derived (kind=engine) or engine-lineage-carrying (kind=manual_override) provenance — has hashes. */
+export interface EngineForecastProvenance {
+  kind: "engine" | "manual_override";
   predictor: PredictorIdentity;
   input: ForecastIdentity;
   timing: ForecastTiming; // normalized to UTC ISO
-  completeness: ProvenanceCompleteness;
-  /** Only an engine forecast with a complete codeSha + valid trialCount may enter a B1 calibration pool. */
-  calibrationEligible: boolean;
-  kind: ForecastProvenanceKind;
-  derivedFromInputHash: string | null; // manual-override lineage (P1)
+  completeness: "complete" | "missing_code_sha";
+  /** B2-side gate: kind=engine + complete codeSha + valid trialCount. NOT sufficient for B1 (needs a B3 actual). */
+  forecastIdentityEligible: boolean;
+  derivedFromInputHash: string | null; // 64-hex for manual_override; null for engine
 }
+/** A hand-typed forecast — NO engine/training identity, never forecast-identity-eligible. */
+export interface ManualForecastProvenance {
+  kind: "manual";
+  predictor: null;
+  input: null;
+  timing: ForecastTiming;
+  completeness: "manual";
+  forecastIdentityEligible: false;
+  derivedFromInputHash: null;
+}
+export type ForecastProvenance = EngineForecastProvenance | ManualForecastProvenance;
 
 export interface BuildProvenanceMeta {
-  /** Build-time git sha. Default "unknown" (the snapshot-capture wiring PR resolves it from the build env). */
-  codeSha?: string;
-  /** Candidate configs evaluated to produce this forecast (positive integer; multiple-testing record). Default 1. */
-  trialCount?: number;
-  /** Model-selection protocol id. Default SELECTION_PROTOCOL_DIRECT. */
-  selectionProtocolId?: string;
-  /** "engine" (default) | "manual_override" (owner edited an engine prefill) | "manual" (hand-typed). */
-  kind?: ForecastProvenanceKind;
-  /** REQUIRED (64-hex) for manual_override; FORBIDDEN for engine/manual. */
-  derivedFromInputHash?: string | null;
+  codeSha?: string; // build-time git sha; default "unknown" (resolved by the wiring PR)
+  trialCount?: number; // positive integer; default 1
+  selectionProtocolId?: string; // default SELECTION_PROTOCOL_DIRECT
+  kind?: ForecastProvenanceKind; // default "engine"
+  derivedFromInputHash?: string | null; // REQUIRED (64-hex) for manual_override; FORBIDDEN otherwise
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
 
-/** True iff a forecast provenance may enter a B1 calibration pool: engine + complete codeSha + valid trialCount. */
-export function isCalibrationEligible(p: ForecastProvenance): boolean {
+/** Type guard: engine or manual_override provenance (carries engine identity hashes). */
+export function isEngineProvenance(p: ForecastProvenance): p is EngineForecastProvenance {
+  return p.kind !== "manual";
+}
+
+/** B2-side eligibility: only a pure engine forecast with a complete codeSha + valid trialCount. NOT the final
+ *  B1 gate (B1 additionally needs a current final/revised B3 actual published after asOfTs). */
+export function isForecastIdentityEligible(p: ForecastProvenance): boolean {
   return (
     p.kind === "engine" &&
     p.completeness === "complete" &&
+    p.predictor !== null &&
     Number.isInteger(p.predictor.trialCount) &&
     p.predictor.trialCount >= 1
   );
@@ -103,6 +124,15 @@ function normalizeCodeSha(raw: string): string {
   const s = raw.trim().toLowerCase();
   if (s === "" || s === "unknown") return "unknown";
   if (!/^[0-9a-f]{7,64}$/.test(s)) throw new ProvenanceError(`invalid codeSha ${JSON.stringify(raw)}`, "INVALID_CODE_SHA");
+  return s;
+}
+
+/** Normalize + validate a selection-protocol id as a stable machine identifier. */
+function normalizeSelectionProtocol(raw: string): string {
+  const s = raw.trim();
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(s)) {
+    throw new ProvenanceError(`invalid selectionProtocolId ${JSON.stringify(raw)}`, "INVALID_SELECTION_PROTOCOL");
+  }
   return s;
 }
 
@@ -148,8 +178,7 @@ export async function computeModelConfigHash(cfg: ProvenanceModelConfig): Promis
 }
 
 /**
- * Build the structured provenance for the forecast of `target` from `events` under `opts`. Pure + async
- * (SHA-256). Reuses the SAME feature/training inputs the forecast uses (turnoutForecast.featureIdentityInputs).
+ * Build the structured provenance for the forecast of `target` from `events` under `opts`. Pure + async.
  * (Deviation from the plan's `(events, target, opts, forecastPoint, timing)`: `forecastPoint` is dropped —
  * its only identity-relevant field is engineVersion, a constant, and the forecast OUTPUT must never enter
  * identity; timing is passed explicitly instead.)
@@ -162,15 +191,26 @@ export async function buildForecastProvenance(
   meta: BuildProvenanceMeta = {},
 ): Promise<ForecastProvenance> {
   const kind = meta.kind ?? "engine";
-  const codeSha = normalizeCodeSha(meta.codeSha ?? "unknown"); // fail closed on a malformed sha
-  const trialCount = meta.trialCount ?? 1;
-  if (!Number.isInteger(trialCount) || trialCount < 1) {
-    throw new ProvenanceError(`trialCount must be a positive integer, got ${trialCount}`, "INVALID_TRIAL_COUNT");
-  }
-  const selectionProtocolId = meta.selectionProtocolId ?? SELECTION_PROTOCOL_DIRECT;
-
-  // derivedFromInputHash pairing: required (64-hex) for manual_override, forbidden otherwise.
   const derivedFromInputHash = meta.derivedFromInputHash ?? null;
+
+  // --- timing normalization + consistency (ALL kinds) ---
+  const issued = canonTime(timing.forecastIssuedAt, "forecastIssuedAt");
+  const asOf = canonTime(timing.asOfTs, "asOfTs");
+  const targetTs = canonTime(timing.targetEventTs, "targetEventTs");
+  if (asOf.ms > issued.ms) throw new ProvenanceError("asOfTs must be <= forecastIssuedAt", "AS_OF_AFTER_ISSUED");
+  const targetDateMs = new Date(target.event_date).getTime();
+  if (!Number.isFinite(targetDateMs)) {
+    throw new ProvenanceError(`invalid target.event_date ${JSON.stringify(target.event_date)}`, "INVALID_TIMESTAMP");
+  }
+  if (targetDateMs !== targetTs.ms) {
+    throw new ProvenanceError(
+      `timing.targetEventTs (${targetTs.iso}) does not match target.event_date`,
+      "TARGET_TIME_MISMATCH",
+    );
+  }
+  const normTiming: ForecastTiming = { forecastIssuedAt: issued.iso, asOfTs: asOf.iso, targetEventTs: targetTs.iso };
+
+  // --- derivedFromInputHash pairing (ALL kinds) ---
   if (kind === "manual_override") {
     if (derivedFromInputHash === null || !HEX64.test(derivedFromInputHash)) {
       throw new ProvenanceError("manual_override requires a valid 64-hex derivedFromInputHash", "INVALID_DERIVED_FROM");
@@ -179,39 +219,46 @@ export async function buildForecastProvenance(
     throw new ProvenanceError(`${kind} must not carry derivedFromInputHash`, "UNEXPECTED_DERIVED_FROM");
   }
 
-  const issued = canonTime(timing.forecastIssuedAt, "forecastIssuedAt");
-  const asOf = canonTime(timing.asOfTs, "asOfTs");
-  const targetEvent = canonTime(timing.targetEventTs, "targetEventTs");
-  if (asOf.ms > issued.ms) {
-    throw new ProvenanceError("asOfTs must be <= forecastIssuedAt", "AS_OF_AFTER_ISSUED");
+  // --- MANUAL: no engine/training identity is built (fix 1) ---
+  if (kind === "manual") {
+    return {
+      kind: "manual",
+      predictor: null,
+      input: null,
+      timing: normTiming,
+      completeness: "manual",
+      forecastIdentityEligible: false,
+      derivedFromInputHash: null,
+    };
   }
-  const normTiming: ForecastTiming = { forecastIssuedAt: issued.iso, asOfTs: asOf.iso, targetEventTs: targetEvent.iso };
+
+  // --- ENGINE | MANUAL_OVERRIDE: build the engine identity ---
+  const codeSha = normalizeCodeSha(meta.codeSha ?? "unknown");
+  const trialCount = meta.trialCount ?? 1;
+  if (!Number.isInteger(trialCount) || trialCount < 1) {
+    throw new ProvenanceError(`trialCount must be a positive integer, got ${trialCount}`, "INVALID_TRIAL_COUNT");
+  }
+  const selectionProtocolId = normalizeSelectionProtocol(meta.selectionProtocolId ?? SELECTION_PROTOCOL_DIRECT);
 
   const fii = featureIdentityInputs(events, target, opts);
 
-  // asOfTs truthfulness — only meaningful when the model actually ran (engine / manual_override). A pure
-  // hand-typed manual forecast consumed no training input, so there is nothing to be later than asOfTs.
-  if (kind !== "manual") {
-    // (a) the fit: every training row must be observable by asOfTs — reject (never silently drop) otherwise.
-    for (const r of fii.trainingRows) {
-      const ms = new Date(r.dateIso).getTime();
-      if (ms > asOf.ms) {
-        throw new ProvenanceError(
-          `training input ${r.eventId} (${r.dateIso}) is later than asOfTs ${asOf.iso}`,
-          "AS_OF_INPUT_MISMATCH",
-        );
-      }
+  // asOfTs truthfulness — the model actually ran here. (a) the fit: every training row observable by asOfTs;
+  // (b) the target's calendar/edition feature recomputed with only events observable by asOfTs must match.
+  for (const r of fii.trainingRows) {
+    if (new Date(r.dateIso).getTime() > asOf.ms) {
+      throw new ProvenanceError(
+        `training input ${r.eventId} (${r.dateIso}) is later than asOfTs ${asOf.iso}`,
+        "AS_OF_INPUT_MISMATCH",
+      );
     }
-    // (b) the target's calendar/edition feature: recompute it using ONLY events observable by asOfTs; if that
-    // differs from what the forecast used (all events), a post-asOfTs edition leaked into the target feature.
-    const eventsAsOf = events.filter((e) => {
-      const ms = eventMs(e);
-      return ms !== null && ms <= asOf.ms;
-    });
-    const fiiAsOf = featureIdentityInputs(eventsAsOf, target, opts);
-    if (JSON.stringify(fii.targetFeatures) !== JSON.stringify(fiiAsOf.targetFeatures)) {
-      throw new ProvenanceError("target calendar/edition feature used an input later than asOfTs", "AS_OF_INPUT_MISMATCH");
-    }
+  }
+  const eventsAsOf = events.filter((e) => {
+    const ms = eventMs(e);
+    return ms !== null && ms <= asOf.ms;
+  });
+  const fiiAsOf = featureIdentityInputs(eventsAsOf, target, opts);
+  if (JSON.stringify(fii.targetFeatures) !== JSON.stringify(fiiAsOf.targetFeatures)) {
+    throw new ProvenanceError("target calendar/edition feature used an input later than asOfTs", "AS_OF_INPUT_MISMATCH");
   }
 
   const modelConfigHash = await computeModelConfigHash(fii.modelConfig);
@@ -224,18 +271,14 @@ export async function buildForecastProvenance(
   const calibrationPoolId = await canonicalHash({ predictorId, trialCount, selectionProtocolId });
 
   const targetInputHash = await canonicalHash(fii.targetFeatures ?? null);
-  // entries (a count → DB integer) hashed as a DECIMAL STRING (P0-5). features are log-numerics/codes (no raw
-  // money) → left as finite numbers.
   const trainingDataHash = await canonicalHash(
     fii.trainingRows.map((r) => ({
       eventId: r.eventId,
       date: canonTime(r.dateIso, "trainingRow.date").iso,
-      entries: String(r.entries),
+      entries: String(r.entries), // count as a decimal string (P0-5)
       features: r.features,
     })),
   );
-
-  // inputContentHash EXCLUDES forecastIssuedAt (semantic content only); forecastInstanceId adds it.
   const inputContentHash = await canonicalHash({
     predictorId,
     targetInputHash,
@@ -245,24 +288,15 @@ export async function buildForecastProvenance(
   });
   const forecastInstanceId = await canonicalHash({ inputContentHash, forecastIssuedAt: normTiming.forecastIssuedAt });
 
-  const completeness: ProvenanceCompleteness =
-    kind === "manual" ? "manual" : codeSha === "unknown" ? "missing_code_sha" : "complete";
+  const completeness: "complete" | "missing_code_sha" = codeSha === "unknown" ? "missing_code_sha" : "complete";
 
-  const provenance: ForecastProvenance = {
-    predictor: {
-      engineVersion: ENGINE_VERSION,
-      featureSchemaVersion: FEATURE_SCHEMA_VERSION,
-      codeSha,
-      modelConfigHash,
-      trialCount,
-      selectionProtocolId,
-    },
+  return {
+    kind, // "engine" | "manual_override"
+    predictor: { engineVersion: ENGINE_VERSION, featureSchemaVersion: FEATURE_SCHEMA_VERSION, codeSha, modelConfigHash, trialCount, selectionProtocolId },
     input: { predictorId, calibrationPoolId, targetInputHash, trainingDataHash, inputContentHash, forecastInstanceId },
     timing: normTiming,
     completeness,
-    calibrationEligible: false, // set below via the single source of truth
-    kind,
+    forecastIdentityEligible: kind === "engine" && completeness === "complete", // manual_override never eligible
     derivedFromInputHash,
   };
-  return { ...provenance, calibrationEligible: isCalibrationEligible(provenance) };
 }
