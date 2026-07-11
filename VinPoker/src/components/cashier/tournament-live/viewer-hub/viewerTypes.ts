@@ -2,6 +2,52 @@ import type { HandFeedItem } from "./handFeedDerive";
 
 export type ViewerTab = "updates" | "hands" | "prizes" | "structure" | "photos";
 
+export type ViewerStreet = "preflop" | "flop" | "turn" | "river" | "showdown";
+
+export interface ViewerActionItem {
+  actionId: string;
+  playerId: string;
+  playerName: string;
+  avatarUrl: string | null;
+  seatNumber: number;
+  street: ViewerStreet;
+  actionType: string;
+  amount: number;
+  potAfter: number;
+  actionOrder: number;
+}
+
+export interface PublicTournamentSummary {
+  id: string;
+  name: string;
+  status: string;
+  startsAt: string | null;
+  guarantee: number | null;
+  buyIn: number | null;
+  playersRemaining: number | null;
+  currentLevel: number | null;
+}
+
+export interface PublicClockSummary extends PublicTournamentSummary {
+  smallBlind: number;
+  bigBlind: number;
+  bigBlindAnte: number;
+  levelEndsAt: string | null;
+  nextSmallBlind: number | null;
+  nextBigBlind: number | null;
+  nextBigBlindAnte: number | null;
+  entries: number;
+  averageStack: number | null;
+}
+
+export interface TournamentResultView {
+  place: number;
+  prize: number;
+  playerName: string | null;
+  avatarUrl: string | null;
+  status: "official" | "provisional" | "open";
+}
+
 export type TournamentPostKind = "commentary" | "announcement";
 
 /**

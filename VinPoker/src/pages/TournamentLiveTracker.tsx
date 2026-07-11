@@ -7,9 +7,10 @@ import { toast } from "sonner";
 import { BackButton } from "@/components/BackButton";
 import { TournamentLiveView } from "@/components/cashier/tournament-live/TournamentLiveView";
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
-import { parseViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerUrlState";
+import { defaultViewerTab, parseViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerUrlState";
 import type { ViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
 import { FEATURES } from "@/lib/featureFlags";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const TournamentLiveTracker = () => {
   const { tournamentId } = useParams();
@@ -17,12 +18,27 @@ const TournamentLiveTracker = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tournament, setTournament] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   // Deep-link: ?hand=N opens that completed hand in the viewer's replay.
   const deepHandRaw = Number(searchParams.get("hand"));
   const deepHandNumber = Number.isFinite(deepHandRaw) && deepHandRaw > 0 ? deepHandRaw : null;
   const focusedPostId = searchParams.get("post")?.trim() || null;
-  const activeTab = parseViewerTab(searchParams.get("tab"), deepHandNumber != null ? "hands" : "updates");
+  const activeTab = parseViewerTab(
+    searchParams.get("tab"),
+    FEATURES.liveViewerPulseV2
+      ? defaultViewerTab({ isMobile, hasDeepLinkedHand: deepHandNumber != null })
+      : deepHandNumber != null ? "hands" : "updates",
+  );
+
+  useEffect(() => {
+    if (!FEATURES.liveViewerPulseV2 || !isMobile || searchParams.has("tab") || deepHandNumber != null) return;
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("tab", "hands");
+      return next;
+    }, { replace: true });
+  }, [deepHandNumber, isMobile, searchParams, setSearchParams]);
 
   const shareUrl = useCallback(
     async (url: string, ok: string) => {

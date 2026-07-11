@@ -38,6 +38,19 @@ const handCard: HandFeedItem = {
   highHand: null,
 };
 
+handCard.players[0].handRank = {
+  category: "full_house",
+  bestFive: ["7c", "7s", "7d", "Ah", "Ah"],
+  primaryRanks: ["7", "A"],
+  kickerRanks: [],
+  score: 0,
+};
+handCard.actions = [
+  { actionId: "fixture-a1", playerId: "fixture-kien", playerName: "KIEN", avatarUrl: null, seatNumber: 2, street: "river", actionType: "all_in", amount: 8_900_000, potAfter: 18_600_000, actionOrder: 1 },
+  { actionId: "fixture-a2", playerId: "fixture-nam", playerName: "NAM", avatarUrl: null, seatNumber: 5, street: "river", actionType: "call", amount: 8_900_000, potAfter: 18_600_000, actionOrder: 2 },
+];
+handCard.showdownResult = "winner";
+
 const post: TournamentPostViewModel = {
   id: "fixture-post-final-table",
   tournamentId: "fixture-tournament",

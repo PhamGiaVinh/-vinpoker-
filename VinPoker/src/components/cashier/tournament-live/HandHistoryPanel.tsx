@@ -17,7 +17,7 @@ import {
   manualWinnerUnsafe,
   type ResettleHandRow,
 } from "./resettleApply";
-import type { EditedTargetHand, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
+import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
 
 /** Read ALL rows of a query in pages (PostgREST caps a single select, commonly at 1000).
  *  A money-path replay must NEVER run on a silently-truncated chain, so callers page with a
@@ -450,6 +450,27 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
       }
 
       // 1) Display edits (board/holes/actions) — never touches chips.
+      if (FEATURES.trackerAtomicResettle) {
+        const { data, error } = await supabase.functions.invoke("tournament-live-resettle", {
+          body: {
+            tournament_id: tournamentId,
+            hand_id: rv.targetHandId,
+            reason: rv.reason,
+            edit: rv.patch,
+            idempotency_key: crypto.randomUUID(),
+          },
+        });
+        if (error || (data as any)?.ok === false) {
+          toast.error((data as any)?.message || error?.message || "Không thể sửa và tính lại chip nguyên tử.");
+          return;
+        }
+        toast.success(`Đã sửa và tính lại chip nguyên tử — ${(data as any)?.changed_players ?? 0} người đổi chip.`);
+        setResettleView(null);
+        setEditMode(false);
+        loadHands();
+        return;
+      }
+
       const editArgs = buildEditCompletedHandArgs({ tournamentId, handId: rv.targetHandId, reason: rv.reason, patch: rv.patch });
       const { data: editData, error: editErr } = await supabase.rpc("edit_completed_hand" as any, editArgs as any);
       if (editErr) {
@@ -820,7 +841,8 @@ function ResettlePreview({
 }) {
   const nameOf = (pid: string) => players.find((p) => p.player_id === pid)?.display_name ?? pid.slice(0, 6);
   const result = view.result;
-  const needsManual = !result.ok && result.reason === "needs_manual_winner";
+  const blocked = !result.ok ? result as ResettleBlock : null;
+  const needsManual = blocked?.reason === "needs_manual_winner";
   const [picked, setPicked] = useState<string[]>(currentWinnerIds);
   const [showOverride, setShowOverride] = useState(false);
   // Re-sync the local selection whenever the APPLIED winners change (after a re-run).
@@ -875,17 +897,17 @@ function ResettlePreview({
     </div>
   );
 
-  if (!result.ok) {
+  if (blocked) {
     return (
       <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-950/20 space-y-1.5">
         <div className="text-xs font-bold text-amber-300">Không thể tự tính lại chip</div>
-        <div className="text-xs text-foreground/90">{result.message}</div>
-        {result.hand_number != null && (
-          <div className="text-[11px] text-muted-foreground">Ván lệch: #{result.hand_number}</div>
+        <div className="text-xs text-foreground/90">{blocked.message}</div>
+        {blocked.hand_number != null && (
+          <div className="text-[11px] text-muted-foreground">Ván lệch: #{blocked.hand_number}</div>
         )}
-        {result.affected_player_ids.length > 0 && (
+        {blocked.affected_player_ids.length > 0 && (
           <div className="text-[11px] text-muted-foreground">
-            Người liên quan: {result.affected_player_ids.map(nameOf).join(", ")}
+            Người liên quan: {blocked.affected_player_ids.map(nameOf).join(", ")}
           </div>
         )}
         {needsManual && picker("Chọn người thắng ván này (bài không đủ để tự chấm):", "Tính lại với người thắng đã chọn")}

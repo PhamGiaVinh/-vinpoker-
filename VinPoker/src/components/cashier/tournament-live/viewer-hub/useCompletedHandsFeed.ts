@@ -19,6 +19,7 @@ import {
   type RawHandRow,
   type RawProfile,
 } from "./handFeedDerive";
+import { FEATURES } from "@/lib/featureFlags";
 
 const PAGE_SIZE = 10;
 const POLL_MS = 13_000;
@@ -107,7 +108,9 @@ export function useCompletedHandsFeed(
       supabase.from("hand_players").select(hpCols).in("hand_id", ids),
       supabase
         .from("hand_actions")
-        .select("hand_id, player_id, action_type, action_amount, action_order")
+        .select(FEATURES.liveViewerPulseV2
+          ? "id, hand_id, player_id, street, action_type, action_amount, action_order"
+          : "hand_id, player_id, action_type, action_amount, action_order")
         .in("hand_id", ids)
         .order("action_order"),
       supabase
@@ -122,7 +125,7 @@ export function useCompletedHandsFeed(
     const needIds = ((hp ?? []) as any[])
       .filter((p: any) => !p.player_name)
       .map((p: any) => p.player_id);
-    const display = await fetchHandPlayerDisplay(tournamentId, needIds);
+    const display = await fetchHandPlayerDisplay(tournamentId, needIds, { includeProfiles: FEATURES.liveViewerPulseV2 });
     if (seq !== seqRef.current) return;
 
     const profMap = new Map<string, RawProfile>();
@@ -136,7 +139,7 @@ export function useCompletedHandsFeed(
       groupByHand(ha as unknown as RawHandAction[] | null),
       groupByHand(el as unknown as RawElimination[] | null),
       profMap,
-      { bigPotThresholdBB },
+      { bigPotThresholdBB, viewerPulseV2: FEATURES.liveViewerPulseV2 },
     );
     setAllItems(items);
     setHasMore(more);

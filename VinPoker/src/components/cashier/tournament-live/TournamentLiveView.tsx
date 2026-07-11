@@ -43,6 +43,8 @@ import {
   type TableMotionEvent,
 } from "@/lib/tracker-poker/tableMotion";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -290,24 +292,64 @@ export function TournamentLiveView({
         .eq("hand_id", hand.id)
         .order("action_order");
 
+      const hasIdentitySnapshot = spectator && FEATURES.liveViewerPulseV2
+        ? await handPlayersHasSnapshot()
+        : false;
+      const { data: handPlayers } = await supabase
+        .from("hand_players")
+        .select(hasIdentitySnapshot
+          ? "player_id, seat_number, starting_stack, hole_cards, player_name, avatar_url"
+          : "player_id, seat_number, starting_stack, hole_cards")
+        .eq("hand_id", hand.id);
+
       if (seq !== requestSeqRef.current) return;
 
-      if (actionData && actionData.length > 0) {
-        const { data: handPlayers } = await supabase
-          .from("hand_players")
-          .select("player_id, seat_number, starting_stack, hole_cards")
-          .eq("hand_id", hand.id);
-
+      if (spectator && FEATURES.liveViewerPulseV2 && handPlayers?.length) {
+        const historicalDisplay = await fetchHandPlayerDisplay(tournamentId, handPlayers.map((player: any) => player.player_id), { includeProfiles: true });
         if (seq !== requestSeqRef.current) return;
+        const rosterByPlayer = new Map(seatRows.map((row: any) => [row.player_id, row]));
+        const currentByPlayer = new Map(seatInfos.map((row) => [row.player_id, row]));
+        for (const hp of handPlayers as any[]) {
+          const roster = rosterByPlayer.get(hp.player_id) as any;
+          const historical = historicalDisplay.get(hp.player_id);
+          const identity = resolveViewerIdentity({
+            playerId: hp.player_id,
+            seatNumber: hp.seat_number,
+            snapshotName: hp.player_name,
+            snapshotAvatarUrl: hp.avatar_url,
+            seatName: roster?.player_name,
+            seatAvatarUrl: roster?.avatar_url,
+            profileName: historical?.name,
+            profileAvatarUrl: historical?.avatar,
+          });
+          const existing = currentByPlayer.get(hp.player_id);
+          const snapshotSeat: SeatInfo = {
+            ...(existing ?? {} as SeatInfo),
+            player_id: hp.player_id,
+            display_name: identity.name,
+            avatar_url: identity.avatarUrl,
+            seat_number: hp.seat_number,
+            chip_count: Math.max(0, hp.starting_stack ?? existing?.chip_count ?? 0),
+            is_active: true,
+            table_id: hand.table_id ?? existing?.table_id ?? null,
+            position: existing?.position ?? "",
+            hole_cards: hp.hole_cards?.length ? hp.hole_cards : existing?.hole_cards,
+          };
+          if (existing) seatInfos = seatInfos.map((seat) => seat.player_id === hp.player_id ? snapshotSeat : seat);
+          else seatInfos.push(snapshotSeat);
+          currentByPlayer.set(hp.player_id, snapshotSeat);
+        }
+      }
 
+      if (actionData && actionData.length > 0) {
         // Action-author names come from tournament_seats.player_name — the SAME source the
         // LIVE seats use (see seatInfos above), keyed by player_id. The old code joined
         // profiles.user_id IN (player_ids), but hand_actions.player_id is a tournament-ENTRY
         // id, not an auth user_id, so the join always missed → the feed showed the raw short
         // id. Reuse the already-loaded seat roster instead of a mis-keyed profiles fetch.
         const actionNameMap = new Map<string, string>();
-        seatRows.forEach((s: any) => {
-          if (s.player_name) actionNameMap.set(s.player_id, s.player_name);
+        seatInfos.forEach((s: any) => {
+          if (s.display_name) actionNameMap.set(s.player_id, s.display_name);
         });
 
         const seatMap = new Map<string, number>();
@@ -342,6 +384,7 @@ export function TournamentLiveView({
             a.player_id,
             formatActionLabel({
               street: a.street,
+              player_id: a.player_id,
               display_name: "",
               seat_number: 0,
               action_type: a.action_type,
@@ -1327,21 +1370,27 @@ export function TournamentLiveView({
         ? "grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] md:items-start"
         : spectator ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3"}>
         <div className={spectator && isReplay && replayHand && FEATURES.liveReplayHud ? "min-w-0" : undefined}>
-          <LiveFelt
-            {...viewerFeltProps}
-            portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
-            viewerNeon={spectator && FEATURES.liveHandFeed}
-            viewerLayout={spectator && FEATURES.liveViewerFeltV2}
-            tableFx={spectator && FEATURES.liveTableFx}
-            chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
-            compact={compactFelt}
-            blinds={feltBlinds}
-            runout={!isReplay && liveRunout}
-            revealOrder={revealOrder}
-            motionEnabled={spectator && FEATURES.liveTableMotionV2}
-            motionEvents={tableMotionEvents}
-            motionSpeed={isReplay ? replayMotionSpeed : 1}
-          />
+          {spectator && FEATURES.liveViewerPulseV2 && !isReplay && activeSeatsToRender.length === 0 ? (
+            <div className="grid min-h-72 place-items-center rounded-[28px] border border-[hsl(var(--viewer-neon)_/_0.28)] bg-card/55 px-5 text-center">
+              <div><Users className="mx-auto h-7 w-7 text-[hsl(var(--viewer-neon))]" /><p className="mt-3 text-sm font-bold text-foreground">Đang đồng bộ người chơi</p><p className="mt-1 text-xs text-muted-foreground">Bàn và action sẽ hiện ngay khi snapshot của ván được tải.</p></div>
+            </div>
+          ) : (
+            <LiveFelt
+              {...viewerFeltProps}
+              portrait={orientationOverride ? orientationOverride === "portrait" : !!isMobile}
+              viewerNeon={spectator && FEATURES.liveHandFeed}
+              viewerLayout={spectator && FEATURES.liveViewerFeltV2}
+              tableFx={spectator && FEATURES.liveTableFx}
+              chipPush={spectator && FEATURES.liveTableFx ? chipPush : null}
+              compact={compactFelt}
+              blinds={feltBlinds}
+              runout={!isReplay && liveRunout}
+              revealOrder={revealOrder}
+              motionEnabled={spectator && FEATURES.liveTableMotionV2}
+              motionEvents={tableMotionEvents}
+              motionSpeed={isReplay ? replayMotionSpeed : 1}
+            />
+          )}
           {isReplay && replayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
               hand={replayHand}

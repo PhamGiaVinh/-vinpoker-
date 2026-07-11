@@ -23,6 +23,8 @@ import { RouteLoader } from "@/components/RouteLoader";
 const Tournaments = lazy(() => import("./pages/Tournaments"));
 const TournamentDetail = lazy(() => import("./pages/TournamentDetail"));
 const TournamentLiveTracker = lazy(() => import("./pages/TournamentLiveTracker"));
+const LiveCenter = lazy(() => import("./pages/LiveCenter"));
+const PublicTournamentClock = lazy(() => import("./pages/PublicTournamentClock"));
 const Clubs = lazy(() => import("./pages/Clubs"));
 const ClubDetail = lazy(() => import("./pages/ClubDetail"));
 const MyStacks = lazy(() => import("./pages/MyStacks"));
@@ -276,7 +278,9 @@ const App = () => (
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
                 <Route path="/tournament/:id" element={<TournamentDetail />} />
+                <Route path="/live" element={<LiveCenter />} />
                 <Route path="/live/:tournamentId" element={<TournamentLiveTracker />} />
+                <Route path="/clock/:tournamentId" element={<PublicTournamentClock />} />
                 <Route path="/clubs" element={<Clubs />} />
                 <Route path="/club/:id" element={<ClubDetail />} />
                 <Route path="/my-stacks" element={<MyStacks />} />

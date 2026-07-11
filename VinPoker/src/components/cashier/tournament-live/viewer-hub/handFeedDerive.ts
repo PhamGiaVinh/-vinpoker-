@@ -19,6 +19,10 @@
 import { computePotBreakdown, contributionsFromActions } from "@/lib/tracker-poker/potEngine";
 import { evaluate7 } from "@/lib/poker/handEval";
 import { toEvalCard } from "@/lib/tracker-poker/trackerShowdown";
+import { buildReplayFrames } from "@/lib/tracker-poker/replayEngine";
+import { buildHandRankView, type HandRankView } from "./handRankView";
+import { resolveViewerIdentity } from "./viewerIdentity";
+import type { ViewerActionItem, ViewerStreet } from "./viewerTypes";
 
 export type HandFeedTag = "all_in" | "big_pot" | "high_hand" | "eliminated";
 
@@ -70,8 +74,10 @@ export interface RawHandPlayer {
   avatar_url?: string | null;
 }
 export interface RawHandAction {
+  id?: string;
   hand_id: string;
   player_id: string;
+  street?: string | null;
   action_type: string;
   action_amount: number | null;
   action_order: number;
@@ -103,6 +109,7 @@ export interface HandFeedPlayer {
   isEliminated: boolean;
   finishPosition: number | null;
   prize: number | null;
+  handRank?: HandRankView | null;
 }
 export interface HandFeedItem {
   handId: string;
@@ -117,6 +124,8 @@ export interface HandFeedItem {
   tags: HandFeedTag[];
   players: HandFeedPlayer[];
   highHand: { playerId: string; category: HandCategory } | null;
+  actions?: ViewerActionItem[];
+  showdownResult?: "winner" | "chop" | "needs_resettle" | null;
 }
 
 export interface BuildHandFeedOptions {
@@ -124,6 +133,7 @@ export interface BuildHandFeedOptions {
   bigPotThresholdBB?: number;
   /** HIGH HAND fires when the best revealed hand's rank >= this (default straight). */
   highHandFloor?: HandCategory;
+  viewerPulseV2?: boolean;
 }
 
 function clampChips(n: unknown): number {
@@ -191,6 +201,7 @@ export function buildHandFeedItems(
 ): HandFeedItem[] {
   const bigPotThresholdBB = opts.bigPotThresholdBB ?? 40;
   const highHandFloor = CATEGORY_RANK[opts.highHandFloor ?? "straight"];
+  const viewerPulseV2 = opts.viewerPulseV2 === true;
 
   return hands.map((h) => {
     const actions = actionsByHand.get(h.id) ?? [];
@@ -206,9 +217,49 @@ export function buildHandFeedItems(
     const elimByPlayer = new Map(elims.map((e) => [e.player_id, e]));
     const highHand = deriveHighHand(rawPlayers, board);
 
+    const replayFrames = viewerPulseV2 ? buildReplayFrames({
+      hand_id: h.id,
+      hand_number: h.hand_number,
+      button_seat: h.button_seat ?? 0,
+      community_cards: board,
+      stored_pot_size: h.pot_size,
+      big_blind: bb,
+      players: rawPlayers.map((p) => ({
+        player_id: p.player_id,
+        seat_number: p.seat_number,
+        display_name: p.player_name || profiles.get(p.player_id)?.display_name || "",
+        starting_stack: clampChips(p.starting_stack),
+        ending_stack: p.ending_stack,
+        avatar_url: p.avatar_url ?? profiles.get(p.player_id)?.avatar_url ?? null,
+        hole_cards: p.hole_cards ?? undefined,
+      })),
+      actions: actions.map((a) => ({
+        action_id: a.id,
+        player_id: a.player_id,
+        street: a.street || "preflop",
+        action_type: a.action_type,
+        action_amount: clampChips(a.action_amount),
+        action_order: a.action_order,
+      })),
+    }) : [];
+    const finalFrame = replayFrames.at(-1);
+    const verifiedWinnerIds = new Set(finalFrame?.payoutVerified ? finalFrame.showdownWinnerIds ?? [] : []);
+    const showdownResult = finalFrame?.showdownResult ?? null;
+
     const players: HandFeedPlayer[] = rawPlayers
       .map((p) => {
         const prof = profiles.get(p.player_id);
+        const identity = viewerPulseV2 ? resolveViewerIdentity({
+          playerId: p.player_id,
+          seatNumber: p.seat_number,
+          snapshotName: p.player_name,
+          snapshotAvatarUrl: p.avatar_url,
+          profileName: prof?.display_name,
+          profileAvatarUrl: prof?.avatar_url,
+        }) : {
+          name: p.player_name || prof?.display_name || p.player_id.slice(0, 6),
+          avatarUrl: p.avatar_url ?? prof?.avatar_url ?? null,
+        };
         const start = clampChips(p.starting_stack);
         const end = p.ending_stack == null ? null : clampChips(p.ending_stack);
         const deltaChips = end == null ? 0 : end - start;
@@ -217,16 +268,17 @@ export function buildHandFeedItems(
         return {
           playerId: p.player_id,
           seatNumber: p.seat_number,
-          name: p.player_name || prof?.display_name || p.player_id.slice(0, 6),
-          avatarUrl: p.avatar_url ?? prof?.avatar_url ?? null,
+          name: identity.name,
+          avatarUrl: identity.avatarUrl,
           endingStack: end,
           deltaChips,
           deltaBB: bb > 0 && end != null ? Math.round((deltaChips / bb) * 10) / 10 : null,
           holeCards: hole.length > 0 ? hole : null,
-          isWinner: deltaChips > 0,
+          isWinner: viewerPulseV2 ? verifiedWinnerIds.has(p.player_id) : deltaChips > 0,
           isEliminated: !!elim || p.is_eliminated === true,
           finishPosition: elim?.position ?? null,
           prize: elim?.prize ?? null,
+          handRank: viewerPulseV2 && hole.length === 2 ? buildHandRankView(hole, board) : null,
         };
       })
       .sort((a, b) => b.deltaChips - a.deltaChips);
@@ -243,6 +295,27 @@ export function buildHandFeedItems(
     if (highHand && CATEGORY_RANK[highHand.category] >= highHandFloor) tags.push("high_hand");
     if (elims.length > 0 || rawPlayers.some((p) => p.is_eliminated === true)) tags.push("eliminated");
 
+    const playerById = new Map(players.map((player) => [player.playerId, player]));
+    const viewerActions: ViewerActionItem[] = [...actions]
+      .sort((a, b) => a.action_order - b.action_order)
+      .map((action, index) => {
+        const player = playerById.get(action.player_id);
+        return {
+          actionId: action.id || `${h.id}:${action.action_order}`,
+          playerId: action.player_id,
+          playerName: player?.name ?? "Người chơi",
+          avatarUrl: player?.avatarUrl ?? null,
+          seatNumber: player?.seatNumber ?? 0,
+          street: (["preflop", "flop", "turn", "river", "showdown"].includes(action.street || "")
+            ? action.street
+            : "preflop") as ViewerStreet,
+          actionType: action.action_type,
+          amount: clampChips(action.action_amount),
+          potAfter: replayFrames[index + 1]?.potSize ?? 0,
+          actionOrder: action.action_order,
+        };
+      });
+
     return {
       handId: h.id,
       handNumber: h.hand_number,
@@ -256,6 +329,8 @@ export function buildHandFeedItems(
       tags,
       players: shown,
       highHand,
+      actions: viewerPulseV2 ? viewerActions : undefined,
+      showdownResult: viewerPulseV2 ? showdownResult : undefined,
     };
   });
 }

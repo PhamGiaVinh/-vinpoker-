@@ -233,6 +233,21 @@ export function FloorTableMapPanel({
     if (!target) return;
     setBusting(true);
     try {
+      if (FEATURES.floorAtomicPayout) {
+        const { data, error } = await supabase.rpc("bust_tournament_player_with_payout" as any, {
+          p_tournament_id: tid,
+          p_seat_id: target.seat_id,
+          p_expected_active_count: activeCount,
+          p_idempotency_key: crypto.randomUUID(),
+        } as any);
+        if (error) { toast.error(error.message); return; }
+        const result = data as any;
+        toast.success(`Đã chốt hạng ${result?.place ?? ""} cho ${result?.player_name || target.player_name || "người chơi"}`);
+        setSelected(null);
+        setInfoTarget(null);
+        await load();
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
         body: {
           tournament_id: tid,
@@ -260,9 +275,25 @@ export function FloorTableMapPanel({
   // byte-identical to the old behavior (bust immediately). With it ON, close the current sheet
   // and open the out-confirm dialog on the next frame (mirrors the sheet's own close→open race
   // guard) so the operator can review place + prize first.
-  const requestBust = (target: MapSeat | null) => {
+  const requestBust = async (target: MapSeat | null) => {
     if (!target) return;
     if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
+    if (FEATURES.floorAtomicPayout) {
+      const { data, error } = await supabase.rpc("preview_tournament_bust" as any, {
+        p_tournament_id: tid,
+        p_seat_id: target.seat_id,
+      } as any);
+      if (error) { toast.error(error.message); return; }
+      const preview = data as any;
+      if (!preview?.can_confirm) {
+        toast.error("Đăng ký vẫn mở: chưa thể chốt payout ITM.");
+        return;
+      }
+      const nextPrize = new Map(prizeMap ?? []);
+      nextPrize.set(Number(preview.place), Number(preview.prize ?? 0));
+      setPrizeMap(nextPrize);
+      setActiveCount(Number(preview.active_count_revision));
+    }
     setSelected(null);
     setInfoTarget(null);
     requestAnimationFrame(() => setBustTarget(target));
