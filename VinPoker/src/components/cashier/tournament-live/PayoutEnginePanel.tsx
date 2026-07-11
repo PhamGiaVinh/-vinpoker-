@@ -12,9 +12,10 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2, Upload } from "lucide-react";
+import { Calculator, Loader2, Lock, Save, Pencil, AlertTriangle, RefreshCw, Plus, Trash2, Upload, Wand2, Undo2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { parseFileToCustomRows } from "@/lib/customPayoutImport";
+import { seedCustomLadder, suggestLadderFromRank1, type SuggestedLadder, type SuggestShape } from "@/lib/payoutSuggest";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { PrizePayoutTrackingSection } from "./PrizePayoutTrackingSection";
 
@@ -56,6 +57,16 @@ function friendly(msg?: string): string {
 }
 const vnd = (n: number) => Math.round(n).toLocaleString("vi-VN");
 
+const SUGGEST_WARN_VI: Record<string, string> = {
+  PLACES_REDUCED_BY_ENGINE: "Quỹ giải/min-cash chỉ đủ trả ít suất hơn — đã giảm số suất.",
+  TARGET_BELOW_FLAT_MIN: "% hạng nhất thấp hơn mức chia đều — đã nâng lên mức tối thiểu.",
+  TARGET_ABOVE_MAX: "% hạng nhất quá cao so với số suất/min-cash — đã hạ xuống mức tối đa.",
+  FLOOR_ABOVE_FEASIBLE_MAX: "Min-cash quá cao cho số suất này — đã hạ sàn cho khả thi.",
+  FLOOR_NOT_APPLIED_NO_POOL: "Chưa có số entry → chưa dùng min-cash làm sàn (chia theo % thuần).",
+  TAIL_BELOW_GUIDANCE: "Hạng chót thấp hơn min-cash tham khảo (CUSTOM cho phép).",
+  TARGET_SHIFTED_BY_INTEGER_ROUNDING: "Làm tròn khiến % hạng nhất lệch nhẹ so với yêu cầu.",
+};
+
 interface TournamentRow {
   id: string; buy_in: number; rake_amount: number | null; prize_pool: number | null; itm_places: number | null;
   registration_closed_at: string | null; live_status: string | null; event_id: string | null; club_id: string;
@@ -96,6 +107,17 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const plannedAppliedRef = useRef(false);
   const plannedMinCashRef = useRef<number | null>(null);
   const [savingPlanned, setSavingPlanned] = useState(false);
+  // Auto-suggest CUSTOM ladder (gated by FEATURES.payoutCustomSuggest): pre-fill customRows from a
+  // shape preset OR a target top-prize % — client-only, editable after. N auto-derives from ITM until
+  // the operator edits it (dirty ref). Snapshot before apply → "Hoàn tác gợi ý".
+  const suggestOn = FEATURES.payoutCustomSuggest;
+  const [suggestShape, setSuggestShape] = useState<SuggestShape>("DAILY");
+  const [rank1Input, setRank1Input] = useState("22");
+  const [suggestN, setSuggestN] = useState(3);
+  const suggestNDirtyRef = useRef(false);
+  const [lastSuggest, setLastSuggest] = useState<SuggestedLadder | null>(null);
+  const undoRowsRef = useRef<{ position: number; percent: number }[] | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
 
   const [preview, setPreview] = useState<EngineResult | null>(null);
   const [busy, setBusy] = useState<"" | "preview" | "official">("");
@@ -177,6 +199,12 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
 
   useEffect(() => { plannedAppliedRef.current = false; }, [tournamentId]);
   useEffect(() => { load(); }, [load]);
+  // Số suất gợi ý tự bám ITM% × entries cho tới khi operator sửa tay (dirty ref) — không đè giá trị đã nhập.
+  useEffect(() => {
+    if (suggestNDirtyRef.current) return;
+    const n = Math.ceil((entries * itmPct) / 100);
+    if (Number.isFinite(n) && n >= 1) setSuggestN(n);
+  }, [entries, itmPct]);
   // DEFAULT_MINCASH resets min-cash whenever the style changes; a pending planned_min_cash_x
   // (set just before setArchetype during PR-4 pre-fill, above) wins ONCE then is consumed, so a
   // later MANUAL style change still falls back to the archetype's normal default.
@@ -262,6 +290,48 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   }, [loadTemplates]);
 
   const defaultPool = useMemo(() => entries * (tour?.buy_in ?? 0), [entries, tour]);
+
+  // ---- Auto-suggest CUSTOM ladder (client-only pre-fill of customRows; server re-validates on chốt) ----
+  const suggestPool = () => (poolOverride.trim() && Number(poolOverride) !== defaultPool ? Number(poolOverride) : defaultPool);
+  const suggestFloorVnd = () => minCashX * ((tour?.buy_in ?? 0) + (tour?.rake_amount ?? 0));
+  const applySuggest = (ladder: SuggestedLadder) => {
+    undoRowsRef.current = customRows;          // snapshot for "Hoàn tác gợi ý"
+    setCanUndo(true);
+    setLastSuggest(ladder);
+    suggestNDirtyRef.current = true;           // sau khi gợi ý, N do người dùng làm chủ
+    setSuggestN(ladder.effectivePlaces);
+    setCustomRows(ladder.percentsBp.map((bp, i) => ({ position: i + 1, percent: bp / 100 })));
+  };
+  const seedByShape = () => {
+    const pool = suggestPool();
+    const floor = suggestFloorVnd();
+    if (!(entries > 0) || !(pool > 0) || !(floor > 0)) {
+      toast.error("Cần số entry, prize pool và min-cash > 0 để gợi ý theo kiểu.");
+      return;
+    }
+    try {
+      applySuggest(seedCustomLadder({ entries, prizePool: pool, floor, requestedPlaces: Math.max(1, suggestN), roundingUnit, shape: suggestShape }));
+    } catch (e: any) { toast.error(friendly(e?.message)); }
+  };
+  const suggestByRank1 = () => {
+    const N = Math.max(1, Math.floor(suggestN));
+    const target = Number(rank1Input);
+    if (!(target > 0) || target > 100) { toast.error("% hạng nhất phải trong khoảng 0–100."); return; }
+    const pool = suggestPool();
+    const floorBp = pool > 0 ? Math.round((suggestFloorVnd() / pool) * 10000) : 0;
+    try {
+      const ladder = suggestLadderFromRank1({ targetRank1Bp: Math.round(target * 100), places: N, floorBp });
+      if (pool <= 0 && !ladder.warnings.includes("FLOOR_NOT_APPLIED_NO_POOL")) ladder.warnings.push("FLOOR_NOT_APPLIED_NO_POOL");
+      applySuggest(ladder);
+    } catch (e: any) { toast.error(friendly(e?.message)); }
+  };
+  const undoSuggest = () => {
+    if (!undoRowsRef.current) return;
+    setCustomRows(undoRowsRef.current);
+    undoRowsRef.current = null;
+    setCanUndo(false);
+    setLastSuggest(null);
+  };
 
   function reqBody() {
     const body: Record<string, unknown> = {
@@ -456,6 +526,59 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
                 Σ {(customBpTotal / 100).toFixed(2)}% {customBpTotal === 10000 ? "✓" : "✗ phải = 100%"}
               </span>
             </div>
+            {suggestOn && (
+              <div className="space-y-2 rounded border border-primary/20 bg-background/40 p-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                  <Wand2 className="w-3.5 h-3.5" /> Gợi ý cơ cấu (từ vị trí 1) — sửa lại được sau
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Số suất trả thưởng</Label>
+                    <Input type="number" min={1} value={suggestN} aria-label="Số suất trả thưởng"
+                      onChange={(e) => { suggestNDirtyRef.current = true; setSuggestN(Math.max(1, Math.floor(Number(e.target.value) || 1))); }} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Kiểu chia</Label>
+                    <Select value={suggestShape} onValueChange={(v) => setSuggestShape(v as SuggestShape)}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DAILY">Top nặng</SelectItem>
+                        <SelectItem value="INTL">Cân bằng</SelectItem>
+                        <SelectItem value="MULTI">Phẳng</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-9" onClick={seedByShape}>
+                    <Wand2 className="w-3.5 h-3.5 mr-1" /> Gợi ý theo kiểu
+                  </Button>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">% hạng nhất</Label>
+                    <Input type="number" step="0.5" inputMode="decimal" value={rank1Input} aria-label="% hạng nhất"
+                      onChange={(e) => setRank1Input(e.target.value)} />
+                  </div>
+                  <Button size="sm" variant="outline" className="h-9" onClick={suggestByRank1}>
+                    <Wand2 className="w-3.5 h-3.5 mr-1" /> Gợi ý theo % hạng 1
+                  </Button>
+                  {canUndo && (
+                    <Button size="sm" variant="ghost" className="h-9" onClick={undoSuggest}>
+                      <Undo2 className="w-3.5 h-3.5 mr-1" /> Hoàn tác gợi ý
+                    </Button>
+                  )}
+                </div>
+                {lastSuggest && (
+                  <div className="space-y-0.5 text-[11px] text-muted-foreground">
+                    <div>
+                      Đã gợi ý {lastSuggest.effectivePlaces} suất
+                      {lastSuggest.requestedPlaces !== lastSuggest.effectivePlaces ? ` (yêu cầu ${lastSuggest.requestedPlaces})` : ""}
+                      {" · hạng nhất "}{(lastSuggest.effectiveRank1Bp / 100).toFixed(2)}%. Chỉnh tay bên dưới nếu cần.
+                    </div>
+                    {lastSuggest.warnings.map((w) => (
+                      <div key={w} className="text-warning">⚠ {SUGGEST_WARN_VI[w] ?? w}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="max-h-[34vh] overflow-y-auto space-y-1 pr-1">
               {customRows.map((r, i) => {
                 const pool = poolOverride.trim() && Number(poolOverride) !== defaultPool ? Number(poolOverride) : defaultPool;

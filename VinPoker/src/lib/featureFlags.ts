@@ -1253,6 +1253,16 @@ export const FEATURES = {
    */
   payoutPlannedSettings: true,
   /**
+   * CUSTOM payout auto-suggest — a client-only assist in the CUSTOM branch of PayoutEnginePanel:
+   * either pick a shape (Top nặng/Cân bằng/Phẳng) or type the top-prize % and the panel fills the
+   * editable `customRows` with a full descending, Σ=100%, banded ladder (via `src/lib/payoutSuggest`).
+   * Pure pre-fill of editable rows — nothing persists; the server still re-validates on snapshot.
+   * No backend/Edge/migration. Default **OFF** (kill-switch): while false the suggest controls are
+   * hidden and CUSTOM behaves exactly as today (manual rows / import / templates). Flip true after
+   * Preview UAT. Only meaningful where `payoutCustomMode` is already on.
+   */
+  payoutCustomSuggest: false,
+  /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
    * shown-rows cap (grouped, so a 19-ITM LIVE_STANDARD run now fits without truncation). Pure
