@@ -16,6 +16,8 @@ import {
   type ForecastOverlayFeed,
 } from "@/lib/series-intelligence/turnoutForecast";
 import { naiveBaseline, baselineDeltaPct } from "@/lib/series-intelligence/naiveBaseline";
+import { runBaselineBattery } from "@/lib/series-intelligence/baselineBattery";
+import { BaselineBatteryCard } from "./BaselineBatteryCard";
 import { ExplainHint } from "./ExplainHint";
 import { EmptyExplainer } from "./EmptyExplainer";
 import { RegimeNotice } from "./RegimeNotice";
@@ -109,6 +111,21 @@ export function TurnoutForecastPanel({
     [events, typeKeyword, eventDateTime, ready],
   );
   const baseVsModel = baselineDeltaPct(fc?.base ?? null, baseline?.value ?? null);
+
+  // A3 — Baseline Battery ("Mốc dự báo đơn giản"). Only computed when the flag is ON and a forecast exists,
+  // over the SAME target/opts as `fc` so its canonical folds match the model CV. Null (flag OFF) ⇒ no card ⇒
+  // the panel is byte-identical to today.
+  const battery = useMemo(
+    () =>
+      FEATURES.seriesBaselineBattery && ready && fc?.available
+        ? runBaselineBattery(
+            events,
+            { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null, event_name: seriesName.trim() || null, capacity },
+            { calendarFeatures: FEATURES.seriesCalendarFeatures, censoring: FEATURES.seriesCensoring },
+          )
+        : null,
+    [events, eventDateTime, buyIn, gtd, typeKeyword, seriesName, capacity, ready, fc?.available],
+  );
 
   return (
     <section className="space-y-3">
@@ -263,6 +280,11 @@ export function TurnoutForecastPanel({
                   <div className="text-[10px] text-muted-foreground">Giải trước đó đã học</div>
                 </div>
               </div>
+
+              {/* A3 — Baseline Battery card (behind seriesBaselineBattery; OFF ⇒ not rendered ⇒ byte-identical) */}
+              {FEATURES.seriesBaselineBattery && battery && (
+                <BaselineBatteryCard battery={battery} modelBase={override ?? fc.base} modelMapePct={fc.modelMapePct} />
+              )}
 
               <label className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
                 Sửa đè con số (chủ club luôn quyết):

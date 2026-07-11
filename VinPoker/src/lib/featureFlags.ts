@@ -1032,6 +1032,18 @@ export const FEATURES = {
    */
   seriesNaiveBaseline: true,
   /**
+   * Series Intelligence — A3 Baseline Battery ("Mốc dự báo đơn giản"). When ON, a compact card next to the
+   * turnout forecast compares the model against a FAMILY of simple, honest baselines (historical median,
+   * trailing-window mean, same-weekday, and the existing last-N naive), each scored on EXACTLY the same
+   * canonical walk-forward folds as the model (A2 machinery — no second CV loop / split / scoring path). It
+   * shows each baseline's prediction for the upcoming event + its walk-forward error, and only claims the
+   * model is "tốt hơn baseline" when both are scored on identical folds with non-null metrics and the
+   * capability gate's minimum fold requirement (A4a) is met — otherwise an honest "chưa đủ dữ liệu để kết
+   * luận". Pure client compute (no DB/RPC/Edge). Default **OFF**: while false the panel is byte-identical to
+   * today (the battery never runs). Kill-switch: set false to hide the card.
+   */
+  seriesBaselineBattery: false,
+  /**
    * Series Intelligence — W2 consistent "why is this block empty?" explainers. When ON, self-hidden /
    * empty SI blocks (forecast when too little history, F&B when no orders in the window, …) render a
    * uniform 3-line card: WHAT it is · WHY it's empty · HOW to unlock — so an empty block never reads as
