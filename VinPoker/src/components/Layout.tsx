@@ -273,7 +273,7 @@ export const Layout = () => {
                   {(isAccountant || isClubOwner || isAdmin) && (
                     <DropdownMenuItem onClick={() => nav("/accountant")} className="gap-2.5 cursor-pointer">
                       <Calculator className="w-4 h-4" />
-                      Kế toán (chốt lương)
+                      Kế toán
                     </DropdownMenuItem>
                   )}
                   {(isClubAdmin || isClubOwner) && (
