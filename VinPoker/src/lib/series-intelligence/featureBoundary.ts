@@ -120,6 +120,75 @@ export function classify(key: string): AvailabilityClass {
   return FEATURE_REGISTRY[key];
 }
 
+// ---------- null-model-first pattern guard (A6) ----------
+// Gambler's-fallacy / "pattern-selling" quantities on a stochastic outcome are NOT predictive skill. They are
+// listed here by EXPLICIT, STABLE ID — this is a registry-membership check, NOT a keyword ban: a legitimate
+// feature whose name merely contains "trend" / "predict" / "probability" (e.g. `editionTrend`, a real model
+// feature) is unaffected. A pattern feature is NEVER admissible as a production feature unless it earns an
+// owner-approved ResearchContract (null model + point-in-time class + walk-forward protocol + min sample +
+// trial count). For A6 no contract is approved and none is wired into buildFeatures, so every listed pattern
+// feature stays rejected / research_only.
+export type PatternFeatureStatus = "prohibited" | "research_only";
+
+const PATTERN_FEATURE_REGISTRY: Readonly<Record<string, PatternFeatureStatus>> = {
+  hotEvent: "prohibited", // "hot" event/number
+  coldEvent: "prohibited", // "cold" event/number
+  dueEvent: "prohibited", // "due"
+  overdueEvent: "prohibited", // "overdue"
+  turnoutStreak: "prohibited", // streak
+  winningStreak: "prohibited",
+  losingStreak: "prohibited",
+  timeSinceLastBigTurnout: "research_only", // "time since last success" — only via a research contract
+  lauChuaDong: "prohibited", // "lâu chưa đông" (long since a full house)
+  kyNayDenLuotDong: "prohibited", // "kỳ này đến lượt đông" (this edition is 'due' to be full)
+  gamblersFallacyTurnout: "prohibited",
+};
+
+/** Stable list of the registered pattern-feature ids — for guardrail tests / doctrine tooling. */
+export const PATTERN_FEATURE_IDS: readonly string[] = Object.keys(PATTERN_FEATURE_REGISTRY);
+
+/** The pattern status of a feature id, or null when it is not a registered pattern feature (this gate then
+ *  does not apply and availability classification takes over). Registry-membership, never substring matching. */
+export function patternStatus(featureId: string): PatternFeatureStatus | null {
+  return Object.prototype.hasOwnProperty.call(PATTERN_FEATURE_REGISTRY, featureId)
+    ? PATTERN_FEATURE_REGISTRY[featureId]
+    : null;
+}
+
+/** The ONLY path by which a pattern-like feature could ever become admissible: an owner-approved research
+ *  contract that pins its null model, expected-under-randomness behaviour, point-in-time availability,
+ *  walk-forward protocol, minimum sample, and trial count (multiple-testing record). */
+export interface ResearchContract {
+  featureId: string;
+  nullModel: string;
+  expectedUnderRandomness: string;
+  availability: AvailabilityClass;
+  walkForwardProtocol: string;
+  minSampleSize: number;
+  trialCount: number;
+  ownerApproved: boolean;
+}
+
+/** Whether a pattern feature is admissible. `prohibited` never is; a non-pattern id is not governed here.
+ *  `research_only` is admissible ONLY with a complete, matching, owner-approved contract — and even then it
+ *  must ALSO be registered with an availability class (which A6 does not do), so no pattern feature can enter
+ *  a production model in A6. */
+export function patternFeatureAdmissible(featureId: string, contract?: ResearchContract): boolean {
+  if (patternStatus(featureId) !== "research_only") return false; // prohibited, or not a pattern feature
+  return (
+    contract !== undefined &&
+    contract.featureId === featureId &&
+    contract.ownerApproved === true &&
+    contract.nullModel.trim() !== "" &&
+    contract.expectedUnderRandomness.trim() !== "" &&
+    contract.walkForwardProtocol.trim() !== "" &&
+    Number.isFinite(contract.minSampleSize) &&
+    contract.minSampleSize > 0 &&
+    Number.isInteger(contract.trialCount) &&
+    contract.trialCount >= 1
+  );
+}
+
 // ---------- the forecast origin (point-in-time anchor) ----------
 export interface ForecastOrigin {
   /** Canonical UTC ISO of the origin. Idempotent for already-canonical inputs. */
@@ -224,7 +293,21 @@ export function buildFeatures(
     availability[key] = cls;
   };
 
+  // A6 null-model-first guard: a registered gambler's-fallacy / pattern feature can never be admitted here
+  // (no research contract is wired into production). Checked BEFORE classify so the reason is specific; these
+  // ids are not in FEATURE_REGISTRY anyway, so classify would already fail closed — behaviour is unchanged.
+  const rejectIfPattern = (key: string) => {
+    const status = patternStatus(key);
+    if (status !== null && !patternFeatureAdmissible(key)) {
+      throw new FeatureBoundaryError(
+        `Feature "${key}" is a ${status} pattern feature (gambler's-fallacy / null-model-first doctrine) — ` +
+          `not admissible as a production feature without an owner-approved research contract.`,
+      );
+    }
+  };
+
   for (const s of statics) {
+    rejectIfPattern(s.key);
     const cls = classify(s.key); // throws on unknown → fail closed
     if (cls !== "static_known") {
       throw new FeatureBoundaryError(
@@ -235,6 +318,7 @@ export function buildFeatures(
   }
 
   for (const o of observed) {
+    rejectIfPattern(o.key);
     const cls = classify(o.key); // throws on unknown → fail closed
     if (cls !== "observed_by_origin") {
       throw new FeatureBoundaryError(
