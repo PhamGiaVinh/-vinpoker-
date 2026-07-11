@@ -155,6 +155,8 @@ const StaffAccount = lazy(() => import("./pages/staff/StaffAccount"));
 const StaffSalary = lazy(() => import("./pages/staff/StaffSalary"));
 // Club operating expenses ledger; page self-gates on FEATURES.clubExpenses + owner/cashier role.
 const ClubExpenses = lazy(() => import("./pages/ClubExpenses"));
+// Staff salary chốt/duyệt (accountant → owner approval); self-gates on FEATURES.staffSalaryChot.
+const StaffSalaryChot = lazy(() => import("./pages/StaffSalaryChot"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -305,6 +307,7 @@ const App = () => (
                     real-data wiring must add an isClubOwner guard there — mock data only for now. */}
                 <Route path="/club/admin/finance" element={<MobileOperatorRoute to="/ops/finance"><ClubFinanceDashboard /></MobileOperatorRoute>} />
                 <Route path="/club/admin/expenses" element={<ClubExpenses />} />
+                <Route path="/club/admin/staff-salary" element={<StaffSalaryChot />} />
                 {/* Tài chính & Đối soát — mock cockpit. Page self-gates on FEATURES.accountingControl (default OFF).
                     Device-aware: phones get the read-only mobile /ops/accounting view. */}
                 <Route path="/club/admin/accounting-control" element={<MobileOperatorRoute to="/ops/accounting"><AccountingControl /></MobileOperatorRoute>} />

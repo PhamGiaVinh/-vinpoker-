@@ -1317,6 +1317,15 @@ export const FEATURES = {
    * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
    */
   clubExpenses: false,
+  /**
+   * staffSalaryChot — the operator "Chốt lương nhân viên" page (/club/admin/staff-salary):
+   * the accountant computes + chốt (locks) the monthly salary and SUBMITS it to the club owner,
+   * who approves/rejects; a run can be marked paid only AFTER owner approval. Reads
+   * staff_salary_runs / staff_salary_periods + the S6/S7 RPCs (applied live 2026-07-11).
+   * Default **OFF**: while false the route shows a preview (owner/admin) on mock data and nothing
+   * hits Supabase. Flip true after owner UAT. Kill-switch: set false to re-hide the page.
+   */
+  staffSalaryChot: false,
 } as const;
 
 /**
