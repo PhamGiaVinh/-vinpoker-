@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
+import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
@@ -258,6 +259,9 @@ export default function OpsTournamentCockpit() {
   if (tv.state === "error" || !d) return <Shell>{header("Lỗi")}<Center icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được giải" sub="Thử lại sau." action={<button onClick={() => tv.refetch()} className="ios-press-sm mt-1 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">Thử lại</button>} /></Shell>;
 
   const lv = d.currentLevel;
+  // ĐỊNH NGHĨA DUY NHẤT "giải này có satellite để hiển thị" — dùng chung với TvPayoutsScreen
+  // (getDisplayableSatelliteRows) để cockpit và TV không bao giờ lệch nhau. Null ⇒ bảng tiền như cũ.
+  const satRows = getDisplayableSatelliteRows(d.satellitePayout, FEATURES.payoutSatelliteManual);
 
   return (
     <div className="ios-in space-y-4 pt-1">
@@ -487,14 +491,15 @@ export default function OpsTournamentCockpit() {
       {/* S5 — Trả thưởng (thật) */}
       {tab === "payout" && (
         <div className="space-y-3">
-          {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble — KHÔNG qua payout engine.
-              Chỉ hiện khi cờ payoutSatelliteManual ON và giải có cơ cấu satellite. Chỉ xem;
-              sửa trên máy tính (Bảng Payout Engine). */}
-          {FEATURES.payoutSatelliteManual && d.satellitePayout && d.satellitePayout.rows.length > 0 && (
+          {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble (bubble nằm NGAY TRONG rows,
+              vd hạng 13 → "4.500.000") — KHÔNG qua payout engine. Khi có satellite: THAY bảng
+              tiền (khớp màn TV — cùng getDisplayableSatelliteRows) để không hiện 2 cơ cấu
+              mâu thuẫn. satRows null ⇒ mọi nhánh !satRows giữ nguyên như cũ. */}
+          {satRows && (
             <div className="ios-card overflow-hidden p-0">
               <div className="border-b border-[#241a2e] px-4 py-2.5 text-[13px] font-semibold text-[#d8bc85]">🎟️ Satellite — trả vé (nhập tay)</div>
               <div className="ios-group">
-                {d.satellitePayout.rows.map((r, i) => (
+                {satRows.map((r, i) => (
                   <div key={i} className="ios-row-inset flex items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
                     <span className="text-[#f2ece6]">Hạng {r.label}</span>
                     <span className="font-mono text-[#c9a86a]">{r.prize}</span>
@@ -504,15 +509,22 @@ export default function OpsTournamentCockpit() {
               <div className="px-4 py-2 text-[11px] text-[#7c7079]">Sửa cơ cấu satellite trên máy tính.</div>
             </div>
           )}
-          <div className="ios-card p-4 text-center">
-            <div className="text-[13px] text-[#9b8e97]">Prize pool <span className="text-amber-300">(Tạm tính)</span></div>
-            <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>
-            <div className="mt-0.5 text-[12px] text-[#9b8e97]">{d.prizes.length ? `Trả ${d.prizes.length} hạng · ` : ""}Tiền chuyển hộ — nợ phải trả</div>
-          </div>
+          {satRows && (
+            d.prizes.length > 0
+              ? <div className="ios-card px-4 py-2.5 text-center text-[12px] text-[#9b8e97]">Có {d.prizes.length} hạng tiền đã tạo — xem trên máy tính.</div>
+              : <div className="ios-card px-4 py-2.5 text-center text-[12px] text-[#9b8e97]">Giải satellite — cơ cấu vé ở trên; không dùng bảng tiền.</div>
+          )}
+          {!satRows && (
+            <div className="ios-card p-4 text-center">
+              <div className="text-[13px] text-[#9b8e97]">Prize pool <span className="text-amber-300">(Tạm tính)</span></div>
+              <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>
+              <div className="mt-0.5 text-[12px] text-[#9b8e97]">{d.prizes.length ? `Trả ${d.prizes.length} hạng · ` : ""}Tiền chuyển hộ — nợ phải trả</div>
+            </div>
+          )}
           {/* Grouped payout: các hạng liền kề cùng mức tiền gom thành 1 dải ("Hạng 4–6 · X / suất").
               groupPayoutRows KHÔNG gộp qua khoảng trống → không giấu hạng thiếu; không cắt bớt
               (maxRows = số hạng) vì danh sách cuộn được. Dùng chung util với màn TV. */}
-          {d.prizes.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cơ cấu thưởng" />
+          {!satRows && (d.prizes.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cơ cấu thưởng" />
             : (
               <div className="ios-group">
                 {groupPayoutRows(d.prizes, d.prizes.length).rows.map((b) => {
@@ -526,7 +538,7 @@ export default function OpsTournamentCockpit() {
                   );
                 })}
               </div>
-            )}
+            ))}
           <DesktopNote text="Chỉ xem — sửa cơ cấu trên máy tính." />
         </div>
       )}

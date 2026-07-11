@@ -11,6 +11,23 @@ export interface SatellitePayout {
   rows: SatellitePrizeRow[];
 }
 
+/**
+ * Rows đủ điều kiện HIỂN THỊ: label VÀ prize đều non-blank. Null nếu không có gì đáng hiện.
+ * ĐỊNH NGHĨA DUY NHẤT cho "giải này có satellite để hiển thị" — Cockpit (OpsTournamentCockpit S5)
+ * và TV (TvPayoutsScreen) PHẢI cùng dùng hàm này, không tự tính lại (tránh 2 màn lệch nhau:
+ * một màn ẩn bảng tiền, màn kia không). Deterministic, không mutate input.
+ * Row dở dang (chỉ label hoặc chỉ prize) / payload toàn dòng trắng ⇒ KHÔNG displayable ⇒ null
+ * ⇒ các màn fallback về bảng tiền như cũ — không bao giờ ra màn trống.
+ */
+export function getDisplayableSatelliteRows(
+  payout: SatellitePayout | null | undefined,
+  enabled: boolean,
+): SatellitePrizeRow[] | null {
+  if (!enabled || !payout || !Array.isArray(payout.rows)) return null;
+  const rows = payout.rows.filter((r) => r.label.trim() !== "" && r.prize.trim() !== "");
+  return rows.length > 0 ? rows : null;
+}
+
 /** Parse jsonb thô từ DB → SatellitePayout (bỏ dòng rỗng); null nếu không có dữ liệu hợp lệ. */
 export function parseSatellitePayout(raw: unknown): SatellitePayout | null {
   if (!raw || typeof raw !== "object") return null;

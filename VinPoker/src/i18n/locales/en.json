@@ -2037,7 +2037,7 @@
       "edit": "Edit",
       "editTitle": "TV settings",
       "layout": "Layout",
-      "layoutNote": "Only the Clock layout renders on the TV today. Other layouts arrive in the next TV update.",
+      "layoutNote": "Clock, Payouts, Break and Announcement layouts are live on the TV. Multi-board arrives in a later update.",
       "layouts": {
         "clock": "Tournament clock",
         "break_screen": "Break screen",

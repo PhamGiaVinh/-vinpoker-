@@ -424,10 +424,12 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const RowsTable = ({ rows, pool }: { rows: PayoutRow[]; pool: number }) => {
     const bands = groupPayoutRows(rows, rows.length).rows;
     const pctByPos = new Map(rows.map((r) => [r.position, r.percentage]));
+    // Bảng kết quả cuộn theo TRANG (bỏ max-h + overflow-y — hết 2 thanh cuộn lồng nhau);
+    // sticky top-0 bỏ cùng vì nó bám vào container cuộn cũ, giữ lại sẽ dính viewport.
     return (
-      <div className="max-h-[44vh] overflow-y-auto rounded border border-border">
+      <div className="rounded border border-border">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-secondary text-muted-foreground"><tr>
+          <thead className="bg-secondary text-muted-foreground"><tr>
             <th className="text-left px-3 py-1.5 font-medium">Hạng</th>
             <th className="text-right px-3 py-1.5 font-medium">Tiền thưởng</th>
             <th className="text-right px-3 py-1.5 font-medium">%</th>

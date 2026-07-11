@@ -2037,7 +2037,7 @@
       "edit": "Sửa",
       "editTitle": "Cấu hình TV",
       "layout": "Bố cục",
-      "layoutNote": "Hiện tại chỉ bố cục Đồng hồ hiển thị trên TV. Các bố cục khác sẽ áp dụng ở bản cập nhật TV kế tiếp.",
+      "layoutNote": "Các bố cục Đồng hồ, Cơ cấu giải, Giải lao và Thông báo đã chạy trên TV. Bảng nhiều giải sẽ có ở bản cập nhật sau.",
       "layouts": {
         "clock": "Đồng hồ giải",
         "break_screen": "Màn hình giải lao",

@@ -5,6 +5,7 @@ import { TvStatsBar } from "./TvStatsBar";
 import { formatClock, formatVndCompact } from "@/lib/tv/format";
 import { FEATURES } from "@/lib/featureFlags";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
+import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 
 /**
  * Full-screen payout structure (tv_displays.layout = 'payouts').
@@ -20,10 +21,10 @@ export function TvPayoutsScreen({ data }: { data: TvData }) {
   const grouped = banded ? groupPayoutRows(data.prizes, 15) : null;
   const prizes = grouped ? grouped.rows : data.prizes.slice(0, 12).map((p) => ({ label: `${p.position}`, amount: p.amount }));
 
-  // Satellite (nhập tay): giải vé trả ghế + tiền bubble — không qua payout engine (không phải VND).
-  // Khi cờ payoutSatelliteManual ON và giải có cơ cấu satellite → hiện bảng vé thay cho ladder tiền.
-  const satellite = FEATURES.payoutSatelliteManual ? data.satellitePayout : null;
-  const satRows = satellite && satellite.rows.length > 0 ? satellite.rows : null;
+  // Satellite (nhập tay): giải vé trả ghế + tiền bubble (bubble nằm trong rows) — không qua engine.
+  // ĐỊNH NGHĨA displayable dùng CHUNG với cockpit (getDisplayableSatelliteRows) — 2 màn không lệch.
+  // Khi có satellite → bảng vé THAY ladder tiền; payload trắng/dở dang ⇒ null ⇒ ladder như cũ.
+  const satRows = getDisplayableSatelliteRows(data.satellitePayout, FEATURES.payoutSatelliteManual);
 
   return (
     <div className="flex h-full min-h-screen w-full flex-col bg-background text-foreground">
@@ -71,7 +72,9 @@ export function TvPayoutsScreen({ data }: { data: TvData }) {
         {!satRows && banded && grouped && grouped.truncatedCount > 0 ? (
           <div className="text-[2vmin] text-muted-foreground">+{grouped.truncatedCount} hạng khác</div>
         ) : null}
-        {data.prizePool != null ? (
+        {/* Dòng pool tiền ẨN khi satellite: số VND ngay dưới các dòng "1 vé" trên màn công cộng
+            mâu thuẫn với cơ cấu vé vừa tuyên bố. Giải tiền bình thường giữ nguyên. */}
+        {!satRows && data.prizePool != null ? (
           <div className="text-[2.8vmin] tabular-nums text-muted-foreground">
             {t("tv.prizePool")}:{" "}
             <span className="font-bold text-foreground">{formatVndCompact(data.prizePool)}</span>
