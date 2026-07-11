@@ -96,6 +96,24 @@ describe("A2 scoreForecasts — the separate join layer", () => {
   });
 });
 
+// A1 hardening (recorded from the A2 parity review): the EXTERNAL scoreForecasts must never resolve duplicate
+// event ids by last-wins. A single actual-per-id map is ambiguous under a collision, so scoreForecasts fails
+// closed. Valid-path-neutral — real data has unique ids. The INTERNAL CV joins positionally and is immune
+// (locked separately by the "CV invariant to event_id relabeling" block below).
+describe("A1 — scoreForecasts fails closed on duplicate event ids (external join guard)", () => {
+  const actualById = new Map<string, number | null>(EVENTS.map((e) => [e.event_id, e.total_entries]));
+
+  it("throws on a duplicate eventId in points (never last-wins)", () => {
+    const pts = walkForward(EVENTS);
+    const dup = [...pts, { ...pts[0] }]; // same eventId appears twice
+    expect(() => scoreForecasts(dup, actualById)).toThrow(/duplicate eventId/i);
+  });
+
+  it("unique-id points are unaffected — the guard never fires on the sound path", () => {
+    expect(() => scoreForecasts(walkForward(EVENTS), actualById)).not.toThrow();
+  });
+});
+
 // A2 parity guard: the internal CV diagnostic joins actuals POSITIONALLY, not by event_id. event_id is the
 // ONLY thing that key touches (artifact id / actual join) — the model, forecast and baseline never read it —
 // so relabeling ids must leave modelMapePct/baselineMapePct byte-identical, EVEN when two events collide on

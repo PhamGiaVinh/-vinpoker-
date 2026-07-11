@@ -16,6 +16,7 @@ import { typeOf, TYPE_LABEL } from "./seriesEventType";
 import { editionOf } from "./editionIndex";
 import { isHolidayWindow, isPaydayWindow } from "./viCalendar";
 import { hitCapacity } from "./censoring";
+import { buildFeatures, makeOrigin, type ForecastOrigin, type StaticFeature } from "./featureBoundary";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -189,6 +190,26 @@ function preFeatures(
     isPayday: isPaydayWindow(iso) ? 1 : 0,
     editionTrend,
   };
+}
+
+/** A1 point-in-time admission of the turnout model's features at a given origin. The model's inputs are ALL
+ *  StaticKnown, so this is numeric-neutral — the prediction reads `f` directly; this only enforces, fail
+ *  closed, that nothing non-static could enter a fold/target without an observedAt ≤ origin. Returns the
+ *  admitted bundle (with its availability metadata) so callers may retain it alongside the origin. */
+function admitStaticPreFeatures(origin: ForecastOrigin, f: PreFeatures) {
+  const statics: StaticFeature[] = [
+    { key: "logBuyin", value: f.logBuyin },
+    { key: "gtdMissing", value: f.logGtd === null ? 1 : 0 },
+    { key: "weekday", value: f.weekday },
+    { key: "quarter", value: f.quarter },
+    { key: "hourSlot", value: f.hourSlot },
+    { key: "type", value: f.type },
+    { key: "isHoliday", value: f.isHoliday },
+    { key: "isPayday", value: f.isPayday },
+    { key: "editionTrend", value: f.editionTrend },
+  ];
+  if (f.logGtd !== null) statics.push({ key: "logGtd", value: f.logGtd });
+  return buildFeatures(origin, statics); // throws (fail closed) if any key is not StaticKnown at origin
 }
 
 // ---------- ridge pipeline (built fresh per training set — no leakage) ----------
@@ -370,8 +391,11 @@ export interface ScoredForecast extends ForecastPoint {
  *  emits the target (P0-2). Positional actuals (not id-keyed) keep the internal CV byte-identical to the
  *  pre-A2 loop even when event_id is not unique — CSV import accepts a user-supplied event_id column with
  *  no dedup, so a malformed sheet can repeat an id; positional scoring is immune to that collision. */
-function walkForwardFolds(rows: TrainRow[], calendarFeatures = false): { point: ForecastPoint; actual: number }[] {
-  const folds: { point: ForecastPoint; actual: number }[] = [];
+function walkForwardFolds(
+  rows: TrainRow[],
+  calendarFeatures = false,
+): { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] {
+  const folds: { point: ForecastPoint; actual: number; origin: ForecastOrigin }[] = [];
   for (let i = CV_MIN_TRAIN; i < rows.length; i++) {
     // STRICTLY earlier by DATE, not by index — CSV dates are date-only, so festival days produce ties;
     // an index slice would let same-day events leak into the fold and flatter the CV (the flip gate).
@@ -384,16 +408,23 @@ function walkForwardFolds(rows: TrainRow[], calendarFeatures = false): { point: 
       if (Number.isFinite(pred) && pred > 0) forecast = pred;
     }
     const baseline = median(train.map((r) => r.entries));
+    // A1: the fold's forecast origin (point-in-time anchor). Admit the fold's features against it (fail
+    // closed) and retain the origin WITH the fold — the availability metadata survives into the walk-forward
+    // origin without altering the public ForecastPoint shape (A2 lock). originTs stays byte-identical:
+    // makeOrigin is idempotent on the canonical ISO the pre-A1 code already emitted.
+    const origin = makeOrigin(new Date(rows[i].date).toISOString());
+    admitStaticPreFeatures(origin, rows[i].f);
     folds.push({
       point: {
         eventId: rows[i].eventId,
-        originTs: new Date(rows[i].date).toISOString(),
+        originTs: origin.originTs,
         horizon: "event",
         forecast,
         baseline,
         engineVersion: ENGINE_VERSION,
       },
       actual: rows[i].entries, // positional — the fold's OWN row; never surfaced in the public artifact
+      origin, // A1: point-in-time availability anchor retained per fold (internal; not on the artifact)
     });
   }
   return folds;
@@ -410,6 +441,20 @@ export function scoreForecasts(
   points: ForecastPoint[],
   actualByEventId: Map<string, number | null>,
 ): ScoredForecast[] {
+  // Fail closed on duplicate event ids: a single actual-per-id map cannot resolve them, and last-wins would
+  // silently score an earlier fold against a later row's actual (the A2 parity-review hazard). Valid data has
+  // unique ids so this never fires on the sound path; event_id is NOT enforced unique upstream (CSV import),
+  // so this is the EXTERNAL join's guard — the internal CV joins POSITIONALLY (walkForwardCv) and is immune.
+  const seen = new Set<string>();
+  for (const p of points) {
+    if (seen.has(p.eventId)) {
+      throw new Error(
+        `scoreForecasts: duplicate eventId "${p.eventId}" — actuals cannot be resolved by id unambiguously; ` +
+          `de-duplicate before scoring (never last-wins).`,
+      );
+    }
+    seen.add(p.eventId);
+  }
   return points.map((p) => {
     const actual = actualByEventId.get(p.eventId) ?? null;
     const rel = (v: number | null): number | null =>
@@ -495,6 +540,11 @@ export function forecastTurnout(events: SeriesEvent[], target: UpcomingEvent, op
     target.event_name ?? null,
   );
   if (!tf) return empty("Thông số giải sắp tới chưa hợp lệ (cần buy-in > 0 và ngày hợp lệ).");
+
+  // A1: admit the target's features at the target's OWN forecast origin (fail closed) — the serving path
+  // passes the same point-in-time boundary as every walk-forward fold. Numeric-neutral (the prediction below
+  // reads `tf` directly); the date is valid here since tf built ⇒ localParts parsed target.event_date.
+  admitStaticPreFeatures(makeOrigin(target.event_date), tf);
 
   const model = buildModel(past.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
   if (!model) return empty("Không dựng được mô hình từ dữ liệu hiện có.");
