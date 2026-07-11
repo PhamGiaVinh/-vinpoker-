@@ -17,7 +17,13 @@ import { editionOf } from "./editionIndex";
 import { isHolidayWindow, isPaydayWindow } from "./viCalendar";
 import { hitCapacity } from "./censoring";
 import { buildFeatures, makeOrigin, type ForecastOrigin, type StaticFeature } from "./featureBoundary";
-import { evaluateModelCapability, MIN_TRAIN_LENGTH, type ModelCapability } from "./modelCapability";
+import {
+  evaluateModelCapability,
+  MIN_TRAIN_LENGTH,
+  FULL_FEATURE_THRESHOLD,
+  HIGH_N_THRESHOLD,
+  type ModelCapability,
+} from "./modelCapability";
 
 export type ForecastConfidence = "low" | "medium" | "high"; // reuses the ScenarioConfidence vocabulary
 
@@ -563,6 +569,98 @@ export function canonicalCvFolds(events: SeriesEvent[], target: UpcomingEvent, o
     medianBaseline: f.point.baseline,
     train: f.train,
   }));
+}
+
+// ---------- B2: identity inputs for structured forecast provenance (pure; numeric path untouched) ----------
+/** A post-admission feature vector — the model-consumed fields, NOT raw UI labels. Values are the log-numerics
+ *  + one-hot categorical codes the ridge actually reads. */
+export interface ProvenanceFeatureVector {
+  readonly [k: string]: number | string | null;
+}
+/** One training row's identity fields: its feature vector AND its historical outcome `entries` (the training
+ *  label). Changing a historical `entries` MUST change the training-data hash. */
+export interface ProvenanceTrainingRow {
+  eventId: string;
+  dateIso: string; // canonical UTC ISO of the training event
+  features: ProvenanceFeatureVector;
+  entries: number; // the historical outcome used as the training label
+}
+/** The config the model ACTUALLY consumes — the inputs to modelConfigHash. */
+export interface ProvenanceModelConfig {
+  calendarFeatures: boolean;
+  censoring: boolean;
+  lambda: number;
+  z: number;
+  fullFeatureThreshold: number;
+  highNThreshold: number;
+  minTrainLength: number;
+}
+export interface FeatureIdentityInputs {
+  targetFeatures: ProvenanceFeatureVector | null; // null when the target params are invalid
+  trainingRows: ProvenanceTrainingRow[]; // strictly-earlier rows (the training window), in canonical order
+  modelConfig: ProvenanceModelConfig;
+}
+
+/** Project a PreFeatures into the canonical, model-consumed feature vector for provenance hashing. Excludes
+ *  raw UI labels (e.g. event_name) — only the log-numerics, the gtd-missing flag, and the categorical codes
+ *  the ridge reads. `editionTrend` is the DERIVED value (0 when calendar features are off). */
+function preFeaturesToVector(f: PreFeatures): ProvenanceFeatureVector {
+  return {
+    logBuyin: f.logBuyin,
+    logGtd: f.logGtd,
+    gtdMissing: f.logGtd === null ? 1 : 0,
+    weekday: f.weekday,
+    quarter: f.quarter,
+    hourSlot: f.hourSlot,
+    type: f.type,
+    isHoliday: f.isHoliday,
+    isPayday: f.isPayday,
+    editionTrend: f.editionTrend,
+  };
+}
+
+/**
+ * The identity inputs that define a forecast's provenance (B2): the target's post-admission feature vector,
+ * the training rows actually used (with their historical outcomes), and the config the model consumes. Pure —
+ * reuses the SAME `preFeatures` + `pastTrainRows` the forecast does, so it never diverges from what was
+ * predicted, and never touches the numeric path. The target's OWN future outcome is never included (it is the
+ * thing being predicted); only historical training outcomes enter the training rows.
+ */
+export function featureIdentityInputs(
+  events: SeriesEvent[],
+  target: UpcomingEvent,
+  opts: ForecastOptions = {},
+): FeatureIdentityInputs {
+  const calendarFeatures = opts.calendarFeatures === true;
+  const censoring = opts.censoring === true;
+  const tf = preFeatures(
+    target.buy_in,
+    target.gtd,
+    target.event_date,
+    null,
+    target.typeKeyword,
+    calendarFeatures ? events : undefined,
+    target.event_name ?? null,
+  );
+  const past = pastTrainRows(events, target, opts);
+  return {
+    targetFeatures: tf ? preFeaturesToVector(tf) : null,
+    trainingRows: past.map((r) => ({
+      eventId: r.eventId,
+      dateIso: new Date(r.date).toISOString(),
+      features: preFeaturesToVector(r.f),
+      entries: r.entries,
+    })),
+    modelConfig: {
+      calendarFeatures,
+      censoring,
+      lambda: LAMBDA,
+      z: Z,
+      fullFeatureThreshold: FULL_FEATURE_THRESHOLD,
+      highNThreshold: HIGH_N_THRESHOLD,
+      minTrainLength: MIN_TRAIN_LENGTH,
+    },
+  };
 }
 
 function tierFor(cap: ModelCapability): ForecastConfidence {
