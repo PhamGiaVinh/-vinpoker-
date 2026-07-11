@@ -1360,6 +1360,15 @@ export const FEATURES = {
    * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
    */
   clubExpenses: false,
+  /**
+   * staffSalaryChot — the salary chốt/duyệt workspace (accountant computes + chốt the monthly
+   * salary and submits it; the club owner approves/rejects; a run is marked paid only after
+   * approval). Backs the accountant workspace at `/accountant` (StaffSalaryChot). Reads the
+   * live S6/S7 objects (staff_salary_runs/periods + club_accountants). While false the page
+   * runs on mock; true = live RPCs. **ON** (2026-07-11, owner-approved — re-lands the flag that
+   * PR #844 was meant to ship but never merged). Kill-switch: set false to re-hide.
+   */
+  staffSalaryChot: true,
 } as const;
 
 /**
