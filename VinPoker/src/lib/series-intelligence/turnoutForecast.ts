@@ -317,6 +317,7 @@ function predictLog(model: Model, f: PreFeatures): number {
 
 // ---------- public API ----------
 interface TrainRow {
+  eventId: string; // A2: carried so the walk-forward artifact can key ForecastPoints by event
   f: PreFeatures;
   y: number; // log entries
   date: number; // ms for sorting
@@ -336,30 +337,105 @@ function trainRows(events: SeriesEvent[], calendarFeatures = false, censoring = 
     if (Number.isNaN(t)) continue;
     const f = preFeatures(e.buy_in, e.gtd, e.event_date, e.event_name, undefined, allEvents);
     if (!f) continue;
-    rows.push({ f, y: Math.log(e.total_entries), date: t, entries: e.total_entries });
+    rows.push({ eventId: e.event_id, f, y: Math.log(e.total_entries), date: t, entries: e.total_entries });
   }
   return rows.sort((a, b) => a.date - b.date);
 }
 
-/** Walk-forward CV: for each event predict it from ONLY earlier events (pipeline rebuilt per fold). Honest
- *  out-of-sample. Returns null mapes when too few folds. Baseline = median of past entries (same protocol). */
-function walkForwardCv(rows: TrainRow[], calendarFeatures = false): { modelMape: number | null; baselineMape: number | null } {
-  const mApe: number[] = [];
-  const bApe: number[] = [];
+// ---------- A2: one walk-forward artifact (ForecastPoint) + a SEPARATE scoring layer ----------
+// The engine emits ForecastPoint[] WITHOUT actuals (P0-2: a production forecast can never touch the target
+// merely by sharing an object with the CV path). A separate scoring layer joins the later-known actual to
+// produce ScoredForecast[]. CV error, baseline comparison, and future calibration all REDUCE over this one
+// artifact — there is no second evaluation code path that could disagree or leak.
+export const ENGINE_VERSION = "turnout-ridge-1"; // provenance stub; full structured provenance is B2
+
+export interface ForecastPoint {
+  eventId: string;
+  originTs: string; // ISO of the forecast target event; a walk-forward fold stands STRICTLY before it
+  horizon: "event"; // turnout is single-step (the event itself); reserved for future multi-step
+  forecast: number | null; // ridge point forecast (entries); null when the model can't produce a usable number
+  baseline: number | null; // median of strictly-earlier entries — the honest "do nothing" reference
+  engineVersion: string;
+}
+export interface ScoredForecast extends ForecastPoint {
+  actual: number | null; // joined AFTER the event finalises — never visible to the engine at forecast time
+  modelError: number | null; // |forecast − actual| / actual (MAPE contribution)
+  baselineError: number | null; // |baseline − actual| / actual
+}
+
+/** Shared walk-forward engine over pre-built rows: for each row from CV_MIN_TRAIN on, forecast it from ONLY
+ *  strictly-earlier rows (pipeline rebuilt per fold). Returns each fold's ForecastPoint paired with the
+ *  POSITIONAL actual of that fold's own row (rows[i].entries). The pairing lives ONLY in this internal
+ *  scoring machinery — the public artifact (walkForwardRows/walkForward) drops it, so the engine never
+ *  emits the target (P0-2). Positional actuals (not id-keyed) keep the internal CV byte-identical to the
+ *  pre-A2 loop even when event_id is not unique — CSV import accepts a user-supplied event_id column with
+ *  no dedup, so a malformed sheet can repeat an id; positional scoring is immune to that collision. */
+function walkForwardFolds(rows: TrainRow[], calendarFeatures = false): { point: ForecastPoint; actual: number }[] {
+  const folds: { point: ForecastPoint; actual: number }[] = [];
   for (let i = CV_MIN_TRAIN; i < rows.length; i++) {
     // STRICTLY earlier by DATE, not by index — CSV dates are date-only, so festival days produce ties;
     // an index slice would let same-day events leak into the fold and flatter the CV (the flip gate).
     const train = rows.filter((r) => r.date < rows[i].date);
     if (train.length < CV_MIN_TRAIN) continue;
-    const actual = rows[i].entries;
     const model = buildModel(train.map((r) => ({ f: r.f, y: r.y })), calendarFeatures);
+    let forecast: number | null = null;
     if (model) {
       const pred = Math.exp(predictLog(model, rows[i].f));
-      if (Number.isFinite(pred) && pred > 0) mApe.push(Math.abs(pred - actual) / actual);
+      if (Number.isFinite(pred) && pred > 0) forecast = pred;
     }
-    const med = median(train.map((r) => r.entries));
-    if (med !== null) bApe.push(Math.abs(med - actual) / actual);
+    const baseline = median(train.map((r) => r.entries));
+    folds.push({
+      point: {
+        eventId: rows[i].eventId,
+        originTs: new Date(rows[i].date).toISOString(),
+        horizon: "event",
+        forecast,
+        baseline,
+        engineVersion: ENGINE_VERSION,
+      },
+      actual: rows[i].entries, // positional — the fold's OWN row; never surfaced in the public artifact
+    });
   }
+  return folds;
+}
+
+/** The public walk-forward artifact: one ForecastPoint per fold, actuals STRIPPED (P0-2). */
+function walkForwardRows(rows: TrainRow[], calendarFeatures = false): ForecastPoint[] {
+  return walkForwardFolds(rows, calendarFeatures).map((fold) => fold.point);
+}
+
+/** Scoring layer: join each ForecastPoint to its later-known actual and compute MAPE contributions. Keeps
+ *  forecasts and targets in SEPARATE structures — the engine never receives `actual`. */
+export function scoreForecasts(
+  points: ForecastPoint[],
+  actualByEventId: Map<string, number | null>,
+): ScoredForecast[] {
+  return points.map((p) => {
+    const actual = actualByEventId.get(p.eventId) ?? null;
+    const rel = (v: number | null): number | null =>
+      v !== null && actual !== null && actual !== 0 ? Math.abs(v - actual) / actual : null;
+    return { ...p, actual, modelError: rel(p.forecast), baselineError: rel(p.baseline) };
+  });
+}
+
+/** Full-history walk-forward backtest for a club's events — the canonical ForecastPoint[] artifact that CV,
+ *  baseline comparison, and calibration all reduce over. Actuals are joined SEPARATELY via scoreForecasts. */
+export function walkForward(events: SeriesEvent[], opts: ForecastOptions = {}): ForecastPoint[] {
+  return walkForwardRows(trainRows(events, opts.calendarFeatures === true, opts.censoring === true), opts.calendarFeatures === true);
+}
+
+/** Walk-forward CV MAPEs — a pure reduction over the shared fold machinery, scored POSITIONALLY against each
+ *  fold's own row (byte-identical to the pre-A2 hand-rolled loop; the A5 parity snapshot guards this). Uses
+ *  the same relative-error formula as scoreForecasts, but joins by fold position — NOT by event_id — so the
+ *  displayed CV numbers can never drift from the old loop on a malformed CSV with duplicate ids.
+ *  Baseline = median of past entries (same protocol). */
+function walkForwardCv(rows: TrainRow[], calendarFeatures = false): { modelMape: number | null; baselineMape: number | null } {
+  const folds = walkForwardFolds(rows, calendarFeatures);
+  // actual is always finite > 0 here (trainRows filters total_entries > 0), matching scoreForecasts' rel().
+  const rel = (v: number | null, actual: number): number | null =>
+    v !== null && actual !== 0 ? Math.abs(v - actual) / actual : null;
+  const mApe = folds.map((f) => rel(f.point.forecast, f.actual)).filter((e): e is number => e !== null);
+  const bApe = folds.map((f) => rel(f.point.baseline, f.actual)).filter((e): e is number => e !== null);
   return {
     modelMape: mApe.length ? mean(mApe) * 100 : null,
     baselineMape: bApe.length ? mean(bApe) * 100 : null,
