@@ -65,14 +65,17 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(getByTestId("replay-hud-bar").textContent).toContain("POT");
   });
 
-  it("hud → TÓM TẮT default tab shows winner rows ±BB from ending−starting", () => {
-    const { getByTestId } = render(<ReplayScrubber hand={hand} onFrame={() => {}} hud />);
+  it("hud keeps legacy settlement hidden even at the final frame", () => {
+    const { getByTestId, getByTitle } = render(<ReplayScrubber hand={hand} onFrame={() => {}} hud />);
+    expect(getByTestId("replay-hud-summary").textContent).toMatch(/Chưa có kết quả|No result yet/);
+
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
     const s = getByTestId("replay-hud-summary").textContent || "";
-    expect(s).toContain("KIÊN"); // winner +2.1M
-    expect(s).toContain("+2.1M");
-    expect(s).toContain("7.0 BB"); // 2.1M / 300k — the HAND's blind, not any clock
-    expect(s).toContain("GUIDO"); // loser -2.1M
-    expect(s).toContain("all-in 2.1M"); // bullet from the all_in action
+    expect(s).toMatch(/Chưa có kết quả|No result yet/);
+    expect(s).toContain("KIÊN");
+    expect(s).toContain("all-in 2.1M");
+    expect(s).not.toContain("+4.2M");
+    expect(s).not.toContain("Hoàn +300k");
   });
 
   it("hud → jump-to-end lands on the final frame (step N/N)", () => {
@@ -102,11 +105,26 @@ describe("ReplayScrubber B1 HUD (additive `hud` prop)", () => {
     expect(getByTestId("replay-action-rail").className).toContain("rounded-2xl");
   });
 
-  it("hud names a zero-delta Broadway split as chop, not no result", () => {
-    const { getByTestId, getByText, queryByText } = render(<ReplayScrubber hand={chopHand} onFrame={() => {}} hud />);
+  it("hud does not name a reconstructed Broadway split without server proof", () => {
+    const { getByTestId, getByText, queryByTestId } = render(<ReplayScrubber hand={chopHand} onFrame={() => {}} hud />);
     fireEvent.click(getByText("Showdown"));
-    expect(getByTestId("replay-hud-chop").textContent).toMatch(/Chop pot|Chia/);
-    expect(queryByText(/Chưa có kết quả|No result yet/)).toBeNull();
+    expect(queryByTestId("replay-hud-chop")).toBeNull();
+    expect(getByTestId("replay-hud-summary").textContent).toMatch(/Chưa có kết quả|No result yet/);
+  });
+
+  it("a keyed hand switch emits the new hand's initial frame before any settlement", () => {
+    const onFrame = vi.fn();
+    const { getByTitle, rerender } = render(
+      <ReplayScrubber key="hand-a" hand={hand} onFrame={onFrame} hud />,
+    );
+    fireEvent.click(getByTitle("Tới cuối (showdown)"));
+    expect(onFrame.mock.calls.at(-1)?.[0].index).toBe(hand.actions.length);
+
+    rerender(<ReplayScrubber key="hand-b" hand={chopHand} onFrame={onFrame} hud />);
+    const firstNewFrame = onFrame.mock.calls.at(-1)?.[0];
+    expect(firstNewFrame.index).toBe(0);
+    expect(firstNewFrame.payoutVerified).toBe(false);
+    expect(firstNewFrame.potAwards).toEqual([]);
   });
 
   it("hud translates all replay chrome in English", async () => {

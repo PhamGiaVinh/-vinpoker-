@@ -1,5 +1,5 @@
-// liveTableFx showdown winner treatment. At a replay's final frame the winning
-// seat (net_won > 0) gets a gold glow + a green "+X (Y BB)" badge — but ONLY when
+// liveTableFx showdown winner treatment. At a replay's final frame a verified
+// pot winner gets a gold glow + a pot-award badge — but ONLY when
 // the viewer passes `tableFx`. Operator / TV / live (no tableFx, or no net_won)
 // render byte-identical. These pin both the presence and the prop-gating.
 import { describe, it, expect } from "vitest";
@@ -31,7 +31,7 @@ const baseProps = {
   formatBB: (n: number) => `${(n / 500000).toFixed(1)} BB`,
 };
 
-const winner = seat({ player_id: "w", seat_number: 1, hole_cards: ["Kh", "3h"], net_won: 19400000 });
+const winner = seat({ player_id: "w", seat_number: 1, hole_cards: ["Kh", "3h"], pot_winner: true, payout_award: 19400000, net_won: 19400000 });
 const loser = seat({ player_id: "l", seat_number: 2, hole_cards: ["7s", "4s"], net_won: -19400000 });
 
 describe("LiveFelt showdown winner — under tableFx", () => {
@@ -43,7 +43,7 @@ describe("LiveFelt showdown winner — under tableFx", () => {
     expect(html).toContain("38.8 BB"); // formatBB(19.4M) = 19.4M/500k
   });
 
-  it("only the winner (net_won > 0) is decorated — never the loser", () => {
+  it("only a verified pot winner is decorated — never the loser", () => {
     const html = renderToStaticMarkup(<LiveFelt seats={[winner, loser]} {...baseProps} tableFx />);
     // exactly one net-won badge and one card-glow + one avatar-glow → 2 glow uses, 1 badge
     expect((html.match(/seat-net-won/g) || []).length).toBe(1);
@@ -58,11 +58,20 @@ describe("LiveFelt showdown winner — under tableFx", () => {
     expect(html).not.toContain("+19.4M");
   });
 
-  it("a non-positive net_won never triggers the treatment", () => {
-    const broke = seat({ player_id: "b", seat_number: 3, net_won: 0 });
+  it("a positive stack delta without a pot allocation never triggers the treatment", () => {
+    const broke = seat({ player_id: "b", seat_number: 3, net_won: 5000 });
     const html = renderToStaticMarkup(<LiveFelt seats={[broke, loser]} {...baseProps} tableFx />);
     expect(html).not.toContain("tracker-win-glow");
     expect(html).not.toContain("seat-net-won");
+  });
+
+  it("shows an uncalled refund separately without winner glow", () => {
+    const refunded = seat({ player_id: "r", seat_number: 3, refund_award: 38700000, net_won: 0 });
+    const html = renderToStaticMarkup(<LiveFelt seats={[refunded, loser]} {...baseProps} tableFx />);
+    expect(html).toContain('data-testid="seat-refund-award"');
+    expect(html).toContain("+38.7M");
+    expect(html).not.toContain("tracker-win-glow");
+    expect(html).not.toContain('data-testid="seat-pot-award"');
   });
 
   it("verified chop glows both winners and shows each credited pot share", () => {

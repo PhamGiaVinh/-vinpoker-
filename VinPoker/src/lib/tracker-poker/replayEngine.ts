@@ -73,9 +73,9 @@ export interface ReplayFrame {
   showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /** Display-only winner ids, present only when the recorded payout matches the pure settlement. */
   showdownWinnerIds?: string[];
-  /** Verified only when engine settlement matches every recorded ending stack. */
+  /** Server-verified pot allocations. Legacy client reconstruction never populates this. */
   potAwards?: { potIndex: number; amount: number; winnerPlayerIds: string[] }[];
-  /** True only when reconstructed settlement matches every persisted ending stack. */
+  /** True only for a revision/hash-matched public settlement supplied by the server. */
   payoutVerified?: boolean;
 }
 
@@ -119,6 +119,7 @@ function deriveShowdownResult(
   payoutMatches: boolean;
   potAwards: { potIndex: number; amount: number; winnerPlayerIds: string[] }[];
   payoutAwards: Record<string, number>;
+  refundAwards: Record<string, number>;
 } | null {
   if (board.length !== 5) return null;
 
@@ -153,10 +154,18 @@ function deriveShowdownResult(
     return settlement.results.find((r) => r.player_id === p.player_id)?.ending_stack === p.ending_stack;
   });
   const allLayersAreTied = settlement.layers.every((layer) => layer.winner_player_ids.length > 1);
+  const refundAwards = settlement.uncalled
+    ? { [settlement.uncalled.player_id]: settlement.uncalled.amount }
+    : {};
   const payoutAwards = Object.fromEntries(
     settlement.results.map((result) => [
       result.player_id,
-      Math.max(0, result.ending_stack - (runtime.get(result.player_id)?.chip ?? 0)),
+      Math.max(
+        0,
+        result.ending_stack
+          - (runtime.get(result.player_id)?.chip ?? 0)
+          - (refundAwards[result.player_id] ?? 0),
+      ),
     ]),
   );
   return {
@@ -171,6 +180,7 @@ function deriveShowdownResult(
         }))
       : [],
     payoutAwards: payoutMatches ? payoutAwards : {},
+    refundAwards: payoutMatches ? refundAwards : {},
   };
 }
 
@@ -241,42 +251,14 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       ? deriveShowdownResult(players, runtime, actions, community)
       : null;
 
-    // Winner net for the FINAL frame (drives the showdown glow + badge). Prefer the
-    // recorded ending_stack — exact, and the only way to resolve a SHOWDOWN (the
-    // engine doesn't evaluate hands). When ending_stack is absent, fall back to the
-    // fold-win case: a single un-folded seat takes the whole pot, so NON-showdown
-    // wins (A bets, B folds) light up too. Either way it is final-frame-only.
+    // Client reconstruction may detect a mismatch, but it is not a settlement
+    // proof. Until a revision/hash-matched public outcome is supplied by the
+    // server, legacy hands must not emit winners, awards, refunds or winner FX.
     const pot = isFinal
       ? breakdown.totalCommitted > 0 ? breakdown.totalPot : clampChips(hand.stored_pot_size)
       : breakdown.totalCommitted;
-    const stillIn = isFinal ? players.filter((p) => !runtime.get(p.player_id)?.folded) : [];
-    const soleWinnerId = isFinal && stillIn.length === 1 ? stillIn[0].player_id : null;
-    const foldPayoutMatches = !!soleWinnerId && !reveal && players.every((p) => {
-      if (p.ending_stack == null) return false;
-      const refund = breakdown.uncalled?.player_id === p.player_id ? breakdown.uncalled.amount : 0;
-      const award = p.player_id === soleWinnerId ? breakdown.totalPot : 0;
-      return runtime.get(p.player_id)!.chip + refund + award === p.ending_stack;
-    });
-    const payoutVerified = showdown?.payoutMatches ?? foldPayoutMatches;
-    const foldPotAwards = foldPayoutMatches && soleWinnerId
-      ? breakdown.pots.map((layer, potIndex) => ({
-          potIndex,
-          amount: layer.amount,
-          winnerPlayerIds: [soleWinnerId],
-        }))
-      : [];
-    const foldPayoutAwards = foldPayoutMatches
-      ? Object.fromEntries(
-          players.map((p) => [
-            p.player_id,
-            Math.max(0, (p.ending_stack ?? 0) - (runtime.get(p.player_id)?.chip ?? 0)),
-          ]),
-        )
-      : {};
-    const netWonFor = (p: ReplayHandPlayer): number | null => {
-      if (!isFinal || !payoutVerified || p.ending_stack == null) return null;
-      return p.ending_stack - clampChips(p.starting_stack);
-    };
+    const legacySettlementMismatch = !!showdown && !showdown.payoutMatches;
+    const payoutVerified = false;
 
     const seats: SeatInfo[] = players.map((p) => {
       const st = runtime.get(p.player_id)!;
@@ -293,15 +275,8 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         is_folded: st.folded,
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
-        net_won: netWonFor(p),
-        pot_winner: payoutVerified
-          ? showdown?.payoutMatches
-            ? showdown.winnerIds.includes(p.player_id)
-            : p.player_id === soleWinnerId
-          : undefined,
-        ...(payoutVerified
-          ? { payout_award: showdown?.payoutAwards[p.player_id] ?? foldPayoutAwards[p.player_id] ?? 0 }
-          : {}),
+        net_won: null,
+        pot_winner: undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
         ...(trackBets ? { current_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
@@ -331,9 +306,9 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       lastActorId: latestAction?.player_id ?? null,
       latestAction,
       revealHoleCards: reveal,
-      showdownResult: showdown?.result ?? null,
-      showdownWinnerIds: showdown?.winnerIds ?? [],
-      potAwards: showdown?.potAwards ?? foldPotAwards,
+      showdownResult: legacySettlementMismatch ? "needs_resettle" : null,
+      showdownWinnerIds: [],
+      potAwards: [],
       payoutVerified,
     };
   };

@@ -1348,6 +1348,15 @@ export function TournamentLiveView({
             tableId={effectiveTableId}
             selectedHandId={replayHandId}
             initialHandNumber={initialReplayHandNumber}
+            onLoadStart={(id) => {
+              setReplayHandId(id);
+              setReplayHand(null);
+              setReplayFrame(null);
+              setReplayFrameSource("jump");
+              replayMotionFrameRef.current = null;
+              setTableMotionEvents([]);
+              setReplayMotionEpoch((current) => current + 1);
+            }}
             onSelectHand={(id, h) => {
               setReplayHandId(id);
               setReplayHand(h);
@@ -1393,6 +1402,7 @@ export function TournamentLiveView({
           )}
           {isReplay && replayHand && !(spectator && FEATURES.liveReplayHud) && (
             <ReplayScrubber
+              key={replayHand.hand_id ?? `hand-${replayHand.hand_number}`}
               hand={replayHand}
               onFrame={handleReplayFrame}
               hud={spectator && FEATURES.liveReplayHud}
@@ -1431,6 +1441,7 @@ export function TournamentLiveView({
         {spectator && isReplay && replayHand && FEATURES.liveReplayHud && (
           <aside className="min-w-0 md:sticky md:top-[calc(env(safe-area-inset-top)+3.75rem)]">
             <ReplayScrubber
+              key={replayHand.hand_id ?? `hand-${replayHand.hand_number}`}
               hand={replayHand}
               onFrame={handleReplayFrame}
               hud

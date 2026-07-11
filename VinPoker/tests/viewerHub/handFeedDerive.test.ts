@@ -45,13 +45,14 @@ const PROFILES = new Map<string, RawProfile>([
   ["p2", { user_id: "p2", display_name: "Phú", avatar_url: null }],
 ]);
 
-function build() {
+function build(viewerPulseV2 = false) {
   return buildHandFeedItems(
     [HAND],
     new Map([["h1", PLAYERS]]),
     new Map([["h1", ACTIONS]]),
     new Map([["h1", ELIMS]]),
     PROFILES,
+    { viewerPulseV2 },
   )[0];
 }
 
@@ -102,11 +103,18 @@ describe("buildHandFeedItems", () => {
     expect(item.highHand?.category).toBe("full_house");
   });
 
-  it("sorts winners first with chip delta abs + BB", () => {
+  it("sorts positive chip deltas first but does not infer a winner from the delta", () => {
     expect(item.players[0].playerId).toBe("p1");
-    expect(item.players[0].isWinner).toBe(true);
+    expect(item.players[0].isWinner).toBe(false);
     expect(item.players[0].deltaChips).toBe(5_400_000);
     expect(item.players[0].deltaBB).toBe(21.6);
+  });
+
+  it("does not promote guarded client reconstruction into settlement proof", () => {
+    const guarded = build(true);
+    expect(guarded.showdownResult).toBeNull();
+    expect(guarded.players.find((player) => player.playerId === "p1")?.isWinner).toBe(false);
+    expect(guarded.players.find((player) => player.playerId === "p2")?.isWinner).toBe(false);
   });
 
   it("flags the eliminated player with finish position", () => {

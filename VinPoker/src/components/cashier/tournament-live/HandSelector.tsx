@@ -23,6 +23,8 @@ interface HandSelectorProps {
   /** When set, only hands on this table are offered (never mix tables). */
   tableId: string | null;
   selectedHandId: string | null;
+  /** Clear the previous replay frame before an async hand load begins. */
+  onLoadStart?: (handId: string) => void;
   onSelectHand: (handId: string, hand: ReplayHand) => void;
   /** Deep-link: when set, select this hand number instead of the most recent one
    *  (ADDITIVE — omit/null keeps the auto-select-most-recent behaviour). */
@@ -33,6 +35,7 @@ export function HandSelector({
   tournamentId,
   tableId,
   selectedHandId,
+  onLoadStart,
   onSelectHand,
   initialHandNumber = null,
 }: HandSelectorProps) {
@@ -74,6 +77,7 @@ export function HandSelector({
 
   const loadHand = useCallback(
     async (row: HandRow) => {
+      onLoadStart?.(row.id);
       setLoadingHand(true);
       try {
         // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) when the
@@ -129,7 +133,7 @@ export function HandSelector({
         setLoadingHand(false);
       }
     },
-    [onSelectHand, tournamentId]
+    [onLoadStart, onSelectHand, tournamentId]
   );
 
   // Select the deep-linked hand if given, else auto-select the most recent once the

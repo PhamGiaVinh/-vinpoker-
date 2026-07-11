@@ -229,7 +229,7 @@ describe("buildReplayFrames", () => {
   });
 });
 
-describe("buildReplayFrames — net_won (showdown winner badge)", () => {
+describe("buildReplayFrames — settlement containment", () => {
   const withEnd = (): ReplayHand => ({
     hand_number: 1,
     button_seat: 1,
@@ -244,17 +244,17 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     ],
   });
 
-  it("sets signed net_won ONLY on the final frame", () => {
+  it("never treats legacy ending-stack deltas as verified settlement proof", () => {
     const frames = buildReplayFrames(withEnd());
-    expect(frames[0].seats.every((s) => s.net_won == null)).toBe(true); // initial
-    expect(frames[1].seats.every((s) => s.net_won == null)).toBe(true); // mid-hand
+    expect(frames.every((frame) => frame.payoutVerified === false)).toBe(true);
+    expect(frames.every((frame) => frame.potAwards?.length === 0)).toBe(true);
     const final = frames.at(-1)!;
-    const by = Object.fromEntries(final.seats.map((s) => [s.player_id, s]));
-    expect(by.W.net_won).toBe(10000);
-    expect(by.L.net_won).toBe(-10000); // 0 − 10000 → loser (<0, no badge)
+    expect(final.showdownResult).toBeNull();
+    expect(final.showdownWinnerIds).toEqual([]);
+    expect(final.seats.every((seat) => seat.net_won == null && seat.pot_winner !== true)).toBe(true);
   });
 
-  it("marks an equal Broadway board as a chop only when the recorded payout matches", () => {
+  it("does not publish a Broadway chop reconstructed only in the client", () => {
     const h: ReplayHand = {
       hand_number: 8,
       button_seat: 1,
@@ -269,12 +269,37 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
       ],
     };
     const final = buildReplayFrames(h).at(-1)!;
-    expect(final.showdownResult).toBe("chop");
-    expect(final.showdownWinnerIds).toEqual(["A", "B"]);
-    expect(final.potAwards).toEqual([{ potIndex: 0, amount: 2000, winnerPlayerIds: ["A", "B"] }]);
-    expect(final.seats.filter((s) => s.pot_winner)).toHaveLength(2);
-    expect(final.seats.map((s) => s.payout_award)).toEqual([1000, 1000]);
-    expect(final.seats.every((s) => s.net_won === 0)).toBe(true);
+    expect(final.showdownResult).toBeNull();
+    expect(final.showdownWinnerIds).toEqual([]);
+    expect(final.potAwards).toEqual([]);
+    expect(final.payoutVerified).toBe(false);
+    expect(final.seats.every((s) => s.pot_winner !== true && s.payout_award == null)).toBe(true);
+  });
+
+  it("keeps Hand #8's distributable pot visible but withholds unverified awards", () => {
+    const h: ReplayHand = {
+      hand_number: 8,
+      button_seat: 1,
+      community_cards: ["As", "Jd", "Qh", "Jh", "8h"],
+      players: [
+        { player_id: "limitless", seat_number: 1, display_name: "Limitless", starting_stack: 8_700_000, ending_stack: 8_700_000, hole_cards: ["Jc", "9d"] },
+        { player_id: "kayhan", seat_number: 2, display_name: "Kayhan Mokri", starting_stack: 47_400_000, ending_stack: 47_400_000, hole_cards: ["Js", "Ts"] },
+      ],
+      actions: [
+        { player_id: "limitless", action_type: "post_bb", action_amount: 200_000, street: "preflop", action_order: 1 },
+        { player_id: "kayhan", action_type: "all_in", action_amount: 47_400_000, street: "preflop", action_order: 2 },
+        { player_id: "limitless", action_type: "call", action_amount: 8_500_000, street: "preflop", action_order: 3 },
+      ],
+    };
+
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.showdownResult).toBeNull();
+    expect(final.potSize).toBe(17_400_000);
+    expect(final.potBreakdown?.totalCommitted).toBe(56_100_000);
+    expect(final.potBreakdown?.uncalled).toEqual({ player_id: "kayhan", amount: 38_700_000 });
+    expect(final.payoutVerified).toBe(false);
+    expect(final.potAwards).toEqual([]);
+    expect(final.seats.every((seat) => seat.payout_award == null && seat.refund_award == null)).toBe(true);
   });
 
   it("blocks winner glow when edited cards disagree with the stored payout", () => {
@@ -340,7 +365,7 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     expect(frames.at(-1)!.potAwards).toEqual([]);
   });
 
-  it("verifies fold-win payout, refund and award against ending stacks", () => {
+  it("does not publish a fold-win award or refund from ending stacks alone", () => {
     const h: ReplayHand = {
       hand_number: 2,
       button_seat: 1,
@@ -358,9 +383,9 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     };
     const final = buildReplayFrames(h).at(-1)!;
     expect(final.potSize).toBe(200);
-    expect(final.payoutVerified).toBe(true);
-    expect(final.potAwards).toEqual([{ potIndex: 0, amount: 200, winnerPlayerIds: ["A"] }]);
-    expect(final.seats.find((s) => s.player_id === "A")?.net_won).toBe(100);
+    expect(final.payoutVerified).toBe(false);
+    expect(final.potAwards).toEqual([]);
+    expect(final.seats.every((seat) => seat.net_won == null && seat.payout_award == null && seat.refund_award == null)).toBe(true);
   });
 });
 

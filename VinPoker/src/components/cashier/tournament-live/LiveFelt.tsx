@@ -53,6 +53,8 @@ export interface SeatInfo {
   pot_winner?: boolean;
   /** Verified payout credited to this seat; absent until settlement matches storage. */
   payout_award?: number | null;
+  /** Verified uncalled amount returned to this seat. Refund never implies a winner. */
+  refund_award?: number | null;
   /** UAT wave 2 (compact viewer only): whole-hand chips committed by an ALL-IN seat —
    * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
    * Absent → the pill falls back to current_bet (today's behavior). */
@@ -752,12 +754,12 @@ export function LiveFelt({
               ? "ring-1 ring-[hsl(var(--poker-gold)/0.4)]"
               : "";
           const nameShadow = { textShadow: "0 1px 3px rgba(0,0,0,0.95)" };
-          // Showdown winner (replay final frame, viewer FX only): gold glow + green
-          // net-won badge. net_won is set only on the replay final frame, so live /
-          // operator / TV never trigger this — byte-identical without `tableFx`.
-          const netWon = seat.net_won ?? 0;
-          const isWinner = tableFx && (seat.pot_winner === true || netWon > 0);
-          const isVerifiedChop = isWinner && showdownResult === "chop" && (seat.payout_award ?? 0) > 0;
+          // Showdown winner (replay final frame, viewer FX only): gold glow plus
+          // verified pot award. A refund is rendered separately and never glows.
+          const payoutAward = seat.payout_award ?? 0;
+          const refundAward = seat.refund_award ?? 0;
+          const isWinner = tableFx && seat.pot_winner === true && payoutAward > 0;
+          const isVerifiedChop = isWinner && showdownResult === "chop";
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -880,7 +882,7 @@ export function LiveFelt({
                     </div>
                   </>
                 )}
-                {isWinner && (netWon > 0 || isVerifiedChop) && (
+                {isWinner && (
                   <div
                     data-testid="seat-net-won"
                     className="tracker-win-amount tracker-num mt-0.5 text-[9px] font-extrabold leading-tight sm:text-[10px]"
@@ -889,14 +891,24 @@ export function LiveFelt({
                     {isVerifiedChop ? (
                       <>
                         <span data-testid="seat-pot-award">{t("liveHub.felt.chopPotShort", "CHOP POT")}</span>
-                        <span className="ml-1 font-bold opacity-90">+{formatStack(seat.payout_award ?? 0)}</span>
+                        <span className="ml-1 font-bold opacity-90">+{formatStack(payoutAward)}</span>
                       </>
                     ) : (
                       <>
-                        +{formatStack(netWon)}
-                        {formatBB(netWon) ? <span className="font-bold opacity-80"> ({formatBB(netWon)})</span> : null}
+                        <span data-testid="seat-pot-award">{t("liveHub.felt.potAwardShort", "THẮNG POT")}</span>
+                        <span className="ml-1 font-bold opacity-90">+{formatStack(payoutAward)}</span>
+                        {formatBB(payoutAward) ? <span className="font-bold opacity-80"> ({formatBB(payoutAward)})</span> : null}
                       </>
                     )}
+                  </div>
+                )}
+                {tableFx && refundAward > 0 && (
+                  <div
+                    data-testid="seat-refund-award"
+                    className="tracker-num mt-0.5 text-[8px] font-bold leading-tight text-amber-200/90 sm:text-[9px]"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
+                  >
+                    {t("liveHub.felt.refundShort", "Hoàn")} +{formatStack(refundAward)}
                   </div>
                 )}
                 {/* Committed-bet indicator. viewerLayout → an RPT-style chip STACK rendered
