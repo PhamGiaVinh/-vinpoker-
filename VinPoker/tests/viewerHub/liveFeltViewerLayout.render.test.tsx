@@ -62,7 +62,7 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
     expect(html).toContain("container-type:inline-size");
     // Hole + board cards carry the responsive clamp (cqi is unique to this sizing —
     // the felt's V mark uses vw, so a bare `clamp(` check would be ambiguous).
-    expect(html).toContain("7.1cqi"); // portrait hole-card width clamp (≈85% of board)
+    expect(html).toContain("8.8cqi"); // portrait hole-card width clamp, enlarged for SVG clarity
     expect(html).toContain("8.4cqi"); // portrait board-card width clamp
   });
 

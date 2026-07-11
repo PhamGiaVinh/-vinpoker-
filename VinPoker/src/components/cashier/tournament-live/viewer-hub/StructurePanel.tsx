@@ -18,7 +18,7 @@ interface LevelRow {
   is_break: boolean;
 }
 
-export function StructurePanel({ tournamentId, currentLevel }: { tournamentId: string; currentLevel?: number | null }) {
+export function StructurePanel({ tournamentId, currentLevel, rpt = false }: { tournamentId: string; currentLevel?: number | null; rpt?: boolean }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<LevelRow[] | null>(null);
   const activeRef = useRef<HTMLTableRowElement | null>(null);
@@ -62,6 +62,8 @@ export function StructurePanel({ tournamentId, currentLevel }: { tournamentId: s
     );
   }
 
+  const breakTone = rpt ? "var(--viewer-neon)" : "var(--poker-accent)";
+
   return (
     <div className="overflow-hidden rounded-xl border border-border/50">
       <table className="w-full text-sm">
@@ -78,9 +80,9 @@ export function StructurePanel({ tournamentId, currentLevel }: { tournamentId: s
             const isActive = currentLevel != null && !r.is_break && r.level_number === currentLevel;
             if (r.is_break) {
               return (
-                <tr key={`b-${r.level_number}`} className="border-t border-border/30 bg-[hsl(var(--poker-accent)/0.1)]">
+                <tr key={`b-${r.level_number}`} className={`border-t border-border/30 ${rpt ? "bg-[hsl(var(--viewer-neon)/0.1)]" : "bg-[hsl(var(--poker-accent)/0.1)]"}`}>
                   <td colSpan={4} className="px-3 py-2">
-                    <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "hsl(var(--poker-accent))" }}>
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: `hsl(${breakTone})` }}>
                       <Coffee className="h-3.5 w-3.5" />
                       {t("liveHub.structure.break", "Nghỉ giải lao")} · {r.duration_minutes}'
                     </span>
@@ -92,10 +94,10 @@ export function StructurePanel({ tournamentId, currentLevel }: { tournamentId: s
               <tr
                 key={r.level_number}
                 ref={isActive ? activeRef : undefined}
-                className={`border-t border-border/30 ${isActive ? "bg-[hsl(var(--success)/0.12)]" : ""}`}
+                className={`border-t border-border/30 ${isActive ? (rpt ? "bg-[hsl(var(--viewer-neon)/0.12)]" : "bg-[hsl(var(--success)/0.12)]") : ""}`}
               >
                 <td className="px-3 py-2">
-                  <span className={`tracker-num font-bold ${isActive ? "" : "text-foreground"}`} style={isActive ? { color: "hsl(var(--success))" } : undefined}>
+                  <span className={`tracker-num font-bold ${isActive ? "" : "text-foreground"}`} style={isActive ? { color: rpt ? "hsl(var(--viewer-neon))" : "hsl(var(--success))" } : undefined}>
                     {r.level_number}
                   </span>
                 </td>

@@ -47,6 +47,8 @@ export interface SeatInfo {
   /** Net chips for the hand (ending − starting); set ONLY on a replay's final frame.
    * >0 → winner (gold glow + green "+X" badge under liveTableFx). null/undef → no badge. */
   net_won?: number | null;
+  /** Display-only marker from the replay settlement check. */
+  pot_winner?: boolean;
   /** UAT wave 2 (compact viewer only): whole-hand chips committed by an ALL-IN seat —
    * keeps the ALL-IN pill's amount visible after the street sweeps current_bet to 0.
    * Absent → the pill falls back to current_bet (today's behavior). */
@@ -293,6 +295,8 @@ export interface LiveFeltProps {
    * viewer only; absent → no change.
    */
   runout?: boolean;
+  /** Replay-only display state; never changes chip calculations. */
+  showdownResult?: "winner" | "chop" | "needs_resettle" | null;
   /**
    * trackerShowdownRevealOrder (viewer) — ADDITIVE; absent → simultaneous reveal
    * (byte-identical). player_ids in the order they should table their cards at
@@ -328,6 +332,7 @@ export function LiveFelt({
   compact = false,
   blinds = null,
   runout = false,
+  showdownResult = null,
   revealOrder,
   revealStaggerMs = 500,
 }: LiveFeltProps) {
@@ -367,7 +372,7 @@ export function LiveFelt({
   // term. viewerLayout-gated only → operator/TV/replay-without-V2 stay byte-identical.
   const holeStyle: CSSProperties | undefined = viewerLayout
     ? portrait
-      ? { width: "clamp(19px,7.1cqi,34px)", height: "clamp(26px,10cqi,48px)" }
+      ? { width: "clamp(27px,8.8cqi,40px)", height: "clamp(38px,12.4cqi,56px)" }
       : { width: "clamp(22px,3.9cqi,41px)", height: "clamp(31px,5.4cqi,56px)" }
     : undefined;
   const boardStyle: CSSProperties | undefined = viewerLayout
@@ -717,7 +722,7 @@ export function LiveFelt({
           // net-won badge. net_won is set only on the replay final frame, so live /
           // operator / TV never trigger this — byte-identical without `tableFx`.
           const netWon = seat.net_won ?? 0;
-          const isWinner = tableFx && netWon > 0;
+          const isWinner = tableFx && (seat.pot_winner === true || netWon > 0);
 
           // ADDITIVE operator-console hooks. Both fragments are "" and the spread
           // is {} when the props are absent, so the default (viewer/replay) render
@@ -880,6 +885,7 @@ export function LiveFelt({
                         key={ci}
                         card={card}
                         size="xs"
+                        className={viewerLayout ? "ring-1 ring-white/20 drop-shadow-[0_2px_5px_rgba(0,0,0,0.65)]" : undefined}
                         muted={seat.is_folded}
                         style={{ ...holeStyle, ...fanFor(ci), ...revealDelayStyle(seat.player_id) }}
                       />
@@ -1034,6 +1040,25 @@ export function LiveFelt({
           formatBB={formatBB}
           runout={runout}
         />
+      )}
+
+      {compactActive && showdownResult && (
+        <div
+          data-testid="felt-showdown-result"
+          className={`mx-auto mt-1.5 w-fit rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+            showdownResult === "chop"
+              ? "border-[hsl(var(--viewer-neon)_/_0.55)] bg-[hsl(var(--viewer-neon)_/_0.12)] text-[hsl(var(--viewer-neon))]"
+              : showdownResult === "needs_resettle"
+                ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                : "border-[hsl(var(--poker-gold)_/_0.5)] bg-[hsl(var(--poker-gold)_/_0.1)] text-[hsl(var(--poker-gold))]"
+          }`}
+        >
+          {showdownResult === "chop"
+            ? t("liveHub.felt.chopPot", "Chop pot")
+            : showdownResult === "needs_resettle"
+              ? t("liveHub.felt.needsResettle", "Cần tính lại kết quả")
+              : t("liveHub.felt.showdown", "Showdown")}
+        </div>
       )}
 
       {/* Action rail — OUTSIDE the felt so it never collides with the table. */}

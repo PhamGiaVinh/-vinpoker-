@@ -81,11 +81,19 @@ export const Layout = () => {
   const nav = useNavigate();
   const hideShellOn = ["/auth"];
   const showShell = !hideShellOn.includes(location.pathname);
+  const isViewerFocusRoute = FEATURES.liveViewerRPTShell && /^\/live\/[^/]+\/?$/.test(location.pathname);
 
   if (!showShell) return <Outlet />;
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden">
+    <div
+      data-viewer-shell={isViewerFocusRoute ? "rpt" : undefined}
+      className={cn(
+        "min-h-screen flex flex-col overflow-x-hidden",
+        isViewerFocusRoute && "bg-[radial-gradient(circle_at_12%_-8%,hsl(var(--viewer-neon)_/_0.12),transparent_34%),radial-gradient(circle_at_88%_22%,hsl(var(--poker-felt)_/_0.1),transparent_31%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)_/_0.45))]",
+      )}
+    >
+      {!isViewerFocusRoute && (
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/85 border-b border-border/60 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <div className="mx-auto max-w-[1400px] flex items-center justify-between gap-2 md:gap-4 px-3 md:px-6 h-16">
           <div className="flex items-center gap-1.5 shrink-0">
@@ -388,15 +396,21 @@ export const Layout = () => {
           </div>
         </div>
       </header>
+      )}
 
-      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in">
+      <main
+        className={isViewerFocusRoute
+          ? "mx-auto min-w-0 w-full max-w-[1480px] flex-1 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:pl-[max(1.25rem,env(safe-area-inset-left))] sm:pr-[max(1.25rem,env(safe-area-inset-right))] sm:pt-4 lg:pl-[max(1.75rem,env(safe-area-inset-left))] lg:pr-[max(1.75rem,env(safe-area-inset-right))] animate-fade-in"
+          : "flex-1 mx-auto w-full max-w-[1400px] px-4 md:px-6 py-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-fade-in"}
+      >
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
       </main>
       <DuplicateNameGuard />
-      <InstallPWAButton />
+      {!isViewerFocusRoute && <InstallPWAButton />}
 
+      {!isViewerFocusRoute && (
       <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         <RegisteredBadge />
         <div className="mx-auto grid h-[68px] max-w-3xl grid-cols-5 items-stretch">
@@ -453,6 +467,7 @@ export const Layout = () => {
           ))}
         </div>
       </nav>
+      )}
 
       {user && (
         <MyQrSheet

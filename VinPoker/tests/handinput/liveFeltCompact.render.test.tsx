@@ -114,6 +114,23 @@ describe("LiveFelt compact (PR-A1, viewer-only)", () => {
     expect(nothing).not.toContain("felt-status-bar"); // no data → no bar at all
   });
 
+  it("shows the replay settlement state below the total pot without changing operator markup", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        seats={twoSeats}
+        {...baseProps}
+        potSize={17_400_000}
+        portrait
+        viewerLayout
+        compact
+        showdownResult="chop"
+      />,
+    );
+    expect(html).toContain('data-testid="felt-showdown-result"');
+    expect(html).toMatch(/Chop pot|Chia/);
+    expect(html).toContain("17.4M");
+  });
+
   it("landscape + compact keeps the 13/6 landscape geometry (bar only, no reflow)", () => {
     const html = renderToStaticMarkup(
       <LiveFelt seats={twoSeats} {...baseProps} potSize={900} viewerLayout compact blinds={{ sb: 100, bb: 200, ante: 0 }} />

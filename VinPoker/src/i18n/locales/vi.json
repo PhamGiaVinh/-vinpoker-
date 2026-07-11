@@ -2874,10 +2874,18 @@
   },
   "liveHub": {
     "tabs": { "updates": "Cập nhật", "handHistory": "Lịch sử ván", "prizes": "Giải thưởng", "structure": "Cấu trúc", "photos": "Hình ảnh", "back": "Quay lại" },
-    "watch": { "title": "Bàn đang chơi", "replay": "PHÁT LẠI VÁN" },
+    "watch": {
+      "title": "Bàn đang chơi",
+      "replay": "PHÁT LẠI VÁN",
+      "viewer": "Trình xem ván đấu",
+      "handNumber": "Ván #{{n}}",
+      "liveTable": "Bàn trực tiếp",
+      "close": "Đóng trình xem"
+    },
+    "state": { "error": "Không tải được cập nhật. Vui lòng thử lại." },
     "prizes": { "empty": "Chưa có cơ cấu giải thưởng", "total": "Tổng thưởng", "position": "Hạng", "amount": "Tiền thưởng", "rank": "#{{n}}" },
     "structure": { "empty": "Chưa có cấu trúc mù", "level": "Lv", "blinds": "Mù (SB/BB)", "ante": "Ante", "time": "Phút", "break": "Nghỉ giải lao" },
-    "photos": { "empty": "Chưa có ảnh", "soon": "Hình ảnh sự kiện sẽ sớm có ở đây" },
+    "photos": { "empty": "Chưa có ảnh", "soon": "Hình ảnh sự kiện sẽ sớm có ở đây", "photoAlt": "Ảnh giải đấu" },
     "breakdown": {
       "title": "Phân tích ván",
       "pot": "Pot",
@@ -2891,6 +2899,8 @@
       "bubble": "Đang ở bubble — còn {{count}} người",
       "itm": "Đã vào tiền — còn {{count}} người",
       "title": "Diễn biến giải",
+      "liveTitle": "Diễn biến trực tiếp",
+      "unknownPlayer": "Người chơi",
       "eliminated": "{{name}} bị loại — còn {{count}} người",
       "eliminatedNoCount": "{{name}} bị loại",
       "remaining": "Còn {{count}} người",
@@ -2901,7 +2911,14 @@
     "header": {
       "live": "TRỰC TIẾP",
       "tables": "{{count}} bàn",
-      "share": "Chia sẻ"
+      "share": "Chia sẻ",
+      "buyIn": "BUY-IN",
+      "remaining": "CÒN LẠI",
+      "updated": "Cập nhật",
+      "justNow": "vừa xong",
+      "minsAgo": "{{n}} phút trước",
+      "hoursAgo": "{{n}} giờ trước",
+      "daysAgo": "{{n}} ngày trước"
     },
     "featured": {
       "badge": "TRỰC TIẾP • BÀN ĐANG DIỄN RA"
@@ -2922,6 +2939,8 @@
     },
     "feed": {
       "title": "Cập nhật • Trực tiếp",
+      "currentHand": "Ván đang diễn ra",
+      "latest": "Mới nhất trước",
       "empty": "Chưa có hành động nào trong ván hiện tại",
       "badge": {
         "allin": "ALL-IN",
@@ -2945,6 +2964,66 @@
         "post_ante": "Ante {{amount}}"
       }
     },
+    "handFeed": {
+      "title": "Các ván đã xong",
+      "updatesTitle": "Tin mới và ván nổi bật",
+      "eventLabel": "Dòng sự kiện",
+      "archiveLabel": "Kho ván đấu",
+      "kindAll": "Tất cả",
+      "kindNews": "Tin tức",
+      "kindHands": "Ván đấu",
+      "allTables": "Tất cả bàn",
+      "thisTable": "Bàn hiện tại",
+      "searchLabel": "Tìm trong dòng sự kiện",
+      "search": "Tìm theo số ván hoặc tên người chơi…",
+      "searchMixed": "Tìm tin, người chơi, bàn hoặc số ván…",
+      "loading": "Đang tải các ván…",
+      "empty": "Chưa có ván nào hoàn tất",
+      "noMatch": "Không có nội dung khớp bộ lọc",
+      "more": "Xem thêm",
+      "hand": "Ván #{{n}}",
+      "pot": "POT",
+      "bbPot": "BB pot",
+      "sidePot": "side",
+      "board": "Bài chung",
+      "unknownPlayer": "Người chơi",
+      "winner": "Người thắng",
+      "revealedCards": "Bài đã lộ",
+      "hiddenCards": "Bài không được lộ",
+      "share": "Chia sẻ",
+      "viewHand": "Xem ván",
+      "tag": {
+        "all_in": "ALL-IN",
+        "big_pot": "BIG POT",
+        "high_hand": "HIGH HAND",
+        "eliminated": "BỊ LOẠI"
+      }
+    },
+    "editorial": {
+      "announcement": "Thông báo",
+      "commentary": "Bình luận",
+      "pinned": "Đã ghim",
+      "share": "Chia sẻ",
+      "viewHand": "Xem ván #{{n}}",
+      "photoAlt": "Ảnh cập nhật giải đấu"
+    },
+    "replay": {
+      "summary": "Tóm tắt",
+      "actions": "Hành động",
+      "splitPot": "Pot được chia đều",
+      "scrub": "Tua lại ván",
+      "rewind": "Về đầu",
+      "previous": "Lùi 1 bước",
+      "play": "Phát",
+      "pause": "Tạm dừng",
+      "next": "Tiến 1 bước",
+      "toEnd": "Tới cuối (showdown)",
+      "speed": "Tốc độ",
+      "unknownPlayer": "Người chơi",
+      "noResult": "Chưa có kết quả — xem tab Hành động.",
+      "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
+      "winnerSummary": "{{name}} +{{amount}}{{bb}}"
+    },
     "felt": {
       "pot": "Pot",
       "main": "Main",
@@ -2958,6 +3037,9 @@
       "waiting": "Chờ dealer bắt đầu hand...",
       "empty": "trống",
       "potTotal": "Tổng Pot",
+      "chopPot": "Chia đôi pot",
+      "needsResettle": "Cần tính lại kết quả",
+      "showdown": "Showdown",
       "dealerHere": "người chia · cố định",
       "trackerHere": "Tracker đứng đây",
       "engineHint": "máy gợi ý"

@@ -18,13 +18,15 @@ export interface LiveTablesMapProps {
   minToShow?: number;
   /** Section heading override (default "Chọn bàn xem trực tiếp"). */
   title?: string;
+  /** Neon table picker chrome for the focus viewer shell. */
+  rpt?: boolean;
 }
 
 /** Poker-table top-view "logo": felt oval + 6 seat marks + a centered label. */
-function TableTileIcon({ label, active }: { label: string; active: boolean }) {
+function TableTileIcon({ label, active, rpt }: { label: string; active: boolean; rpt: boolean }) {
   return (
     <div className="relative">
-      <span className={active ? "text-warning" : "text-emerald-400/80"}>
+      <span className={active ? (rpt ? "text-[hsl(var(--viewer-neon))]" : "text-warning") : "text-emerald-400/80"}>
         <svg viewBox="0 0 46 30" className="block w-full" aria-hidden="true">
           <rect x="3" y="7" width="40" height="16" rx="8" fill="currentColor" fillOpacity={0.16} stroke="currentColor" strokeWidth={1.4} />
           <g fill="currentColor">
@@ -40,7 +42,7 @@ function TableTileIcon({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export function LiveTablesMap({ tables, activeTableId, onSelect, minToShow = 2, title }: LiveTablesMapProps) {
+export function LiveTablesMap({ tables, activeTableId, onSelect, minToShow = 2, title, rpt = false }: LiveTablesMapProps) {
   const { t } = useTranslation();
   if (!tables || tables.length < minToShow) return null; // below threshold → no picker
 
@@ -62,12 +64,12 @@ export function LiveTablesMap({ tables, activeTableId, onSelect, minToShow = 2, 
               onClick={() => onSelect(tbl.tableId)}
               className={`rounded-xl border bg-card/60 p-2.5 text-center transition-colors ${
                 isActive
-                  ? "border-warning/70 shadow-[0_0_12px_rgba(245,179,64,0.25)]"
+                  ? rpt ? "border-[hsl(var(--viewer-neon)_/_0.7)] shadow-[0_0_16px_hsl(var(--viewer-neon)_/_0.25)]" : "border-warning/70 shadow-[0_0_12px_rgba(245,179,64,0.25)]"
                   : "border-border/50 hover:border-emerald-500/40"
               }`}
             >
               <div className="mx-auto w-12">
-                <TableTileIcon label={label} active={isActive} />
+                <TableTileIcon label={label} active={isActive} rpt={rpt} />
               </div>
               <div className="mt-1 flex items-center justify-center gap-1">
                 <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />

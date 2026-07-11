@@ -110,6 +110,23 @@ describe("buildReplayFrames", () => {
     expect(pots[pots.length - 1]).toBe(50 + 100 + 300 + 250 + 200);
   });
 
+  it("final showdown pot uses the distributable amount after an uncalled refund", () => {
+    const h = hand({
+      players: [
+        { player_id: "P1", seat_number: 1, display_name: "A", starting_stack: 1000, hole_cards: ["2c", "3c"] },
+        { player_id: "P2", seat_number: 2, display_name: "B", starting_stack: 1000, hole_cards: ["4d", "5d"] },
+      ],
+      community_cards: ["As", "Kd", "Qc", "Jh", "Ts"],
+      actions: [A("P1", "all_in", 300, "river"), A("P2", "call", 100, "river")],
+    });
+    const frames = buildReplayFrames(h);
+    const final = frames.at(-1)!;
+    expect(final.potBreakdown?.totalCommitted).toBe(400);
+    expect(final.potBreakdown?.totalPot).toBe(200);
+    expect(final.potBreakdown?.uncalled).toEqual({ player_id: "P1", amount: 200 });
+    expect(final.potSize).toBe(200);
+  });
+
   it("all-in flags the seat, stack hits 0, never negative", () => {
     const shortHand: ReplayHand = {
       hand_number: 1,
@@ -228,6 +245,47 @@ describe("buildReplayFrames — net_won (showdown winner badge)", () => {
     const by = Object.fromEntries(final.seats.map((s) => [s.player_id, s]));
     expect(by.W.net_won).toBe(9400); // 19400 − 10000 → winner (>0 drives the badge)
     expect(by.L.net_won).toBe(-10000); // 0 − 10000 → loser (<0, no badge)
+  });
+
+  it("marks an equal Broadway board as a chop only when the recorded payout matches", () => {
+    const h: ReplayHand = {
+      hand_number: 8,
+      button_seat: 1,
+      community_cards: ["As", "Kd", "Qc", "Jh", "Ts"],
+      players: [
+        { player_id: "A", seat_number: 1, display_name: "A", starting_stack: 1000, ending_stack: 1000, hole_cards: ["2c", "3c"] },
+        { player_id: "B", seat_number: 2, display_name: "B", starting_stack: 1000, ending_stack: 1000, hole_cards: ["4d", "5d"] },
+      ],
+      actions: [
+        { player_id: "A", action_type: "all_in", action_amount: 1000, street: "preflop", action_order: 1 },
+        { player_id: "B", action_type: "call", action_amount: 1000, street: "preflop", action_order: 2 },
+      ],
+    };
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.showdownResult).toBe("chop");
+    expect(final.showdownWinnerIds).toEqual(["A", "B"]);
+    expect(final.seats.filter((s) => s.pot_winner)).toHaveLength(2);
+    expect(final.seats.every((s) => s.net_won === 0)).toBe(true);
+  });
+
+  it("blocks winner glow when edited cards disagree with the stored payout", () => {
+    const h: ReplayHand = {
+      hand_number: 8,
+      button_seat: 1,
+      community_cards: ["As", "Kd", "Qc", "Jh", "Ts"],
+      players: [
+        { player_id: "A", seat_number: 1, display_name: "A", starting_stack: 1000, ending_stack: 2000, hole_cards: ["2c", "3c"] },
+        { player_id: "B", seat_number: 2, display_name: "B", starting_stack: 1000, ending_stack: 0, hole_cards: ["4d", "5d"] },
+      ],
+      actions: [
+        { player_id: "A", action_type: "all_in", action_amount: 1000, street: "preflop", action_order: 1 },
+        { player_id: "B", action_type: "call", action_amount: 1000, street: "preflop", action_order: 2 },
+      ],
+    };
+    const final = buildReplayFrames(h).at(-1)!;
+    expect(final.showdownResult).toBe("needs_resettle");
+    expect(final.seats.every((s) => s.pot_winner !== true)).toBe(true);
+    expect(final.seats.every((s) => s.net_won == null)).toBe(true);
   });
 
   it("a SHOWDOWN with no ending_stack stays null (engine can't evaluate hands)", () => {

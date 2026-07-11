@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { LiveHubHeader } from "@/components/cashier/tournament-live/viewer-hub/LiveHubHeader";
 import { FeaturedTableCard } from "@/components/cashier/tournament-live/viewer-hub/FeaturedTableCard";
 
 // Isolate LiveHub from its supabase-backed data hook — the hub composition is what
 // we assert here, with stubbed hub data.
-vi.mock("@/components/cashier/tournament-live/viewer-hub/useLiveTrackerData", () => ({
-  useLiveTrackerData: () => ({
+vi.mock("@/components/cashier/tournament-live/viewer-hub/useLiveTrackerData", () => {
+  const data = {
     liveTableCount: 2,
     tables: [
       { tableId: "tA", name: "Bàn 1", playerCount: 8 },
@@ -19,8 +20,15 @@ vi.mock("@/components/cashier/tournament-live/viewer-hub/useLiveTrackerData", ()
     storyFeed: [],
     activeHandTableId: "tA",
     loading: false,
-  }),
+  };
+  return { useLiveTrackerData: () => data };
+});
+
+vi.mock("@/components/cashier/tournament-live/viewer-hub/useCompletedHandsFeed", () => ({
+  useCompletedHandsFeed: () => ({ items: [], loading: false, hasMore: false, loadMore: vi.fn() }),
 }));
+
+vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 
 // A MUTABLE copy of the real flags so we can flip liveEventTabs per test (ON = new
 // 5-tab layout, OFF = legacy stacked felt) while keeping every other real flag.
@@ -29,17 +37,18 @@ vi.mock("@/lib/featureFlags", async (orig) => {
   return { ...actual, FEATURES: { ...actual.FEATURES } };
 });
 
-// eslint-disable-next-line import/first
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
-// eslint-disable-next-line import/first
 import { FEATURES } from "@/lib/featureFlags";
 
 const noop = () => {};
 const wrap = (node: ReactNode) => renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
 
 beforeEach(() => {
+  cleanup();
   (FEATURES as Record<string, unknown>).liveEventTabs = true;
   (FEATURES as Record<string, unknown>).liveHandFeed = true;
+  (FEATURES as Record<string, unknown>).liveViewerRPTShell = false;
+  (FEATURES as Record<string, unknown>).liveSpotlightPosts = false;
 });
 
 describe("Viewer Event Hub — header / featured card", () => {
@@ -50,6 +59,28 @@ describe("Viewer Event Hub — header / featured card", () => {
     expect(html).toContain("CLB Sài Gòn");
     expect(html).toContain("/club/c1");
     expect(html).toContain("Chia sẻ");
+  });
+
+  it("RPT header shows reliable event metadata without changing the legacy header", () => {
+    const html = wrap(
+      <LiveHubHeader
+        rpt
+        title="Main Event"
+        liveTableCount={4}
+        guarantee={50_000_000}
+        buyIn={2_000_000}
+        startingStack={30_000}
+        playersRemaining={27}
+        lastUpdated={new Date()}
+        onShare={noop}
+      />,
+    );
+    expect(html).toContain("Main Event");
+    expect(html).toContain("50M");
+    expect(html).toContain("2M");
+    expect(html).toContain("30k");
+    expect(html).toContain("27");
+    expect(html).toContain("Cập nhật");
   });
 
   it("FeaturedTableCard frames children + badge + footer", () => {
@@ -89,6 +120,49 @@ describe("LiveHub — event-tabs layout (liveEventTabs ON)", () => {
     expect(html).toContain("PHÁT LẠI VÁN"); // replay badge
     expect(html).toContain("FELT spec:true hand:7");
     expect(html).not.toContain("Lịch sử ván"); // tabs hidden while watching
+  });
+
+  it("flag OFF does not emit any RPT-shell marker", () => {
+    const html = wrap(
+      <LiveHub tournamentId="t1" title="Legacy event" activeTab="hands" onShare={noop}>
+        <div>VIEWER</div>
+      </LiveHub>,
+    );
+    expect(html).not.toContain("viewer-rpt-shell");
+    expect(html).not.toContain("viewer-rpt-hand-card");
+  });
+
+  it("RPT shell uses the controlled URL tab and maps history back to hands", () => {
+    (FEATURES as Record<string, unknown>).liveViewerRPTShell = true;
+    const onTabChange = vi.fn();
+    const view = render(
+      <MemoryRouter>
+        <LiveHub tournamentId="t1" title="Main Event" activeTab="updates" onTabChange={onTabChange} onShare={noop}>
+          <div>VIEWER</div>
+        </LiveHub>
+      </MemoryRouter>,
+    );
+
+    expect(view.getByTestId("viewer-rpt-shell")).toBeTruthy();
+    const history = view.getByRole("tab", { name: /Lịch sử ván/i });
+    expect(history.className).toContain("min-h-11");
+    fireEvent.mouseDown(history, { button: 0, ctrlKey: false });
+    expect(onTabChange).toHaveBeenCalledWith("hands");
+  });
+
+  it("RPT shell forces the portrait felt and removes the landscape toggle", () => {
+    (FEATURES as Record<string, unknown>).liveViewerRPTShell = true;
+    const Viewer = ({ orientationOverride }: { orientationOverride?: "landscape" | "portrait" | null }) => (
+      <div>ORIENT:{orientationOverride}</div>
+    );
+    const html = wrap(
+      <LiveHub tournamentId="t1" title="Main Event" initialReplayHandNumber={7} onShare={noop}>
+        <Viewer />
+      </LiveHub>,
+    );
+    expect(html).toContain("ORIENT:portrait");
+    expect(html).not.toContain("Ngang");
+    expect(html).not.toContain("Dọc");
   });
 });
 

@@ -19,6 +19,7 @@ import {
   type SeatInfo,
   type ActionLog,
 } from "@/components/cashier/tournament-live/LiveFelt";
+import { settleShowdown } from "./trackerShowdown";
 
 export interface ReplayHandPlayer {
   player_id: string;
@@ -55,7 +56,7 @@ export interface ReplayFrame {
   seats: SeatInfo[];
   /** Community cards padded to 5 ("" = empty). */
   displayCards: string[];
-  /** Running pot (gross chips committed so far). */
+  /** Running pot; final frame uses the post-refund distributable pot. */
   potSize: number;
   potBreakdown: PotBreakdown | null;
   currentStreet: string;
@@ -64,6 +65,10 @@ export interface ReplayFrame {
   latestAction: ActionLog | null;
   /** True only on the final frame once hole cards were revealed at showdown. */
   revealHoleCards: boolean;
+  /** Display-only showdown state; never writes or replaces recorded stacks. */
+  showdownResult?: "winner" | "chop" | "needs_resettle" | null;
+  /** Display-only winner ids, present only when the recorded payout matches the pure settlement. */
+  showdownWinnerIds?: string[];
 }
 
 const STREETS = ["preflop", "flop", "turn", "river", "showdown"];
@@ -93,6 +98,52 @@ function boardCount(streetIndex: number): number {
 function clampChips(n: unknown): number {
   const v = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0;
   return v > 0 ? v : 0;
+}
+
+function deriveShowdownResult(
+  players: ReplayHandPlayer[],
+  runtime: Map<string, SeatRuntime>,
+  actions: ReplayHandAction[],
+  board: string[],
+): { result: "winner" | "chop" | "needs_resettle"; winnerIds: string[]; payoutMatches: boolean } | null {
+  if (board.length !== 5) return null;
+
+  const contributors = new Map(
+    contributionsFromActions(actions as any).map((p) => [p.player_id, p.total_bet]),
+  );
+  const seats = players.map((p) => {
+    const state = runtime.get(p.player_id)!;
+    return {
+      player_id: p.player_id,
+      seat_number: p.seat_number,
+      starting_stack: clampChips(p.starting_stack),
+      stack: state.chip,
+      street_committed: 0,
+      total_committed: contributors.get(p.player_id) ?? 0,
+      folded: state.folded,
+      all_in: state.allIn,
+    };
+  });
+  const holes = Object.fromEntries(
+    players
+      .filter((p) => p.hole_cards?.length === 2)
+      .map((p) => [p.player_id, p.hole_cards!]),
+  );
+  const settlement = settleShowdown(seats, holes, board);
+  if (!settlement) return null;
+
+  const winnerIds = [...new Set(settlement.layers.flatMap((layer) => layer.winner_player_ids))];
+  if (winnerIds.length === 0) return null;
+  const payoutMatches = players.every((p) => {
+    if (p.ending_stack == null) return false;
+    return settlement.results.find((r) => r.player_id === p.player_id)?.ending_stack === p.ending_stack;
+  });
+  const allLayersAreTied = settlement.layers.every((layer) => layer.winner_player_ids.length > 1);
+  return {
+    result: !payoutMatches && allLayersAreTied ? "needs_resettle" : allLayersAreTied ? "chop" : "winner",
+    winnerIds: payoutMatches ? winnerIds : [],
+    payoutMatches,
+  };
 }
 
 interface SeatRuntime {
@@ -158,17 +209,21 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
     const reveal =
       isFinal && players.some((p) => p.hole_cards && p.hole_cards.length > 0);
     const streetIndex = reveal ? 4 : maxStreetIdx;
+    const showdown = isFinal && reveal
+      ? deriveShowdownResult(players, runtime, actions, community)
+      : null;
 
     // Winner net for the FINAL frame (drives the showdown glow + badge). Prefer the
     // recorded ending_stack — exact, and the only way to resolve a SHOWDOWN (the
     // engine doesn't evaluate hands). When ending_stack is absent, fall back to the
     // fold-win case: a single un-folded seat takes the whole pot, so NON-showdown
     // wins (A bets, B folds) light up too. Either way it is final-frame-only.
-    const pot = breakdown.totalCommitted;
+    const pot = showdown ? breakdown.totalPot : breakdown.totalCommitted;
     const stillIn = isFinal ? players.filter((p) => !runtime.get(p.player_id)?.folded) : [];
     const soleWinnerId = isFinal && stillIn.length === 1 ? stillIn[0].player_id : null;
     const netWonFor = (p: ReplayHandPlayer): number | null => {
       if (!isFinal) return null;
+      if (showdown?.result === "needs_resettle") return null;
       if (p.ending_stack != null) return p.ending_stack - clampChips(p.starting_stack);
       if (p.player_id === soleWinnerId) {
         // Profit = whole pot − this seat's own contribution (start − remaining chips).
@@ -193,6 +248,7 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
         is_all_in: st.allIn,
         hole_cards: reveal ? p.hole_cards : undefined,
         net_won: netWonFor(p),
+        pot_winner: showdown?.payoutMatches ? showdown.winnerIds.includes(p.player_id) : undefined,
         // trackBets only — absent keys keep flag-off frames deep-equal to today's.
         ...(trackBets ? { current_bet: st.streetBet } : {}),
         ...(trackBets && st.allIn ? { total_committed: st.totalBet } : {}),
@@ -215,12 +271,14 @@ export function buildReplayFrames(hand: ReplayHand, opts?: { trackBets?: boolean
       index: k,
       seats,
       displayCards: boardForStreet(streetIndex),
-      potSize: breakdown.totalCommitted,
+      potSize: showdown ? breakdown.totalPot : breakdown.totalCommitted,
       potBreakdown: breakdown,
       currentStreet: STREETS[streetIndex],
       lastActorId: latestAction?.player_id ?? null,
       latestAction,
       revealHoleCards: reveal,
+      showdownResult: showdown?.result ?? null,
+      showdownWinnerIds: showdown?.winnerIds ?? [],
     };
   };
 

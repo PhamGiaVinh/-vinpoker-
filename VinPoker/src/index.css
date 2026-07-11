@@ -4,6 +4,15 @@
 
 /* PokerVN — Stitch dark design system. All colors HSL. */
 
+/* The viewer shell owns its neon identity without changing operator surfaces
+   or the optional warm theme. Keep semantic red/amber states independent. */
+[data-viewer-shell="rpt"] {
+  --viewer-neon: 152 100% 50%;
+  --viewer-neon-bright: 152 100% 60%;
+  --viewer-neon-deep: 152 100% 36%;
+  --viewer-neon-ink: 210 20% 6%;
+}
+
 @layer base {
   :root {
     /* Surfaces (#111417 base, layered) */

@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { BackButton } from "@/components/BackButton";
 import { TournamentLiveView } from "@/components/cashier/tournament-live/TournamentLiveView";
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
+import { parseViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerUrlState";
+import type { ViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
+import { FEATURES } from "@/lib/featureFlags";
 
 const TournamentLiveTracker = () => {
   const { tournamentId } = useParams();
@@ -18,6 +21,8 @@ const TournamentLiveTracker = () => {
   // Deep-link: ?hand=N opens that completed hand in the viewer's replay.
   const deepHandRaw = Number(searchParams.get("hand"));
   const deepHandNumber = Number.isFinite(deepHandRaw) && deepHandRaw > 0 ? deepHandRaw : null;
+  const focusedPostId = searchParams.get("post")?.trim() || null;
+  const activeTab = parseViewerTab(searchParams.get("tab"), deepHandNumber != null ? "hands" : "updates");
 
   const shareUrl = useCallback(
     async (url: string, ok: string) => {
@@ -48,6 +53,7 @@ const TournamentLiveTracker = () => {
   const handleShareHand = useCallback(
     (n: number) => {
       const u = new URL(window.location.href);
+      if (FEATURES.liveViewerRPTShell) u.searchParams.set("tab", "hands");
       u.searchParams.set("hand", String(n));
       return shareUrl(u.toString(), `Đã sao chép link ván #${n}`);
     },
@@ -61,6 +67,8 @@ const TournamentLiveTracker = () => {
       setSearchParams(
         (prev) => {
           const p = new URLSearchParams(prev);
+          if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
+          p.delete("post");
           p.set("hand", String(n));
           return p;
         },
@@ -77,11 +85,40 @@ const TournamentLiveTracker = () => {
       (prev) => {
         const p = new URLSearchParams(prev);
         p.delete("hand");
+        if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
         return p;
       },
       { replace: true },
     );
   }, [setSearchParams]);
+
+  const handleTabChange = useCallback(
+    (tab: ViewerTab) => {
+      if (!FEATURES.liveViewerRPTShell) return;
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set("tab", tab);
+          if (tab !== "hands") p.delete("hand");
+          if (tab !== "updates") p.delete("post");
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const handleSharePost = useCallback(
+    (postId: string) => {
+      const u = new URL(window.location.href);
+      u.searchParams.set("tab", "updates");
+      u.searchParams.set("post", postId);
+      u.searchParams.delete("hand");
+      return shareUrl(u.toString(), "Đã sao chép link tin giải đấu");
+    },
+    [shareUrl],
+  );
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -131,10 +168,12 @@ const TournamentLiveTracker = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <BackButton />
-      </div>
+    <div className={FEATURES.liveViewerRPTShell ? "min-w-0 space-y-3 sm:space-y-4" : "space-y-4"}>
+      {!FEATURES.liveViewerRPTShell && (
+        <div className="flex items-center gap-3">
+          <BackButton />
+        </div>
+      )}
 
       <LiveHub
         tournamentId={tournamentId!}
@@ -151,6 +190,10 @@ const TournamentLiveTracker = () => {
         initialReplayHandNumber={deepHandNumber}
         onViewHand={handleViewHand}
         onShareHand={handleShareHand}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        focusedPostId={focusedPostId}
+        onSharePost={handleSharePost}
         onCloseHand={handleCloseHand}
       >
         <TournamentLiveView tournamentId={tournamentId!} />
