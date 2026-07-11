@@ -1,5 +1,6 @@
 import type { TvData, TvLevel, TvPrize, TvTournamentStatus } from "@/types/tv";
 import { computeNextBreak } from "@/lib/tv/computeNextBreak";
+import { parseSatellitePayout } from "@/lib/satellitePayout";
 
 // Raw shapes coming back from existing reads — no schema change in PR B.
 
@@ -38,6 +39,7 @@ export interface TvTournamentRow {
   guarantee_amount: number | null;
   buy_in: number | null;
   rake_amount: number | null;
+  satellite_payout: unknown;
   club: { name: string; cover_url: string | null; tv_logo_url: string | null; tv_brand_name: string | null; tv_bg_url: string | null } | null;
 }
 
@@ -156,5 +158,6 @@ export function mapTvData(sources: TvDataSources): TvData {
     buyIn: tournament.buy_in != null ? Number(tournament.buy_in) : null,
     rakeAmount: tournament.rake_amount != null ? Number(tournament.rake_amount) : null,
     clubCoverUrl: tournament.club?.tv_bg_url ?? tournament.club?.cover_url ?? null,
+    satellitePayout: parseSatellitePayout(tournament.satellite_payout),
   };
 }

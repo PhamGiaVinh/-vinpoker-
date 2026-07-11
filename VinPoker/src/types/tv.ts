@@ -3,6 +3,8 @@
 // Nullable/optional fields render as hidden when absent — the TV must
 // never show placeholders for data the schema does not have yet.
 
+import type { SatellitePayout } from "@/lib/satellitePayout";
+
 export interface TvLevel {
   levelNumber: number;
   smallBlind: number;
@@ -58,4 +60,6 @@ export interface TvData {
   rakeAmount: number | null;
   /** Club cover photo (clubs.cover_url) → the broadcast clock's replaceable background. */
   clubCoverUrl?: string | null;
+  /** Cơ cấu satellite nhập tay (vé + tiền) từ tournaments.satellite_payout. Null = không dùng. */
+  satellitePayout?: SatellitePayout | null;
 }

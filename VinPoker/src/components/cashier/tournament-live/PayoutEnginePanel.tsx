@@ -18,6 +18,7 @@ import { parseFileToCustomRows } from "@/lib/customPayoutImport";
 import { seedCustomLadder, suggestLadderFromRank1, type SuggestedLadder, type SuggestShape } from "@/lib/payoutSuggest";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { PrizePayoutTrackingSection } from "./PrizePayoutTrackingSection";
+import { SatellitePayoutEditor } from "./SatellitePayoutEditor";
 
 // PR-3: flag-gated (FEATURES.payoutEngine) operator UI for the "Engine 3-neo" payout backend
 // (PR-2a RPCs + PR-2b compute-payouts Edge). Forecast preview (no persist) · one-way close-and-
@@ -449,7 +450,10 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   };
 
   return (
-    <Card className="p-4 space-y-4">
+    <div className="space-y-4">
+      {/* Satellite (nhập tay) — giải vé: cơ cấu tách khỏi engine tính tiền. Flag-gated; ẩn hoàn toàn khi OFF. */}
+      {FEATURES.payoutSatelliteManual && <SatellitePayoutEditor tournamentId={tournamentId} />}
+      <Card className="p-4 space-y-4">
       {/* header + state badge */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -726,6 +730,7 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
       {hasOfficial && FEATURES.prizePayoutTracking && (
         <PrizePayoutTrackingSection tournamentId={tournamentId} />
       )}
-    </Card>
+      </Card>
+    </div>
   );
 }
