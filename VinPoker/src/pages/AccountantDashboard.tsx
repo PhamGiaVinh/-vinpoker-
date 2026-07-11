@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { BarChart3, Calculator, ReceiptText, Table2, Users, UtensilsCrossed, Wallet } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ export default function AccountantDashboard() {
   const clubsQuery = useSalaryClubs(source, gateOk && FEATURES.accountantWorkspace);
   const clubs = useMemo(() => clubsQuery.data ?? [], [clubsQuery.data]);
   const [clubId, setClubId] = useState("");
+  const [salaryView, setSalaryView] = useState<"staff" | "dealer">("staff");
   const activeClubId = clubId || clubs[0]?.id || null;
   const activeClub = clubs.find((c) => c.id === activeClubId) ?? null;
   const { caps } = useAccountantCapabilities(FEATURES.accountantWorkspace ? activeClubId : null);
@@ -100,11 +102,7 @@ export default function AccountantDashboard() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="salary" className="gap-1.5">
             <Wallet className="w-4 h-4" />
-            Bảng lương NV
-          </TabsTrigger>
-          <TabsTrigger value="dealer" className="gap-1.5">
-            <Table2 className="w-4 h-4" />
-            Lương dealer
+            Bảng lương
           </TabsTrigger>
           <TabsTrigger value="staff" className="gap-1.5">
             <Users className="w-4 h-4" />
@@ -124,12 +122,27 @@ export default function AccountantDashboard() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="salary">
-          <StaffSalaryChot embedded />
-        </TabsContent>
+        <TabsContent value="salary" className="space-y-3">
+          <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+            {(["staff", "dealer"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setSalaryView(v)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+                  salaryView === v ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {v === "staff" ? <Wallet className="w-3.5 h-3.5" /> : <Table2 className="w-3.5 h-3.5" />}
+                {v === "staff" ? "Nhân viên" : "Dealer"}
+              </button>
+            ))}
+          </div>
 
-        <TabsContent value="dealer">
-          {dealerAvailable ? (
+          {salaryView === "staff" ? (
+            <StaffSalaryChot embedded />
+          ) : dealerAvailable ? (
             <DealerPayrollTab
               clubIds={clubs.map((c) => c.id)}
               clubs={clubs.map((c) => ({ id: c.id, name: c.name }))}
