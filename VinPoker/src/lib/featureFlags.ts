@@ -340,7 +340,7 @@ export const FEATURES = {
    * verified pot-award overlays from persisted live/replay events. Display-only;
    * never computes cards, pot or winners. Ships OFF for preview/UAT.
    */
-  liveTableMotionV2: false,
+  liveTableMotionV2: true,
   /**
    * Public live-tracker EVENT TABS (RPT-Live style): opening `/live/:id` no longer
    * drops straight onto the felt — it shows a 5-tab event page (Cập nhật / Lịch sử
