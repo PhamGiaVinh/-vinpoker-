@@ -12,12 +12,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { useTournaments } from "@/hooks/useTournaments";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
-import { PlayerActionSheets, type PlayerTarget } from "@/components/ops/shared/PlayerActionSheets";
-import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
-import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
+import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
 import {
-  buildSeatsByTable, toMockTable, toMockSeat,
-  type MapSeat, type MapTable,
+  toMockTable, toMockSeat,
+  type MapTable,
 } from "@/components/ops/shared/floorAdapter";
 import type { MockSeat, MockTable } from "@/components/ops/mock/opsData";
 import type { Tournament } from "@/types/tournament";
@@ -37,72 +36,6 @@ const PENDING_NOTICE = "Chức năng đang nối dữ liệu — chưa thao tác
 
 const LIVEISH_PRIMARY: Tournament["status"][] = ["live", "break", "final_table"];
 const LIVEISH_FALLBACK: Tournament["status"][] = ["registering", "drawing"];
-
-interface FloorState {
-  loading: boolean;
-  error: string | null;
-  tables: MapTable[];
-  seatsByTable: Record<string, MapSeat[]>;
-}
-
-/** Đọc bàn + ghế của 1 giải — mirror FloorTableMapPanel.load() (đọc-only). */
-function useFloorSeats(tournamentId: string | null) {
-  const [state, setState] = useState<FloorState>({ loading: false, error: null, tables: [], seatsByTable: {} });
-  const seqRef = useRef(0);
-
-  const load = useCallback(async () => {
-    const seq = ++seqRef.current; // P0-2: stale responses (đổi giải nhanh) bị drop
-    if (!tournamentId) {
-      setState({ loading: false, error: null, tables: [], seatsByTable: {} });
-      return;
-    }
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const [ttRes, seatsRes] = await Promise.all([
-        supabase.from("tournament_tables")
-          .select("id, table_name, table_number, max_seats, status, table_id")
-          .eq("tournament_id", tournamentId),
-        supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tournamentId, action: "get_seats" } }),
-      ]);
-      if (seq !== seqRef.current) return;
-      if (ttRes.error) throw new Error(ttRes.error.message);
-      if (seatsRes.error) throw new Error(typeof seatsRes.error === "string" ? seatsRes.error : (seatsRes.error as Error).message ?? "get_seats lỗi");
-      const tables: MapTable[] = ((ttRes.data ?? []) as Record<string, unknown>[])
-        .map((t) => ({
-          tt_id: t.id as string,
-          table_id: t.table_id as string,
-          table_number: (t.table_number as number | null) ?? null,
-          table_name: (t.table_name as string) ?? (t.table_number != null ? `Bàn ${t.table_number}` : "Bàn ?"),
-          max_seats: (t.max_seats as number) ?? 9,
-          status: (t.status as string) ?? "active",
-        }))
-        .sort((a, b) => (a.table_number ?? 1e9) - (b.table_number ?? 1e9));
-      const seats = ((seatsRes.data as { data?: MapSeat[] } | null)?.data ?? []) as MapSeat[];
-      setState({ loading: false, error: null, tables, seatsByTable: buildSeatsByTable(tables, seats) });
-    } catch (e) {
-      if (seq !== seqRef.current) return;
-      // P0-1: lỗi là lỗi — hiện error state, KHÔNG fallback mock.
-      setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : "Không tải được sơ đồ bàn" }));
-    }
-  }, [tournamentId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Realtime: seats + chip_counts của giải → debounce 200ms rồi refetch (P1-2).
-  useEffect(() => {
-    if (!tournamentId) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const bump = () => { if (timer) clearTimeout(timer); timer = setTimeout(() => load(), 200); };
-    const ch = supabase
-      .channel(`ops-floor:${tournamentId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_seats", filter: `tournament_id=eq.${tournamentId}` }, bump)
-      .on("postgres_changes", { event: "*", schema: "public", table: "tournament_chip_counts", filter: `tournament_id=eq.${tournamentId}` }, bump)
-      .subscribe();
-    return () => { if (timer) clearTimeout(timer); supabase.removeChannel(ch); };
-  }, [tournamentId, load]);
-
-  return { ...state, reload: load };
-}
 
 interface TableVM { mock: MockTable; name: string; seats: MockSeat[]; raw: MapTable }
 
@@ -166,21 +99,6 @@ interface RedrawResult {
   tables_to_close?: { table_number?: number }[];
 }
 
-/** Copy VERBATIM từ MovePlayerDialog.mapError (permission/entry/seat conflict). */
-function moveError(res: { error?: string; max_seats?: number } | null, raw?: string): string {
-  const code = res?.error ?? raw;
-  switch (code) {
-    case "entry_not_found": return "Không tìm thấy entry của người chơi.";
-    case "entry_not_seated": return "Người chơi không còn ở trạng thái đang ngồi.";
-    case "actor_not_allowed": return "Không có quyền chuyển ghế cho CLB này.";
-    case "no_active_seat": return "Người chơi không có ghế active — kiểm tra Table Draw.";
-    case "invalid_destination_table": return "Bàn đích không hợp lệ hoặc đã đóng — tải lại danh sách bàn.";
-    case "invalid_seat_number": return `Số ghế không hợp lệ${res?.max_seats ? ` (1–${res.max_seats})` : ""}.`;
-    case "seat_occupied": return "Ghế vừa có người khác ngồi — chọn ghế khác.";
-    default: return code ? `Chuyển thất bại (${code})` : "Chuyển thất bại";
-  }
-}
-
 export default function OpsTables() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -229,7 +147,6 @@ export default function OpsTables() {
   const floor = useFloorSeats(tourId);
 
   const [openNo, setOpenNo] = useState<number | null>(null);
-  const [player, setPlayer] = useState<PlayerTarget | null>(null);
   const [searchOn, setSearchOn] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -249,137 +166,17 @@ export default function OpsTables() {
   const openVM = openNo != null ? byNo.get(openNo) ?? null : null;
 
   const pending = () => toast(PENDING_NOTICE);
-  // Floor-A2: giữ identity ghế THẬT (seat_id/player_id/table_id…) để ghi update_seats.
-  const [playerReal, setPlayerReal] = useState<MapSeat | null>(null);
-  const [receiptData, setReceiptData] = useState<SeatReceiptData | null>(null);
+  // Tap 1 ghế → mở luồng thao tác người chơi (Sửa chip/Loại/Chuyển/Phiếu/Thông tin). Logic + sheets
+  // dùng CHUNG ở FloorPlayerActions. Chỉ ghế đang ngồi (có MapSeat thật) mới mở.
+  const [seatTarget, setSeatTarget] = useState<FloorSeatTarget | null>(null);
   const openPlayer = (s: MockSeat) => {
     const vm = openVM;
     const tableNo = vm?.mock.tableNo ?? 0;
     const real = vm ? (floor.seatsByTable[vm.raw.table_id] ?? []).find((x) => x.seat_number === s.seat) ?? null : null;
     setOpenNo(null);
-    setPlayerReal(real);
-    requestAnimationFrame(() => setPlayer({ seat: s, tableNo, chipCount: real?.chip_count }));
+    if (!real) return;
+    requestAnimationFrame(() => setSeatTarget({ seat: s, tableNo, real }));
   };
-
-  // Floor-A2: Sửa chip → Edge tournament-live-draw update_seats (ungated, mirror EditChipsDialog).
-  const saveChip = useCallback(async (newChip: number): Promise<boolean> => {
-    if (!playerReal || !tourId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
-    try {
-      const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
-        body: {
-          tournament_id: tourId,
-          action: "update_seats",
-          seats: [{
-            seat_id: playerReal.seat_id, player_id: playerReal.player_id, entry_number: playerReal.entry_number,
-            table_id: playerReal.table_id, seat_number: playerReal.seat_number, chip_count: newChip,
-            is_active: true, player_name: playerReal.player_name,
-          }],
-        },
-      });
-      const err = error?.message || (data as { error?: string } | null)?.error;
-      if (err) { toast.error(err.includes("permission") || err.includes("denied") ? "Không có quyền sửa chip." : `Sửa chip thất bại: ${err}`); return false; }
-      toast.success(`Đã cập nhật chip ${playerReal.player_name || "người chơi"}`);
-      floor.reload();
-      return true;
-    } catch (e) {
-      toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Sửa chip thất bại");
-      return false;
-    }
-  }, [playerReal, tourId, floor]);
-
-  // ── Floor-A1: Thêm người → RPC floor_assign_player_to_seat (gate floorTableOps) ──
-  // Floor-B: Loại (💰 ITM). openBust ĐỌC LẠI số người còn + cơ cấu thưởng NGAY khi mở (P0-5, không cache);
-  // bustPlayer ghi update_seats is_active:false (đúng FloorTableMapPanel). Server tự ghi hạng/thưởng chính thức.
-  const [bustInfo, setBustInfo] = useState<{ loading: boolean; place: number | null; prize: number | null } | null>(null);
-  const openBust = useCallback(async () => {
-    if (!tourId) return;
-    setBustInfo({ loading: true, place: null, prize: null });
-    try {
-      const [seatsRes, prizeRes] = await Promise.all([
-        supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tourId, action: "get_seats" } }),
-        supabase.from("tournament_prizes").select("position, amount").eq("tournament_id", tourId),
-      ]);
-      const active = (((seatsRes.data as { data?: MapSeat[] } | null)?.data ?? []) as MapSeat[]).filter((x) => x.is_active).length;
-      const place = active > 0 ? active : null;   // người vừa loại về hạng = số người còn active lúc này
-      const prize = place != null ? (((prizeRes.data ?? []) as { position: number; amount: number }[]).find((p) => p.position === place)?.amount ?? null) : null;
-      setBustInfo({ loading: false, place, prize });
-    } catch {
-      setBustInfo({ loading: false, place: null, prize: null });
-    }
-  }, [tourId]);
-  const bustPlayer = useCallback(async (): Promise<boolean> => {
-    if (!playerReal || !tourId) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
-    try {
-      const { data, error } = await supabase.functions.invoke("tournament-live-draw", {
-        body: {
-          tournament_id: tourId, action: "update_seats",
-          seats: [{
-            seat_id: playerReal.seat_id, player_id: playerReal.player_id, entry_number: playerReal.entry_number,
-            table_id: playerReal.table_id, seat_number: playerReal.seat_number, chip_count: playerReal.chip_count ?? 0,
-            is_active: false, player_name: playerReal.player_name,
-          }],
-        },
-      });
-      if (error) { toast.error(typeof error === "string" ? error : (error as Error).message ?? "Loại thất bại"); return false; }
-      const res = data as { error?: string } | null;
-      if (res?.error) { toast.error(`Loại thất bại (${res.error})`); return false; }
-      toast.success(`Đã loại ${playerReal.player_name || "người chơi"}`);
-      floor.reload();
-      return true;
-    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Loại thất bại"); return false; }
-  }, [playerReal, tourId, floor]);
-
-  // Chuyển ghế (move_player_seat). Ghế trống mỗi bàn từ dữ liệu get_seats hiện tại; entry_id KHÔNG
-  // có trong get_seats → tra tournament_seats theo seat_id (đúng cách desktop MovePlayerDialog).
-  const moveTargets = useMemo(() => floor.tables.map((tb) => {
-    const occ = new Set((floor.seatsByTable[tb.table_id] ?? []).filter((x) => x.is_active).map((x) => x.seat_number));
-    const freeSeats = Array.from({ length: tb.max_seats }, (_, i) => i + 1).filter((n) => !occ.has(n));
-    return { tt_id: tb.tt_id, table_number: tb.table_number, freeSeats };
-  }).filter((tb) => tb.freeSeats.length > 0), [floor.tables, floor.seatsByTable]);
-  const movePlayer = useCallback(async (toTtId: string, toSeat: number, reason: string): Promise<boolean> => {
-    if (!playerReal || !tourId || !user) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return false; }
-    try {
-      const { data: seatRow, error: seErr } = await supabase.from("tournament_seats")
-        .select("entry_id").eq("id", playerReal.seat_id).maybeSingle();
-      if (seErr || !seatRow?.entry_id) { toast.error("Không tìm được lượt đăng ký (entry) của người chơi."); return false; }
-      const { data, error } = await (supabase.rpc as any)("move_player_seat", {
-        p_entry_id: seatRow.entry_id,
-        p_to_tournament_table_id: toTtId,
-        p_to_seat_number: toSeat,
-        p_actor_user_id: user.id,
-        p_reason: reason,
-      });
-      const res = (data ?? null) as { ok?: boolean; error?: string; max_seats?: number } | null;
-      if (error || !res?.ok) { toast.error(moveError(res, error?.message)); return false; }
-      toast.success(`Đã chuyển ${playerReal.player_name || "người chơi"}`);
-      floor.reload();
-      return true;
-    } catch (e) { toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Chuyển thất bại"); return false; }
-  }, [playerReal, tourId, user, floor]);
-
-  // Phiếu (READ-ONLY): tái dùng SeatReceiptDialog desktop (QR + in lại). Mirror FloorTableMapPanel.openReceipt —
-  // receiptCode/qrValue = entry_id (tra tournament_seats theo seat_id, fallback seat_id). KHÔNG ghi DB.
-  const openReceipt = useCallback(async () => {
-    const real = playerReal;
-    const tour = selectedTour;
-    const tableNo = player?.tableNo ?? null;   // capture đồng bộ trước await (act() gọi close() ngay sau)
-    if (!real || !tour) { toast.error("Thiếu dữ liệu ghế — mở lại người chơi."); return; }
-    let code = real.seat_id;                    // fallback nếu chưa tra được entry_id
-    try {
-      const { data } = await supabase.from("tournament_seats").select("entry_id").eq("id", real.seat_id).maybeSingle();
-      if (data?.entry_id) code = data.entry_id as string;
-    } catch { /* giữ fallback seat_id */ }
-    setReceiptData({
-      tournamentName: tour.name,
-      tournamentDate: (tour as Tournament & { start_time?: string | null }).start_time ?? null,
-      playerName: real.player_name || real.player_id.slice(0, 8),
-      tableNumber: tableNo,
-      seatNumber: real.seat_number,
-      receiptCode: code,
-      startingStack: real.chip_count,
-      qrValue: code,
-    });
-  }, [playerReal, selectedTour, player]);
 
   const ADD_LIVE = FEATURES.floorTableOps;
   const [addTable, setAddTable] = useState<TableVM | null>(null); // bàn đang thêm
@@ -540,10 +337,6 @@ export default function OpsTables() {
         <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">Bàn</h1>
         <p className="mt-0.5 text-[15px] text-[#9b8e97]">{selectedTour ? selectedTour.name : "Cả phòng trong một màn"} · chạm 1 bàn để thao tác</p>
       </header>
-
-      <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
-        Dữ liệu thật · nút hành động chưa nối
-      </div>
 
       {/* P1-1: >1 CLB → pill chọn CLB */}
       {scopedIds.length > 1 && (
@@ -848,12 +641,16 @@ export default function OpsTables() {
         </SheetContent>
       </Sheet>
 
-      {/* S7 — tap người: hiện danh tính thật. Sửa chip/Chuyển/Loại/Thông tin/Phiếu = NỐI THẬT (read
-          hoặc write theo callback tương ứng). pendingNotice chỉ còn cho nút chưa nối (Tạm dừng). */}
-      <PlayerActionSheets target={player} onClose={() => { setPlayer(null); setPlayerReal(null); setBustInfo(null); }} pendingNotice={PENDING_NOTICE} onSaveChip={saveChip} onBustPlayer={bustPlayer} onOpenBust={openBust} bustInfo={bustInfo} moveTargets={moveTargets} onMovePlayer={movePlayer} onOpenReceipt={openReceipt} infoLive />
-
-      {/* Phiếu xếp ghế (read-only): QR + in lại, tái dùng nguyên component desktop. */}
-      <SeatReceiptDialog open={receiptData !== null} onOpenChange={(v) => { if (!v) setReceiptData(null); }} receipt={receiptData} />
+      {/* S7 — tap người: luồng thao tác + phiếu dùng CHUNG (FloorPlayerActions). */}
+      <FloorPlayerActions
+        tournamentId={tourId}
+        tournamentName={selectedTour?.name ?? ""}
+        tournamentDate={(selectedTour as (Tournament & { start_time?: string | null }) | null)?.start_time ?? null}
+        userId={user?.id}
+        floor={floor}
+        target={seatTarget}
+        onClose={() => setSeatTarget(null)}
+      />
     </div>
   );
 }
