@@ -1314,18 +1314,21 @@ export const FEATURES = {
    * route shows "chưa bật" (except admin/owner preview) and nothing mounts. The backing
    * `club_expenses` migration is SOURCE-ONLY / not applied live yet. The READ display in
    * Accounting Control's "Lương & chi phí" tab and the get_club_finance_summary fold are
-   * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
+   * SEPARATE later increments (each additive + golden-diff + own gate).
+   * **ON** (2026-07-11, owner-approved go-live): the club_expenses RPCs are applied live; the entry
+   * page now writes to Supabase (Owner+Cashier). Kill-switch: set false to re-hide.
    */
-  clubExpenses: false,
+  clubExpenses: true,
   /**
    * staffSalaryChot — the operator "Chốt lương nhân viên" page (/club/admin/staff-salary):
    * the accountant computes + chốt (locks) the monthly salary and SUBMITS it to the club owner,
    * who approves/rejects; a run can be marked paid only AFTER owner approval. Reads
    * staff_salary_runs / staff_salary_periods + the S6/S7 RPCs (applied live 2026-07-11).
-   * Default **OFF**: while false the route shows a preview (owner/admin) on mock data and nothing
-   * hits Supabase. Flip true after owner UAT. Kill-switch: set false to re-hide the page.
+   * **ON** (2026-07-11, owner-approved go-live): the chốt/duyệt page is live against the S6/S7 RPCs.
+   * Assign accountants via `club_accountants` so they can reach it; owner remains the approver.
+   * Kill-switch: set false to re-hide the page.
    */
-  staffSalaryChot: false,
+  staffSalaryChot: true,
 } as const;
 
 /**
