@@ -1260,8 +1260,9 @@ export const FEATURES = {
    * No backend/Edge/migration. Default **OFF** (kill-switch): while false the suggest controls are
    * hidden and CUSTOM behaves exactly as today (manual rows / import / templates). Flip true after
    * Preview UAT. Only meaningful where `payoutCustomMode` is already on.
+   * **ON 2026-07-11** (owner-approved after #857 merged). Kill-switch: set false.
    */
-  payoutCustomSuggest: false,
+  payoutCustomSuggest: true,
   /**
    * TV payout board — two-tier display (PR-5). Collapses a LIVE_STANDARD run's equal-amount
    * bands (e.g. ranks 10-12) into one "10–12" row instead of 3 duplicate rows, and raises the
