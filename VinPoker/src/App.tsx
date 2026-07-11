@@ -54,6 +54,8 @@ const TrackerDashboard = lazy(() => import("./pages/TrackerDashboard"));
 const TrackerHandInputConsole = lazy(() => import("./pages/TrackerHandInputConsole"));
 const FloorDashboard = lazy(() => import("./pages/FloorDashboard"));
 const DealerSwingDashboard = lazy(() => import("./pages/DealerSwingDashboard"));
+// Accountant workspace (/accountant) — dedicated role-gated area (club_accountants/owner/admin).
+const AccountantDashboard = lazy(() => import("./pages/AccountantDashboard"));
 // mobileOpsV2 — iPhone operator shell (/ops/*). Self-gates on FEATURES.mobileOpsV2 (OFF) + role.
 const OpsShell = lazy(() => import("./components/ops/OpsShell"));
 import { MobileOperatorRoute } from "./components/ops/MobileOperatorRoute";
@@ -339,6 +341,7 @@ const App = () => (
                 <Route path="/cashier" element={<MobileOperatorRoute to="/ops/cashier"><CashierDashboard /></MobileOperatorRoute>} />
                 <Route path="/dealer-board" element={<DealerControlBoard />} />
                 <Route path="/tracker" element={<TrackerDashboard />} />
+                <Route path="/accountant" element={<AccountantDashboard />} />
                 <Route path="/tracker/hand-input" element={<TrackerHandInputConsole />} />
                 {/* Floor is device-aware: phones get the mobile /ops UI, desktop gets the full dashboard. */}
                 <Route path="/floor" element={<MobileOperatorRoute to="/ops"><FloorDashboard /></MobileOperatorRoute>} />

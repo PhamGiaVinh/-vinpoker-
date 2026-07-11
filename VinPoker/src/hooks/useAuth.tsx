@@ -5,6 +5,7 @@ import { linkUser, logoutUser } from "@/lib/onesignal";
 import { deriveIsChipMaster } from "@/lib/chipMaster";
 import { deriveIsMarketing } from "@/lib/marketer";
 import { deriveIsFnb } from "@/lib/fnbStaff";
+import { deriveIsAccountant } from "@/lib/accountant";
 
 // HMR safety: AuthContext identity must stay stable across hot updates.
 // If this module (or any of its imports) is hot-reloaded, force a full
@@ -37,6 +38,7 @@ interface AuthContextValue {
   isFnbCashier: boolean; // F&B cashier facet (takes money at the counter) — NAV AFFORDANCE ONLY
   isFnbServer: boolean; // F&B server facet (marks SHIPPED) — NAV AFFORDANCE ONLY
   isFnbKitchen: boolean; // F&B kitchen facet (kitchen display) — NAV AFFORDANCE ONLY
+  isAccountant: boolean; // club_accountants member of >=1 club (salary chốt/duyệt) OR super_admin — NAV AFFORDANCE ONLY
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isChipMaster, setIsChipMaster] = useState(false);
   const [isMarketingMember, setIsMarketingMember] = useState(false);
   const [isFnbMember, setIsFnbMember] = useState(false);
+  const [isAccountantMember, setIsAccountantMember] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsChipMaster(false);
         setIsMarketingMember(false);
         setIsFnbMember(false);
+        setIsAccountantMember(false);
         setTimeout(() => logoutUser(), 0);
       }
     });
@@ -108,6 +112,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // F&B membership — same guarded pattern (false without querying while FEATURES.fnbModule is
     // off / on any error). See lib/fnbStaff.ts.
     deriveIsFnb(userId).then(setIsFnbMember).catch(() => setIsFnbMember(false));
+    // Accountant membership — same guarded pattern (false on any error). See lib/accountant.ts.
+    deriveIsAccountant(userId).then(setIsAccountantMember).catch(() => setIsAccountantMember(false));
   };
 
   const signOut = async () => {
@@ -118,6 +124,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsChipMaster(false);
     setIsMarketingMember(false);
     setIsFnbMember(false);
+    setIsAccountantMember(false);
   };
 
   return (
@@ -145,6 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isFnbCashier: roles.includes("fnb_cashier") || roles.includes("super_admin"),
       isFnbServer: roles.includes("fnb_server") || roles.includes("super_admin"),
       isFnbKitchen: roles.includes("fnb_kitchen") || roles.includes("super_admin"),
+      isAccountant: roles.includes("super_admin") || isAccountantMember,
     }}>
       {children}
     </AuthContext.Provider>
