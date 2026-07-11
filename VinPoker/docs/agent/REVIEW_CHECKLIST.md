@@ -60,3 +60,43 @@ history, reconnect/spectator behavior, missing tests.
 ## frontend-ux-auditor
 Mobile usability, ≥44px tap targets, Vietnamese owner/operator clarity, loading/error/empty states,
 stale state, role-based visibility, casino-style visual clarity where relevant.
+
+## Series Intelligence — forecast honesty doctrine (A6)
+
+Engineering + product doctrine for any forecasting / analytics change under
+`src/lib/series-intelligence/`. **Enforced by** `featureBoundary.ts` (the one feature-availability +
+pattern registry), `modelCapability.ts` (the one sample-size gate), the canonical walk-forward in
+`turnoutForecast.ts`, and the guardrail tests (`featureBoundary` / `patternGuard` /
+`seriesArchitecture` / `modelCapability` / `walkForward` / `baselineBattery`). Not new UI.
+
+**Three labels — the ONLY honest framings for an analytics claim:**
+
+- **Observed Pattern** — a measured fact about the past ("the last 3 Main events averaged 128"). No
+  claim about the future. Historical association, not causation.
+- **Hypothesis** — a model-based estimate, labelled as such (never "Model Estimate"), always with a
+  band + confidence tier + walk-forward error + disclaimer, behind a default-OFF flag until it beats
+  the baseline.
+- **Decision Support** — surfaces the trade-off for the owner to decide; never auto-acts.
+
+**Rules (all must hold):**
+
+- Historical association is **not** causality; frequency is **not** predictive skill.
+- A pattern must be compared against a **null expectation** (what pure randomness would produce).
+- **"due" / "hot" / "cold" / "overdue" / "streak"** ("lâu chưa đông", "kỳ này đến lượt đông")
+  language is **forbidden** in owner-facing forecast claims — and such features are registry-rejected
+  (`PATTERN_FEATURE_REGISTRY`), admissible only via an owner-approved `ResearchContract`.
+- Insufficient data must **never** be turned into a confident number — degrade to an honest
+  "chưa đủ dữ liệu", never a fabricated value.
+- A **model-skill claim** ("tốt hơn baseline") requires a **matched-fold** comparison against a
+  baseline (same folds, both non-null metrics, capability min-fold met) — never mismatched fold sets.
+- **best-of-N** experiments must **disclose N** (multiple-testing / trial-count record).
+- **No auto-act** from an analytical pattern — analysis proposes; the owner decides.
+
+**Feature discipline (registry is the authority):**
+
+- Every quantity that may enter a model is registered in the ONE feature registry with a stable
+  machine id and exactly one availability class (`static_known` / `observed_by_origin` /
+  `outcome_only`). Unknown ids fail closed; `outcome_only` can never be a feature;
+  `observed_by_origin` needs `observedAt ≤ originTs`. No feature builder keeps a private list, and no
+  second registry / capability gate / walk-forward path is introduced. This is registry membership,
+  **not** a keyword ban — legitimate ids like `editionTrend` are unaffected.
