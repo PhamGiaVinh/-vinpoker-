@@ -112,6 +112,22 @@ describe("LiveFelt viewerLayout (Viewer Felt V2)", () => {
     const html = renderToStaticMarkup(<LiveFelt seats={seats} {...baseProps} portrait viewerLayout viewerNeon={false} />);
     expect(html).toContain("--primary"); // neon rim/glow uses --primary
   });
+
+  it("compact portrait keeps Total Pot centered and also keeps the status-bar pot", () => {
+    const html = renderToStaticMarkup(
+      <LiveFelt
+        seats={seats}
+        {...baseProps}
+        potSize={2_000_000}
+        portrait
+        viewerLayout
+        compact
+      />,
+    );
+    expect(html).toContain('data-testid="felt-total-pot"');
+    expect(html).toContain('data-testid="felt-status-bar"');
+    expect((html.match(/2M/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 // RPT committed-bet indicator: viewerLayout shows the on-felt chip STACK (red all-in /

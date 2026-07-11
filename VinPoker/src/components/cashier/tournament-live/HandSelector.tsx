@@ -15,6 +15,7 @@ interface HandRow {
   created_at: string;
   community_cards: string[] | null;
   button_seat: number | null;
+  pot_size: number | null;
 }
 
 interface HandSelectorProps {
@@ -45,7 +46,7 @@ export function HandSelector({
     (async () => {
       let q = supabase
         .from("tournament_hands")
-        .select("id, hand_number, created_at, community_cards, button_seat, status, is_voided, table_id")
+        .select("id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided, table_id")
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
@@ -61,6 +62,7 @@ export function HandSelector({
           created_at: h.created_at,
           community_cards: h.community_cards,
           button_seat: h.button_seat,
+          pot_size: h.pot_size,
         }));
       setHands(rows);
       setLoadingList(false);
@@ -83,7 +85,7 @@ export function HandSelector({
         const [{ data: actionData }, { data: handPlayers }] = await Promise.all([
           supabase
             .from("hand_actions")
-            .select("player_id, street, action_type, action_amount, action_order")
+            .select("id, player_id, street, action_type, action_amount, action_order")
             .eq("hand_id", row.id)
             .order("action_order"),
           supabase.from("hand_players").select(hpCols).eq("hand_id", row.id),
@@ -96,9 +98,11 @@ export function HandSelector({
         const display = await fetchHandPlayerDisplay(tournamentId, needIds);
 
         const hand: ReplayHand = {
+          hand_id: row.id,
           hand_number: row.hand_number,
           button_seat: row.button_seat || 1,
           community_cards: (row.community_cards as string[]) || [],
+          stored_pot_size: row.pot_size,
           players: (handPlayers ?? []).map((p: any) => ({
             player_id: p.player_id,
             seat_number: p.seat_number,
@@ -112,6 +116,7 @@ export function HandSelector({
                 : undefined,
           })),
           actions: (actionData ?? []).map((a: any) => ({
+            action_id: a.id,
             player_id: a.player_id,
             street: a.street || "preflop",
             action_type: a.action_type,

@@ -18,8 +18,10 @@ import { useTranslation } from "react-i18next";
 import { PokerCard, CardBack } from "./PokerVisuals";
 import { ChipStack } from "./ChipStack";
 import { FeltStatusBar } from "./FeltStatusBar";
+import { TableMotionLayer } from "./TableMotionLayer";
 import { useCountUp } from "@/hooks/useCountUp";
 import type { PotBreakdown } from "@/lib/tracker-poker/potEngine";
+import type { TableMotionEvent } from "@/lib/tracker-poker/tableMotion";
 
 /** Count-up text (Phase 3, tableFx only): tweens a numeric display toward its target.
  *  First render / enabled-off / reduced-motion emit the target directly, so static
@@ -60,6 +62,7 @@ export interface SeatInfo {
 }
 
 export interface ActionLog {
+  action_id?: string;
   street: string;
   player_id: string;
   display_name: string;
@@ -307,6 +310,11 @@ export interface LiveFeltProps {
   /** Per-step delay for the staggered showdown reveal (ms). Default 500 when
    * `revealOrder` is set. */
   revealStaggerMs?: number;
+  /** VinPoker-native display events. No event may decide cards, pot or winners. */
+  motionEvents?: TableMotionEvent[];
+  motionHandKey?: string | null;
+  motionSpeed?: number;
+  motionEnabled?: boolean;
 }
 
 export function LiveFelt({
@@ -335,6 +343,10 @@ export function LiveFelt({
   showdownResult = null,
   revealOrder,
   revealStaggerMs = 500,
+  motionEvents = [],
+  motionHandKey = null,
+  motionSpeed = 1,
+  motionEnabled = false,
 }: LiveFeltProps) {
   const { t } = useTranslation();
   // V2 uses the wider CoinPoker geometry; operator/TV keep the current GEO (byte-identical).
@@ -413,6 +425,7 @@ export function LiveFelt({
   // each other at the pot (the board is positionally protected, NOT just by z-order).
   // K + MINGAP are tuned in the 9-handed-all-bet visual check.
   const potCenterT = parseFloat(geo.centerTop) || 43;
+  const motionAspect = portrait ? (compactActive ? 3 / 4 : 5 / 7) : 13 / 6;
   // Disc lerp K per surface (measured, 2026-07-06 tall-portrait redesign):
   //  • non-compact: 0.42 + the radial center clamp (unchanged — flag-off byte-identical).
   //  • compact LANDSCAPE (desktop /live): 0.30 "near the seat" (UAT wave 2 tuning — at
@@ -608,6 +621,22 @@ export function LiveFelt({
               V
             </div>
           )}
+          {potSize > 0 && compactActive && portrait && (
+            <div data-testid="felt-total-pot" className="relative mb-2 flex flex-col items-center">
+              <div
+                className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/70 px-4 py-1.5 shadow-[0_0_18px_hsl(var(--viewer-neon)_/_0.16)]"
+                style={{ border: "1px solid hsl(var(--poker-gold) / 0.58)" }}
+              >
+                <div className="tracker-display text-[8px] font-black uppercase tracking-[0.22em]" style={{ color: "hsl(var(--poker-gold) / 0.82)" }}>
+                  {t("liveHub.felt.totalPot", "Total Pot")}
+                </div>
+                <div className="tracker-num text-xl font-black leading-tight" style={{ color: "hsl(var(--viewer-neon))" }}>
+                  {formatStack(displayPot)}
+                  {formatBB(displayPot) && <span className="ml-1.5 text-[10px] font-bold text-white/60">({formatBB(displayPot)})</span>}
+                </div>
+              </div>
+            </div>
+          )}
           {/* Board — revealed cards face up. VIEWER: undealt slots render NOTHING (the
               face-down placeholders sat in front of the top-center seats, covering their
               pods/stacks/bet chips preflop). Operator/TV keep the V-logo backs → byte-identical. */}
@@ -636,7 +665,10 @@ export function LiveFelt({
           {/* Compact portrait: the pot lives in the STATUS BAR below (RPT pattern) — the
               short felt keeps only the board centered, so 9-max pods never collide. */}
           {potSize > 0 && !(compactActive && portrait) && (
-            <div className={`mt-2.5 flex flex-col items-center${viewerLayout ? " relative" : ""}`}>
+            <div
+              {...(viewerLayout ? { "data-testid": "felt-total-pot" } : {})}
+              className={`mt-2.5 flex flex-col items-center${viewerLayout ? " relative" : ""}`}
+            >
               <div
                 className="tracker-pot-pulse inline-flex flex-col items-center rounded-full bg-black/55 px-3.5 py-1"
                 style={{ border: "1px solid hsl(var(--poker-gold) / 0.42)" }}
@@ -1009,6 +1041,16 @@ export function LiveFelt({
             ))}
           </div>
         )}
+
+        <TableMotionLayer
+          enabled={motionEnabled && viewerLayout}
+          handKey={motionHandKey}
+          events={motionEvents}
+          seatPositions={seatMap}
+          potPosition={{ l: 50, t: potCenterT }}
+          aspectRatio={motionAspect}
+          speed={motionSpeed}
+        />
 
         {multiTableUnresolved && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">

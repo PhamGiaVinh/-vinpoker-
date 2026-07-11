@@ -336,6 +336,12 @@ export const FEATURES = {
    */
   liveTableFx: true, // GO-LIVE 2026-06-22: chip-push + enriched sounds + replay audio (owner-approved)
   /**
+   * VinPoker-native table motion v2. Drives deal, muck, board, showdown and
+   * verified pot-award overlays from persisted live/replay events. Display-only;
+   * never computes cards, pot or winners. Ships OFF for preview/UAT.
+   */
+  liveTableMotionV2: false,
+  /**
    * Public live-tracker EVENT TABS (RPT-Live style): opening `/live/:id` no longer
    * drops straight onto the felt — it shows a 5-tab event page (Cập nhật / Lịch sử
    * ván / Giải thưởng / Cấu trúc / Hình ảnh). The felt mounts ON DEMAND (tap the

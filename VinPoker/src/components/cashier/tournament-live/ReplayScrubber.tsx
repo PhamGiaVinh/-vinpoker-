@@ -25,9 +25,11 @@ const STREET_LABELS: Record<string, string> = {
   showdown: "Showdown",
 };
 
+export type ReplayFrameSource = "playback" | "scrub" | "jump";
+
 interface ReplayScrubberProps {
   hand: ReplayHand;
-  onFrame: (frame: ReplayFrame) => void;
+  onFrame: (frame: ReplayFrame, source: ReplayFrameSource) => void;
   /**
    * B1 (liveReplayHud, viewer-only) — ADDITIVE; absent → render byte-identical.
    * Adds the RPT-style HUD: a BB/ANTE + POT (±BB) strip, a jump-to-end button, and
@@ -41,9 +43,10 @@ interface ReplayScrubberProps {
    * this street) + `total_committed` (ALL-IN pill amount) for the felt chip layer.
    */
   trackBets?: boolean;
+  onSpeedChange?: (speed: number) => void;
 }
 
-export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }: ReplayScrubberProps) {
+export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, onSpeedChange }: ReplayScrubberProps) {
   const { t } = useTranslation();
   const frames = useMemo(() => buildReplayFrames(hand, { trackBets }), [hand, trackBets]);
   const streetIdx = useMemo(() => streetFrameIndex(frames), [frames]);
@@ -54,9 +57,15 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
   // Phase 3: default 2× (500ms/action) — 1×'s one-second dry steps read as "lag", and the
   // felt's fold-fade/count-up/chip-fly cover the transition. All speeds stay selectable.
   const [speed, setSpeed] = useState(2);
+  const frameSourceRef = useRef<ReplayFrameSource>("jump");
+
+  useEffect(() => {
+    onSpeedChange?.(speed);
+  }, [onSpeedChange, speed]);
 
   // New hand → rewind and pause.
   useEffect(() => {
+    frameSourceRef.current = "jump";
     setStep(0);
     setIsPlaying(false);
   }, [hand]);
@@ -66,7 +75,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
   onFrameRef.current = onFrame;
   useEffect(() => {
     const f = frames[Math.min(step, lastIndex)];
-    if (f) onFrameRef.current(f);
+    if (f) onFrameRef.current(f, frameSourceRef.current);
   }, [step, frames, lastIndex]);
 
   // Auto-advance while playing; stop at the end.
@@ -77,6 +86,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
       return;
     }
     const id = window.setInterval(() => {
+      frameSourceRef.current = "playback";
       setStep((s) => {
         if (s >= lastIndex) return s;
         return s + 1;
@@ -86,12 +96,14 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
   }, [isPlaying, speed, step, lastIndex]);
 
   const pauseAnd = (fn: () => void) => {
+    frameSourceRef.current = "scrub";
     setIsPlaying(false);
     fn();
   };
 
   const togglePlay = () => {
     if (step >= lastIndex) {
+      frameSourceRef.current = "jump";
       setStep(0);
       setIsPlaying(true);
     } else {
@@ -111,6 +123,7 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
 
   const currentStreet = frames[Math.min(step, lastIndex)]?.currentStreet;
   const current = frames[Math.min(step, lastIndex)];
+  const finalFrame = frames[lastIndex];
   const publicName = (name: string | null | undefined, playerId: string): string => {
     const trimmed = name?.trim() || "";
     const rawPrefix = playerId.slice(0, 6).toLowerCase();
@@ -129,13 +142,13 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false }
   const inBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1)} BB` : null);
   // Winner rows: net = ending − starting (completed hands only). Sorted by net desc.
   const nets = useMemo(() => {
-    if (!hud || current?.showdownResult === "needs_resettle") return [];
+    if (!hud || !finalFrame?.payoutVerified) return [];
     return hand.players
       .filter((p) => p.ending_stack != null)
       .map((p) => ({ ...p, net: (p.ending_stack as number) - p.starting_stack }))
       .filter((p) => p.net !== 0)
       .sort((a, b) => b.net - a.net);
-  }, [hud, hand, current?.showdownResult]);
+  }, [hud, hand, finalFrame?.payoutVerified]);
   // Hand-summary bullets — derived from ACTIONS + nets only (revealed data; no
   // hole-card source → no leak). All-in facts first, then winner lines.
   const bullets = (() => {
