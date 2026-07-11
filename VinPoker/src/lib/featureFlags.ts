@@ -1044,6 +1044,19 @@ export const FEATURES = {
    */
   seriesBaselineBattery: false,
   /**
+   * Series Intelligence — A4b honest insufficient-data result + UX (final item of Quant Apply Wave 1). When
+   * ON, the turnout forecast panel renders through an honest adapter (`toHonestForecastResult`) instead of the
+   * old "not available" branch: with too little history it shows an EmptyExplainer (WHY it's unavailable + WHAT
+   * data is needed) — NEVER a fabricated "0 khách" and NEVER "độ bất định tối đa"; with just enough for a
+   * simple reference it shows a clearly-labelled "Mốc tham khảo" (baseline name + value + fold count, explicitly
+   * "chưa phải dự báo từ mô hình"); with enough data the existing full forecast card renders unchanged. Reuses
+   * the A4a capability gate (reasons) + the A3 baseline battery (no new median/naive); the adapter works
+   * whether or not seriesBaselineBattery is on. Pure client compute (no DB/RPC/Edge). Default **OFF**: while
+   * false the panel + forecastTurnout output are byte-identical to today (the adapter never runs). Kill-switch:
+   * set false to restore the old empty/warning branch.
+   */
+  seriesInsufficientDataUx: false,
+  /**
    * Series Intelligence — W2 consistent "why is this block empty?" explainers. When ON, self-hidden /
    * empty SI blocks (forecast when too little history, F&B when no orders in the window, …) render a
    * uniform 3-line card: WHAT it is · WHY it's empty · HOW to unlock — so an empty block never reads as

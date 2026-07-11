@@ -17,7 +17,9 @@ import {
 } from "@/lib/series-intelligence/turnoutForecast";
 import { naiveBaseline, baselineDeltaPct } from "@/lib/series-intelligence/naiveBaseline";
 import { runBaselineBattery } from "@/lib/series-intelligence/baselineBattery";
+import { toHonestForecastResult } from "@/lib/series-intelligence/honestForecast";
 import { BaselineBatteryCard } from "./BaselineBatteryCard";
+import { HonestForecastView } from "./HonestForecastView";
 import { ExplainHint } from "./ExplainHint";
 import { EmptyExplainer } from "./EmptyExplainer";
 import { RegimeNotice } from "./RegimeNotice";
@@ -112,12 +114,14 @@ export function TurnoutForecastPanel({
   );
   const baseVsModel = baselineDeltaPct(fc?.base ?? null, baseline?.value ?? null);
 
-  // A3 — Baseline Battery ("Mốc dự báo đơn giản"). Only computed when the flag is ON and a forecast exists,
-  // over the SAME target/opts as `fc` so its canonical folds match the model CV. Null (flag OFF) ⇒ no card ⇒
-  // the panel is byte-identical to today.
+  // A3 — Baseline Battery ("Mốc dự báo đơn giản") + A4b adapter input. Computed over the SAME target/opts as
+  // `fc` (folds match the model CV) when EITHER the A3 card could show (seriesBaselineBattery ON + a forecast)
+  // OR the A4b honest adapter needs it (seriesInsufficientDataUx ON, ready — even when the model is unavailable,
+  // for the baseline_only path). The A3-only condition is preserved exactly, so A3 stays byte-identical; null
+  // otherwise.
   const battery = useMemo(
     () =>
-      FEATURES.seriesBaselineBattery && ready && fc?.available
+      ready && (FEATURES.seriesInsufficientDataUx || (FEATURES.seriesBaselineBattery && fc?.available))
         ? runBaselineBattery(
             events,
             { event_date: eventDateTime, buy_in: buyIn as number, gtd, typeKeyword: typeKeyword.trim() || null, event_name: seriesName.trim() || null, capacity },
@@ -125,6 +129,14 @@ export function TurnoutForecastPanel({
           )
         : null,
     [events, eventDateTime, buyIn, gtd, typeKeyword, seriesName, capacity, ready, fc?.available],
+  );
+
+  // A4b — honest insufficient-data result. Adapts the EXISTING fc (public output UNCHANGED) + the A4a
+  // capability gate + the A3 battery into one discriminated result, so the panel never shows a fabricated 0.
+  // Only computed when seriesInsufficientDataUx is ON; null ⇒ the panel uses its existing branches (byte-identical).
+  const honestResult = useMemo(
+    () => (FEATURES.seriesInsufficientDataUx && ready && fc ? toHonestForecastResult(fc, battery) : null),
+    [fc, battery, ready],
   );
 
   return (
@@ -203,7 +215,11 @@ export function TurnoutForecastPanel({
               Nhập ngày + buy-in giải sắp tới để xem dự báo.
             </Card>
           ) : !fc?.available ? (
-            FEATURES.seriesEmptyExplainer ? (
+            FEATURES.seriesInsufficientDataUx && honestResult ? (
+              // A4b — honest unavailable / baseline_only (never a fabricated 0). Flag OFF ⇒ the existing
+              // EmptyExplainer / warning branches below render byte-identically.
+              <HonestForecastView result={honestResult} />
+            ) : FEATURES.seriesEmptyExplainer ? (
               <EmptyExplainer
                 tone="warning"
                 className="h-full min-h-[220px]"
