@@ -36,13 +36,14 @@ function currentMonthKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export default function ClubExpenses() {
-  const { loading: authLoading, isAdmin, isClubAdmin, isClubOwner, isCashier } = useAuth();
+export default function ClubExpenses({ embedded }: { embedded?: boolean } = {}) {
+  const { loading: authLoading, isAdmin, isClubAdmin, isClubOwner, isCashier, isAccountant } = useAuth();
   const [searchParams] = useSearchParams();
   const source = clubExpensesSource();
   const preview = source === "mock";
   const mockPreview = preview && searchParams.get("preview") === "mock";
-  const liveAllowed = isAdmin || isClubAdmin || isClubOwner || isCashier;
+  // Accountant manages expenses (server authz via 20261236000000); owner/cashier unchanged.
+  const liveAllowed = isAdmin || isClubAdmin || isClubOwner || isCashier || isAccountant;
   const previewAllowed = isAdmin || isClubOwner;
   const allowed = FEATURES.clubExpenses ? liveAllowed : previewAllowed || mockPreview;
   const [clubId, setClubId] = useState<string>("");
@@ -59,14 +60,15 @@ export default function ClubExpenses() {
   }, [clubId, clubs]);
 
   if (authLoading || clubsQuery.isLoading) return <ExpensesSkeleton />;
-  if (!allowed) return <Navigate to="/club/admin" replace />;
+  // Embedded (accountant workspace): the parent already gates access — never redirect.
+  if (!allowed && !embedded) return <Navigate to="/club/admin" replace />;
 
   const summary = expensesQuery.data;
   const rows = summary?.rows ?? [];
   const activeClub = clubs.find((c) => c.id === activeClubId);
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-6 space-y-4">
+    <div className={embedded ? "space-y-4" : "container mx-auto max-w-6xl px-4 py-6 space-y-4"}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">

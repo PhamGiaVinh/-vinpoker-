@@ -23,21 +23,27 @@ export function useExpenseClubs(source: ClubExpenseSource, enabled: boolean) {
         return (data ?? []).map((c: any) => ({ id: c.id, name: c.name ?? c.id }));
       }
 
-      const [{ data: owned, error: ownedError }, { data: cashierRows, error: cashierError }] = await Promise.all([
+      const [{ data: owned, error: ownedError }, { data: cashierRows, error: cashierError }, { data: acctRows, error: acctError }] = await Promise.all([
         db.from("clubs").select("id,name").eq("owner_id", user.id),
         db.from("club_cashiers").select("club_id").eq("user_id", user.id),
+        // Accountants manage expenses too (server authz via 20261236000000).
+        db.from("club_accountants").select("club_id").eq("user_id", user.id),
       ]);
       if (ownedError) throw ownedError;
       if (cashierError) throw cashierError;
+      if (acctError) throw acctError;
 
       const clubs = new Map<string, ExpenseClub>();
       for (const c of owned ?? []) clubs.set(c.id, { id: c.id, name: c.name ?? c.id });
-      const cashierIds = (cashierRows ?? []).map((r: any) => r.club_id).filter(Boolean);
-      const missingIds = cashierIds.filter((id: string) => !clubs.has(id));
+      const memberIds = [
+        ...(cashierRows ?? []).map((r: any) => r.club_id),
+        ...(acctRows ?? []).map((r: any) => r.club_id),
+      ].filter(Boolean);
+      const missingIds = memberIds.filter((id: string) => !clubs.has(id));
       if (missingIds.length) {
-        const { data: cashierClubs, error } = await db.from("clubs").select("id,name").in("id", missingIds);
+        const { data: memberClubs, error } = await db.from("clubs").select("id,name").in("id", missingIds);
         if (error) throw error;
-        for (const c of cashierClubs ?? []) clubs.set(c.id, { id: c.id, name: c.name ?? c.id });
+        for (const c of memberClubs ?? []) clubs.set(c.id, { id: c.id, name: c.name ?? c.id });
       }
 
       return Array.from(clubs.values()).sort((a, b) => a.name.localeCompare(b.name));

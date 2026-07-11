@@ -1396,9 +1396,11 @@ export const FEATURES = {
    * route shows "chưa bật" (except admin/owner preview) and nothing mounts. The backing
    * `club_expenses` migration is SOURCE-ONLY / not applied live yet. The READ display in
    * Accounting Control's "Lương & chi phí" tab and the get_club_finance_summary fold are
-   * SEPARATE later increments (each additive + golden-diff + own gate). Kill-switch: set false.
+   * SEPARATE later increments (each additive + golden-diff + own gate).
+   * **ON** (2026-07-13, owner-approved go-live): club_expenses RPCs live (accountant-scoped via
+   * 20261236000000); the entry page + accountant Sổ chi phí tab write to Supabase. Kill-switch: set false.
    */
-  clubExpenses: false,
+  clubExpenses: true,
   /**
    * staffSalaryChot — the salary chốt/duyệt workspace (accountant computes + chốt the monthly
    * salary and submits it; the club owner approves/rejects; a run is marked paid only after
@@ -1414,10 +1416,12 @@ export const FEATURES = {
    * Tabs whose backend authz needs migration 20261236000000 self-detect via
    * `get_accountant_capabilities` and show an explicit "chờ áp DB" notice — never a crash,
    * never a silently-empty screen. Default **OFF** (review P0-5): while false, `/accountant`
-   * renders exactly the pre-workspace page (StaffSalaryChot). Flip to true is a SEPARATE PR
-   * after the owner-gated DB apply + UAT. Kill-switch: set false to restore today's page.
+   * renders exactly the pre-workspace page (StaffSalaryChot).
+   * **ON** (2026-07-13, owner-approved go-live): migration 20261236000000 applied + verified 7/7;
+   * the full 6-tab workspace is live (tabs still self-detect capabilities). Kill-switch: set false
+   * to restore the pre-workspace page.
    */
-  accountantWorkspace: false,
+  accountantWorkspace: true,
 } as const;
 
 /**
