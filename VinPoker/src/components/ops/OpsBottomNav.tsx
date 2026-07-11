@@ -12,7 +12,9 @@ const TABS: OpsTab[] = [
   { to: "/ops", end: true, icon: CalendarDays, label: "Hôm nay" },
   { to: "/ops/tournaments", end: false, icon: Trophy, label: "Giải đấu" },
   { to: "/ops/tables", end: false, icon: LayoutGrid, label: "Bàn" },
-  { to: "/ops/alerts", end: false, icon: Bell, label: "Cảnh báo", badge: 4 },
+  // badge cứng "4" đã GỠ — số giả cố định làm operator quen bỏ qua tab Cảnh báo;
+  // khi alerts nối dữ liệu thật sẽ derive badge từ số cảnh báo thật.
+  { to: "/ops/alerts", end: false, icon: Bell, label: "Cảnh báo" },
   { to: "/ops/more", end: false, icon: Menu, label: "Thêm" },
 ];
 

@@ -11,9 +11,10 @@ import type { MockFinLine } from "../mock/opsData";
 export function FinancialWarningCard({ lines }: { lines: MockFinLine[] }) {
   return (
     <div className="ios-group">
+      {/* Nhãn "DỮ LIỆU MẪU" nội bộ đã GỠ — trang OpsAlerts (nơi duy nhất dùng card này) nay có
+          MockChip ở header trang; 2 chip trên 1 màn = "lặp". */}
       <div className="ios-row-inset flex items-center justify-between gap-2 px-4 py-2.5">
         <span className="text-[13px] font-semibold uppercase tracking-wide text-[#9b8e97]">Tài chính &amp; Đối soát</span>
-        <span className="rounded-full bg-amber-400/12 px-2 py-0.5 text-[10px] font-semibold text-amber-300">DỮ LIỆU MẪU</span>
       </div>
       {lines.map((l) => (
         <div key={l.label} className="ios-row-inset px-4 py-3">

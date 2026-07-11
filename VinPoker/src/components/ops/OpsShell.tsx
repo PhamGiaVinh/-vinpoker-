@@ -45,9 +45,8 @@ export default function OpsShell() {
             <ChevronLeft className="h-5 w-5" strokeWidth={2.4} />
             App chính
           </button>
-          <span className="rounded-full bg-[#00ff88]/12 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-[#63ffb5]">
-            DỮ LIỆU MẪU
-          </span>
+          {/* Chip "DỮ LIỆU MẪU" toàn cục đã GỠ: /ops nay có trang dữ liệu thật + GHI thật
+              (cockpit bust/chip/move, Bàn). Chip chuyển về TỪNG trang còn mock (MockChip). */}
         </div>
       </header>
 

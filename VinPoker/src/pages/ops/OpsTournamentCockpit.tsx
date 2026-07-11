@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
+import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
@@ -245,7 +246,9 @@ export default function OpsTournamentCockpit() {
         <ChevronLeft className="h-5 w-5" strokeWidth={2.4} /> Giải đấu
       </button>
       <div className="mt-1 flex items-center gap-2">
-        <h1 className="truncate text-[24px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">{title}</h1>
+        {/* min-w-0: trong flex, truncate không hoạt động nếu thiếu (min-width mặc định = auto)
+            → tên giải dài đẩy badge Live văng khỏi màn hình. */}
+        <h1 className="min-w-0 truncate text-[24px] font-bold leading-tight tracking-[-0.02em] text-[#f2ece6]">{title}</h1>
         {badge}
       </div>
     </header>
@@ -258,15 +261,18 @@ export default function OpsTournamentCockpit() {
   if (tv.state === "error" || !d) return <Shell>{header("Lỗi")}<Center icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được giải" sub="Thử lại sau." action={<button onClick={() => tv.refetch()} className="ios-press-sm mt-1 rounded-full bg-white/8 px-3.5 py-1.5 text-[13px] text-[#f2ece6]">Thử lại</button>} /></Shell>;
 
   const lv = d.currentLevel;
+  // ĐỊNH NGHĨA DUY NHẤT "giải này có satellite để hiển thị" — dùng chung với TvPayoutsScreen
+  // (getDisplayableSatelliteRows) để cockpit và TV không bao giờ lệch nhau. Null ⇒ bảng tiền như cũ.
+  const satRows = getDisplayableSatelliteRows(d.satellitePayout, FEATURES.payoutSatelliteManual);
 
   return (
     <div className="ios-in space-y-4 pt-1">
       {header(d.tournamentName, d.isRunning ? (
-        <span className="flex items-center gap-1 rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
           <span className="ios-pulse h-1.5 w-1.5 rounded-full bg-emerald-400" /> {d.isBreak ? "Giải lao" : "Live"}
         </span>
       ) : (
-        <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] font-semibold text-[#9b8e97]">{d.status}</span>
+        <span className="shrink-0 rounded-full bg-white/6 px-2 py-0.5 text-[11px] font-semibold text-[#9b8e97]">{d.status}</span>
       ))}
 
       <div className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -322,22 +328,22 @@ export default function OpsTournamentCockpit() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button disabled={clkBusy || (clk.current_level?.level_number ?? 1) <= 1} onClick={() => clockAct("previous_level")}
-                  className="ios-press ios-fill flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
+                  className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipBack className="h-4 w-4" /> Level trước
                 </button>
                 <button disabled={clkBusy} onClick={() => clockAct("next_level", { current_level: (clk.current_level?.level_number ?? 0) + 1 })}
-                  className="ios-press ios-fill flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
+                  className="ios-press ios-fill flex min-h-11 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] font-medium text-[#f2ece6] disabled:opacity-40">
                   <SkipForward className="h-4 w-4" /> Level tiếp
                 </button>
               </div>
               <div className="flex items-center justify-center gap-2">
                 <span className="text-[12px] text-[#9b8e97]">Chỉnh giờ:</span>
                 <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: -60 })}
-                  className="ios-press-sm ios-fill flex items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
+                  className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Minus className="h-3.5 w-3.5" /> 1 phút
                 </button>
                 <button disabled={clkBusy || !clk.current_level} onClick={() => clockAct("adjust_time", { delta_seconds: 60 })}
-                  className="ios-press-sm ios-fill flex items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
+                  className="ios-press-sm ios-fill flex min-h-11 items-center gap-1 rounded-xl px-3 py-2 text-[13px] text-[#f2ece6] disabled:opacity-40">
                   <Plus className="h-3.5 w-3.5" /> 1 phút
                 </button>
               </div>
@@ -392,7 +398,7 @@ export default function OpsTournamentCockpit() {
         return (
           <div className="space-y-2">
             <div className="flex gap-1.5">
-              {([["all", "Tất cả"], ["playing", "Đang chơi"], ["busted", "Busted"]] as ["all" | "playing" | "busted", string][]).map(([k, label]) => (
+              {([["all", "Tất cả"], ["playing", "Đang chơi"], ["busted", "Đã loại"]] as ["all" | "playing" | "busted", string][]).map(([k, label]) => (
                 <button key={k} onClick={() => setPtab(k)}
                   className={cn("ios-press-sm flex-1 rounded-full px-2 py-1.5 text-[12px] font-medium", ptab === k ? "bg-[#c9a86a] text-[#241A08]" : "bg-white/5 text-[#9b8e97]")}>
                   {label} <span className="opacity-70">{counts[k]}</span>
@@ -422,14 +428,14 @@ export default function OpsTournamentCockpit() {
                       <span className="block text-[12px] text-[#7c7079]">Đã loại{b.prize ? ` · thưởng ${vnd(b.prize)}` : ""}</span>
                     </span>
                     <button onClick={() => openRestore(b)} disabled={restoreTargets.length === 0}
-                      className="ios-press-sm shrink-0 rounded-full bg-emerald-400/12 px-3 py-1.5 text-[12px] font-semibold text-emerald-300 disabled:opacity-40">
+                      className="ios-press-sm min-h-11 shrink-0 rounded-full bg-emerald-400/12 px-3 py-1.5 text-[12px] font-semibold text-emerald-300 disabled:opacity-40">
                       Cho vào lại
                     </button>
                   </div>
                 ))}
               </div>
             )}
-            <div className="text-center text-[12px] text-[#7c7079]">Đang chơi: chạm để thao tác · Busted: chỉ xem</div>
+            <div className="text-center text-[12px] text-[#7c7079]">Đang chơi: chạm để thao tác · Đã loại: chỉ xem</div>
           </div>
         );
       })() : (
@@ -462,7 +468,10 @@ export default function OpsTournamentCockpit() {
           : (
             <div className="space-y-3">
               <div className="ios-group">
-                <div className="ios-row-inset grid grid-cols-4 px-4 py-2 text-[11px] uppercase tracking-wide text-[#9b8e97]">
+                {/* Track cố định thay grid-cols-4: SB/BB ("100.000/200.000" ~15 ký tự mono) không
+                    thể nhét 1/4 của 360px — cột blind tràn "dính" vào cột Ante. minmax(0,1fr) cho
+                    phép cell blind co/wrap; header + rows PHẢI cùng track. */}
+                <div className="ios-row-inset grid grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_auto] gap-x-2 px-4 py-2 text-[11px] uppercase tracking-wide text-[#9b8e97]">
                   <span>L</span><span>Phút</span><span>SB/BB</span><span className="text-right">Ante</span>
                 </div>
                 {levels.rows.map((l, i) => {
@@ -470,11 +479,11 @@ export default function OpsTournamentCockpit() {
                   return l.is_break ? (
                     <div key={i} className="ios-row-inset bg-[#171122] px-4 py-2.5 text-[13px] text-[#9b8e97]">☕ Nghỉ {l.duration_minutes} phút</div>
                   ) : (
-                    <div key={i} className={cn("ios-row-inset grid grid-cols-4 px-4 py-2.5 text-[13px]", current && "border-l-2 border-[#c9a86a] bg-[#241a0c]")}>
+                    <div key={i} className={cn("ios-row-inset grid grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_auto] gap-x-2 px-4 py-2.5 text-[13px]", current && "border-l-2 border-[#c9a86a] bg-[#241a0c]")}>
                       <span className={current ? "font-semibold text-[#d8bc85]" : "text-[#f2ece6]"}>L{l.level_number}{current && " ●"}</span>
                       <span className="text-[#9b8e97]">{l.duration_minutes}</span>
-                      <span className={cn("font-mono", current ? "text-[#d8bc85]" : "text-[#f2ece6]")}>{vnd(l.small_blind)}/{vnd(l.big_blind)}</span>
-                      <span className="text-right font-mono text-[#9b8e97]">{l.ante ? vnd(l.ante) : "—"}</span>
+                      <span className={cn("font-mono tabular-nums [overflow-wrap:anywhere]", current ? "text-[#d8bc85]" : "text-[#f2ece6]")}>{vnd(l.small_blind)}/{vnd(l.big_blind)}</span>
+                      <span className="whitespace-nowrap text-right font-mono tabular-nums text-[#9b8e97]">{l.ante ? vnd(l.ante) : "—"}</span>
                     </div>
                   );
                 })}
@@ -487,14 +496,15 @@ export default function OpsTournamentCockpit() {
       {/* S5 — Trả thưởng (thật) */}
       {tab === "payout" && (
         <div className="space-y-3">
-          {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble — KHÔNG qua payout engine.
-              Chỉ hiện khi cờ payoutSatelliteManual ON và giải có cơ cấu satellite. Chỉ xem;
-              sửa trên máy tính (Bảng Payout Engine). */}
-          {FEATURES.payoutSatelliteManual && d.satellitePayout && d.satellitePayout.rows.length > 0 && (
+          {/* Satellite (nhập tay): giải vé trả ghế + tiền bubble (bubble nằm NGAY TRONG rows,
+              vd hạng 13 → "4.500.000") — KHÔNG qua payout engine. Khi có satellite: THAY bảng
+              tiền (khớp màn TV — cùng getDisplayableSatelliteRows) để không hiện 2 cơ cấu
+              mâu thuẫn. satRows null ⇒ mọi nhánh !satRows giữ nguyên như cũ. */}
+          {satRows && (
             <div className="ios-card overflow-hidden p-0">
               <div className="border-b border-[#241a2e] px-4 py-2.5 text-[13px] font-semibold text-[#d8bc85]">🎟️ Satellite — trả vé (nhập tay)</div>
               <div className="ios-group">
-                {d.satellitePayout.rows.map((r, i) => (
+                {satRows.map((r, i) => (
                   <div key={i} className="ios-row-inset flex items-center justify-between gap-3 px-4 py-2.5 text-[14px]">
                     <span className="text-[#f2ece6]">Hạng {r.label}</span>
                     <span className="font-mono text-[#c9a86a]">{r.prize}</span>
@@ -504,15 +514,22 @@ export default function OpsTournamentCockpit() {
               <div className="px-4 py-2 text-[11px] text-[#7c7079]">Sửa cơ cấu satellite trên máy tính.</div>
             </div>
           )}
-          <div className="ios-card p-4 text-center">
-            <div className="text-[13px] text-[#9b8e97]">Prize pool <span className="text-amber-300">(Tạm tính)</span></div>
-            <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>
-            <div className="mt-0.5 text-[12px] text-[#9b8e97]">{d.prizes.length ? `Trả ${d.prizes.length} hạng · ` : ""}Tiền chuyển hộ — nợ phải trả</div>
-          </div>
+          {satRows && (
+            d.prizes.length > 0
+              ? <div className="ios-card px-4 py-2.5 text-center text-[12px] text-[#9b8e97]">Có {d.prizes.length} hạng tiền đã tạo — xem trên máy tính.</div>
+              : <div className="ios-card px-4 py-2.5 text-center text-[12px] text-[#9b8e97]">Giải satellite — cơ cấu vé ở trên; không dùng bảng tiền.</div>
+          )}
+          {!satRows && (
+            <div className="ios-card p-4 text-center">
+              <div className="text-[13px] text-[#9b8e97]">Prize pool <span className="text-amber-300">(Tạm tính)</span></div>
+              <div className="font-mono text-[24px] font-semibold text-[#c9a86a]">{vnd(d.prizePool)}</div>
+              <div className="mt-0.5 text-[12px] text-[#9b8e97]">{d.prizes.length ? `Trả ${d.prizes.length} hạng · ` : ""}Tiền chuyển hộ — nợ phải trả</div>
+            </div>
+          )}
           {/* Grouped payout: các hạng liền kề cùng mức tiền gom thành 1 dải ("Hạng 4–6 · X / suất").
               groupPayoutRows KHÔNG gộp qua khoảng trống → không giấu hạng thiếu; không cắt bớt
               (maxRows = số hạng) vì danh sách cuộn được. Dùng chung util với màn TV. */}
-          {d.prizes.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cơ cấu thưởng" />
+          {!satRows && (d.prizes.length === 0 ? <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có cơ cấu thưởng" />
             : (
               <div className="ios-group">
                 {groupPayoutRows(d.prizes, d.prizes.length).rows.map((b) => {
@@ -526,7 +543,7 @@ export default function OpsTournamentCockpit() {
                   );
                 })}
               </div>
-            )}
+            ))}
           <DesktopNote text="Chỉ xem — sửa cơ cấu trên máy tính." />
         </div>
       )}
@@ -629,9 +646,11 @@ export default function OpsTournamentCockpit() {
 }
 
 function Metric({ label, v }: { label: React.ReactNode; v: React.ReactNode }) {
+  // Tiền KHÔNG được cắt bớt chữ số: pool tỉ đồng ("1.250.000.000") tràn nửa cột 2-col ở 360px
+  // → cho WRAP xuống dòng ([overflow-wrap:anywhere] + min-w-0), grid gap-y hấp thụ chiều cao.
   return (
-    <div>
-      <div className="font-mono text-[22px] font-semibold leading-none text-[#f2ece6]">{v}</div>
+    <div className="min-w-0">
+      <div className="font-mono text-[22px] font-semibold leading-[1.1] tabular-nums [overflow-wrap:anywhere] text-[#f2ece6]">{v}</div>
       <div className="mt-1 text-[11px] text-[#9b8e97]">{label}</div>
     </div>
   );

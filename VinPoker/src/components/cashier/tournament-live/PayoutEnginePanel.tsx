@@ -217,11 +217,19 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const savePlanned = useCallback(async () => {
     setSavingPlanned(true);
     try {
-      const { error } = await (supabase as any).from("tournaments").update({
+      // .select("id") = RETURNING: UPDATE bị RLS lọc → 0 row, KHÔNG error → nếu không bắt sẽ
+      // toast success giả (cashier không có quyền UPDATE tournaments). SELECT rộng hơn UPDATE
+      // (anon-read qual=true) nên ai UPDATE được chắc chắn nhận lại row — không có lỗi giả.
+      const { data, error } = await (supabase as any).from("tournaments").update({
         planned_itm_percent: itmPct / 100, planned_payout_archetype: archetype,
         planned_min_cash_x: minCashX, planned_rounding_unit: roundingUnit,
-      }).eq("id", tournamentId);
+      }).eq("id", tournamentId).select("id");
       if (error) { toast.error(/row-level security|permission|policy|denied/i.test(error.message) ? "Bạn không có quyền lưu mặc định cho giải này (cần TD/Chủ CLB)." : friendly(error.message)); return; }
+      if (!data || data.length === 0) {
+        if (import.meta.env.DEV) console.warn("[save_planned_payout] zero-row update", { tournamentId, returnedRows: 0 });
+        toast.error("Không có quyền lưu mặc định — cần tài khoản chủ CLB hoặc quyền điều hành sàn.");
+        return;
+      }
       toast.success("Đã lưu mặc định payout cho giải này");
     } catch (e: any) { toast.error(friendly(e?.message)); } finally { setSavingPlanned(false); }
   }, [tournamentId, archetype, itmPct, minCashX, roundingUnit]);
@@ -416,10 +424,12 @@ export function PayoutEnginePanel({ tournamentId }: { tournamentId: string }) {
   const RowsTable = ({ rows, pool }: { rows: PayoutRow[]; pool: number }) => {
     const bands = groupPayoutRows(rows, rows.length).rows;
     const pctByPos = new Map(rows.map((r) => [r.position, r.percentage]));
+    // Bảng kết quả cuộn theo TRANG (bỏ max-h + overflow-y — hết 2 thanh cuộn lồng nhau);
+    // sticky top-0 bỏ cùng vì nó bám vào container cuộn cũ, giữ lại sẽ dính viewport.
     return (
-      <div className="max-h-[44vh] overflow-y-auto rounded border border-border">
+      <div className="rounded border border-border">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-secondary text-muted-foreground"><tr>
+          <thead className="bg-secondary text-muted-foreground"><tr>
             <th className="text-left px-3 py-1.5 font-medium">Hạng</th>
             <th className="text-right px-3 py-1.5 font-medium">Tiền thưởng</th>
             <th className="text-right px-3 py-1.5 font-medium">%</th>
