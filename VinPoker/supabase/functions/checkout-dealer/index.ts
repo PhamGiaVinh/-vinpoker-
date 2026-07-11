@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse, pickNextDealer } from "../_shared/dealer-uti
 import {
   sendTelegramNotification, getClubTelegramChatId, mention, notifyDealerDM,
 } from "../_shared/telegram.ts";
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 interface AttendanceRow {
   id: string;
@@ -57,14 +58,6 @@ interface TableTypeRow {
 
 interface SwingConfigRow {
   swing_duration_minutes: number | null;
-}
-
-function decodeJWT(token: string): { sub: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
 }
 
 async function processOneCheckout(
@@ -480,31 +473,36 @@ Deno.serve(async (req) => {
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return jsonResponse({ error: "Unauthorized" }, 401);
-    const payload = decodeJWT(auth.slice(7));
-    if (!payload) return jsonResponse({ error: "Invalid token" }, 401);
-    const uid = payload.sub;
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
 
     const body = await req.json();
-    const ids: string[] = body.attendance_ids || (body.attendance_id ? [body.attendance_id] : []);
+    const ids: string[] = Array.from(new Set<string>(
+      (body.attendance_ids || (body.attendance_id ? [body.attendance_id] : []))
+        .filter((id: unknown): id is string => typeof id === "string" && id.length > 0),
+    ));
     if (!ids.length) return jsonResponse({ error: "attendance_id or attendance_ids required" }, 400);
+    if (ids.length > 100) return jsonResponse({ error: "Too many attendance_ids" }, 400);
 
-    // Verify dealer_control permission (check first item for club_id, then assume same club for batch)
-    const { data: row } = await admin
+    // Resolve and validate every dealer's club before any checkout mutation.
+    // Checking only ids[0] allowed a mixed-club batch to cross the caller's scope.
+    const { data: rows, error: attendanceErr } = await admin
       .from("dealer_attendance")
-      .select("dealer_id")
-      .eq("id", ids[0])
-      .maybeSingle() as unknown as { data: { dealer_id: string } | null };
-    if (!row) return jsonResponse({ error: "First attendance not found" }, 404);
+      .select("id, dealer_id, dealers!inner(club_id)")
+      .in("id", ids) as unknown as {
+        data: Array<{ id: string; dealer_id: string; dealers: { club_id: string } | Array<{ club_id: string }> }> | null;
+        error: { message: string } | null;
+      };
+    if (attendanceErr) return jsonResponse({ error: `Cannot determine attendance scope: ${attendanceErr.message}` }, 500);
+    if (!rows || rows.length !== ids.length) return jsonResponse({ error: "One or more attendance records not found" }, 404);
 
-    const { data: dealer, error: dealerErr } = await admin
-      .from("dealers")
-      .select("club_id")
-      .eq("id", row.dealer_id)
-      .single() as unknown as { data: { club_id: string } | null; error: { message: string } | null };
-    if (dealerErr || !dealer) return jsonResponse({ error: "Cannot determine club" }, 400);
-    const clubId = dealer.club_id;
+    const clubIds = new Set(rows.map((row) => {
+      const dealer = Array.isArray(row.dealers) ? row.dealers[0] : row.dealers;
+      return dealer?.club_id;
+    }).filter((clubId): clubId is string => Boolean(clubId)));
+    if (clubIds.size !== 1) return jsonResponse({ error: "Mixed-club checkout batches are not allowed" }, 403);
+    const clubId = [...clubIds][0];
 
     const { data: isControl } = await admin
       .rpc("is_club_dealer_control", { _user_id: uid, _club_id: clubId });

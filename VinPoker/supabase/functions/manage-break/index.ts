@@ -16,6 +16,7 @@ import {
 } from "../_shared/telegram.ts";
 import { startMealBreak, endMealBreak } from "../_shared/mealBreakService.ts";
 import { idempotentResponse } from "../_shared/idempotency.ts";
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,8 +58,19 @@ Deno.serve(async (req: Request) => {
     );
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
+
     const body = await req.json().catch(() => ({}));
     const { action, attendance_id, club_id, duration_minutes = 20 } = body;
+    if (!club_id) return json({ error: "club_id required" }, 400);
+
+    const { data: isControl } = await admin.rpc("is_club_dealer_control", {
+      _user_id: uid,
+      _club_id: club_id,
+    });
+    if (!isControl) return json({ error: "Forbidden" }, 403);
 
     // Log every incoming call for traceability (cross-club leak investigations)
     const callerIp = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
@@ -73,7 +85,7 @@ Deno.serve(async (req: Request) => {
       // open-break double-extend + concurrent duplicate break rows). Degrades to a plain run pre-apply.
       const idemKeyStart = (body?.idempotency_key as string | undefined) ?? null;
       return await idempotentResponse(admin, {
-        key: idemKeyStart, scope: "manage-break:start", clubId: club_id ?? null, actorId: null,
+        key: idemKeyStart, scope: "manage-break:start", clubId: club_id ?? null, actorId: uid,
         fingerprint: { action: "start", club_id, attendance_id, duration_minutes },
         json: (b, s) => json(b, s),
         run: async (): Promise<Response> => {
@@ -327,7 +339,7 @@ Deno.serve(async (req: Request) => {
       // B1.2 — idempotent on an optional client key (bulk all-table break; avoid double-breaking).
       const idemKeyTb = (body?.idempotency_key as string | undefined) ?? null;
       return await idempotentResponse(admin, {
-        key: idemKeyTb, scope: "manage-break:tournament_break", clubId: club_id ?? null, actorId: null,
+        key: idemKeyTb, scope: "manage-break:tournament_break", clubId: club_id ?? null, actorId: uid,
         fingerprint: { action: "tournament_break", club_id, duration_minutes },
         json: (b, s) => json(b, s),
         run: async (): Promise<Response> => {

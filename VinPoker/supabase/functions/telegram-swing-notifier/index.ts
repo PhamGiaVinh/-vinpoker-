@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,8 +14,9 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
 
     const url = Deno.env.get("SUPABASE_URL")!;
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -24,8 +26,17 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
 
     const body = await req.json().catch(() => ({}));
-    let { chat_id, message, parse_mode, club_id, audit_actor_id } = body ?? {};
+    let { chat_id, message, parse_mode, club_id } = body ?? {};
     if (!chat_id || !message) return json({ error: "chat_id and message required" }, 400);
+    if (!club_id) return json({ error: "club_id required" }, 400);
+    if (chat_id !== "__club__") return json({ error: "Only the configured club chat is allowed" }, 400);
+    if (typeof message !== "string" || message.length > 4096) return json({ error: "message too long" }, 400);
+
+    const { data: isControl } = await admin.rpc("is_club_dealer_control", {
+      _user_id: uid,
+      _club_id: club_id,
+    });
+    if (!isControl) return json({ error: "Forbidden" }, 403);
 
     // Resolve __club__ placeholder to actual telegram_chat_id from club_settings
     if (chat_id === "__club__" && club_id) {
@@ -58,7 +69,7 @@ Deno.serve(async (req) => {
       if (club_id) {
         await admin.from("audit_logs").insert({
           club_id,
-          actor_id: audit_actor_id ?? null,
+          actor_id: uid,
           action: "telegram_failed",
           entity_type: "telegram_swing_notifier",
           payload: { error: tgBody, chat_id, message },

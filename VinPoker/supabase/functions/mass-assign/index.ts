@@ -2,14 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, jsonResponse, fillEmptyTables, computeSwingDuration } from "../_shared/dealer-utils.ts";
 import { formatMassAssignMessage, sendTelegramNotification, getClubTelegramChatId } from "../_shared/telegram.ts";
 import { idempotentResponse } from "../_shared/idempotency.ts";
-
-function decodeJWT(token: string): { sub: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-  } catch { return null; }
-}
+import { authenticateUser } from "../_shared/staking-common.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -20,11 +13,9 @@ Deno.serve(async (req) => {
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return jsonResponse({ error: "Unauthorized" }, 401);
-    const payload = decodeJWT(auth.slice(7));
-    if (!payload) return jsonResponse({ error: "Invalid token" }, 401);
-    const uid = payload.sub;
+    const authResult = await authenticateUser(req);
+    if (authResult instanceof Response) return authResult;
+    const uid = authResult.uid;
 
     const body = await req.json().catch(() => ({}));
     const { club_id, shift_id } = body ?? {};
