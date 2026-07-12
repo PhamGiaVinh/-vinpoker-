@@ -1,6 +1,6 @@
 # B2-PR2 Forecast Provenance Schema
 
-Status: source-only draft PR material. Do not apply to production until owner DB review is complete.
+Status: migration applied through the owner-gated targeted path; B2-PR3 capture/UI wiring remains flag-off pending Preview UAT.
 
 ## Migration
 
@@ -59,6 +59,16 @@ Read-only Supabase inspection succeeded through `supabase db query --linked`.
 - This pre-apply state selects hardening of the existing migration file in the follow-up PR; no additive migration is needed.
 - `supabase db dump --linked --schema public` was attempted but blocked by missing Docker Desktop, so DB execution of the new migration was not verified through a dump or local Postgres run.
 
+## Controlled Apply Record
+
+- Source follow-up PR: #889, merged as `f3a439e29516b567795de29621d70a0b5b408a31`.
+- Final migration SHA-256: `98919C5FBBC1CFA42213AE77ED4A8276D8EC1BCB5101EB614B225DE58CCE3DFC`.
+- Exact SQL execution succeeded via `supabase db query --linked --file supabase/migrations/20261239000000_series_forecast_provenance_schema.sql`.
+- Official history reconciliation succeeded via `supabase migration repair --linked --status applied 20261239000000`; live ledger now contains `20261239000000`.
+- Post-apply catalog verification: 19 nullable provenance columns, 14 provenance constraints, 2 provenance indexes, and 0 snapshot rows.
+- PostgreSQL rollback-only probe passed 22/22 valid and invalid provenance cases; the probe transaction was rolled back and wrote no persistent rows.
+- DB execution is now verified for this migration. Local `supabase db dump`/Docker execution remains unavailable; the live catalog and rollback-only probe are the evidence used here.
+
 ## Static Test Coverage
 
 `forecastProvenanceSchemaMigration.test.ts` checks the migration SQL text for each discriminator shape predicate, including null-kind legacy rows, exact manual rows, complete engine rows, missing-code engine rows, and full-identity manual overrides. It also keeps a JavaScript mirror for positive and negative examples, but that mirror is only illustrative; it is not reported as PostgreSQL execution.
@@ -67,12 +77,10 @@ Covered negative examples include manual rows with null timing or null eligibili
 
 ## Owner-Gated Apply Runbook
 
-1. Confirm owner approval to review/apply this exact migration.
-2. Re-run read-only live schema checks for `public.series_forecast_snapshots`.
-3. Re-run migration version collision scan against `origin/main` and open PRs.
-4. Apply only this migration through the controlled DB path approved by owner.
-5. Verify the new columns, constraints, and indexes through catalog queries.
-6. Do not regenerate Supabase types, wire capture code, flip flags, or ship UI in this apply step.
+1. Confirm the live ledger and catalog still match the apply record before any dependent rollout.
+2. Regenerate only the expected public Supabase type additions in the wiring PR; live drift outside B2 must not be committed.
+3. Keep capture wiring and provenance UI behind `seriesForecastProvenance = false` until Preview UAT.
+4. Do not flip the flag or create a forecast snapshot in this source PR.
 
 ## Rollback Notes
 

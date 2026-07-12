@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { FEATURES } from "@/lib/featureFlags";
 import {
   HORIZONS,
   CONFIDENCE_TIERS,
@@ -12,6 +13,8 @@ import {
   type ForecastSnapshotInsert,
 } from "@/lib/series-intelligence/captureTypes";
 import { forecastSuggest } from "@/lib/series-intelligence/forecastSuggest";
+import { buildForecastProvenance } from "@/lib/series-intelligence/forecastProvenance";
+import { toForecastProvenanceSnapshotColumns } from "@/lib/series-intelligence/forecastProvenanceRow";
 import type { SeriesEvent } from "@/lib/series-intelligence/nativeData";
 import { Field, EnumSelect, toNum } from "../formBits";
 
@@ -27,6 +30,7 @@ export function ForecastDialog({
   insertForecast,
   history = [],
   targetBuyIn = null,
+  targetEvent = null,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -37,6 +41,8 @@ export function ForecastDialog({
   history?: SeriesEvent[];
   /** This event's buy-in (drives the comparable band). */
   targetBuyIn?: number | null;
+  /** Native event metadata used only when the provenance flag is enabled. */
+  targetEvent?: SeriesEvent | null;
 }) {
   const [f, setF] = useState({ ...EMPTY });
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
@@ -65,6 +71,33 @@ export function ForecastDialog({
     if (base != null && high != null && base > high) return toast.error("Dự đoán chính phải ≤ nhiều nhất");
     const overlay = toNum(f.overlay);
     if (overlay != null && (overlay < 0 || overlay > 100)) return toast.error("Rủi ro bù trong khoảng 0–100%");
+    let provenanceColumns: Partial<ForecastSnapshotInsert> = {};
+    if (FEATURES.seriesForecastProvenance) {
+      if (!targetEvent?.event_date || targetEvent.buy_in == null) {
+        return toast.error("Chưa đủ dữ liệu giải để ghi dấu vết dự báo.");
+      }
+      const issuedAt = new Date().toISOString();
+      try {
+        const provenance = await buildForecastProvenance(
+          [],
+          {
+            event_date: targetEvent.event_date,
+            buy_in: targetEvent.buy_in,
+            gtd: targetEvent.gtd,
+            event_name: targetEvent.event_name,
+            capacity: targetEvent.capacity,
+          },
+          {},
+          { forecastIssuedAt: issuedAt, asOfTs: issuedAt, targetEventTs: targetEvent.event_date },
+          { kind: "manual" },
+        );
+        provenanceColumns = toForecastProvenanceSnapshotColumns(provenance);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Không tạo được dấu vết dự báo.";
+        return toast.error(`Không lưu dấu vết dự báo: ${message}`);
+      }
+    }
+
     const ok = await insertForecast({
       event_id: eventId,
       horizon: f.horizon,
@@ -77,6 +110,7 @@ export function ForecastDialog({
       overlay_risk_pct: overlay,
       source_label: "manual",
       notes: f.notes.trim() || null,
+      ...provenanceColumns,
     });
     if (ok) onOpenChange(false);
   };
