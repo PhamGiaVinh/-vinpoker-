@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261238000002_tracker_settlement_outcome_store.sql"), "utf8");
+const edge = readFileSync(resolve(process.cwd(), "supabase/functions/tournament-live-resettle/index.ts"), "utf8");
 
 describe("Tracker settlement migration contract", () => {
   it("keeps the verified outcome write boundary service-role-only", () => {
@@ -19,9 +20,16 @@ describe("Tracker settlement migration contract", () => {
     expect(migration).toContain("private_field_in_public_outcome");
     expect(migration).toContain("p_public_outcome->'pots'");
     expect(migration).toContain("p_public_outcome->'players'");
+    expect(migration).toContain("- 'sourceChainHash'");
+    expect(migration).toContain("- 'outcomeHash'");
   });
 
   it("does not depend on the later Live Center migration objects", () => {
     expect(migration).not.toMatch(/snapshot_hand_player_identity|get_public_tournament_clock_summary|bust_tournament_player_with_payout/);
+  });
+
+  it("keeps the legacy Edge route preview-only", () => {
+    expect(edge).toContain("LEGACY_COMMIT_DISABLED");
+    expect(edge).not.toContain("commit_tournament_settlement_outcome");
   });
 });

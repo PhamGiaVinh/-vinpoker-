@@ -36,6 +36,11 @@ Deno.serve(async (req) => {
     if (!tournamentId || !handId || (mode !== "preview" && mode !== "commit")) {
       return jsonResp(req, { ok: false, message: "Invalid settlement intent" }, 400);
     }
+    // This legacy route is intentionally preview-only until the dedicated
+    // settlement commit route is deployed and owner-gated.
+    if (mode === "commit") {
+      return jsonResp(req, { ok: false, code: "LEGACY_COMMIT_DISABLED", message: "Commit requires the owner-gated settlement route" }, 409);
+    }
 
     const url = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -87,29 +92,7 @@ Deno.serve(async (req) => {
       affected_hand_count: result.affectedHandCount,
       affected_player_count: result.affectedPlayerCount,
     };
-    if (mode === "preview") return jsonResp(req, preview);
-    if (!body.idempotency_key || body.expected_source_revision !== result.privateOutcome.sourceRevision
-      || body.expected_source_chain_hash !== result.privateOutcome.sourceChainHash
-      || body.expected_outcome_hash !== result.privateOutcome.outcomeHash) {
-      return jsonResp(req, { ok: false, message: "Stale or incomplete preview" }, 409);
-    }
-    const requestHash = result.privateOutcome.outcomeHash;
-    const { data: committed, error: commitError } = await service.rpc("commit_tournament_settlement_outcome", {
-      p_hand_id: handId,
-      p_actor_user_id: authData.user.id,
-      p_expected_source_revision: body.expected_source_revision,
-      p_expected_source_chain_hash: body.expected_source_chain_hash,
-      p_settlement_revision: Date.now(),
-      p_outcome_hash: result.privateOutcome.outcomeHash,
-      p_request_hash: requestHash,
-      p_idempotency_key: body.idempotency_key,
-      p_public_outcome: result.publicOutcome,
-      p_edit: body.edit ?? {},
-      p_hand_changes: result.handChanges,
-      p_final_stacks: result.finalStacks,
-    });
-    if (commitError) throw commitError;
-    return jsonResp(req, { ...committed, public_outcome: result.publicOutcome });
+    return jsonResp(req, preview);
   } catch (error) {
     console.error("[tournament-live-resettle]", error instanceof Error ? error.message : "unknown_error");
     return jsonResp(req, { ok: false, message: "Settlement request failed" }, 500);

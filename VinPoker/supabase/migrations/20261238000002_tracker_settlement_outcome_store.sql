@@ -121,6 +121,11 @@ SET search_path = public
 AS $$
   SELECT COALESCE((
     SELECT o.public_outcome
+      - 'sourceChainHash'
+      - 'outcomeHash'
+      - 'sourceRevision'
+      - 'settlementRevision'
+      - 'ruleVersion'
     FROM public.tournament_settlement_outcomes o
     JOIN public.tournament_hands h ON h.id = o.hand_id
     JOIN public.tournaments t ON t.id = h.tournament_id
@@ -200,7 +205,8 @@ BEGIN
     RAISE EXCEPTION 'stale_source_revision' USING ERRCODE = '40001';
   END IF;
   IF p_public_outcome ? 'privateEvidence' OR p_public_outcome ? 'correctionNotes'
-    OR p_public_outcome ? 'staffIdentity' THEN
+    OR p_public_outcome ? 'staffIdentity' OR p_public_outcome ? 'holeCardsByPlayer'
+    OR p_public_outcome ? 'evaluatorInput' OR p_public_outcome ? 'muckedHoleCardsByPlayer' THEN
     RAISE EXCEPTION 'private_field_in_public_outcome' USING ERRCODE = '22023';
   END IF;
   IF p_outcome_hash <> COALESCE(p_public_outcome->>'outcomeHash', '') THEN
