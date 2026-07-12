@@ -50,6 +50,38 @@ Supabase project. No separate staging/preview project was checked or modified.
 These probes establish absence from live objects, not only absence from the
 migration ledger.
 
+## Execution Order Safety
+
+- Old source order: `20261237000001_atomic_tournament_resettle_commit.sql` was
+  already before the renamed Live Center file by version number, but the old
+  `20261237000000` collision made that order unsafe to apply through the
+  migration ledger.
+- Final source order: `20261237000001_atomic_tournament_resettle_commit.sql`
+  followed by `20261238000001_live_center_public_clock_atomic_payout.sql`.
+- Direct dependency audit: **PASS**. `37000001` uses existing baseline tables,
+  columns and authorization functions, plus the
+  `tournament_resettle_requests` table that it creates itself. It does not use
+  `hand_players.player_name/avatar_url`, the new
+  `tournament_eliminations` result/payout columns,
+  `snapshot_hand_player_identity`, public clock/results RPCs, preview/bust RPCs,
+  or the new trigger/indexes from `38000001`.
+- Active-schema baseline probe: **PASS**. Required existing tables, stack
+  columns, audit columns and `is_club_owner`/`is_club_admin` signatures were
+  present on the active project.
+- Disposable-schema execution for A (active schema + 37000001), B (resulting
+  schema + 38000001), and C (clean schema with both final filenames):
+  **NOT_MEASURED**. Docker Desktop was unavailable and no local or production
+  migration was executed. Static dependency analysis is the only execution
+  safety evidence in this PR.
+- `37000001` may execute first because its only new-table dependency is created
+  in the same file; its remaining dependencies are baseline objects. The
+  renamed `38000001` then adds identity, public clock/results and Floor payout
+  objects without being required by the atomic resettle function.
+- Final unique-version scan timestamp: `2026-07-12T20:20:44.6271883+07:00`.
+- Final scan base: `origin/main` `7ce3661740bffe085c7cfd61a3d9b629dbd1c103`.
+- Rename similarity: `100%`; SHA-256 unchanged; no SQL body edits; no active DB
+  objects were modified.
+
 ## Related Migration
 
 `20261237000001_atomic_tournament_resettle_commit.sql` remains unchanged and
