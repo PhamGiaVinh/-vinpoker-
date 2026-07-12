@@ -52,12 +52,15 @@ migration ledger.
 
 ## Execution Order Safety
 
-- Old source order: `20261237000001_atomic_tournament_resettle_commit.sql` was
-  already before the renamed Live Center file by version number, but the old
-  `20261237000000` collision made that order unsafe to apply through the
-  migration ledger.
-- Final source order: `20261237000001_atomic_tournament_resettle_commit.sql`
-  followed by `20261238000001_live_center_public_clock_atomic_payout.sql`.
+- Old intended order: first
+  `20261237000000_live_center_public_clock_atomic_payout.sql`, then
+  `20261237000001_atomic_tournament_resettle_commit.sql`.
+- Final order after rename: first
+  `20261237000001_atomic_tournament_resettle_commit.sql`, then
+  `20261238000001_live_center_public_clock_atomic_payout.sql`.
+- The rename reverses the pair's previous intended order. The direct dependency
+  audit below confirms that this reversal is safe at the SQL object-reference
+  level.
 - Direct dependency audit: **PASS**. `37000001` uses existing baseline tables,
   columns and authorization functions, plus the
   `tournament_resettle_requests` table that it creates itself. It does not use
@@ -77,6 +80,9 @@ migration ledger.
   in the same file; its remaining dependencies are baseline objects. The
   renamed `38000001` then adds identity, public clock/results and Floor payout
   objects without being required by the atomic resettle function.
+- Source-only merge readiness is separate from production DB-apply readiness.
+  Production apply remains OWNER-GATED and requires its controlled runbook and
+  measured disposable/staging execution before any live apply decision.
 - Final unique-version scan timestamp: `2026-07-12T20:20:44.6271883+07:00`.
 - Final scan base: `origin/main` `7ce3661740bffe085c7cfd61a3d9b629dbd1c103`.
 - Rename similarity: `100%`; SHA-256 unchanged; no SQL body edits; no active DB
