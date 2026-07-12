@@ -161,6 +161,18 @@ function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
+function requireSafeSum(
+  values: readonly number[],
+  path: string,
+  issues: SettlementValidationIssueV1[],
+): number {
+  const total = sum(values);
+  if (!Number.isSafeInteger(total)) {
+    addIssue(issues, "INTEGER_SUM_OVERFLOW", path, "integer sum exceeds Number.MAX_SAFE_INTEGER");
+  }
+  return total;
+}
+
 function addIssue(
   issues: SettlementValidationIssueV1[],
   code: string,
@@ -255,13 +267,19 @@ function parsePlayer(
     endingStack: requireChip(value, "endingStack", path, issues),
   };
 
-  if (player.creditedTotal !== player.potAward + player.refund) {
+  const creditedTotal = requireSafeSum([player.potAward, player.refund], `${path}.creditedTotal`, issues);
+  const endingStack = requireSafeSum(
+    [player.startingStack, player.netDelta, player.externalDelta],
+    `${path}.endingStack`,
+    issues,
+  );
+  if (player.creditedTotal !== creditedTotal) {
     addIssue(issues, "PLAYER_CREDIT_FORMULA", `${path}.creditedTotal`, "creditedTotal must equal potAward + refund");
   }
   if (player.netDelta !== player.creditedTotal - player.committedTotal) {
     addIssue(issues, "PLAYER_NET_FORMULA", `${path}.netDelta`, "netDelta must equal creditedTotal - committedTotal");
   }
-  if (player.endingStack !== player.startingStack + player.netDelta + player.externalDelta) {
+  if (player.endingStack !== endingStack) {
     addIssue(issues, "PLAYER_ENDING_FORMULA", `${path}.endingStack`, "endingStack formula does not balance");
   }
   return player;
@@ -328,7 +346,7 @@ function parsePot(
   if (!sameSet(winnerIds, allocationWinnerIds)) {
     addIssue(issues, "WINNER_ALLOCATION_MISMATCH", `${path}.allocations`, "winnerIds must match allocation winner ids");
   }
-  if (sum(allocations.map((allocation) => allocation.amount)) !== amount) {
+  if (requireSafeSum(allocations.map((allocation) => allocation.amount), `${path}.allocations`, issues) !== amount) {
     addIssue(issues, "POT_ALLOCATION_SUM", `${path}.allocations`, "allocation sum must equal pot amount");
   }
 
@@ -623,27 +641,27 @@ export function validateSettlementOutcomeV1(value: unknown): SettlementValidatio
   const totals = parseTotals(value.totals, issues);
   if (totals) {
     const computed: SettlementTotalsV1 = {
-      startingStack: sum(players.map((player) => player.startingStack)),
-      committedTotal: sum(players.map((player) => player.committedTotal)),
-      distributablePot: sum(pots.map((pot) => pot.amount)),
-      refundTotal: sum(refunds.map((refund) => refund.amount)),
-      potAward: sum(players.map((player) => player.potAward)),
-      creditedTotal: sum(players.map((player) => player.creditedTotal)),
-      netDelta: sum(players.map((player) => player.netDelta)),
-      externalDelta: sum(players.map((player) => player.externalDelta)),
-      endingStack: sum(players.map((player) => player.endingStack)),
+      startingStack: requireSafeSum(players.map((player) => player.startingStack), "totals.startingStack", issues),
+      committedTotal: requireSafeSum(players.map((player) => player.committedTotal), "totals.committedTotal", issues),
+      distributablePot: requireSafeSum(pots.map((pot) => pot.amount), "totals.distributablePot", issues),
+      refundTotal: requireSafeSum(refunds.map((refund) => refund.amount), "totals.refundTotal", issues),
+      potAward: requireSafeSum(players.map((player) => player.potAward), "totals.potAward", issues),
+      creditedTotal: requireSafeSum(players.map((player) => player.creditedTotal), "totals.creditedTotal", issues),
+      netDelta: requireSafeSum(players.map((player) => player.netDelta), "totals.netDelta", issues),
+      externalDelta: requireSafeSum(players.map((player) => player.externalDelta), "totals.externalDelta", issues),
+      endingStack: requireSafeSum(players.map((player) => player.endingStack), "totals.endingStack", issues),
     };
     (Object.keys(computed) as (keyof SettlementTotalsV1)[]).forEach((key) => checkTotal(totals[key], computed[key], key, issues));
-    if (computed.committedTotal !== computed.distributablePot + computed.refundTotal) {
+    if (computed.committedTotal !== requireSafeSum([computed.distributablePot, computed.refundTotal], "totals.committedTotal", issues)) {
       addIssue(issues, "COMMITTED_CONSERVATION", "totals.committedTotal", "committed chips must equal pots + refunds");
     }
     if (computed.potAward !== computed.distributablePot) {
       addIssue(issues, "POT_CONSERVATION", "totals.potAward", "pot awards must equal distributable pots");
     }
-    if (computed.creditedTotal !== computed.potAward + computed.refundTotal) {
+    if (computed.creditedTotal !== requireSafeSum([computed.potAward, computed.refundTotal], "totals.creditedTotal", issues)) {
       addIssue(issues, "CREDIT_CONSERVATION", "totals.creditedTotal", "credits must equal awards + refunds");
     }
-    if (computed.startingStack + computed.externalDelta !== computed.endingStack) {
+    if (requireSafeSum([computed.startingStack, computed.externalDelta], "totals.endingStack", issues) !== computed.endingStack) {
       addIssue(issues, "STACK_CONSERVATION", "totals.endingStack", "starting + external must equal ending");
     }
   }

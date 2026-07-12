@@ -12,6 +12,7 @@ import {
   validateSettlementOutcomeV1,
   verifyOutcomeHashV1,
   type PrivateSettlementOutcomeV1,
+  type PublicSettlementOutcomeV1,
 } from "@settlement/outcomeV1.ts";
 
 const ZERO_HASH = "0".repeat(64);
@@ -132,6 +133,57 @@ async function signedHand8(): Promise<PrivateSettlementOutcomeV1> {
   return outcome;
 }
 
+function multiSidePotOutcome(): PublicSettlementOutcomeV1 {
+  return {
+    schemaVersion: SETTLEMENT_SCHEMA_V1,
+    status: "verified",
+    sourceRevision: 4,
+    sourceChainHash: ZERO_HASH,
+    settlementRevision: 1,
+    outcomeHash: ZERO_HASH,
+    ruleVersion: ODD_CHIP_RULE_V1,
+    players: [
+      { playerId: "A", startingStack: 100, committedTotal: 100, potAward: 150, refund: 0, creditedTotal: 150, netDelta: 50, externalDelta: 0, endingStack: 150 },
+      { playerId: "B", startingStack: 200, committedTotal: 200, potAward: 150, refund: 0, creditedTotal: 150, netDelta: -50, externalDelta: 0, endingStack: 150 },
+      { playerId: "C", startingStack: 200, committedTotal: 200, potAward: 100, refund: 100, creditedTotal: 200, netDelta: 0, externalDelta: 0, endingStack: 200 },
+    ],
+    pots: [
+      {
+        potId: "main-0",
+        kind: "main",
+        amount: 300,
+        eligiblePlayerIds: ["A", "B", "C"],
+        winnerIds: ["A", "B"],
+        allocations: [
+          { potId: "main-0", winnerId: "A", amount: 150, includesOddChip: false },
+          { potId: "main-0", winnerId: "B", amount: 150, includesOddChip: false },
+        ],
+      },
+      {
+        potId: "side-1",
+        kind: "side",
+        amount: 100,
+        eligiblePlayerIds: ["B", "C"],
+        winnerIds: ["C"],
+        allocations: [{ potId: "side-1", winnerId: "C", amount: 100, includesOddChip: false }],
+      },
+    ],
+    refunds: [{ playerId: "C", amount: 100, sourceActionId: "c-refund" }],
+    handRanks: [],
+    totals: {
+      startingStack: 500,
+      committedTotal: 500,
+      distributablePot: 400,
+      refundTotal: 100,
+      potAward: 400,
+      creditedTotal: 500,
+      netDelta: 0,
+      externalDelta: 0,
+      endingStack: 500,
+    },
+  };
+}
+
 describe("SettlementOutcomeV1 accounting", () => {
   it("locks the Hand #8 chop, refund and ending-stack formulas", async () => {
     const outcome = await signedHand8();
@@ -212,6 +264,42 @@ describe("SettlementOutcomeV1 accounting", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.issues.map((issue) => issue.code)).toContain("EXTERNAL_DELTA_SOURCE_MISMATCH");
   });
+
+  it("rejects duplicate player and pot identifiers", async () => {
+    const duplicatePlayers = await signedHand8();
+    duplicatePlayers.players = [...duplicatePlayers.players, { ...duplicatePlayers.players[0] }];
+    const playerResult = validateSettlementOutcomeV1(duplicatePlayers);
+    expect(playerResult.ok).toBe(false);
+    if (!playerResult.ok) expect(playerResult.issues.map((issue) => issue.code)).toContain("DUPLICATE_ID");
+
+    const duplicatePots = await signedHand8();
+    duplicatePots.pots = [...duplicatePots.pots, { ...duplicatePots.pots[0] }];
+    const potResult = validateSettlementOutcomeV1(duplicatePots);
+    expect(potResult.ok).toBe(false);
+    if (!potResult.ok) expect(potResult.issues.map((issue) => issue.code)).toContain("DUPLICATE_ID");
+  });
+
+  it("rejects integer sums above Number.MAX_SAFE_INTEGER", async () => {
+    const outcome = await signedHand8();
+    const max = Number.MAX_SAFE_INTEGER;
+    outcome.players = outcome.players.map((player) => ({
+      ...player,
+      startingStack: max,
+      endingStack: max,
+      committedTotal: 0,
+      potAward: 0,
+      refund: 0,
+      creditedTotal: 0,
+      netDelta: 0,
+    }));
+    const result = validateSettlementOutcomeV1(outcome);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues.map((issue) => issue.code)).toContain("INTEGER_SUM_OVERFLOW");
+  });
+
+  it("validates a main pot plus side-pot allocation and separate refund", () => {
+    expect(validateSettlementOutcomeV1(multiSidePotOutcome())).toEqual({ ok: true, issues: [] });
+  });
 });
 
 describe("private/public boundary and canonical hashing", () => {
@@ -236,6 +324,14 @@ describe("private/public boundary and canonical hashing", () => {
       ...projected,
       handRanks: projected.handRanks.map((rank, index) => index === 0 ? { ...rank, holeCards: ["2c", "3d"] } : rank),
     };
+    const result = validatePublicSettlementOutcomeV1(malicious);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues.map((issue) => issue.code)).toContain("FORBIDDEN_PUBLIC_FIELD");
+  });
+
+  it("rejects private fields nested below an otherwise public field", async () => {
+    const projected = projectPublicSettlementV1(await signedHand8());
+    const malicious = { ...projected, metadata: { nested: { evaluatorInput: { cards: ["2c", "3d"] } } } };
     const result = validatePublicSettlementOutcomeV1(malicious);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.issues.map((issue) => issue.code)).toContain("FORBIDDEN_PUBLIC_FIELD");
@@ -275,6 +371,17 @@ describe("private/public boundary and canonical hashing", () => {
         : anchor),
     };
     expect(await computeSourceChainHashV1(changedEvidence)).not.toBe(outcome.sourceChainHash);
+
+    const duplicateHandNumber = await signedHand8();
+    duplicateHandNumber.privateEvidence = {
+      ...duplicateHandNumber.privateEvidence,
+      sourceChain: duplicateHandNumber.privateEvidence.sourceChain.map((anchor) =>
+        anchor.handId === "hand-9" ? { ...anchor, handNumber: 8 } : anchor
+      ),
+    };
+    const result = validateSettlementOutcomeV1(duplicateHandNumber);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues.map((issue) => issue.code)).toContain("DUPLICATE_ID");
   });
 
   it("canonical JSON sorts keys and rejects non-integer numeric values", () => {
@@ -298,6 +405,13 @@ describe("manual winner intent", () => {
 
   it("allocates the odd chip to the first winning seat left of the button", () => {
     expect(allocateManualSinglePotV1(input)).toEqual([
+      { potId: "main-0", winnerId: "C", amount: 3, includesOddChip: true },
+      { potId: "main-0", winnerId: "A", amount: 2, includesOddChip: false },
+    ]);
+  });
+
+  it("wraps odd-chip order from the end of the clockwise seat list", () => {
+    expect(allocateManualSinglePotV1({ ...input, clockwisePlayerIdsLeftOfButton: ["C", "A", "B"] })).toEqual([
       { potId: "main-0", winnerId: "C", amount: 3, includesOddChip: true },
       { potId: "main-0", winnerId: "A", amount: 2, includesOddChip: false },
     ]);
