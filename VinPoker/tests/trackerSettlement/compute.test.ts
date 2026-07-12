@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeAuthoritativeSettlement, type AuthoritativeSettlementInput } from "@settlement/compute.ts";
+import {
+  computeAuthoritativeSettlement,
+  normalizeSettlementSourceRpcResult,
+  type AuthoritativeSettlementInput,
+} from "@settlement/compute.ts";
 
 const hand = (id: string, number: number, updated = `2026-07-12T00:00:0${number}.000Z`) => ({
   id,
@@ -111,5 +115,35 @@ describe("authoritative settlement computation", () => {
     const input = hand8Input();
     input.edit = { actions: [action("hand-8", "bad", "limitless", "all_in", 17_400_001, 1)] };
     await expect(computeAuthoritativeSettlement(input)).rejects.toThrow("target_action_exceeds_stack");
+  });
+
+  it("uses the database revision consistently in the outcome and target source anchor", async () => {
+    const input = hand8Input();
+    input.hands = input.hands.map((value) => ({ ...value, source_revision: 7 }));
+    input.sourceRevisionOverride = 7;
+    input.sourceChainHashOverride = "a".repeat(64);
+    const result = await computeAuthoritativeSettlement(input);
+    expect(result.privateOutcome.sourceRevision).toBe(7);
+    expect(result.privateOutcome.privateEvidence.sourceChain[0].sourceRevision).toBe(7);
+  });
+});
+
+describe("settlement source RPC normalization", () => {
+  const sourceChainHash = "a".repeat(64);
+
+  it("unwraps the single-row array returned by a RETURNS TABLE RPC", () => {
+    expect(normalizeSettlementSourceRpcResult([{
+      source_revision: 7,
+      source_chain_hash: sourceChainHash,
+      affected_hand_count: 2,
+    }])).toEqual({ sourceRevision: 7, sourceChainHash });
+  });
+
+  it("rejects missing or malformed source evidence", () => {
+    expect(() => normalizeSettlementSourceRpcResult([])).toThrow("invalid_settlement_source");
+    expect(() => normalizeSettlementSourceRpcResult([{ source_revision: 0, source_chain_hash: sourceChainHash }]))
+      .toThrow("invalid_settlement_source");
+    expect(() => normalizeSettlementSourceRpcResult([{ source_revision: 1, source_chain_hash: "not-a-hash" }]))
+      .toThrow("invalid_settlement_source");
   });
 });

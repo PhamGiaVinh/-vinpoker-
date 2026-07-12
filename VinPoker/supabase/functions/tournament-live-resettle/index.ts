@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResp } from "../_shared/cors.ts";
 import {
   computeAuthoritativeSettlement,
+  normalizeSettlementSourceRpcResult,
   type SettlementDbAction,
   type SettlementDbHand,
   type SettlementDbPlayer,
@@ -69,6 +70,7 @@ Deno.serve(async (req) => {
       service.rpc("get_tournament_settlement_source_hash", { p_hand_id: handId }),
     ]);
     if (playerError || actionError || stackError || sourceError) throw playerError || actionError || stackError || sourceError;
+    const settlementSource = normalizeSettlementSourceRpcResult(source);
 
     const result = await computeAuthoritativeSettlement({
       tournamentId,
@@ -79,8 +81,8 @@ Deno.serve(async (req) => {
       liveStacks: (liveStacks ?? []) as { player_id: string; entry_number: number; chip_count: number }[],
       edit: body.edit,
       actor: { userId: authData.user.id, role: "club_owner_or_admin" },
-      sourceRevisionOverride: Number((source as { source_revision?: number })?.source_revision),
-      sourceChainHashOverride: text((source as { source_chain_hash?: string })?.source_chain_hash),
+      sourceRevisionOverride: settlementSource.sourceRevision,
+      sourceChainHashOverride: settlementSource.sourceChainHash,
     });
     const preview = {
       ok: true,

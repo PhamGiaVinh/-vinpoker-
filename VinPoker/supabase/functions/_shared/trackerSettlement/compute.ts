@@ -33,6 +33,7 @@ export type SettlementDbHand = {
   is_voided: boolean | null;
   updated_at: string | null;
   created_at: string;
+  source_revision?: number;
 };
 
 export type SettlementDbPlayer = {
@@ -106,6 +107,24 @@ export type AuthoritativeSettlementResult = {
   affectedPlayerCount: number;
 };
 
+export type SettlementSourceRpcRow = {
+  source_revision?: unknown;
+  source_chain_hash?: unknown;
+};
+
+export function normalizeSettlementSourceRpcResult(value: unknown): {
+  sourceRevision: number;
+  sourceChainHash: string;
+} {
+  const row = (Array.isArray(value) ? value[0] : value) as SettlementSourceRpcRow | null | undefined;
+  const sourceRevision = Number(row?.source_revision);
+  const sourceChainHash = typeof row?.source_chain_hash === "string" ? row.source_chain_hash : "";
+  if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 1 || !/^[0-9a-f]{64}$/.test(sourceChainHash)) {
+    throw new Error("invalid_settlement_source");
+  }
+  return { sourceRevision, sourceChainHash };
+}
+
 const RANK_NAME: Record<number, string> = {
   14: "A",
   13: "K",
@@ -130,6 +149,9 @@ function chips(value: unknown, field: string): number {
 }
 
 function revisionOf(hand: SettlementDbHand): number {
+  if (Number.isSafeInteger(hand.source_revision) && (hand.source_revision as number) >= 1) {
+    return hand.source_revision as number;
+  }
   const parsed = hand.updated_at ? Date.parse(hand.updated_at) : 0;
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
 }
@@ -223,7 +245,10 @@ async function sourceChain(input: AuthoritativeSettlementInput): Promise<{
     const handPlayers = input.players.filter((player) => player.hand_id === hand.id).sort((a, b) => a.seat_number - b.seat_number);
     const handActions = input.actions.filter((action) => action.hand_id === hand.id).sort((a, b) => a.action_order - b.action_order);
     const sourceHash = await sha256Json({ hand, players: handPlayers, actions: handActions });
-    sourceChain.push({ handId: hand.id, handNumber: hand.hand_number, sourceRevision: revisionOf(hand), sourceHash });
+    const sourceRevision = hand.id === input.targetHandId && input.sourceRevisionOverride !== undefined
+      ? input.sourceRevisionOverride
+      : revisionOf(hand);
+    sourceChain.push({ handId: hand.id, handNumber: hand.hand_number, sourceRevision, sourceHash });
   }
   const target = input.hands.find((hand) => hand.id === input.targetHandId);
   if (!target) throw new Error("target_hand_not_found");
