@@ -412,7 +412,7 @@ export const FEATURES = {
    *    find the wrong ending stack instead of guessing.
    * OFF (default): neither surfaces (byte-identical). No DB/Edge change; operator-only.
    */
-  trackerWorkflowAids: false,
+  trackerWorkflowAids: true,
   /**
    * Tablet 2-column layout for the RACETRACK operator console. Today the console is a
    * single centered column (felt on top, guided action region + log stacked below), so
@@ -423,7 +423,7 @@ export const FEATURES = {
    * ≥1280px for a 2-col split without cramping. OFF (default): the single-column layout
    * is byte-identical to today. Presentational only — no data/handler change.
    */
-  trackerTabletLayout: false,
+  trackerTabletLayout: true,
   /**
    * Felt UI v2 (owner "fix UI UX toàn bộ" wave): bigger seat pods on the RICH operator
    * felt — 44px avatars (was 32px), full player names on up to 2 lines (no more
@@ -597,7 +597,7 @@ export const FEATURES = {
    * manualUnchanged / racetrackPayloadParity). Ships OFF; owner flips after preview
    * UAT. Kill-switch: false.
    */
-  liveBetChips: false,
+  liveBetChips: true,
   /**
    * trackerFeltDealerFix — operator `TrackerRacetrack` geometry fix for the bottom
    * "DEALER / người chia cố định" station overlapping Ghế 1/9 and the "▲ Tracker đứng
@@ -1062,7 +1062,7 @@ export const FEATURES = {
    * luận". Pure client compute (no DB/RPC/Edge). Default **OFF**: while false the panel is byte-identical to
    * today (the battery never runs). Kill-switch: set false to hide the card.
    */
-  seriesBaselineBattery: false,
+  seriesBaselineBattery: true,
   /**
    * Series Intelligence — A4b honest insufficient-data result + UX (final item of Quant Apply Wave 1). When
    * ON, the turnout forecast panel renders through an honest adapter (`toHonestForecastResult`) instead of the
@@ -1075,7 +1075,7 @@ export const FEATURES = {
    * false the panel + forecastTurnout output are byte-identical to today (the adapter never runs). Kill-switch:
    * set false to restore the old empty/warning branch.
    */
-  seriesInsufficientDataUx: false,
+  seriesInsufficientDataUx: true,
   /**
    * Series Intelligence — W2 consistent "why is this block empty?" explainers. When ON, self-hidden /
    * empty SI blocks (forecast when too little history, F&B when no orders in the window, …) render a
@@ -1155,7 +1155,7 @@ export const FEATURES = {
    * players. Frontend-only — no DB/RPC/Edge/migration (app_settings already exists
    * with public-read / super_admin-write RLS). Kill-switch: set false.
    */
-  pokerIqRemoteQuestions: false,
+  pokerIqRemoteQuestions: true,
   /**
    * Marketing module — the club-scoped `marketing` role + the /marketing surface (compose →
    * schedule → auto-dispatch to channels) + the `marketing-dispatch` Edge cron. Default **OFF**
