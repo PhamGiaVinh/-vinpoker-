@@ -9098,55 +9098,112 @@ export type Database = {
       }
       series_forecast_snapshots: {
         Row: {
+          as_of_ts: string | null
+          calibration_pool_id: string | null
           candidate_gtd: number | null
           club_id: string
+          code_sha: string | null
           confidence_tier: string | null
           created_at: string
           created_by: string | null
           days_before: number | null
+          derived_from_input_hash: string | null
+          engine_version: string | null
           event_id: string
+          feature_schema_version: string | null
           forecast_base: number | null
           forecast_high: number | null
+          forecast_identity_eligible: boolean | null
+          forecast_instance_id: string | null
+          forecast_issued_at: string | null
           forecast_low: number | null
           horizon: string
           id: string
+          input_content_hash: string | null
+          model_config_hash: string | null
           notes: string | null
           overlay_risk_pct: number | null
+          predictor_id: string | null
+          provenance_completeness: string | null
+          provenance_kind: string | null
+          selection_protocol_id: string | null
           source_label: string | null
+          target_event_ts: string | null
+          target_input_hash: string | null
+          training_data_hash: string | null
+          trial_count: number | null
         }
         Insert: {
+          as_of_ts?: string | null
+          calibration_pool_id?: string | null
           candidate_gtd?: number | null
           club_id: string
+          code_sha?: string | null
           confidence_tier?: string | null
           created_at?: string
           created_by?: string | null
           days_before?: number | null
+          derived_from_input_hash?: string | null
+          engine_version?: string | null
           event_id: string
+          feature_schema_version?: string | null
           forecast_base?: number | null
           forecast_high?: number | null
+          forecast_identity_eligible?: boolean | null
+          forecast_instance_id?: string | null
+          forecast_issued_at?: string | null
           forecast_low?: number | null
           horizon: string
           id?: string
+          input_content_hash?: string | null
+          model_config_hash?: string | null
           notes?: string | null
           overlay_risk_pct?: number | null
+          predictor_id?: string | null
+          provenance_completeness?: string | null
+          provenance_kind?: string | null
+          selection_protocol_id?: string | null
           source_label?: string | null
+          target_event_ts?: string | null
+          target_input_hash?: string | null
+          training_data_hash?: string | null
+          trial_count?: number | null
         }
         Update: {
+          as_of_ts?: string | null
+          calibration_pool_id?: string | null
           candidate_gtd?: number | null
           club_id?: string
+          code_sha?: string | null
           confidence_tier?: string | null
           created_at?: string
           created_by?: string | null
           days_before?: number | null
+          derived_from_input_hash?: string | null
+          engine_version?: string | null
           event_id?: string
+          feature_schema_version?: string | null
           forecast_base?: number | null
           forecast_high?: number | null
+          forecast_identity_eligible?: boolean | null
+          forecast_instance_id?: string | null
+          forecast_issued_at?: string | null
           forecast_low?: number | null
           horizon?: string
           id?: string
+          input_content_hash?: string | null
+          model_config_hash?: string | null
           notes?: string | null
           overlay_risk_pct?: number | null
+          predictor_id?: string | null
+          provenance_completeness?: string | null
+          provenance_kind?: string | null
+          selection_protocol_id?: string | null
           source_label?: string | null
+          target_event_ts?: string | null
+          target_input_hash?: string | null
+          training_data_hash?: string | null
+          trial_count?: number | null
         }
         Relationships: [
           {

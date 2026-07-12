@@ -3,6 +3,7 @@ import { TrendingUp, ClipboardList, Flag, Pencil, Megaphone, Users2 } from "luci
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatVND, formatShortDate } from "@/lib/format";
+import { FEATURES } from "@/lib/featureFlags";
 import { findScoredDecision, pickScoringSnapshot, scoreOutcome, registrationFunnel } from "@/lib/series-intelligence/captureScoring";
 import { HORIZON_LABEL, COMMITMENT_LABEL, STAGE_ORDER, type CampaignLog, type DecisionLog } from "@/lib/series-intelligence/captureTypes";
 import { shortHash } from "@/lib/series-intelligence/hashPlayerRef";
@@ -15,6 +16,7 @@ import { ForecastDialog } from "./dialogs/ForecastDialog";
 import { DecisionDialog } from "./dialogs/DecisionDialog";
 import { CampaignDialog } from "./dialogs/CampaignDialog";
 import { RegistrationDialog } from "./dialogs/RegistrationDialog";
+import { ForecastProvenanceCard } from "./ForecastProvenanceCard";
 
 type DialogKind = null | "forecast" | "decision" | "result" | "campaign" | "registration";
 
@@ -59,7 +61,8 @@ export function EventLoopPanel({
   const hasScore = scoreOutcome(scoringSnap, autoActuals ?? scored).hasActuals;
   const existingPost = decs.find((d) => d.decision_horizon === "post") ?? null;
   const funnel = registrationFunnel(regs);
-  const targetBuyIn = history.find((e) => e.event_id === eventId)?.buy_in ?? null;
+  const targetEvent = history.find((e) => e.event_id === eventId) ?? null;
+  const targetBuyIn = targetEvent?.buy_in ?? null;
 
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [editingDecision, setEditingDecision] = useState<DecisionLog | null>(null);
@@ -147,6 +150,7 @@ export function EventLoopPanel({
                 <span className="ml-auto text-[10px] text-muted-foreground">{formatShortDate(s.created_at)}</span>
               </div>
               {s.notes && <div className="mt-0.5 text-[11px] text-muted-foreground">{s.notes}</div>}
+              {FEATURES.seriesForecastProvenance && <ForecastProvenanceCard snapshot={s} />}
             </li>
           ))}
         </RecordedBlock>
@@ -193,7 +197,7 @@ export function EventLoopPanel({
       )}
 
       {/* dialogs */}
-      <ForecastDialog open={dialog === "forecast"} onOpenChange={(v) => !v && close()} eventId={eventId} saving={hook.saving} insertForecast={hook.insertForecast} history={history} targetBuyIn={targetBuyIn} />
+      <ForecastDialog open={dialog === "forecast"} onOpenChange={(v) => !v && close()} eventId={eventId} saving={hook.saving} insertForecast={hook.insertForecast} history={history} targetBuyIn={targetBuyIn} targetEvent={targetEvent} />
       <DecisionDialog
         open={dialog === "decision" || dialog === "result"}
         onOpenChange={(v) => !v && close()}
