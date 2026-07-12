@@ -33,10 +33,13 @@ All new columns are nullable and have no defaults.
 - `selection_protocol_id`: nullable or stable lowercase machine id matching the B2 contract
 - `trial_count`: nullable or positive integer
 - Timing: `as_of_ts <= forecast_issued_at` when both are present
-- Manual rows: no predictor/input identity, no engine metadata, no derived input hash, not identity eligible
-- Manual overrides: must retain `derived_from_input_hash`, never identity eligible
-- Engine rows: cannot carry `derived_from_input_hash`
-- `forecast_identity_eligible = true`: requires complete engine provenance and full identity hash set. This is only B2 forecast identity, not final B1 calibration eligibility.
+- `provenance_kind IS NULL`: only all-null legacy rows are valid, with optional `provenance_completeness = 'legacy'`; timing, predictor metadata, hashes, and derived lineage must remain null, and identity eligibility cannot be true.
+- Manual rows: require all three timing fields, `provenance_completeness = 'manual'`, `forecast_identity_eligible = false`, and no predictor/input identity, engine metadata, or derived input hash.
+- Engine and manual-override rows: require all timing fields, non-empty engine and feature-schema versions, code SHA, model config hash, positive trial count, selection protocol, every identity hash, and explicit identity eligibility.
+- Engine/manual-override completeness pairing: `missing_code_sha` iff `code_sha = 'unknown'`; `complete` iff `code_sha` is lowercase 7-64 hex and not `unknown`. `legacy` and `manual` completeness are rejected for engine lineage.
+- Engine rows: require `derived_from_input_hash IS NULL` and `forecast_identity_eligible = (provenance_completeness = 'complete')`.
+- Manual overrides: require `derived_from_input_hash IS NOT NULL`, retain the full engine predictor/input/timing identity, and require `forecast_identity_eligible = false`.
+- `forecast_identity_eligible = true`: requires complete engine provenance, all three timing fields, non-empty predictor metadata, and the full identity hash set. This is only B2 forecast identity, not final B1 calibration eligibility.
 
 ## Index Rationale
 
@@ -49,10 +52,18 @@ All new columns are nullable and have no defaults.
 Read-only Supabase inspection succeeded through `supabase db query --linked`.
 
 - Live `public.series_forecast_snapshots` had only capture-v0 columns at inspection time.
+- Live `supabase_migrations.schema_migrations` had no `20261239000000` row, and the provenance columns were absent from `information_schema.columns`.
 - Live row count returned `0`.
 - Live constraints matched capture-v0 checks and FKs.
 - Live indexes were `idx_sfs_club`, `idx_sfs_event`, and the primary key.
+- This pre-apply state selects hardening of the existing migration file in the follow-up PR; no additive migration is needed.
 - `supabase db dump --linked --schema public` was attempted but blocked by missing Docker Desktop, so DB execution of the new migration was not verified through a dump or local Postgres run.
+
+## Static Test Coverage
+
+`forecastProvenanceSchemaMigration.test.ts` checks the migration SQL text for each discriminator shape predicate, including null-kind legacy rows, exact manual rows, complete engine rows, missing-code engine rows, and full-identity manual overrides. It also keeps a JavaScript mirror for positive and negative examples, but that mirror is only illustrative; it is not reported as PostgreSQL execution.
+
+Covered negative examples include manual rows with null timing or null eligibility, sparse engine rows, engine rows with `legacy` or `manual` completeness, blank engine/feature-schema versions, bad completeness/code-SHA pairings, sparse manual overrides, null-kind partial identity rows, and identity-eligible rows missing timing.
 
 ## Owner-Gated Apply Runbook
 

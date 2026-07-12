@@ -125,28 +125,31 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'public.series_forecast_snapshots'::regclass
-      AND conname = 'sfs_prov_manual_identity_chk'
+      AND conname = 'sfs_prov_legacy_shape_chk'
   ) THEN
     ALTER TABLE public.series_forecast_snapshots
-      ADD CONSTRAINT sfs_prov_manual_identity_chk
+      ADD CONSTRAINT sfs_prov_legacy_shape_chk
       CHECK (
-        provenance_kind IS DISTINCT FROM 'manual'
+        provenance_kind IS NOT NULL
         OR (
-          predictor_id IS NULL
-          AND calibration_pool_id IS NULL
-          AND target_input_hash IS NULL
-          AND training_data_hash IS NULL
-          AND input_content_hash IS NULL
-          AND forecast_instance_id IS NULL
-          AND derived_from_input_hash IS NULL
+          (provenance_completeness IS NULL OR provenance_completeness = 'legacy')
+          AND forecast_identity_eligible IS NOT TRUE
+          AND forecast_issued_at IS NULL
+          AND as_of_ts IS NULL
+          AND target_event_ts IS NULL
           AND engine_version IS NULL
           AND feature_schema_version IS NULL
           AND code_sha IS NULL
           AND model_config_hash IS NULL
           AND trial_count IS NULL
           AND selection_protocol_id IS NULL
-          AND forecast_identity_eligible IS NOT TRUE
-          AND (provenance_completeness IS NULL OR provenance_completeness = 'manual')
+          AND predictor_id IS NULL
+          AND calibration_pool_id IS NULL
+          AND target_input_hash IS NULL
+          AND training_data_hash IS NULL
+          AND input_content_hash IS NULL
+          AND forecast_instance_id IS NULL
+          AND derived_from_input_hash IS NULL
         )
       );
   END IF;
@@ -154,27 +157,121 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'public.series_forecast_snapshots'::regclass
-      AND conname = 'sfs_prov_manual_override_chk'
+      AND conname = 'sfs_prov_manual_shape_chk'
   ) THEN
     ALTER TABLE public.series_forecast_snapshots
-      ADD CONSTRAINT sfs_prov_manual_override_chk
+      ADD CONSTRAINT sfs_prov_manual_shape_chk
+      CHECK (
+        provenance_kind IS DISTINCT FROM 'manual'
+        OR (
+          forecast_issued_at IS NOT NULL
+          AND as_of_ts IS NOT NULL
+          AND target_event_ts IS NOT NULL
+          AND provenance_completeness IS NOT DISTINCT FROM 'manual'
+          AND forecast_identity_eligible IS FALSE
+          AND engine_version IS NULL
+          AND feature_schema_version IS NULL
+          AND code_sha IS NULL
+          AND model_config_hash IS NULL
+          AND trial_count IS NULL
+          AND selection_protocol_id IS NULL
+          AND predictor_id IS NULL
+          AND calibration_pool_id IS NULL
+          AND target_input_hash IS NULL
+          AND training_data_hash IS NULL
+          AND input_content_hash IS NULL
+          AND forecast_instance_id IS NULL
+          AND derived_from_input_hash IS NULL
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.series_forecast_snapshots'::regclass
+      AND conname = 'sfs_prov_engine_common_shape_chk'
+  ) THEN
+    ALTER TABLE public.series_forecast_snapshots
+      ADD CONSTRAINT sfs_prov_engine_common_shape_chk
+      CHECK (
+        (provenance_kind IS DISTINCT FROM 'engine' AND provenance_kind IS DISTINCT FROM 'manual_override')
+        OR (
+          forecast_issued_at IS NOT NULL
+          AND as_of_ts IS NOT NULL
+          AND target_event_ts IS NOT NULL
+          AND (provenance_completeness IN ('complete', 'missing_code_sha')) IS TRUE
+          AND engine_version IS NOT NULL
+          AND btrim(engine_version) <> ''
+          AND feature_schema_version IS NOT NULL
+          AND btrim(feature_schema_version) <> ''
+          AND code_sha IS NOT NULL
+          AND model_config_hash IS NOT NULL
+          AND trial_count IS NOT NULL
+          AND selection_protocol_id IS NOT NULL
+          AND predictor_id IS NOT NULL
+          AND calibration_pool_id IS NOT NULL
+          AND target_input_hash IS NOT NULL
+          AND training_data_hash IS NOT NULL
+          AND input_content_hash IS NOT NULL
+          AND forecast_instance_id IS NOT NULL
+          AND forecast_identity_eligible IS NOT NULL
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.series_forecast_snapshots'::regclass
+      AND conname = 'sfs_prov_code_sha_completeness_chk'
+  ) THEN
+    ALTER TABLE public.series_forecast_snapshots
+      ADD CONSTRAINT sfs_prov_code_sha_completeness_chk
+      CHECK (
+        (provenance_kind IS DISTINCT FROM 'engine' AND provenance_kind IS DISTINCT FROM 'manual_override')
+        OR (
+          (
+            provenance_completeness = 'missing_code_sha'
+            AND code_sha = 'unknown'
+          )
+          OR (
+            provenance_completeness = 'complete'
+            AND code_sha ~ '^[0-9a-f]{7,64}$'
+            AND code_sha <> 'unknown'
+          )
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.series_forecast_snapshots'::regclass
+      AND conname = 'sfs_prov_engine_shape_chk'
+  ) THEN
+    ALTER TABLE public.series_forecast_snapshots
+      ADD CONSTRAINT sfs_prov_engine_shape_chk
+      CHECK (
+        provenance_kind IS DISTINCT FROM 'engine'
+        OR (
+          derived_from_input_hash IS NULL
+          AND forecast_identity_eligible IS NOT DISTINCT FROM (provenance_completeness = 'complete')
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.series_forecast_snapshots'::regclass
+      AND conname = 'sfs_prov_manual_override_shape_chk'
+  ) THEN
+    ALTER TABLE public.series_forecast_snapshots
+      ADD CONSTRAINT sfs_prov_manual_override_shape_chk
       CHECK (
         provenance_kind IS DISTINCT FROM 'manual_override'
         OR (
           derived_from_input_hash IS NOT NULL
-          AND forecast_identity_eligible IS NOT TRUE
+          AND forecast_identity_eligible IS FALSE
         )
       );
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'public.series_forecast_snapshots'::regclass
-      AND conname = 'sfs_prov_engine_lineage_chk'
-  ) THEN
-    ALTER TABLE public.series_forecast_snapshots
-      ADD CONSTRAINT sfs_prov_engine_lineage_chk
-      CHECK (provenance_kind IS DISTINCT FROM 'engine' OR derived_from_input_hash IS NULL);
   END IF;
 
   IF NOT EXISTS (
@@ -187,10 +284,15 @@ BEGIN
       CHECK (
         forecast_identity_eligible IS DISTINCT FROM TRUE
         OR (
-          provenance_kind = 'engine'
-          AND provenance_completeness = 'complete'
+          provenance_kind IS NOT DISTINCT FROM 'engine'
+          AND provenance_completeness IS NOT DISTINCT FROM 'complete'
+          AND forecast_issued_at IS NOT NULL
+          AND as_of_ts IS NOT NULL
+          AND target_event_ts IS NOT NULL
           AND engine_version IS NOT NULL
+          AND btrim(engine_version) <> ''
           AND feature_schema_version IS NOT NULL
+          AND btrim(feature_schema_version) <> ''
           AND code_sha IS NOT NULL
           AND code_sha <> 'unknown'
           AND model_config_hash IS NOT NULL

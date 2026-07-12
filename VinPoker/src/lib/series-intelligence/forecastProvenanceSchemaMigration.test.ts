@@ -44,14 +44,57 @@ const HASH_COLUMNS = [
   "derived_from_input_hash",
 ];
 
+const ENGINE_REQUIRED_COLUMNS = [
+  "forecast_issued_at",
+  "as_of_ts",
+  "target_event_ts",
+  "engine_version",
+  "feature_schema_version",
+  "code_sha",
+  "model_config_hash",
+  "trial_count",
+  "selection_protocol_id",
+  "predictor_id",
+  "calibration_pool_id",
+  "target_input_hash",
+  "training_data_hash",
+  "input_content_hash",
+  "forecast_instance_id",
+  "forecast_identity_eligible",
+];
+
+const EMPTY_PROVENANCE_COLUMNS = [
+  "forecast_issued_at",
+  "as_of_ts",
+  "target_event_ts",
+  "engine_version",
+  "feature_schema_version",
+  "code_sha",
+  "model_config_hash",
+  "trial_count",
+  "selection_protocol_id",
+  "predictor_id",
+  "calibration_pool_id",
+  "target_input_hash",
+  "training_data_hash",
+  "input_content_hash",
+  "forecast_instance_id",
+  "derived_from_input_hash",
+];
+
 const valid64 = "a".repeat(64);
 const valid64b = "b".repeat(64);
+const valid64c = "c".repeat(64);
+const issued = "2026-02-10T03:00:00Z";
+const asOf = "2026-02-10T02:00:00Z";
+const targetTs = "2026-02-15T12:00:00Z";
 
 type Row = {
   forecastIssuedAt?: string | null;
   asOfTs?: string | null;
-  provenanceKind?: "engine" | "manual_override" | "manual" | "legacy" | null;
-  provenanceCompleteness?: "complete" | "missing_code_sha" | "legacy" | "manual" | null;
+  targetEventTs?: string | null;
+  provenanceKind?: "engine" | "manual_override" | "manual" | string | null;
+  provenanceCompleteness?: "complete" | "missing_code_sha" | "legacy" | "manual" | string | null;
   forecastIdentityEligible?: boolean | null;
   engineVersion?: string | null;
   featureSchemaVersion?: string | null;
@@ -73,6 +116,8 @@ const isCodeSha = (value: string | null | undefined) =>
   value == null || value === "unknown" || /^[0-9a-f]{7,64}$/.test(value);
 const isSelectionProtocol = (value: string | null | undefined) =>
   value == null || /^[a-z][a-z0-9._-]{0,63}$/.test(value);
+const presentText = (value: string | null | undefined) => value != null && value.trim() !== "";
+const present = (value: unknown) => value != null;
 
 function satisfiesMigrationChecks(row: Row): boolean {
   if (row.provenanceKind != null && !["engine", "manual_override", "manual"].includes(row.provenanceKind)) return false;
@@ -99,8 +144,39 @@ function satisfiesMigrationChecks(row: Row): boolean {
     return false;
   }
 
+  const emptyIdentityValues = [
+    row.forecastIssuedAt,
+    row.asOfTs,
+    row.targetEventTs,
+    row.engineVersion,
+    row.featureSchemaVersion,
+    row.codeSha,
+    row.modelConfigHash,
+    row.trialCount,
+    row.selectionProtocolId,
+    row.predictorId,
+    row.calibrationPoolId,
+    row.targetInputHash,
+    row.trainingDataHash,
+    row.inputContentHash,
+    row.forecastInstanceId,
+    row.derivedFromInputHash,
+  ];
+
+  if (row.provenanceKind == null) {
+    if (!(row.provenanceCompleteness == null || row.provenanceCompleteness === "legacy")) return false;
+    if (row.forecastIdentityEligible === true) return false;
+    return emptyIdentityValues.every((value) => value == null);
+  }
+
   if (row.provenanceKind === "manual") {
-    const manualMustBeEmpty = [
+    const manualIdentityValues = [
+      row.engineVersion,
+      row.featureSchemaVersion,
+      row.codeSha,
+      row.modelConfigHash,
+      row.trialCount,
+      row.selectionProtocolId,
       row.predictorId,
       row.calibrationPoolId,
       row.targetInputHash,
@@ -108,51 +184,66 @@ function satisfiesMigrationChecks(row: Row): boolean {
       row.inputContentHash,
       row.forecastInstanceId,
       row.derivedFromInputHash,
-      row.engineVersion,
-      row.featureSchemaVersion,
-      row.codeSha,
-      row.modelConfigHash,
-      row.trialCount,
-      row.selectionProtocolId,
     ];
-    if (!manualMustBeEmpty.every((value) => value == null)) return false;
-    if (row.forecastIdentityEligible === true) return false;
-    if (row.provenanceCompleteness != null && row.provenanceCompleteness !== "manual") return false;
-  }
-
-  if (row.provenanceKind === "manual_override") {
-    if (row.derivedFromInputHash == null) return false;
-    if (row.forecastIdentityEligible === true) return false;
-  }
-
-  if (row.provenanceKind === "engine" && row.derivedFromInputHash != null) return false;
-
-  if (row.forecastIdentityEligible === true) {
     return (
-      row.provenanceKind === "engine" &&
-      row.provenanceCompleteness === "complete" &&
-      row.engineVersion != null &&
-      row.featureSchemaVersion != null &&
-      row.codeSha != null &&
-      row.codeSha !== "unknown" &&
-      row.modelConfigHash != null &&
-      row.trialCount != null &&
-      row.trialCount >= 1 &&
-      row.selectionProtocolId != null &&
-      row.predictorId != null &&
-      row.calibrationPoolId != null &&
-      row.targetInputHash != null &&
-      row.trainingDataHash != null &&
-      row.inputContentHash != null &&
-      row.forecastInstanceId != null &&
-      row.derivedFromInputHash == null
+      present(row.forecastIssuedAt) &&
+      present(row.asOfTs) &&
+      present(row.targetEventTs) &&
+      row.provenanceCompleteness === "manual" &&
+      row.forecastIdentityEligible === false &&
+      manualIdentityValues.every((value) => value == null)
     );
   }
 
-  return true;
+  const engineCommon =
+    present(row.forecastIssuedAt) &&
+    present(row.asOfTs) &&
+    present(row.targetEventTs) &&
+    (row.provenanceCompleteness === "complete" || row.provenanceCompleteness === "missing_code_sha") &&
+    presentText(row.engineVersion) &&
+    presentText(row.featureSchemaVersion) &&
+    present(row.codeSha) &&
+    present(row.modelConfigHash) &&
+    present(row.trialCount) &&
+    present(row.selectionProtocolId) &&
+    present(row.predictorId) &&
+    present(row.calibrationPoolId) &&
+    present(row.targetInputHash) &&
+    present(row.trainingDataHash) &&
+    present(row.inputContentHash) &&
+    present(row.forecastInstanceId) &&
+    present(row.forecastIdentityEligible);
+  if (!engineCommon) return false;
+
+  const codeShaPairing =
+    (row.provenanceCompleteness === "missing_code_sha" && row.codeSha === "unknown") ||
+    (row.provenanceCompleteness === "complete" && /^[0-9a-f]{7,64}$/.test(row.codeSha ?? "") && row.codeSha !== "unknown");
+  if (!codeShaPairing) return false;
+
+  if (row.provenanceKind === "engine") {
+    return row.derivedFromInputHash == null && row.forecastIdentityEligible === (row.provenanceCompleteness === "complete");
+  }
+
+  if (row.provenanceKind === "manual_override") {
+    return row.derivedFromInputHash != null && row.forecastIdentityEligible === false;
+  }
+
+  return false;
 }
 
+const manualRow = (): Row => ({
+  forecastIssuedAt: issued,
+  asOfTs: asOf,
+  targetEventTs: targetTs,
+  provenanceKind: "manual",
+  provenanceCompleteness: "manual",
+  forecastIdentityEligible: false,
+});
+
 const completeEngineRow = (): Row => ({
+  forecastIssuedAt: issued,
+  asOfTs: asOf,
+  targetEventTs: targetTs,
   provenanceKind: "engine",
   provenanceCompleteness: "complete",
   forecastIdentityEligible: true,
@@ -161,7 +252,7 @@ const completeEngineRow = (): Row => ({
   codeSha: "abc1234",
   modelConfigHash: valid64,
   trialCount: 1,
-  selectionProtocolId: "direct",
+  selectionProtocolId: "direct-1",
   predictorId: valid64,
   calibrationPoolId: valid64,
   targetInputHash: valid64,
@@ -169,6 +260,33 @@ const completeEngineRow = (): Row => ({
   inputContentHash: valid64,
   forecastInstanceId: valid64b,
 });
+
+const missingCodeEngineRow = (): Row => ({
+  ...completeEngineRow(),
+  provenanceCompleteness: "missing_code_sha",
+  forecastIdentityEligible: false,
+  codeSha: "unknown",
+});
+
+const completeOverrideRow = (): Row => ({
+  ...completeEngineRow(),
+  provenanceKind: "manual_override",
+  forecastIdentityEligible: false,
+  derivedFromInputHash: valid64c,
+});
+
+const missingCodeOverrideRow = (): Row => ({
+  ...completeOverrideRow(),
+  provenanceCompleteness: "missing_code_sha",
+  codeSha: "unknown",
+});
+
+const without = (row: Row, key: keyof Row): Row => ({ ...row, [key]: null });
+const expectSqlContains = (...fragments: string[]) => {
+  for (const fragment of fragments) {
+    expect(NORMALIZED_SQL).toContain(fragment);
+  }
+};
 
 describe("B2-PR2 forecast provenance schema migration", () => {
   it("uses a unique migration version", () => {
@@ -198,8 +316,8 @@ describe("B2-PR2 forecast provenance schema migration", () => {
     expect(NORMALIZED_SQL).not.toMatch(/\balter\s+column\b.*\bset\s+default\b/);
   });
 
-  it("encodes the expected B2 check constraints and partial indexes", () => {
-    for (const name of [
+  it("statically locks the SQL shape predicates for every discriminator branch", () => {
+    expectSqlContains(
       "sfs_prov_kind_chk",
       "sfs_prov_completeness_chk",
       "sfs_prov_hashes_chk",
@@ -207,69 +325,91 @@ describe("B2-PR2 forecast provenance schema migration", () => {
       "sfs_prov_selection_protocol_chk",
       "sfs_prov_trial_count_chk",
       "sfs_prov_timing_chk",
-      "sfs_prov_manual_identity_chk",
-      "sfs_prov_manual_override_chk",
-      "sfs_prov_engine_lineage_chk",
+      "sfs_prov_legacy_shape_chk",
+      "sfs_prov_manual_shape_chk",
+      "sfs_prov_engine_common_shape_chk",
+      "sfs_prov_code_sha_completeness_chk",
+      "sfs_prov_engine_shape_chk",
+      "sfs_prov_manual_override_shape_chk",
       "sfs_prov_identity_eligible_chk",
-    ]) {
-      expect(SQL).toContain(name);
-    }
+    );
+
+    expectSqlContains(
+      "provenance_kind is not null or",
+      "provenance_completeness is null or provenance_completeness = 'legacy'",
+      "forecast_identity_eligible is not true",
+      "provenance_kind is distinct from 'manual'",
+      "provenance_completeness is not distinct from 'manual'",
+      "forecast_identity_eligible is false",
+      "(provenance_kind is distinct from 'engine' and provenance_kind is distinct from 'manual_override')",
+      "(provenance_completeness in ('complete', 'missing_code_sha')) is true",
+      "btrim(engine_version) <> ''",
+      "btrim(feature_schema_version) <> ''",
+      "provenance_completeness = 'missing_code_sha' and code_sha = 'unknown'",
+      "provenance_completeness = 'complete' and code_sha ~ '^[0-9a-f]{7,64}$' and code_sha <> 'unknown'",
+      "forecast_identity_eligible is not distinct from (provenance_completeness = 'complete')",
+      "derived_from_input_hash is not null and forecast_identity_eligible is false",
+      "provenance_kind is not distinct from 'engine'",
+      "provenance_completeness is not distinct from 'complete'",
+    );
 
     for (const column of HASH_COLUMNS) {
       expect(NORMALIZED_SQL).toContain(`${column} is null or ${column} ~ '^[0-9a-f]{64}$'`);
     }
-    expect(NORMALIZED_SQL).toContain("code_sha is null or code_sha = 'unknown' or code_sha ~ '^[0-9a-f]{7,64}$'");
-    expect(NORMALIZED_SQL).toContain("selection_protocol_id is null or selection_protocol_id ~ '^[a-z][a-z0-9._-]{0,63}$'");
-    expect(NORMALIZED_SQL).toContain("trial_count is null or trial_count >= 1");
-    expect(NORMALIZED_SQL).toContain("as_of_ts is null or forecast_issued_at is null or as_of_ts <= forecast_issued_at");
-    expect(NORMALIZED_SQL).toContain("create unique index if not exists idx_sfs_forecast_instance_id_unique");
-    expect(NORMALIZED_SQL).toContain("where forecast_instance_id is not null");
-    expect(NORMALIZED_SQL).toContain("create index if not exists idx_sfs_calibration_pool_id");
-    expect(NORMALIZED_SQL).toContain("where calibration_pool_id is not null");
+    for (const column of EMPTY_PROVENANCE_COLUMNS) {
+      expect(NORMALIZED_SQL).toContain(`${column} is null`);
+    }
+    for (const column of ENGINE_REQUIRED_COLUMNS) {
+      expect(NORMALIZED_SQL).toContain(`${column} is not null`);
+    }
   });
 
-  it("keeps legacy and sparse rows valid while rejecting invalid hash/timing/trial examples", () => {
+  it("keeps the structural indexes narrow and partial", () => {
+    expectSqlContains(
+      "create unique index if not exists idx_sfs_forecast_instance_id_unique",
+      "where forecast_instance_id is not null",
+      "create index if not exists idx_sfs_calibration_pool_id",
+      "where calibration_pool_id is not null",
+    );
+  });
+
+  it("mirrors positive examples without claiming PostgreSQL execution", () => {
     expect(satisfiesMigrationChecks({})).toBe(true);
-    expect(satisfiesMigrationChecks({ predictorId: valid64 })).toBe(true);
-    expect(satisfiesMigrationChecks({ predictorId: "A".repeat(64) })).toBe(false);
-    expect(satisfiesMigrationChecks({ predictorId: "a".repeat(63) })).toBe(false);
-    expect(satisfiesMigrationChecks({ trialCount: 1 })).toBe(true);
-    expect(satisfiesMigrationChecks({ trialCount: 0 })).toBe(false);
-    expect(satisfiesMigrationChecks({ trialCount: -1 })).toBe(false);
-    expect(satisfiesMigrationChecks({ trialCount: 1.5 })).toBe(false);
-    expect(satisfiesMigrationChecks({
-      asOfTs: "2026-02-11T00:00:00Z",
-      forecastIssuedAt: "2026-02-10T00:00:00Z",
-    })).toBe(false);
+    expect(satisfiesMigrationChecks({ provenanceCompleteness: "legacy" })).toBe(true);
+    expect(satisfiesMigrationChecks({ provenanceCompleteness: "legacy", forecastIdentityEligible: false })).toBe(true);
+    expect(satisfiesMigrationChecks(manualRow())).toBe(true);
+    expect(satisfiesMigrationChecks(completeEngineRow())).toBe(true);
+    expect(satisfiesMigrationChecks(missingCodeEngineRow())).toBe(true);
+    expect(satisfiesMigrationChecks(completeOverrideRow())).toBe(true);
+    expect(satisfiesMigrationChecks(missingCodeOverrideRow())).toBe(true);
   });
 
-  it("matches manual, manual_override, engine lineage, and identity-eligible behavior", () => {
-    expect(satisfiesMigrationChecks({ provenanceKind: "manual", provenanceCompleteness: "manual" })).toBe(true);
-    expect(satisfiesMigrationChecks({ provenanceKind: "manual", predictorId: valid64 })).toBe(false);
-    expect(satisfiesMigrationChecks({ provenanceKind: "manual", forecastIdentityEligible: true })).toBe(false);
-
-    expect(satisfiesMigrationChecks({
-      provenanceKind: "manual_override",
-      derivedFromInputHash: valid64,
-      forecastIdentityEligible: false,
-    })).toBe(true);
-    expect(satisfiesMigrationChecks({ provenanceKind: "manual_override" })).toBe(false);
-    expect(satisfiesMigrationChecks({
-      provenanceKind: "manual_override",
-      derivedFromInputHash: valid64,
-      forecastIdentityEligible: true,
-    })).toBe(false);
-
-    expect(satisfiesMigrationChecks({ provenanceKind: "engine", derivedFromInputHash: valid64 })).toBe(false);
-    expect(satisfiesMigrationChecks(completeEngineRow())).toBe(true);
-    expect(satisfiesMigrationChecks({ ...completeEngineRow(), codeSha: "unknown" })).toBe(false);
-    expect(satisfiesMigrationChecks({ ...completeEngineRow(), calibrationPoolId: null })).toBe(false);
-    expect(satisfiesMigrationChecks({ ...completeEngineRow(), trialCount: 0 })).toBe(false);
+  it("mirrors negative examples for the SQL discriminator contract", () => {
+    expect(satisfiesMigrationChecks(without(manualRow(), "forecastIssuedAt"))).toBe(false);
+    expect(satisfiesMigrationChecks({ ...manualRow(), forecastIdentityEligible: null })).toBe(false);
+    expect(satisfiesMigrationChecks({ provenanceKind: "engine" })).toBe(false);
     expect(satisfiesMigrationChecks({ ...completeEngineRow(), provenanceCompleteness: "legacy" })).toBe(false);
-    expect(satisfiesMigrationChecks({
-      ...completeEngineRow(),
-      forecastIdentityEligible: false,
-      provenanceCompleteness: "missing_code_sha",
-    })).toBe(true);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), provenanceCompleteness: "manual" })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), engineVersion: "   " })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), featureSchemaVersion: "" })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), codeSha: "unknown" })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...missingCodeEngineRow(), codeSha: "abc1234" })).toBe(false);
+    expect(satisfiesMigrationChecks({ provenanceKind: "manual_override", derivedFromInputHash: valid64 })).toBe(false);
+    expect(satisfiesMigrationChecks(without(completeOverrideRow(), "predictorId"))).toBe(false);
+    expect(satisfiesMigrationChecks({ predictorId: valid64 })).toBe(false);
+    for (const field of ["forecastIssuedAt", "asOfTs", "targetEventTs"] as const) {
+      expect(satisfiesMigrationChecks(without(completeEngineRow(), field))).toBe(false);
+    }
+  });
+
+  it("mirrors primitive validation examples for hashes, trial count, timing, and lineage", () => {
+    expect(satisfiesMigrationChecks({ provenanceCompleteness: "legacy", predictorId: "A".repeat(64) })).toBe(false);
+    expect(satisfiesMigrationChecks({ provenanceCompleteness: "legacy", predictorId: "a".repeat(63) })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), trialCount: 0 })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), trialCount: -1 })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), trialCount: 1.5 })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), asOfTs: "2026-02-11T00:00:00Z" })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeEngineRow(), derivedFromInputHash: valid64 })).toBe(false);
+    expect(satisfiesMigrationChecks({ ...completeOverrideRow(), forecastIdentityEligible: true })).toBe(false);
   });
 });
