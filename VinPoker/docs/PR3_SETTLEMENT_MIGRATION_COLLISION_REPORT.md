@@ -1,7 +1,7 @@
 # Tracker Settlement PR3 Migration Collision Report
 
-Date: 2026-07-12  
-Base: `origin/main` at `7ce3661740bffe085c7cfd61a3d9b629dbd1c103`  
+Date: 2026-07-12
+Base: `origin/main` at `7ce3661740bffe085c7cfd61a3d9b629dbd1c103`
 Mode: CRITICAL/RED, source-only
 
 ## Scope
