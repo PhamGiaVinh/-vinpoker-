@@ -34,6 +34,24 @@ ALTER TABLE public.tournament_settlement_outcomes ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.tournament_settlement_outcomes FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.tournament_settlement_outcomes TO service_role;
 
+CREATE OR REPLACE FUNCTION public.tracker_mark_prior_settlements_stale(p_changed_hand_id uuid)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.tournament_settlement_outcomes o
+  SET status = 'stale', updated_at = now()
+  FROM public.tournament_hands settled_hand, public.tournament_hands changed_hand
+  WHERE changed_hand.id = p_changed_hand_id
+    AND settled_hand.id = o.hand_id
+    AND settled_hand.tournament_id = changed_hand.tournament_id
+    AND settled_hand.hand_number <= changed_hand.hand_number
+    AND o.status = 'verified';
+$$;
+REVOKE ALL ON FUNCTION public.tracker_mark_prior_settlements_stale(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.tracker_bump_hand_source_revision()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -42,6 +60,7 @@ SET search_path = public
 AS $$
 BEGIN
   IF TG_TABLE_NAME = 'tournament_hands' THEN
+    PERFORM public.tracker_mark_prior_settlements_stale(OLD.id);
     NEW.source_revision := COALESCE(OLD.source_revision, 1) + 1;
     NEW.updated_at := now();
     RETURN NEW;
@@ -50,13 +69,14 @@ BEGIN
   UPDATE public.tournament_hands
   SET source_revision = source_revision + 1, updated_at = now()
   WHERE id = COALESCE(NEW.hand_id, OLD.hand_id);
+  PERFORM public.tracker_mark_prior_settlements_stale(COALESCE(NEW.hand_id, OLD.hand_id));
   RETURN COALESCE(NEW, OLD);
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_tracker_hand_source_revision ON public.tournament_hands;
 CREATE TRIGGER trg_tracker_hand_source_revision
-BEFORE UPDATE OF community_cards, pot_size, side_pots, status, is_voided
+BEFORE UPDATE OF button_seat, community_cards, pot_size, side_pots, status, is_voided
 ON public.tournament_hands
 FOR EACH ROW EXECUTE FUNCTION public.tracker_bump_hand_source_revision();
 
@@ -87,6 +107,8 @@ AS $$
         convert_to(jsonb_build_object(
           'hand_id', h.id,
           'hand_number', h.hand_number,
+          'source_revision', h.source_revision,
+          'button_seat', h.button_seat,
           'community_cards', h.community_cards,
           'pot_size', h.pot_size,
           'side_pots', h.side_pots,
@@ -111,6 +133,26 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_tournament_settlement_source_hash(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_tournament_settlement_source_hash(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.authorize_tournament_live_resettle(p_tournament_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.tournaments t
+    WHERE t.id = p_tournament_id
+      AND (
+        public.is_club_owner(auth.uid(), t.club_id)
+        OR public.is_club_admin(auth.uid(), t.club_id)
+      )
+  );
+$$;
+REVOKE ALL ON FUNCTION public.authorize_tournament_live_resettle(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.authorize_tournament_live_resettle(uuid) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.get_public_tournament_settlement(p_hand_id uuid)
 RETURNS jsonb
@@ -177,23 +219,42 @@ BEGIN
     RAISE EXCEPTION 'invalid_idempotency_key' USING ERRCODE = '22023';
   END IF;
 
+  SELECT * INTO v_hand FROM public.tournament_hands WHERE id = p_hand_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'invalid_target_hand' USING ERRCODE = 'P0001'; END IF;
+  SELECT * INTO v_tournament FROM public.tournaments WHERE id = v_hand.tournament_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'invalid_target_hand' USING ERRCODE = 'P0001'; END IF;
+
   SELECT o.* INTO v_existing
   FROM public.tournament_settlement_outcomes o
-  WHERE o.hand_id = p_hand_id AND o.idempotency_key = p_idempotency_key;
+  WHERE o.tournament_id = v_hand.tournament_id AND o.idempotency_key = p_idempotency_key;
   IF FOUND THEN
-    IF v_existing.request_hash <> p_request_hash THEN
+    IF v_existing.hand_id <> p_hand_id
+      OR v_existing.request_hash <> p_request_hash
+      OR v_existing.actor_user_id <> p_actor_user_id THEN
       RAISE EXCEPTION 'idempotency_mismatch' USING ERRCODE = '22023';
     END IF;
     RETURN jsonb_build_object('ok', true, 'id', v_existing.id, 'status', v_existing.status,
       'settlement_revision', v_existing.settlement_revision, 'outcome_hash', v_existing.outcome_hash);
   END IF;
 
+  -- Lock the target first, then the remaining source chain in deterministic
+  -- order before the CAS. Child row revision triggers also update these parent
+  -- rows, so concurrent edits must finish before the hash is checked and can
+  -- never be overwritten here.
   SELECT * INTO v_hand FROM public.tournament_hands WHERE id = p_hand_id FOR UPDATE;
   IF NOT FOUND OR v_hand.status <> 'completed' OR COALESCE(v_hand.is_voided, false) THEN
     RAISE EXCEPTION 'invalid_target_hand' USING ERRCODE = 'P0001';
   END IF;
-  SELECT * INTO v_tournament FROM public.tournaments WHERE id = v_hand.tournament_id FOR UPDATE;
-  IF NOT FOUND OR NOT (public.is_club_owner(p_actor_user_id, v_tournament.club_id)
+  PERFORM h.id
+  FROM public.tournament_hands h
+  WHERE h.tournament_id = v_hand.tournament_id
+    AND h.hand_number >= v_hand.hand_number
+    AND h.id <> p_hand_id
+    AND NOT COALESCE(h.is_voided, false)
+  ORDER BY h.hand_number, h.id
+  FOR UPDATE;
+
+  IF NOT (public.is_club_owner(p_actor_user_id, v_tournament.club_id)
     OR public.is_club_admin(p_actor_user_id, v_tournament.club_id)) THEN
     RAISE EXCEPTION 'actor_not_authorized' USING ERRCODE = '42501';
   END IF;
@@ -204,9 +265,15 @@ BEGIN
     OR v_hand.source_revision <> p_expected_source_revision THEN
     RAISE EXCEPTION 'stale_source_revision' USING ERRCODE = '40001';
   END IF;
-  IF p_public_outcome ? 'privateEvidence' OR p_public_outcome ? 'correctionNotes'
-    OR p_public_outcome ? 'staffIdentity' OR p_public_outcome ? 'holeCardsByPlayer'
-    OR p_public_outcome ? 'evaluatorInput' OR p_public_outcome ? 'muckedHoleCardsByPlayer' THEN
+  IF jsonb_path_exists(p_public_outcome, '$.**.privateEvidence')
+    OR jsonb_path_exists(p_public_outcome, '$.**.holeCards')
+    OR jsonb_path_exists(p_public_outcome, '$.**.holeCardsByPlayer')
+    OR jsonb_path_exists(p_public_outcome, '$.**.muckedHoleCardsByPlayer')
+    OR jsonb_path_exists(p_public_outcome, '$.**.externalAdjustments')
+    OR jsonb_path_exists(p_public_outcome, '$.**.evaluatorInput')
+    OR jsonb_path_exists(p_public_outcome, '$.**.correctionNotes')
+    OR jsonb_path_exists(p_public_outcome, '$.**.staffIdentity')
+    OR jsonb_path_exists(p_public_outcome, '$.**.actor') THEN
     RAISE EXCEPTION 'private_field_in_public_outcome' USING ERRCODE = '22023';
   END IF;
   IF p_outcome_hash <> COALESCE(p_public_outcome->>'outcomeHash', '') THEN
@@ -226,7 +293,7 @@ BEGIN
   -- rolls back together.
   IF p_edit ? 'community_cards' THEN
     UPDATE public.tournament_hands
-    SET community_cards = ARRAY(SELECT jsonb_array_elements_text(p_edit->'community_cards'))
+    SET community_cards = p_edit->'community_cards'
     WHERE id = p_hand_id;
   END IF;
   IF p_edit ? 'pot_size' THEN
@@ -238,7 +305,7 @@ BEGIN
   IF p_edit ? 'hole_cards' THEN
     FOR v_item IN SELECT value FROM jsonb_array_elements(p_edit->'hole_cards') LOOP
       UPDATE public.hand_players
-      SET hole_cards = ARRAY(SELECT jsonb_array_elements_text(v_item->'hole_cards'))
+      SET hole_cards = v_item->'hole_cards'
       WHERE hand_id = p_hand_id
         AND player_id = (v_item->>'player_id')::uuid
         AND entry_number = COALESCE((v_item->>'entry_number')::integer, 1);
