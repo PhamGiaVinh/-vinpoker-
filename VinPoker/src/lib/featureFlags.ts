@@ -908,7 +908,7 @@ export const FEATURES = {
    * Series Intelligence — B2 forecast provenance capture/card. OFF keeps the existing manual snapshot
    * payload and surface byte-for-byte compatible until Preview UAT approves the live flag.
    */
-  seriesForecastProvenance: false,
+  seriesForecastProvenance: true,
   /**
    * Series Intelligence — regime caveat (lớp chế độ, static). When ON, every forward-looking number
    * (scenario outlook, Monte Carlo overlay, festival EV, turnout forecast) carries a one-line caveat:

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FEATURES } from "@/lib/featureFlags";
 import type { ForecastProvenance } from "./forecastProvenance";
 import { toForecastProvenanceSnapshotColumns } from "./forecastProvenanceRow";
 
@@ -55,10 +54,6 @@ const override: ForecastProvenance = {
 };
 
 describe("forecast provenance snapshot row mapping", () => {
-  it("keeps the wiring feature off by default", () => {
-    expect(FEATURES.seriesForecastProvenance).toBe(false);
-  });
-
   it("maps manual provenance to the exact null engine shape", () => {
     expect(toForecastProvenanceSnapshotColumns(manual)).toEqual({
       forecast_issued_at: timing.forecastIssuedAt,
@@ -111,7 +106,7 @@ describe("forecast provenance snapshot row mapping", () => {
     });
   });
 
-  it("keeps payload and surface gated when the flag is off", () => {
+  it("keeps payload and surface gated behind the named flag", () => {
     const dialog = readFileSync(resolve(process.cwd(), "src/components/series-intelligence/capture/dialogs/ForecastDialog.tsx"), "utf8");
     const panel = readFileSync(resolve(process.cwd(), "src/components/series-intelligence/capture/EventLoopPanel.tsx"), "utf8");
     expect(dialog).toContain("if (FEATURES.seriesForecastProvenance)");
