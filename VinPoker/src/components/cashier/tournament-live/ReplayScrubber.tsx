@@ -123,7 +123,6 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
 
   const currentStreet = frames[Math.min(step, lastIndex)]?.currentStreet;
   const current = frames[Math.min(step, lastIndex)];
-  const finalFrame = frames[lastIndex];
   const publicName = (name: string | null | undefined, playerId: string): string => {
     const trimmed = name?.trim() || "";
     const rawPrefix = playerId.slice(0, 6).toLowerCase();
@@ -140,22 +139,25 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
     [hud, sortedActions]
   );
   const inBB = (n: number): string | null => (bb > 0 ? `${(n / bb).toFixed(1)} BB` : null);
-  // Winner rows: net = ending − starting (completed hands only). Sorted by net desc.
-  const nets = useMemo(() => {
-    if (!hud || !finalFrame?.payoutVerified) return [];
-    return hand.players
-      .filter((p) => p.ending_stack != null)
-      .map((p) => ({ ...p, net: (p.ending_stack as number) - p.starting_stack }))
-      .filter((p) => p.net !== 0)
-      .sort((a, b) => b.net - a.net);
-  }, [hud, hand, finalFrame?.payoutVerified]);
-  // Hand-summary bullets — derived from ACTIONS + nets only (revealed data; no
-  // hole-card source → no leak). All-in facts first, then winner lines.
+  // Settlement rows exist only on the current settlement frame. Pot awards and
+  // uncalled refunds remain separate so a refund never looks like a win.
+  const settlementRows = useMemo(() => {
+    if (!hud || !current?.payoutVerified) return [];
+    return current.seats
+      .map((seat) => ({
+        ...seat,
+        payoutAward: Math.max(0, seat.payout_award ?? 0),
+        refundAward: Math.max(0, seat.refund_award ?? 0),
+      }))
+      .filter((seat) => seat.payoutAward > 0 || seat.refundAward > 0)
+      .sort((a, b) => b.payoutAward - a.payoutAward || b.refundAward - a.refundAward);
+  }, [hud, current]);
+  // Hand-summary bullets reveal only actions reached by the current replay frame.
   const bullets = (() => {
     if (!hud) return [];
     const out: string[] = [];
     const nameOf = (pid: string) => publicName(hand.players.find((p) => p.player_id === pid)?.display_name, pid);
-    for (const a of sortedActions) {
+    for (const a of sortedActions.slice(0, current?.index ?? 0)) {
       if (a.action_type === "all_in") {
         out.push(t("liveHub.replay.allInSummary", "{{name}} all-in {{amount}}{{bb}}", {
           name: nameOf(a.player_id),
@@ -163,13 +165,6 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
           bb: inBB(a.action_amount) ? ` (${inBB(a.action_amount)})` : "",
         }));
       }
-    }
-    for (const p of nets) {
-      if (p.net > 0) out.push(t("liveHub.replay.winnerSummary", "{{name}} +{{amount}}{{bb}}", {
-        name: publicName(p.display_name, p.player_id),
-        amount: formatStack(p.net),
-        bb: inBB(p.net) ? ` (+${inBB(p.net)})` : "",
-      }));
     }
     return out.slice(0, 6);
   })();
@@ -339,20 +334,26 @@ export function ReplayScrubber({ hand, onFrame, hud = false, trackBets = false, 
             <div data-testid="replay-hud-needs-resettle" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200">
               {t("liveHub.felt.needsResettle", "Cần tính lại kết quả")}
             </div>
-          ) : nets.length > 0 ? (
+          ) : settlementRows.length > 0 ? (
             <div className="space-y-1">
-              {nets.map((p) => (
+              {settlementRows.map((p) => (
                 <div key={p.player_id} className="flex min-h-11 items-center justify-between rounded-xl bg-background/35 px-3 py-2 text-xs">
                   <span className="truncate">
                     <span className="font-semibold text-foreground">{publicName(p.display_name, p.player_id)}</span>
                     {p.seat_number > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{t("liveHub.seat", "Ghế {{n}}", { n: p.seat_number })}</span>}
                   </span>
-                  <span className={`tracker-num font-bold ${p.net > 0 ? "text-[hsl(var(--viewer-neon-bright))]" : "text-red-400"}`}>
-                    {p.net > 0 ? "+" : ""}
-                    {formatStack(p.net)}
-                    {inBB(Math.abs(p.net)) ? (
-                      <span className="ml-1 font-normal opacity-70">({p.net > 0 ? "+" : "-"}{inBB(Math.abs(p.net))})</span>
-                    ) : null}
+                  <span className="tracker-num flex flex-col items-end font-bold">
+                    {p.payoutAward > 0 && (
+                      <span className="text-[hsl(var(--viewer-neon-bright))]">
+                        {t("liveHub.replay.potAward", "Thắng pot")} +{formatStack(p.payoutAward)}
+                        {inBB(p.payoutAward) ? <span className="ml-1 font-normal opacity-70">(+{inBB(p.payoutAward)})</span> : null}
+                      </span>
+                    )}
+                    {p.refundAward > 0 && (
+                      <span className="text-[10px] text-amber-200/90">
+                        {t("liveHub.replay.refund", "Hoàn")} +{formatStack(p.refundAward)}
+                      </span>
+                    )}
                   </span>
                 </div>
               ))}

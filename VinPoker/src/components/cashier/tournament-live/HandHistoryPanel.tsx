@@ -13,8 +13,6 @@ import {
   runClientResettle,
   buildApplyResettleArgs,
   resettleChipChanges,
-  contenders,
-  manualWinnerUnsafe,
   type ResettleHandRow,
 } from "./resettleApply";
 import type { EditedTargetHand, ResettleBlock, ResettleForwardResult, ResettleOk } from "@/lib/tracker-poker/resettleForward";
@@ -530,25 +528,6 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
     }
   };
 
-  // Đợt G3 — manual-winner path: re-run the engine with operator-picked winner(s),
-  // reusing the already-fetched chain (no re-fetch). Used when the engine returns
-  // needs_manual_winner (incomplete cards / holes not recorded) or when the operator
-  // overrides the auto-evaluated winner. Empty selection clears the override.
-  const handlePickWinners = (winnerIds: string[]) => {
-    const rv = resettleView;
-    if (!rv) return;
-    const editedTarget: EditedTargetHand = {
-      ...rv.editedTarget,
-      manualWinnerIds: winnerIds.length > 0 ? winnerIds : undefined,
-    };
-    const { result, entryByPlayer, entryByHandPlayer } = runClientResettle({
-      target: rv.targetRow,
-      later: rv.laterRows,
-      editedTarget,
-    });
-    setResettleView({ ...rv, editedTarget, result, entryByPlayer, entryByHandPlayer });
-  };
-
   const selectedHand = hands.find((h) => h.id === selectedHandId);
 
   return (
@@ -705,16 +684,6 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
                   view={resettleView}
                   busy={resettleBusy}
                   players={selectedHand.players.map((p) => ({ player_id: p.player_id, display_name: p.display_name }))}
-                  contenderIds={contenders(
-                    resettleView.targetRow.players,
-                    resettleView.editedTarget.actions ?? resettleView.targetRow.actions,
-                  )}
-                  currentWinnerIds={resettleView.editedTarget.manualWinnerIds ?? []}
-                  sidePotUnsafe={manualWinnerUnsafe(
-                    resettleView.targetRow,
-                    resettleView.editedTarget.actions ?? resettleView.targetRow.actions,
-                  )}
-                  onPickWinners={handlePickWinners}
                   onConfirm={handleResettleConfirm}
                   onClose={() => setResettleView(null)}
                 />
@@ -815,27 +784,16 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 // Đợt G3 — chip-change preview shown after "Sửa & tính lại chip". Prop-driven so the
 // money-path parent owns the RPC calls; this only renders the engine's decision + the
 // per-player current→new chips, or the engine's Vietnamese block reason.
-function ResettlePreview({
+export function ResettlePreview({
   view,
   busy,
   players,
-  contenderIds,
-  currentWinnerIds,
-  sidePotUnsafe,
-  onPickWinners,
   onConfirm,
   onClose,
 }: {
   view: { result: ResettleForwardResult };
   busy: boolean;
   players: { player_id: string; display_name: string }[];
-  /** Non-folded players in the edited hand — the manual-winner candidates. */
-  contenderIds: string[];
-  /** Winners currently applied via manual pick (empty = auto-evaluated). */
-  currentWinnerIds: string[];
-  /** Target hand has a side pot → whole-pot even split would mis-distribute; block manual pick. */
-  sidePotUnsafe: boolean;
-  onPickWinners: (ids: string[]) => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -843,59 +801,6 @@ function ResettlePreview({
   const result = view.result;
   const blocked = !result.ok ? result as ResettleBlock : null;
   const needsManual = blocked?.reason === "needs_manual_winner";
-  const [picked, setPicked] = useState<string[]>(currentWinnerIds);
-  const [showOverride, setShowOverride] = useState(false);
-  // Re-sync the local selection whenever the APPLIED winners change (after a re-run).
-  useEffect(() => { setPicked(currentWinnerIds); }, [currentWinnerIds.join(",")]);
-
-  const toggle = (pid: string) =>
-    setPicked((prev) => (prev.includes(pid) ? prev.filter((x) => x !== pid) : [...prev, pid]));
-
-  const picker = (heading: string, cta: string) =>
-    sidePotUnsafe ? (
-      <div className="rounded-md border border-amber-500/40 bg-amber-950/20 p-2 text-[11px] text-amber-200 leading-snug">
-        Ván này có <span className="font-semibold">side pot</span> (có người all-in ít hơn) — chọn người thắng bằng tay sẽ chia sai
-        (chia đều toàn bộ pot). Hãy nhập đủ bài để tự chấm (chính xác side pot), hoặc dùng “Hoàn tác ván” + nhập lại.
-      </div>
-    ) : (
-    <div className="rounded-md border border-border/50 bg-card/60 p-2 space-y-1.5">
-      <div className="text-[11px] font-medium text-foreground/90">{heading}</div>
-      {contenderIds.length === 0 ? (
-        <div className="text-[11px] text-muted-foreground">Không có người chơi đủ điều kiện để chọn.</div>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {contenderIds.map((pid) => {
-            const on = picked.includes(pid);
-            return (
-              <button
-                key={pid}
-                type="button"
-                onClick={() => toggle(pid)}
-                className={`text-[11px] rounded px-2 py-1 border ${
-                  on
-                    ? "border-emerald-500/70 bg-emerald-500/20 text-emerald-200"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {on ? "✓ " : ""}{nameOf(pid)}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <div className="text-[10px] text-muted-foreground leading-snug">
-        Chọn nhiều người = chia đều pot (chop). Người thắng thủ công chia đều TOÀN BỘ pot — không tách side-pot; hãy đối chiếu bảng chip xem trước.
-      </div>
-      <button
-        type="button"
-        disabled={busy || picked.length === 0}
-        onClick={() => onPickWinners(picked)}
-        className="text-[11px] font-medium text-amber-100 border border-amber-500/60 bg-amber-500/15 rounded px-2 py-1 hover:bg-amber-500/25 disabled:opacity-40"
-      >
-        {cta}
-      </button>
-    </div>
-  );
 
   if (blocked) {
     return (
@@ -910,13 +815,17 @@ function ResettlePreview({
             Người liên quan: {blocked.affected_player_ids.map(nameOf).join(", ")}
           </div>
         )}
-        {needsManual && picker("Chọn người thắng ván này (bài không đủ để tự chấm):", "Tính lại với người thắng đã chọn")}
+        {needsManual && (
+          <div className="rounded-md border border-amber-500/40 bg-background/35 p-2 text-[11px] leading-snug text-amber-100">
+            Ván này chưa có đủ dữ liệu để server xác minh người thắng, side pot và tiền hoàn. Hãy bổ sung bài đã lộ/muck, hành động hoặc stack còn thiếu; VinPoker sẽ không cho client tự chia pot.
+          </div>
+        )}
         <button
           type="button"
           onClick={onClose}
           className="text-[11px] text-muted-foreground border border-border rounded px-2 py-1 hover:text-foreground mt-1"
         >
-          Đóng xem trước
+          {needsManual ? "Bổ sung dữ liệu & tính lại" : "Đóng xem trước"}
         </button>
       </div>
     );
@@ -931,7 +840,6 @@ function ResettlePreview({
       <div className="text-[11px] text-muted-foreground">
         Người thắng ván này:{" "}
         <span className="text-foreground font-medium">{ok.targetWinnerIds.map(nameOf).join(", ") || "(không có)"}</span>
-        {currentWinnerIds.length > 0 && <span className="ml-1 text-amber-300/80">(chọn tay)</span>}
       </div>
       {noChange ? (
         <div className="text-[11px] text-muted-foreground">
@@ -956,17 +864,6 @@ function ResettlePreview({
         </div>
       )}
       <div className="text-[10px] text-muted-foreground leading-snug">{ok.summary}</div>
-      {showOverride ? (
-        picker("Chọn người thắng bằng tay:", "Tính lại với người thắng đã chọn")
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowOverride(true)}
-          className="text-[10px] text-muted-foreground underline hover:text-foreground"
-        >
-          Người thắng không đúng? Chọn bằng tay
-        </button>
-      )}
       <div className="flex gap-2 pt-0.5">
         <button
           type="button"

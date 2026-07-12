@@ -3022,7 +3022,9 @@
       "unknownPlayer": "Người chơi",
       "noResult": "Chưa có kết quả — xem tab Hành động.",
       "allInSummary": "{{name}} all-in {{amount}}{{bb}}",
-      "winnerSummary": "{{name}} +{{amount}}{{bb}}"
+      "winnerSummary": "{{name}} +{{amount}}{{bb}}",
+      "potAward": "Thắng pot",
+      "refund": "Hoàn"
     },
     "felt": {
       "pot": "Pot",
@@ -3039,6 +3041,8 @@
       "potTotal": "Tổng Pot",
       "chopPot": "Chia đôi pot",
       "chopPotShort": "CHOP POT",
+      "potAwardShort": "THẮNG POT",
+      "refundShort": "Hoàn",
       "needsResettle": "Cần tính lại kết quả",
       "showdown": "Showdown",
       "dealerHere": "người chia · cố định",

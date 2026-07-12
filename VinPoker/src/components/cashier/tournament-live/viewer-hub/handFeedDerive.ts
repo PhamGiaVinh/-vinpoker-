@@ -274,7 +274,10 @@ export function buildHandFeedItems(
           deltaChips,
           deltaBB: bb > 0 && end != null ? Math.round((deltaChips / bb) * 10) / 10 : null,
           holeCards: hole.length > 0 ? hole : null,
-          isWinner: viewerPulseV2 ? verifiedWinnerIds.has(p.player_id) : deltaChips > 0,
+          // A positive stack delta is not proof of winning a pot (refunds and
+          // corrections can also increase a stack). Fail closed until the verified
+          // settlement path is enabled.
+          isWinner: viewerPulseV2 && verifiedWinnerIds.has(p.player_id),
           isEliminated: !!elim || p.is_eliminated === true,
           finishPosition: elim?.position ?? null,
           prize: elim?.prize ?? null,
