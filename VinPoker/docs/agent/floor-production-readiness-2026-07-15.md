@@ -40,6 +40,7 @@ Hai cổng bắt buộc đang chặn rollout:
 - `npx tsc -b --pretty false`: **không kết luận**; không in lỗi nhưng timeout sau 184 giây và tiến trình dùng khoảng 1.9 GB RAM đã được dừng đúng PID.
 - ESLint mục tiêu cho các file Floor mới/sửa: PASS.
 - Vitest contract: PASS 10/10.
+- Playwright E2E unauthenticated `/ops`, `/ops/tables`, `/ops/cashier`: PASS 6/6 on 390px mobile and 1280px desktop. Uses a dummy local Supabase URL/key only to boot the client; it does not call production.
 - `deno check` cho `tournament-live-draw` và `tournament-live-clock`: PASS.
 - `git diff --check`: PASS.
 - Database integration test: CHƯA CHẠY. Docker Desktop service có mặt nhưng không thể start với quyền hiện tại; không dùng live DB làm test fixture.
