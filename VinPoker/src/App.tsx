@@ -9,7 +9,8 @@ installToastSounds();
 
 // Pull GTO custom ranges from DB + listen realtime updates
 import { initRemoteRanges } from "@/lib/gto/precomputed";
-initRemoteRanges();
+const isSeriesMarketDevRoute = import.meta.env.DEV && window.location.pathname === "/__dev/series-market";
+if (!isSeriesMarketDevRoute) initRemoteRanges();
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
@@ -36,6 +37,7 @@ const ClubFinanceDashboard = lazy(() => import("./pages/ClubFinanceDashboard"));
 const AccountingControl = lazy(() => import("./pages/AccountingControl"));
 const DealerInsuranceProfiles = lazy(() => import("./pages/DealerInsuranceProfiles"));
 const SeriesIntelligence = lazy(() => import("./pages/SeriesIntelligence"));
+const VerifiedMarketJeju = lazy(() => import("./pages/VerifiedMarketJeju"));
 const SeriesDecisionLogAdmin = lazy(() => import("./pages/SeriesDecisionLogAdmin"));
 const ChipOpsInventory = lazy(() => import("./pages/ChipOpsInventory"));
 // Marketing module (/marketing) — page self-gates on FEATURES.marketingModule + role.
@@ -143,6 +145,9 @@ const DevTrackerPreview = import.meta.env.DEV ? lazy(() => import("./components/
 // DEV-ONLY visual harness for the member-card design (cashier → Cấp lại thẻ). Fixture-rendered — no
 // Supabase. Same import.meta.env.DEV gate → route + chunk stripped from production. Reached only at /__dev/card.
 const DevCardPreview = import.meta.env.DEV ? lazy(() => import("./dev/CardPreview")) : null;
+const DevSeriesMarketPreview = import.meta.env.DEV
+  ? lazy(() => import("./components/series-market/VerifiedMarketDevPreview"))
+  : null;
 // Poker IQ Drill — player-facing cold-start feature (focused full-screen flow, no Layout chrome)
 const PokerIQ = lazy(() => import("./pages/PokerIQ"));
 // Dealer Mobile App (/dealer/*) — own mobile shell; gated by FEATURES.dealerMobileApp
@@ -174,8 +179,21 @@ const queryClient = new QueryClient({
   },
 });
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+const App = () => {
+  if (isSeriesMarketDevRoute && DevSeriesMarketPreview) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<RouteLoader />}>
+          <Routes>
+            <Route path="*" element={<DevSeriesMarketPreview />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner
         theme="dark"
@@ -239,6 +257,9 @@ const App = () => (
               )}
               {import.meta.env.DEV && DevCardPreview && (
                 <Route path="/__dev/card" element={<DevCardPreview />} />
+              )}
+              {import.meta.env.DEV && DevSeriesMarketPreview && (
+                <Route path="/__dev/series-market" element={<DevSeriesMarketPreview />} />
               )}
               {/* Dealer Mobile App — its own mobile shell, separate from Layout
                   chrome. Self-gates on the dealer link + FEATURES.dealerMobileApp. */}
@@ -322,6 +343,7 @@ const App = () => (
                 <Route path="/club/admin/insurance" element={<DealerInsuranceProfiles />} />
                 {/* Trí tuệ Series device-aware: phones get the read-only mobile /ops/series view. */}
                 <Route path="/club/admin/series-intelligence" element={<MobileOperatorRoute to="/ops/series"><SeriesIntelligence /></MobileOperatorRoute>} />
+                <Route path="/club/admin/market-intelligence" element={<VerifiedMarketJeju />} />
                 {/* CAPTURE v0 Decision Log — page self-gates on FEATURES.seriesDecisionLog (default OFF). */}
                 <Route path="/club/admin/series-decision-log" element={<SeriesDecisionLogAdmin />} />
                 {/* Chip Ops — read-only issued-chip inventory. Page self-gates on FEATURES.chipOps. */}
@@ -367,7 +389,8 @@ const App = () => (
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
-  </QueryClientProvider>
-);
+    </QueryClientProvider>
+  );
+};
 
 export default App;

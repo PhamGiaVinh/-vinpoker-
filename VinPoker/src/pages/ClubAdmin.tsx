@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ClipboardList, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins, Landmark } from "lucide-react";
+import { Loader2, Plus, Check, X, Building2, Trash2, MessageCircle, FileSpreadsheet, Sparkles, ClipboardList, ChevronDown, ChevronRight, Wallet, ShieldCheck, Coins, Landmark, Globe2 } from "lucide-react";
 import { FEATURES } from "@/lib/featureFlags";
 import { FomoPrice } from "@/components/FomoPrice";
 import * as XLSX from "xlsx";
@@ -132,6 +132,23 @@ const ClubAdmin = () => {
       <div className="flex items-center justify-between">
         <h1 className="font-display text-2xl text-primary">Club Admin</h1>
       </div>
+
+      {(isAdmin || isClubAdmin || isClubOwner) && (FEATURES.seriesMarketVerifiedJeju || isAdmin) && (
+        <Card className="flex items-center justify-between gap-3 border-cyan-500/35 bg-cyan-500/5 p-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-display text-base flex items-center gap-2"><Globe2 className="w-4 h-4 text-cyan-300" /> Thị trường Poker đã xác minh</h3>
+              {!FEATURES.seriesMarketVerifiedJeju && <span className="text-[10px] uppercase text-amber-300">Internal preview</span>}
+            </div>
+            <p className="text-xs text-muted-foreground">Kiểm tra bằng chứng công khai Jeju V1, nguồn, dữ liệu thiếu và giới hạn của seed; không phải dữ liệu riêng của CLB.</p>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/club/admin/market-intelligence">
+              <Globe2 className="w-4 h-4" /> Mở
+            </Link>
+          </Button>
+        </Card>
+      )}
 
       {clubs.length === 0 ? (
         <Card className="p-6 text-center gradient-card border-primary/40">

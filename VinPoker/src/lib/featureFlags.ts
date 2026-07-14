@@ -858,6 +858,14 @@ export const FEATURES = {
    */
   tournamentServiceFee: true,
   /**
+   * Club Admin -> Verified Market Jeju V1 at /club/admin/market-intelligence.
+   * Read-only inspection of the committed public seed release: no Supabase,
+   * club data, network, forecasting, or recommendations. Default OFF keeps the
+   * entry hidden from club owners/admins; super_admin retains the internal
+   * preview path. Flip only in a later owner-UAT increment.
+   */
+  seriesMarketVerifiedJeju: false,
+  /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
    * (CSV → Data Readiness → Tournament Economics Mini Audit → Series Workflow),
