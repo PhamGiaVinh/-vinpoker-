@@ -17,7 +17,6 @@ import type { UseFloorSeats } from "@/components/ops/shared/useFloorSeats";
  * Chỉ nhận target là GHẾ ĐANG NGỒI (đang chơi, có `MapSeat` thật). Người đã busted KHÔNG có ghế
  * active → hiển thị read-only ở danh sách, KHÔNG đưa vào đây (tránh sửa chip "hồi sinh"/move fail).
  */
-const PENDING_NOTICE = "Chức năng đang nối dữ liệu — chưa thao tác trên live.";
 
 /** Copy VERBATIM từ OpsTables.moveError (permission/entry/seat conflict). */
 function moveError(res: { error?: string; max_seats?: number } | null, raw?: string): string {
@@ -65,7 +64,8 @@ export function FloorPlayerActions({
           action: "update_seats",
           seats: [{
             seat_id: real.seat_id, player_id: real.player_id, entry_number: real.entry_number,
-            table_id: real.table_id, seat_number: real.seat_number, chip_count: newChip,
+            table_id: real.table_id, seat_number: real.seat_number,
+            expected_chip_count: real.chip_count ?? 0, chip_count: newChip,
             is_active: true, player_name: real.player_name,
           }],
         },
@@ -81,8 +81,9 @@ export function FloorPlayerActions({
     }
   }, [real, tournamentId, floor]);
 
-  // Loại (💰 ITM). openBust ĐỌC LẠI số người còn + cơ cấu thưởng NGAY khi mở (P0-5, không cache);
-  // bustPlayer ghi update_seats is_active:false. Server tự ghi hạng/thưởng chính thức.
+  // Loại. openBust đọc lại số người còn + cơ cấu thưởng ngay khi mở (không cache);
+  // bustPlayer gọi Edge, Edge dùng RPC nguyên tử chỉ ghi bust. Cờ payout đang tắt,
+  // nên hạng/thưởng hiển thị ở đây luôn là tạm tính và chưa được chi/chốt.
   const openBust = useCallback(async () => {
     if (!tournamentId) return;
     setBustInfo({ loading: true, place: null, prize: null });
@@ -134,7 +135,7 @@ export function FloorPlayerActions({
       const { data: seatRow, error: seErr } = await supabase.from("tournament_seats")
         .select("entry_id").eq("id", real.seat_id).maybeSingle();
       if (seErr || !seatRow?.entry_id) { toast.error("Không tìm được lượt đăng ký (entry) của người chơi."); return false; }
-      const { data, error } = await (supabase.rpc as any)("move_player_seat", {
+      const { data, error } = await supabase.rpc("move_player_seat", {
         p_entry_id: seatRow.entry_id,
         p_to_tournament_table_id: toTtId,
         p_to_seat_number: toSeat,
@@ -177,7 +178,6 @@ export function FloorPlayerActions({
       <PlayerActionSheets
         target={target ? { seat: target.seat, tableNo: target.tableNo, chipCount: target.real.chip_count } : null}
         onClose={() => { setBustInfo(null); onClose(); }}
-        pendingNotice={PENDING_NOTICE}
         onSaveChip={saveChip}
         onBustPlayer={bustPlayer}
         onOpenBust={openBust}

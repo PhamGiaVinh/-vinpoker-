@@ -47,7 +47,7 @@ export default function FloorDashboard() {
     );
   }
 
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const scopedIds = Array.from(new Set([...clubIds, ...dealerClubIds]));
 
   return (
     <div className="container mx-auto p-3 md:p-6">

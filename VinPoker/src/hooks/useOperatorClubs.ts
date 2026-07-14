@@ -17,13 +17,36 @@ export function useOperatorClubs() {
   const { user, loading: authLoading } = useAuth();
   const [clubs, setClubs] = useState<OperatorClubRow[] | null>(null);
   const [dealerClubIds, setDealerClubIds] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setClubs(authLoading ? null : []);
+      setDealerClubIds([]);
+      setError(null);
+      return;
+    }
     let cancelled = false;
+    setClubs(null);
+    setError(null);
     (async () => {
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
-      const idArr = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
+      const [cashierResult, floorResult, dealerResult] = await Promise.all([
+        supabase.rpc("cashier_club_ids", { _user_id: user.id }),
+        supabase.rpc("floor_club_ids", { _user_id: user.id }),
+        supabase.rpc("dealer_control_club_ids", { _user_id: user.id }),
+      ]);
+
+      const firstError = cashierResult.error ?? floorResult.error ?? dealerResult.error;
+      if (firstError) {
+        if (!cancelled) {
+          setClubs([]);
+          setDealerClubIds([]);
+          setError("Không tải được phạm vi CLB. Vui lòng thử lại.");
+        }
+        return;
+      }
+
+      const idArr = Array.from(new Set([...(cashierResult.data ?? []), ...(floorResult.data ?? [])]));
       if (!idArr.length) {
         if (!cancelled) setClubs([]);
       } else {
@@ -31,15 +54,14 @@ export function useOperatorClubs() {
         if (!cancelled) setClubs((cs ?? []) as OperatorClubRow[]);
       }
 
-      const { data: dcIds } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
       if (!cancelled) {
-        setDealerClubIds((dcIds ?? []).map((r: any) => (typeof r === "string" ? r : r.dealer_control_club_ids ?? r)));
+        setDealerClubIds(dealerResult.data ?? []);
       }
     })();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, authLoading]);
 
   const clubIds = (clubs ?? []).map((c) => c.id);
 
-  return { loading: authLoading, user, clubs, clubIds, dealerClubIds };
+  return { loading: authLoading || clubs === null, user, clubs, clubIds, dealerClubIds, error };
 }
