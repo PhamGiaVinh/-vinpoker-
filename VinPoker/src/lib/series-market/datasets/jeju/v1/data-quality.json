@@ -1,0 +1,90 @@
+{
+  "claims": 972,
+  "confidenceDistribution": {
+    "unknown": 972
+  },
+  "conflicts": 0,
+  "contractsVersion": "v1",
+  "currencies": [
+    "KRW",
+    "USD"
+  ],
+  "entities": 92,
+  "eventDateMax": "2026-02-08",
+  "eventDateMin": "2025-07-04",
+  "events": 87,
+  "evidenceStatusDistribution": {
+    "unverified": 972
+  },
+  "festivals": 5,
+  "importerSchemaVersion": "v1",
+  "inputBytes": 12949,
+  "inputColumns": [
+    "festival",
+    "tour",
+    "venue",
+    "date",
+    "event_no",
+    "event_name",
+    "event_type",
+    "game",
+    "is_flagship",
+    "currency",
+    "buy_in_local",
+    "buy_in_prize_local",
+    "buy_in_fee_local",
+    "gtd_local",
+    "entries",
+    "buy_in_usd",
+    "fee_pct",
+    "value_ratio",
+    "ln_entries"
+  ],
+  "inputRows": 87,
+  "missingClaims": 178,
+  "missingCountByField": {
+    "buy_in_prize": 49,
+    "gtd": 80,
+    "organizer_fee": 49
+  },
+  "nonMissingClaims": 794,
+  "nonNullCountByField": {
+    "buy_in": 87,
+    "buy_in_prize": 38,
+    "entries": 87,
+    "event_date": 87,
+    "event_name": 87,
+    "event_no": 87,
+    "event_type": 87,
+    "festival_name": 5,
+    "game": 87,
+    "gtd": 7,
+    "is_flagship": 87,
+    "organizer_fee": 38,
+    "tour": 5,
+    "venue": 5
+  },
+  "omittedLegacyColumns": {
+    "buy_in_usd": "No exchange-rate source, date, or conversion method is present.",
+    "fee_pct": "The denominator convention is not defined for a DerivedMetric.",
+    "ln_entries": "This is a model transformation, not a public market fact.",
+    "value_ratio": "The method and denominator are not sufficiently defined."
+  },
+  "rawInputSha256": "29281850cde2dd52f1a8a91eeb5d25740dee8e7e75fb1497ab487119012db3c8",
+  "releaseId": "series-market:v1:release:jeju:20ba969d8df146c54a47354700a36d94f81ddb51f0eca4824dafda07c907e203",
+  "sourceCutoff": "2026-07-14T19:36:11.341Z",
+  "sourceDocuments": 1,
+  "sourceRevisions": 1,
+  "statements": [
+    "This is an unverified public seed dataset.",
+    "Row-level official URLs are unavailable.",
+    "Public facts should later be upgraded through source-backed superseding claims.",
+    "This release is suitable for importer and descriptive research testing.",
+    "This release is not sufficient for official market claims or production forecasting."
+  ],
+  "tours": [
+    "APT",
+    "RDPT",
+    "Triton"
+  ]
+}

@@ -275,6 +275,7 @@ export const JEJU_PUBLIC_FIELD_REGISTRY: Readonly<Record<string, JejuPublicField
   game: textField("event"),
   format: textField("event"),
   scheduled_start: partialLocalDateTimeField("event"),
+  event_date: localDateField("event"),
   buy_in: moneyField("event"),
   buy_in_prize: moneyField("event"),
   organizer_fee: moneyField("event"),

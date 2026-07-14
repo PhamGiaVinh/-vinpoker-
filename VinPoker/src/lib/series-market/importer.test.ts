@@ -83,6 +83,26 @@ describe("canonical Jeju importer", () => {
     });
   });
 
+  it("accepts event_date as a date-only event field without inventing time", async () => {
+    const valid = await parseJejuImportCsv(toCsv([baseRow({
+      field: "event_date",
+      value_type: "local_date",
+      value: "2026-07-14",
+      raw_value: "2026-07-14",
+    })]));
+    expect(valid.ok).toBe(true);
+    if (valid.ok) expect(valid.value.claims[0].value).toEqual({ type: "local_date", value: "2026-07-14" });
+
+    const wrongType = await parseJejuImportCsv(toCsv([baseRow({
+      field: "event_date",
+      value_type: "partial_local_datetime",
+      value: "2026-07-14T00:00",
+      local_time_zone: "Asia/Seoul",
+      local_time_precision: "minute",
+    })]));
+    expect(wrongType).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: "FIELD_VALUE_TYPE_MISMATCH" })] });
+  });
+
   it("accepts the equivalent JSON envelope without changing the canonical result", async () => {
     const row = baseRow({ field: "event_name", value_type: "text", value: "Main Event", raw_value: "Main Event" });
     const csvResult = await parseJejuImportCsv(toCsv([row]));
