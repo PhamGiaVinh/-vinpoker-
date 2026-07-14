@@ -636,7 +636,7 @@ export const FEATURES = {
    * Atomic completed-hand edit and forward resettle through the dedicated Edge path.
    * OFF preserves the existing operator edit flow; Hand #8 must not use this before UAT.
    */
-  trackerAtomicResettle: false,
+  trackerAtomicResettle: true,
   /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
