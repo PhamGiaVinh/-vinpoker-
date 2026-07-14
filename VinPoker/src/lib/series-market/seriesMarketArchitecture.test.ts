@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, join } from "node:path";
 
-const ROOT = process.cwd();
+const ROOT = existsSync(join(process.cwd(), "src/lib/series-market"))
+  ? process.cwd()
+  : join(process.cwd(), "VinPoker");
 const MARKET = "src/lib/series-market";
 
 function sourceFiles(rel: string): string[] {
@@ -100,4 +102,11 @@ describe("series-market public/private architecture boundary", () => {
       for (const specifier of importSpecifiers(file)) expect(specifier).not.toContain("series-market");
     }
   }, 20_000);
+
+  it("keeps the PR3 generator deterministic and outside runtime integrations", () => {
+    const generator = readFileSync(join(ROOT, "scripts/series-market/generateJejuDatasetRelease.ts"), "utf8");
+    expect(generator).not.toMatch(/Date\.now|generatedAt|fetch\(|supabase|react|agent|pr4/i);
+    expect(generator).toContain("source-manifest.json");
+    expect(generator).toContain("canonical/jeju_import_v1.json");
+  });
 });

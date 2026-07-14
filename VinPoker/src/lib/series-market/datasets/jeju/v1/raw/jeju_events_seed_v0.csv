@@ -1,0 +1,88 @@
+festival,tour,venue,date,event_no,event_name,event_type,game,is_flagship,currency,buy_in_local,buy_in_prize_local,buy_in_fee_local,gtd_local,entries,buy_in_usd,fee_pct,value_ratio,ln_entries
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-01-30,1,APT National Cup,NationalCup,NLH,Y,KRW,850000,734910.0,115090.0,200000000.0,690,590,0.1354,235.29,6.537
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-01-31,9,Mystery Bounty Hunter,MysteryBounty,NLH,Y,KRW,1100000,990000.0,110000.0,400000000.0,991,764,0.1,363.64,6.899
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-01-31,10,APT Super High Roller,SuperHighRoller,NLH,Y,KRW,15000000,14250000.0,750000.0,500000000.0,115,10417,0.05,33.33,4.745
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-01,18,APT Main Event,Main,NLH,Y,KRW,2300000,2070000.0,230000.0,2200000000.0,1718,1597,0.1,956.52,7.449
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-02,33,Superstar Challenge,SuperHighRoller,NLH,Y,KRW,35000000,34000000.0,1000000.0,,49,24306,0.0286,,3.892
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-05,65,Zodiac Classic,HighRoller,NLH,Y,KRW,3600000,3240000.0,360000.0,500000000.0,426,2500,0.1,138.89,6.054
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-06,72,Mini Main Event,MiniMain,NLH,Y,KRW,1200000,1080000.0,120000.0,300000000.0,812,833,0.1,250.0,6.7
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-06,82,Super Hyper Turbo,HyperTurbo,NLH,N,KRW,350000,291690.0,58310.0,,53,243,0.1666,,3.97
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,83,Ultra Stack,Deepstack,NLH,N,KRW,1000000,875000.0,125000.0,100000000.0,313,694,0.125,100.0,5.746
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,84,APT High Roller,HighRoller,NLH,Y,KRW,5000000,4500000.0,500000.0,,259,3472,0.1,,5.557
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,85,Dealer's Choice Masters,Mixed,Mixed,N,KRW,1500000,1350000.0,150000.0,,28,1042,0.1,,3.332
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,86,NL Hold'em Freezeout,NLH-Other,NLH,N,KRW,1500000,1350000.0,150000.0,,115,1042,0.1,,4.745
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,87,Women's Event,Womens,NLH,N,KRW,300000,250020.0,49980.0,,42,208,0.1666,,3.738
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,88,PLO Hi-Lo 5 Card (Big O),PLO,PLO,N,KRW,700000,601580.0,98420.0,,54,486,0.1406,,3.989
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,89,Turbo,Turbo,NLH,N,KRW,700000,601580.0,98420.0,,93,486,0.1406,,4.533
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,90,Turbo NL Triple Draw Mix,Mixed,Mixed,N,KRW,400000,333360.0,66640.0,,37,278,0.1666,,3.611
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-07,91,Super Hyper Turbo,HyperTurbo,NLH,N,KRW,350000,291690.0,58310.0,,100,243,0.1666,,4.605
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,92,Micro Main Event,MicroMain,NLH,N,KRW,450000,,,,135,312,,,4.905
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,93,High Roller Last Chance,HighRoller,NLH,Y,KRW,3000000,2700000.0,300000.0,,94,2083,0.1,,4.543
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,94,PL Omaha High,PLO,PLO,N,KRW,700000,601580.0,98420.0,,32,486,0.1406,,3.466
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,95,Turbo,Turbo,NLH,N,KRW,500000,427100.0,72900.0,,63,347,0.1458,,4.143
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,96,Turbo Double Stack SHR,SuperHighRoller,NLH,Y,KRW,7000000,,,,17,4861,,,2.833
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,97,Turbo PLO Hi-Lo 5 Card,PLO,PLO,N,KRW,700000,601580.0,98420.0,,42,486,0.1406,,3.738
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,98,Hyper Turbo Double Stack,HyperTurbo,NLH,N,KRW,400000,333360.0,66640.0,,32,278,0.1666,,3.466
+APT Jeju Classic 2026,APT,"LES A / Landing Casino, Jeju",2026-02-08,99,Hyper Turbo High Roller,HighRoller,NLH,Y,KRW,1500000,1350000.0,150000.0,,72,1042,0.1,,4.277
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-28,20,APT Main Event,Main,NLH,Y,KRW,2600000,,,,1693,1806,,,7.434
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,1,Korea National Cup,NationalCup,NLH,Y,KRW,850000,,,,760,590,,,6.633
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,2,Superstar Challenge,SuperHighRoller,NLH,Y,KRW,35000000,,,,40,24306,,,3.689
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-29,35,Baby Superstar,SuperHighRoller,NLH,Y,KRW,10000000,,,,64,6944,,,4.159
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-10-03,78,Mini Main Event,MiniMain,NLH,Y,KRW,1000000,,,,618,694,,,6.426
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-10-04,89,Double Stack,Deepstack,NLH,N,KRW,850000,,,,254,590,,,5.537
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-10-04,90,APT High Roller,HighRoller,NLH,Y,KRW,7000000,,,,305,4861,,,5.72
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,3,PLO Hi-Lo 5 Card (Big O),PLO,PLO,N,KRW,700000,,,,34,486,,,3.526
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,4,Single Day High Roller,HighRoller,NLH,Y,KRW,3000000,,,,50,2083,,,3.912
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,5,Turbo PL Omaha High,PLO,PLO,N,KRW,500000,,,,46,347,,,3.829
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,6,Turbo High Roller,HighRoller,NLH,Y,KRW,1500000,,,,2,1042,,,0.693
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,7,Hyper Turbo,HyperTurbo,NLH,N,KRW,500000,,,,39,347,,,3.664
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,8,Hyper Turbo NL Single Draw Mix,Mixed,Mixed,N,KRW,400000,,,,16,278,,,2.773
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-26,9,Super Hyper Turbo,HyperTurbo,NLH,N,KRW,350000,,,,67,243,,,4.205
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-27,10,Mystery Bounty Hunter,MysteryBounty,NLH,Y,KRW,1100000,,,,1111,764,,,7.013
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-27,11,APT Super High Roller,SuperHighRoller,NLH,Y,KRW,15000000,,,,97,10417,,,4.575
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-27,12,PLO High - High Roller,PLO,PLO,N,KRW,3000000,,,,27,2083,,,3.296
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-27,13,Women's Event,Womens,NLH,N,KRW,300000,,,,44,208,,,3.784
+APT Jeju 2025 (Sept),APT,"LES A / Landing Casino, Jeju",2025-09-27,14,Dealer's Choice,Mixed,Mixed,N,KRW,700000,,,,22,486,,,3.091
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-08,20,Red Dragon Championship,Main,NLH,Y,KRW,2500000,2250000.0,250000.0,,886,1736,0.1,,6.787
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-05,4,Baby Dragon,Deepstack,NLH,N,KRW,1500000,1350000.0,150000.0,,503,1042,0.1,,6.221
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-07,15,Red Dragon Prestige High Roller,HighRoller,NLH,Y,KRW,6000000,5460000.0,540000.0,,135,4167,0.09,,4.905
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-11,38,Dragon Egg Mystery Bounty,MysteryBounty,NLH,Y,KRW,3500000,3150000.0,350000.0,,329,2431,0.1,,5.796
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-12,44,Red Dragon Mini Main Event,MiniMain,NLH,Y,KRW,2000000,1800000.0,200000.0,,198,1389,0.1,,5.288
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-12,46,Red Dragon Prestige Super High Roller,SuperHighRoller,NLH,Y,KRW,12000000,11160000.0,840000.0,,49,8333,0.07,,3.892
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-04,1,RD Team Event,NLH-Other,NLH,N,KRW,2000000,1800000.0,200000.0,,33,1389,0.1,,3.497
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-04,2,Baby Dragon Warm-Up NLH,NLH-Other,NLH,N,KRW,800000,688000.0,112000.0,,34,556,0.14,,3.526
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-04,3,Hyper Turbo NLH,HyperTurbo,NLH,N,KRW,500000,425000.0,75000.0,,41,347,0.15,,3.714
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-05,5,Big Bounty NLH,NLH-Other,NLH,N,KRW,1000000,880000.0,120000.0,,25,694,0.12,,3.219
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-05,7,Hyper Turbo Bounty NLH,HyperTurbo,NLH,N,KRW,500000,425000.0,75000.0,,53,347,0.15,,3.97
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-06,8,3 Game Stud Mix,Mixed,Mixed,N,KRW,800000,688000.0,112000.0,,7,556,0.14,,1.946
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-06,9,MegaStack Classic NLH,Deepstack,NLH,N,KRW,1000000,880000.0,120000.0,,43,694,0.12,,3.761
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-06,10,Bounty NLH,NLH-Other,NLH,N,KRW,800000,688000.0,112000.0,,33,556,0.14,,3.497
+RDPT Jeju II 2025,RDPT,"LES A / Landing Casino, Jeju",2025-07-06,11,No Limit 7 Card Stud,Mixed,Mixed,N,KRW,400000,340000.0,60000.0,,12,278,0.15,,2.485
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-02,1,Triton One Genesis,NLH-Other,NLH,N,USD,3000,,,,1185,3000,,,7.077
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-03,3,One Night NLH 8-Handed,NLH-Other,NLH,N,USD,5000,,,,48,5000,,,3.871
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-04,5,NLH 8-Handed Mystery Bounty,MysteryBounty,NLH,Y,USD,10000,,,,273,10000,,,5.609
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-04,7,One Night NLH Bounty Quattro,NLH-Other,NLH,N,USD,5000,,,,89,5000,,,4.489
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-05,8,Triton One Main Event,Main,NLH,Y,USD,8000,,,,1046,8000,,,6.953
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-05,11,One Night NLH 8-Handed,NLH-Other,NLH,N,USD,2000,,,,169,2000,,,5.13
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-06,12,One Day High Roller #2,HighRoller,NLH,Y,USD,20000,,,,56,20000,,,4.025
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-06,13,One Night NLH 8-Handed,NLH-Other,NLH,N,USD,2000,,,,133,2000,,,4.89
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-07,15,Triton One High Roller,HighRoller,NLH,Y,USD,15000,,,,353,15000,,,5.866
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-07,17,One Night NLH Bounty Quattro,NLH-Other,NLH,N,USD,2000,,,,189,2000,,,5.242
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-08,18,Short Deck Ante-Only PLPF,ShortDeck,ShortDeck,N,USD,50000,,,,47,50000,,,3.85
+Triton One 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-10,19,$100K Short Deck,ShortDeck,ShortDeck,N,USD,100000,,,,58,100000,,,4.06
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-09,1,WPT Global Slam,HighRoller,NLH,Y,USD,25000,,,,311,25000,,,5.74
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-10,2,NLH 8-Handed,HighRoller,NLH,Y,USD,30000,,,,183,30000,,,5.209
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-11,3,NLH 7-Handed Mystery Bounty,MysteryBounty,NLH,Y,USD,40000,,,,158,40000,,,5.063
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-12,20,$200K Short Deck PLPF,ShortDeck,ShortDeck,N,USD,200000,,,,61,200000,,,4.111
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-12,5,NLH 8-Handed,HighRoller,NLH,Y,USD,60000,,,,154,60000,,,5.037
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-13,6,NLH 7-Handed,HighRoller,NLH,Y,USD,50000,,,,146,50000,,,4.984
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-14,7,NLH 8-Handed,SuperHighRoller,NLH,Y,USD,150000,,,,114,150000,,,4.736
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-15,8,NLH Turbo Bounty Quattro,HighRoller,NLH,Y,USD,50000,,,,89,50000,,,4.489
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-16,9,NLH Main Event,Main,NLH,Y,USD,100000,,,,228,100000,,,5.429
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-17,10,NLH 7-Handed,SuperHighRoller,NLH,Y,USD,125000,,,,69,125000,,,4.234
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-18,11,PLO / NLH,Mixed,Mixed,N,USD,30000,,,,81,30000,,,4.394
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-19,12,PLO Main Event,Main,PLO,Y,USD,100000,,,,116,100000,,,4.754
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-20,13,PLO 6-Handed,PLO,PLO,N,USD,25000,,,,60,25000,,,4.094
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-21,15,PLO 6-Handed,PLO,PLO,N,USD,50000,,,,64,50000,,,4.159
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-22,16,PLO 6-Handed,PLO,PLO,N,USD,75000,,,,67,75000,,,4.205
+Triton SHRS Jeju II 2025,Triton,"LES A / Landing Casino, Jeju",2025-09-23,17,PLO Turbo Bounty Quattro,PLO,PLO,N,USD,30000,,,,54,30000,,,3.989
