@@ -94,14 +94,64 @@ describe("series-market public/private architecture boundary", () => {
     }
   });
 
-  it("has no runtime route, component, feature-flag, or data-release caller in PR1", () => {
+  it("allows only the named PR4 one-way runtime callers", () => {
+    const allowedCallers = new Set([
+      "src/App.tsx",
+      "src/pages/VerifiedMarketJeju.tsx",
+      "src/components/series-market/EvidenceStateBadge.tsx",
+      "src/components/series-market/VerifiedMarketDashboard.tsx",
+      "src/components/series-market/VerifiedMarketDevPreview.tsx",
+      "src/components/series-market/VerifiedMarketEvidenceSheet.tsx",
+      "src/components/series-market/VerifiedMarketJejuContent.tsx",
+    ]);
     const candidates = sourceFiles("src").filter(
       (file) => !file.includes(".test.") && !file.startsWith(`${MARKET}/`),
     );
     for (const file of candidates) {
-      for (const specifier of importSpecifiers(file)) expect(specifier).not.toContain("series-market");
+      for (const specifier of importSpecifiers(file)) {
+        if (specifier.includes("series-market")) expect(allowedCallers.has(file), file).toBe(true);
+      }
     }
   }, 20_000);
+
+  it("keeps committed Jeju artifacts in the lazy content module only", () => {
+    const artifactOwner = "src/components/series-market/VerifiedMarketJejuContent.tsx";
+    const candidates = sourceFiles("src").filter((file) => !file.includes(".test."));
+    const artifactImporters = candidates.filter((file) =>
+      readFileSync(join(ROOT, file), "utf8").includes("series-market/datasets/jeju/v1"),
+    );
+    expect(artifactImporters).toEqual([artifactOwner]);
+    for (const file of ["src/App.tsx", "src/pages/ClubAdmin.tsx", "src/components/Layout.tsx"]) {
+      const source = readFileSync(join(ROOT, file), "utf8");
+      expect(source).not.toContain("jeju_import_v1.json");
+      expect(source).not.toContain("source-manifest.json");
+      expect(source).not.toContain("data-quality.json");
+    }
+  }, 20_000);
+
+  it("keeps the public read model and UI free of network, Supabase, and private Series Intelligence", () => {
+    const readModel = readFileSync(join(ROOT, `${MARKET}/verifiedMarketReadModel.ts`), "utf8");
+    expect(readModel).not.toMatch(/(?:react|vite|fetch\s*\(|supabase|@\/hooks|@\/pages|@\/components)/i);
+    expect(readModel).not.toMatch(/(?:capture|forecast|nowcast|calibration|registration|cashier|payment|clubFinance)/i);
+    expect(readModel).not.toMatch(/\bNumber\s*\(/);
+
+    const runtimeFiles = [
+      ...sourceFiles("src/components/series-market"),
+      "src/pages/VerifiedMarketJeju.tsx",
+    ].filter((file) => !file.includes(".test."));
+    for (const file of runtimeFiles) {
+      const source = readFileSync(join(ROOT, file), "utf8");
+      expect(source, file).not.toMatch(/fetch\s*\(|integrations\/supabase|from\s+["']@\/lib\/supabase/i);
+    }
+  });
+
+  it("keeps the visual harness DEV-gated and the owner route lazy", () => {
+    const app = readFileSync(join(ROOT, "src/App.tsx"), "utf8");
+    expect(app).toContain('lazy(() => import("./pages/VerifiedMarketJeju"))');
+    expect(app).toContain('path="/club/admin/market-intelligence"');
+    expect(app).toContain('path="/__dev/series-market"');
+    expect(app).toMatch(/DevSeriesMarketPreview\s*=\s*import\.meta\.env\.DEV/);
+  });
 
   it("keeps the PR3 generator deterministic and outside runtime integrations", () => {
     const generator = readFileSync(join(ROOT, "scripts/series-market/generateJejuDatasetRelease.ts"), "utf8");
