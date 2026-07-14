@@ -40,11 +40,11 @@ Hai cổng bắt buộc đang chặn rollout:
 - `npx tsc -b --pretty false`: **không kết luận**; không in lỗi nhưng timeout sau 184 giây và tiến trình dùng khoảng 1.9 GB RAM đã được dừng đúng PID.
 - ESLint mục tiêu cho các file Floor mới/sửa: PASS.
 - Vitest contract: PASS 10/10.
-- Playwright E2E unauthenticated `/ops`, `/ops/tables`, `/ops/cashier`: PASS 6/6 on 390px mobile and 1280px desktop. Uses a dummy local Supabase URL/key only to boot the client; it does not call production.
+- Playwright E2E unauthenticated `/ops`, `/ops/tables`, `/ops/cashier`: PASS 6/6 on 390px mobile and 1280px desktop. Playwright tự cấp dummy local Supabase URL/key khi môi trường chưa có, chỉ để boot client; không gọi production.
 - `deno check` cho `tournament-live-draw` và `tournament-live-clock`: PASS.
 - `git diff --check`: PASS.
 - Database integration test: CHƯA CHẠY. Docker Desktop service có mặt nhưng không thể start với quyền hiện tại; không dùng live DB làm test fixture.
-- Browser visual UAT: CHƯA CHẠY. Browser plugin thiếu file bắt buộc `docs/browser-safety.md`; không bypass quy trình an toàn của plugin.
+- Browser visual UAT: CHƯA CHẠY. Browser plugin thiếu file bắt buộc `docs/browser-safety.md`; không bypass quy trình an toàn của plugin. Preview Vercel của PR trả PASS nhưng bị Vercel SSO khi mở từ môi trường này, nên chưa có bằng chứng UAT giao diện tương tác.
 - `npm ci --ignore-scripts` báo 21 advisory trong dependency lock hiện tại (7 moderate, 13 high, 1 critical). Không chạy `npm audit fix` vì ngoài phạm vi và có thể gây đổi dependency lớn.
 
 ## Rollout bắt buộc sau khi đóng checkpoint credential
