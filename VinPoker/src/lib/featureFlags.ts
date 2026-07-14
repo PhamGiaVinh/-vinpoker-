@@ -621,12 +621,12 @@ export const FEATURES = {
    * the missing table (42P01) and renders a disabled "chưa áp dụng" state — never a
    * crash. Flip ONLY after the owner applies the migration in a controlled session.
    */
-  liveSpotlightPosts: false,
+  liveSpotlightPosts: true,
   /**
    * Public Live Center, mobile history-first viewer and public clock adapters.
    * The flag remains OFF until the read-only RPCs are applied and Preview UAT passes.
    */
-  liveViewerPulseV2: false,
+  liveViewerPulseV2: true,
   /**
    * Floor bust + payout confirmation through the server-authoritative atomic RPC.
    * OFF preserves the current Floor workflow and makes no new write call.
