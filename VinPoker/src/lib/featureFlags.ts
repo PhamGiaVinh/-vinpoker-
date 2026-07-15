@@ -860,11 +860,10 @@ export const FEATURES = {
   /**
    * Club Admin -> Verified Market Jeju V1 at /club/admin/market-intelligence.
    * Read-only inspection of the committed public seed release: no Supabase,
-   * club data, network, forecasting, or recommendations. Default OFF keeps the
-   * entry hidden from club owners/admins; super_admin retains the internal
-   * preview path. Flip only in a later owner-UAT increment.
+   * club data, network, forecasting, or recommendations. Enabled after the
+   * owner-approved UAT gate; keep false as the immediate rollback switch.
    */
-  seriesMarketVerifiedJeju: false,
+  seriesMarketVerifiedJeju: true,
   /**
    * Club Admin → Series Intelligence demo entry at /club/admin/series-intelligence.
    * Frontend-only owner-facing SHELL that explains the Club Intelligence flow
