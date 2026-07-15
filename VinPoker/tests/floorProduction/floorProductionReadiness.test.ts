@@ -6,6 +6,7 @@ import { floorOpsErrorMessage } from "../../src/lib/floorOpsErrors";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const migration = read("supabase/migrations/20261240000000_floor_production_hardening.sql");
+const clockStartMigration = read("supabase/migrations/20261241000000_floor_clock_start_atomic.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const app = read("src/App.tsx");
@@ -137,12 +138,32 @@ describe("Floor production readiness contracts", () => {
     expect(drawEdge).toContain('supabase.rpc("floor_bust_player"');
     expect(drawEdge).toContain("stale_seat_state");
     expect(drawEdge).toContain("seat_entry_mismatch");
+    expect(drawEdge).toContain("body.seats.length !== 1");
+    expect(drawEdge).toContain('error: "update_seats accepts exactly one seat"');
     expect(drawEdge).toContain("Use the audited Floor RPC for this action");
     expect(drawEdge).not.toContain(".insert(");
     expect(drawEdge).not.toMatch(/\.update\(\{[^}]*player_id/s);
     expect(drawEdge).not.toMatch(/\.update\(\{[^}]*table_id/s);
     expect(clockEdge).toContain("stale_clock_state");
     expect(clockEdge).toContain('.select("id").maybeSingle()');
+    expect(clockEdge).toContain('supabase.rpc("floor_start_tournament_clock"');
+    expect(clockEdge).not.toContain('supabase.rpc("update_tournament_state"');
+    expect(drawEdge).toContain('error: "draw_operation_failed"');
+    expect(clockEdge).toContain('error: "clock_operation_failed"');
+    expect(drawEdge).not.toContain("error: message(error)");
+    expect(clockEdge).not.toContain("error: detail");
+  });
+
+  it("starts the clock in one locked, audited server transaction", () => {
+    expect(clockStartMigration).toContain("CREATE OR REPLACE FUNCTION public.floor_start_tournament_clock");
+    expect(clockStartMigration).toContain("FOR UPDATE");
+    expect(clockStartMigration).toContain("clock_started_at IS NOT NULL");
+    expect(clockStartMigration).toContain("AND clock_started_at IS NULL");
+    expect(clockStartMigration).toContain("tournament_state_transitions");
+    expect(clockStartMigration).toContain("changed_by");
+    expect(clockStartMigration).toContain("floor_tournament_clock_started");
+    expect(clockStartMigration).toContain("SET search_path = public");
+    expect(clockStartMigration).toContain("REVOKE ALL ON FUNCTION public.floor_start_tournament_clock(UUID) FROM PUBLIC, anon;");
   });
 
   it("removes reachable mobile fixture modules and routes unfinished modules honestly", () => {

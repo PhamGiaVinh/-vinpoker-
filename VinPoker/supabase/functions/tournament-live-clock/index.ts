@@ -16,10 +16,6 @@ function response(body: JsonRecord, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Internal error";
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -77,29 +73,17 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case "start": {
-        const { data: firstLevel, error: levelError } = await supabase
-          .from("tournament_levels")
-          .select("level_number")
-          .eq("tournament_id", tournamentId)
-          .order("level_number", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (levelError) throw levelError;
-        const level = tournament.current_level ?? firstLevel?.level_number;
-        if (typeof level !== "number") return response({ error: "No tournament level configured" }, 409);
-
-        const stateResult = await supabase.rpc("update_tournament_state", {
+        const startResult = await supabase.rpc("floor_start_tournament_clock", {
           p_tournament_id: tournamentId,
-          p_status: "live",
-          p_reason: "Clock started",
         });
-        if (stateResult.error) throw stateResult.error;
-        await updateOne({
-          clock_started_at: new Date().toISOString(),
-          clock_paused_at: null,
-          pause_accumulated: 0,
-          current_level: level,
-        });
+        if (startResult.error) throw startResult.error;
+        if (!isRecord(startResult.data) || startResult.data.ok !== true) {
+          const code = isRecord(startResult.data) && typeof startResult.data.error === "string"
+            ? startResult.data.error
+            : "clock_start_failed";
+          const status = code === "unauthorized" || code === "actor_not_allowed" ? 403 : 409;
+          return response({ error: code }, status);
+        }
         break;
       }
 
@@ -183,7 +167,10 @@ Deno.serve(async (req) => {
     if (clockResult.error) throw clockResult.error;
     return response({ status: "success", clock: clockResult.data });
   } catch (error) {
-    const detail = errorMessage(error);
-    return response({ error: detail }, detail === "stale_clock_state" ? 409 : 500);
+    if (error instanceof Error && error.message === "stale_clock_state") {
+      return response({ error: "stale_clock_state" }, 409);
+    }
+    console.error("tournament-live-clock failed");
+    return response({ error: "clock_operation_failed" }, 500);
   }
 });

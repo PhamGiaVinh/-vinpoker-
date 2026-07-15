@@ -34,10 +34,6 @@ function response(body: JsonRecord, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : "Internal error";
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -93,15 +89,14 @@ Deno.serve(async (req) => {
     }
     if (action !== "update_seats") return response({ error: "Invalid action" }, 400);
 
-    if (!Array.isArray(body.seats) || body.seats.length < 1 || body.seats.length > 100) {
-      return response({ error: "seats must contain 1-100 rows" }, 400);
+    // Every supported Floor call updates one seat. Refuse an arbitrary batch here:
+    // each seat mutation is atomic, but a client-side loop cannot make a multi-seat
+    // request atomic as a whole.
+    if (!Array.isArray(body.seats) || body.seats.length !== 1) {
+      return response({ error: "update_seats accepts exactly one seat" }, 400);
     }
 
-    const rows = body.seats.slice().sort((left, right) => {
-      const leftActive = isRecord(left) && left.is_active === false ? 0 : 1;
-      const rightActive = isRecord(right) && right.is_active === false ? 0 : 1;
-      return leftActive - rightActive;
-    });
+    const rows = body.seats;
 
     let updated = 0;
     let unchanged = 0;
@@ -214,7 +209,8 @@ Deno.serve(async (req) => {
     }
 
     return response({ status: "success", data: { updated, unchanged } });
-  } catch (error) {
-    return response({ error: message(error) }, 500);
+  } catch {
+    console.error("tournament-live-draw failed");
+    return response({ error: "draw_operation_failed" }, 500);
   }
 });
