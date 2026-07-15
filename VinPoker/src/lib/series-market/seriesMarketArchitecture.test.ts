@@ -49,6 +49,20 @@ function contractPropertyNames(rel: string): string[] {
   return out;
 }
 
+function interfacePropertyNames(rel: string, interfaceName: string): string[] {
+  const out: string[] = [];
+  walk(parse(rel), (node) => {
+    if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
+      for (const member of node.members) {
+        if (ts.isPropertySignature(member) && member.name && (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name))) {
+          out.push(member.name.text);
+        }
+      }
+    }
+  });
+  return out;
+}
+
 const productionFiles = sourceFiles(MARKET).filter((file) => !file.includes(".test."));
 
 describe("series-market public/private architecture boundary", () => {
@@ -158,5 +172,21 @@ describe("series-market public/private architecture boundary", () => {
     expect(generator).not.toMatch(/Date\.now|generatedAt|fetch\(|supabase|react|agent|pr4/i);
     expect(generator).toContain("source-manifest.json");
     expect(generator).toContain("canonical/jeju_import_v1.json");
+  });
+
+  it("keeps Comparable Event Engine V0 as a pure, outcome-separated research module", () => {
+    const engine = readFileSync(join(ROOT, `${MARKET}/comparableEvent.ts`), "utf8");
+    const evaluator = readFileSync(join(ROOT, "scripts/series-market/evaluateComparableV0.ts"), "utf8");
+    const selectionKeys = interfacePropertyNames(`${MARKET}/comparableEvent.ts`, "ComparableSelectionInput");
+    expect(selectionKeys).not.toContain("entries");
+    expect(interfacePropertyNames(`${MARKET}/comparableEvent.ts`, "ComparableOutcome")).toContain("entries");
+    expect(engine).toContain("selectedOutcomes(corpus, selection.selectedComparableIds)");
+    expect(engine).toContain("chronologyOriginDate");
+    expect(engine).toContain("excludedFestivalIds");
+    for (const source of [engine, evaluator]) {
+      expect(source).not.toMatch(/(?:fetch\s*\(|supabase|react|@\/components|@\/pages|agent|Date\.now|Math\.random|jeju_events_seed_v0\.csv)/i);
+    }
+    expect(evaluator).toContain("buildJejuComparableCorpus");
+    expect(evaluator).toContain("evaluateComparableV0");
   });
 });
