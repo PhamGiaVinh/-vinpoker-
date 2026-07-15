@@ -4,146 +4,173 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function response(body: JsonRecord, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return new Response(JSON.stringify({ error: "Missing Authorization header" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (!authHeader) return response({ error: "Missing Authorization header" }, 401);
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !anonKey) return response({ error: "Server configuration missing" }, 500);
 
+  const supabase = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
   const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (userError || !user) return response({ error: "Unauthorized" }, 401);
 
-  const body = await req.json();
-  const { tournament_id, action } = body;
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return response({ error: "Invalid JSON body" }, 400);
+  }
+  if (!isRecord(body)) return response({ error: "Invalid request body" }, 400);
 
-  if (!tournament_id || !action) return new Response(JSON.stringify({ error: "Missing tournament_id or action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-  let result: any;
+  const tournamentId = typeof body.tournament_id === "string" ? body.tournament_id : null;
+  const action = typeof body.action === "string" ? body.action : null;
+  if (!tournamentId || !action) return response({ error: "Missing tournament_id or action" }, 400);
 
   try {
-    switch (action) {
-      case "start": {
-        const { current_level } = body;
-        result = await supabase.rpc("update_tournament_state", {
-          p_tournament_id: tournament_id,
-          p_status: "live",
-          p_reason: "Clock started",
-        });
-        if (!result.error) {
-          await supabase.from("tournaments").update({
-            clock_started_at: new Date().toISOString(),
-            clock_paused_at: null,
-            current_level: current_level || 1,
-          }).eq("id", tournament_id);
-        }
-        break;
-      }
-      case "pause": {
-        result = await supabase.from("tournaments").update({
-          clock_paused_at: new Date().toISOString(),
-        }).eq("id", tournament_id);
-        break;
-      }
-      case "resume": {
-        const { data: tournament } = await supabase.from("tournaments").select("clock_started_at, clock_paused_at, pause_accumulated").eq("id", tournament_id).single();
-        if (tournament && tournament.clock_paused_at) {
-          const pausedDuration = Math.floor((new Date().getTime() - new Date(tournament.clock_paused_at).getTime()) / 1000);
-          const newAccumulated = (tournament.pause_accumulated || 0) + pausedDuration;
-          result = await supabase.from("tournaments").update({
-            clock_paused_at: null,
-            pause_accumulated: newAccumulated,
-          }).eq("id", tournament_id);
-        }
-        break;
-      }
-      case "next_level": {
-        const { current_level } = body;
-        result = await supabase.from("tournaments").update({
-          current_level,
-        }).eq("id", tournament_id);
-        break;
-      }
-      case "previous_level": {
-        // Mirror of next_level (canonical behavior = set current_level only; the stored
-        // blind structure in tournament_levels and the clock model are unchanged).
-        // Guarded server-side: cannot go below the first level.
-        const { data: tournament, error: tErr } = await supabase
-          .from("tournaments")
-          .select("current_level")
-          .eq("id", tournament_id)
-          .single();
-        if (tErr) throw tErr;
-        const cur = tournament?.current_level ?? 1;
-        if (cur <= 1) {
-          return new Response(JSON.stringify({ error: "Already at the first level" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        result = await supabase.from("tournaments").update({
-          current_level: cur - 1,
-        }).eq("id", tournament_id);
-        break;
-      }
-      case "adjust_time": {
-        // Adjust ONLY the current clock's remaining time by shifting clock_started_at.
-        // The stored blind structure (tournament_levels) stays the source of truth and is
-        // never modified. Works whether the clock is running or paused (both derive elapsed
-        // from clock_started_at). Clamps remaining into [0, current level duration].
-        const rawDelta = typeof body.delta_seconds === "number"
-          ? body.delta_seconds
-          : (typeof body.delta_minutes === "number" ? body.delta_minutes * 60 : NaN);
-        if (!Number.isFinite(rawDelta) || Math.trunc(rawDelta) !== rawDelta) {
-          return new Response(JSON.stringify({ error: "Invalid delta (expect integer delta_seconds or delta_minutes)" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        const MAX_DELTA = 24 * 60 * 60; // reject absurd single-call adjustments
-        if (Math.abs(rawDelta) > MAX_DELTA) {
-          return new Response(JSON.stringify({ error: "Delta too large" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        const { data: tournament, error: tErr } = await supabase
-          .from("tournaments")
-          .select("clock_started_at")
-          .eq("id", tournament_id)
-          .single();
-        if (tErr) throw tErr;
-        if (!tournament?.clock_started_at) {
-          return new Response(JSON.stringify({ error: "Clock not started" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        // Derive current remaining + level duration from the stored structure.
-        const { data: clockNow, error: cErr } = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournament_id });
-        if (cErr) throw cErr;
-        const cur: any = clockNow;
-        const durationMin = cur?.current_level?.duration_minutes;
-        if (typeof durationMin !== "number") {
-          return new Response(JSON.stringify({ error: "No current level to adjust" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        const levelDurationS = durationMin * 60;
-        const currentRemaining = typeof cur.remaining_seconds === "number" ? cur.remaining_seconds : 0;
-        // Clamp target remaining to [0, level duration] — never below 0, never above the
-        // stored level's full duration (adjust can't fabricate time beyond the structure).
-        const targetRemaining = Math.max(0, Math.min(levelDurationS, currentRemaining + rawDelta));
-        const effectiveDelta = targetRemaining - currentRemaining; // +remaining => start later
-        const newStarted = new Date(new Date(tournament.clock_started_at).getTime() + effectiveDelta * 1000).toISOString();
-        result = await supabase.from("tournaments").update({
-          clock_started_at: newStarted,
-        }).eq("id", tournament_id);
-        break;
-      }
-      default:
-        return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const { data: tournament, error: tournamentError } = await supabase
+      .from("tournaments")
+      .select("id,club_id,status,current_level,clock_started_at,clock_paused_at,pause_accumulated")
+      .eq("id", tournamentId)
+      .maybeSingle();
+    if (tournamentError || !tournament) return response({ error: "Tournament unavailable" }, 403);
+
+    const [floorResult, cashierResult] = await Promise.all([
+      supabase.rpc("floor_club_ids", { _user_id: user.id }),
+      supabase.rpc("cashier_club_ids", { _user_id: user.id }),
+    ]);
+    if (floorResult.error || cashierResult.error) return response({ error: "Capability check failed" }, 403);
+    const permittedClubIds = new Set([...(floorResult.data ?? []), ...(cashierResult.data ?? [])]);
+    if (!permittedClubIds.has(tournament.club_id)) return response({ error: "Actor not allowed" }, 403);
+    if (tournament.status === "completed" || tournament.status === "cancelled") {
+      return response({ error: "Tournament is not open" }, 409);
     }
 
-    if (result.error) throw result.error;
+    const updateOne = async (patch: JsonRecord, expected?: { column: string; value: unknown }) => {
+      let query = supabase.from("tournaments").update(patch).eq("id", tournamentId);
+      if (expected) query = expected.value === null ? query.is(expected.column, null) : query.eq(expected.column, expected.value);
+      const { data, error } = await query.select("id").maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error("stale_clock_state");
+    };
 
-    const clockResult = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournament_id });
-    return new Response(JSON.stringify({ status: "success", clock: clockResult.data }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    switch (action) {
+      case "start": {
+        const startResult = await supabase.rpc("floor_start_tournament_clock", {
+          p_tournament_id: tournamentId,
+        });
+        if (startResult.error) throw startResult.error;
+        if (!isRecord(startResult.data) || startResult.data.ok !== true) {
+          const code = isRecord(startResult.data) && typeof startResult.data.error === "string"
+            ? startResult.data.error
+            : "clock_start_failed";
+          const status = code === "unauthorized" || code === "actor_not_allowed" ? 403 : 409;
+          return response({ error: code }, status);
+        }
+        break;
+      }
+
+      case "pause": {
+        if (!tournament.clock_started_at) return response({ error: "Clock not started" }, 409);
+        if (!tournament.clock_paused_at) {
+          await updateOne({ clock_paused_at: new Date().toISOString() }, { column: "clock_paused_at", value: null });
+        }
+        break;
+      }
+
+      case "resume": {
+        if (!tournament.clock_started_at) return response({ error: "Clock not started" }, 409);
+        if (tournament.clock_paused_at) {
+          const pausedDuration = Math.floor((Date.now() - new Date(tournament.clock_paused_at).getTime()) / 1000);
+          const pauseAccumulated = (tournament.pause_accumulated ?? 0) + Math.max(0, pausedDuration);
+          await updateOne(
+            { clock_paused_at: null, pause_accumulated: pauseAccumulated },
+            { column: "clock_paused_at", value: tournament.clock_paused_at },
+          );
+        }
+        break;
+      }
+
+      case "next_level":
+      case "previous_level": {
+        const current = tournament.current_level ?? 1;
+        const direction = action === "next_level" ? 1 : -1;
+        const target = current + direction;
+        if (target < 1) return response({ error: "Already at the first level" }, 400);
+        const { data: targetLevel, error: levelError } = await supabase
+          .from("tournament_levels")
+          .select("level_number")
+          .eq("tournament_id", tournamentId)
+          .eq("level_number", target)
+          .maybeSingle();
+        if (levelError) throw levelError;
+        if (!targetLevel) return response({ error: "Target level does not exist" }, 409);
+        await updateOne({ current_level: target }, { column: "current_level", value: tournament.current_level });
+        break;
+      }
+
+      case "adjust_time": {
+        const delta = typeof body.delta_seconds === "number"
+          ? body.delta_seconds
+          : typeof body.delta_minutes === "number"
+            ? body.delta_minutes * 60
+            : Number.NaN;
+        if (!Number.isSafeInteger(delta)) return response({ error: "Delta must be an integer" }, 400);
+        if (Math.abs(delta) > 24 * 60 * 60) return response({ error: "Delta too large" }, 400);
+        if (!tournament.clock_started_at) return response({ error: "Clock not started" }, 409);
+
+        const { data: clockNow, error: clockError } = await supabase.rpc("get_tournament_clock", {
+          p_tournament_id: tournamentId,
+        });
+        if (clockError) throw clockError;
+        const clock = isRecord(clockNow) ? clockNow : null;
+        const currentLevel = clock && isRecord(clock.current_level) ? clock.current_level : null;
+        const durationMinutes = currentLevel?.duration_minutes;
+        const remainingSeconds = clock?.remaining_seconds;
+        if (typeof durationMinutes !== "number" || typeof remainingSeconds !== "number") {
+          return response({ error: "No current level to adjust" }, 409);
+        }
+
+        const levelDuration = durationMinutes * 60;
+        const targetRemaining = Math.max(0, Math.min(levelDuration, remainingSeconds + delta));
+        const effectiveDelta = targetRemaining - remainingSeconds;
+        const startedAt = new Date(new Date(tournament.clock_started_at).getTime() + effectiveDelta * 1000).toISOString();
+        await updateOne(
+          { clock_started_at: startedAt },
+          { column: "clock_started_at", value: tournament.clock_started_at },
+        );
+        break;
+      }
+
+      default:
+        return response({ error: "Invalid action" }, 400);
+    }
+
+    const clockResult = await supabase.rpc("get_tournament_clock", { p_tournament_id: tournamentId });
+    if (clockResult.error) throw clockResult.error;
+    return response({ status: "success", clock: clockResult.data });
+  } catch (error) {
+    if (error instanceof Error && error.message === "stale_clock_state") {
+      return response({ error: "stale_clock_state" }, 409);
+    }
+    console.error("tournament-live-clock failed");
+    return response({ error: "clock_operation_failed" }, 500);
   }
 });

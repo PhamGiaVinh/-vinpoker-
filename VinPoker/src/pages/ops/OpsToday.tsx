@@ -24,7 +24,7 @@ export default function OpsToday() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const scopedIds = Array.from(new Set([...clubIds, ...dealerClubIds]));
   const activeClub = scopedIds[0];
 
   const { data: tournaments } = useTournaments(activeClub);
@@ -37,7 +37,7 @@ export default function OpsToday() {
     return list.find((t) => LIVEISH.includes(t.status)) ?? null;
   }, [tournaments]);
 
-  const assignments = (asgQ.data ?? []) as Enriched[];
+  const assignments = useMemo(() => (asgQ.data ?? []) as Enriched[], [asgQ.data]);
   const counts = useMemo(() => {
     const active = (tablesQ.data ?? []).filter((t) => (t.status ?? "active") === "active");
     const staffedTableIds = new Set(assignments.map((a) => a.table_id));

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { toast } from "sonner";
-import { User, ArrowRightLeft, Coins, Receipt, UserMinus, IdCard, Printer, Loader2 } from "lucide-react";
+import { User, ArrowRightLeft, Coins, Receipt, UserMinus, IdCard, Loader2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -11,34 +10,30 @@ import {
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import type { MockSeat } from "../mock/opsData";
 
 /**
- * PlayerActionSheets — luồng người chơi đầy đủ theo bản vẽ đã duyệt:
- * S7 sheet thao tác (Thông tin / Chuyển / Sửa chip / Phiếu / Loại) → S8 thẻ thông tin band ·
- * S9 chuyển bàn-ghế (chọn ghế trống trực quan) · N5 sửa chip (numpad + lý do) · N6 phiếu · S10 xác nhận Loại.
- * "Ấn vào người chơi ở BẤT KỲ đâu đều thao tác được" — mọi list người chơi đều mở component này.
- * DỮ LIỆU MẪU, read-only: mọi xác nhận là toast "(bản mẫu)".
+ * Production Floor player actions. Every displayed value comes from the selected
+ * live seat; writes are delegated to audited callbacks owned by the parent.
  */
 export interface PlayerTarget {
-  seat: MockSeat;
+  seat: {
+    seat: number;
+    name: string | null;
+    chip: string | null;
+    entryNo?: number;
+  };
   tableNo: number;
-  /** Chip HIỆN TẠI (số thật) để khởi tạo numpad khi nối thật; bỏ trống = mock. */
-  chipCount?: number;
+  chipCount: number;
 }
 
 type Step = "actions" | "info" | "move" | "chip" | "receipt" | "bust" | null;
 
-const MOVE_TABLES = [8, 9, 10];
-const MOVE_SEATS = [1, 3, 4, 5, 7, 9];
-const FREE_SEATS = new Set([3, 4, 7]);
 const MOVE_REASONS = ["cân bàn", "gãy bàn", "yêu cầu TD"];
 const CHIP_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "⌫"];
 
 export function PlayerActionSheets({
   target,
   onClose,
-  pendingNotice,
   onSaveChip,
   onBustPlayer,
   onOpenBust,
@@ -50,29 +45,14 @@ export function PlayerActionSheets({
 }: {
   target: PlayerTarget | null;
   onClose: () => void;
-  /** Khi màn chủ chạy DỮ LIỆU THẬT nhưng hành động CHƯA nối: mọi nút con (Thông tin/Chuyển/
-   *  Sửa chip/Phiếu/Loại) chỉ toast notice này và đóng — KHÔNG mở các sheet con (chúng còn
-   *  scaffold mẫu, không được hiện như thật). Bỏ trống = hành vi mock cũ "(bản mẫu)". */
-  pendingNotice?: string;
-  /** Nếu có → nút "Sửa chip" mở numpad THẬT; xác nhận gọi callback này (màn chủ ghi update_seats
-   *  với identity ghế thật) và trả về true nếu thành công. Các nút khác vẫn theo pendingNotice. */
-  onSaveChip?: (newChip: number) => Promise<boolean>;
-  /** Nếu có → nút "Loại" mở xác nhận THẬT (💰 ITM). onOpenBust: màn chủ ĐỌC LẠI hạng+thưởng tạm
-   *  tính ngay lúc mở (P0-5, không dùng cache). bustInfo: kết quả đọc lại. onBustPlayer: ghi
-   *  update_seats is_active:false, trả true nếu thành công. */
-  onBustPlayer?: () => Promise<boolean>;
-  onOpenBust?: () => void;
-  bustInfo?: { loading: boolean; place: number | null; prize: number | null } | null;
-  /** Nếu có → nút "Chuyển" mở chọn bàn/ghế THẬT: bàn đích + ghế trống lấy từ moveTargets; xác nhận
-   *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
-  moveTargets?: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
-  onMovePlayer?: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
-  /** Nếu có → nút "Phiếu" mở phiếu THẬT (SeatReceiptDialog ở màn chủ: QR + in, read-only). act()
-   *  gọi callback này rồi đóng — KHÔNG mở N6 mock. Bỏ trống = hành vi cũ (pendingNotice/mock). */
-  onOpenReceipt?: () => void;
-  /** true → nút "Thông tin" mở thẻ S8 với DỮ LIỆU THẬT (tên/bàn·ghế/chip/lượt vào từ target),
-   *  không còn chặn bởi pendingNotice. Mặc định (false) → theo pendingNotice (chưa nối). */
-  infoLive?: boolean;
+  onSaveChip: (newChip: number) => Promise<boolean>;
+  onBustPlayer: () => Promise<boolean>;
+  onOpenBust: () => void;
+  bustInfo: { loading: boolean; place: number | null; prize: number | null } | null;
+  moveTargets: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
+  onMovePlayer: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
+  onOpenReceipt: () => void;
+  infoLive: true;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
@@ -98,25 +78,19 @@ export function PlayerActionSheets({
     setChipValue("62500");
     onClose();
   };
-  const done = (msg: string) => {
-    toast.success(msg + " (bản mẫu)");
-    close();
-  };
-  /** Điều hướng nút con: chip có onSaveChip → mở numpad THẬT (init = chip hiện tại);
-   *  còn lại pendingNotice set → toast + đóng (không mở sheet con mock). */
   const act = (next: Step) => {
-    if (next === "chip" && onSaveChip) {
+    if (next === "chip") {
       setChipValue(String(target?.chipCount ?? 0));
       go("chip");
       return;
     }
-    if (next === "bust" && onBustPlayer) {
-      onOpenBust?.();          // P0-5: đọc lại hạng + thưởng tạm tính NGAY khi mở
+    if (next === "bust") {
+      onOpenBust();            // đọc lại hạng + thưởng tạm tính ngay khi mở
       go("bust");
       return;
     }
-    if (next === "move" && onMovePlayer) {
-      const first = moveTargets && moveTargets.length > 0 ? moveTargets[0] : null;
+    if (next === "move") {
+      const first = moveTargets.length > 0 ? moveTargets[0] : null;
       setMoveTableId(first?.tt_id ?? null);
       setMoveSeat(first && first.freeSeats.length > 0 ? first.freeSeats[0] : null);
       go("move");
@@ -126,21 +100,15 @@ export function PlayerActionSheets({
       go("info");                // S8 hiện dữ liệu thật từ target — read-only
       return;
     }
-    if (next === "receipt" && onOpenReceipt) {
+    if (next === "receipt") {
       onOpenReceipt();           // màn chủ mở SeatReceiptDialog (QR + in); đọc entry_id, không ghi
       close();
       return;
     }
-    if (pendingNotice) {
-      toast(pendingNotice);
-      close();
-      return;
-    }
-    go(next);
   };
 
   const chipDisplay = Number(chipValue || "0").toLocaleString("vi-VN");
-  const selMoveTarget = moveTargets?.find((x) => x.tt_id === moveTableId) ?? null;
+  const selMoveTarget = moveTargets.find((x) => x.tt_id === moveTableId) ?? null;
   const pressKey = (k: string) => {
     if (k === "⌫") setChipValue((v) => v.slice(0, -1));
     else setChipValue((v) => (v + k).replace(/^0+(?=\d)/, "").slice(0, 9));
@@ -205,8 +173,8 @@ export function PlayerActionSheets({
             <Band cls="bg-[#241a0c]" l={<span className="text-[#d8bc85]">Chip</span>} r={<span className="font-mono text-[#c9a86a]">{s?.chip}</span>} />
             <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Lượt vào</span>} r={<span className="font-mono text-[#f2ece6]">#{s?.entryNo ?? 1}</span>} />
           </div>
-          <button onClick={() => toast("Cấp lại thẻ — mở Cashier (bản mẫu)")} className="ios-press ios-fill mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] text-[#9b8e97]">
-            <IdCard className="h-4 w-4" /> Cấp lại thẻ — mở Cashier
+          <button disabled className="ios-fill mt-3 flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] text-[#9b8e97] opacity-70">
+            <IdCard className="h-4 w-4" /> Cấp lại thẻ: dùng Cashier trên máy tính
           </button>
         </SheetContent>
       </Sheet>
@@ -220,8 +188,7 @@ export function PlayerActionSheets({
           </SheetHeader>
           <div className="mt-0.5 text-[13px] text-[#9b8e97]">{s?.name} · đang ở <span className="font-mono">Bàn {t} · Ghế {s?.seat}</span></div>
 
-          {onMovePlayer ? (
-            (moveTargets && moveTargets.length > 0) ? (
+          {moveTargets.length > 0 ? (
               <>
                 <div className="ios-card mt-3 p-3.5">
                   <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích (còn ghế trống)</div>
@@ -282,54 +249,7 @@ export function PlayerActionSheets({
                 <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống ở bàn khác — mở thêm bàn trước.</div>
                 <button onClick={close} className="ios-press-sm mt-1 rounded-full bg-white/8 px-4 py-1.5 text-[13px] text-[#f2ece6]">Đóng</button>
               </div>
-            )
-          ) : (
-            <>
-              <div className="ios-card mt-3 p-3.5">
-                <div className="text-[12px] text-[#9b8e97]">Chọn bàn đích</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_TABLES.map((tb, i) => (
-                    <span key={tb} className={cn("grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold", i === 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#9b8e97]")}>{tb}</span>
-                  ))}
-                </div>
-                <div className="mt-3 text-[12px] text-[#9b8e97]">Ghế trống ở bàn 8 — chạm để chọn</div>
-                <div className="mt-1.5 flex gap-1.5">
-                  {MOVE_SEATS.map((seatNo) => {
-                    const free = FREE_SEATS.has(seatNo);
-                    const sel = moveSeat === seatNo;
-                    return (
-                      <button key={seatNo} disabled={!free} onClick={() => setMoveSeat(seatNo)}
-                        className={cn("ios-press-sm grid h-8 w-9 place-items-center rounded-lg text-[13px] font-semibold",
-                          sel ? "bg-[#c9a86a] text-[#241A08]" : free ? "bg-emerald-400/15 text-emerald-300" : "bg-white/5 text-[#5f545c]")}>
-                        {seatNo}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="ios-fill mt-2 rounded-2xl py-2.5 text-center text-[14px]">
-                <span className="font-mono text-[#f2ece6]">Bàn {t} · Ghế {s?.seat}</span>
-                <span className="mx-2 text-[#c9a86a]">→</span>
-                <span className="font-mono text-[#d8bc85]">Bàn 8 · Ghế {moveSeat ?? "—"}</span>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-[#9b8e97]">
-                Lý do:
-                {MOVE_REASONS.map((r) => (
-                  <button key={r} onClick={() => setMoveReason(r)}
-                    className={cn("ios-press-sm rounded-full px-2.5 py-1 text-[12px]", moveReason === r ? "bg-[#c9a86a]/15 text-[#d8bc85]" : "bg-white/5 text-[#9b8e97]")}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6]">Huỷ</button>
-                <button onClick={() => done(`Đã chuyển tới bàn 8 ghế ${moveSeat}`)} disabled={moveSeat === null}
-                  className="ios-press ios-primary flex-[2] rounded-2xl py-3 text-[15px] font-bold">
-                  Xác nhận chuyển
-                </button>
-              </div>
-            </>
-          )}
+            )}
         </SheetContent>
       </Sheet>
 
@@ -347,8 +267,7 @@ export function PlayerActionSheets({
               <button key={k} onClick={() => pressKey(k)} className="ios-press-sm rounded-xl bg-white/5 py-2.5 text-center text-[16px] text-[#f2ece6]">{k}</button>
             ))}
           </div>
-          {onSaveChip ? (
-            (() => {
+          {(() => {
               const cur = target?.chipCount ?? 0;
               const next = Number(chipValue || "0");
               const delta = next - cur;
@@ -358,55 +277,19 @@ export function PlayerActionSheets({
                   {delta !== 0 && <span className={delta > 0 ? " text-emerald-300" : " text-rose-300"}> ({delta > 0 ? "+" : ""}{delta.toLocaleString("vi-VN")})</span>}
                 </div>
               );
-            })()
-          ) : (
-            <div className="mt-2.5 rounded-xl bg-amber-400/10 px-3 py-2 text-[13px] text-amber-300">
-              Chênh lệch so với hiện tại — lý do: <b className="text-[#f2ece6]">đếm lại</b>
-            </div>
-          )}
+            })()}
           <button
             disabled={chipBusy || !chipValue || Number(chipValue) < 0}
             onClick={async () => {
-              if (onSaveChip) {
-                setChipBusy(true);
-                const ok = await onSaveChip(Number(chipValue || "0"));
-                setChipBusy(false);
-                if (ok) close();            // refetch do màn chủ lo; không optimistic
-              } else {
-                done(`Đã lưu ${chipDisplay} chip`);
-              }
+              setChipBusy(true);
+              const ok = await onSaveChip(Number(chipValue || "0"));
+              setChipBusy(false);
+              if (ok) close();            // refetch do màn chủ lo; không optimistic
             }}
             className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-bold disabled:opacity-40">
             {chipBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {chipBusy ? "Đang lưu…" : `Lưu ${chipDisplay}`}
           </button>
-        </SheetContent>
-      </Sheet>
-
-      {/* N6 — phiếu */}
-      <Sheet open={sheetOpen("receipt")} onOpenChange={(v) => { if (!v) close(); }}>
-        <SheetContent side="bottom" className="rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center">
-            <SheetTitle className="text-[#f2ece6]">Phiếu #72 <span className="ml-1 rounded-full bg-emerald-400/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">Đã thu</span></SheetTitle>
-          </SheetHeader>
-          <div className="mt-3 rounded-xl bg-[#F5F1E8] p-3.5 text-[#241A08]">
-            <div className="flex justify-between text-[12px] font-semibold"><span>HANOI ROYAL</span><span className="font-mono font-normal">07/07 13:20</span></div>
-            <div className="my-2 border-t border-dashed border-[#b8ad9a]" />
-            <div className="flex justify-between text-[12px]"><span>{s?.name}</span><span className="font-mono">HSOP Main</span></div>
-            <div className="flex justify-between text-[12px]"><span>Buy-in + phí</span><b className="font-mono">5.500.000</b></div>
-            <div className="flex justify-between text-[12px]"><span>Bàn · ghế</span><b className="font-mono">{t} · {s?.seat}</b></div>
-            <div className="mt-2 text-center">
-              <span className="inline-block h-9 w-9 rounded bg-[#241A08]" />
-              <div className="font-mono text-[11px]">#72</div>
-            </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button onClick={() => toast("Đã gửi lệnh in (bản mẫu)")} className="ios-press ios-fill flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-3 text-[14px] text-[#f2ece6]">
-              <Printer className="h-4 w-4" /> In lại
-            </button>
-            <button onClick={close} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[14px] text-[#9b8e97]">Đóng</button>
-          </div>
         </SheetContent>
       </Sheet>
 
@@ -420,12 +303,11 @@ export function PlayerActionSheets({
               </span>
               Xác nhận loại người chơi
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-[#9b8e97]">Kiểm tra hạng và tiền thưởng trước khi xác nhận.</AlertDialogDescription>
+            <AlertDialogDescription className="text-[#9b8e97]">Kiểm tra hạng và thưởng tạm tính. Thao tác này chỉ loại người chơi, không tự trả hoặc chốt thưởng.</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="ios-card p-5 text-center">
             <div className="text-[17px] font-semibold text-[#f2ece6]">{s?.name}</div>
-            {onBustPlayer ? (
-              !bustInfo || bustInfo.loading ? (
+            {!bustInfo || bustInfo.loading ? (
                 <div className="flex flex-col items-center gap-2 py-4"><Loader2 className="h-6 w-6 animate-spin text-[#c9a86a]" /><span className="text-[13px] text-[#9b8e97]">Đang đọc lại hạng…</span></div>
               ) : (
                 <>
@@ -438,29 +320,17 @@ export function PlayerActionSheets({
                     <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng</div>
                   )}
                 </>
-              )
-            ) : (
-              <>
-                <div className="mt-2 text-[13px] uppercase tracking-wider text-[#9b8e97]">Về hạng</div>
-                <div className="font-mono text-[40px] font-bold leading-none text-[#f2ece6]">84</div>
-                <div className="mx-auto my-3 h-px w-16 bg-white/8" />
-                <div className="text-[14px] text-[#9b8e97]">Ngoài cơ cấu giải — chưa tới hạng có thưởng (mẫu)</div>
-              </>
             )}
           </div>
           <AlertDialogFooter className="gap-2 sm:gap-2">
             <button onClick={close} disabled={bustBusy} className="ios-press ios-fill flex-1 rounded-2xl py-3 text-[15px] font-medium text-[#f2ece6] disabled:opacity-40">Huỷ</button>
             <button
-              disabled={bustBusy || (!!onBustPlayer && (!bustInfo || bustInfo.loading))}
+              disabled={bustBusy || !bustInfo || bustInfo.loading}
               onClick={async () => {
-                if (onBustPlayer) {
-                  setBustBusy(true);
-                  const ok = await onBustPlayer();
-                  setBustBusy(false);
-                  if (ok) close();              // refetch do màn chủ lo; không optimistic
-                } else {
-                  done("Đã loại");
-                }
+                setBustBusy(true);
+                const ok = await onBustPlayer();
+                setBustBusy(false);
+                if (ok) close();              // refetch do màn chủ lo; không optimistic
               }}
               className="ios-press flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-rose-500/90 py-3 text-[15px] font-bold text-white disabled:opacity-40">
               {bustBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />} {bustBusy ? "Đang loại…" : "Xác nhận loại"}

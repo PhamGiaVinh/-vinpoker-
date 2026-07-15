@@ -103,7 +103,7 @@ export default function OpsTables() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const scopedIds = Array.from(new Set([...clubIds, ...dealerClubIds]));
 
   // P1-1: 1 CLB → auto; >1 → pill chọn. Đổi CLB → reset giải.
   const [clubId, setClubId] = useState<string | null>(null);
@@ -202,7 +202,7 @@ export default function OpsTables() {
     addBusyRef.current = true; setAddBusy(true);
     try {
       // Mirror AddPlayerDialog.submit — floor_assign_player_to_seat (mig 20260913000000)
-      const { data, error } = await (supabase.rpc as any)("floor_assign_player_to_seat", {
+      const { data, error } = await supabase.rpc("floor_assign_player_to_seat", {
         p_tournament_id: tourId,
         p_player_name: addName.trim(),
         p_tournament_table_id: addTable.raw.tt_id,
@@ -231,7 +231,7 @@ export default function OpsTables() {
     if (openBusyRef.current) return;
     openBusyRef.current = true; setOpenBusy(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("open_tournament_table", {
+      const { data, error } = await supabase.rpc("open_tournament_table", {
         p_tournament_id: tourId,
         p_table_number: newTableNo.trim() ? Number(newTableNo) : null,
         p_max_seats: Number(newMaxSeats) || null,
@@ -258,7 +258,7 @@ export default function OpsTables() {
     if (closeBusyRef.current) return;
     closeBusyRef.current = true; setCloseBusy(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("close_tournament_table", {
+      const { data, error } = await supabase.rpc("close_tournament_table", {
         p_tournament_table_id: closeTable.raw.tt_id,
         p_draw_mode: closeMode,
         p_reason: "table_break",
@@ -286,7 +286,7 @@ export default function OpsTables() {
   const redrawBusyRef = useRef(false);
   const openRedraw = () => { setRedrawMode("final_table"); setRedrawDraw("redraw_balanced"); setRedrawTarget(""); setRedrawPhase("config"); setRedrawPreview(null); setRedrawOpen(true); };
   const callRedraw = useCallback(async (dryRun: boolean): Promise<RedrawResult | null> => {
-    const { data, error } = await (supabase.rpc as any)("redraw_tournament", {
+    const { data, error } = await supabase.rpc("redraw_tournament", {
       p_tournament_id: tourId,
       p_mode: redrawMode,
       p_eligible_entry_ids: null,          // 3 chế độ auto — không dùng manual

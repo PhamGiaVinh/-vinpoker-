@@ -18,6 +18,8 @@ import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { BustConfirmDialog } from "./BustConfirmDialog";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { getFloorOperatorClubIds } from "@/lib/floorOperatorAccess";
+import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
 
 type StatusKey = "open" | "running" | "paused" | "closed";
 
@@ -87,7 +89,7 @@ export function FloorTableMapPanel({
   const [redrawOpen, setRedrawOpen] = useState(false);
   const [openTableOpen, setOpenTableOpen] = useState(false);
   // Floor "Loại" out-confirm dialog (FEATURES.floorOutConfirm). Preview a busting player's
-  // finishing place + prize before the (unchanged) bust runs. activeCount = live active-seat
+  // provisional place + prize before the atomic non-payout bust runs. activeCount = live active-seat
   // count tournament-wide (= the player's finishing place, since it includes the one busting);
   // prizeMap = position → amount from the already-live tournament_prizes.
   const [bustTarget, setBustTarget] = useState<MapSeat | null>(null);
@@ -99,10 +101,9 @@ export function FloorTableMapPanel({
     let alive = true;
     (async () => {
       if (!user) { setCanMove(false); return; }
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
+      const ids = await getFloorOperatorClubIds(user.id).catch(() => []);
       if (!alive) return;
-      const allowed = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
-      setCanMove(allowed.includes(tournament.club_id));
+      setCanMove(ids.includes(tournament.club_id));
     })();
     return () => { alive = false; };
   }, [user, tournament.club_id]);
@@ -117,7 +118,7 @@ export function FloorTableMapPanel({
         supabase.functions.invoke("tournament-live-draw", { body: { tournament_id: tid, action: "get_seats" } }),
         supabase.from("tournament_seats").select("id, entry_id").eq("tournament_id", tid),
       ]);
-      const built: MapTable[] = ((ttRes.data ?? []) as any[])
+      const built: MapTable[] = (ttRes.data ?? [])
         .map((t) => ({
           tt_id: t.id,
           table_id: t.table_id,
@@ -234,15 +235,19 @@ export function FloorTableMapPanel({
     setBusting(true);
     try {
       if (FEATURES.floorAtomicPayout) {
-        const { data, error } = await supabase.rpc("bust_tournament_player_with_payout" as any, {
+        const { data, error } = await supabase.rpc("bust_tournament_player_with_payout", {
           p_tournament_id: tid,
           p_seat_id: target.seat_id,
           p_expected_active_count: activeCount,
           p_idempotency_key: crypto.randomUUID(),
-        } as any);
+        });
         if (error) { toast.error(error.message); return; }
-        const result = data as any;
-        toast.success(`Đã chốt hạng ${result?.place ?? ""} cho ${result?.player_name || target.player_name || "người chơi"}`);
+        const result = data && typeof data === "object" && !Array.isArray(data)
+          ? data as Record<string, unknown>
+          : {};
+        const place = typeof result.place === "number" ? result.place : "";
+        const playerName = typeof result.player_name === "string" ? result.player_name : target.player_name;
+        toast.success(`Đã chốt hạng ${place} cho ${playerName || "người chơi"}`);
         setSelected(null);
         setInfoTarget(null);
         await load();
@@ -259,40 +264,45 @@ export function FloorTableMapPanel({
           }],
         },
       });
-      if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+      const responseError = floorOpsResponseErrorCode(data);
+      if (error || responseError) { toast.error(floorOpsErrorMessage(responseError, error?.message)); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
       load();
-    } catch (e: any) {
-      toast.error(e.message || "Lỗi");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Lỗi");
     } finally {
       setBusting(false);
     }
   };
 
-  // Entry point for the "Loại" action from either sheet. With the confirm flag OFF this is
-  // byte-identical to the old behavior (bust immediately). With it ON, close the current sheet
+  // Entry point for the "Loại" action from either sheet. With the confirm flag off this
+  // busts immediately. With it on, close the current sheet
   // and open the out-confirm dialog on the next frame (mirrors the sheet's own close→open race
   // guard) so the operator can review place + prize first.
   const requestBust = async (target: MapSeat | null) => {
     if (!target) return;
     if (!FEATURES.floorOutConfirm) { bustSeat(target); return; }
     if (FEATURES.floorAtomicPayout) {
-      const { data, error } = await supabase.rpc("preview_tournament_bust" as any, {
+      const { data, error } = await supabase.rpc("preview_tournament_bust", {
         p_tournament_id: tid,
         p_seat_id: target.seat_id,
-      } as any);
+      });
       if (error) { toast.error(error.message); return; }
-      const preview = data as any;
-      if (!preview?.can_confirm) {
+      const preview = data && typeof data === "object" && !Array.isArray(data)
+        ? data as Record<string, unknown>
+        : {};
+      if (preview.can_confirm !== true) {
         toast.error("Đăng ký vẫn mở: chưa thể chốt payout ITM.");
         return;
       }
       const nextPrize = new Map(prizeMap ?? []);
-      nextPrize.set(Number(preview.place), Number(preview.prize ?? 0));
+      const previewPlace = typeof preview.place === "number" ? preview.place : activeCount;
+      const previewPrize = typeof preview.prize === "number" ? preview.prize : 0;
+      nextPrize.set(previewPlace, previewPrize);
       setPrizeMap(nextPrize);
-      setActiveCount(Number(preview.active_count_revision));
+      if (typeof preview.active_count_revision === "number") setActiveCount(preview.active_count_revision);
     }
     setSelected(null);
     setInfoTarget(null);
@@ -513,6 +523,7 @@ export function FloorTableMapPanel({
           prize={bustTarget && activeCount > 0 ? (prizeMap?.get(activeCount) ?? null) : null}
           prizeLoading={prizeLoading}
           itmPlaces={tournament.itm_places}
+          payoutWillBeApplied={FEATURES.floorAtomicPayout}
           busting={busting}
           onConfirm={confirmBust}
         />

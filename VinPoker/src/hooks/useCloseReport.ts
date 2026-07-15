@@ -12,11 +12,8 @@ import {
 // fetches the immutable inputs (confirmed registrations + recorded eliminations)
 // and, on lock, calls the audited source-only `close_tournament` RPC.
 //
-// NOTE: `close_tournament` and `tournament_close_report` are source-only (migration
-// 20261213000000, owner-gated apply) so they are not in the generated Supabase types
-// yet — cast to `any` (the same pattern the codebase uses for not-yet-applied objects,
-// e.g. media_club_ids). The caller must gate all of this behind FEATURES.closeReport,
-// so nothing here runs until both the flag is ON and the schema is applied.
+// The caller gates the mutation behind FEATURES.closeReport. Server-side ownership,
+// idempotency and active-seat checks remain authoritative.
 
 function classifySource(referenceCode: string | null | undefined): CloseReportSource {
   const rc = (referenceCode ?? "").toUpperCase();
@@ -53,7 +50,7 @@ export function useCloseReport(tournamentId: string | null | undefined) {
           .from("tournament_eliminations")
           .select("position, prize")
           .eq("tournament_id", tournamentId),
-        (supabase as any)
+        supabase
           .from("tournament_close_report")
           .select("id")
           .eq("tournament_id", tournamentId)
@@ -64,7 +61,7 @@ export function useCloseReport(tournamentId: string | null | undefined) {
       if (elimsRes.error) throw elimsRes.error;
 
       const input: CloseReportInput = {
-        entries: (regsRes.data ?? []).map((r: any) => {
+        entries: (regsRes.data ?? []).map((r) => {
           const buyIn = Number(r.buy_in ?? 0);
           const totalPay = Number(r.total_pay ?? 0);
           return {
@@ -78,7 +75,7 @@ export function useCloseReport(tournamentId: string | null | undefined) {
             usedFreeRake: false,
           };
         }),
-        payouts: (elimsRes.data ?? []).map((e: any) => ({
+        payouts: (elimsRes.data ?? []).map((e) => ({
           position: Number(e.position ?? 0),
           prize: Number(e.prize ?? 0),
         })),
@@ -86,8 +83,8 @@ export function useCloseReport(tournamentId: string | null | undefined) {
 
       setReport(computeCloseReport(input));
       setAlreadyClosed(!!closedRes?.data);
-    } catch (e: any) {
-      setError(e?.message ?? "load_failed");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "load_failed");
       setReport(null);
     } finally {
       setLoading(false);
@@ -101,7 +98,7 @@ export function useCloseReport(tournamentId: string | null | undefined) {
   const closeTournament = useCallback(
     async (reason?: string): Promise<CloseTournamentResult> => {
       if (!tournamentId) return { ok: false, error: "no_tournament" };
-      const { data, error: rpcErr } = await (supabase as any).rpc("close_tournament", {
+      const { data, error: rpcErr } = await supabase.rpc("close_tournament", {
         p_tournament_id: tournamentId,
         p_reason: reason ?? null,
       });

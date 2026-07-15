@@ -7,7 +7,7 @@ import { FEATURES } from "@/lib/featureFlags";
 import {
   ChevronLeft, Repeat, Users, Coffee, ArrowRightLeft, History, Lightbulb, QrCode,
   Monitor, LogOut, ArrowRight, Clock, FlagTriangleRight, Loader2, LogIn,
-  CalendarDays, AlertTriangle, Send, UserPlus,
+  CalendarDays, AlertTriangle, Send,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,7 @@ import type { AvailabilityRequest } from "@/types/shiftPlanner";
  * check-out / đóng-tour / sửa-nhầm-bàn / duyệt-yêu-cầu / gợi-ý-dealer — mirror desktop DealerSwingTab
  * (perform_swing / assign-dealer / manage-break / checkout-dealer / archive_and_close_dealer_tour /
  * reconcile_dealer_room_state / review_availability_request). Đọc chi tiết (lịch sử bàn / ca hôm nay)
- * là read-only luôn live. Lưới lịch tuần (SCHEDULE_DAYS) giữ dạng xem trước — xếp lịch trên máy tính.
+ * là read-only luôn live. Xếp lịch tuần chưa có mobile production path nên chuyển thẳng về máy tính.
  */
 const BREAK_PRESETS = [15, 30, 45, 60];
 const PILLS = [
@@ -84,100 +84,11 @@ const toneCls: Record<ScheduleTone, string> = {
   info: "bg-sky-400/12 text-sky-300",
 };
 
-const toneTextCls: Record<ScheduleTone, string> = {
-  ok: "text-emerald-300",
-  warn: "text-amber-300",
-  danger: "text-rose-300",
-  final: "text-pink-300",
-  info: "text-sky-300",
-};
-
-const SCHEDULE_DAYS = [
-  { label: "T2", day: "06", status: "normal" },
-  { label: "T3", day: "07", status: "active" },
-  { label: "T4", day: "08", status: "issue" },
-  { label: "T5", day: "09", status: "normal" },
-  { label: "T6", day: "10", status: "normal" },
-  { label: "T7", day: "11", status: "issue" },
-  { label: "CN", day: "12", status: "normal" },
-] as const;
-
-const SCHEDULE_STATS = [
-  { label: "dealer đi làm", value: "18", tone: "ok" as const },
-  { label: "lượt ca cần", value: "21", tone: "info" as const },
-  { label: "thiếu người", value: "3", tone: "danger" as const },
-  { label: "xin nghỉ/đổi", value: "2", tone: "warn" as const },
-];
-
-const SHIFT_BLOCKS = [
-  {
-    id: "early",
-    label: "Ca sớm",
-    from: "12:00",
-    to: "18:00",
-    need: 7,
-    assigned: 7,
-    note: "7 cần · 7 đã xếp · 1 dealer final",
-    tags: [
-      { label: "Đủ", tone: "ok" as const },
-      { label: "Lan final", tone: "final" as const },
-    ],
-  },
-  {
-    id: "night",
-    label: "Ca tối",
-    from: "18:00",
-    to: "02:00",
-    need: 11,
-    assigned: 8,
-    note: "11 cần · 8 đã xếp · thiếu bàn 12/15/20",
-    tags: [
-      { label: "Thiếu 3", tone: "danger" as const },
-      { label: "OT cao", tone: "warn" as const },
-    ],
-  },
-] as const;
-
-const TIMELINE_BLOCKS = [
-  {
-    time: "18:00",
-    title: "Mở ca tối",
-    note: "Cần 6 dealer bắt đầu ca · 5 đã có mặt",
-    dealers: [
-      { name: "Minh", detail: "B7" },
-      { name: "Hoa", detail: "B8" },
-      { name: "Tú", detail: "B9" },
-      { name: "Trang", detail: "B10" },
-      { name: "Vy", detail: "B11" },
-      { name: "+ thiếu", detail: "B12", empty: true },
-    ],
-  },
-  {
-    time: "20:30",
-    title: "Swing wave 1",
-    note: "4 bàn tới giờ thay · ưu tiên dealer đã nghỉ đủ",
-    dealers: [
-      { name: "Quang", detail: "vào B8" },
-      { name: "Hằng", detail: "vào B10" },
-      { name: "+ chọn", detail: "B12", empty: true },
-    ],
-  },
-  {
-    time: "21:30",
-    title: "Final table",
-    note: "Cần dealer chỉ định · không tự thay người",
-    dealers: [
-      { name: "Lan", detail: "Final", final: true },
-      { name: "+ backup", detail: "dự phòng", empty: true },
-    ],
-  },
-] as const;
-
 export default function OpsDealerSwing() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const scopedIds = Array.from(new Set([...clubIds, ...dealerClubIds]));
 
   const tablesQ = useActiveTables(scopedIds);
   const asgQ = useActiveAssignmentsWithTimeline(scopedIds);
@@ -659,128 +570,19 @@ export default function OpsDealerSwing() {
         )
       )}
 
-      {/* D4a — Lịch dealer swing (UI mobile mock, không đổi logic xếp ca) */}
+      {/* Lịch tuần chưa có nguồn mobile production; không dựng dữ liệu minh hoạ. */}
       {pill === "schedule" && (
         <div className="space-y-3">
-          <div className="ios-card overflow-hidden p-4">
-            <div className="flex items-start justify-between gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#c9a86a]/12 text-[#c9a86a]">
-                <CalendarDays className="h-5 w-5" />
-              </span>
-              <span className="rounded-full bg-emerald-400/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">mobile draft</span>
-            </div>
-            <h2 className="mt-3 text-[18px] font-semibold leading-tight text-[#f2ece6]">Lịch Dealer Swing</h2>
-            <p className="mt-1 text-[13px] leading-5 text-[#9b8e97]">Bản UI mobile để floor xem coverage, thiếu ca, final table và yêu cầu đổi lịch trong cùng một luồng.</p>
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {SCHEDULE_STATS.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-white/8 bg-black/20 px-2.5 py-2">
-                  <div className={cn("text-[20px] font-bold leading-none tabular-nums", toneTextCls[stat.tone])}>{stat.value}</div>
-                  <div className="mt-1 min-h-[26px] text-[10.5px] font-medium leading-[13px] text-[#91a49b]">{stat.label}</div>
-                </div>
-              ))}
-            </div>
+          <div className="ios-card px-5 py-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#c9a86a]/12 text-[#c9a86a]">
+              <Monitor className="h-6 w-6" />
+            </span>
+            <h2 className="mt-3 text-[17px] font-semibold text-[#f2ece6]">Xếp lịch trên máy tính</h2>
+            <p className="mt-1 text-[13px] leading-5 text-[#9b8e97]">Mobile chưa có luồng lịch tuần production. Trạng thái bàn, dealer và yêu cầu hôm nay vẫn lấy dữ liệu thật ở các mục bên cạnh.</p>
           </div>
-
-          <div className="ios-card p-3.5">
-            <SectionLabel>Tuần này</SectionLabel>
-            <div className="mt-2 grid grid-cols-7 gap-1.5">
-              {SCHEDULE_DAYS.map((day) => (
-                <button
-                  key={`${day.label}-${day.day}`}
-                  onClick={soon}
-                  className={cn(
-                    "ios-press-sm rounded-2xl border px-1.5 py-2 text-center",
-                    day.status === "active" && "border-[#c9a86a]/60 bg-[#c9a86a]/15 text-[#f2ece6]",
-                    day.status === "issue" && "border-rose-400/30 bg-rose-400/10 text-rose-200",
-                    day.status === "normal" && "border-white/8 bg-white/[0.035] text-[#9b8e97]",
-                  )}
-                >
-                  <span className="block text-[10px] font-semibold uppercase leading-none">{day.label}</span>
-                  <span className="mt-1 block text-[15px] font-semibold leading-none tabular-nums">{day.day}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="ios-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Coverage theo ca</SectionLabel>
-              <span className="rounded-full bg-rose-400/12 px-2 py-0.5 text-[11px] font-semibold text-rose-300">thiếu 3</span>
-            </div>
-            <div className="mt-3 space-y-2.5">
-              {SHIFT_BLOCKS.map((shift) => {
-                const pct = Math.min(100, Math.round((shift.assigned / shift.need) * 100));
-                const isShort = shift.assigned < shift.need;
-                return (
-                  <div key={shift.id} className="rounded-2xl border border-white/8 bg-black/20 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold text-[#f2ece6]">{shift.label}</div>
-                        <div className="mt-0.5 text-[12px] leading-4 text-[#9b8e97]">{shift.note}</div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className={cn("text-[18px] font-bold leading-none tabular-nums", isShort ? "text-rose-300" : "text-emerald-300")}>{shift.assigned}/{shift.need}</div>
-                        <div className="mt-1 text-[10px] font-medium text-[#6f8078]">{shift.from}-{shift.to}</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
-                      <div className={cn("h-full rounded-full", isShort ? "bg-rose-400" : "bg-[#c9a86a]")} style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {shift.tags.map((tag) => <ToneChip key={tag.label} label={tag.label} tone={tag.tone} />)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="ios-card p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <SectionLabel>Timeline tối nay</SectionLabel>
-              <span className="text-[11px] font-semibold text-[#c9a86a]">18:00-02:00</span>
-            </div>
-            <div className="mt-3 space-y-3">
-              {TIMELINE_BLOCKS.map((block) => (
-                <div key={block.time} className="flex gap-3">
-                  <div className="w-[48px] shrink-0 text-[14px] font-semibold leading-6 tabular-nums text-[#c9a86a]">{block.time}</div>
-                  <div className="min-w-0 flex-1 rounded-2xl border border-white/8 bg-black/18 p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="text-[15px] font-semibold leading-tight text-[#f2ece6]">{block.title}</div>
-                      {block.title.includes("Final") && <ToneChip label="final" tone="final" />}
-                    </div>
-                    <div className="mt-1 text-[12px] leading-4 text-[#9b8e97]">{block.note}</div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {block.dealers.map((dealer) => (
-                        <button
-                          key={`${block.time}-${dealer.name}-${dealer.detail}`}
-                          onClick={dealer.empty ? () => setSuggestTableOpen(true) : soon}
-                          className={cn(
-                            "ios-press-sm rounded-full border px-2.5 py-1.5 text-left",
-                            dealer.empty && "border-dashed border-[#c9a86a]/45 bg-[#c9a86a]/10 text-[#c9a86a]",
-                            dealer.final && "border-pink-400/30 bg-pink-400/10 text-pink-200",
-                            !dealer.empty && !dealer.final && "border-white/8 bg-white/[0.04] text-[#f2ece6]",
-                          )}
-                        >
-                          <span className="block text-[11px] font-semibold leading-none">{dealer.name}</span>
-                          <span className="mt-1 block text-[10px] leading-none text-[#91a49b]">{dealer.detail}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSuggestTableOpen(true)} className="ios-press ios-primary flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-bold">
-              <UserPlus className="h-4 w-4" /> Chọn dealer
-            </button>
-            <button onClick={() => setPill("requests")} className="ios-press ios-fill flex min-h-[46px] items-center justify-center gap-2 rounded-2xl px-3 py-3 text-[13px] font-semibold text-[#f2ece6]">
-              <Send className="h-4 w-4 text-[#c9a86a]" /> Yêu cầu
-            </button>
-          </div>
+          <button onClick={() => setPill("requests")} className="ios-press ios-fill flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold text-[#f2ece6]">
+            <Send className="h-4 w-4 text-[#c9a86a]" /> Xem yêu cầu hôm nay
+          </button>
         </div>
       )}
 

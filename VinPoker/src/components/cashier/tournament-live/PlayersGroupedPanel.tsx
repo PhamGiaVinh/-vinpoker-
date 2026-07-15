@@ -14,6 +14,8 @@ import { EditChipsDialog } from "./EditChipsDialog";
 import { PlayerInfoSheet } from "./PlayerInfoSheet";
 import { SeatReceiptDialog } from "@/components/tournament/seat/SeatReceiptDialog";
 import type { SeatReceiptData } from "@/components/tournament/seat/SeatReceipt";
+import { getFloorOperatorClubIds } from "@/lib/floorOperatorAccess";
+import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
 
 interface SeatRow {
   seat_id: string;
@@ -34,6 +36,7 @@ interface EntryRow {
   current_stack: number;
   seat_number: number | null;
   finished_place: number | null;
+  status: string;
 }
 
 type GroupKey = "playing" | "waiting" | "bust";
@@ -73,10 +76,9 @@ export function PlayersGroupedPanel({
     let alive = true;
     (async () => {
       if (!user) { setCanMove(false); return; }
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
+      const ids = await getFloorOperatorClubIds(user.id).catch(() => []);
       if (!alive) return;
-      const allowed = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
-      setCanMove(allowed.includes(tournament.club_id));
+      setCanMove(ids.includes(tournament.club_id));
     })();
     return () => { alive = false; };
   }, [user, tournament.club_id]);
@@ -97,16 +99,16 @@ export function PlayersGroupedPanel({
       const m: Record<string, string> = {};
       for (const r of (linksRes.data ?? []) as { id: string; entry_id: string | null }[]) if (r.entry_id) m[r.id] = r.entry_id;
       setEntryBySeat(m);
-      const allEntries = (entriesRes.data ?? []) as any[];
+      const allEntries = entriesRes.data ?? [];
       setEntries(allEntries.map((e) => ({
         id: e.id,
         player_id: e.player_id,
-        player_name: e.player_name ?? "",
+        player_name: e.player_id.slice(0, 8),
         current_stack: e.current_stack ?? 0,
         seat_number: e.seat_number ?? null,
         finished_place: e.finished_place ?? null,
         status: e.status,
-      } as EntryRow & { status: string })));
+      })));
     } finally {
       setLoading(false);
     }
@@ -115,24 +117,23 @@ export function PlayersGroupedPanel({
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
   const waiting = useMemo(
-    () => (entries as (EntryRow & { status?: string })[]).filter((e) => e.status === "registered"),
+    () => entries.filter((entry) => entry.status === "registered"),
     [entries],
   );
   const bust = useMemo(
-    () => (entries as (EntryRow & { status?: string })[])
-      .filter((e) => e.status === "busted")
+    () => entries
+      .filter((entry) => entry.status === "busted")
       .sort((a, b) => (a.finished_place ?? 1e9) - (b.finished_place ?? 1e9)),
     [entries],
   );
 
   const counts = { playing: seats?.length ?? 0, waiting: waiting.length, bust: bust.length };
 
-  const filterText = (s: string) => !query || s.toLowerCase().includes(query.toLowerCase());
-
-  const visiblePlaying = useMemo(
-    () => (seats ?? []).filter((s) => filterText(s.player_name || s.player_id) || filterText(s.table_name)),
-    [seats, query],
-  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchesQuery = (value: string) =>
+    !normalizedQuery || value.toLowerCase().includes(normalizedQuery);
+  const visiblePlaying = (seats ?? []).filter((seat) =>
+    matchesQuery(seat.player_name || seat.player_id) || matchesQuery(seat.table_name));
 
   const bustSeat = async (target: SeatRow | null) => {
     if (!target) return;
@@ -154,13 +155,14 @@ export function PlayersGroupedPanel({
           }],
         },
       });
-      if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+      const responseError = floorOpsResponseErrorCode(data);
+      if (error || responseError) { toast.error(floorOpsErrorMessage(responseError, error?.message)); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
       load();
-    } catch (e: any) {
-      toast.error(e.message || "Lỗi");
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "Lỗi");
     } finally {
       setBusting(false);
     }
@@ -242,11 +244,11 @@ export function PlayersGroupedPanel({
           </div>
         )
       ) : group === "waiting" ? (
-        waiting.filter((e) => filterText(e.player_name || e.player_id)).length === 0 ? (
+        waiting.filter((e) => matchesQuery(e.player_name || e.player_id)).length === 0 ? (
           <Empty text="Không có người chờ xếp bàn." />
         ) : (
           <div className="space-y-1.5">
-            {waiting.filter((e) => filterText(e.player_name || e.player_id)).map((e, idx) => (
+            {waiting.filter((e) => matchesQuery(e.player_name || e.player_id)).map((e, idx) => (
               <div key={e.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-2">
                 <span className="w-5 shrink-0 text-center text-xs text-muted-foreground tabular-nums">{idx + 1}</span>
                 <Avatar name={e.player_name || e.player_id} tone="warning" />
@@ -260,11 +262,11 @@ export function PlayersGroupedPanel({
           </div>
         )
       ) : (
-        bust.filter((e) => filterText(e.player_name || e.player_id)).length === 0 ? (
+        bust.filter((e) => matchesQuery(e.player_name || e.player_id)).length === 0 ? (
           <Empty text="Chưa có người bị loại." />
         ) : (
           <div className="space-y-1.5">
-            {bust.filter((e) => filterText(e.player_name || e.player_id)).map((e) => (
+            {bust.filter((e) => matchesQuery(e.player_name || e.player_id)).map((e) => (
               <div key={e.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-2 opacity-80">
                 <span className="w-7 shrink-0 text-center text-xs text-muted-foreground tabular-nums">{e.finished_place ? `#${e.finished_place}` : "—"}</span>
                 <Avatar name={e.player_name || e.player_id} tone="muted" />
