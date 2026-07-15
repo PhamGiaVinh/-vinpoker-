@@ -1,9 +1,8 @@
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
-import { canAccessMobileOps } from "@/lib/opsCapabilities";
 import { OpsBottomNav } from "./OpsBottomNav";
 import "./ops-ios.css";
 
@@ -14,33 +13,11 @@ import "./ops-ios.css";
  */
 export default function OpsShell() {
   const navigate = useNavigate();
-  const {
-    user,
-    isAdmin,
-    isClubAdmin,
-    isClubOwner,
-    isCashier,
-    isTracker,
-    isFloor,
-    loading: authLoading,
-  } = useAuth();
+  const { isAdmin, isClubOwner, loading: authLoading } = useAuth();
   const flagOn = FEATURES.mobileOpsV2;
   const allowPreview = isAdmin || isClubOwner;
-  const hasOpsAccess = canAccessMobileOps({ isAdmin, isClubAdmin, isClubOwner, isCashier, isTracker, isFloor });
 
   if (authLoading) return <RouteLoader />;
-  if (!user) return <Navigate to="/auth" replace />;
-
-  if (!hasOpsAccess) {
-    return (
-      <div className="ops-root grid min-h-screen place-items-center bg-[#030604] px-6 text-center">
-        <div className="max-w-xs">
-          <div className="text-[17px] font-semibold text-[#f2ece6]">Bạn chưa có quyền Vận hành</div>
-          <p className="mt-1 text-[15px] text-[#9b8e97]">Nhờ chủ CLB phân quyền Floor, Thu ngân hoặc Tracker cho tài khoản này.</p>
-        </div>
-      </div>
-    );
-  }
 
   if (!flagOn && !allowPreview) {
     return (
@@ -68,6 +45,8 @@ export default function OpsShell() {
             <ChevronLeft className="h-5 w-5" strokeWidth={2.4} />
             App chính
           </button>
+          {/* Chip "DỮ LIỆU MẪU" toàn cục đã GỠ: /ops nay có trang dữ liệu thật + GHI thật
+              (cockpit bust/chip/move, Bàn). Chip chuyển về TỪNG trang còn mock (MockChip). */}
         </div>
       </header>
 

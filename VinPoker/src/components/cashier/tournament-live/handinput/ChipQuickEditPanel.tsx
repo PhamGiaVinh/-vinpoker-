@@ -96,7 +96,6 @@ export function ChipQuickEditPanel({ tournamentId, tableId, players, disabled, o
               entry_number: freshSeat.entry_number,
               table_id: tableId,
               seat_number: freshSeat.seat_number,
-              expected_chip_count: freshSeat.chip_count,
               chip_count: amount,
               is_active: true,
               player_name: freshSeat.player_name,
@@ -104,9 +103,8 @@ export function ChipQuickEditPanel({ tournamentId, tableId, players, disabled, o
           ],
         },
       });
-      const responseError = (data as { error?: string } | null)?.error;
-      if (error || responseError) {
-        toast.error(responseError || error?.message || "Lỗi sửa chip");
+      if (error || (data as any)?.error) {
+        toast.error((data as any)?.error || error?.message || "Lỗi sửa chip");
         return;
       }
       const { data: confirmed } = await supabase
@@ -120,8 +118,8 @@ export function ChipQuickEditPanel({ tournamentId, tableId, players, disabled, o
         `Đã sửa chip ${p.display_name} (${REASON_LABEL[reason]}): ${formatStack(p.current_stack)} → ${formatStack(finalStack)}`
       );
       cancel();
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Lỗi sửa chip");
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi sửa chip");
     } finally {
       setSaving(false);
     }

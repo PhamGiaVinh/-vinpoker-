@@ -48,7 +48,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isClubOwner, setIsClubOwner] = useState(false);
-  const [isFloorMember, setIsFloorMember] = useState(false);
   const [isDealer, setIsDealer] = useState(false);
   const [isChipMaster, setIsChipMaster] = useState(false);
   const [isMarketingMember, setIsMarketingMember] = useState(false);
@@ -61,10 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
-        setLoading(true);
-        setTimeout(() => {
-          void fetchRoles(sess.user.id).finally(() => setLoading(false));
-        }, 0);
+        setTimeout(() => fetchRoles(sess.user.id), 0);
         setTimeout(() => {
           linkUser(sess.user.id);
           // Persist OneSignal external_id mapping (idempotent)
@@ -77,24 +73,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setRoles([]);
         setIsClubOwner(false);
-        setIsFloorMember(false);
         setIsDealer(false);
         setIsChipMaster(false);
         setIsMarketingMember(false);
         setIsFnbMember(false);
         setIsAccountantMember(false);
-        setLoading(false);
         setTimeout(() => logoutUser(), 0);
       }
     });
 
-    supabase.auth.getSession().then(async ({ data: { session: sess } }) => {
+    supabase.auth.getSession().then(({ data: { session: sess } }) => {
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (sess?.user) {
-        await fetchRoles(sess.user.id);
-        linkUser(sess.user.id);
-      }
+      if (sess?.user) { fetchRoles(sess.user.id); linkUser(sess.user.id); }
       setLoading(false);
     });
 
@@ -102,17 +93,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const fetchRoles = async (userId: string) => {
-    const [{ data: roleRows }, { data: ownedClubs }, { data: dealerRows }, { data: floorClubIds }] = await Promise.all([
+    const [{ data: roleRows }, { data: ownedClubs }, { data: dealerRows }] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase.from("clubs").select("id").eq("owner_id", userId).limit(1),
       // A user "is a dealer" if linked to a dealers row. Self-read is permitted by
       // the dealers_select_control policy (USING ... OR auth.uid() = user_id).
       supabase.from("dealers").select("id").eq("user_id", userId).is("deleted_at", null).limit(1),
-      supabase.rpc("floor_club_ids", { _user_id: userId }),
     ]);
-    setRoles((roleRows ?? []).map((row) => row.role as AppRole));
+    setRoles((roleRows ?? []).map((r: any) => r.role as AppRole));
     setIsClubOwner((ownedClubs ?? []).length > 0);
-    setIsFloorMember((floorClubIds ?? []).length > 0);
     setIsDealer((dealerRows ?? []).length > 0);
     // Chip-Master is additive + flag-gated + guarded (returns false without querying while
     // FEATURES.chipOps is off / on any error) so it never blocks or breaks auth init.
@@ -131,7 +120,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await supabase.auth.signOut();
     setRoles([]);
     setIsClubOwner(false);
-    setIsFloorMember(false);
     setIsDealer(false);
     setIsChipMaster(false);
     setIsMarketingMember(false);
@@ -150,7 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isMedia: roles.includes("media"),
       isMediaOrAdmin: roles.includes("super_admin") || roles.includes("media"),
       isTracker: roles.includes("tracker"),
-      isFloor: roles.includes("floor") || isFloorMember,
+      isFloor: roles.includes("floor"),
       isDealer,
       isChipMaster,
       // Role OR super_admin OR club membership — NAV AFFORDANCE ONLY. Every marketing data read
