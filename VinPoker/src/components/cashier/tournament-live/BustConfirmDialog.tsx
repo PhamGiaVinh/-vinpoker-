@@ -16,9 +16,12 @@ import { formatVND } from "@/lib/format";
  * finishing place and prize money, so the floor sees "[Tên] về hạng [N] — [tiền]" and can
  * double-check before confirming.
  *
- * Read-only preview: it changes no backend. `place` and `prize` are provisional
- * values computed by the parent. When the atomic-payout flag is off, confirmation
- * only records the bust and explicitly does not pay or finalize the displayed prize.
+ * Read-only preview: it changes NO backend. The actual bust is the same existing
+ * `update_seats is_active=false` call the parent already made; the server auto-records the
+ * official finished place + prize (player-history chain) exactly as before. `place` and
+ * `prize` are a client-side preview computed by the parent (place = live active-seat count
+ * including this player; prize = the `tournament_prizes` row for that place, if any). The
+ * math is designed to agree with the eventually-persisted result.
  *
  * ITM (in the money): a prize row exists for `place` → show the amount as the hero.
  * Not ITM (out before the money): show the place only, with a muted "ngoài cơ cấu giải"
@@ -32,7 +35,6 @@ export function BustConfirmDialog({
   prize,
   prizeLoading,
   itmPlaces,
-  payoutWillBeApplied,
   busting,
   onConfirm,
 }: {
@@ -46,7 +48,6 @@ export function BustConfirmDialog({
   /** True while the tournament's prize table is still being fetched. */
   prizeLoading: boolean;
   itmPlaces: number | null;
-  payoutWillBeApplied: boolean;
   busting: boolean;
   onConfirm: () => void;
 }) {
@@ -63,9 +64,7 @@ export function BustConfirmDialog({
             Xác nhận loại người chơi
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {payoutWillBeApplied
-              ? "Người chơi này sẽ kết thúc giải. Kiểm tra lại hạng và tiền thưởng trước khi xác nhận."
-              : "Thao tác này chỉ loại người chơi; tiền thưởng bên dưới là tạm tính và chưa được trả hoặc chốt."}
+            Người chơi này sẽ kết thúc giải. Kiểm tra lại hạng và tiền thưởng trước khi xác nhận.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -90,9 +89,7 @@ export function BustConfirmDialog({
             </div>
           ) : isItm ? (
             <div className="text-center">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                {payoutWillBeApplied ? "Tiền thưởng sẽ chốt" : "Thưởng tạm tính — chưa chốt"}
-              </div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Tiền thưởng</div>
               <div className="mt-1 flex items-center justify-center gap-2 text-2xl font-semibold text-primary">
                 <Trophy className="h-5 w-5" />
                 {formatVND(prize as number)}
@@ -116,7 +113,7 @@ export function BustConfirmDialog({
           </Button>
           <Button disabled={busting} onClick={onConfirm}>
             {busting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserMinus className="mr-1.5 h-4 w-4" />}
-            {payoutWillBeApplied ? "Xác nhận loại & chốt thưởng" : "Chỉ loại người chơi"}
+            Xác nhận loại
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

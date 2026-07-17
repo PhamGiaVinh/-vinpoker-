@@ -50,20 +50,18 @@ export function EditChipsDialog({
             entry_number: seat.entry_number,
             table_id: seat.table_id,
             seat_number: seat.seat_number,
-            expected_chip_count: seat.chip_count,
             chip_count: value,
             is_active: true,
             player_name: seat.player_name,
           }],
         },
       });
-      const responseError = (data as { error?: string } | null)?.error;
-      if (error || responseError) { toast.error(responseError || error?.message); return; }
+      if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
       toast.success(`Đã cập nhật chip ${seat.player_name || "người chơi"}`);
       onSaved();
       onOpenChange(false);
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Lỗi");
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi");
     } finally {
       setSaving(false);
     }

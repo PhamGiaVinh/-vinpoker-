@@ -4,213 +4,159 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
-
-type JsonRecord = Record<string, unknown>;
-type SeatRow = {
-  id: string;
-  tournament_id: string;
-  player_id: string;
-  entry_id: string | null;
-  entry_number: number;
-  table_id: string;
-  seat_number: number;
-  chip_count: number;
-  is_active: boolean;
-};
-type EntryRow = {
-  id: string;
-  tournament_id: string;
-  player_id: string;
-  entry_no: number;
-  status: string;
-};
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function response(body: JsonRecord, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
-}
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return response({ error: "Missing Authorization header" }, 401);
+  if (!authHeader) return new Response(JSON.stringify({ error: "Missing Authorization header" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !anonKey) return response({ error: "Server configuration missing" }, 500);
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: authHeader } } }
+  );
 
-  const supabase = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
   const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) return response({ error: "Unauthorized" }, 401);
+  if (userError || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return response({ error: "Invalid JSON body" }, 400);
-  }
-  if (!isRecord(body)) return response({ error: "Invalid request body" }, 400);
+  const body = await req.json();
+  const { tournament_id, action } = body;
 
-  const tournamentId = typeof body.tournament_id === "string" ? body.tournament_id : null;
-  const action = typeof body.action === "string" ? body.action : null;
-  if (!tournamentId || !action) return response({ error: "Missing tournament_id or action" }, 400);
+  if (!tournament_id || !action) return new Response(JSON.stringify({ error: "Missing tournament_id or action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  let result: any;
 
   try {
-    const { data: tournament, error: tournamentError } = await supabase
-      .from("tournaments")
-      .select("id,club_id,status")
-      .eq("id", tournamentId)
-      .maybeSingle();
-    if (tournamentError || !tournament) return response({ error: "Tournament unavailable" }, 403);
-
-    const [floorResult, cashierResult] = await Promise.all([
-      supabase.rpc("floor_club_ids", { _user_id: user.id }),
-      supabase.rpc("cashier_club_ids", { _user_id: user.id }),
-    ]);
-    if (floorResult.error || cashierResult.error) return response({ error: "Capability check failed" }, 403);
-    const permittedClubIds = new Set([...(floorResult.data ?? []), ...(cashierResult.data ?? [])]);
-    if (!permittedClubIds.has(tournament.club_id)) return response({ error: "Actor not allowed" }, 403);
-
-    if (action === "get_seats") {
-      const result = await supabase.rpc("get_seats_for_draw", { p_tournament_id: tournamentId });
-      if (result.error) throw result.error;
-      return response({ status: "success", data: result.data });
-    }
-
-    if (action === "add_table" || action === "add_player") {
-      return response({ error: "Use the audited Floor RPC for this action" }, 410);
-    }
-    if (action !== "update_seats") return response({ error: "Invalid action" }, 400);
-
-    // Every supported Floor call updates one seat. Refuse an arbitrary batch here:
-    // each seat mutation is atomic, but a client-side loop cannot make a multi-seat
-    // request atomic as a whole.
-    if (!Array.isArray(body.seats) || body.seats.length !== 1) {
-      return response({ error: "update_seats accepts exactly one seat" }, 400);
-    }
-
-    const rows = body.seats;
-
-    let updated = 0;
-    let unchanged = 0;
-    for (const rawSeat of rows) {
-      if (!isRecord(rawSeat) || typeof rawSeat.seat_id !== "string") {
-        return response({ error: "seat_id is required; inserts are not allowed" }, 400);
+    switch (action) {
+      case "get_seats": {
+        result = await supabase.rpc("get_seats_for_draw", { p_tournament_id: tournament_id });
+        break;
       }
-
-      const seatResult = await supabase
-        .from("tournament_seats")
-        .select("id,tournament_id,player_id,entry_id,entry_number,table_id,seat_number,chip_count,is_active")
-        .eq("id", rawSeat.seat_id)
-        .eq("tournament_id", tournamentId)
-        .maybeSingle();
-      const existing = seatResult.data as SeatRow | null;
-      const seatError = seatResult.error;
-      if (seatError || !existing) return response({ error: "seat_not_found" }, 409);
-
-      const identityMismatch =
-        (typeof rawSeat.player_id === "string" && rawSeat.player_id !== existing.player_id)
-        || (typeof rawSeat.entry_number === "number" && rawSeat.entry_number !== existing.entry_number)
-        || (typeof rawSeat.table_id === "string" && rawSeat.table_id !== existing.table_id)
-        || (typeof rawSeat.seat_number === "number" && rawSeat.seat_number !== existing.seat_number);
-      if (identityMismatch || !existing.entry_id) return response({ error: "seat_entry_mismatch" }, 409);
-
-      const entryResult = await supabase
-        .from("tournament_entries")
-        .select("id,tournament_id,player_id,entry_no,status")
-        .eq("id", existing.entry_id)
-        .maybeSingle();
-      const entry = entryResult.data as EntryRow | null;
-      const entryError = entryResult.error;
-      if (
-        entryError || !entry
-        || entry.tournament_id !== tournamentId
-        || entry.player_id !== existing.player_id
-        || entry.entry_no !== existing.entry_number
-      ) {
-        return response({ error: "seat_entry_mismatch" }, 409);
-      }
-
-      const requestedActive = rawSeat.is_active !== false;
-      if (!requestedActive) {
-        if (!existing.is_active) {
-          unchanged += 1;
-          continue;
+      case "update_seats": {
+        const { seats } = body;
+        // NOTE: we deliberately do NOT upsert. The seat-assignment-core migration
+        // (20260807000000) dropped the legacy full UNIQUE(tournament_id,player_id)
+        // and replaced it with PARTIAL unique indexes (… WHERE is_active=true).
+        // PostgREST on_conflict cannot target a partial index, so upserting any
+        // row (e.g. a busted/inactive seat) fails with "no unique or exclusion
+        // constraint matching the ON CONFLICT specification". Instead: UPDATE the
+        // existing row by id, INSERT only when no seat_id is supplied.
+        // Process deactivations (is_active=false) BEFORE activations so a save that
+        // frees one seat and fills it in the same batch can't transiently collide
+        // on uq_tournament_seats_active_seat (table_id,seat_number) WHERE is_active.
+        const rows = (seats as any[]).slice().sort(
+          (a, b) => (a.is_active === false ? 0 : 1) - (b.is_active === false ? 0 : 1)
+        );
+        for (const seat of rows) {
+          const payload = {
+            tournament_id,
+            player_id: seat.player_id,
+            entry_number: seat.entry_number || 1,
+            table_id: seat.table_id,
+            seat_number: seat.seat_number,
+            chip_count: seat.chip_count || 0,
+            is_active: seat.is_active !== false,
+            player_name: seat.player_name || "",
+          };
+          if (seat.seat_id) {
+            const { error: updErr } = await supabase
+              .from("tournament_seats")
+              .update(payload)
+              .eq("id", seat.seat_id);
+            if (updErr) throw updErr;
+          } else {
+            const { error: insErr } = await supabase
+              .from("tournament_seats")
+              .insert(payload);
+            if (insErr) throw insErr;
+          }
         }
-        if (entry.status !== "seated") return response({ error: "entry_not_seated" }, 409);
-        if (typeof rawSeat.chip_count !== "number" || rawSeat.chip_count !== existing.chip_count) {
-          return response({ error: "stale_seat_state" }, 409);
-        }
-
-        const { data: bustData, error: bustError } = await supabase.rpc("floor_bust_player", {
-          p_tournament_id: tournamentId,
-          p_seat_id: existing.id,
-          p_expected_chip_count: existing.chip_count,
-          p_reason: "tournament_live_draw",
-        });
-        if (bustError) throw bustError;
-        if (!isRecord(bustData) || bustData.ok !== true) {
-          const bustCode = isRecord(bustData) && typeof bustData.error === "string"
-            ? bustData.error
-            : "bust_failed";
-          const conflictCodes = new Set([
-            "stale_seat_state",
-            "seat_entry_mismatch",
-            "entry_not_seated",
-            "seat_not_active",
-            "player_has_chips",
-            "player_in_active_hand",
-          ]);
-          return response({ error: bustCode }, conflictCodes.has(bustCode) ? 409 : 400);
-        }
-        updated += 1;
-        continue;
+        result = { data: { updated: seats.length } };
+        break;
       }
+      case "add_table": {
+        const { table_name } = body;
+        if (!table_name) throw new Error("Missing table_name");
 
-      if (!existing.is_active) return response({ error: "restore_requires_rpc" }, 409);
-      if (entry.status !== "seated") return response({ error: "entry_not_seated" }, 409);
-      const nextChip = rawSeat.chip_count;
-      const expectedChip = rawSeat.expected_chip_count;
-      if (
-        typeof nextChip !== "number"
-        || !Number.isSafeInteger(nextChip)
-        || nextChip < 0
-        || typeof expectedChip !== "number"
-        || !Number.isSafeInteger(expectedChip)
-        || expectedChip < 0
-      ) {
-        return response({ error: "chip_count and expected_chip_count must be non-negative integers" }, 400);
-      }
-      if (expectedChip !== existing.chip_count) return response({ error: "stale_seat_state" }, 409);
-      if (nextChip === existing.chip_count) {
-        unchanged += 1;
-        continue;
-      }
+        const { data: existing } = await supabase
+          .from("tournament_tables")
+          .select("id")
+          .eq("tournament_id", tournament_id)
+          .eq("table_name", table_name)
+          .maybeSingle();
+        if (existing) throw new Error("Table name already exists in this tournament");
 
-      const { data: changed, error: updateError } = await supabase
-        .from("tournament_seats")
-        .update({ chip_count: nextChip })
-        .eq("id", existing.id)
-        .eq("tournament_id", tournamentId)
-        .eq("is_active", true)
-        .eq("chip_count", expectedChip)
-        .select("id")
-        .maybeSingle();
-      if (updateError) throw updateError;
-      if (!changed) return response({ error: "stale_seat_state" }, 409);
-      updated += 1;
+        const { data, error: addErr } = await supabase
+          .from("tournament_tables")
+          .insert({ tournament_id, table_name })
+          .select()
+          .single();
+        if (addErr) throw addErr;
+        result = { data };
+        break;
+      }
+      case "add_player": {
+        const { player_id, player_name, table_id: tbl, seat_number, chip_count } = body;
+        if (!tbl || !seat_number) throw new Error("Missing required fields: table_id, seat_number");
+        if ((chip_count ?? 0) < 0) throw new Error("chip_count must be >= 0");
+
+        const { data: tblCheck } = await supabase
+          .from("tournament_tables")
+          .select("id")
+          .eq("id", tbl)
+          .eq("tournament_id", tournament_id)
+          .maybeSingle();
+        if (!tblCheck) throw new Error("Table does not belong to this tournament");
+
+        const { data: seatOccupied } = await supabase
+          .from("tournament_seats")
+          .select("id")
+          .eq("table_id", tbl)
+          .eq("seat_number", seat_number)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (seatOccupied) throw new Error("Seat already occupied");
+
+        const pId = player_id || crypto.randomUUID();
+        const pName = player_name || "";
+
+        const { data: nextEntry } = await supabase
+          .from("tournament_seats")
+          .select("entry_number")
+          .eq("tournament_id", tournament_id)
+          .eq("player_id", pId)
+          .order("entry_number", { ascending: false })
+          .limit(1);
+        const entryNum = body.entry_number ?? ((nextEntry?.[0]?.entry_number ?? 0) + 1);
+
+        const { data, error: seatErr } = await supabase
+          .from("tournament_seats")
+          .insert({
+            tournament_id,
+            player_id: pId,
+            table_id: tbl,
+            seat_number,
+            entry_number: entryNum,
+            chip_count: chip_count ?? 0,
+            is_active: true,
+            player_name: pName,
+          })
+          .select()
+          .single();
+        if (seatErr) throw seatErr;
+        result = { data };
+        break;
+      }
+      default:
+        return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return response({ status: "success", data: { updated, unchanged } });
-  } catch {
-    console.error("tournament-live-draw failed");
-    return response({ error: "draw_operation_failed" }, 500);
+    if (result.error) throw result.error;
+    return new Response(JSON.stringify({ status: "success", data: result.data }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

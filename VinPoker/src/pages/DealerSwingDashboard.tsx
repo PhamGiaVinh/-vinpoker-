@@ -49,7 +49,7 @@ export default function DealerSwingDashboard() {
     );
   }
 
-  const scopedIds = Array.from(new Set([...clubIds, ...dealerClubIds]));
+  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
 
   // Phase 2B preview gate: while the global flag is OFF, owner / club-admin /
   // super-admin still see the planner tab on this (already control-staff-only) page

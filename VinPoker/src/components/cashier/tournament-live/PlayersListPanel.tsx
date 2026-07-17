@@ -10,8 +10,6 @@ import { formatVND } from "@/lib/format";
 import type { Tournament } from "@/types/tournament";
 import { PlayerActionSheet, type ActionSeat } from "./PlayerActionSheet";
 import { MovePlayerDialog } from "./MovePlayerDialog";
-import { getFloorOperatorClubIds } from "@/lib/floorOperatorAccess";
-import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
 
 interface SeatRow {
   seat_id: string;
@@ -47,15 +45,16 @@ export function PlayersListPanel({
   const [moveTarget, setMoveTarget] = useState<SeatRow | null>(null);
   const [busting, setBusting] = useState(false);
 
-  // Move authorization (owner/cashier/floor of the tournament's club) — same gate as the
+  // Move authorization (owner/cashier of the tournament's club) — same gate as the
   // move_player_seat RPC, so we don't show a Chuyển that would be rejected.
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!user) { setCanMove(false); return; }
-      const ids = await getFloorOperatorClubIds(user.id).catch(() => []);
+      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
       if (!alive) return;
-      setCanMove(ids.includes(tournament.club_id));
+      const allowed = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
+      setCanMove(allowed.includes(tournament.club_id));
     })();
     return () => { alive = false; };
   }, [user, tournament.club_id]);
@@ -99,13 +98,12 @@ export function PlayersListPanel({
           }],
         },
       });
-      const responseError = floorOpsResponseErrorCode(data);
-      if (error || responseError) { toast.error(floorOpsErrorMessage(responseError, error?.message)); return; }
+      if (error || data?.error) { toast.error(data?.error || error?.message); return; }
       toast.success(`Đã loại ${selected.player_name || "người chơi"}`);
       setSelected(null);
       load();
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Lỗi");
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi");
     } finally {
       setBusting(false);
     }

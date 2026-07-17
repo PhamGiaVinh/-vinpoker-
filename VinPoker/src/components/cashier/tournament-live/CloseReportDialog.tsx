@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Lock, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useCloseReport } from "@/hooks/useCloseReport";
-import { floorOpsErrorMessage } from "@/lib/floorOpsErrors";
 
 interface Props {
   open: boolean;
@@ -71,7 +70,7 @@ export default function CloseReportDialog({ open, onOpenChange, tournamentId, to
     const res = await closeTournament("close_report");
     setBusy(false);
     if (!res.ok) {
-      toast.error(floorOpsErrorMessage(res.error, "Không chốt được"));
+      toast.error(`Không chốt được: ${res.error ?? "lỗi không rõ"}`);
       return;
     }
     toast.success(res.reconciled ? "Đã chốt giải — số dư khớp" : "Đã chốt giải (số dư chưa cân — đã ghi nhận)");
