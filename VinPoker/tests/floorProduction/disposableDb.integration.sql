@@ -388,9 +388,9 @@ SELECT public.floor_test_assert(
   'bust RPC grants are scoped to authenticated and deny anon'
 );
 SELECT public.floor_test_assert(
-  NOT has_function_privilege('PUBLIC', 'public.floor_start_tournament_clock(uuid)'::regprocedure, 'EXECUTE')
+  NOT has_function_privilege('anon', 'public.floor_start_tournament_clock(uuid)'::regprocedure, 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.floor_start_tournament_clock(uuid)'::regprocedure, 'EXECUTE'),
-  'clock RPC revokes PUBLIC and grants authenticated'
+  'clock RPC is not effectively executable by anon and grants authenticated'
 );
 
 SELECT 'floor disposable DB integration passed' AS result;
