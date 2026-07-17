@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const migrationPath = resolve(
-  process.cwd(),
-  "supabase/migrations/20260717000001_process_swing_cron_vault_caller.sql",
-);
+const migrationRelativePath = "supabase/migrations/20260717000001_process_swing_cron_vault_caller.sql";
+const projectRoot = existsSync(resolve(process.cwd(), migrationRelativePath))
+  ? process.cwd()
+  : resolve(process.cwd(), "VinPoker");
+const migrationPath = resolve(projectRoot, migrationRelativePath);
 const sql = readFileSync(migrationPath, "utf8");
 
 const mustContain = [
