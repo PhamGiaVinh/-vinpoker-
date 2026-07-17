@@ -14113,7 +14113,20 @@ export type Database = {
         }
         Returns: Json
       }
+      floor_bust_player: {
+        Args: {
+          p_expected_chip_count: number
+          p_reason?: string
+          p_seat_id: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       floor_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      floor_start_tournament_clock: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       fn_compute_staking_payouts: {
         Args: { _markup: number; _percentage: number; _prize_vnd: number }
         Returns: Json
@@ -15157,6 +15170,16 @@ export type Database = {
           p_mode: string
           p_target_table_count?: number
           p_tournament_id: string
+        }
+        Returns: Json
+      }
+      restore_busted_player_to_seat: {
+        Args: {
+          p_actor_user_id?: string | null
+          p_entry_id: string
+          p_reason?: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
         }
         Returns: Json
       }
