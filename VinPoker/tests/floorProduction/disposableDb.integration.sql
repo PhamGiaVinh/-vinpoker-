@@ -53,7 +53,9 @@ $$;
 
 CREATE TABLE public.profiles (
   id uuid PRIMARY KEY,
-  full_name text
+  user_id uuid,
+  full_name text,
+  display_name text
 );
 
 CREATE TABLE public.tournaments (
