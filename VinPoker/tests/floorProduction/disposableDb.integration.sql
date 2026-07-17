@@ -122,7 +122,8 @@ CREATE TABLE public.tournament_seats (
   entry_id uuid,
   status text NOT NULL,
   assigned_by uuid,
-  assigned_at timestamptz
+  assigned_at timestamptz,
+  created_at timestamptz DEFAULT now()
 );
 CREATE UNIQUE INDEX tournament_seats_active_seat_idx
   ON public.tournament_seats (tournament_id, table_id, seat_number)
