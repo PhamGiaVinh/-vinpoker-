@@ -296,7 +296,18 @@ SELECT public.floor_test_assert(
   'move succeeds with actor derived from auth.uid'
 );
 SELECT public.floor_test_assert(
-  (SELECT chip_count = 100 AND is_active FROM public.tournament_seats WHERE entry_id = '00000000-0000-0000-0000-000000000401'),
+  EXISTS (
+    SELECT 1
+    FROM public.tournament_seats
+    WHERE entry_id = '00000000-0000-0000-0000-000000000401'
+      AND chip_count = 100
+      AND is_active
+  ) AND (
+    SELECT count(*)
+    FROM public.tournament_seats
+    WHERE entry_id = '00000000-0000-0000-0000-000000000401'
+      AND is_active
+  ) = 1,
   'move preserves chip count and leaves one active seat'
 );
 
