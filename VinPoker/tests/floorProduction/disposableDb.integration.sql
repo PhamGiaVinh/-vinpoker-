@@ -108,6 +108,9 @@ CREATE TABLE public.tournament_entries (
   seat_number integer,
   seated_at timestamptz,
   busted_at timestamptz,
+  bust_order integer,
+  finished_place integer,
+  created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
