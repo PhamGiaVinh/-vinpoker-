@@ -815,6 +815,12 @@ export const FEATURES = {
    */
   opsSwingActions: true,
   /**
+   * Wide rollout gate for the completed Dealer Swing phone workflow. Keep OFF
+   * through merge and production dark deploy. A server-side TEST-club allowlist
+   * can enable UAT without turning this source gate on for every club.
+   */
+  opsSwingPhoneCompletion: false,
+  /**
    * Club "Lịch series" — a per-club gallery of MANY series-schedule images (posters +
    * match schedules) shown as a swipeable carousel on the public ClubDetail page and
    * managed by admins in Media Center (MediaClubSchedules), alongside the single
