@@ -11,6 +11,7 @@ import { HandFeedCard } from "./HandFeedCard";
 import { TournamentPostCard } from "./TournamentPostCard";
 import type { HandFeedTag } from "./handFeedDerive";
 import type { TournamentPostViewModel, ViewerFeedItem } from "./viewerTypes";
+import type { ReplayTarget } from "./replayTarget";
 
 export interface LiveHandFeedProps {
   tournamentId: string;
@@ -20,8 +21,8 @@ export interface LiveHandFeedProps {
   tableNames?: Record<string, string>;
   editorialPosts?: TournamentPostViewModel[];
   focusedPostId?: string | null;
-  onViewHand?: (handNumber: number) => void;
-  onShare?: (handNumber: number) => void;
+  onViewHand?: (target: ReplayTarget) => void;
+  onShare?: (target: ReplayTarget) => void;
   onSharePost?: (postId: string) => void;
 }
 

@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
+import type { ReplayTarget, ReplayTargetState } from "./viewer-hub/replayTarget";
 
 interface HandRow {
   id: string;
@@ -26,9 +27,10 @@ interface HandSelectorProps {
   /** Clear the previous replay frame before an async hand load begins. */
   onLoadStart?: (handId: string) => void;
   onSelectHand: (handId: string, hand: ReplayHand) => void;
-  /** Deep-link: when set, select this hand number instead of the most recent one
-   *  (ADDITIVE — omit/null keeps the auto-select-most-recent behaviour). */
-  initialHandNumber?: number | null;
+  /** URL target. When supplied, this selector never substitutes another hand. */
+  replayTarget?: ReplayTarget | null;
+  /** Parent resolution protects table selection; selector renders its exact state. */
+  replayTargetState?: ReplayTargetState;
 }
 
 export function HandSelector({
@@ -37,15 +39,19 @@ export function HandSelector({
   selectedHandId,
   onLoadStart,
   onSelectHand,
-  initialHandNumber = null,
+  replayTarget = null,
+  replayTargetState = { kind: "idle" },
 }: HandSelectorProps) {
   const [hands, setHands] = useState<HandRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingHand, setLoadingHand] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingList(true);
+    setListError(null);
     (async () => {
       let q = supabase
         .from("tournament_hands")
@@ -53,10 +59,17 @@ export function HandSelector({
         .eq("tournament_id", tournamentId)
         .eq("is_voided", false)
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .limit(50);
       if (tableId) q = q.eq("table_id", tableId);
-      const { data } = await q;
+      const { data, error } = await q;
       if (cancelled) return;
+      if (error) {
+        setHands([]);
+        setListError(error.message || "Không thể tải lịch sử ván.");
+        setLoadingList(false);
+        return;
+      }
       const rows = (data ?? [])
         .filter((h: any) => h.status !== "in_progress")
         .map((h: any) => ({
@@ -79,6 +92,7 @@ export function HandSelector({
     async (row: HandRow) => {
       onLoadStart?.(row.id);
       setLoadingHand(true);
+      setLoadError(null);
       try {
         // E1: prefer the per-hand snapshot (hand_players.player_name/avatar_url) when the
         // migration is applied; the columns are selected only if present (feature-detect).
@@ -86,7 +100,7 @@ export function HandSelector({
         const hpCols = snap
           ? "player_id, seat_number, starting_stack, ending_stack, hole_cards, player_name, avatar_url"
           : "player_id, seat_number, starting_stack, ending_stack, hole_cards";
-        const [{ data: actionData }, { data: handPlayers }] = await Promise.all([
+        const [{ data: actionData, error: actionError }, { data: handPlayers, error: handPlayersError }] = await Promise.all([
           supabase
             .from("hand_actions")
             .select("id, player_id, street, action_type, action_amount, action_order")
@@ -94,6 +108,10 @@ export function HandSelector({
             .order("action_order"),
           supabase.from("hand_players").select(hpCols).eq("hand_id", row.id),
         ]);
+        if (actionError || handPlayersError) {
+          setLoadError(actionError?.message || handPlayersError?.message || "Không thể tải dữ liệu replay.");
+          return;
+        }
 
         // Fall back to the live tournament_seats roster ONLY for rows the snapshot didn't
         // capture (old hands) — the helper no-ops on an empty id list, so this is free
@@ -129,6 +147,8 @@ export function HandSelector({
           })),
         };
         onSelectHand(row.id, hand);
+      } catch (cause) {
+        setLoadError(cause instanceof Error ? cause.message : "Không thể tải dữ liệu replay.");
       } finally {
         setLoadingHand(false);
       }
@@ -136,20 +156,47 @@ export function HandSelector({
     [onLoadStart, onSelectHand, tournamentId]
   );
 
-  // Select the deep-linked hand if given, else auto-select the most recent once the
-  // list loads.
+  // A target is never allowed to fall back to `hands[0]`. When it is outside the
+  // first page, load the exact UUID in the same tournament scope instead.
   useEffect(() => {
-    if (hands.length === 0) return;
-    if (initialHandNumber != null) {
-      const target = hands.find((h) => h.hand_number === initialHandNumber);
-      if (target && target.id !== selectedHandId) {
-        void loadHand(target);
+    let cancelled = false;
+    if (replayTarget) {
+      if (replayTargetState.kind !== "resolved" || selectedHandId === replayTargetState.handId) return;
+      const listed = hands.find((hand) => hand.id === replayTargetState.handId);
+      if (listed) {
+        void loadHand(listed);
         return;
       }
+
+      void (async () => {
+        const { data, error } = await supabase
+          .from("tournament_hands")
+          .select("id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided")
+          .eq("tournament_id", tournamentId)
+          .eq("id", replayTargetState.handId)
+          .eq("is_voided", false)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !data || data.status === "in_progress") {
+          setLoadError(error?.message || "Không tìm thấy hand được yêu cầu.");
+          return;
+        }
+        void loadHand(data as HandRow);
+      })();
+      return () => { cancelled = true; };
     }
-    if (!selectedHandId) void loadHand(hands[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hands, initialHandNumber]);
+
+    if (hands.length > 0 && !selectedHandId) void loadHand(hands[0]);
+    return () => { cancelled = true; };
+  }, [hands, loadHand, replayTarget, replayTargetState, selectedHandId, tournamentId]);
+
+  const targetMessage: Record<Exclude<ReplayTargetState["kind"], "idle" | "resolved">, string> = {
+    loading: "Đang tìm hand từ đường dẫn...",
+    not_found: "Không tìm thấy hand trong giải này.",
+    ambiguous: "Số hand cũ trùng ở nhiều bàn. Hãy mở link có handId.",
+    mismatch: "Hand và table trong đường dẫn không khớp.",
+    query_error: "Không thể truy vấn hand. Hãy thử lại.",
+  };
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -159,14 +206,15 @@ export function HandSelector({
       <select
         className="h-8 rounded-md border border-input bg-background px-2 text-xs min-w-[140px]"
         value={selectedHandId ?? ""}
-        disabled={loadingList || hands.length === 0}
+        disabled={loadingList || !!listError || hands.length === 0}
         onChange={(e) => {
           const row = hands.find((h) => h.id === e.target.value);
           if (row) void loadHand(row);
         }}
       >
         {loadingList && <option value="">Đang tải...</option>}
-        {!loadingList && hands.length === 0 && <option value="">Chưa có hand đã xong</option>}
+        {!loadingList && listError && <option value="">Không tải được lịch sử hand</option>}
+        {!loadingList && !listError && hands.length === 0 && <option value="">Chưa có hand đã xong</option>}
         {hands.map((h) => (
           <option key={h.id} value={h.id}>
             Hand #{h.hand_number}
@@ -174,6 +222,11 @@ export function HandSelector({
         ))}
       </select>
       {loadingHand && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
+      {replayTargetState.kind !== "idle" && replayTargetState.kind !== "resolved" && (
+        <p role="status" className="w-full text-xs text-warning">{targetMessage[replayTargetState.kind]}</p>
+      )}
+      {listError && <p role="alert" className="w-full text-xs text-destructive">{listError}</p>}
+      {loadError && <p role="alert" className="w-full text-xs text-destructive">{loadError}</p>}
     </div>
   );
 }

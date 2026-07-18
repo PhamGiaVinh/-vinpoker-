@@ -636,7 +636,7 @@ export const FEATURES = {
    * Atomic completed-hand edit and forward resettle through the dedicated Edge path.
    * OFF preserves the existing operator edit flow; Hand #8 must not use this before UAT.
    */
-  trackerAtomicResettle: true,
+  trackerAtomicResettle: false,
   /**
    * Viewer Felt V2 — responsive, CoinPoker-style public spectator poker table.
    * Fixes the mobile bug where hole cards overlap each other / the central board by
@@ -1488,4 +1488,20 @@ export function isPayoutEngineEnabledForClub(
   if (features.payoutEngineAllClubs) return true;
   if (!clubId) return false;
   return features.payoutEngineClubs.includes(clubId);
+}
+
+/**
+ * A source flag alone cannot prove the private Edge/DB settlement contract is
+ * deployed. Atomic resettle may invoke the write path only after a build has an
+ * explicit capability acknowledgement from the controlled rollout runbook.
+ */
+export function canUseTrackerAtomicResettle(flagEnabled: boolean, capabilityAcknowledged: boolean): boolean {
+  return flagEnabled && capabilityAcknowledged;
+}
+
+export function isTrackerAtomicResettleAvailable(): boolean {
+  return canUseTrackerAtomicResettle(
+    FEATURES.trackerAtomicResettle,
+    import.meta.env.VITE_TRACKER_ATOMIC_RESETTLE_CAPABILITY === "confirmed",
+  );
 }

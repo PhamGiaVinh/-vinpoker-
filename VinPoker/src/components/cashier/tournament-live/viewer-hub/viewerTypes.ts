@@ -64,6 +64,8 @@ export interface TournamentPostViewModel {
   bodyVi: string;
   bodyEn?: string | null;
   coverPhotoUrl?: string | null;
+  linkedHandId?: string | null;
+  linkedHandTableId?: string | null;
   linkedHandNumber?: number | null;
   isPinned?: boolean;
   publishedAt: string;

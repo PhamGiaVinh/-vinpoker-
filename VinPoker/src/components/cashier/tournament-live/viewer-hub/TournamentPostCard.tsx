@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { Bell, Link2, MessageSquareText, Pin, Play } from "lucide-react";
 import type { TournamentPostViewModel } from "./viewerTypes";
+import type { ReplayTarget } from "./replayTarget";
 
 export interface TournamentPostCardProps {
   post: TournamentPostViewModel;
   focused?: boolean;
   onShare?: (postId: string) => void;
-  onViewHand?: (handNumber: number) => void;
+  onViewHand?: (target: ReplayTarget) => void;
 }
 
 function localizedCopy(post: TournamentPostViewModel, language: string) {
@@ -72,7 +73,7 @@ export function TournamentPostCard({ post, focused = false, onShare, onViewHand 
           {post.sourceLabel && <p className="mt-2 text-[11px] font-semibold text-foreground/70">{post.sourceLabel}</p>}
         </div>
 
-        {(onShare || (onViewHand && post.linkedHandNumber != null && post.linkedHandNumber > 0)) && (
+        {(onShare || (onViewHand && post.linkedHandId)) && (
           <div className="flex flex-wrap gap-2 border-t border-border/40 pt-3">
             {onShare && (
               <button
@@ -83,10 +84,14 @@ export function TournamentPostCard({ post, focused = false, onShare, onViewHand 
                 <Link2 className="h-4 w-4" aria-hidden="true" /> {t("liveHub.editorial.share", "Chia sẻ")}
               </button>
             )}
-            {onViewHand && post.linkedHandNumber != null && post.linkedHandNumber > 0 && (
+            {onViewHand && post.linkedHandId && (
               <button
                 type="button"
-                onClick={() => onViewHand(post.linkedHandNumber!)}
+                onClick={() => onViewHand({
+                  handId: post.linkedHandId!,
+                  tableId: post.linkedHandTableId ?? null,
+                  handNumber: post.linkedHandNumber ?? null,
+                })}
                 className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(var(--viewer-neon))] px-3 text-xs font-bold text-[hsl(var(--viewer-neon-ink))] shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.32),0_0_22px_hsl(var(--viewer-neon)_/_0.34)] transition-[background-color,box-shadow,transform] duration-200 hover:bg-[hsl(var(--viewer-neon-bright))] hover:shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.5),0_0_34px_hsl(var(--viewer-neon)_/_0.52)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
               >
                 <Play className="h-4 w-4" aria-hidden="true" />
