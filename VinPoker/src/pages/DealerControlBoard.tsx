@@ -25,6 +25,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { AlertTriangle, MonitorPlay, Users } from "lucide-react";
+import { mergeClubRows, normalizeClubIds } from "@/lib/dealerControlAccess";
 
 /* ── RPC payload contracts (get_rotation_board) ─────────────────────────── */
 
@@ -349,6 +350,7 @@ export default function DealerControlBoard() {
 
   const [clubs, setClubs] = useState<ClubRow[] | null>(null);
   const [clubFilter, setClubFilter] = useState<string | null>(null);
+  const [clubLoadError, setClubLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -358,19 +360,44 @@ export default function DealerControlBoard() {
   // Load clubs the user can control dealers for (fallback to cashier clubs).
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+
     (async () => {
-      const { data: dcIds } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
-      let idArr = (dcIds ?? []).map((r: any) => (typeof r === "string" ? r : r.dealer_control_club_ids ?? r));
+      setClubLoadError(null);
+      const { data: dcIds, error: dcError } = await supabase.rpc("dealer_control_club_ids", { _user_id: user.id });
+      let idArr = normalizeClubIds(dcIds, "dealer_control_club_ids");
       if (!idArr.length) {
-        const { data: cIds } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
-        idArr = (cIds ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
+        const { data: cIds, error: cashierError } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
+        idArr = normalizeClubIds(cIds, "cashier_club_ids");
+        if (!idArr.length && (dcError || cashierError)) {
+          const error = dcError ?? cashierError;
+          console.error("[DealerControlBoard] club access RPC failed:", error);
+          if (!cancelled) {
+            setClubLoadError(error?.message ?? "Không tải được quyền CLB");
+            setClubs([]);
+          }
+          return;
+        }
       }
-      if (!idArr.length) { setClubs([]); return; }
-      const { data: cs } = await supabase.from("clubs").select("id,name").in("id", idArr);
-      const rows = (cs ?? []) as ClubRow[];
+      if (!idArr.length) { if (!cancelled) setClubs([]); return; }
+      const { data: cs, error: clubsError } = await supabase.from("clubs").select("id,name").in("id", idArr);
+      if (cancelled) return;
+      if (clubsError) {
+        console.warn("[DealerControlBoard] club names unavailable; retaining authorized IDs:", clubsError);
+        setClubLoadError(clubsError.message);
+      }
+      const rows = mergeClubRows(idArr, cs);
       setClubs(rows);
       if (rows.length === 1) setClubFilter(rows[0].id);
-    })();
+    })().catch((error) => {
+      console.error("[DealerControlBoard] club access load failed:", error);
+      if (!cancelled) {
+        setClubLoadError(error?.message ?? "Không tải được quyền CLB");
+        setClubs([]);
+      }
+    });
+
+    return () => { cancelled = true; };
   }, [user]);
 
   const clubIds = useMemo(() => {
@@ -401,6 +428,18 @@ export default function DealerControlBoard() {
     return (
       <div className="min-h-screen bg-card p-6">
         <Skeleton className="h-screen rounded-xl" />
+      </div>
+    );
+  }
+
+  if (clubs.length === 0 && clubLoadError) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+        <div className="text-center space-y-2 max-w-md">
+          <AlertTriangle className="w-10 h-10 mx-auto text-amber-400" />
+          <div className="text-xl font-bold text-zinc-100">Không tải được quyền điều hành Dealer</div>
+          <p className="text-sm text-zinc-500">Phiên đăng nhập chưa đọc được danh sách CLB. Hãy tải lại trang hoặc đăng xuất rồi đăng nhập lại.</p>
+        </div>
       </div>
     );
   }
