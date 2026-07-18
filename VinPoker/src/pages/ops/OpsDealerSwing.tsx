@@ -19,6 +19,8 @@ import {
 } from "@/hooks/usePublishedDealerSchedule";
 import { useDealerSwingPhoneRollout } from "@/hooks/useDealerSwingPhoneRollout";
 import { DealerPhoneCheckinSheet } from "@/components/ops/dealer-swing/DealerPhoneCheckinSheet";
+import { DealerPhoneCloseTablesSheet } from "@/components/ops/dealer-swing/DealerPhoneCloseTablesSheet";
+import { DealerPhoneReconcileSheet } from "@/components/ops/dealer-swing/DealerPhoneReconcileSheet";
 import {
   useActiveTables, useActiveAssignmentsWithTimeline, useCheckedInDealers,
   useTodayCheckedOutDealers,
@@ -182,9 +184,11 @@ function DealerSwingClubView({
   const [pickFor, setPickFor] = useState<TableVM | null>(null);
   const [breakFor, setBreakFor] = useState<BreakTarget | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  const [closeTablesOpen, setCloseTablesOpen] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileInitialTableId, setReconcileInitialTableId] = useState<string | null>(null);
   const [suggestTableOpen, setSuggestTableOpen] = useState(false); // chọn bàn thiếu người để gợi ý dealer
   const [placeFor, setPlaceFor] = useState<DealerAttendance | null>(null);   // đưa dealer này vào 1 bàn
-  const [fixTable, setFixTable] = useState<TableVM | null>(null);              // sửa nhầm bàn: chọn dealer thật ở bàn này
   const [tourList, setTourList] = useState<{ id: string; clubId: string; name: string }[] | null>(null);
   const [tourToClose, setTourToClose] = useState<string | null>(null);
   const [dongTour, setDongTour] = useState("");
@@ -232,6 +236,13 @@ function DealerSwingClubView({
     for (const a of assignments) if (a.attendance_id) m.set(a.attendance_id, a.game_tables?.table_name ?? "");
     return m;
   }, [assignments]);
+  const tableIdByAttendance = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const assignment of assignments) {
+      if (assignment.attendance_id) map.set(assignment.attendance_id, assignment.table_id);
+    }
+    return map;
+  }, [assignments]);
 
   const tableVMs = useMemo<TableVM[]>(() => {
     const open = (tablesQ.data ?? []).filter((t) => (t.status ?? "active") !== "inactive");
@@ -252,6 +263,28 @@ function DealerSwingClubView({
     for (const d of roster) byState[d.current_state as keyof typeof byState] = (byState[d.current_state as keyof typeof byState] ?? 0) + 1;
     return { openTables: tableVMs.length, inShift: roster.length, ...byState };
   }, [roster, tableVMs.length]);
+  const phoneCloseTables = useMemo(
+    () => tableVMs.map((table) => ({ id: table.id, name: table.name, dealer: table.dealer })),
+    [tableVMs],
+  );
+  const phoneReconcileTables = useMemo(
+    () => tableVMs.map((table) => ({
+      id: table.id,
+      name: table.name,
+      recordedAttendanceId: table.assignment?.attendance_id ?? null,
+      recordedDealerName: table.dealer,
+    })),
+    [tableVMs],
+  );
+  const phoneReconcileDealers = useMemo(
+    () => roster.map((dealer) => ({
+      attendanceId: dealer.id,
+      dealerName: dealer.dealers?.full_name ?? "Dealer",
+      currentTableId: tableIdByAttendance.get(dealer.id) ?? null,
+      state: dealer.current_state,
+    })),
+    [roster, tableIdByAttendance],
+  );
 
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
   const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSuggestTableOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
@@ -381,61 +414,6 @@ function DealerSwingClubView({
       }).catch(() => {});
     }
     setDongTour(""); setTourToClose(null); setTourList(null);
-    reloadAll();
-  });
-
-  // Sửa nhầm bàn → RPC reconcile_dealer_room_state (mirror CorrectWrongTableDealerModal: dry-run → apply
-  // với CAS plan). Mặc định điện thoại: effective=bây giờ, swap-về-gốc, displaced→pool, KHÔNG admin-override
-  // (sửa quá 120 phút phải làm trên máy tính). Server-authoritative + ghi audit.
-  const doFixWrongTable = (table: TableVM, actual: DealerAttendance) => runAction(async () => {
-    const tableId = table.id, clubId = table.clubId;
-    const recordedBId = table.assignment?.attendance_id ?? null;   // dealer đang ĐƯỢC GHI ở bàn này (B)
-    const actualId = actual.id;                                     // dealer THẬT ở bàn này (A)
-    if (recordedBId === actualId) { toast.info("Dealer này đã đúng bàn — không cần sửa."); setFixTable(null); return; }
-    const aAt = assignments.find((a) => a.attendance_id === actualId && a.table_id !== tableId); // A đang ghi ở bàn khác?
-    const reason = "Dealer vào nhầm bàn (sửa từ điện thoại)";
-    const build = () => {
-      const corrections: any[] = [{ table_id: tableId, actual_attendance_id: actualId }];
-      const displaced: any[] = [];
-      if (aAt) {
-        if (recordedBId && recordedBId !== actualId) corrections.push({ table_id: aAt.table_id, actual_attendance_id: recordedBId });
-        else corrections.push({ table_id: aAt.table_id, actual_attendance_id: null, confirm_empty: true });
-      } else if (recordedBId && recordedBId !== actualId) {
-        displaced.push({ attendance_id: recordedBId, resolution: "pool_available", reason });
-      }
-      return { corrections, displaced };
-    };
-    const call = async (dryRun: boolean, plan: any[] | null) => {
-      const { corrections, displaced } = build();
-      if (plan) for (const c of corrections) {
-        const p = plan.find((r: any) => r.table_id === c.table_id);
-        if (p?.expected_assignment_id) c.expected_assignment_id = p.expected_assignment_id;
-        if (p?.expected_version != null) c.expected_version = p.expected_version;
-      }
-      const { data, error } = await (supabase as any).rpc("reconcile_dealer_room_state", {
-        p_club_id: clubId, p_corrections: corrections, p_effective_at: new Date().toISOString(),
-        p_reason: reason, p_displaced: displaced, p_dry_run: dryRun, p_admin_override: false,
-      });
-      if (error) throw new Error(error.message);
-      return data as any;
-    };
-    const dry = await call(true, null);
-    if (dry?.outcome === "noop") { toast.info("Hệ thống đã khớp thực tế — không cần sửa."); setFixTable(null); return; }
-    if (dry?.outcome !== "dry_run" || !dry?.can_apply) {
-      const m: Record<string, string> = {
-        dealer_not_checked_in: "Dealer này chưa check-in.", effective_at_too_old: "Quá 120 phút — sửa trên máy tính (cần quyền admin).",
-        forbidden: "Không có quyền sửa bàn cho CLB này.", override_forbidden: "Chỉ admin sửa quá 120 phút.",
-      };
-      toast.error(m[dry?.outcome] ?? `Không sửa được: ${dry?.detail ?? dry?.outcome ?? "xung đột trạng thái"}`); return;
-    }
-    const r = await call(false, dry.plan ?? null);
-    if (r?.outcome === "applied") {
-      const s = r.summary ?? {};
-      toast.success(`Đã sửa nhầm bàn ${table.name}`, { description: `Chuyển: ${s.moved ?? 0} · Gán: ${s.assigned ?? 0} · Giải phóng: ${s.released ?? 0}` });
-    } else if (r?.outcome === "noop") toast.info("Không cần sửa.");
-    else if (r?.outcome === "race_lost") toast.warning("Trạng thái phòng vừa đổi — thử lại.");
-    else toast.error(`Sửa thất bại: ${r?.outcome ?? "lỗi"}`);
-    setFixTable(null);
     reloadAll();
   });
 
@@ -674,6 +652,24 @@ function DealerSwingClubView({
               })}
             </div>
           </div>
+          {phoneCompletionQ.allowed && tableVMs.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCloseTablesOpen(true)}
+                className="ios-press ios-fill flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-[#f2ece6]"
+              >
+                <FlagTriangleRight className="h-4 w-4 text-rose-300" /> Đóng bàn
+              </button>
+              <button
+                type="button"
+                onClick={() => { setReconcileInitialTableId(null); setReconcileOpen(true); }}
+                className="ios-press ios-fill flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-semibold text-[#f2ece6]"
+              >
+                <ArrowRightLeft className="h-4 w-4 text-[#c9a86a]" /> Sửa sơ đồ
+              </button>
+            </div>
+          )}
 
           {scheduleQ.loading ? (
             <div className="ios-card p-8 text-center text-[13px] text-[#9b8e97]">
@@ -918,7 +914,18 @@ function DealerSwingClubView({
               <SheetRow icon={<Coffee className="h-5 w-5 text-amber-300" />} label={`Cho ${tableSheet.dealer ?? "dealer"} nghỉ`}
                 onTap={() => go(setBreakFor, { attendanceId: tableSheet.assignment!.attendance_id, clubId: tableSheet.clubId, name: tableSheet.dealer ?? "dealer" })} />
             )}
-            <SheetRow icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />} label="Sửa nhầm bàn (chọn dealer thật)" onTap={() => tableSheet && go(setFixTable, tableSheet)} />
+            {phoneCompletionQ.allowed && (
+              <SheetRow
+                icon={<ArrowRightLeft className="h-5 w-5 text-[#9b8e97]" />}
+                label="Sửa nhầm bàn (mở sơ đồ)"
+                onTap={() => {
+                  const tableId = tableSheet?.id ?? null;
+                  setTableSheet(null);
+                  setReconcileInitialTableId(tableId);
+                  setReconcileOpen(true);
+                }}
+              />
+            )}
             <SheetRow icon={<History className="h-5 w-5 text-[#9b8e97]" />} label="Lịch sử bàn này" onTap={() => tableSheet && openTableHistory(tableSheet)} />
           </div>
         </SheetContent>
@@ -1087,33 +1094,6 @@ function DealerSwingClubView({
         </SheetContent>
       </Sheet>
 
-      {/* sửa nhầm bàn — chọn dealer THẬT đang ngồi ở bàn này */}
-      <Sheet open={fixTable !== null} onOpenChange={(v) => { if (!v) setFixTable(null); }}>
-        <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
-          <div className="ios-grabber mb-3 mt-1" />
-          <SheetHeader className="text-center"><SheetTitle className="text-[#f2ece6]">Ai đang thật sự ở {fixTable?.name}?</SheetTitle></SheetHeader>
-          <div className="mt-1 text-center text-[12px] leading-4 text-[#9b8e97]">Hệ thống đang ghi: <b>{fixTable?.dealer ?? "trống"}</b>. Chọn dealer thật đang ngồi — server sẽ sửa + ghi audit.</div>
-          <div className="ios-group mt-3 max-h-[46vh] overflow-y-auto">
-            {roster.filter((d) => d.dealers?.club_id === fixTable?.clubId).length === 0
-              ? <div className="px-4 py-6 text-center text-[13px] text-[#9b8e97]">Không có dealer đang trong ca.</div>
-              : roster.filter((d) => d.dealers?.club_id === fixTable?.clubId).map((d) => {
-                const isRecorded = fixTable?.assignment?.attendance_id === d.id;
-                return (
-                  <button key={d.id} disabled={busy} onClick={() => fixTable && doFixWrongTable(fixTable, d)}
-                    className="ios-press-sm ios-row-inset flex w-full items-center gap-3 px-4 py-3 text-left disabled:opacity-50">
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] text-[#f2ece6]">{d.dealers?.full_name ?? "—"}</span>
-                      <span className="block text-[12px] text-[#9b8e97]">{DEALER_CHIP[d.current_state]?.label ?? d.current_state}{tableByAttendance.get(d.id) ? ` · ${tableByAttendance.get(d.id)}` : ""}</span>
-                    </span>
-                    {isRecorded ? <span className="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-[#9b8e97]">đang ghi</span> : <span className="text-[13px] text-[#c9a86a]">chọn</span>}
-                  </button>
-                );
-              })}
-          </div>
-          <div className="mt-2.5 text-center text-[12px] text-[#7c7079]">sửa quá 120 phút hoặc nhiều bàn domino → làm trên máy tính</div>
-        </SheetContent>
-      </Sheet>
-
       {/* đưa dealer vào bàn — chọn bàn đang thiếu người */}
       <Sheet open={placeFor !== null} onOpenChange={(v) => { if (!v) setPlaceFor(null); }}>
         <SheetContent side="bottom" className="ops-sheet rounded-t-[22px] border-none bg-[#0d0913] pb-8">
@@ -1144,6 +1124,33 @@ function DealerSwingClubView({
           scheduleAssignments={todayScheduleAssignments}
           onOpenChange={setCheckinOpen}
           onCompleted={() => { reloadAll(); scheduleQ.refetch(); }}
+          onRolloutDisabled={phoneCompletionQ.refetch}
+        />
+      )}
+      {phoneCompletionQ.allowed && (
+        <DealerPhoneCloseTablesSheet
+          open={closeTablesOpen}
+          activeClubId={activeClubId}
+          tables={phoneCloseTables}
+          onOpenChange={setCloseTablesOpen}
+          onCompleted={reloadAll}
+          onConflict={reloadAll}
+          onRolloutDisabled={phoneCompletionQ.refetch}
+        />
+      )}
+      {phoneCompletionQ.allowed && (
+        <DealerPhoneReconcileSheet
+          open={reconcileOpen}
+          activeClubId={activeClubId}
+          initialTableId={reconcileInitialTableId}
+          tables={phoneReconcileTables}
+          dealers={phoneReconcileDealers}
+          onOpenChange={(nextOpen) => {
+            setReconcileOpen(nextOpen);
+            if (!nextOpen) setReconcileInitialTableId(null);
+          }}
+          onApplied={reloadAll}
+          onRaceLost={reloadAll}
           onRolloutDisabled={phoneCompletionQ.refetch}
         />
       )}
