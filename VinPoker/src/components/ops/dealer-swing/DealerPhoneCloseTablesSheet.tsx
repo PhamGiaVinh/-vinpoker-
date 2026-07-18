@@ -53,7 +53,7 @@ interface Props {
   onRolloutDisabled: () => void;
 }
 
-const rpcClose = supabase.rpc as unknown as (
+const rpcClose = supabase.rpc.bind(supabase) as unknown as (
   name: string,
   args: Record<string, unknown>,
 ) => PromiseLike<RpcResult>;
@@ -228,7 +228,7 @@ export function DealerPhoneCloseTablesSheet({
                 );
               })}
             </div>
-            {response && response.outcome !== "completed" && (
+            {response && (
               <p className="mt-3 text-[12px] text-amber-300">Không thể tạo xác nhận: {response.reason ?? response.outcome}</p>
             )}
             <Button type="button" className="mt-4 min-h-11 w-full" disabled={selected.size === 0 || busy} onClick={() => void preview()}>

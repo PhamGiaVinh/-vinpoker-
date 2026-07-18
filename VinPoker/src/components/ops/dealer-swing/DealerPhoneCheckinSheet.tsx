@@ -62,6 +62,11 @@ interface RpcResult {
   error: { message: string } | null;
 }
 
+const rpcCheckin = supabase.rpc.bind(supabase) as unknown as (
+  name: string,
+  args: Record<string, unknown>,
+) => PromiseLike<RpcResult>;
+
 const SUCCESS_CODES = new Set([
   "checked_in_waiting",
   "checked_in_available",
@@ -345,11 +350,7 @@ export function DealerPhoneCheckinSheet({
 
     setSubmitting(true);
     try {
-      const rpc = supabase.rpc as unknown as (
-        name: string,
-        args: Record<string, unknown>,
-      ) => PromiseLike<RpcResult>;
-      const result = await rpc("operator_check_in_dealers", {
+      const result = await rpcCheckin("operator_check_in_dealers", {
         p_request_id: requestId,
         p_expected_club_id: activeClubId,
         p_entries: entries,

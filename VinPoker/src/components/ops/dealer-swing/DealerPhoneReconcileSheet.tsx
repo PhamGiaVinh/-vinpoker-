@@ -67,7 +67,7 @@ interface Props {
 }
 
 const EMPTY = "__empty__";
-const rpcReconcile = supabase.rpc as unknown as (
+const rpcReconcile = supabase.rpc.bind(supabase) as unknown as (
   name: string,
   args: Record<string, unknown>,
 ) => PromiseLike<RpcResult>;
@@ -96,15 +96,21 @@ export function DealerPhoneReconcileSheet({
   const [result, setResult] = useState<ReconcileResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const effectiveAtRef = useRef<string | null>(null);
+  const openedForClubRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      openedForClubRef.current = null;
+      return;
+    }
+    if (openedForClubRef.current === activeClubId) return;
+    openedForClubRef.current = activeClubId;
     setSelections(initialSelections(tables));
     setReason("Dealer ngồi nhầm bàn, sửa từ điện thoại");
     setPreview(null);
     setResult(null);
     effectiveAtRef.current = null;
-  }, [open, tables]);
+  }, [activeClubId, open, tables]);
 
   const tableById = useMemo(
     () => new Map(tables.map((table) => [table.id, table])),

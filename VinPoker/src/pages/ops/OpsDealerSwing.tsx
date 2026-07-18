@@ -287,17 +287,15 @@ function DealerSwingClubView({
   );
 
   const go = <T,>(setter: (v: T) => void, v: T) => { setTableSheet(null); setDealerSheet(null); requestAnimationFrame(() => setter(v)); };
-  const soon = () => { setTableSheet(null); setDealerSheet(null); setPickFor(null); setBreakFor(null); setCheckinOpen(false); setSuggestTableOpen(false); toast("Nút này đang được nối — sẽ bật sau khi anh xác nhận bảng thật đúng (UAT)"); };
 
-  // ── Nối hành động THẬT (gate opsSwingActions). Cờ OFF → mọi nút giữ nhắc "đang nối"
-  // (soon), 0 gọi RPC/edge. Handlers mirror desktop DealerSwingTab 1:1 (perform_swing /
-  // assign-dealer / manage-break / checkout-dealer) — cùng server, cùng RLS. ──
+  // Existing mobile actions share the same server paths as desktop. The build
+  // flag remains a hard stop and never falls through to an RPC/Edge call.
   const LIVE = FEATURES.opsSwingActions;
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const reloadAll = () => { tablesQ.refetch(); asgQ.refetch(); rosterQ.refetch(); outQ.refetch(); };
   const runAction = async (fn: () => Promise<void>) => {
-    if (!LIVE) { soon(); return; }                 // chưa bật cờ → stub
+    if (!LIVE) { toast.warning("Bản dựng này đang ở chế độ chỉ xem."); return; }
     if (busyRef.current) return;                   // chống double-tap (ref đồng bộ)
     busyRef.current = true; setBusy(true);
     try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Lỗi mạng"); } finally { busyRef.current = false; setBusy(false); }
@@ -525,7 +523,14 @@ function DealerSwingClubView({
         </div>
       ) : (
         <div className="rounded-xl bg-amber-400/8 px-3 py-2 text-[12px] text-amber-300/90">
-          Dữ liệu <b>thật</b>. Các nút hành động đang được nối — bấm sẽ nhắc; sẽ bật sau khi anh xác nhận bảng đúng.
+          Dữ liệu thật · bản dựng này đang ở chế độ chỉ xem.
+        </div>
+      )}
+
+      {phoneCompletionQ.error && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl bg-rose-400/8 px-3 py-2 text-[12px] text-rose-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Không kiểm tra được quyền thao tác phone: {phoneCompletionQ.error}</span>
         </div>
       )}
 

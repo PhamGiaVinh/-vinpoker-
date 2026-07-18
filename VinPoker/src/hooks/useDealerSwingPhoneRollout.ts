@@ -22,6 +22,11 @@ type AbortableRpc = {
   abortSignal: (signal: AbortSignal) => PromiseLike<RpcResult>;
 };
 
+const rpcRollout = supabase.rpc.bind(supabase) as unknown as (
+  name: string,
+  args: Record<string, unknown>,
+) => AbortableRpc;
+
 export function useDealerSwingPhoneRollout(clubId: string | null): RolloutResult {
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -46,11 +51,7 @@ export function useDealerSwingPhoneRollout(clubId: string | null): RolloutResult
 
     const load = async () => {
       try {
-        const rpc = supabase.rpc as unknown as (
-          name: string,
-          args: Record<string, unknown>,
-        ) => AbortableRpc;
-        const response = await rpc("get_dealer_swing_phone_rollout", {
+        const response = await rpcRollout("get_dealer_swing_phone_rollout", {
           p_expected_club_id: clubId,
         }).abortSignal(controller.signal);
         if (response.error) throw response.error;
