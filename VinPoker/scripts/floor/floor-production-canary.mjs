@@ -76,9 +76,22 @@ function safeAuthErrorDetail(error) {
   return `status=${status} code=${code}`;
 }
 
+function safeDbErrorDetail(error) {
+  const code = typeof error?.code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(error.code)
+    ? error.code
+    : "unknown";
+  const constraint = typeof error?.constraint === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(error.constraint)
+    ? ` constraint=${error.constraint}`
+    : "";
+  return `code=${code}${constraint}`;
+}
+
 async function single(query, code) {
   const { data, error } = await query.single();
-  if (error || !data) fail(code);
+  if (error || !data) {
+    console.log(`FLOOR_CANARY DB_FAIL op=${code} ${safeDbErrorDetail(error)}`);
+    fail(code);
+  }
   return data;
 }
 
@@ -111,27 +124,49 @@ async function createActor(admin, anonKey, url, runId, label, owned) {
   };
 }
 
+async function trackClubOwnedRows(admin, clubId, owned) {
+  const tables = await admin.from("game_tables").select("id").eq("club_id", clubId);
+  if (tables.error || !tables.data) {
+    console.log(`FLOOR_CANARY DB_FAIL op=track_game_tables ${safeDbErrorDetail(tables.error)}`);
+    fail("track_game_tables");
+  }
+  owned.gameTables.push(...tables.data.map((row) => row.id));
+
+  const audits = await admin.from("swing_config_audit").select("id").eq("club_id", clubId);
+  if (audits.error || !audits.data) {
+    console.log(`FLOOR_CANARY DB_FAIL op=track_swing_config_audit ${safeDbErrorDetail(audits.error)}`);
+    fail("track_swing_config_audit");
+  }
+  owned.auditRows.push(...audits.data.map((row) => row.id));
+}
+
 async function createFixture(admin, actors, runId, scenario, owned) {
+  const clubId = randomUUID();
+  owned.clubs.push(clubId);
   const club = await single(admin.from("clubs").insert({
-    id: randomUUID(),
+    id: clubId,
     owner_id: actors.owner.id,
     name: `${runId}_${scenario}`,
     region: "TEST",
     status: "approved",
   }).select("id"), `create_fixture_club_${scenario}`);
-  owned.clubs.push(club.id);
-
+  await trackClubOwnedRows(admin, club.id, owned);
   for (const actor of [actors.cashier, actors.floor]) {
     const membership = await admin.from(actor.label === "cashier" ? "club_cashiers" : "club_floors").insert({
       club_id: club.id,
       user_id: actor.id,
       granted_by: actors.owner.id,
     });
-    if (membership.error) fail(`create_${actor.label}_membership_${scenario}`);
+    if (membership.error) {
+      console.log(`FLOOR_CANARY DB_FAIL op=create_${actor.label}_membership_${scenario} ${safeDbErrorDetail(membership.error)}`);
+      fail(`create_${actor.label}_membership_${scenario}`);
+    }
   }
 
+  const tournamentId = randomUUID();
+  owned.tournaments.push(tournamentId);
   const tournament = await single(admin.from("tournaments").insert({
-    id: randomUUID(),
+    id: tournamentId,
     club_id: club.id,
     name: `${runId}_${scenario}`,
     start_time: new Date().toISOString(),
@@ -140,40 +175,47 @@ async function createFixture(admin, actors, runId, scenario, owned) {
     status: "active",
     current_level: 1,
   }).select("id,club_id"), `create_fixture_tournament_${scenario}`);
-  owned.tournaments.push(tournament.id);
 
+  const levelIds = [randomUUID(), randomUUID()];
+  owned.levels.push(...levelIds);
   const levels = await admin.from("tournament_levels").insert([
-    { id: randomUUID(), tournament_id: tournament.id, level_number: 1, small_blind: 100, big_blind: 200, ante: 0, duration_minutes: 20, is_break: false },
-    { id: randomUUID(), tournament_id: tournament.id, level_number: 2, small_blind: 200, big_blind: 400, ante: 0, duration_minutes: 20, is_break: false },
+    { id: levelIds[0], tournament_id: tournament.id, level_number: 1, small_blind: 100, big_blind: 200, ante: 0, duration_minutes: 20, is_break: false },
+    { id: levelIds[1], tournament_id: tournament.id, level_number: 2, small_blind: 200, big_blind: 400, ante: 0, duration_minutes: 20, is_break: false },
   ]).select("id");
-  if (levels.error || !levels.data || levels.data.length !== 2) fail(`create_fixture_levels_${scenario}`);
-  owned.levels.push(...levels.data.map((row) => row.id));
+  if (levels.error || !levels.data || levels.data.length !== 2) {
+    console.log(`FLOOR_CANARY DB_FAIL op=create_fixture_levels_${scenario} ${safeDbErrorDetail(levels.error)}`);
+    fail(`create_fixture_levels_${scenario}`);
+  }
 
+  const gameTableId = randomUUID();
+  owned.gameTables.push(gameTableId);
   const gameTable = await single(admin.from("game_tables").insert({
-    id: randomUUID(),
+    id: gameTableId,
     club_id: club.id,
     table_name: `${runId}_${scenario}_T1`,
     table_type: "tournament",
     status: "active",
     current_blind_level: 1,
   }).select("id"), `create_fixture_game_table_${scenario}`);
-  owned.gameTables.push(gameTable.id);
 
+  const tournamentTableId = randomUUID();
+  owned.tournamentTables.push(tournamentTableId);
   const tournamentTable = await single(admin.from("tournament_tables").insert({
-    id: randomUUID(),
+    id: tournamentTableId,
     tournament_id: tournament.id,
     table_id: gameTable.id,
     table_number: 1,
     max_seats: 9,
     status: "active",
   }).select("id"), `create_fixture_tournament_table_${scenario}`);
-  owned.tournamentTables.push(tournamentTable.id);
 
   const seatFixtures = [];
   for (const seatNumber of [1, 2]) {
     const playerId = randomUUID();
+    const entryId = randomUUID();
+    owned.entries.push(entryId);
     const entry = await single(admin.from("tournament_entries").insert({
-      id: randomUUID(),
+      id: entryId,
       tournament_id: tournament.id,
       registration_id: null,
       player_id: playerId,
@@ -185,19 +227,19 @@ async function createFixture(admin, actors, runId, scenario, owned) {
       seat_number: seatNumber,
       seated_at: new Date().toISOString(),
     }).select("id,player_id"), `create_fixture_entry_${scenario}_${seatNumber}`);
-    owned.entries.push(entry.id);
+    const seatId = randomUUID();
+    owned.seats.push(seatId);
     const seat = await single(admin.from("tournament_seats").insert({
-      id: randomUUID(),
+      id: seatId,
       tournament_id: tournament.id,
       player_id: playerId,
       entry_number: 1,
-      table_id: gameTable.id,
+      table_id: tournamentTable.id,
       seat_number: seatNumber,
       chip_count: 10000,
       is_active: true,
       entry_id: entry.id,
     }).select("id,chip_count,entry_id"), `create_fixture_seat_${scenario}_${seatNumber}`);
-    owned.seats.push(seat.id);
     seatFixtures.push(seat);
   }
 
@@ -205,14 +247,16 @@ async function createFixture(admin, actors, runId, scenario, owned) {
 }
 
 async function createCrossClub(admin, actor, runId, owned) {
+  const clubId = randomUUID();
+  owned.clubs.push(clubId);
   const club = await single(admin.from("clubs").insert({
-    id: randomUUID(),
+    id: clubId,
     owner_id: actor.id,
     name: `${runId}_CROSS_CLUB`,
     region: "TEST",
     status: "approved",
   }).select("id"), "create_cross_club");
-  owned.clubs.push(club.id);
+  await trackClubOwnedRows(admin, club.id, owned);
   return club.id;
 }
 
@@ -360,26 +404,59 @@ async function runBrowserManifest(actors) {
 async function deleteExact(client, table, ids, code) {
   if (ids.length === 0) return;
   const deletion = await client.from(table).delete().in("id", ids);
-  if (deletion.error) fail(code);
+  if (deletion.error) throw new Error(`${code}:${safeDbErrorDetail(deletion.error)}`);
+}
+
+async function verifyExactRows(client, table, ids, code) {
+  if (ids.length === 0) return;
+  const remaining = await client.from(table).select("id", { count: "exact", head: true }).in("id", ids);
+  if (remaining.error) throw new Error(`${code}:${safeDbErrorDetail(remaining.error)}`);
+  if ((remaining.count ?? 0) !== 0) throw new Error(`${code}:remaining=${remaining.count}`);
 }
 
 async function cleanup(admin, owned) {
-  await deleteExact(admin, "tournament_seats", owned.seats, "cleanup_seats");
-  await deleteExact(admin, "tournament_entries", owned.entries, "cleanup_entries");
-  await deleteExact(admin, "tournament_levels", owned.levels, "cleanup_levels");
-  await deleteExact(admin, "tournament_tables", owned.tournamentTables, "cleanup_tournament_tables");
-  await deleteExact(admin, "tournaments", owned.tournaments, "cleanup_tournaments");
-  await deleteExact(admin, "game_tables", owned.gameTables, "cleanup_game_tables");
-  for (const clubId of owned.clubs) {
-    const cashier = await admin.from("club_cashiers").delete().eq("club_id", clubId);
-    const floor = await admin.from("club_floors").delete().eq("club_id", clubId);
-    if (cashier.error || floor.error) fail("cleanup_memberships");
+  const failures = [];
+  const attempt = async (name, action) => {
+    try {
+      await action();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      failures.push(`${name}:${detail}`);
+      console.log(`FLOOR_CANARY CLEANUP_FAIL step=${name} detail=${detail}`);
+    }
+  };
+
+  await attempt("seats", () => deleteExact(admin, "tournament_seats", owned.seats, "cleanup_seats"));
+  await attempt("entries", () => deleteExact(admin, "tournament_entries", owned.entries, "cleanup_entries"));
+  await attempt("levels", () => deleteExact(admin, "tournament_levels", owned.levels, "cleanup_levels"));
+  await attempt("tournament_tables", () => deleteExact(admin, "tournament_tables", owned.tournamentTables, "cleanup_tournament_tables"));
+  await attempt("tournaments", () => deleteExact(admin, "tournaments", owned.tournaments, "cleanup_tournaments"));
+  await attempt("game_tables", () => deleteExact(admin, "game_tables", owned.gameTables, "cleanup_game_tables"));
+  await attempt("swing_config_audit", () => deleteExact(admin, "swing_config_audit", owned.auditRows, "cleanup_swing_config_audit"));
+  for (const [index, clubId] of owned.clubs.entries()) {
+    await attempt(`memberships_${index}`, async () => {
+      const cashier = await admin.from("club_cashiers").delete().eq("club_id", clubId);
+      const floor = await admin.from("club_floors").delete().eq("club_id", clubId);
+      if (cashier.error) throw new Error(`cashier:${safeDbErrorDetail(cashier.error)}`);
+      if (floor.error) throw new Error(`floor:${safeDbErrorDetail(floor.error)}`);
+    });
   }
-  await deleteExact(admin, "clubs", owned.clubs, "cleanup_clubs");
-  for (const userId of owned.users) {
-    const deleted = await admin.auth.admin.deleteUser(userId);
-    if (deleted.error) fail("cleanup_auth_users");
+  await attempt("clubs", () => deleteExact(admin, "clubs", owned.clubs, "cleanup_clubs"));
+  for (const [index, userId] of owned.users.entries()) {
+    await attempt(`auth_user_${index}`, async () => {
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      if (deleted.error) throw new Error(safeAuthErrorDetail(deleted.error));
+    });
   }
+  await attempt("verify_seats", () => verifyExactRows(admin, "tournament_seats", owned.seats, "verify_seats"));
+  await attempt("verify_entries", () => verifyExactRows(admin, "tournament_entries", owned.entries, "verify_entries"));
+  await attempt("verify_levels", () => verifyExactRows(admin, "tournament_levels", owned.levels, "verify_levels"));
+  await attempt("verify_tournament_tables", () => verifyExactRows(admin, "tournament_tables", owned.tournamentTables, "verify_tournament_tables"));
+  await attempt("verify_tournaments", () => verifyExactRows(admin, "tournaments", owned.tournaments, "verify_tournaments"));
+  await attempt("verify_game_tables", () => verifyExactRows(admin, "game_tables", owned.gameTables, "verify_game_tables"));
+  await attempt("verify_audit_rows", () => verifyExactRows(admin, "swing_config_audit", owned.auditRows, "verify_audit_rows"));
+  await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", owned.clubs, "verify_clubs"));
+  if (failures.length > 0) throw new Error(`cleanup_incomplete:${failures.join(",")}`);
   console.log(`FLOOR_CANARY CLEANUP_PASS users=${owned.users.length} clubs=${owned.clubs.length} tournaments=${owned.tournaments.length}`);
 }
 
@@ -388,7 +465,8 @@ export { createRunId, requireProductionCanaryContext };
 async function main() {
   const context = requireProductionCanaryContext();
   const runId = createRunId(context.prefix);
-  const owned = { users: [], clubs: [], tournaments: [], gameTables: [], tournamentTables: [], entries: [], seats: [], levels: [] };
+  console.log(`FLOOR_CANARY RUN_ID ${runId}`);
+  const owned = { users: [], clubs: [], tournaments: [], gameTables: [], tournamentTables: [], entries: [], seats: [], levels: [], auditRows: [] };
   const admin = createClient(context.url, context.serviceKey, {
     ...NODE_REALTIME_OPTIONS,
     auth: { persistSession: false, autoRefreshToken: false },
