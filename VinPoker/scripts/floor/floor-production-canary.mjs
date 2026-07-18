@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
@@ -65,6 +66,8 @@ function result(name, passed, detail = "") {
   if (!passed) fail(`assertion_failed:${name}`);
 }
 
+const NODE_REALTIME_OPTIONS = { realtime: { transport: WebSocket } };
+
 async function single(query, code) {
   const { data, error } = await query.single();
   if (error || !data) fail(code);
@@ -78,7 +81,10 @@ async function createActor(admin, anonKey, url, runId, label, owned) {
   if (created.error || !created.data.user) fail(`create_test_actor_${label}`);
   owned.users.push(created.data.user.id);
 
-  const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const client = createClient(url, anonKey, {
+    ...NODE_REALTIME_OPTIONS,
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const signedIn = await client.auth.signInWithPassword({ email, password });
   if (signedIn.error || !signedIn.data.session) fail(`sign_in_test_actor_${label}`);
   return {
@@ -369,7 +375,10 @@ async function main() {
   const context = requireProductionCanaryContext();
   const runId = createRunId(context.prefix);
   const owned = { users: [], clubs: [], tournaments: [], gameTables: [], tournamentTables: [], entries: [], seats: [], levels: [] };
-  const admin = createClient(context.url, context.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(context.url, context.serviceKey, {
+    ...NODE_REALTIME_OPTIONS,
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   let canaryError = null;
   try {
     const actors = {
