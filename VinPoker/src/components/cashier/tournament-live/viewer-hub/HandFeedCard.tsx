@@ -10,6 +10,7 @@ import { PokerCard, CardBack } from "../PokerVisuals";
 import { fmtCompact } from "./hubDerive";
 import type { HandFeedItem, HandFeedTag } from "./handFeedDerive";
 import { ViewerActionTimeline } from "./ViewerActionTimeline";
+import type { ReplayTarget } from "./replayTarget";
 
 const TAG_META: Record<HandFeedTag, { label: string; cls: string }> = {
   all_in: { label: "ALL-IN", cls: "border-[#991B1B] bg-[#991B1B]/25 text-[#ff9b9b]" },
@@ -45,9 +46,9 @@ export interface HandFeedCardProps {
   rpt?: boolean;
   /** Human table name from the already-loaded hub table map. */
   tableName?: string | null;
-  /** Open this hand in replay (wired in a later increment). */
-  onViewHand?: (handNumber: number) => void;
-  onShare?: (handNumber: number) => void;
+  /** Open this specific hand in replay. Hand number is display-only. */
+  onViewHand?: (target: ReplayTarget) => void;
+  onShare?: (target: ReplayTarget) => void;
 }
 
 function publicPlayerName(name: string, playerId: string, fallback: string): string {
@@ -59,6 +60,7 @@ function publicPlayerName(name: string, playerId: string, fallback: string): str
 
 export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare }: HandFeedCardProps) {
   const { t, i18n } = useTranslation();
+  const replayTarget: ReplayTarget = { handId: item.handId, tableId: item.tableId, handNumber: item.handNumber };
 
   if (rpt) {
     const created = new Date(item.createdAt);
@@ -181,12 +183,12 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
           {item.handNumber > 0 && (onShare || onViewHand) && (
             <div className="flex gap-2 border-t border-border/40 pt-3">
               {onShare && (
-                <button type="button" onClick={() => onShare(item.handNumber)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-[hsl(var(--viewer-neon)_/_0.5)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button type="button" onClick={() => onShare(replayTarget)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border/70 px-3 text-xs font-semibold text-muted-foreground transition hover:border-[hsl(var(--viewer-neon)_/_0.5)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Share2 className="h-4 w-4" aria-hidden="true" /> {t("liveHub.handFeed.share", "Chia sẻ")}
                 </button>
               )}
               {onViewHand && (
-                <button data-testid="viewer-view-hand-button" type="button" onClick={() => onViewHand(item.handNumber)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(var(--viewer-neon))] px-3 text-xs font-bold text-[hsl(var(--viewer-neon-ink))] shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.32),0_0_22px_hsl(var(--viewer-neon)_/_0.34)] transition-[background-color,box-shadow,transform] duration-200 hover:bg-[hsl(var(--viewer-neon-bright))] hover:shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.5),0_0_34px_hsl(var(--viewer-neon)_/_0.52)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
+                <button data-testid="viewer-view-hand-button" type="button" onClick={() => onViewHand(replayTarget)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(var(--viewer-neon))] px-3 text-xs font-bold text-[hsl(var(--viewer-neon-ink))] shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.32),0_0_22px_hsl(var(--viewer-neon)_/_0.34)] transition-[background-color,box-shadow,transform] duration-200 hover:bg-[hsl(var(--viewer-neon-bright))] hover:shadow-[0_0_0_1px_hsl(var(--viewer-neon)_/_0.5),0_0_34px_hsl(var(--viewer-neon)_/_0.52)] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
                   <Play className="h-4 w-4 drop-shadow-[0_0_5px_hsl(var(--viewer-neon-ink)_/_0.3)]" aria-hidden="true" /> {t("liveHub.handFeed.viewHand", "Xem ván")}
                 </button>
               )}
@@ -285,7 +287,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
           {onShare && (
             <button
               type="button"
-              onClick={() => onShare(item.handNumber)}
+              onClick={() => onShare(replayTarget)}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border/60 py-1.5 text-[11px] text-muted-foreground transition hover:text-foreground"
             >
               <Share2 className="h-3.5 w-3.5" aria-hidden="true" /> {t("liveHub.handFeed.share", "Chia sẻ")}
@@ -294,7 +296,7 @@ export function HandFeedCard({ item, rpt = false, tableName, onViewHand, onShare
           {onViewHand && (
             <button
               type="button"
-              onClick={() => onViewHand(item.handNumber)}
+              onClick={() => onViewHand(replayTarget)}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary py-1.5 text-[11px] font-semibold text-primary-foreground transition active:scale-[0.99]"
             >
               <Play className="h-3.5 w-3.5" aria-hidden="true" /> {t("liveHub.handFeed.viewHand", "Xem ván")}

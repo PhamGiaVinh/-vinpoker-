@@ -435,6 +435,9 @@ export function FloorTableMapPanel({
         tournamentId={tid}
         tournamentName={tournament.name}
         tournamentDate={(tournament as Tournament & { start_time?: string | null }).start_time ?? null}
+        unlinkedActiveSeatCount={detailTable
+          ? (seatsByTable[detailTable.table_id] ?? []).filter((seat) => !entryBySeat[seat.seat_id]).length
+          : 0}
         onChanged={load}
       />
 

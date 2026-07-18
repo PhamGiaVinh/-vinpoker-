@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { isRedCard, displayCard } from "@/components/shared/CardSlotPicker";
 import { toast } from "sonner";
-import { FEATURES } from "@/lib/featureFlags";
+import { FEATURES, isTrackerAtomicResettleAvailable } from "@/lib/featureFlags";
 import { HandEditPanel } from "./HandEditPanel";
 import { buildEditCompletedHandArgs, type HandEditPatch } from "./handEditDiff";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
@@ -449,6 +449,10 @@ export function HandHistoryPanel({ tournamentId }: { tournamentId: string }) {
 
       // 1) Display edits (board/holes/actions) — never touches chips.
       if (FEATURES.trackerAtomicResettle) {
+        if (!isTrackerAtomicResettleAvailable()) {
+          toast.error("Tính lại chip nguyên tử chưa sẵn sàng trên máy chủ. Không có thay đổi nào được gửi; hãy chờ owner xác nhận DB và Edge đã áp dụng.");
+          return;
+        }
         const { data, error } = await supabase.functions.invoke("tournament-live-resettle", {
           body: {
             tournament_id: tournamentId,

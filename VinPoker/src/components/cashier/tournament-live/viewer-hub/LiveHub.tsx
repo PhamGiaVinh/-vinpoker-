@@ -29,10 +29,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { FEATURES } from "@/lib/featureFlags";
 import { panelToViewerTab, viewerTabToPanel } from "./viewerUrlState";
 import type { TournamentPostViewModel, ViewerTab } from "./viewerTypes";
+import type { ReplayTarget } from "./replayTarget";
 
 type Orientation = "landscape" | "portrait";
-type Watch = { kind: "live"; tableId: string } | { kind: "replay"; handNumber: number } | null;
-type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayHandNumber?: number | null };
+type Watch = { kind: "live"; tableId: string } | { kind: "replay"; target: ReplayTarget } | null;
+type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayTarget?: ReplayTarget | null; initialReplayHandNumber?: number | null };
 
 export interface LiveHubProps {
   tournamentId: string;
@@ -51,12 +52,14 @@ export interface LiveHubProps {
   buyIn?: number | null;
   startingStack?: number | null;
   onShare: () => void;
-  /** Deep-link (?hand=N) → open that hand in the featured viewer's replay. */
+  /** Canonical deep-link target. UUID is authoritative over display hand number. */
+  initialReplayTarget?: ReplayTarget | null;
+  /** Deprecated prop kept for legacy callers while their URL is upgraded. */
   initialReplayHandNumber?: number | null;
-  /** Hand-feed "Xem ván" → open the hand in replay (sets ?hand=N at the page). */
-  onViewHand?: (handNumber: number) => void;
-  /** Hand-feed "Chia sẻ" → share a link to that specific hand. */
-  onShareHand?: (handNumber: number) => void;
+  /** Hand-feed "Xem ván" → open the canonical replay target. */
+  onViewHand?: (target: ReplayTarget) => void;
+  /** Hand-feed "Chia sẻ" → share the canonical replay target. */
+  onShareHand?: (target: ReplayTarget) => void;
   /** URL-backed tab state for the new focus shell. */
   activeTab?: ViewerTab;
   onTabChange?: (tab: ViewerTab) => void;
@@ -73,7 +76,7 @@ export interface LiveHubProps {
 export function LiveHub({
   tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, currentLevel,
   guarantee, buyIn, startingStack,
-  onShare, initialReplayHandNumber = null, onViewHand, onShareHand,
+  onShare, initialReplayTarget = null, initialReplayHandNumber = null, onViewHand, onShareHand,
   activeTab = "updates", onTabChange, editorialPosts = [], focusedPostId = null, onSharePost,
   onCloseHand, children,
 }: LiveHubProps) {
@@ -81,6 +84,12 @@ export function LiveHub({
   // TournamentLiveView — the featured felt still renders the real viewer when watched.
   const { liveTableCount, tables, feed, chipLeader, storyFeed, activeHandTableId } = useLiveTrackerData(tournamentId);
   const { t } = useTranslation();
+  const requestedReplayTarget = initialReplayTarget ?? (initialReplayHandNumber != null
+    ? { handId: null, tableId: null, handNumber: initialReplayHandNumber }
+    : null);
+  const requestedReplayKey = requestedReplayTarget
+    ? `${requestedReplayTarget.handId ?? "legacy"}:${requestedReplayTarget.tableId ?? ""}:${requestedReplayTarget.handNumber ?? ""}`
+    : "";
 
   // "Cập nhật … trước" — stamp the moment the hub data last changed (each poll for a
   // live event re-stamps, so the header stays fresh; a finished event freezes).
@@ -110,12 +119,14 @@ export function LiveHub({
   const viewerOrientation: Orientation = FEATURES.liveViewerRPTShell ? "portrait" : effectiveOrientation;
 
   // Event-tabs: which felt (if any) the viewer is actively watching. null → tabs.
-  // Seeded synchronously from a deep-linked hand (?hand=N) so it opens its replay
+  // Seeded synchronously from a deep-linked hand so it opens its replay
   // on first paint; the effect re-syncs if the deep-link changes while mounted.
-  const [watch, setWatch] = useState<Watch>(initialReplayHandNumber != null ? { kind: "replay", handNumber: initialReplayHandNumber } : null);
+  const [watch, setWatch] = useState<Watch>(requestedReplayTarget ? { kind: "replay", target: requestedReplayTarget } : null);
   useEffect(() => {
-    if (initialReplayHandNumber != null) setWatch({ kind: "replay", handNumber: initialReplayHandNumber });
-  }, [initialReplayHandNumber]);
+    if (requestedReplayTarget) setWatch({ kind: "replay", target: requestedReplayTarget });
+  // The URL key is deliberate: parent renders may create equivalent target objects.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedReplayKey]);
 
   const closeWatch = () => {
     setWatch(null);
@@ -131,7 +142,7 @@ export function LiveHub({
 
   // ── Legacy stacked layout (flag OFF) — byte-identical to before ────────────────
   if (!FEATURES.liveEventTabs) {
-    const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayHandNumber });
+    const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayTarget: requestedReplayTarget, initialReplayHandNumber });
     return (
       <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
         <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} guarantee={guarantee} buyIn={buyIn} startingStack={startingStack} lastUpdated={lastUpdated} onShare={onShare} />
@@ -159,17 +170,22 @@ export function LiveHub({
   }
 
   // ── Event-tabs layout (flag ON) ────────────────────────────────────────────────
-  // Hand-feed "Xem ván" → open the replay felt AND keep ?hand=N in the URL (share).
-  const handleViewHand = (n: number) => {
-    setWatch({ kind: "replay", handNumber: n });
-    onViewHand?.(n);
+  // Hand-feed opens a UUID-backed replay and keeps its canonical URL in sync.
+  const handleViewHand = (target: ReplayTarget) => {
+    setWatch({ kind: "replay", target });
+    onViewHand?.(target);
   };
 
   const watchViewer = watch
     ? cloneViewer(
         watch.kind === "replay"
-          ? { initialReplayHandNumber: watch.handNumber, selectedTableIdOverride: null }
-          : { initialReplayHandNumber: null, selectedTableIdOverride: watch.tableId },
+          ? {
+              initialReplayTarget: watch.target,
+              // Preserve callers still using the number-only replay contract.
+              initialReplayHandNumber: watch.target.handId ? null : watch.target.handNumber,
+              selectedTableIdOverride: null,
+            }
+          : { initialReplayTarget: null, initialReplayHandNumber: null, selectedTableIdOverride: watch.tableId },
       )
     : null;
 
@@ -280,7 +296,9 @@ export function LiveHub({
               </p>
               <p className="truncate text-sm font-semibold text-foreground">
                 {watch.kind === "replay"
-                  ? t("liveHub.watch.handNumber", "Ván #{{n}}", { n: watch.handNumber })
+                  ? watch.target.handNumber != null
+                    ? t("liveHub.watch.handNumber", "Ván #{{n}}", { n: watch.target.handNumber })
+                    : t("liveHub.watch.replay", "PHÁT LẠI VÁN")
                   : tableNames[watch.tableId] || t("liveHub.watch.liveTable", "Bàn trực tiếp")}
               </p>
             </div>
@@ -288,7 +306,7 @@ export function LiveHub({
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => watch.kind === "replay" ? onShareHand?.(watch.handNumber) : onShare()}
+                onClick={() => watch.kind === "replay" ? onShareHand?.(watch.target) : onShare()}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-border/65 px-3 text-xs font-semibold text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={t("liveHub.header.share", "Chia sẻ")}
               >

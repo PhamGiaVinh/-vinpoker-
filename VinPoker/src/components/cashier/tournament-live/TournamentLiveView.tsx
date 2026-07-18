@@ -45,6 +45,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
 import { resolveViewerIdentity } from "./viewer-hub/viewerIdentity";
+import { resolveReplayCandidates, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
 
 const SOUND_KINDS = new Set<string>([
   "fold", "check", "call", "bet", "raise", "all_in", "post_sb", "post_bb", "post_ante",
@@ -80,6 +81,7 @@ export function TournamentLiveView({
   orientationOverride = null,
   spectator = false,
   selectedTableIdOverride = null,
+  initialReplayTarget = null,
   initialReplayHandNumber = null,
 }: {
   tournamentId: string;
@@ -96,12 +98,22 @@ export function TournamentLiveView({
       view). When set + valid it wins over the internal selector so the featured
       felt shows that table. Operator callers omit it → null → existing behaviour. */
   selectedTableIdOverride?: string | null;
-  /** Deep-link from the spectator hand feed (?hand=N): open this hand in replay.
-      ADDITIVE — omit/null keeps live mode (operator callers are unchanged). */
+  /** Canonical replay target. UUID is authoritative; hand number is legacy only. */
+  initialReplayTarget?: ReplayTarget | null;
+  /** Deprecated compatibility prop for callers that still provide `?hand=N`. */
   initialReplayHandNumber?: number | null;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
+  const requestedReplayTarget = useMemo<ReplayTarget | null>(() => {
+    if (initialReplayTarget) return initialReplayTarget;
+    return initialReplayHandNumber != null
+      ? { handId: null, tableId: null, handNumber: initialReplayHandNumber }
+      : null;
+  }, [
+    initialReplayTarget,
+    initialReplayHandNumber,
+  ]);
   const canTdAi = isStaffOps || isClubAdmin;
   const [tdAiOpen, setTdAiOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -158,6 +170,7 @@ export function TournamentLiveView({
   const [replayFrame, setReplayFrame] = useState<ReplayFrame | null>(null);
   const [replayFrameSource, setReplayFrameSource] = useState<ReplayFrameSource>("jump");
   const [replayMotionEpoch, setReplayMotionEpoch] = useState(0);
+  const [replayTargetState, setReplayTargetState] = useState<ReplayTargetState>({ kind: "idle" });
   // Snapshot of the LIVE table the moment replay was entered. The live machinery
   // keeps advancing in the background while the felt is frozen on the replay frame;
   // comparing against this baseline tells us when to surface "live đã có diễn biến
@@ -973,10 +986,67 @@ export function TournamentLiveView({
   }, []);
 
   // Deep-link (?hand=N from the spectator hand feed): jump into replay on that hand.
-  // The HandSelector below selects the matching hand via `initialHandNumber`.
+  // Resolve the replay target before choosing a table. A hand UUID is scoped to
+  // this tournament; legacy hand numbers are accepted only when unambiguous.
   useEffect(() => {
-    if (initialReplayHandNumber != null) enterReplay();
-  }, [initialReplayHandNumber, enterReplay]);
+    let cancelled = false;
+    if (!requestedReplayTarget) {
+      setReplayTargetState({ kind: "idle" });
+      return;
+    }
+
+    // Never leave a prior hand visible while a new URL target is being
+    // resolved. A missing or ambiguous target must not look like a fallback.
+    setReplayHandId(null);
+    setReplayHand(null);
+    setReplayFrame(null);
+    setReplayFrameSource("jump");
+    setReplayMotionEpoch((epoch) => epoch + 1);
+    setReplayTargetState({ kind: "loading" });
+    const resolve = async () => {
+      if (requestedReplayTarget.handId) {
+        const { data, error } = await supabase
+          .from("tournament_hands")
+          .select("id, table_id, hand_number, status, is_voided")
+          .eq("tournament_id", tournamentId)
+          .eq("id", requestedReplayTarget.handId)
+          .eq("is_voided", false)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          setReplayTargetState({ kind: "query_error" });
+          return;
+        }
+        setReplayTargetState(resolveReplayCandidates(requestedReplayTarget, data ? [data] : []));
+        return;
+      }
+
+      let query = supabase
+        .from("tournament_hands")
+        .select("id, table_id, hand_number, status, is_voided")
+        .eq("tournament_id", tournamentId)
+        .eq("hand_number", requestedReplayTarget.handNumber!)
+        .eq("is_voided", false)
+        .neq("status", "in_progress")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(2);
+      if (requestedReplayTarget.tableId) query = query.eq("table_id", requestedReplayTarget.tableId);
+      const { data, error } = await query;
+      if (cancelled) return;
+      if (error) {
+        setReplayTargetState({ kind: "query_error" });
+      } else {
+        setReplayTargetState(resolveReplayCandidates(requestedReplayTarget, data ?? []));
+      }
+    };
+    void resolve();
+    return () => { cancelled = true; };
+  }, [requestedReplayTarget, tournamentId]);
+
+  useEffect(() => {
+    if (requestedReplayTarget) enterReplay();
+  }, [requestedReplayTarget, enterReplay]);
 
   // ----- Multi-table resolution: never mix table_ids on one felt -----
   const tableIds = useMemo(
@@ -984,15 +1054,17 @@ export function TournamentLiveView({
     [seats]
   );
 
-  // Hub table-map pick (public) wins, then the operator's internal selection,
-  // then the live hand's table, then the single table.
+  // A resolved replay hand owns its historical table. While a replay target is
+  // loading or invalid, do not substitute the active table or another hand.
   const effectiveTableId = useMemo(() => {
+    if (replayTargetState.kind === "resolved") return replayTargetState.tableId;
+    if (requestedReplayTarget) return null;
     if (selectedTableIdOverride && tableIds.includes(selectedTableIdOverride)) return selectedTableIdOverride;
     if (selectedTableId && tableIds.includes(selectedTableId)) return selectedTableId;
     if (handTableId && tableIds.includes(handTableId)) return handTableId;
     if (tableIds.length === 1) return tableIds[0];
     return null;
-  }, [selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
+  }, [replayTargetState, requestedReplayTarget, selectedTableIdOverride, selectedTableId, handTableId, tableIds]);
 
   const multiTableUnresolved = tableIds.length > 1 && !effectiveTableId;
 
@@ -1347,7 +1419,8 @@ export function TournamentLiveView({
             tournamentId={tournamentId}
             tableId={effectiveTableId}
             selectedHandId={replayHandId}
-            initialHandNumber={initialReplayHandNumber}
+            replayTarget={requestedReplayTarget}
+            replayTargetState={replayTargetState}
             onLoadStart={(id) => {
               setReplayHandId(id);
               setReplayHand(null);
