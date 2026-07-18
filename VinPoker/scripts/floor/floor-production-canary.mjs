@@ -8,6 +8,7 @@ import WebSocket from "ws";
 
 const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
+const CANARY_MODES = new Set(["run", "cleanup", "hold"]);
 const SCENARIOS = [
   "ACCESS",
   "SETUP_CLOCK",
@@ -18,6 +19,37 @@ const SCENARIOS = [
   "BUST_RESTORE",
   "PAYOUT_CLOSE",
   "CONCURRENCY",
+];
+const CLEANUP_SCENARIO_RE = new RegExp(`^CODEX_FLOOR_CANARY_([0-9]{14}_[a-f0-9]{8})_(${[...SCENARIOS, "CROSS_CLUB"].join("|")})$`);
+const CLEANUP_SCENARIOS = new Set(["ACCESS", "SETUP_CLOCK", "TABLE_LIFECYCLE", "CLOSE_ORPHAN", "REDRAW", "CHIP_CAS", "BUST_RESTORE", "PAYOUT_CLOSE", "CONCURRENCY", "CROSS_CLUB"]);
+const CLEANUP_CLUB_COUNT = 4;
+const CLEANUP_SCOPE_PREFIX = "CODEX_FLOOR_CANARY_";
+
+// These columns are verified in the repository migrations. A missing table or
+// column is a hard stop: cleanup must never guess at money-related schema.
+const MONEY_SCOPES = [
+  { table: "bank_transactions", column: "club_id", bucket: "bank" },
+  { table: "payment_settlements", column: "club_id", bucket: "payment" },
+  { table: "payment_records", column: "club_id", bucket: "payment" },
+  { table: "club_payment_config", column: "club_id", bucket: "payment" },
+  { table: "club_wallets", column: "club_id", bucket: "staking" },
+  { table: "staking_deals", column: "club_id", bucket: "staking" },
+  { table: "staking_purchases", column: "deal_id", bucket: "staking" },
+  { table: "staking_ledger", column: "deal_id", bucket: "staking" },
+  { table: "escrow_transactions", column: "deal_id", bucket: "staking" },
+  { table: "escrow_funding_proofs", column: "deal_id", bucket: "staking" },
+  { table: "tournament_payout_runs", column: "tournament_id", bucket: "payout" },
+  { table: "tournament_prizes", column: "tournament_id", bucket: "payout" },
+  { table: "payout_recipients", column: "deal_id", bucket: "payout" },
+  { table: "payout_templates", column: "club_id", bucket: "payout" },
+  { table: "fnb_orders", column: "club_id", bucket: "fnb" },
+  { table: "dealer_payroll", column: "club_id", bucket: "payroll" },
+  { table: "payroll_periods", column: "club_id", bucket: "payroll" },
+  { table: "payroll_audit_log", column: "club_id", bucket: "payroll" },
+  { table: "chip_inventory_ledger", column: "club_id", bucket: "cashier" },
+  { table: "chip_bank", column: "club_id", bucket: "cashier" },
+  { table: "chip_bank_ledger", column: "club_id", bucket: "cashier" },
+  { table: "online_poker_chip_ledger", column: "user_id", bucket: "cashier" },
 ];
 
 function fail(code) {
@@ -33,6 +65,7 @@ function requireProductionCanaryContext(environment = process.env) {
     "FLOOR_CANARY_ENV",
     "FLOOR_CANARY_CONFIRM",
     "FLOOR_CANARY_PREFIX",
+    "FLOOR_CANARY_MODE",
     "SUPABASE_PROJECT_REF",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
@@ -43,6 +76,7 @@ function requireProductionCanaryContext(environment = process.env) {
   if (missing.length > 0) fail(`missing:${missing.join(",")}`);
   if (environment.FLOOR_CANARY_ENV !== "production") fail("floor_canary_env_must_be_production");
   if (environment.FLOOR_CANARY_CONFIRM !== REQUIRED_CONFIRMATION) fail("floor_canary_confirmation_missing");
+  if (!CANARY_MODES.has(environment.FLOOR_CANARY_MODE)) fail("floor_canary_mode_invalid");
   if (!environment.FLOOR_CANARY_PREFIX.startsWith("CODEX_FLOOR_CANARY_")) fail("floor_canary_prefix_invalid");
   if (environment.SUPABASE_PROJECT_REF !== PRODUCTION_REF) fail("production_project_ref_mismatch");
   if (new URL(environment.SUPABASE_URL).hostname !== `${PRODUCTION_REF}.supabase.co`) fail("production_url_mismatch");
@@ -50,6 +84,7 @@ function requireProductionCanaryContext(environment = process.env) {
 
   return {
     prefix: environment.FLOOR_CANARY_PREFIX,
+    mode: environment.FLOOR_CANARY_MODE,
     projectRef: environment.SUPABASE_PROJECT_REF,
     url: environment.SUPABASE_URL,
     anonKey: environment.SUPABASE_ANON_KEY,
@@ -84,6 +119,165 @@ function safeDbErrorDetail(error) {
     ? ` constraint=${error.constraint}`
     : "";
   return `code=${code}${constraint}`;
+}
+
+function hashIds(ids) {
+  return createHash("sha256").update([...ids].sort().join(",")).digest("hex").slice(0, 12);
+}
+
+function cleanupScopeError(detail = "") {
+  const suffix = detail ? `:${detail}` : "";
+  fail(`CLEANUP_SCOPE_AMBIGUOUS${suffix}`);
+}
+
+async function discoverCleanupScope(admin) {
+  const discovered = await admin.from("clubs")
+    .select("id,name,region")
+    .eq("region", "TEST")
+    .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
+    .limit(1000);
+  if (discovered.error || !Array.isArray(discovered.data)) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=discover_clubs ${safeDbErrorDetail(discovered.error)}`);
+    fail("cleanup_scope_discovery");
+  }
+
+  // A second read-only prefix scan catches a prefixed row in the wrong region
+  // instead of silently ignoring it during the TEST-scoped discovery.
+  const allPrefixed = await admin.from("clubs")
+    .select("id,name,region")
+    .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
+    .limit(1000);
+  if (allPrefixed.error || !Array.isArray(allPrefixed.data)) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=discover_all_prefixed ${safeDbErrorDetail(allPrefixed.error)}`);
+    fail("cleanup_scope_discovery");
+  }
+
+  const rows = allPrefixed.data;
+  const parsed = [];
+  for (const row of rows) {
+    const match = typeof row.name === "string" ? row.name.match(CLEANUP_SCENARIO_RE) : null;
+    if (!match || row.region !== "TEST" || typeof row.id !== "string") {
+      console.log("FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row");
+      cleanupScopeError("invalid_row");
+    }
+    parsed.push({ id: row.id, runKey: match[1], scenario: match[2] });
+  }
+
+  const groups = new Map();
+  for (const row of parsed) {
+    const group = groups.get(row.runKey) ?? [];
+    group.push(row);
+    groups.set(row.runKey, group);
+  }
+  for (const [runKey, group] of groups) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE run_hash=${actorHash(runKey)} clubs=${group.length}`);
+  }
+  if (groups.size !== 1) cleanupScopeError("run_count");
+  const [runKey, group] = groups.entries().next().value ?? [];
+  if (!runKey || group.length !== CLEANUP_CLUB_COUNT) cleanupScopeError("club_count");
+  const scenarios = new Set(group.map((row) => row.scenario));
+  if (scenarios.size !== CLEANUP_SCENARIOS.size || [...CLEANUP_SCENARIOS].some((scenario) => !scenarios.has(scenario))) {
+    cleanupScopeError("scenario_set");
+  }
+  return { runKey, clubs: group };
+}
+
+async function idsByColumn(admin, table, column, values, code) {
+  if (values.length === 0) return [];
+  const response = await admin.from(table).select("id").in(column, values);
+  if (response.error || !Array.isArray(response.data)) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=${code} ${safeDbErrorDetail(response.error)}`);
+    fail(code);
+  }
+  return response.data.map((row) => row.id).filter((id) => typeof id === "string");
+}
+
+async function countByColumn(admin, table, column, values, code) {
+  if (values.length === 0) return 0;
+  const response = await admin.from(table).select("*", { count: "exact", head: true }).in(column, values);
+  if (response.error || !Number.isInteger(response.count)) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=${code} ${safeDbErrorDetail(response.error)}`);
+    fail(code);
+  }
+  return response.count;
+}
+
+async function moneySafetyPreflight(admin, ledger) {
+  const valuesFor = (scope) => {
+    if (scope.column === "club_id") return ledger.clubIds;
+    if (scope.column === "tournament_id") return ledger.tournamentIds;
+    if (scope.column === "deal_id") return ledger.stakingDealIds;
+    if (scope.column === "user_id") return ledger.userIds;
+    return [];
+  };
+  const counts = {};
+  for (const scope of MONEY_SCOPES) {
+    const values = valuesFor(scope);
+    const count = await countByColumn(admin, scope.table, scope.column, values, `cleanup_money_schema_${scope.table}`);
+    counts[scope.table] = count;
+    console.log(`FLOOR_CANARY CLEANUP_MONEY table=${scope.table} bucket=${scope.bucket} count=${count}`);
+    if (count !== 0) fail(`CLEANUP_BLOCKED_BY_MONEY_ROW:${scope.table}`);
+  }
+  return counts;
+}
+
+async function buildCleanupLedger(admin, scope) {
+  const clubIds = scope.clubs.map((club) => club.id);
+  const tournaments = await admin.from("tournaments").select("id,club_id").in("club_id", clubIds);
+  if (tournaments.error || !Array.isArray(tournaments.data)) fail("cleanup_scope_tournaments");
+  const tournamentIds = tournaments.data.map((row) => row.id).filter((id) => typeof id === "string");
+  const tournamentTables = await admin.from("tournament_tables").select("id").in("tournament_id", tournamentIds);
+  if (tournamentTables.error || !Array.isArray(tournamentTables.data)) fail("cleanup_scope_tournament_tables");
+  const tournamentTableIds = tournamentTables.data.map((row) => row.id).filter((id) => typeof id === "string");
+  const levels = await idsByColumn(admin, "tournament_levels", "tournament_id", tournamentIds, "cleanup_scope_levels");
+  const entries = await idsByColumn(admin, "tournament_entries", "tournament_id", tournamentIds, "cleanup_scope_entries");
+  const seats = await idsByColumn(admin, "tournament_seats", "tournament_id", tournamentIds, "cleanup_scope_seats");
+  const gameTables = await admin.from("game_tables").select("id").in("club_id", clubIds);
+  if (gameTables.error || !Array.isArray(gameTables.data)) fail("cleanup_scope_game_tables");
+  const gameTableIds = gameTables.data.map((row) => row.id).filter((id) => typeof id === "string");
+  const auditRows = await idsByColumn(admin, "swing_config_audit", "club_id", clubIds, "cleanup_scope_audit");
+  const cashierMemberships = await admin.from("club_cashiers").select("club_id,user_id").in("club_id", clubIds);
+  const floorMemberships = await admin.from("club_floors").select("club_id,user_id").in("club_id", clubIds);
+  if (cashierMemberships.error || floorMemberships.error) fail("cleanup_scope_memberships");
+  const userIds = new Set([
+    ...cashierMemberships.data.map((row) => row.user_id),
+    ...floorMemberships.data.map((row) => row.user_id),
+  ].filter((id) => typeof id === "string"));
+  const authUsers = [];
+  let page = 1;
+  let fetched;
+  const runIdPrefix = `${CLEANUP_SCOPE_PREFIX}${scope.runKey}`.toLowerCase();
+  do {
+    fetched = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (fetched.error || !fetched.data?.users) fail("cleanup_scope_auth_users");
+    for (const user of fetched.data.users) {
+      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
+      if (email.startsWith(`${runIdPrefix}-`) && email.endsWith("@floor-canary.invalid")) {
+        authUsers.push(user.id);
+        userIds.add(user.id);
+      }
+    }
+    page += 1;
+  } while (fetched.data.users.length === 1000);
+
+  const ledger = {
+    runKey: scope.runKey,
+    clubIds,
+    tournamentIds,
+    tournamentTableIds,
+    gameTableIds,
+    levels,
+    entries,
+    seats,
+    auditRows,
+    cashierMemberships: cashierMemberships.data,
+    floorMemberships: floorMemberships.data,
+    authUserIds: [...new Set(authUsers)],
+    userIds: [...userIds],
+    stakingDealIds: await idsByColumn(admin, "staking_deals", "club_id", clubIds, "cleanup_scope_staking_deals"),
+  };
+  console.log(`FLOOR_CANARY CLEANUP_LEDGER run_hash=${actorHash(scope.runKey)} clubs=${clubIds.length} tournaments=${tournamentIds.length} game_tables=${gameTableIds.length} users=${ledger.authUserIds.length} ids_hash=${hashIds([...clubIds, ...gameTableIds])}`);
+  return ledger;
 }
 
 async function single(query, code) {
@@ -460,17 +654,97 @@ async function cleanup(admin, owned) {
   console.log(`FLOOR_CANARY CLEANUP_PASS users=${owned.users.length} clubs=${owned.clubs.length} tournaments=${owned.tournaments.length}`);
 }
 
-export { createRunId, requireProductionCanaryContext };
+async function deleteByColumnExact(client, table, column, values, code) {
+  if (values.length === 0) return;
+  const deletion = await client.from(table).delete().in(column, values);
+  if (deletion.error) throw new Error(`${code}:${safeDbErrorDetail(deletion.error)}`);
+}
+
+async function verifyByColumnExact(client, table, column, values, code) {
+  if (values.length === 0) return;
+  const remaining = await client.from(table).select("id", { count: "exact", head: true }).in(column, values);
+  if (remaining.error) throw new Error(`${code}:${safeDbErrorDetail(remaining.error)}`);
+  if ((remaining.count ?? 0) !== 0) throw new Error(`${code}:remaining=${remaining.count}`);
+}
+
+async function cleanupExactLedger(admin, ledger) {
+  const failures = [];
+  const attempt = async (name, action) => {
+    try {
+      await action();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "unknown";
+      failures.push(`${name}:${detail}`);
+      console.log(`FLOOR_CANARY CLEANUP_FAIL step=${name} detail=${detail}`);
+    }
+  };
+
+  // Child-to-parent order is derived from the Floor/live tracker and seat
+  // assignment migrations. Every predicate is an exact owned-ID set.
+  for (const table of ["tournament_hands", "tournament_chip_counts", "tournament_eliminations", "tournament_state_transitions", "tournament_prizes"]) {
+    await attempt(table, () => deleteByColumnExact(admin, table, "tournament_id", ledger.tournamentIds, `cleanup_${table}`));
+  }
+  await attempt("seats", () => deleteExact(admin, "tournament_seats", ledger.seats, "cleanup_seats"));
+  await attempt("entries", () => deleteExact(admin, "tournament_entries", ledger.entries, "cleanup_entries"));
+  await attempt("levels", () => deleteExact(admin, "tournament_levels", ledger.levels, "cleanup_levels"));
+  await attempt("tournament_tables", () => deleteExact(admin, "tournament_tables", ledger.tournamentTableIds, "cleanup_tournament_tables"));
+  await attempt("tournaments", () => deleteExact(admin, "tournaments", ledger.tournamentIds, "cleanup_tournaments"));
+  await attempt("swing_config_audit", () => deleteExact(admin, "swing_config_audit", ledger.auditRows, "cleanup_swing_config_audit"));
+  await attempt("cashier_memberships", () => deleteByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "cleanup_cashier_memberships"));
+  await attempt("floor_memberships", () => deleteByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "cleanup_floor_memberships"));
+  // This is one exact-ID request for the trigger-created pool rows, not one
+  // full-table request per row and never a prefix delete.
+  await attempt("game_tables", () => deleteExact(admin, "game_tables", ledger.gameTableIds, "cleanup_game_tables"));
+  await attempt("clubs", () => deleteExact(admin, "clubs", ledger.clubIds, "cleanup_clubs"));
+  for (const [index, userId] of ledger.authUserIds.entries()) {
+    await attempt(`auth_user_${index}`, async () => {
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      if (deleted.error) throw new Error(safeAuthErrorDetail(deleted.error));
+    });
+  }
+
+  await attempt("verify_seats", () => verifyExactRows(admin, "tournament_seats", ledger.seats, "verify_seats"));
+  await attempt("verify_entries", () => verifyExactRows(admin, "tournament_entries", ledger.entries, "verify_entries"));
+  await attempt("verify_levels", () => verifyExactRows(admin, "tournament_levels", ledger.levels, "verify_levels"));
+  await attempt("verify_tournament_tables", () => verifyExactRows(admin, "tournament_tables", ledger.tournamentTableIds, "verify_tournament_tables"));
+  await attempt("verify_tournaments", () => verifyExactRows(admin, "tournaments", ledger.tournamentIds, "verify_tournaments"));
+  await attempt("verify_game_tables", () => verifyExactRows(admin, "game_tables", ledger.gameTableIds, "verify_game_tables"));
+  await attempt("verify_audit_rows", () => verifyExactRows(admin, "swing_config_audit", ledger.auditRows, "verify_audit_rows"));
+  await attempt("verify_cashier_memberships", () => verifyByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "verify_cashier_memberships"));
+  await attempt("verify_floor_memberships", () => verifyByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "verify_floor_memberships"));
+  await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", ledger.clubIds, "verify_clubs"));
+  await attempt("verify_money_rows", () => moneySafetyPreflight(admin, ledger));
+  if (failures.length > 0) {
+    console.log(`FLOOR CANARY CLEANUP FAIL — CLEANUP_INCOMPLETE failures=${failures.length}`);
+    fail(`FLOOR CANARY CLEANUP FAIL — CLEANUP_INCOMPLETE:${failures.join(",")}`);
+  }
+  console.log(`FLOOR CANARY CLEANUP PASS run_hash=${actorHash(ledger.runKey)} users=${ledger.authUserIds.length} clubs=${ledger.clubIds.length} tournaments=${ledger.tournamentIds.length} game_tables=${ledger.gameTableIds.length}`);
+}
+
+async function runCleanupCanary(admin) {
+  const scope = await discoverCleanupScope(admin);
+  const ledger = await buildCleanupLedger(admin, scope);
+  await moneySafetyPreflight(admin, ledger);
+  await cleanupExactLedger(admin, ledger);
+}
+
+export { createRunId, requireProductionCanaryContext, discoverCleanupScope, runCleanupCanary };
 
 async function main() {
   const context = requireProductionCanaryContext();
-  const runId = createRunId(context.prefix);
-  console.log(`FLOOR_CANARY RUN_ID ${runId}`);
-  const owned = { users: [], clubs: [], tournaments: [], gameTables: [], tournamentTables: [], entries: [], seats: [], levels: [], auditRows: [] };
   const admin = createClient(context.url, context.serviceKey, {
     ...NODE_REALTIME_OPTIONS,
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  if (context.mode === "hold") fail("floor_canary_hold_mode");
+  if (context.mode === "cleanup") {
+    await runCleanupCanary(admin);
+    return;
+  }
+
+  const runId = createRunId(context.prefix);
+  console.log(`FLOOR_CANARY RUN_ID ${runId}`);
+  const owned = { users: [], clubs: [], tournaments: [], gameTables: [], tournamentTables: [], entries: [], seats: [], levels: [], auditRows: [] };
   let canaryError = null;
   try {
     const actors = {
