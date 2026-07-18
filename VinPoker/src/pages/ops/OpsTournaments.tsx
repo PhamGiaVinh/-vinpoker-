@@ -51,7 +51,7 @@ type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" 
 
 export default function OpsTournaments() {
   const navigate = useNavigate();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
+  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds, error: clubsError } = useOperatorClubs();
   const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
   const activeClub = scopedIds[0];
   const { data: tournaments, isLoading: tourLoading } = useTournaments(activeClub);
@@ -81,6 +81,7 @@ export default function OpsTournaments() {
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập để xem giải đấu của câu lạc bộ." />;
   if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
+  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
   if (!activeClub) return <Guard icon={<Trophy className="h-8 w-8 text-amber-300" />} title="Chưa có câu lạc bộ" sub="Chưa được phân công CLB nào để xem giải." />;
   if (tourLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải giải…" sub="Lấy danh sách giải đấu." />;
 

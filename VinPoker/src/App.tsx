@@ -67,16 +67,10 @@ const OpsToday = lazy(() => import("./pages/ops/OpsToday"));
 const OpsTournaments = lazy(() => import("./pages/ops/OpsTournaments"));
 const OpsTournamentCockpit = lazy(() => import("./pages/ops/OpsTournamentCockpit"));
 const OpsTables = lazy(() => import("./pages/ops/OpsTables"));
-const OpsAlerts = lazy(() => import("./pages/ops/OpsAlerts"));
-const OpsMore = lazy(() => import("./pages/ops/OpsMore"));
 const OpsDealerSwing = lazy(() => import("./pages/ops/OpsDealerSwing"));
-const OpsFnb = lazy(() => import("./pages/ops/OpsFnb"));
-const OpsChipOps = lazy(() => import("./pages/ops/OpsChipOps"));
-const OpsMarketing = lazy(() => import("./pages/ops/OpsMarketing"));
-const OpsFinance = lazy(() => import("./pages/ops/OpsFinance"));
-const OpsAccounting = lazy(() => import("./pages/ops/OpsAccounting"));
-const OpsSeries = lazy(() => import("./pages/ops/OpsSeries"));
+const OpsDesktopOnly = lazy(() => import("./pages/ops/OpsDesktopOnly"));
 const OpsCashier = lazy(() => import("./pages/ops/OpsCashier"));
+const OpsCashierAccess = lazy(() => import("./components/ops/OpsCashierAccess"));
 const MediaCenter = lazy(() => import("./pages/MediaCenter"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminLeaderboard = lazy(() => import("./pages/AdminLeaderboard"));
@@ -285,16 +279,16 @@ const App = () => {
                 <Route path="/ops/tournaments" element={<OpsTournaments />} />
                 <Route path="/ops/tournaments/:id" element={<OpsTournamentCockpit />} />
                 <Route path="/ops/tables" element={<OpsTables />} />
-                <Route path="/ops/alerts" element={<OpsAlerts />} />
-                <Route path="/ops/more" element={<OpsMore />} />
+                <Route path="/ops/alerts" element={<OpsDesktopOnly title="Cảnh báo" description="Cảnh báo mobile chưa có đủ dữ liệu vận hành đáng tin cậy. Dùng màn hình máy tính để xử lý." />} />
+                <Route path="/ops/more" element={<OpsDesktopOnly title="Tác vụ khác" description="Các tác vụ chưa được nối dữ liệu thật trên mobile được chuyển về màn hình máy tính." />} />
                 <Route path="/ops/dealer-swing" element={<OpsDealerSwing />} />
-                <Route path="/ops/fnb" element={<OpsFnb />} />
-                <Route path="/ops/chip-ops" element={<OpsChipOps />} />
-                <Route path="/ops/marketing" element={<OpsMarketing />} />
-                <Route path="/ops/finance" element={<OpsFinance />} />
-                <Route path="/ops/accounting" element={<OpsAccounting />} />
-                <Route path="/ops/series" element={<OpsSeries />} />
-                <Route path="/ops/cashier" element={<OpsCashier />} />
+                <Route path="/ops/fnb" element={<OpsDesktopOnly title="F&B" description="Quầy F&B trên điện thoại chưa được nối đủ dữ liệu và quyền ghi production." />} />
+                <Route path="/ops/chip-ops" element={<OpsDesktopOnly title="Chip Ops" description="Kho chip là luồng tiền nhạy cảm; hiện chỉ vận hành bằng màn hình máy tính đã được kiểm soát." />} />
+                <Route path="/ops/marketing" element={<OpsDesktopOnly title="Marketing" description="Trình soạn và duyệt nội dung hiện dùng trên máy tính." />} />
+                <Route path="/ops/finance" element={<OpsDesktopOnly title="Tài chính & Đối soát" description="Số liệu tài chính không được giả lập trên mobile; dùng màn hình máy tính có phân quyền." />} />
+                <Route path="/ops/accounting" element={<OpsDesktopOnly title="Tài chính & Đối soát" description="Luồng chốt và duyệt hiện chỉ có trên máy tính." />} />
+                <Route path="/ops/series" element={<OpsDesktopOnly title="Trí tuệ Series" description="Phân tích Series hiện chỉ dùng trên máy tính và chỉ mang tính tham khảo." />} />
+                <Route path="/ops/cashier" element={<OpsCashierAccess><OpsCashier /></OpsCashierAccess>} />
               </Route>
               <Route element={<Layout />}>
                 <Route path="/" element={<Tournaments />} />
