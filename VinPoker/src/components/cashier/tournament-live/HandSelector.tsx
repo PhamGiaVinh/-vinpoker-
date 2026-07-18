@@ -3,7 +3,7 @@
 // change). On select it loads the full hand (actions + players + profiles) and
 // hands a ReplayHand to the parent.
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
@@ -47,6 +47,7 @@ export function HandSelector({
   const [loadingHand, setLoadingHand] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +91,8 @@ export function HandSelector({
 
   const loadHand = useCallback(
     async (row: HandRow) => {
+      const generation = ++loadGenerationRef.current;
+      const isCurrentLoad = () => loadGenerationRef.current === generation;
       onLoadStart?.(row.id);
       setLoadingHand(true);
       setLoadError(null);
@@ -108,6 +111,7 @@ export function HandSelector({
             .order("action_order"),
           supabase.from("hand_players").select(hpCols).eq("hand_id", row.id),
         ]);
+        if (!isCurrentLoad()) return;
         if (actionError || handPlayersError) {
           setLoadError(actionError?.message || handPlayersError?.message || "Không thể tải dữ liệu replay.");
           return;
@@ -118,6 +122,7 @@ export function HandSelector({
         // once every hand is snapshotted.
         const needIds = (handPlayers ?? []).filter((p: any) => !p.player_name).map((p: any) => p.player_id);
         const display = await fetchHandPlayerDisplay(tournamentId, needIds);
+        if (!isCurrentLoad()) return;
 
         const hand: ReplayHand = {
           hand_id: row.id,
@@ -148,13 +153,18 @@ export function HandSelector({
         };
         onSelectHand(row.id, hand);
       } catch (cause) {
+        if (!isCurrentLoad()) return;
         setLoadError(cause instanceof Error ? cause.message : "Không thể tải dữ liệu replay.");
       } finally {
-        setLoadingHand(false);
+        if (isCurrentLoad()) setLoadingHand(false);
       }
     },
     [onLoadStart, onSelectHand, tournamentId]
   );
+
+  useEffect(() => () => {
+    loadGenerationRef.current += 1;
+  }, []);
 
   // A target is never allowed to fall back to `hands[0]`. When it is outside the
   // first page, load the exact UUID in the same tournament scope instead.
