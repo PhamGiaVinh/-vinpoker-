@@ -113,19 +113,21 @@ END $t2$;
 ROLLBACK TO SAVEPOINT t2;
 
 -- ════════════════════════════════════════════════════════════════════════════
--- T3 — INV-1 / V3: release a 'pre_assigned' row AND clear pre_assigned_* fields
+-- T3 — INV-1 / V3: release an assigned row with a canonical pre-assigned
+--      attendance reference AND clear pre_assigned_* fields. `pre_assigned` is
+--      an attendance state; it is not an allowed dealer_assignments status.
 -- ════════════════════════════════════════════════════════════════════════════
 SAVEPOINT t3;
 DO $t3$
 DECLARE v_open int; v_uncleared int;
 BEGIN
   INSERT INTO public.dealer_attendance (id, dealer_id, status, current_state, check_in_time)
-  VALUES ('de500000-0000-0000-0000-0000000000c3', 'de500000-0000-0000-0000-0000000000a1', 'checked_in', 'pre_assigned', now());
+  VALUES ('de500000-0000-0000-0000-0000000000c3', 'de500000-0000-0000-0000-0000000000a1', 'checked_in', 'assigned', now());
   INSERT INTO public.dealer_assignments
     (id, attendance_id, dealer_id, club_id, table_id, status, swing_due_at, pre_assigned_attendance_id, pre_assigned_at)
   VALUES ('de500000-0000-0000-0000-0000000000e3', 'de500000-0000-0000-0000-0000000000c3',
           'de500000-0000-0000-0000-0000000000a1', 'de500000-0000-0000-0000-000000000001',
-          'de500000-0000-0000-0000-0000000000b1', 'pre_assigned', now() + interval '30 min',
+          'de500000-0000-0000-0000-0000000000b1', 'assigned', now() + interval '30 min',
           'de500000-0000-0000-0000-0000000000c3', now());
 
   PERFORM public.release_dealer_assignments(p_attendance_id := 'de500000-0000-0000-0000-0000000000c3', p_reason := 'test_t3');
@@ -216,8 +218,8 @@ END $t6$;
 ROLLBACK TO SAVEPOINT t6;
 
 -- ════════════════════════════════════════════════════════════════════════════
--- T7 — V4: cleanup_stale_attendance releases an on_break assignment for a >24h
---      dealer AND checks the attendance out
+-- T7 — P1 regression: an old on_break assignment remains a live dealer binding.
+--      Cleanup must not release it or check the attendance out, even after 24h.
 -- ════════════════════════════════════════════════════════════════════════════
 SAVEPOINT t7;
 DO $t7$
@@ -225,7 +227,7 @@ DECLARE v_open int; v_state text;
 BEGIN
   INSERT INTO public.dealer_attendance (id, dealer_id, status, current_state, check_in_time)
   VALUES ('de500000-0000-0000-0000-0000000000c8', 'de500000-0000-0000-0000-0000000000a4', 'checked_in', 'on_break', now() - interval '25 h');
-  -- old/overdue assignment (>2h) so the #926 active-dealer guard does NOT protect it
+  -- Old/overdue by design: age can no longer make a live binding cleanable.
   INSERT INTO public.dealer_assignments (id, attendance_id, dealer_id, club_id, table_id, status, swing_due_at, assigned_at)
   VALUES ('de500000-0000-0000-0000-0000000000e8', 'de500000-0000-0000-0000-0000000000c8',
           'de500000-0000-0000-0000-0000000000a4', 'de500000-0000-0000-0000-000000000001',
@@ -235,16 +237,16 @@ BEGIN
 
   SELECT count(*) INTO v_open FROM public.dealer_assignments
     WHERE id = 'de500000-0000-0000-0000-0000000000e8' AND released_at IS NULL;
-  IF v_open <> 0 THEN RAISE EXCEPTION 'FAIL T7 (V4): stale on_break assignment not released by cleanup'; END IF;
+  IF v_open <> 1 THEN RAISE EXCEPTION 'FAIL T7 (P1): live on_break assignment was released by cleanup'; END IF;
   SELECT current_state INTO v_state FROM public.dealer_attendance WHERE id = 'de500000-0000-0000-0000-0000000000c8';
-  IF v_state <> 'checked_out' THEN RAISE EXCEPTION 'FAIL T7 (V4): stale attendance not checked_out (state=%)', v_state; END IF;
-  RAISE NOTICE 'PASS T7 — V4: cleanup released stale on_break assignment + checked attendance out';
+  IF v_state = 'checked_out' THEN RAISE EXCEPTION 'FAIL T7 (P1): live on_break dealer was checked_out'; END IF;
+  RAISE NOTICE 'PASS T7 — P1: cleanup preserved overdue live on_break binding';
 END $t7$;
 ROLLBACK TO SAVEPOINT t7;
 
 -- ════════════════════════════════════════════════════════════════════════════
--- T8 — #926 active-dealer guard: cleanup must SKIP a >24h check-in whose
---      assignment is FRESH (<2h) — a healthy actively-rotating dealer
+-- T8 — P1 invariant: cleanup skips a fresh active assignment too. Together with
+--      T7, this locks protection regardless of assignment or swing age.
 -- ════════════════════════════════════════════════════════════════════════════
 SAVEPOINT t8;
 DO $t8$
@@ -252,7 +254,7 @@ DECLARE v_open int; v_state text;
 BEGIN
   INSERT INTO public.dealer_attendance (id, dealer_id, status, current_state, check_in_time)
   VALUES ('de500000-0000-0000-0000-0000000000c9', 'de500000-0000-0000-0000-0000000000a5', 'checked_in', 'assigned', now() - interval '30 h');
-  -- FRESH assignment (swing_due_at in the future) → guard protects it
+  -- Fresh assignment (swing_due_at in the future) remains protected.
   INSERT INTO public.dealer_assignments (id, attendance_id, dealer_id, club_id, table_id, status, swing_due_at, assigned_at)
   VALUES ('de500000-0000-0000-0000-0000000000ea', 'de500000-0000-0000-0000-0000000000c9',
           'de500000-0000-0000-0000-0000000000a5', 'de500000-0000-0000-0000-000000000001',
@@ -262,10 +264,10 @@ BEGIN
 
   SELECT count(*) INTO v_open FROM public.dealer_assignments
     WHERE id = 'de500000-0000-0000-0000-0000000000ea' AND released_at IS NULL;
-  IF v_open <> 1 THEN RAISE EXCEPTION 'FAIL T8 (#926 guard): fresh active assignment was wrongly released'; END IF;
+  IF v_open <> 1 THEN RAISE EXCEPTION 'FAIL T8 (P1): fresh active assignment was wrongly released'; END IF;
   SELECT current_state INTO v_state FROM public.dealer_attendance WHERE id = 'de500000-0000-0000-0000-0000000000c9';
-  IF v_state = 'checked_out' THEN RAISE EXCEPTION 'FAIL T8 (#926 guard): actively-rotating dealer wrongly checked out'; END IF;
-  RAISE NOTICE 'PASS T8 — #926: cleanup skipped an actively-rotating dealer (guard holds)';
+  IF v_state = 'checked_out' THEN RAISE EXCEPTION 'FAIL T8 (P1): actively-rotating dealer wrongly checked out'; END IF;
+  RAISE NOTICE 'PASS T8 — P1: cleanup preserved a fresh live binding';
 END $t8$;
 ROLLBACK TO SAVEPOINT t8;
 
