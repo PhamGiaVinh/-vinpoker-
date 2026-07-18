@@ -29,20 +29,20 @@ jobs:
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --preflight
 
       - name: Dry-run — BEGIN…ROLLBACK (nothing persisted)
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --dry-run
 
       - name: Apply — BEGIN…COMMIT additive DDL only (post-verify auto-runs)
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_P4B_PHASE1: APPLY_P4B_PHASE1_INSURANCE_TABLES
         run: node scripts/payroll/apply_p4b_phase1_insurance_tables.mjs --apply
