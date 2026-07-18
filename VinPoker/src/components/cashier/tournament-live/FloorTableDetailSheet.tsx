@@ -42,7 +42,7 @@ const TABLE_OPS_LIVE = FEATURES.floorTableOps;
  */
 export function FloorTableDetailSheet({
   open, onOpenChange, table, seats, onSeatTap,
-  tournamentId, tournamentName, tournamentDate, onChanged,
+  tournamentId, tournamentName, tournamentDate, unlinkedActiveSeatCount = 0, onChanged,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -52,6 +52,7 @@ export function FloorTableDetailSheet({
   tournamentId: string;
   tournamentName: string;
   tournamentDate: string | null;
+  unlinkedActiveSeatCount?: number;
   onChanged: () => void;
 }) {
   const [dialog, setDialog] = useState<null | "open" | "add" | "close">(null);
@@ -108,7 +109,14 @@ export function FloorTableDetailSheet({
             <div className="grid grid-cols-2 gap-2">
               <ActionButton icon={ExternalLink} label="Mở bàn" onClick={() => setDialog("open")} />
               <ActionButton icon={UserPlus} label="Thêm người" onClick={() => setDialog("add")} />
-              <ActionButton icon={Lock} label="Đóng bàn" danger onClick={() => setDialog("close")} />
+              <ActionButton
+                icon={Lock}
+                label="Đóng bàn"
+                danger
+                disabled={unlinkedActiveSeatCount > 0}
+                disabledReason="Có ghế đang chơi chưa gắn entry - cần sửa dữ liệu ghế trước khi đóng bàn."
+                onClick={() => setDialog("close")}
+              />
             </div>
             <p className="text-[11px] text-muted-foreground">
               Chạm một người chơi để Chuyển / Sửa chip / Phiếu / Loại.
@@ -145,6 +153,7 @@ export function FloorTableDetailSheet({
             tableTtId={table.tt_id}
             tableNumber={table.table_number}
             occupiedCount={occupied}
+            unlinkedActiveSeatCount={unlinkedActiveSeatCount}
             onDone={onChanged}
           />
         </>
@@ -158,11 +167,13 @@ export function FloorTableDetailSheet({
  * "Cần bật RPC" badge (never opens a dialog). When ON it opens the action's dialog.
  */
 function ActionButton({
-  icon: Icon, label, danger, onClick,
+  icon: Icon, label, danger, disabled = false, disabledReason, onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   danger?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   onClick: () => void;
 }) {
   if (!TABLE_OPS_LIVE) {
@@ -178,6 +189,22 @@ function ActionButton({
             </span>
           </TooltipTrigger>
           <TooltipContent>Bật cờ floorTableOps để dùng (sau UAT)</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  if (disabled) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="block">
+              <Button variant="outline" disabled className={`h-11 w-full justify-start ${danger ? "text-destructive" : ""}`}>
+                <Icon className="mr-1.5 h-4 w-4" /> {label}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{disabledReason}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     );
