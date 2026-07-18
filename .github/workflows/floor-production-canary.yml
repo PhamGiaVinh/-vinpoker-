@@ -1,0 +1,43 @@
+name: Floor Production Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type RUN_FLOOR_PRODUCTION_CANARY to run isolated production Floor TEST fixtures"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    if: github.ref != 'refs/heads/main' && inputs.confirmation == 'RUN_FLOOR_PRODUCTION_CANARY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FLOOR_CANARY_ENV: production
+      FLOOR_CANARY_CONFIRM: ${{ inputs.confirmation }}
+      FLOOR_CANARY_PREFIX: CODEX_FLOOR_CANARY_
+      FLOOR_CANARY_RUN_BROWSER: "true"
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: VinPoker/package-lock.json
+      - name: Install locked dependencies without lifecycle scripts
+        working-directory: VinPoker
+        run: npm ci --ignore-scripts
+      - name: Install Chromium for temporary authenticated browser contexts
+        working-directory: VinPoker
+        run: npx playwright install --with-deps chromium
+      - name: Validate canary context and execute isolated API matrix
+        working-directory: VinPoker
+        run: node scripts/floor/floor-production-canary.mjs
