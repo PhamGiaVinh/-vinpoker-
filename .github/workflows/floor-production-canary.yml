@@ -8,7 +8,7 @@ on:
         required: true
         type: string
   pull_request:
-    types: [opened]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -18,6 +18,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && inputs.confirmation == 'RUN_FLOOR_PRODUCTION_CANARY') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/floor-production-canary' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]')
+    environment: floor-production-canary
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
