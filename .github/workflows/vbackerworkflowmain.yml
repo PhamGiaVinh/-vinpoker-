@@ -49,7 +49,7 @@ jobs:
         run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         working-directory: ./VinPoker
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Database migration deployment is manual-gated
         if: github.event_name != 'workflow_dispatch' || inputs.deploy_db != 'true'
@@ -68,7 +68,7 @@ jobs:
         continue-on-error: true
         working-directory: ./VinPoker
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Deploy Edge Functions
@@ -151,12 +151,12 @@ jobs:
           echo "=== Some functions failed ===" && exit 1
         working-directory: ./VinPoker
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy to Vercel
         run: |
           npm install -g vercel@latest
-          vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
+          vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
           cp -f .vercel/.env.production.local VinPoker/.env.production.local
           cd VinPoker
           npm install --ignore-scripts
@@ -165,10 +165,10 @@ jobs:
           cp -r dist/. ../.vercel/output/static/
           printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > ../.vercel/output/config.json
           cd ..
-          vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
+          vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
         # VITE env vars MUST be set here (process env > .env.production.local).
         # Vercel project env vars are sometimes missing after DB password changes.
         # The anon/publishable key is public (exposed in client bundle anyway).
         env:
           VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
-          VITE_SUPABASE_PUBLISHABLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ybGVzZ2djamFtd3Vrbnh3Y3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NTIwMjIsImV4cCI6MjA5NDUyODAyMn0.gz_aeoSFLP6tHzdXbFwFM6xK1Wk32JOfz9ugM_BC91A"
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}

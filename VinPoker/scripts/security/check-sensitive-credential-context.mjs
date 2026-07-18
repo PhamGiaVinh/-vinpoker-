@@ -4,9 +4,14 @@ import { fileURLToPath } from "node:url";
 
 const SENSITIVE_CREDENTIAL_NAMES = [
   "SUPABASEACCESTOKEN",
+  "SUPABASEACCESSTOKEN",
+  "SUPABASE_ACCESS_TOKEN",
   "VBACKER",
   "VBACKER1",
   "VERCELTOKEN",
+  "VERCEL_TOKEN",
+  "SUPABASE_DB_PASSWORD",
+  "SUPABASE_PUBLISHABLE_KEY",
 ];
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -27,6 +32,13 @@ const credentialAlternation = SENSITIVE_CREDENTIAL_NAMES.join("|");
 const UNSAFE_VARIABLE_REFERENCE_PATTERNS = [
   new RegExp(`\\bvars\\s*\\.\\s*(${credentialAlternation})\\b`, "gi"),
   new RegExp(`\\bvars\\s*\\[\\s*[\"']\\s*(${credentialAlternation})\\s*[\"']\\s*\\]`, "gi"),
+];
+
+const HARDCODED_WORKFLOW_CREDENTIAL_PATTERNS = [
+  {
+    credentialName: "SUPABASE_PUBLISHABLE_KEY",
+    pattern: /\bVITE_SUPABASE_PUBLISHABLE_KEY\s*:\s*["'](?:eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|sb_publishable_[A-Za-z0-9_-]+)["']/gi,
+  },
 ];
 
 function walkFiles(directory) {
@@ -59,6 +71,22 @@ export function findUnsafeVariableReferences(content) {
   return findings.sort((left, right) => left.line - right.line || left.credentialName.localeCompare(right.credentialName));
 }
 
+export function findHardcodedCredentialLikeLiterals(content) {
+  const findings = [];
+
+  for (const { credentialName, pattern } of HARDCODED_WORKFLOW_CREDENTIAL_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (const match of content.matchAll(pattern)) {
+      findings.push({
+        credentialName,
+        line: lineNumberAt(content, match.index ?? 0),
+      });
+    }
+  }
+
+  return findings.sort((left, right) => left.line - right.line || left.credentialName.localeCompare(right.credentialName));
+}
+
 export function scanCredentialContexts(repositoryRoot) {
   const targets = [
     resolve(repositoryRoot, ".github", "workflows"),
@@ -67,13 +95,32 @@ export function scanCredentialContexts(repositoryRoot) {
     resolve(repositoryRoot, "VinPoker", "scripts"),
   ];
 
-  return targets.flatMap((target) =>
+  const variableFindings = targets.flatMap((target) =>
     walkFiles(target).flatMap((filePath) =>
       findUnsafeVariableReferences(readFileSync(filePath, "utf8")).map((finding) => ({
         ...finding,
+        kind: "unsafe-vars-reference",
         file: relative(repositoryRoot, filePath).replaceAll("\\", "/"),
       })),
     ),
+  );
+
+  const workflowTargets = [
+    resolve(repositoryRoot, ".github", "workflows"),
+    resolve(repositoryRoot, ".github", "actions"),
+  ];
+  const literalFindings = workflowTargets.flatMap((target) =>
+    walkFiles(target).flatMap((filePath) =>
+      findHardcodedCredentialLikeLiterals(readFileSync(filePath, "utf8")).map((finding) => ({
+        ...finding,
+        kind: "hardcoded-credential-like-literal",
+        file: relative(repositoryRoot, filePath).replaceAll("\\", "/"),
+      })),
+    ),
+  );
+
+  return [...variableFindings, ...literalFindings].sort(
+    (left, right) => left.file.localeCompare(right.file) || left.line - right.line || left.kind.localeCompare(right.kind),
   );
 }
 
@@ -87,9 +134,9 @@ function run() {
     return;
   }
 
-  console.error("Unsafe GitHub Actions vars.* credential references found:");
+  console.error("Unsafe credential context found:");
   for (const finding of findings) {
-    console.error(`- ${finding.file}:${finding.line} (${finding.credentialName})`);
+    console.error(`- ${finding.file}:${finding.line} (${finding.kind}; ${finding.credentialName})`);
   }
   process.exitCode = 1;
 }
