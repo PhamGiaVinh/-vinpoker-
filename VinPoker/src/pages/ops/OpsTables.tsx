@@ -102,8 +102,8 @@ interface RedrawResult {
 export default function OpsTables() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
+  const scopedIds = operatorClubIds;
 
   // P1-1: 1 CLB → auto; >1 → pill chọn. Đổi CLB → reset giải.
   const [clubId, setClubId] = useState<string | null>(null);
@@ -202,7 +202,7 @@ export default function OpsTables() {
     addBusyRef.current = true; setAddBusy(true);
     try {
       // Mirror AddPlayerDialog.submit — floor_assign_player_to_seat (mig 20260913000000)
-      const { data, error } = await (supabase.rpc as any)("floor_assign_player_to_seat", {
+      const { data, error } = await supabase.rpc("floor_assign_player_to_seat", {
         p_tournament_id: tourId,
         p_player_name: addName.trim(),
         p_tournament_table_id: addTable.raw.tt_id,
@@ -231,7 +231,7 @@ export default function OpsTables() {
     if (openBusyRef.current) return;
     openBusyRef.current = true; setOpenBusy(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("open_tournament_table", {
+      const { data, error } = await supabase.rpc("open_tournament_table", {
         p_tournament_id: tourId,
         p_table_number: newTableNo.trim() ? Number(newTableNo) : null,
         p_max_seats: Number(newMaxSeats) || null,
@@ -258,7 +258,7 @@ export default function OpsTables() {
     if (closeBusyRef.current) return;
     closeBusyRef.current = true; setCloseBusy(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("close_tournament_table", {
+      const { data, error } = await supabase.rpc("close_tournament_table", {
         p_tournament_table_id: closeTable.raw.tt_id,
         p_draw_mode: closeMode,
         p_reason: "table_break",
@@ -286,7 +286,7 @@ export default function OpsTables() {
   const redrawBusyRef = useRef(false);
   const openRedraw = () => { setRedrawMode("final_table"); setRedrawDraw("redraw_balanced"); setRedrawTarget(""); setRedrawPhase("config"); setRedrawPreview(null); setRedrawOpen(true); };
   const callRedraw = useCallback(async (dryRun: boolean): Promise<RedrawResult | null> => {
-    const { data, error } = await (supabase.rpc as any)("redraw_tournament", {
+    const { data, error } = await supabase.rpc("redraw_tournament", {
       p_tournament_id: tourId,
       p_mode: redrawMode,
       p_eligible_entry_ids: null,          // 3 chế độ auto — không dùng manual
@@ -327,6 +327,7 @@ export default function OpsTables() {
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." onBack={() => navigate("/")} />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản floor/cashier để xem sơ đồ bàn thật." onBack={() => navigate("/")} />;
   if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." onBack={() => navigate("/")} />;
+  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." onBack={() => navigate("/")} />;
   if (scopedIds.length === 0 && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành sàn." onBack={() => navigate("/")} />;
 
   const clubName = (id: string) => clubs?.find((c) => c.id === id)?.name ?? `CLB ${id.slice(0, 4)}…`;
@@ -654,7 +655,6 @@ export default function OpsTables() {
         tournamentId={tourId}
         tournamentName={selectedTour?.name ?? ""}
         tournamentDate={(selectedTour as (Tournament & { start_time?: string | null }) | null)?.start_time ?? null}
-        userId={user?.id}
         floor={floor}
         target={seatTarget}
         onClose={() => setSeatTarget(null)}

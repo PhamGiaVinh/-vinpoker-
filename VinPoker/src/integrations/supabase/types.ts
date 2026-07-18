@@ -13900,8 +13900,8 @@ export type Database = {
       }
       close_tournament_table: {
         Args: {
-          p_draw_mode?: string
-          p_reason?: string
+          p_draw_mode?: string | null
+          p_reason?: string | null
           p_tournament_table_id: string
         }
         Returns: Json
@@ -14113,7 +14113,20 @@ export type Database = {
         }
         Returns: Json
       }
+      floor_bust_player: {
+        Args: {
+          p_expected_chip_count: number
+          p_reason?: string
+          p_seat_id: string
+          p_tournament_id: string
+        }
+        Returns: Json
+      }
       floor_club_ids: { Args: { _user_id: string }; Returns: string[] }
+      floor_start_tournament_clock: {
+        Args: { p_tournament_id: string }
+        Returns: Json
+      }
       fn_compute_staking_payouts: {
         Args: { _markup: number; _percentage: number; _prize_vnd: number }
         Returns: Json
@@ -14448,6 +14461,15 @@ export type Database = {
       get_my_dealer_payroll: {
         Args: { p_dealer_id: string; p_month?: number; p_year?: number }
         Returns: Json
+      }
+      get_my_floor_operator_scope: {
+        Args: never
+        Returns: {
+          can_cashier: boolean
+          can_floor: boolean
+          can_owner: boolean
+          club_id: string
+        }[]
       }
       get_my_pt_wage: { Args: { p_dealer_id: string }; Returns: Json }
       get_my_staff_salary: { Args: { p_staff_id: string }; Returns: Json }
@@ -14920,8 +14942,8 @@ export type Database = {
       }
       open_tournament_table: {
         Args: {
-          p_max_seats?: number
-          p_table_number?: number
+          p_max_seats?: number | null
+          p_table_number?: number | null
           p_tournament_id: string
         }
         Returns: Json
@@ -15151,12 +15173,22 @@ export type Database = {
       }
       redraw_tournament: {
         Args: {
-          p_draw_mode?: string
+          p_draw_mode?: string | null
           p_dry_run?: boolean
-          p_eligible_entry_ids?: string[]
+          p_eligible_entry_ids?: string[] | null
           p_mode: string
-          p_target_table_count?: number
+          p_target_table_count?: number | null
           p_tournament_id: string
+        }
+        Returns: Json
+      }
+      restore_busted_player_to_seat: {
+        Args: {
+          p_actor_user_id?: string | null
+          p_entry_id: string
+          p_reason?: string
+          p_to_seat_number: number
+          p_to_tournament_table_id: string
         }
         Returns: Json
       }

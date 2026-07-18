@@ -23,8 +23,8 @@ const LIVEISH: Tournament["status"][] = ["live", "final_table", "break"];
 export default function OpsToday() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
+  const scopedIds = operatorClubIds;
   const activeClub = scopedIds[0];
 
   const { data: tournaments } = useTournaments(activeClub);
@@ -37,7 +37,7 @@ export default function OpsToday() {
     return list.find((t) => LIVEISH.includes(t.status)) ?? null;
   }, [tournaments]);
 
-  const assignments = (asgQ.data ?? []) as Enriched[];
+  const assignments = useMemo(() => (asgQ.data ?? []) as Enriched[], [asgQ.data]);
   const counts = useMemo(() => {
     const active = (tablesQ.data ?? []).filter((t) => (t.status ?? "active") === "active");
     const staffedTableIds = new Set(assignments.map((a) => a.table_id));
@@ -70,6 +70,7 @@ export default function OpsToday() {
   if (clubsLoading) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
   if (!user) return <Guard icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập để xem tình hình hôm nay." />;
   if (clubs === null) return <Guard icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
+  if (clubsError) return <Guard icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi CLB" sub="Không dùng dữ liệu thay thế. Hãy tải lại trang." />;
   if (!activeClub && !isAdmin) return <Guard icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền vận hành." />;
 
   return (

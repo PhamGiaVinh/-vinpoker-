@@ -122,15 +122,15 @@ const REG_CHIP: Record<string, { label: string; cls: string }> = {
 export default function OpsCashier() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, clubIds } = useOperatorClubs();
+  const { loading: clubsLoading, user, clubs, cashierClubIds, error: clubsError } = useOperatorClubs();
   const [pill, setPill] = useState<Pill>("queue");
   const [sepayTab, setSepayTab] = useState<"todo" | "done">("todo");
   const [state, setState] = useState<{ loading: boolean; error: string | null; rows: any[] }>({ loading: true, error: null, rows: [] });
   const [reload, setReload] = useState(0);
-  const clubKey = clubIds.join(",");
+  const clubKey = cashierClubIds.join(",");
   const pending = () => { toast(PENDING); };
 
-  const canLoad = !clubsLoading && !!user && clubs !== null && (clubIds.length > 0 || isAdmin);
+  const canLoad = !clubsLoading && !clubsError && !!user && clubs !== null && (cashierClubIds.length > 0 || isAdmin);
   useEffect(() => {
     if (!canLoad) return;
     let alive = true;
@@ -138,11 +138,11 @@ export default function OpsCashier() {
     (async () => {
       try {
         let rows: any[] = [];
-        if (pill === "queue") rows = await loadQueue(clubIds);
-        else if (pill === "buyin") rows = await loadTours(clubIds);
+        if (pill === "queue") rows = await loadQueue(cashierClubIds);
+        else if (pill === "buyin") rows = await loadTours(cashierClubIds);
         else if (pill === "sepay") rows = await loadSepay(sepayTab === "todo" ? "actionable" : "resolved");
-        else if (pill === "staking") rows = await loadStaking(clubIds);
-        else if (pill === "verify") rows = await loadVerify(clubIds);
+        else if (pill === "staking") rows = await loadStaking(cashierClubIds);
+        else if (pill === "verify") rows = await loadVerify(cashierClubIds);
         if (alive) setState({ loading: false, error: null, rows });
       } catch (e) {
         if (alive) setState({ loading: false, error: e instanceof Error ? e.message : "Không tải được dữ liệu", rows: [] });
@@ -156,9 +156,10 @@ export default function OpsCashier() {
   if (clubsLoading) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Kiểm tra đăng nhập." />;
   if (!user) return <Guard nav={navigate} icon={<LogIn className="h-8 w-8 text-[#c9a86a]" />} title="Cần đăng nhập" sub="Đăng nhập tài khoản thu ngân để xem quầy." />;
   if (clubs === null) return <Guard nav={navigate} icon={<Loader2 className="h-8 w-8 animate-spin text-[#c9a86a]" />} title="Đang tải…" sub="Lấy câu lạc bộ." />;
-  if (clubIds.length === 0 && !isAdmin) return <Guard nav={navigate} icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền thu ngân." />;
+  if (clubsError) return <Guard nav={navigate} icon={<AlertTriangle className="h-8 w-8 text-rose-300" />} title="Không tải được phạm vi Cashier" sub="Không hiển thị dữ liệu thay thế. Hãy tải lại trang." />;
+  if (cashierClubIds.length === 0 && !isAdmin) return <Guard nav={navigate} icon={<Users className="h-8 w-8 text-amber-300" />} title="Chưa được phân công CLB" sub="Liên hệ quản trị để được gán quyền thu ngân." />;
 
-  const clubName = clubs && clubs.length ? clubs.map((c) => c.name).join(", ") : "Toàn quyền";
+  const clubName = clubs?.filter((club) => cashierClubIds.includes(club.id)).map((club) => club.name).join(", ") || "Toàn quyền";
 
   return (
     <div className="ios-in space-y-4 pt-1">

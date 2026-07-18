@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "check:credential-context": "node scripts/security/check-sensitive-credential-context.mjs",
+    "check:floor-audit-context": "node scripts/security/check-floor-audit-context.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

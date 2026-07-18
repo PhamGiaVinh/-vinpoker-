@@ -10,12 +10,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTournamentTvData } from "@/hooks/useTournamentTvData";
 import { groupPayoutRows } from "@/lib/tv/payoutBands";
 import { getDisplayableSatelliteRows } from "@/lib/satellitePayout";
+import { floorOpsErrorMessage, floorOpsResponseErrorCode } from "@/lib/floorOpsErrors";
 import { RoomGrid } from "@/components/ops/shared/RoomGrid";
 import { useFloorSeats } from "@/components/ops/shared/useFloorSeats";
 import { FloorPlayerActions, type FloorSeatTarget } from "@/components/ops/shared/FloorPlayerActions";
 import { toMockTable, toMockSeat, type MapSeat, type MapTable } from "@/components/ops/shared/floorAdapter";
 import type { MockTable } from "@/components/ops/mock/opsData";
 import type { TournamentLeaderboardPlayer } from "@/types/tournament";
+
+type UnappliedFloorRpcResult = { data: unknown; error: { message?: string; code?: string } | null };
+const untypedFloorRpc = supabase.rpc as unknown as (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<UnappliedFloorRpcResult>;
 
 /**
  * Cockpit giải (mobileOpsV2) — bản NỐI DỮ LIỆU THẬT (reads S1/S3/S4/S5).
@@ -64,9 +71,10 @@ export default function OpsTournamentCockpit() {
     setPlayers({ loading: true, error: null, rows: [] });
     (async () => {
       try {
-        const { data, error } = await (supabase.rpc as any)("get_tournament_leaderboard", { p_tournament_id: id });
+        const { data, error } = await untypedFloorRpc("get_tournament_leaderboard", { p_tournament_id: id });
         if (error) throw error;
-        const rows = ((data?.players ?? data) as TournamentLeaderboardPlayer[]) ?? [];
+        const payload = data as { players?: unknown } | null;
+        const rows = ((payload?.players ?? data) as TournamentLeaderboardPlayer[]) ?? [];
         if (alive) setPlayers({ loading: false, error: null, rows: Array.isArray(rows) ? rows : [] });
       } catch (e) { if (alive) setPlayers({ loading: false, error: e instanceof Error ? e.message : "Không tải được bảng người chơi", rows: [] }); }
     })();
@@ -110,8 +118,8 @@ export default function OpsTournamentCockpit() {
     setClkBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-clock", { body: { tournament_id: id, action, ...extra } });
-      const err = error?.message || (data as { error?: string } | null)?.error;
-      if (err) { toast.error(/permission|denied|allowed/i.test(err) ? "Không có quyền điều khiển đồng hồ." : `Không thực hiện được: ${err}`); return; }
+      const err = floorOpsResponseErrorCode(data) ?? error?.message;
+      if (err) { toast.error(floorOpsErrorMessage(err, "Không thực hiện được")); return; }
       await Promise.all([loadClk(), tv.refetch()]);   // không optimistic
     } catch (e) {
       toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Không thực hiện được");
@@ -122,7 +130,6 @@ export default function OpsTournamentCockpit() {
   }, [id, clkBusy, loadClk]);
 
   // ── Floor cockpit (cờ cockpitFloorActions): S2 sơ đồ bàn inline + S3 danh sách 3-tab thao tác ──
-  const { user } = useAuth();
   const cockpitOn = FEATURES.cockpitFloorActions;
   const [floorSeen, setFloorSeen] = useState(false); // sticky: chỉ fetch floor sau khi vào tab Bàn/Người chơi
   useEffect(() => { if (cockpitOn && (tab === "tables" || tab === "players")) setFloorSeen(true); }, [cockpitOn, tab]);
@@ -144,15 +151,15 @@ export default function OpsTournamentCockpit() {
   const openSeat = (s: MapSeat) => setSeatTarget({ seat: toMockSeat(s), tableNo: tableNoById.get(s.table_id) ?? 0, real: s });
 
   // Busted list — lazy khi tab Người chơi (cờ ON). Tên lấy từ ghế inactive (giữ player_name) → profiles → id.
-  const [busted, setBusted] = useState<{ loading: boolean; rows: BustedRow[] }>({ loading: false, rows: [] });
+  const [busted, setBusted] = useState<{ loading: boolean; error: string | null; rows: BustedRow[] }>({ loading: false, error: null, rows: [] });
   useEffect(() => {
     if (!cockpitOn || tab !== "players" || !id) return;
     let alive = true;
-    setBusted({ loading: true, rows: [] });
+    setBusted({ loading: true, error: null, rows: [] });
     (async () => {
       try {
         const [entRes, prizeRes, seatRes] = await Promise.all([
-          (supabase as any).from("tournament_entries").select("id, player_id, entry_no, seat_number, finished_place, current_stack, status").eq("tournament_id", id).eq("status", "busted"),
+          supabase.from("tournament_entries").select("id, player_id, entry_no, seat_number, finished_place, current_stack, status").eq("tournament_id", id).eq("status", "busted"),
           supabase.from("tournament_prizes").select("position, amount").eq("tournament_id", id),
           supabase.from("tournament_seats").select("player_id, entry_number, player_name, is_active").eq("tournament_id", id),
         ]);
@@ -178,8 +185,10 @@ export default function OpsTournamentCockpit() {
             last_chip: e.current_stack ?? null,
           };
         }).sort((a, b) => (a.finished_place ?? 1e9) - (b.finished_place ?? 1e9));
-        if (alive) setBusted({ loading: false, rows });
-      } catch { if (alive) setBusted({ loading: false, rows: [] }); }
+        if (alive) setBusted({ loading: false, error: null, rows });
+      } catch (error) {
+        if (alive) setBusted({ loading: false, error: error instanceof Error ? error.message : "Không tải được người đã loại", rows: [] });
+      }
     })();
     return () => { alive = false; };
   }, [cockpitOn, tab, id]);
@@ -189,6 +198,7 @@ export default function OpsTournamentCockpit() {
   const [restoreTarget, setRestoreTarget] = useState<BustedRow | null>(null);
   const [restoreTtId, setRestoreTtId] = useState<string | null>(null);
   const [restoreSeat, setRestoreSeat] = useState<number | null>(null);
+  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const restoreTargets = useMemo(() => floor.tables.map((tb) => {
     const occ = new Set((floor.seatsByTable[tb.table_id] ?? []).filter((x) => x.is_active).map((x) => x.seat_number));
@@ -199,17 +209,17 @@ export default function OpsTournamentCockpit() {
     const first = restoreTargets[0] ?? null;
     setRestoreTtId(first?.tt_id ?? null);
     setRestoreSeat(first && first.freeSeats.length > 0 ? first.freeSeats[0] : null);
+    setRestoreConfirmed(false);
     setRestoreTarget(b);
   };
   const doRestore = useCallback(async () => {
-    if (!restoreTarget || !restoreTtId || restoreSeat == null || restoreBusy) return;
+    if (!restoreTarget || !restoreTtId || restoreSeat == null || restoreBusy || !restoreConfirmed) return;
     setRestoreBusy(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("restore_busted_player_to_seat", {
+      const { data, error } = await untypedFloorRpc("restore_busted_player_to_seat", {
         p_entry_id: restoreTarget.entry_id,
         p_to_tournament_table_id: restoreTtId,
         p_to_seat_number: restoreSeat,
-        p_actor_user_id: user?.id ?? null,
         p_reason: "floor_restore",
       });
       if (error && (error.code === "42883" || error.code === "PGRST202" || /function.*does not exist|could not find the function/i.test(error.message ?? ""))) {
@@ -217,28 +227,19 @@ export default function OpsTournamentCockpit() {
       }
       const res = (data ?? null) as { ok?: boolean; error?: string; to_table_number?: number } | null;
       if (error || !res?.ok) {
-        const code = res?.error ?? error?.message;
-        const map: Record<string, string> = {
-          entry_not_busted: "Người này không còn ở trạng thái bị loại.",
-          actor_not_allowed: "Không có quyền khôi phục cho CLB này.",
-          already_active: "Người này đã đang ngồi ở bàn khác.",
-          seat_occupied: "Ghế vừa có người ngồi — chọn ghế khác.",
-          invalid_destination_table: "Bàn không hợp lệ hoặc đã đóng.",
-          invalid_seat_number: "Số ghế không hợp lệ.",
-          unauthorized: "Bạn cần đăng nhập lại.",
-        };
-        toast.error(code ? (map[code] ?? `Khôi phục thất bại (${code})`) : "Khôi phục thất bại"); return;
+        toast.error(floorOpsErrorMessage(floorOpsResponseErrorCode(res) ?? error?.message, "Khôi phục thất bại")); return;
       }
       toast.success(`Đã cho ${restoreTarget.player_name} vào lại Bàn ${res.to_table_number ?? "?"} · ghế ${restoreSeat}`);
       setBusted((s) => ({ ...s, rows: s.rows.filter((r) => r.entry_id !== restoreTarget.entry_id) }));
       setRestoreTarget(null);
+      setRestoreConfirmed(false);
       floor.reload();
     } catch (e) {
       toast.error(e instanceof Error ? `Lỗi mạng: ${e.message}` : "Khôi phục thất bại");
     } finally {
       setRestoreBusy(false);
     }
-  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, user, floor]);
+  }, [restoreTarget, restoreTtId, restoreSeat, restoreBusy, restoreConfirmed, floor]);
 
   const header = (title: string, badge?: React.ReactNode) => (
     <header className="px-1">
@@ -405,7 +406,9 @@ export default function OpsTournamentCockpit() {
                 </button>
               ))}
             </div>
-            {(floor.loading || busted.loading) && counts.all === 0 ? (
+            {busted.error ? (
+              <CenterCard icon={<AlertTriangle className="h-7 w-7 text-rose-300" />} title="Không tải được người đã loại" sub="Không dùng danh sách rỗng thay thế. Hãy tải lại trang." />
+            ) : (floor.loading || busted.loading) && counts.all === 0 ? (
               <CenterCard icon={<Loader2 className="h-7 w-7 animate-spin text-[#c9a86a]" />} title="Đang tải…" />
             ) : empty ? (
               <CenterCard icon={<Trophy className="h-7 w-7 text-[#9b8e97]" />} title="Chưa có người chơi" />
@@ -585,13 +588,18 @@ export default function OpsTournamentCockpit() {
       </Sheet>
 
       {/* Khôi phục người bị loại → chọn bàn·ghế trống → RPC restore_busted_player_to_seat */}
-      <Sheet open={restoreTarget !== null} onOpenChange={(v) => { if (!v && !restoreBusy) setRestoreTarget(null); }}>
+      <Sheet open={restoreTarget !== null} onOpenChange={(v) => { if (!v && !restoreBusy) { setRestoreTarget(null); setRestoreConfirmed(false); } }}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-[22px] border-none bg-[#0d0913] pb-8">
           <div className="ios-grabber mb-3 mt-1" />
           <SheetHeader className="text-left">
             <SheetTitle className="text-[#f2ece6]">Cho vào lại: {restoreTarget?.player_name}</SheetTitle>
           </SheetHeader>
           <div className="mt-0.5 text-[13px] text-[#9b8e97]">Trả lại <span className="font-mono text-[#c9a86a]">{vnd(restoreTarget?.last_chip)}</span> chip vào 1 ghế trống · un-bust người bị loại nhầm.</div>
+          <div className="mt-3 rounded-2xl border border-rose-400/30 bg-rose-400/10 px-3.5 py-3 text-[13px] leading-5 text-rose-200">
+            <div className="font-semibold">Thao tác nhạy cảm — kiểm tra payout trước</div>
+            <div className="mt-1">Chỉ dùng khi vừa loại nhầm và trước khi chốt giải/trả thưởng. Nếu payout đã chốt, cần huỷ hoặc tính lại payout theo quy trình riêng.</div>
+            {restoreTarget?.prize ? <div className="mt-1 font-semibold">Người này đang có mức thưởng {vnd(restoreTarget.prize)}.</div> : null}
+          </div>
           {restoreTargets.length === 0 ? (
             <div className="ios-card mt-3 flex flex-col items-center gap-2 py-8 text-center">
               <div className="text-[14px] text-[#9b8e97]">Không còn ghế trống — mở thêm bàn ở màn Bàn trước.</div>
@@ -619,7 +627,11 @@ export default function OpsTournamentCockpit() {
                   ))}
                 </div>
               </div>
-              <button disabled={restoreBusy || restoreTtId === null || restoreSeat === null} onClick={doRestore}
+              <label className="mt-3 flex min-h-11 items-start gap-3 rounded-2xl bg-white/5 px-3.5 py-3 text-[13px] leading-5 text-[#c8bcc4]">
+                <input type="checkbox" checked={restoreConfirmed} onChange={(event) => setRestoreConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#c9a86a]" />
+                <span>Tôi đã kiểm tra: giải chưa chốt, thưởng chưa chi, đây đúng là lượt vào vừa bị loại nhầm.</span>
+              </label>
+              <button disabled={restoreBusy || restoreTtId === null || restoreSeat === null || !restoreConfirmed} onClick={doRestore}
                 className="ios-press ios-primary mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-bold disabled:opacity-40">
                 {restoreBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {restoreBusy ? "Đang khôi phục…" : `Cho vào Bàn ${restoreTargets.find((x) => x.tt_id === restoreTtId)?.table_number ?? "?"} · ghế ${restoreSeat ?? "—"}`}
@@ -635,7 +647,6 @@ export default function OpsTournamentCockpit() {
           tournamentId={id}
           tournamentName={d.tournamentName}
           tournamentDate={null}
-          userId={user?.id}
           floor={floor}
           target={seatTarget}
           onClose={() => setSeatTarget(null)}

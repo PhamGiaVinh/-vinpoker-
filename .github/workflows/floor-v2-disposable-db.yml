@@ -1,0 +1,38 @@
+name: Floor V2 disposable PostgreSQL integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/floor-v2-disposable-db.yml"
+      - "VinPoker/supabase/migrations/20261240000000_floor_production_hardening.sql"
+      - "VinPoker/supabase/migrations/20261241000000_floor_clock_start_atomic.sql"
+      - "VinPoker/supabase/migrations/20261242000000_floor_operator_scope.sql"
+      - "VinPoker/tests/floorProduction/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  floor-disposable-db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply Floor V2 migrations to disposable PostgreSQL and run integration assertions
+        working-directory: VinPoker
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f tests/floorProduction/disposableDb.integration.sql

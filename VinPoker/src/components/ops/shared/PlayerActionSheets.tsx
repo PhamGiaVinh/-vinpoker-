@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { User, ArrowRightLeft, Coins, Receipt, UserMinus, IdCard, Printer, Loader2 } from "lucide-react";
+import { User, ArrowRightLeft, Coins, Receipt, UserMinus, Loader2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
@@ -11,7 +11,6 @@ import {
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import type { MockSeat } from "../mock/opsData";
 
 /**
  * PlayerActionSheets — luồng người chơi đầy đủ theo bản vẽ đã duyệt:
@@ -21,17 +20,14 @@ import type { MockSeat } from "../mock/opsData";
  * DỮ LIỆU MẪU, read-only: mọi xác nhận là toast "(bản mẫu)".
  */
 export interface PlayerTarget {
-  seat: MockSeat;
+  seat: { seat: number; name: string | null; chip: string | null; entryNo?: number };
   tableNo: number;
   /** Chip HIỆN TẠI (số thật) để khởi tạo numpad khi nối thật; bỏ trống = mock. */
-  chipCount?: number;
+  chipCount: number;
 }
 
 type Step = "actions" | "info" | "move" | "chip" | "receipt" | "bust" | null;
 
-const MOVE_TABLES = [8, 9, 10];
-const MOVE_SEATS = [1, 3, 4, 5, 7, 9];
-const FREE_SEATS = new Set([3, 4, 7]);
 const MOVE_REASONS = ["cân bàn", "gãy bàn", "yêu cầu TD"];
 const CHIP_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "⌫"];
 
@@ -53,26 +49,26 @@ export function PlayerActionSheets({
   /** Khi màn chủ chạy DỮ LIỆU THẬT nhưng hành động CHƯA nối: mọi nút con (Thông tin/Chuyển/
    *  Sửa chip/Phiếu/Loại) chỉ toast notice này và đóng — KHÔNG mở các sheet con (chúng còn
    *  scaffold mẫu, không được hiện như thật). Bỏ trống = hành vi mock cũ "(bản mẫu)". */
-  pendingNotice?: string;
+  pendingNotice?: never;
   /** Nếu có → nút "Sửa chip" mở numpad THẬT; xác nhận gọi callback này (màn chủ ghi update_seats
    *  với identity ghế thật) và trả về true nếu thành công. Các nút khác vẫn theo pendingNotice. */
-  onSaveChip?: (newChip: number) => Promise<boolean>;
+  onSaveChip: (newChip: number) => Promise<boolean>;
   /** Nếu có → nút "Loại" mở xác nhận THẬT (💰 ITM). onOpenBust: màn chủ ĐỌC LẠI hạng+thưởng tạm
    *  tính ngay lúc mở (P0-5, không dùng cache). bustInfo: kết quả đọc lại. onBustPlayer: ghi
    *  update_seats is_active:false, trả true nếu thành công. */
-  onBustPlayer?: () => Promise<boolean>;
-  onOpenBust?: () => void;
-  bustInfo?: { loading: boolean; place: number | null; prize: number | null } | null;
+  onBustPlayer: () => Promise<boolean>;
+  onOpenBust: () => void;
+  bustInfo: { loading: boolean; place: number | null; prize: number | null } | null;
   /** Nếu có → nút "Chuyển" mở chọn bàn/ghế THẬT: bàn đích + ghế trống lấy từ moveTargets; xác nhận
    *  gọi onMovePlayer(tt_id, seat, lý do) (màn chủ tra entry_id + gọi move_player_seat). */
-  moveTargets?: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
-  onMovePlayer?: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
+  moveTargets: { tt_id: string; table_number: number | null; freeSeats: number[] }[];
+  onMovePlayer: (toTtId: string, toSeat: number, reason: string) => Promise<boolean>;
   /** Nếu có → nút "Phiếu" mở phiếu THẬT (SeatReceiptDialog ở màn chủ: QR + in, read-only). act()
    *  gọi callback này rồi đóng — KHÔNG mở N6 mock. Bỏ trống = hành vi cũ (pendingNotice/mock). */
-  onOpenReceipt?: () => void;
+  onOpenReceipt: () => void;
   /** true → nút "Thông tin" mở thẻ S8 với DỮ LIỆU THẬT (tên/bàn·ghế/chip/lượt vào từ target),
    *  không còn chặn bởi pendingNotice. Mặc định (false) → theo pendingNotice (chưa nối). */
-  infoLive?: boolean;
+  infoLive: true;
 }) {
   const [step, setStep] = useState<Step>("actions");
   const [moveSeat, setMoveSeat] = useState<number | null>(4);
@@ -205,9 +201,6 @@ export function PlayerActionSheets({
             <Band cls="bg-[#241a0c]" l={<span className="text-[#d8bc85]">Chip</span>} r={<span className="font-mono text-[#c9a86a]">{s?.chip}</span>} />
             <Band cls="bg-white/5" l={<span className="text-[#9b8e97]">Lượt vào</span>} r={<span className="font-mono text-[#f2ece6]">#{s?.entryNo ?? 1}</span>} />
           </div>
-          <button onClick={() => toast("Cấp lại thẻ — mở Cashier (bản mẫu)")} className="ios-press ios-fill mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[13px] text-[#9b8e97]">
-            <IdCard className="h-4 w-4" /> Cấp lại thẻ — mở Cashier
-          </button>
         </SheetContent>
       </Sheet>
 

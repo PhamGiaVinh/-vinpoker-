@@ -1,13 +1,12 @@
 name: Deploy to Production
 
 # Workflow consolidated into user's first self-created workflow file.
-# Triggers: push to main/master, or manual dispatch via Actions tab.
+# Triggers: push to main, or manual dispatch from main via Actions tab.
 
 on:
   push:
     branches:
       - main
-      - master
   workflow_dispatch:
     inputs:
       deploy_db:
@@ -21,6 +20,7 @@ on:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
