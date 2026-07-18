@@ -68,6 +68,14 @@ function result(name, passed, detail = "") {
 
 const NODE_REALTIME_OPTIONS = { realtime: { transport: WebSocket } };
 
+function safeAuthErrorDetail(error) {
+  const status = Number.isInteger(error?.status) ? String(error.status) : "unknown";
+  const code = typeof error?.code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(error.code)
+    ? error.code
+    : "unknown";
+  return `status=${status} code=${code}`;
+}
+
 async function single(query, code) {
   const { data, error } = await query.single();
   if (error || !data) fail(code);
@@ -78,7 +86,10 @@ async function createActor(admin, anonKey, url, runId, label, owned) {
   const email = `${runId.toLowerCase()}-${label}@floor-canary.invalid`;
   const password = `Canary-${randomBytes(24).toString("base64url")}`;
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-  if (created.error || !created.data.user) fail(`create_test_actor_${label}`);
+  if (created.error || !created.data.user) {
+    console.log(`FLOOR_CANARY ACTOR_CREATE_FAIL label=${label} ${safeAuthErrorDetail(created.error)}`);
+    fail(`create_test_actor_${label}`);
+  }
   owned.users.push(created.data.user.id);
 
   const client = createClient(url, anonKey, {
@@ -86,7 +97,10 @@ async function createActor(admin, anonKey, url, runId, label, owned) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const signedIn = await client.auth.signInWithPassword({ email, password });
-  if (signedIn.error || !signedIn.data.session) fail(`sign_in_test_actor_${label}`);
+  if (signedIn.error || !signedIn.data.session) {
+    console.log(`FLOOR_CANARY ACTOR_SIGNIN_FAIL label=${label} ${safeAuthErrorDetail(signedIn.error)}`);
+    fail(`sign_in_test_actor_${label}`);
+  }
   return {
     id: created.data.user.id,
     label,
