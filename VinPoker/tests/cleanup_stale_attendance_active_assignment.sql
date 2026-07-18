@@ -306,5 +306,100 @@ END;
 $$;
 ROLLBACK TO SAVEPOINT t12;
 
+-- T13: the shared sink rejects a direct/service-role active binding to an
+-- attendance that has already been checked out. This is the DB backstop for
+-- writers outside canonical RPCs.
+SAVEPOINT t13;
+DO $$
+DECLARE r record; did_fail boolean := false;
+BEGIN
+  SELECT * INTO r FROM pg_temp.seed_stale_attendance('ca610000-0000-0000-0000-000000000001', 't13');
+  UPDATE public.dealer_attendance
+  SET status = 'checked_out', current_state = 'checked_out', check_out_time = now()
+  WHERE id = r.attendance_id;
+
+  BEGIN
+    INSERT INTO public.dealer_assignments (
+      attendance_id, dealer_id, club_id, table_id, status, assigned_at, swing_due_at
+    ) VALUES (
+      r.attendance_id, r.dealer_id, 'ca610000-0000-0000-0000-000000000001', r.table_id,
+      'assigned', now(), now() + interval '45 minutes'
+    );
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    did_fail := true;
+  END;
+
+  PERFORM pg_temp.assert_true(did_fail, 'T13 direct active binding to checked-out attendance was accepted');
+  PERFORM pg_temp.assert_true(NOT EXISTS (
+    SELECT 1 FROM public.dealer_assignments WHERE attendance_id = r.attendance_id AND released_at IS NULL
+  ), 'T13 rejected direct binding left an active assignment');
+  RAISE NOTICE 'PASS T13';
+END;
+$$;
+ROLLBACK TO SAVEPOINT t13;
+
+-- T14: an active assignment cannot acquire a pre-assigned pointer to a checked
+-- out attendance either. The incoming pointer is a canonical live binding.
+SAVEPOINT t14;
+DO $$
+DECLARE current_dealer record; next_dealer record; assignment_id uuid; did_fail boolean := false;
+BEGIN
+  SELECT * INTO current_dealer FROM pg_temp.seed_stale_attendance('ca610000-0000-0000-0000-000000000001', 't14current');
+  SELECT * INTO next_dealer FROM pg_temp.seed_stale_attendance('ca610000-0000-0000-0000-000000000001', 't14next');
+  UPDATE public.dealer_attendance
+  SET status = 'checked_out', current_state = 'checked_out', check_out_time = now()
+  WHERE id = next_dealer.attendance_id;
+
+  INSERT INTO public.dealer_assignments (
+    attendance_id, dealer_id, club_id, table_id, status, assigned_at, swing_due_at
+  ) VALUES (
+    current_dealer.attendance_id, current_dealer.dealer_id,
+    'ca610000-0000-0000-0000-000000000001', current_dealer.table_id,
+    'assigned', now(), now() + interval '45 minutes'
+  ) RETURNING id INTO assignment_id;
+
+  BEGIN
+    UPDATE public.dealer_assignments
+    SET pre_assigned_attendance_id = next_dealer.attendance_id,
+        pre_assigned_at = now()
+    WHERE id = assignment_id;
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    did_fail := true;
+  END;
+
+  PERFORM pg_temp.assert_true(did_fail, 'T14 checked-out pre-assignment was accepted');
+  PERFORM pg_temp.assert_true((
+    SELECT pre_assigned_attendance_id IS NULL FROM public.dealer_assignments WHERE id = assignment_id
+  ), 'T14 rejected pre-assignment left a pointer');
+  RAISE NOTICE 'PASS T14';
+END;
+$$;
+ROLLBACK TO SAVEPOINT t14;
+
+-- T15: normal atomic writers insert while the attendance is still available,
+-- then transition it to assigned in the same transaction. The backstop must not
+-- reject that legal ordering.
+SAVEPOINT t15;
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT * INTO r FROM pg_temp.seed_stale_attendance('ca610000-0000-0000-0000-000000000001', 't15', 'available');
+  INSERT INTO public.dealer_assignments (
+    attendance_id, dealer_id, club_id, table_id, status, assigned_at, swing_due_at
+  ) VALUES (
+    r.attendance_id, r.dealer_id, 'ca610000-0000-0000-0000-000000000001', r.table_id,
+    'assigned', now(), now() + interval '45 minutes'
+  );
+  UPDATE public.dealer_attendance SET current_state = 'assigned' WHERE id = r.attendance_id;
+
+  PERFORM pg_temp.assert_true(EXISTS (
+    SELECT 1 FROM public.dealer_assignments
+    WHERE attendance_id = r.attendance_id AND status = 'assigned' AND released_at IS NULL
+  ), 'T15 legal checked-in binding was rejected');
+  RAISE NOTICE 'PASS T15';
+END;
+$$;
+ROLLBACK TO SAVEPOINT t15;
+
 ROLLBACK;
 \echo 'ALL CLEANUP ACTIVE-BINDING TRANSACTION TESTS PASSED'
