@@ -26,13 +26,13 @@ jobs:
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/dealer-swing/apply_marathon_migs.mjs --preflight
 
       - name: Apply — 4 idempotent migrations + post-verify + rolled-back smoke
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_MARATHON: APPLY_DEALER_SWING_MARATHON
         run: node scripts/dealer-swing/apply_marathon_migs.mjs --apply

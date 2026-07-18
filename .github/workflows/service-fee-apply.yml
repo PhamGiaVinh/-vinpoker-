@@ -25,13 +25,13 @@ jobs:
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
         run: node scripts/finance/apply_service_fee_migrations.mjs --preflight
 
       - name: Apply — column + RPC v3 with golden before/after diff
         working-directory: ./VinPoker
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           CONFIRM_APPLY_SERVICE_FEE: APPLY_SERVICE_FEE_MIGRATIONS
         run: node scripts/finance/apply_service_fee_migrations.mjs --apply
