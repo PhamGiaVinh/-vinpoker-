@@ -23,8 +23,8 @@ const LIVEISH: Tournament["status"][] = ["live", "final_table", "break"];
 export default function OpsToday() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
+  const scopedIds = operatorClubIds;
   const activeClub = scopedIds[0];
 
   const { data: tournaments } = useTournaments(activeClub);
@@ -37,7 +37,7 @@ export default function OpsToday() {
     return list.find((t) => LIVEISH.includes(t.status)) ?? null;
   }, [tournaments]);
 
-  const assignments = (asgQ.data ?? []) as Enriched[];
+  const assignments = useMemo(() => (asgQ.data ?? []) as Enriched[], [asgQ.data]);
   const counts = useMemo(() => {
     const active = (tablesQ.data ?? []).filter((t) => (t.status ?? "active") === "active");
     const staffedTableIds = new Set(assignments.map((a) => a.table_id));

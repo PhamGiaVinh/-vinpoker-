@@ -35,15 +35,15 @@ interface TVM {
 
 const vnd = (n: number) => n.toLocaleString("vi-VN");
 function toVM(t: Tournament): TVM {
-  const a = t as unknown as Record<string, any>;
+  const a = t as unknown as Record<string, unknown>;
   const running = t.status === "live" || t.status === "final_table";
   const isBreak = t.status === "break";
   const upcoming = t.status === "upcoming" || t.status === "registering" || t.status === "drawing";
   const statusKey: StatusKey = running ? "running" : isBreak ? "break" : upcoming ? "upcoming" : "closed";
   const statusLabel = running ? "Đang chơi" : isBreak ? "Giải lao" : upcoming ? "Sắp diễn ra" : t.status === "cancelled" ? "Đã huỷ" : "Đã kết thúc";
-  const time = a.start_time ? new Date(a.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
+  const time = typeof a.start_time === "string" ? new Date(a.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
   const buyIn = typeof a.buy_in === "number" ? vnd(a.buy_in) : "—";
-  const entries = t.players_remaining ?? a.current_players ?? 0;
+  const entries = t.players_remaining ?? (typeof a.current_players === "number" ? a.current_players : 0);
   return { id: t.id, name: t.name, statusKey, statusLabel, time, buyIn, entries, level: t.current_level, blinds: t.current_blinds };
 }
 
@@ -51,8 +51,8 @@ type SubSheet = "none" | "actions" | "create" | "form" | "updateLive" | "close" 
 
 export default function OpsTournaments() {
   const navigate = useNavigate();
-  const { loading: clubsLoading, user, clubs, clubIds, dealerClubIds, error: clubsError } = useOperatorClubs();
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const { loading: clubsLoading, user, clubs, operatorClubIds, error: clubsError } = useOperatorClubs();
+  const scopedIds = operatorClubIds;
   const activeClub = scopedIds[0];
   const { data: tournaments, isLoading: tourLoading } = useTournaments(activeClub);
 

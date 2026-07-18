@@ -1,9 +1,9 @@
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useOperatorClubs } from "@/hooks/useOperatorClubs";
 import { FEATURES } from "@/lib/featureFlags";
 import { RouteLoader } from "@/components/RouteLoader";
-import { canAccessMobileOps } from "@/lib/opsCapabilities";
 import { OpsBottomNav } from "./OpsBottomNav";
 import "./ops-ios.css";
 
@@ -14,12 +14,12 @@ import "./ops-ios.css";
  */
 export default function OpsShell() {
   const navigate = useNavigate();
-  const { user, isAdmin, isClubAdmin, isClubOwner, isCashier, isTracker, isFloor, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { loading: scopeLoading, hasOpsAccess, hasOwnerAccess } = useOperatorClubs();
   const flagOn = FEATURES.mobileOpsV2;
-  const allowPreview = isAdmin || isClubOwner;
-  const hasOpsAccess = canAccessMobileOps({ isAdmin, isClubAdmin, isClubOwner, isCashier, isTracker, isFloor });
+  const allowPreview = hasOwnerAccess;
 
-  if (authLoading) return <RouteLoader />;
+  if (authLoading || scopeLoading) return <RouteLoader />;
   if (!user) return <Navigate to="/auth" replace />;
   if (!hasOpsAccess) {
     return (

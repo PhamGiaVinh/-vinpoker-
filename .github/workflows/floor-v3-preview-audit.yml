@@ -1,0 +1,30 @@
+name: Floor V3 Preview Audit Guard
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture_prefix:
+        description: "Owned test-fixture prefix; must start with CODEX_FLOOR_UAT_"
+        required: true
+        default: "CODEX_FLOOR_UAT_"
+        type: string
+
+jobs:
+  guard-preview-context:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      FLOOR_UAT_ENV: preview
+      FLOOR_UAT_SUPABASE_URL: ${{ secrets.FLOOR_UAT_SUPABASE_URL }}
+      FLOOR_UAT_PROJECT_REF: ${{ secrets.FLOOR_UAT_PROJECT_REF }}
+      FLOOR_UAT_PRODUCTION_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      FLOOR_UAT_BASE_URL: ${{ secrets.FLOOR_UAT_BASE_URL }}
+      FLOOR_UAT_PRODUCTION_DOMAIN: ${{ secrets.FLOOR_UAT_PRODUCTION_DOMAIN }}
+      FLOOR_UAT_FIXTURE_PREFIX: ${{ inputs.fixture_prefix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Reject production or ambiguous Floor UAT context
+        run: node VinPoker/scripts/security/check-floor-audit-context.mjs

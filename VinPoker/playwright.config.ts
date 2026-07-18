@@ -9,7 +9,11 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:8080",
-    trace: "on-first-retry",
+    // Authenticated traces can include session state and request payloads. Keep them local-only
+    // for an explicitly approved debugging session; the normal audit emits redacted evidence.
+    trace: "off",
+    video: "off",
+    screenshot: "only-on-failure",
     headless: true,
   },
   projects: [
