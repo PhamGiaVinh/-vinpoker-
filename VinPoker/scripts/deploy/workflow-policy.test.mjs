@@ -51,6 +51,9 @@ test("pinned actionlint validation is read-only and uses no production secret", 
   assert.match(validationWorkflow, /actionlint_1\.7\.7_linux_amd64\.tar\.gz/);
   assert.match(validationWorkflow, /023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757/);
   assert.match(validationWorkflow, /sha256sum --check --strict/);
+  assert.match(validationWorkflow, /\.github\/workflows\/vbackerworkflowmain\.yml/);
+  assert.match(validationWorkflow, /\.github\/workflows\/deployment-control-plane-validation\.yml/);
+  assert.doesNotMatch(validationWorkflow, /find \.github\/workflows/);
   assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
   assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
   assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);

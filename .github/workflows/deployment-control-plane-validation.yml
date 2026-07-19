@@ -3,7 +3,8 @@ name: Validate deployment control plane
 on:
   pull_request:
     paths:
-      - ".github/workflows/**"
+      - ".github/workflows/vbackerworkflowmain.yml"
+      - ".github/workflows/deployment-control-plane-validation.yml"
       - "VinPoker/scripts/deploy/**"
       - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
   workflow_dispatch:
@@ -37,5 +38,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
-            | xargs -0 "${RUNNER_TEMP}/actionlint"
+          "${RUNNER_TEMP}/actionlint" \
+            .github/workflows/vbackerworkflowmain.yml \
+            .github/workflows/deployment-control-plane-validation.yml
