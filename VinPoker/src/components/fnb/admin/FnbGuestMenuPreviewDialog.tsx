@@ -68,7 +68,7 @@ export function FnbGuestMenuPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[min(92vh,820px)] w-[calc(100vw-1rem)] max-w-md overflow-hidden border-primary/25 bg-background p-0 text-foreground shadow-2xl sm:rounded-2xl">
+      <DialogContent className="fnb-guest-menu-typography h-[min(92vh,820px)] w-[calc(100vw-1rem)] max-w-md overflow-hidden border-primary/25 bg-background p-0 font-medium text-foreground shadow-2xl sm:rounded-2xl">
         <DialogHeader className="sr-only">
           <DialogTitle>Xem trước menu khách</DialogTitle>
           <DialogDescription>
@@ -81,12 +81,12 @@ export function FnbGuestMenuPreviewDialog({
             <div aria-hidden="true" className="absolute -right-12 -top-16 h-40 w-40 rounded-full border border-primary/15 bg-primary/5" />
             <div aria-hidden="true" className="absolute -right-2 top-4 h-16 w-16 rounded-full border border-primary/20" />
             <div className="relative">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-primary">
                 <UtensilsCrossed className="h-3 w-3" /> Menu tại bàn
               </div>
               <p className="truncate text-xs font-medium text-muted-foreground">{clubName}</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight">Đồ ăn &amp; thức uống</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Chọn món, chúng tôi sẽ mang đến tận bàn.</p>
+              <h2 className="mt-1 text-2xl font-bold leading-tight tracking-tight">Đồ ăn &amp; thức uống</h2>
+              <p className="mt-2 text-base leading-6 text-muted-foreground">Chọn món, chúng tôi sẽ mang đến tận bàn.</p>
             </div>
           </header>
 
@@ -114,8 +114,8 @@ export function FnbGuestMenuPreviewDialog({
             {shownItems.length === 0 ? (
               <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 text-center">
                 <Coffee className="mb-3 h-8 w-8 text-primary/70" />
-                <p className="font-medium">Chưa có món trong mục này</p>
-                <p className="mt-1 text-sm text-muted-foreground">Bật món trong phần Thực đơn để khách nhìn thấy.</p>
+                <p className="text-base font-bold">Chưa có món trong mục này</p>
+                <p className="mt-1 text-base leading-6 text-muted-foreground">Bật món trong phần Thực đơn để khách nhìn thấy.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
@@ -136,7 +136,7 @@ export function FnbGuestMenuPreviewDialog({
           <footer className="border-t border-primary/20 bg-card px-4 py-3">
             <Button
               type="button"
-              className="h-12 w-full justify-between rounded-xl px-4 text-sm"
+              className="h-12 w-full justify-between rounded-xl px-4 text-base font-bold"
               disabled={itemCount === 0}
               onClick={() => toast.info("Đây là bản xem trước — không có đơn thật nào được gửi.")}
             >
@@ -144,9 +144,9 @@ export function FnbGuestMenuPreviewDialog({
                 <ShoppingBag className="h-4 w-4" />
                 {itemCount > 0 ? "Xem đơn · " + itemCount + " món" : "Chọn món để bắt đầu"}
               </span>
-              <span className="font-mono">{formatVND(subtotal)}</span>
+              <span className="fnb-number">{formatVND(subtotal)}</span>
             </Button>
-            <p className="mt-2 text-center text-[10px] text-muted-foreground">Bản xem trước · không gửi đơn và không thu tiền</p>
+            <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">Bản xem trước · không gửi đơn và không thu tiền</p>
           </footer>
         </div>
       </DialogContent>
@@ -169,7 +169,7 @@ function CategoryButton({
       aria-pressed={active}
       onClick={onClick}
       className={
-        "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+        "min-h-11 shrink-0 rounded-full border px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
         (active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground")

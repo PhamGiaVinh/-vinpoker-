@@ -32,35 +32,35 @@ export function FnbGuestMenuPreviewCard({
             <UtensilsCrossed className="h-8 w-8 text-muted-foreground/50" />
           </div>
         )}
-        <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full border border-background/20 bg-background/85 px-2 py-0.5 text-[10px] font-medium text-foreground backdrop-blur">
+        <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full border border-background/20 bg-background/85 px-2 py-1 text-xs font-medium text-foreground backdrop-blur">
           {categoryName}
         </span>
       </div>
       <div className="space-y-3 p-3">
         <div>
-          <h3 className="line-clamp-2 min-h-10 text-sm font-semibold leading-5">{item.name}</h3>
-          <p className="mt-1 font-mono text-sm font-semibold text-primary">{formatVND(item.price_vnd)}</p>
+          <h3 className="line-clamp-2 min-h-12 text-base font-bold leading-6">{item.name}</h3>
+          <p className="fnb-number mt-1 text-base font-semibold text-primary">{formatVND(item.price_vnd)}</p>
         </div>
-        <div className="flex min-h-9 items-center justify-end gap-1.5">
+        <div className="flex min-h-11 items-center justify-end gap-1.5">
           {quantity > 0 && (
             <>
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 rounded-full"
+                className="h-11 w-11 rounded-full"
                 aria-label={"Bớt một " + item.name}
                 onClick={onRemove}
               >
                 <Minus className="h-3.5 w-3.5" />
               </Button>
-              <span className="w-6 text-center font-mono text-sm" aria-live="polite">{quantity}</span>
+              <span className="fnb-number w-6 text-center text-base font-semibold" aria-live="polite">{quantity}</span>
             </>
           )}
           <Button
             type="button"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-11 w-11 rounded-full"
             aria-label={"Thêm " + item.name}
             onClick={onAdd}
           >

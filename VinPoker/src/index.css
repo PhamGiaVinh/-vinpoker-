@@ -287,6 +287,24 @@
   letter-spacing: -0.01em;
 }
 
+/* F&B guest menu uses self-hosted Vietnamese subsets so its customer-facing
+   typography never mixes Playfair, Times, and fallback glyph metrics. */
+.fnb-guest-menu-typography {
+  font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  letter-spacing: 0;
+}
+.fnb-guest-menu-typography :where(h1, h2, h3, h4, h5, h6, p, span, button) {
+  font-family: inherit;
+}
+.fnb-number {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  font-feature-settings: 'tnum' 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 @layer base {
   * { @apply border-border; }
   html { color-scheme: dark; }
