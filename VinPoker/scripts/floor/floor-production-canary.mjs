@@ -254,7 +254,10 @@ async function listAuthUserIds(admin, runId = null) {
     : /^codex_floor_canary_[0-9]{14}_[a-f0-9]{8}-(owner|cashier|floor|cross)@floor-canary\.invalid$/;
   do {
     fetched = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-    if (fetched.error || !fetched.data?.users) fail("cleanup_scope_auth_users");
+    if (fetched.error || !fetched.data?.users) {
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=list_auth_users ${safeAuthErrorDetail(fetched.error)}`);
+      fail("cleanup_scope_auth_users");
+    }
     for (const user of fetched.data.users) {
       const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
       if (emailPattern.test(email)) ids.push(user.id);
