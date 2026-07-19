@@ -173,7 +173,7 @@ async function discoverCleanupScope(admin) {
   for (const row of rows) {
     const match = typeof row.name === "string" ? row.name.match(CLEANUP_SCENARIO_RE) : null;
     if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || !UUID_RE.test(row.id) || !UUID_RE.test(row.owner_id)) {
-      console.log("FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row");
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row name_ok=${Boolean(match)} region_ok=${row.region === "TEST"} club_id_ok=${UUID_RE.test(row.id)} owner_id_ok=${UUID_RE.test(row.owner_id)}`);
       cleanupScopeError("invalid_row");
     }
     parsed.push({ id: row.id, ownerId: row.owner_id, runId: match[1], scenario: match[2] });
