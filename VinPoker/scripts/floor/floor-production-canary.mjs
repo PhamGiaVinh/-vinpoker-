@@ -67,7 +67,6 @@ const MONEY_SCOPES = [
   { table: "payout_recipients", column: "deal_id", bucket: "payout" },
   { table: "payout_templates", column: "club_id", bucket: "payout" },
   { table: "fnb_orders", column: "club_id", bucket: "fnb" },
-  { table: "fnb_cashier_shifts", column: "club_id", bucket: "fnb" },
   { table: "dealer_payroll", column: "club_id", bucket: "payroll" },
   { table: "payroll_periods", column: "club_id", bucket: "payroll" },
   { table: "payroll_audit_log", column: "club_id", bucket: "payroll" },
