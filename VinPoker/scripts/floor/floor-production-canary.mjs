@@ -528,6 +528,13 @@ async function invokeFunction(url, anonKey, name, jwt, body) {
   return { status: response.status, error: typeof payload?.error === "string" ? payload.error : null };
 }
 
+function safeEdgeResultDetail(response) {
+  const errorHash = response.error
+    ? createHash("sha256").update(response.error).digest("hex").slice(0, 12)
+    : "none";
+  return `status=${response.status} error_hash=${errorHash}`;
+}
+
 async function assertScope(actor, fixture, capability) {
   const scope = await actor.client.rpc("get_my_floor_operator_scope");
   if (scope.error || !Array.isArray(scope.data)) fail(`scope_query_${actor.label}`);
@@ -571,13 +578,13 @@ async function runApiCanary(context, actors, fixtures) {
     action: "update_seats",
     seats: [{ seat_id: chips.seat.id, chip_count: 10001, expected_chip_count: chips.seat.chip_count }],
   });
-  result("edge_draw_chip_cas_write", updated.status === 200);
+  result("edge_draw_chip_cas_write", updated.status === 200, safeEdgeResultDetail(updated));
   const stale = await invokeFunction(context.url, context.anonKey, "tournament-live-draw", actors.floor.jwt, {
     tournament_id: chips.tournamentId,
     action: "update_seats",
     seats: [{ seat_id: chips.seat.id, chip_count: 10002, expected_chip_count: chips.seat.chip_count }],
   });
-  result("edge_draw_chip_cas_stale_409", stale.status === 409);
+  result("edge_draw_chip_cas_stale_409", stale.status === 409, safeEdgeResultDetail(stale));
 }
 
 function productionBaseUrl(environment = process.env) {
@@ -740,6 +747,18 @@ async function deleteExactBatches(client, table, ids, code) {
   return deletedCount;
 }
 
+async function deleteExactAuthUser(admin, userId) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const deleted = await admin.auth.admin.deleteUser(userId);
+    if (!deleted.error) return;
+    const fetched = await admin.auth.admin.getUserById(userId);
+    if (fetched.error?.status === 404 || fetched.error?.code === "user_not_found" || !fetched.data?.user) return;
+    if (attempt === 3) throw new Error(safeAuthErrorDetail(deleted.error));
+    console.log(`FLOOR_CANARY CLEANUP_AUTH_RETRY id_hash=${actorHash(userId)} attempt=${attempt}`);
+    await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+  }
+}
+
 async function cleanupExactLedger(admin, ledger) {
   const failures = [];
   const deletedCounts = {};
@@ -767,15 +786,19 @@ async function cleanupExactLedger(admin, ledger) {
   await attempt("tournament_tables", async () => { await deleteExact(admin, "tournament_tables", ledger.tournamentTableIds, "cleanup_tournament_tables"); return ledger.tournamentTableIds.length; });
   await attempt("levels", async () => { await deleteExact(admin, "tournament_levels", ledger.levels, "cleanup_levels"); return ledger.levels.length; });
   await attempt("tournaments", async () => { await deleteExact(admin, "tournaments", ledger.tournamentIds, "cleanup_tournaments"); return ledger.tournamentIds.length; });
+  await attempt("swing_config_audit", async () => {
+    const generatedAuditIds = await idsByColumn(admin, "swing_config_audit", "club_id", ledger.clubIds, "cleanup_generated_audit");
+    ledger.auditRows = generatedAuditIds;
+    await deleteExact(admin, "swing_config_audit", generatedAuditIds, "cleanup_swing_config_audit");
+    return generatedAuditIds.length;
+  });
   await attempt("cashier_memberships", async () => { await deleteByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "cleanup_cashier_memberships"); return ledger.cashierMemberships.length; });
   await attempt("floor_memberships", async () => { await deleteByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "cleanup_floor_memberships"); return ledger.floorMemberships.length; });
-  await attempt("swing_config_audit", async () => { await deleteExact(admin, "swing_config_audit", ledger.auditRows, "cleanup_swing_config_audit"); return ledger.auditRows.length; });
   await attempt("game_tables", () => deleteExactBatches(admin, "game_tables", ledger.gameTableIds, "cleanup_game_tables"));
   await attempt("clubs", async () => { await deleteExact(admin, "clubs", ledger.clubIds, "cleanup_clubs"); return ledger.clubIds.length; });
   for (const [index, userId] of ledger.authUserIds.entries()) {
     await attempt(`auth_user_${index}`, async () => {
-      const deleted = await admin.auth.admin.deleteUser(userId);
-      if (deleted.error) throw new Error(safeAuthErrorDetail(deleted.error));
+      await deleteExactAuthUser(admin, userId);
       return 1;
     });
   }
@@ -817,8 +840,7 @@ async function cleanupCurrentRun(admin, runId, owned) {
   if (clubIds.length === 0) {
     const exactUsers = await validateExactAuthUserIds(admin, runId, userIds);
     for (const userId of exactUsers) {
-      const deleted = await admin.auth.admin.deleteUser(userId);
-      if (deleted.error) throw new Error(`cleanup_current_run_auth:${safeAuthErrorDetail(deleted.error)}`);
+      await deleteExactAuthUser(admin, userId);
     }
     await verifyExactAuthUsersDeleted(admin, exactUsers);
     console.log(`FLOOR_CANARY CLEANUP_PASS users=${exactUsers.length} clubs=0 tournaments=0`);
