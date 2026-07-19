@@ -47,6 +47,7 @@ import {
   sortPass3Candidates,
 } from "../_shared/preAssignState.ts";
 import { SWING_POLICY } from "../_shared/swingPolicy.ts";
+import { parseRequestedClubIds } from "./requestScope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -626,9 +627,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    const parsedBody = await req.json().catch(() => ({}));
+    const body: any = parsedBody && typeof parsedBody === "object" && !Array.isArray(parsedBody)
+      ? parsedBody
+      : {};
     const {
       club_id: clubId,
+      club_ids: requestedClubIdsValue,
       shift_id: shiftId,
       force_all: forceAll = false,
       dry_run: dryRun = false,
@@ -646,6 +651,30 @@ Deno.serve(async (req: Request) => {
     );
     if (authResult instanceof Response) return authResult;
 
+    if (!authResult.internal && requestedClubIdsValue !== undefined) {
+      return new Response(JSON.stringify({ error: "club_ids is restricted to internal callers" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let requestedClubIds: string[] | undefined;
+    try {
+      requestedClubIds = parseRequestedClubIds(requestedClubIdsValue);
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Invalid club_ids" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (clubId && requestedClubIds !== undefined) {
+      return new Response(JSON.stringify({ error: "Use club_id or club_ids, not both" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const startTime = Date.now();
     // B2.2b: per-invocation owner id stamped on the fenced club lock (observability).
     const runOwnerId = `process-swing:${crypto.randomUUID()}`;
@@ -653,7 +682,10 @@ Deno.serve(async (req: Request) => {
 
     let clubIds: string[] = [];
     if (clubId) {
-      clubIds = [clubId];
+      clubIds = [String(clubId)];
+    } else if (requestedClubIds !== undefined) {
+      // An explicit [] is a valid no-work scope from run_process_swing_cron().
+      clubIds = requestedClubIds;
     } else {
       const { data: clubs } = await admin
         .from("clubs")
@@ -3993,22 +4025,6 @@ if (tier2Count > 0) {
           }
         }
 
-        // ── PASS 4b — Refresh dealer pool summary (monitoring) ────────────
-        if (!dryRun) {
-          console.log("[Pass 4b] 🔄 Refreshing dealer pool summary...");
-          const poolStartTime = Date.now();
-          try {
-            const { error: refreshErr } = await admin.rpc("refresh_dealer_pool_summary");
-            if (refreshErr) {
-              console.warn("[Pass 4b] ⚠️ Pool summary refresh failed:", refreshErr.message);
-            } else {
-              console.log(`[Pass 4b] ✅ Pool summary refreshed (${Date.now() - poolStartTime}ms)`);
-            }
-          } catch (err: any) {
-            console.warn("[Pass 4b] ⚠️ Pool summary refresh exception:", err.message);
-          }
-        }
-
         // ── SHORTAGE ESCALATION ──────────────────────────────────────────
         if (!dryRun && metrics.total > 0 && metrics.failed === 0) {
           const noDealerRatio = metrics.no_dealer / metrics.total;
@@ -4141,6 +4157,23 @@ if (tier2Count > 0) {
         }
       }
     } // END club processing loop
+
+    // Global monitoring view: refresh once per invocation, never once per club.
+    // No successful club or dry-run means no refresh work.
+    if (!dryRun && clubsProcessed > 0) {
+      console.log("[process-swing] 🔄 Refreshing dealer pool summary once...");
+      const poolStartTime = Date.now();
+      try {
+        const { error: refreshErr } = await admin.rpc("refresh_dealer_pool_summary");
+        if (refreshErr) {
+          console.warn("[process-swing] ⚠️ Pool summary refresh failed:", refreshErr.message);
+        } else {
+          console.log(`[process-swing] ✅ Pool summary refreshed (${Date.now() - poolStartTime}ms)`);
+        }
+      } catch (err: any) {
+        console.warn("[process-swing] ⚠️ Pool summary refresh exception:", err.message);
+      }
+    }
 
     const totalExecutionMs = Date.now() - executionStartTime;
 
