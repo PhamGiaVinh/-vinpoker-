@@ -120,12 +120,17 @@ test("scenario fixtures share one owned TEST club and finally uses an exact reco
   assert.match(canarySource, /return `status=\$\{response\.status\} error_hash=\$\{errorHash\}`/);
 });
 
-test("workflow has fail-closed run, cleanup, and hold modes", () => {
+test("workflow has PR-only rollout plus fail-closed run, cleanup, and hold modes", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/floor-production-canary.yml", import.meta.url), "utf8");
   assert.match(workflow, /type: choice/);
+  assert.doesNotMatch(workflow, /options:\s*\n\s*- rollout/);
   assert.match(workflow, /- cleanup/);
   assert.match(workflow, /- hold/);
   assert.match(workflow, /title == 'test\(floor\): controlled production canary runner \[cleanup\]'/);
+  assert.match(workflow, /title == 'test\(floor\): controlled production canary runner \[rollout\]'/);
+  assert.match(workflow, /pull_request\.number == 912/);
+  assert.match(workflow, /pull_request\.draft == true/);
+  assert.match(workflow, /pull_request\.base\.ref == 'main'/);
   assert.match(workflow, /if: env\.FLOOR_CANARY_MODE == 'run'/);
   assert.match(workflow, /FLOOR_CANARY_MODE:/);
 });

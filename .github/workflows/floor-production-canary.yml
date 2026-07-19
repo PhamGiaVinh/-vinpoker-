@@ -21,11 +21,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: floor-production-canary-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   canary:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/floor-production-canary' && inputs.confirmation == 'RUN_FLOOR_PRODUCTION_CANARY' && inputs.mode != 'hold') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/floor-production-canary' && (github.event.pull_request.title == 'test(floor): controlled production canary runner [run]' || github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]'))
+      (github.event_name == 'pull_request' && github.event.pull_request.number == 912 && github.event.pull_request.draft == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/floor-production-canary' && (github.event.pull_request.title == 'test(floor): controlled production canary runner [rollout]' || github.event.pull_request.title == 'test(floor): controlled production canary runner [run]' || github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]'))
     environment: floor-production-canary
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -33,14 +37,31 @@ jobs:
       FLOOR_CANARY_ENV: production
       FLOOR_CANARY_CONFIRM: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation || 'RUN_FLOOR_PRODUCTION_CANARY' }}
       FLOOR_CANARY_PREFIX: CODEX_FLOOR_CANARY_
-      FLOOR_CANARY_MODE: "${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]' && 'cleanup' || 'run') }}"
+      FLOOR_CANARY_MODE: "${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.pull_request.title == 'test(floor): controlled production canary runner [rollout]' && 'rollout' || github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]' && 'cleanup' || 'run') }}"
       FLOOR_CANARY_RUN_BROWSER: "${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'run' || github.event_name == 'pull_request' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]' }}"
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate exact rollout PR and merged source context
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        env:
+          FLOOR_ROLLOUT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          FLOOR_ROLLOUT_PR_DRAFT: ${{ github.event.pull_request.draft }}
+          FLOOR_ROLLOUT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$FLOOR_ROLLOUT_PR_NUMBER" = "912"
+          test "$FLOOR_ROLLOUT_PR_DRAFT" = "true"
+          test "$FLOOR_ROLLOUT_BASE_REF" = "main"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor eb9d49bde25cecac92dd1f48985825e189a5a122 origin/main
+          test "$(git rev-parse HEAD:VinPoker/supabase/functions/tournament-live-draw/index.ts)" = "ae6171c1da265100d458bb4b30c5b85eb8ee1569"
+          test "$(git rev-parse HEAD:VinPoker/supabase/migrations/20270104000001_floor_chip_cas_rpc.sql)" = "0d0b414c423700ba2ae17e8433b3c3764df968b5"
+          echo "FLOOR_CHIP_CAS_ROLLOUT CONTEXT_PASS pr=912 draft=true base=main source_merge_on_main=true exact_blobs=true"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -53,6 +74,144 @@ jobs:
         if: env.FLOOR_CANARY_MODE == 'run'
         working-directory: VinPoker
         run: npx playwright install --with-deps chromium
-      - name: Validate canary context and execute isolated API matrix
+      - name: Run rollout guards before production mutation
+        if: env.FLOOR_CANARY_MODE == 'rollout'
         working-directory: VinPoker
+        run: |
+          node --test tests/security/floor-chip-cas-rollout-context.test.mjs tests/security/floor-production-canary-context.test.mjs tests/security/floor-production-index-contract.test.mjs tests/security/check-sensitive-credential-context.test.mjs
+          npm run check:credential-context
+      - name: Apply and verify exact Floor chip CAS RPC migration
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          FLOOR_CHIP_CAS_CONFIRM: APPLY_FLOOR_CHIP_CAS_RPC
+        run: node scripts/floor/apply-floor-chip-cas-rpc.mjs
+      - name: Run direct RPC behavior smoke before Edge deploy
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        working-directory: VinPoker
+        env:
+          FLOOR_CANARY_MODE: run
+          FLOOR_CHIP_CAS_TRANSPORT: rpc
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/floor/floor-chip-cas-smoke.mjs
+      - name: Install Supabase CLI for exact draw deployment
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1
+        with:
+          version: 2.105.0
+      - name: Record draw metadata and private rollback source
+        id: edge_backup
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          FLOOR_EDGE_PHASE: pre
+          FLOOR_EDGE_STATE_FILE: ${{ runner.temp }}/floor-draw-edge-state.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/floor/floor-chip-cas-edge-metadata.mjs
+          rollback_dir="$RUNNER_TEMP/floor-draw-rollback"
+          mkdir -p "$rollback_dir"
+          cd "$rollback_dir"
+          supabase functions download tournament-live-draw \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api
+          test -f supabase/functions/tournament-live-draw/index.ts
+          rollback_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          echo "FLOOR_CHIP_CAS_EDGE ROLLBACK_SOURCE_PASS version_recorded=true source_hash=$rollback_hash upload=false"
+          echo "FLOOR_DRAW_ROLLBACK_DIR=$rollback_dir" >> "$GITHUB_ENV"
+          echo "FLOOR_DRAW_ROLLBACK_HASH=$rollback_hash" >> "$GITHUB_ENV"
+      - name: Deploy exact tournament-live-draw with preserved JWT posture
+        id: edge_deploy
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        timeout-minutes: 4
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        run: >-
+          supabase functions deploy tournament-live-draw
+          --project-ref "$SUPABASE_PROJECT_REF"
+          --no-verify-jwt
+          --use-api
+      - name: Verify deployed draw metadata
+        id: edge_metadata
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        timeout-minutes: 2
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          FLOOR_EDGE_PHASE: post
+          FLOOR_EDGE_STATE_FILE: ${{ runner.temp }}/floor-draw-edge-state.json
+        run: node scripts/floor/floor-chip-cas-edge-metadata.mjs
+      - name: Verify deployed draw exact source hash
+        id: edge_source
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        timeout-minutes: 4
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          deployed_dir="$RUNNER_TEMP/floor-draw-deployed"
+          mkdir -p "$deployed_dir"
+          cd "$deployed_dir"
+          supabase functions download tournament-live-draw \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api
+          test -f supabase/functions/tournament-live-draw/index.ts
+          deployed_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          test "$deployed_hash" = "$expected_hash"
+          echo "FLOOR_CHIP_CAS_EDGE SOURCE_PASS exact_head_source=true source_hash=$deployed_hash upload=false"
+      - name: Run targeted Edge chip CAS canary and exact cleanup
+        id: edge_smoke
+        if: env.FLOOR_CANARY_MODE == 'rollout'
+        timeout-minutes: 8
+        working-directory: VinPoker
+        env:
+          FLOOR_CANARY_MODE: run
+          FLOOR_CHIP_CAS_TRANSPORT: edge
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/floor/floor-chip-cas-smoke.mjs
+      - name: Roll back draw consumer after rollout failure
+        if: ${{ always() && steps.edge_backup.outcome == 'success' && steps.edge_deploy.outcome != 'skipped' && (steps.edge_deploy.outcome != 'success' || steps.edge_metadata.outcome != 'success' || steps.edge_source.outcome != 'success' || steps.edge_smoke.outcome != 'success') }}
+        timeout-minutes: 8
+        working-directory: VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          FLOOR_EDGE_PHASE: rollback-post
+          FLOOR_EDGE_STATE_FILE: ${{ runner.temp }}/floor-draw-edge-state.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$FLOOR_DRAW_ROLLBACK_DIR"
+          rollback_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          test "$rollback_hash" = "$FLOOR_DRAW_ROLLBACK_HASH"
+          supabase functions deploy tournament-live-draw \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt \
+            --use-api
+          cd "$GITHUB_WORKSPACE/VinPoker"
+          node scripts/floor/floor-chip-cas-edge-metadata.mjs
+          verify_dir="$RUNNER_TEMP/floor-draw-rollback-verify"
+          mkdir -p "$verify_dir"
+          cd "$verify_dir"
+          supabase functions download tournament-live-draw \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --use-api
+          test -f supabase/functions/tournament-live-draw/index.ts
+          verified_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          test "$verified_hash" = "$FLOOR_DRAW_ROLLBACK_HASH"
+          echo "FLOOR_CHIP_CAS_EDGE ROLLBACK_SOURCE_VERIFIED source_hash=$verified_hash upload=false"
+      - name: Validate canary context and execute isolated API matrix
+        if: env.FLOOR_CANARY_MODE != 'rollout'
+        working-directory: VinPoker
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/floor/floor-production-canary.mjs

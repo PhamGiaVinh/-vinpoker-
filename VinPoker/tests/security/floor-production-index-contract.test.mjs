@@ -30,6 +30,6 @@ test("workflow cannot re-enter the one-time index phase", () => {
   assert.match(workflow, /environment: floor-production-canary/);
   assert.doesNotMatch(workflow, /controlled production canary runner \[index\]/);
   assert.doesNotMatch(workflow, /^\s+- index$/m);
-  assert.doesNotMatch(workflow, /SUPABASE_ACCESS_TOKEN/);
   assert.doesNotMatch(workflow, /apply-floor-cleanup-index/);
+  assert.doesNotMatch(workflow, /CREATE_FLOOR_CLEANUP_INDEX/);
 });

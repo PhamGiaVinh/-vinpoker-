@@ -907,7 +907,19 @@ async function runCleanupCanary(admin) {
   console.log(`FLOOR CANARY CLEANUP PASS groups=${ledgers.length} clubs_remaining=0 users_remaining=0`);
 }
 
-export { createRunId, requireProductionCanaryContext, discoverCleanupScope, runCleanupCanary };
+export {
+  actorHash,
+  cleanupCurrentRun,
+  createActor,
+  createCrossClub,
+  createFixture,
+  createPrimaryClub,
+  createRunId,
+  discoverCleanupScope,
+  invokeFunction,
+  requireProductionCanaryContext,
+  runCleanupCanary,
+};
 
 async function main() {
   const context = requireProductionCanaryContext();
