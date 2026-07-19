@@ -5,9 +5,21 @@ import {
   entriesForViewport,
   floorAuditViewports,
   type FloorAuditRole,
+  type FloorAuditViewport,
 } from "./floor-button-coverage.manifest";
 
-type RouteAssignment = { route: string; role: FloorAuditRole };
+type ConcreteFloorAuditViewport = Exclude<FloorAuditViewport, "all">;
+
+type RouteAssignment = {
+  route: string;
+  manifestRoute?: string;
+  role: FloorAuditRole;
+  viewports?: ConcreteFloorAuditViewport[];
+  ownedTournamentName?: string;
+  tabName?: string;
+};
+
+const ownedTournamentNamePattern = /^CODEX_FLOOR_CANARY_[0-9]{14}_[a-f0-9]{8}_(ACCESS|PAYOUT_CLOSE)$/u;
 
 function normalise(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("vi-VN");
@@ -22,7 +34,22 @@ function configuredAssignments(): RouteAssignment[] {
     if (!entry || typeof entry !== "object" || !("route" in entry) || !("role" in entry)) {
       throw new Error("Each Floor UAT route assignment must contain route and role");
     }
-    return entry as RouteAssignment;
+    const assignment = entry as RouteAssignment;
+    if (assignment.manifestRoute != null && typeof assignment.manifestRoute !== "string") {
+      throw new Error("manifestRoute must be a string when provided");
+    }
+    if (
+      assignment.viewports != null
+      && (!Array.isArray(assignment.viewports) || assignment.viewports.some((viewport) => !floorAuditViewports.includes(viewport)))
+    ) throw new Error("viewports must contain only known Floor audit viewports");
+    if (
+      assignment.ownedTournamentName != null
+      && (typeof assignment.ownedTournamentName !== "string" || !ownedTournamentNamePattern.test(assignment.ownedTournamentName))
+    ) throw new Error("ownedTournamentName must identify an exact canary fixture");
+    if (assignment.tabName != null && typeof assignment.tabName !== "string") {
+      throw new Error("tabName must be a string when provided");
+    }
+    return assignment;
   });
 }
 
@@ -41,6 +68,7 @@ for (const viewport of floorAuditViewports) {
     expect(assignments.length).toBeGreaterThan(0);
 
     for (const assignment of assignments) {
+      if (assignment.viewports && !assignment.viewports.includes(viewport)) continue;
       const context = await browser.newContext({
         ...(assignment.role === "anonymous" ? {} : { storageState: storageStatePath(assignment.role) }),
         viewport: viewport === "mobile-360x800" ? { width: 360, height: 800 }
@@ -54,21 +82,67 @@ for (const viewport of floorAuditViewports) {
       try {
         const page = await context.newPage();
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "networkidle" });
-        const controls = page.locator('button:enabled, input[type="submit"]:enabled, [role="button"]:not([aria-disabled="true"])');
-        const manifest = entriesForViewport(viewport).filter((entry) => entry.route === assignment.route && entry.role === assignment.role);
+        if (assignment.ownedTournamentName) {
+          const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
+          await expect(ownedTournament).toBeVisible();
+          await ownedTournament.click();
+          await expect(page.getByRole("button", { name: "Tất cả giải", exact: true })).toBeVisible();
+        }
+        if (assignment.tabName) {
+          await page.getByRole("tab", { name: assignment.tabName, exact: true }).click();
+        }
+        const controls = page.locator('button, input[type="submit"], [role="button"], [role="combobox"], [role="tab"]');
+        const manifestRoute = assignment.manifestRoute ?? assignment.route;
+        const manifest = entriesForViewport(viewport).filter((entry) => entry.route === manifestRoute && entry.role === assignment.role);
         const unclassified: string[] = [];
+        const stateMismatches: string[] = [];
+        let visibleCount = 0;
+        let enabledCount = 0;
+        const matchedManifestIds = new Set<string>();
 
         for (let index = 0; index < await controls.count(); index += 1) {
           const control = controls.nth(index);
-          const label = normalise((await control.getAttribute("data-testid")) ?? (await control.innerText()));
-          const known = manifest.some((entry) => {
+          if (!await control.isVisible()) continue;
+          visibleCount += 1;
+          const enabled = await control.isEnabled() && await control.getAttribute("aria-disabled") !== "true";
+          if (enabled) enabledCount += 1;
+          const label = normalise(
+            (await control.getAttribute("data-testid"))
+              ?? (await control.getAttribute("aria-label"))
+              ?? (await control.getAttribute("title"))
+              ?? (await control.innerText())
+              ?? (await control.getAttribute("value"))
+              ?? "",
+          );
+          const observed = label || "<unlabelled-enabled-control>";
+          const known = manifest.find((entry) => {
             const expected = normalise(entry.testId ?? entry.label);
-            return label === expected || label.startsWith(`${expected} `);
+            const patternMatches = entry.labelPattern ? new RegExp(entry.labelPattern, "iu").test(observed) : false;
+            return observed === expected || observed.startsWith(`${expected} `) || patternMatches;
           });
-          if (!known) unclassified.push(label || "<unlabelled-enabled-control>");
+          if (known) matchedManifestIds.add(known.id);
+          if (enabled && !known) unclassified.push(observed);
+          if (known && enabled && ["disabled", "hidden"].includes(known.expectedState)) {
+            stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_enabled`);
+          }
+          if (known && !enabled && ["enabled", "navigation-only"].includes(known.expectedState)) {
+            stateMismatches.push(`${known.id}:expected_${known.expectedState}_observed_disabled`);
+          }
         }
 
-        expect(unclassified, `${assignment.role} ${assignment.route} has enabled controls without a manifest entry`).toEqual([]);
+        console.log(JSON.stringify({
+          route: manifestRoute,
+          role: assignment.role,
+          viewport,
+          visibleControls: visibleCount,
+          enabledControls: enabledCount,
+          auditType: "control-state-discovery",
+          status: unclassified.length === 0 && stateMismatches.length === 0 ? "NAVIGATION_ONLY" : "BLOCKED",
+        }));
+        expect(enabledCount, `${assignment.role} ${manifestRoute} must expose at least one enabled control`).toBeGreaterThan(0);
+        expect(matchedManifestIds.size, `${assignment.role} ${manifestRoute} must match at least one manifest control`).toBeGreaterThan(0);
+        expect(unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
+        expect(stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
       } finally {
         await context.close();
       }

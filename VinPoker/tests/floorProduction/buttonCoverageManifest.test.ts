@@ -3,8 +3,8 @@ import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floo
 
 const requiredControls = [
   "Tạo giải", "Sửa giải", "Mở giải", "Đồng hồ", "Mở bàn", "Thêm người", "Sửa chip",
-  "Chuyển ghế", "Đóng bàn", "Bốc lại", "Phiếu", "Loại", "Khôi phục", "Xem trước trả thưởng",
-  "Lưu cơ cấu", "Tải mẫu", "Close Report", "Đóng giải", "Huỷ", "Thử lại", "Làm mới", "Xác nhận",
+  "Chuyển", "Đóng bàn", "Bốc lại", "Phiếu", "Loại", "Cho vào lại", "Xem trước (Dự kiến)",
+  "Lưu mặc định cho giải này", "Tải file (Excel/CSV)", "Chốt giải", "Huỷ", "Thử lại", "Làm mới", "Xác nhận",
 ];
 
 describe("Floor button coverage manifest", () => {
@@ -18,18 +18,59 @@ describe("Floor button coverage manifest", () => {
   });
 
   it("requires owned scenarios and backend/DB evidence before destructive controls may run", () => {
-    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.destructive && candidate.expectedState === "enabled")) {
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => (
+      candidate.destructive && candidate.expectedState === "enabled" && !candidate.exclusionReason
+    ))) {
       expect(entry.fixtureScenario, entry.id).toBeTruthy();
       expect(entry.expectedBackendCall, entry.id).toBeTruthy();
       expect(entry.expectedDbInvariant, entry.id).toBeTruthy();
     }
   });
 
-  it("records payout as disabled while floorAtomicPayout is off", () => {
+  it("records payout as hidden while floorAtomicPayout is off", () => {
     expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
       id: "atomic-payout-off",
-      expectedState: "disabled",
+      expectedState: "hidden",
       exclusionReason: expect.any(String),
     }));
+  });
+
+  it("keeps official payout visible but explicitly excluded from canary clicks", () => {
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "payout-official-excluded",
+      expectedState: "enabled",
+      destructive: true,
+      expectedBackendCall: null,
+      exclusionReason: expect.stringContaining("EXCLUDED_WITH_REASON"),
+    }));
+  });
+
+  it("uses real routes and real backend contracts", () => {
+    expect(floorButtonCoverageManifest.some((entry) => entry.route === "/ops/tournament/:id")).toBe(false);
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "clock-start",
+      route: "/ops/tournaments/:id",
+      expectedBackendCall: "tournament-live-clock(start)",
+    }));
+    expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({
+      id: "payout-preview",
+      route: "/floor",
+      expectedBackendCall: "compute-payouts(mode=preview)",
+    }));
+    expect(floorButtonCoverageManifest.some((entry) => [
+      "get_tournament_close_report",
+      "payout_preview",
+      "save_payout_structure",
+      "load_payout_template",
+    ].includes(entry.expectedBackendCall ?? ""))).toBe(false);
+  });
+
+  it("requires a reason for every hidden or source-excluded control", () => {
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.expectedState === "hidden")) {
+      expect(entry.exclusionReason, entry.id).toBeTruthy();
+    }
+    for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.labelPattern)) {
+      expect(() => new RegExp(entry.labelPattern, "iu"), entry.id).not.toThrow();
+    }
   });
 });
