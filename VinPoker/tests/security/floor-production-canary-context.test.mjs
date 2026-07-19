@@ -102,6 +102,18 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
 });
 
+test("scenario fixtures share one owned TEST club and finally uses an exact reconstructed ledger", () => {
+  const fixtureBody = canarySource.slice(
+    canarySource.indexOf("async function createFixture"),
+    canarySource.indexOf("async function createCrossClub"),
+  );
+  assert.doesNotMatch(fixtureBody, /from\("clubs"\)\.insert/);
+  assert.match(canarySource, /const primaryClubId = await createPrimaryClub/);
+  assert.match(canarySource, /createFixture\(admin, runId, scenario, primaryClubId, owned\)/);
+  assert.match(canarySource, /await buildCleanupLedger\(admin, \{ runId, clubs \}, userIds\)/);
+  assert.match(canarySource, /finally \{[\s\S]{0,120}await cleanupCurrentRun\(admin, runId, owned\)/);
+});
+
 test("workflow has fail-closed run, cleanup, and hold modes", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/floor-production-canary.yml", import.meta.url), "utf8");
   assert.match(workflow, /type: choice/);

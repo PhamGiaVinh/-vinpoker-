@@ -277,7 +277,7 @@ async function verifyExactAuthUsersDeleted(admin, ids) {
   }
 }
 
-async function buildCleanupLedger(admin, scope) {
+async function buildCleanupLedger(admin, scope, expectedAuthUserIds = null) {
   const clubIds = scope.clubs.map((club) => club.id);
   const tournaments = await admin.from("tournaments").select("id,club_id").in("club_id", clubIds);
   if (tournaments.error || !Array.isArray(tournaments.data)) fail("cleanup_scope_tournaments");
@@ -299,8 +299,15 @@ async function buildCleanupLedger(admin, scope) {
     ...floorMemberships.data.map((row) => row.user_id),
   ].filter((id) => typeof id === "string"));
   const referencedUserIds = [...userIds];
-  if (![0, 4].includes(referencedUserIds.length)) fail("CLEANUP_SCOPE_UNEXPECTED:referenced_actor_set");
-  const authUsers = await validateExactAuthUserIds(admin, scope.runId, referencedUserIds);
+  if (referencedUserIds.length > 4) fail("CLEANUP_SCOPE_UNEXPECTED:referenced_actor_set");
+  let authCandidates = referencedUserIds;
+  if (expectedAuthUserIds !== null) {
+    const expected = [...new Set(expectedAuthUserIds)];
+    if (expected.length > 4 || expected.some((id) => !UUID_RE.test(id))) fail("cleanup_scope_expected_actor_set");
+    if (referencedUserIds.some((id) => !expected.includes(id))) fail("cleanup_scope_unowned_actor_reference");
+    authCandidates = expected;
+  }
+  const authUsers = await validateExactAuthUserIds(admin, scope.runId, authCandidates);
   console.log(`FLOOR_CANARY CLEANUP_AUTH_SCOPE run_hash=${actorHash(scope.runId)} users=${authUsers.length} source=exact_references ids_hash=${hashIds(authUsers)}`);
   for (const userId of authUsers) userIds.add(userId);
 
@@ -386,16 +393,16 @@ async function trackClubOwnedRows(admin, clubId, owned) {
   owned.auditRows.push(...audits.data.map((row) => row.id));
 }
 
-async function createFixture(admin, actors, runId, scenario, owned) {
+async function createPrimaryClub(admin, actors, runId, owned) {
   const clubId = randomUUID();
-  owned.clubs.push(clubId);
   const club = await single(admin.from("clubs").insert({
     id: clubId,
     owner_id: actors.owner.id,
-    name: `${runId}_${scenario}`,
+    name: `${runId}_ACCESS`,
     region: "TEST",
     status: "approved",
-  }).select("id"), `create_fixture_club_${scenario}`);
+  }).select("id"), "create_primary_club");
+  owned.clubs.push(club.id);
   await trackClubOwnedRows(admin, club.id, owned);
   for (const actor of [actors.cashier, actors.floor]) {
     const membership = await admin.from(actor.label === "cashier" ? "club_cashiers" : "club_floors").insert({
@@ -404,16 +411,19 @@ async function createFixture(admin, actors, runId, scenario, owned) {
       granted_by: actors.owner.id,
     });
     if (membership.error) {
-      console.log(`FLOOR_CANARY DB_FAIL op=create_${actor.label}_membership_${scenario} ${safeDbErrorDetail(membership.error)}`);
-      fail(`create_${actor.label}_membership_${scenario}`);
+      console.log(`FLOOR_CANARY DB_FAIL op=create_${actor.label}_membership ${safeDbErrorDetail(membership.error)}`);
+      fail(`create_${actor.label}_membership`);
     }
   }
+  return club.id;
+}
 
+async function createFixture(admin, runId, scenario, clubId, owned) {
   const tournamentId = randomUUID();
   owned.tournaments.push(tournamentId);
   const tournament = await single(admin.from("tournaments").insert({
     id: tournamentId,
-    club_id: club.id,
+    club_id: clubId,
     name: `${runId}_${scenario}`,
     start_time: new Date().toISOString(),
     buy_in: 0,
@@ -437,7 +447,7 @@ async function createFixture(admin, actors, runId, scenario, owned) {
   owned.gameTables.push(gameTableId);
   const gameTable = await single(admin.from("game_tables").insert({
     id: gameTableId,
-    club_id: club.id,
+    club_id: clubId,
     table_name: `${runId}_${scenario}_T1`,
     table_type: "tournament",
     status: "active",
@@ -489,12 +499,11 @@ async function createFixture(admin, actors, runId, scenario, owned) {
     seatFixtures.push(seat);
   }
 
-  return { scenario, clubId: club.id, tournamentId: tournament.id, seat: seatFixtures[0] };
+  return { scenario, clubId, tournamentId: tournament.id, seat: seatFixtures[0] };
 }
 
 async function createCrossClub(admin, actor, runId, owned) {
   const clubId = randomUUID();
-  owned.clubs.push(clubId);
   const club = await single(admin.from("clubs").insert({
     id: clubId,
     owner_id: actor.id,
@@ -502,6 +511,7 @@ async function createCrossClub(admin, actor, runId, owned) {
     region: "TEST",
     status: "approved",
   }).select("id"), "create_cross_club");
+  owned.clubs.push(club.id);
   await trackClubOwnedRows(admin, club.id, owned);
   return club.id;
 }
@@ -660,52 +670,6 @@ async function verifyExactRows(client, table, ids, code) {
   if ((remaining.count ?? 0) !== 0) throw new Error(`${code}:remaining=${remaining.count}`);
 }
 
-async function cleanup(admin, owned) {
-  const failures = [];
-  const attempt = async (name, action) => {
-    try {
-      await action();
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "unknown";
-      failures.push(`${name}:${detail}`);
-      console.log(`FLOOR_CANARY CLEANUP_FAIL step=${name} detail=${detail}`);
-    }
-  };
-
-  await attempt("seats", () => deleteExact(admin, "tournament_seats", owned.seats, "cleanup_seats"));
-  await attempt("entries", () => deleteExact(admin, "tournament_entries", owned.entries, "cleanup_entries"));
-  await attempt("levels", () => deleteExact(admin, "tournament_levels", owned.levels, "cleanup_levels"));
-  await attempt("tournament_tables", () => deleteExact(admin, "tournament_tables", owned.tournamentTables, "cleanup_tournament_tables"));
-  await attempt("tournaments", () => deleteExact(admin, "tournaments", owned.tournaments, "cleanup_tournaments"));
-  await attempt("game_tables", () => deleteExact(admin, "game_tables", owned.gameTables, "cleanup_game_tables"));
-  await attempt("swing_config_audit", () => deleteExact(admin, "swing_config_audit", owned.auditRows, "cleanup_swing_config_audit"));
-  for (const [index, clubId] of owned.clubs.entries()) {
-    await attempt(`memberships_${index}`, async () => {
-      const cashier = await admin.from("club_cashiers").delete().eq("club_id", clubId);
-      const floor = await admin.from("club_floors").delete().eq("club_id", clubId);
-      if (cashier.error) throw new Error(`cashier:${safeDbErrorDetail(cashier.error)}`);
-      if (floor.error) throw new Error(`floor:${safeDbErrorDetail(floor.error)}`);
-    });
-  }
-  await attempt("clubs", () => deleteExact(admin, "clubs", owned.clubs, "cleanup_clubs"));
-  for (const [index, userId] of owned.users.entries()) {
-    await attempt(`auth_user_${index}`, async () => {
-      const deleted = await admin.auth.admin.deleteUser(userId);
-      if (deleted.error) throw new Error(safeAuthErrorDetail(deleted.error));
-    });
-  }
-  await attempt("verify_seats", () => verifyExactRows(admin, "tournament_seats", owned.seats, "verify_seats"));
-  await attempt("verify_entries", () => verifyExactRows(admin, "tournament_entries", owned.entries, "verify_entries"));
-  await attempt("verify_levels", () => verifyExactRows(admin, "tournament_levels", owned.levels, "verify_levels"));
-  await attempt("verify_tournament_tables", () => verifyExactRows(admin, "tournament_tables", owned.tournamentTables, "verify_tournament_tables"));
-  await attempt("verify_tournaments", () => verifyExactRows(admin, "tournaments", owned.tournaments, "verify_tournaments"));
-  await attempt("verify_game_tables", () => verifyExactRows(admin, "game_tables", owned.gameTables, "verify_game_tables"));
-  await attempt("verify_audit_rows", () => verifyExactRows(admin, "swing_config_audit", owned.auditRows, "verify_audit_rows"));
-  await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", owned.clubs, "verify_clubs"));
-  if (failures.length > 0) throw new Error(`cleanup_incomplete:${failures.join(",")}`);
-  console.log(`FLOOR_CANARY CLEANUP_PASS users=${owned.users.length} clubs=${owned.clubs.length} tournaments=${owned.tournaments.length}`);
-}
-
 async function deleteByColumnExact(client, table, column, values, code) {
   if (values.length === 0) return;
   const deletion = await client.from(table).delete().in(column, values);
@@ -844,6 +808,42 @@ async function cleanupExactLedger(admin, ledger) {
   return deletedCounts;
 }
 
+async function cleanupCurrentRun(admin, runId, owned) {
+  const clubIds = [...new Set(owned.clubs)];
+  const userIds = [...new Set(owned.users)];
+  if (clubIds.some((id) => !UUID_RE.test(id)) || userIds.some((id) => !UUID_RE.test(id))) {
+    fail("cleanup_current_run_invalid_owned_id");
+  }
+  if (clubIds.length === 0) {
+    const exactUsers = await validateExactAuthUserIds(admin, runId, userIds);
+    for (const userId of exactUsers) {
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      if (deleted.error) throw new Error(`cleanup_current_run_auth:${safeAuthErrorDetail(deleted.error)}`);
+    }
+    await verifyExactAuthUsersDeleted(admin, exactUsers);
+    console.log(`FLOOR_CANARY CLEANUP_PASS users=${exactUsers.length} clubs=0 tournaments=0`);
+    return;
+  }
+
+  const response = await admin.from("clubs").select("id,name,region,owner_id").in("id", clubIds);
+  if (response.error || !Array.isArray(response.data) || response.data.length !== clubIds.length) {
+    fail("cleanup_current_run_club_scope");
+  }
+  const expectedNames = new Set([`${runId}_ACCESS`, `${runId}_CROSS_CLUB`]);
+  const clubs = response.data.map((row) => {
+    if (!clubIds.includes(row.id) || !expectedNames.has(row.name) || row.region !== "TEST") {
+      fail("cleanup_current_run_club_identity");
+    }
+    return { id: row.id, ownerId: row.owner_id, runId, scenario: row.name.slice(runId.length + 1) };
+  });
+  const ledger = await buildCleanupLedger(admin, { runId, clubs }, userIds);
+  await moneySafetyPreflight(admin, ledger);
+  await cleanupExactLedger(admin, ledger);
+  await verifyExactRows(admin, "clubs", clubIds, "verify_current_run_clubs");
+  await verifyExactAuthUsersDeleted(admin, userIds);
+  console.log(`FLOOR_CANARY CLEANUP_PASS users=${userIds.length} clubs=${clubIds.length} tournaments=${ledger.tournamentIds.length}`);
+}
+
 async function runCleanupCanary(admin) {
   const scopes = await discoverCleanupScope(admin);
   const ledgers = [];
@@ -901,8 +901,9 @@ async function main() {
     };
     console.log(`FLOOR_CANARY ACTORS_CREATED ${Object.values(actors).map((actor) => `${actor.label}:${actorHash(actor.id)}`).join(" ")}`);
     await createCrossClub(admin, actors.cross, runId, owned);
+    const primaryClubId = await createPrimaryClub(admin, actors, runId, owned);
     const fixtures = new Map();
-    for (const scenario of SCENARIOS) fixtures.set(scenario, await createFixture(admin, actors, runId, scenario, owned));
+    for (const scenario of SCENARIOS) fixtures.set(scenario, await createFixture(admin, runId, scenario, primaryClubId, owned));
     console.log(`FLOOR_CANARY FIXTURES_CREATED scenarios=${fixtures.size}`);
     await runApiCanary(context, actors, fixtures);
     await runBrowserManifest(actors);
@@ -911,7 +912,7 @@ async function main() {
     canaryError = error instanceof Error ? error.message : "unknown_canary_error";
   } finally {
     try {
-      await cleanup(admin, owned);
+      await cleanupCurrentRun(admin, runId, owned);
     } catch (error) {
       const cleanupError = error instanceof Error ? error.message : "unknown_cleanup_error";
       canaryError = canaryError ? `${canaryError};${cleanupError}` : cleanupError;
