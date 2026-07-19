@@ -1,11 +1,29 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "criticalEnvironment": "dealer-swing-production-critical",
   "frontend": {
+    "receiptEnvironment": "receipt-vinpoker-frontend",
+    "quality": {
+      "vitest": [
+        "src/components/ops/dealer-swing/DealerPhoneCompletionStates.test.tsx",
+        "src/hooks/useDealerSwingPhoneRollout.test.tsx",
+        "src/components/cashier/dealer-swing/__tests__/swingTableStatus.test.ts"
+      ]
+    },
     "contracts": [
       { "type": "relation", "name": "public.clubs" },
       { "type": "relation", "name": "public.club_members" },
-      { "type": "relation", "name": "public.club_settings" }
+      { "type": "relation", "name": "public.club_settings" },
+      { "type": "relation", "name": "public.dealer_open_operations" },
+      { "type": "relation", "name": "public.dealer_open_operation_targets" },
+      { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
+      { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
+      {
+        "type": "function",
+        "name": "public.operator_open_dealer_tables",
+        "arguments": ["p_request_id", "p_expected_club_id", "p_shift_id", "p_table_ids", "p_table_type"]
+      },
+      { "type": "function", "name": "public._refresh_dealer_open_operation", "arguments": ["p_operation_id"] }
     ]
   },
   "functions": {
@@ -14,6 +32,14 @@
       "critical": true,
       "autoDeployOnPush": false,
       "verifyJwt": false,
+      "receiptEnvironment": "receipt-vinpoker-edge-process-swing",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/process-swing/requestScope.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/rotationSolver.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        ]
+      },
       "contracts": [
         { "type": "relation", "name": "public.dealer_assignments" },
         { "type": "relation", "name": "public.dealer_attendance" },
@@ -58,6 +84,14 @@
       "critical": true,
       "autoDeployOnPush": false,
       "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-mass-assign",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        ]
+      },
       "contracts": [
         { "type": "relation", "name": "public.game_tables" },
         { "type": "relation", "name": "public.dealer_open_operations" },
@@ -93,6 +127,12 @@
       "critical": true,
       "autoDeployOnPush": false,
       "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-checkout-dealer",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts"
+        ]
+      },
       "contracts": [
         { "type": "relation", "name": "public.dealer_attendance" },
         { "type": "relation", "name": "public.dealer_assignments" },
@@ -129,7 +169,7 @@
     "assign-dealer": {
       "path": "VinPoker/supabase/functions/assign-dealer",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.game_tables" },
@@ -140,7 +180,7 @@
     "close-table": {
       "path": "VinPoker/supabase/functions/close-table",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.game_tables" },
@@ -151,7 +191,7 @@
     "swing-metrics": {
       "path": "VinPoker/supabase/functions/swing-metrics",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "function", "name": "public.get_swing_metrics" }
@@ -160,7 +200,7 @@
     "telegram-bot": {
       "path": "VinPoker/supabase/functions/telegram-bot",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.dealers" },
@@ -171,7 +211,7 @@
     "send-shift-schedule": {
       "path": "VinPoker/supabase/functions/send-shift-schedule",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.club_settings" },
@@ -182,7 +222,7 @@
     "td-ai-assistant": {
       "path": "VinPoker/supabase/functions/td-ai-assistant",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.user_roles" }
@@ -191,7 +231,7 @@
     "online-poker-action": {
       "path": "VinPoker/supabase/functions/online-poker-action",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.online_poker_tables" },
@@ -202,7 +242,7 @@
     "online-poker-table-runner": {
       "path": "VinPoker/supabase/functions/online-poker-table-runner",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.online_poker_config" },
@@ -212,7 +252,7 @@
     "online-poker-timeout-sweep": {
       "path": "VinPoker/supabase/functions/online-poker-timeout-sweep",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "function", "name": "public.op_timeout_sweep" },
@@ -222,7 +262,7 @@
     "manage-break": {
       "path": "VinPoker/supabase/functions/manage-break",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": true,
       "contracts": [
         { "type": "relation", "name": "public.dealer_breaks" },
@@ -233,7 +273,7 @@
     "dealer-code-login": {
       "path": "VinPoker/supabase/functions/dealer-code-login",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.dealer_login_codes" }
@@ -242,7 +282,7 @@
     "send-shift-reminders": {
       "path": "VinPoker/supabase/functions/send-shift-reminders",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "relation", "name": "public.dealer_shift_assignments" },
@@ -252,7 +292,7 @@
     "parse-dealer-list": {
       "path": "VinPoker/supabase/functions/parse-dealer-list",
       "critical": false,
-      "autoDeployOnPush": true,
+      "autoDeployOnPush": false,
       "verifyJwt": false,
       "contracts": [
         { "type": "function", "name": "public.is_club_dealer_control" },

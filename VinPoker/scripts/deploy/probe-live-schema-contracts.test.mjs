@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { findMissingContracts, schemaInventory } from "./probe-live-schema-contracts.mjs";
+import { loadDeploymentManifest } from "./deployment-manifest.mjs";
 
 const schema = `
 CREATE TABLE public.game_tables (
@@ -55,4 +56,16 @@ test("probe reports a missing column and signature without converting them to su
     "column:public.game_tables.missing_column",
     "function:public.is_club_dealer_control(_club_id)",
   ]);
+});
+
+test("frontend probe blocks when dealer mass-open operation contracts are absent", () => {
+  const missing = findMissingContracts(`
+    CREATE TABLE public.clubs (id uuid NOT NULL);
+    CREATE TABLE public.club_members (id uuid NOT NULL);
+    CREATE TABLE public.club_settings (id uuid NOT NULL);
+    CREATE TABLE public.game_tables (id uuid NOT NULL);
+  `, loadDeploymentManifest().frontend.contracts);
+  assert.equal(missing.includes("relation:public.dealer_open_operations"), true);
+  assert.equal(missing.includes("relation:public.dealer_open_operation_targets"), true);
+  assert.equal(missing.some((item) => item.startsWith("function:public.operator_open_dealer_tables")), true);
 });

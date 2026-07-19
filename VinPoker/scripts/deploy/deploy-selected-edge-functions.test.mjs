@@ -27,3 +27,11 @@ test("target parser rejects duplicate deployment targets", () => {
 test("target parser accepts a shell-friendly comma-separated list", () => {
   assert.deepEqual(parseTargetList("process-swing,mass-assign"), ["process-swing", "mass-assign"]);
 });
+
+test("current manifest JWT posture applies independently of target source age", () => {
+  const oldTargetHasNoControlPlaneTooling = true;
+  assert.equal(oldTargetHasNoControlPlaneTooling, true);
+  assert.deepEqual(deploymentArguments("process-swing", manifest.functions["process-swing"]), [
+    "functions", "deploy", "process-swing", "--no-verify-jwt",
+  ]);
+});

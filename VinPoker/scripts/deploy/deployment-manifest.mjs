@@ -18,12 +18,15 @@ export function loadDeploymentManifest(path = DEFAULT_MANIFEST_PATH) {
 }
 
 export function validateDeploymentManifest(manifest, repositoryRoot) {
-  if (manifest?.schemaVersion !== 1) throw new Error("deployment manifest schemaVersion must be 1");
+  if (manifest?.schemaVersion !== 2) throw new Error("deployment manifest schemaVersion must be 2");
   if (typeof manifest.criticalEnvironment !== "string" || !manifest.criticalEnvironment) {
     throw new Error("deployment manifest must name a criticalEnvironment");
   }
   if (!manifest.frontend || !Array.isArray(manifest.frontend.contracts) || manifest.frontend.contracts.length === 0) {
     throw new Error("frontend live contracts must be declared");
+  }
+  if (!manifest.frontend.receiptEnvironment || !Array.isArray(manifest.frontend.quality?.vitest)) {
+    throw new Error("frontend receipt environment and quality tests must be declared");
   }
   if (!manifest.functions || typeof manifest.functions !== "object") {
     throw new Error("deployment manifest functions must be an object");
@@ -50,12 +53,17 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
     if (typeof config.critical !== "boolean" || typeof config.autoDeployOnPush !== "boolean") {
       throw new Error(`critical/autoDeployOnPush must be boolean for ${name}`);
     }
-    if (config.critical && config.autoDeployOnPush) {
-      throw new Error(`critical function ${name} cannot auto-deploy on push`);
+    if (config.autoDeployOnPush) {
+      throw new Error(`Edge function ${name} cannot auto-deploy from the shared production workflow`);
     }
     if (typeof config.verifyJwt !== "boolean") throw new Error(`verifyJwt must be boolean for ${name}`);
     if (!Array.isArray(config.contracts) || config.contracts.length === 0) {
       throw new Error(`live contracts are missing for ${name}`);
+    }
+    if (config.critical) {
+      if (!config.receiptEnvironment || !Array.isArray(config.quality?.denoTests) || config.quality.denoTests.length === 0) {
+        throw new Error(`critical receipt environment and Deno tests are missing for ${name}`);
+      }
     }
     if (repositoryRoot && !existsSync(resolve(repositoryRoot, config.path))) {
       throw new Error(`source path does not exist for ${name}: ${config.path}`);

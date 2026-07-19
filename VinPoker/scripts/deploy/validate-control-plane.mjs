@@ -15,6 +15,8 @@ const forbiddenPatterns = [
   [/supabase\s+db\s+push/i, "broad database mutation"],
   [/--include-all\b/i, "include-all migration replay"],
   [/supabase\s+functions\s+deploy/i, "direct Edge deployment outside the manifest runner"],
+  [/deploy-noncritical-edge:/i, "shared-workflow noncritical Edge auto-deploy"],
+  [/target-source\/VinPoker\/scripts\/deploy/i, "deployment tooling loaded from target source"],
 ];
 for (const [pattern, label] of forbiddenPatterns) {
   if (pattern.test(workflow)) throw new Error(`workflow contains forbidden ${label}`);
@@ -23,15 +25,32 @@ for (const [pattern, label] of forbiddenPatterns) {
 const requiredSnippets = [
   "workflow_dispatch:",
   "commit_sha:",
+  "deployments: write",
   "git merge-base --is-ancestor",
+  "path: control-plane",
+  "path: target-source",
+  "deployment-receipts.mjs fetch",
+  "deployment-receipts.mjs record",
+  "plan-edge-deployment.mjs",
+  "verify-target-source.mjs",
+  "target-source-policy.test.ts",
+  "deno check",
+  "deno test",
+  "npm ci --ignore-scripts",
+  "npm run build",
+  "npx vitest run",
+  "probe-live-schema-contracts.mjs",
+  "target-preflight:",
   "validate-critical-environment:",
   "required_reviewers",
   "environment:",
   `name: ${manifest.criticalEnvironment}`,
-  "plan-edge-deployment.mjs",
-  "probe-live-schema-contracts.mjs",
   "deploy-selected-edge-functions.mjs",
+  "--target-root",
   "supabase db dump --linked --schema public",
+  "needs.deploy-critical-edge.result == 'success'",
+  "Record receipt only after successful Edge deploy",
+  "Record receipt only after successful frontend deploy",
 ];
 for (const snippet of requiredSnippets) {
   if (!workflow.includes(snippet)) throw new Error(`workflow is missing required control: ${snippet}`);
@@ -40,6 +59,17 @@ for (const snippet of requiredSnippets) {
 for (const name of ["process-swing", "mass-assign", "checkout-dealer"]) {
   const inputName = `deploy_${name.replaceAll("-", "_")}:`;
   if (!workflow.includes(inputName)) throw new Error(`workflow is missing manual input ${inputName}`);
+}
+
+for (const [name, config] of Object.entries(manifest.functions)) {
+  if (config.autoDeployOnPush) throw new Error(`${name} must not auto-deploy from the shared workflow`);
+}
+
+const preflightIndex = workflow.indexOf("target-preflight:");
+const approvalIndex = workflow.indexOf("validate-critical-environment:");
+const deployIndex = workflow.indexOf("deploy-critical-edge:");
+if (!(preflightIndex < approvalIndex && approvalIndex < deployIndex)) {
+  throw new Error("target preflight must precede environment validation and critical deployment");
 }
 
 console.log("Deployment control-plane validation passed.");
