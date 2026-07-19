@@ -40,7 +40,7 @@ const CLEANUP_CHILD_SCOPES = [
   { table: "tournament_hands", column: "table_id", source: "gameTableIds", constraint: "tournament_hands_table_id_fkey", indexed: false },
   { table: "seat_draw_receipts", column: "table_id", source: "gameTableIds", constraint: "seat_draw_receipts_table_id_fkey", indexed: false },
   { table: "seat_assignment_history", column: "to_table_id", source: "gameTableIds", constraint: "seat_assignment_history_to_table_id_fkey", indexed: false },
-  { table: "dealer_rotation_schedule", column: "table_id", source: "gameTableIds", constraint: "dealer_rotation_schedule_table_id_fkey", indexed: false },
+  { table: "dealer_rotation_schedule", column: "table_id", source: "gameTableIds", constraint: "dealer_rotation_schedule_table_id_fkey", indexed: true },
   { table: "dealer_table_profiles", column: "table_id", source: "gameTableIds", constraint: "dealer_table_profiles_table_id_fkey", indexed: true },
   { table: "dealer_override_claims", column: "table_id", source: "gameTableIds", constraint: "dealer_override_claims_table_id_fkey", indexed: false },
   { table: "tournament_chip_counts", column: "tournament_id", source: "tournamentIds", constraint: "tournament_chip_counts_tournament_id_fkey", indexed: true },
