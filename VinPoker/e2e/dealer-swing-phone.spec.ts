@@ -15,6 +15,18 @@ const ASSIGNMENT_ONE = "66666666-6666-4666-8666-666666666661";
 const ASSIGNMENT_TWO = "66666666-6666-4666-8666-666666666662";
 const SCHEDULE_RUN = "77777777-7777-4777-8777-777777777771";
 const SHIFT_ASSIGNMENT = "88888888-8888-4888-8888-888888888881";
+const massOpenTables = Array.from({ length: 28 }, (_, index) => {
+  const tableNumber = index + 3;
+  const suffix = String(tableNumber).padStart(12, "0");
+  return {
+    id: `55555555-5555-4555-8555-${suffix}`,
+    club_id: CLUB_ID,
+    table_name: `Table ${String(tableNumber).padStart(2, "0")}`,
+    table_type: "tournament",
+    status: "inactive",
+    shift_id: null,
+  };
+});
 
 const jsonHeaders = {
   "access-control-allow-origin": "*",
@@ -176,6 +188,17 @@ async function installFixtureRoutes(page: Page) {
       await fulfill(route, { ok: true, duplicate: false });
       return;
     }
+    if (path.startsWith("/functions/v1/mass-assign")) {
+      await fulfill(route, {
+        requested: 30,
+        assigned: 25,
+        remaining: 5,
+        assigned_this_run: 6,
+        operation_status: "waiting_for_dealer",
+        outcomes: [],
+      });
+      return;
+    }
 
     const rpcName = path.startsWith("/rest/v1/rpc/") ? path.split("/").at(-1) : null;
     if (rpcName) {
@@ -190,6 +213,32 @@ async function installFixtureRoutes(page: Page) {
       }
       if (rpcName === "get_dealer_swing_phone_rollout") {
         await fulfill(route, { master_enabled: true, allowlisted: true, all_clubs_enabled: false });
+        return;
+      }
+      if (rpcName === "get_dealer_mass_open_rollout") {
+        await fulfill(route, { allowed: true, enabled: true, all_clubs_enabled: false });
+        return;
+      }
+      if (rpcName === "operator_open_dealer_tables") {
+        await fulfill(route, {
+          outcome: "waiting_for_dealer",
+          operation_status: "waiting_for_dealer",
+          operation_id: payload?.p_request_id,
+          requested: 30,
+          assigned: 19,
+          remaining: 11,
+        });
+        return;
+      }
+      if (rpcName === "get_dealer_open_operation") {
+        await fulfill(route, {
+          outcome: "waiting_for_dealer",
+          operation_status: "waiting_for_dealer",
+          operation_id: payload?.p_operation_id,
+          requested: 30,
+          assigned: 25,
+          remaining: 5,
+        });
         return;
       }
       if (rpcName === "get_dealer_availability_requests") {
@@ -284,7 +333,7 @@ async function installFixtureRoutes(page: Page) {
       return;
     }
     if (table === "game_tables") {
-      await fulfill(route, gameTables);
+      await fulfill(route, [...gameTables, ...massOpenTables]);
       return;
     }
     if (table === "dealer_schedule_runs") {
@@ -333,6 +382,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("phone completion handles camera fallback, manual batch, close conflict, and reconcile race", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/ops/dealer-swing");
   await expect(page.getByRole("heading", { name: "Dealer Swing" })).toBeVisible();
   await expect(page.getByText(/^HSOP ·/)).toBeVisible();
@@ -387,5 +437,27 @@ test("phone completion handles camera fallback, manual batch, close conflict, an
   await page.screenshot({
     path: testInfo.outputPath(`dealer-swing-phone-${testInfo.project.name}.png`),
     fullPage: true,
+  });
+});
+
+test("desktop mass-open reports durable progress and leaves the remainder to cron", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/dealer-swing");
+  await expect(page.getByText("DEALER SWING", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Thêm bàn/ }).click();
+  await expect(page.getByRole("heading", { name: "Thêm bàn từ pool" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Chọn tất cả" }).click();
+  await expect(page.getByRole("button", { name: "Mở 30 bàn" })).toBeEnabled();
+  await page.getByRole("button", { name: "Mở 30 bàn" }).click();
+
+  await expect(page.getByText("Đã có dealer 25/30 bàn", { exact: true })).toBeVisible();
+  await expect(page.getByText("Còn 5")).toBeVisible();
+  await expect(page.getByText(/Cron sẽ tiếp tục tự gán/)).toBeVisible();
+  await assertFitsViewport(page);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.screenshot({
+    path: testInfo.outputPath("dealer-swing-mass-open-desktop.png"),
   });
 });
