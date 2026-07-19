@@ -102,6 +102,7 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);
   assert.doesNotMatch(canarySource, /delete\(\)[\s\S]{0,120}\.like\(/);
   assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
+  assert.match(canarySource, /referenced_by=\$\{referencedTable\}/);
 });
 
 test("scenario fixtures share one owned TEST club and finally uses an exact reconstructed ledger", () => {

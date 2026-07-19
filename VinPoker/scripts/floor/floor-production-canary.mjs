@@ -143,7 +143,11 @@ function safeDbErrorDetail(error) {
   const constraint = typeof error?.constraint === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(error.constraint)
     ? ` constraint=${error.constraint}`
     : "";
-  return `code=${code}${constraint}`;
+  const referencedTable = typeof error?.details === "string"
+    ? error.details.match(/referenced from table ["']([A-Za-z0-9_]+)["']/i)?.[1]
+    : null;
+  const referencedBy = referencedTable ? ` referenced_by=${referencedTable}` : "";
+  return `code=${code}${constraint}${referencedBy}`;
 }
 
 function hashIds(ids) {
