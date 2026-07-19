@@ -26,9 +26,9 @@ test("runner is project-bound, allowlisted, and never edits the migration ledger
   assert.doesNotMatch(runner, /console\.(log|error)\([^\n]*accessToken/);
 });
 
-test("workflow exposes index mode only through the protected environment", () => {
+test("workflow cannot re-enter the one-time index phase", () => {
   assert.match(workflow, /environment: floor-production-canary/);
-  assert.match(workflow, /controlled production canary runner \[index\]/);
-  assert.match(workflow, /SUPABASE_ACCESS_TOKEN: \$\{\{ secrets\.SUPABASEACCESSTOKEN \}\}/);
-  assert.match(workflow, /FLOOR_INDEX_CONFIRM: CREATE_FLOOR_CLEANUP_INDEX/);
+  assert.doesNotMatch(workflow, /controlled production canary runner \[index\]/);
+  assert.doesNotMatch(workflow, /SUPABASE_ACCESS_TOKEN/);
+  assert.doesNotMatch(workflow, /apply-floor-cleanup-index/);
 });
