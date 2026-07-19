@@ -28,7 +28,8 @@ const CLEANUP_CLUBS_PER_RUN = 2;
 const CLEANUP_TOTAL_CLUB_COUNT = 4;
 const CLEANUP_SCOPE_PREFIX = "CODEX_FLOOR_CANARY_";
 const CLEANUP_GAME_TABLE_BATCH_SIZE = 50;
-const CLEANUP_MAX_BATCH_ATTEMPTS = 2;
+const CLEANUP_MAX_BATCH_ATTEMPTS = 3;
+const CLEANUP_SLOW_FK = "dealer_rotation_schedule.table_id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CLEANUP_CHILD_SCOPES = [
@@ -713,7 +714,7 @@ async function deleteByColumnExact(client, table, column, values, code) {
 
 async function verifyByColumnExact(client, table, column, values, code) {
   if (values.length === 0) return;
-  const remaining = await client.from(table).select("id", { count: "exact", head: true }).in(column, values);
+  const remaining = await client.from(table).select(column, { count: "exact", head: true }).in(column, values);
   if (remaining.error) throw new Error(`${code}:${safeDbErrorDetail(remaining.error)}`);
   if ((remaining.count ?? 0) !== 0) throw new Error(`${code}:remaining=${remaining.count}`);
 }
@@ -761,11 +762,14 @@ async function deleteExactBatches(client, table, ids, code) {
       console.log(`FLOOR_CANARY CLEANUP_BATCH_RETRY table=${table} remaining=${remaining.length} ids_hash=${hashIds(remaining)} attempt=${batch.attempt}`);
       if (batch.attempt >= CLEANUP_MAX_BATCH_ATTEMPTS) {
         const detail = error instanceof Error ? error.message : "unknown";
-        throw new Error(`${code}:bounded_retries_exhausted:${detail}`);
+        throw new Error(`${code}:bounded_retries_exhausted:missing_index=${CLEANUP_SLOW_FK}:${detail}`);
       }
-      const smallerSize = Math.max(1, Math.ceil(remaining.length / 2));
+      const nextAttempt = batch.attempt + 1;
+      const smallerSize = nextAttempt === CLEANUP_MAX_BATCH_ATTEMPTS
+        ? 1
+        : Math.max(1, Math.ceil(remaining.length / 2));
       for (let offset = 0; offset < remaining.length; offset += smallerSize) {
-        queue.unshift({ ids: remaining.slice(offset, offset + smallerSize), attempt: batch.attempt + 1 });
+        queue.unshift({ ids: remaining.slice(offset, offset + smallerSize), attempt: nextAttempt });
       }
     }
   }

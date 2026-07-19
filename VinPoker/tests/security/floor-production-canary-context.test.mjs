@@ -94,7 +94,8 @@ test("cleanup discovery rejects unexpected run counts, suffixes, regions, and cl
 
 test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.match(canarySource, /CLEANUP_GAME_TABLE_BATCH_SIZE = 50/);
-  assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 2/);
+  assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 3/);
+  assert.match(canarySource, /nextAttempt === CLEANUP_MAX_BATCH_ATTEMPTS[\s\S]{0,80}\? 1/);
   assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
   assert.match(canarySource, /auth\.admin\.getUserById\(id\)/);
   assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);
