@@ -215,8 +215,7 @@ select
     ) = 1
     and lower(prosrc) like '%update public.tournament_seats%set chip_count = p_chip_count%'
     and lower(prosrc) !~ '\\m(insert|delete|truncate|merge)\\M'
-  ) from exact_fn), false) as chip_only_write
-from exact_fn;`;
+  ) from exact_fn), false) as chip_only_write;`;
 
 function validateIndex(state) {
   if (

@@ -80,6 +80,7 @@ test("DB runner uses exact query transport and preserves migration ledger", () =
   assert.doesNotMatch(applyRunner, /db push|include-all|migration up/i);
   assert.doesNotMatch(applyRunner, /console\.(log|error)\([^\n]*accessToken/);
   assert.doesNotMatch(applyRunner, /rolsuper|rolbypassrls/);
+  assert.doesNotMatch(applyRunner, /as chip_only_write\s+from exact_fn/);
 });
 
 test("smoke covers roles, stale, concurrent, cross-club and exact cleanup", () => {
