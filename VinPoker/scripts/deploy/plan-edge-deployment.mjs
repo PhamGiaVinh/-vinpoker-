@@ -1,7 +1,8 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadDeploymentManifest } from "./deployment-manifest.mjs";
+import { loadDeploymentManifest, resolveContractProfile } from "./deployment-manifest.mjs";
+import { selectTargetContractProfile } from "./target-contract-profile.mjs";
 
 const SHARED_PREFIXES = [
   "VinPoker/supabase/functions/_shared/",
@@ -103,8 +104,22 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
   return result;
 }
 
-export function buildDeploymentPlan({ event, componentDiffs, selected = [], deployFrontend = false, manifest, targetSha }) {
+export function buildDeploymentPlan({
+  event,
+  componentDiffs,
+  selected = [],
+  deployFrontend = false,
+  manifest,
+  targetSha,
+  contractSelection,
+}) {
   if (!new Set(["push", "workflow_dispatch"]).has(event)) throw new Error(`unsupported event: ${event}`);
+  if (!contractSelection?.profile
+      || !/^sha256:[0-9a-f]{64}$/.test(contractSelection.sourceFingerprint ?? "")
+      || !contractSelection.evidence
+      || typeof contractSelection.evidence !== "object") {
+    throw new Error("target source contract profile evidence is required");
+  }
   const uniqueSelected = [...new Set(selected.filter(Boolean))].sort();
   if (uniqueSelected.length !== selected.filter(Boolean).length) throw new Error("selected functions must not repeat");
 
@@ -136,6 +151,7 @@ export function buildDeploymentPlan({ event, componentDiffs, selected = [], depl
           ? (!componentDiffs.frontend.baselineSha ? "frontend_receipt_missing" : "critical_dependencies_held")
           : "frontend_diff_verified",
       sharedChanged,
+      contractSelection,
     });
   }
 
@@ -172,16 +188,18 @@ export function buildDeploymentPlan({ event, componentDiffs, selected = [], depl
     frontendHeld: false,
     frontendReason: deployFrontend ? "critical_dependencies_selected" : "not_selected",
     sharedChanged,
+    contractSelection,
   });
 }
 
 function enrichPlan(plan) {
+  const resolvedContracts = resolveContractProfile(plan.manifest, plan.contractSelection.profile);
   const functions = Object.fromEntries(Object.entries(plan.componentDiffs.functions).map(([name, diff]) => [name, {
     ...diff,
     selected: plan.criticalFunctions.includes(name),
     held: diff.changed && !plan.criticalFunctions.includes(name),
     verifyJwt: plan.manifest.functions[name].verifyJwt,
-    contractCount: plan.manifest.functions[name].contracts.length,
+    contractCount: resolvedContracts.functions[name].length,
     denoTests: plan.manifest.functions[name].quality?.denoTests ?? [],
   }]));
   return {
@@ -195,10 +213,13 @@ function enrichPlan(plan) {
     frontendHeld: plan.frontendHeld,
     frontendReason: plan.frontendReason,
     sharedChanged: plan.sharedChanged,
+    contractProfile: plan.contractSelection.profile,
+    contractSourceFingerprint: plan.contractSelection.sourceFingerprint,
+    contractProfileEvidence: plan.contractSelection.evidence,
     components: {
       frontend: {
         ...plan.componentDiffs.frontend,
-        contractCount: plan.manifest.frontend.contracts.length,
+        contractCount: resolvedContracts.frontend.length,
         vitest: plan.manifest.frontend.quality.vitest,
       },
       functions,
@@ -236,12 +257,18 @@ export function renderPlanSummary(plan) {
     "## Deployment control-plane plan",
     "",
     `- Target SHA: \`${plan.targetSha}\``,
+    `- Target contract profile: \`${plan.contractProfile}\``,
+    `- Contract source fingerprint: \`${plan.contractSourceFingerprint}\``,
     `- Event: \`${plan.event}\``,
     `- Frontend baseline: \`${plan.components.frontend.baselineSha ?? "MISSING"}\``,
     `- Frontend diff files: \`${plan.components.frontend.files.length}\``,
     `- Frontend decision: \`${plan.frontend ? "selected" : plan.frontendHeld ? "held" : "not selected"}\` (\`${plan.frontendReason}\`)`,
     `- Required critical Edge before frontend: \`${plan.requiredForFrontend.join(",") || "none"}\``,
     `- Shared source changed: \`${plan.sharedChanged}\``,
+    `- Profile evidence: \`${Object.entries(plan.contractProfileEvidence)
+      .filter(([, files]) => files.length > 0)
+      .map(([name, files]) => `${name}=${files.join("|")}`)
+      .join("; ")}\``,
     "",
     "| Component | Receipt baseline | Direct diff | Shared diff | Decision | JWT | Contracts |",
     "|---|---:|---:|---:|---|---|---:|",
@@ -267,6 +294,8 @@ function writeOutputs(path, plan) {
     `frontend_held=${String(plan.frontendHeld)}`,
     `frontend_reason=${plan.frontendReason}`,
     `shared_changed=${String(plan.sharedChanged)}`,
+    `contract_profile=${plan.contractProfile}`,
+    `contract_source_fingerprint=${plan.contractSourceFingerprint}`,
     `target_sha=${plan.targetSha}`,
   ];
   appendFileSync(path, `${lines.join("\n")}\n`, "utf8");
@@ -290,7 +319,16 @@ function run() {
   const manifest = loadDeploymentManifest();
   const baselines = JSON.parse(readFileSync(baselinesPath, "utf8"));
   const componentDiffs = buildComponentDiffs({ repositoryRoot, targetSha: sha, baselines, manifest });
-  const plan = buildDeploymentPlan({ event, componentDiffs, selected, deployFrontend, manifest, targetSha: sha });
+  const contractSelection = selectTargetContractProfile({ targetRoot: repositoryRoot });
+  const plan = buildDeploymentPlan({
+    event,
+    componentDiffs,
+    selected,
+    deployFrontend,
+    manifest,
+    targetSha: sha,
+    contractSelection,
+  });
   writeOutputs(outputPath, plan);
   writeFileSync(planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
   if (summaryPath) appendFileSync(summaryPath, `${renderPlanSummary(plan)}\n`, "utf8");

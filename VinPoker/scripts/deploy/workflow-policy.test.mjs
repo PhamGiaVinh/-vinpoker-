@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const workflow = readFileSync(resolve(root, ".github/workflows/vbackerworkflowmain.yml"), "utf8");
+const validationWorkflow = readFileSync(
+  resolve(root, ".github/workflows/deployment-control-plane-validation.yml"),
+  "utf8",
+);
 
 test("frontend cannot run after a required critical deployment failure", () => {
   assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
@@ -30,4 +34,24 @@ test("receipts are written only after their corresponding deployment step", () =
 test("shared workflow has no automatic Edge deployment path", () => {
   assert.doesNotMatch(workflow, /deploy-noncritical-edge:/);
   assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/);
+});
+
+test("every live probe derives its profile from the exact target checkout", () => {
+  const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
+  assert.equal(probes.length, 4);
+  for (const probe of probes) assert.match(probe[1], /--target-root/);
+  assert.doesNotMatch(workflow, /inputs\.contract_profile|CONTRACT_PROFILE_OVERRIDE|--profile\b/i);
+  assert.match(workflow, /contract_profile: \$\{\{ steps\.plan\.outputs\.contract_profile \}\}/);
+});
+
+test("pinned actionlint validation is read-only and uses no production secret", () => {
+  assert.match(validationWorkflow, /pull_request:/);
+  assert.match(validationWorkflow, /contents: read/);
+  assert.match(validationWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
+  assert.match(validationWorkflow, /actionlint_1\.7\.7_linux_amd64\.tar\.gz/);
+  assert.match(validationWorkflow, /023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757/);
+  assert.match(validationWorkflow, /sha256sum --check --strict/);
+  assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
+  assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
+  assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);
 });

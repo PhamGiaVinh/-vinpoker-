@@ -6,7 +6,14 @@ import { loadDeploymentManifest, validateDeploymentManifest } from "./deployment
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDirectory, "..", "..", "..");
 const workflowPath = resolve(repositoryRoot, ".github", "workflows", "vbackerworkflowmain.yml");
+const validationWorkflowPath = resolve(
+  repositoryRoot,
+  ".github",
+  "workflows",
+  "deployment-control-plane-validation.yml",
+);
 const workflow = readFileSync(workflowPath, "utf8");
+const validationWorkflow = readFileSync(validationWorkflowPath, "utf8");
 const manifest = loadDeploymentManifest();
 validateDeploymentManifest(manifest, repositoryRoot);
 
@@ -40,6 +47,8 @@ const requiredSnippets = [
   "npm run build",
   "npx vitest run",
   "probe-live-schema-contracts.mjs",
+  "contract_profile:",
+  "contract_source_fingerprint:",
   "target-preflight:",
   "validate-critical-environment:",
   "required_reviewers",
@@ -54,6 +63,32 @@ const requiredSnippets = [
 ];
 for (const snippet of requiredSnippets) {
   if (!workflow.includes(snippet)) throw new Error(`workflow is missing required control: ${snippet}`);
+}
+
+for (const match of workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)) {
+  if (!match[1].includes("--target-root")) {
+    throw new Error("every live contract probe must derive its profile from exact target source");
+  }
+}
+
+const validationForbiddenPatterns = [
+  [/\bsecrets\./, "production secret reference"],
+  [/supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i, "production mutation"],
+  [/vercel\s+(?:deploy|--prod)/i, "frontend deployment"],
+];
+for (const [pattern, label] of validationForbiddenPatterns) {
+  if (pattern.test(validationWorkflow)) throw new Error(`actionlint workflow contains forbidden ${label}`);
+}
+for (const snippet of [
+  "pull_request:",
+  "contents: read",
+  "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+  "github.event.pull_request.head.sha || github.sha",
+  "actionlint_1.7.7_linux_amd64.tar.gz",
+  "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757",
+  "sha256sum --check --strict",
+]) {
+  if (!validationWorkflow.includes(snippet)) throw new Error(`pinned actionlint validation is missing: ${snippet}`);
 }
 
 for (const name of ["process-swing", "mass-assign", "checkout-dealer"]) {

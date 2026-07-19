@@ -28,6 +28,31 @@ machine-readable contracts. Reviewed tooling is loaded from `control-plane/`; de
 loaded independently from `target-source/`. This permits a reviewed rollback to an older source SHA
 without trusting scripts from that older commit.
 
+## Target-aware contract profiles
+
+The operator cannot select or override a contract profile. The reviewed control plane walks the
+exact imported graph for `process-swing`, `mass-assign`, and `checkout-dealer`, then includes the
+Dealer Swing frontend operation callers from the exact `target-source/` checkout. The deployment
+plan records the selected profile, source SHA-256 fingerprint, and marker evidence.
+
+- `dealer_swing_legacy` applies only when the imported graph contains the legacy empty-table path
+  and contains no durable mass-open marker. It checks every relation and RPC statically referenced
+  by that exact legacy graph, but does not require operation tables, columns, rollout or operation
+  RPCs.
+- `dealer_mass_open_v1` requires the complete `fillOpenOperation` marker set, operation relations,
+  `dealer_open_operation_id`, rollout access and frontend operation RPC callers. It adds the full
+  durable-operation contract to the source-derived dependencies.
+
+Partial or contradictory markers stop planning with `UNKNOWN_TARGET_CONTRACT_PROFILE`. A current
+mass-open target cannot be forced through the legacy profile. Every preflight and immediate
+pre-deploy schema probe recomputes the profile from the same exact target checkout.
+
+The mass-open profile checks exact argument names/types, rejects ambiguous overloads, requires
+`authenticated` EXECUTE and `anon` denial for `get_dealer_mass_open_rollout`,
+`get_dealer_open_operation` and `operator_open_dealer_tables`, and requires service-role-only access
+to `_refresh_dealer_open_operation`. The refresh helper is a transitive server contract for the
+frontend operation path; the browser does not call it directly.
+
 Each successful component deployment records a GitHub Deployment receipt under a component-specific
 environment. A failed deployment writes no success receipt. A later rollback writes a new successful
 receipt pointing to the older exact SHA. Operators never type or choose a baseline SHA.
@@ -55,6 +80,10 @@ contract count, frontend decision, source scan, Deno check/tests, production bui
 live schema probe status. Missing source directories, imports, tests or operation contracts stop the
 workflow before approval.
 
+The separate `Validate deployment control plane` PR workflow runs actionlint `1.7.7` after verifying
+the pinned release archive checksum. It has read-only repository permission, references no
+production secret, and has no deploy or database mutation step.
+
 ## Database migration policy
 
 The general production workflow does not apply migrations. In particular, it never runs
@@ -76,5 +105,7 @@ npm run check:credential-context
 deno test --allow-env --allow-read scripts/deploy/target-source-policy.test.ts
 ```
 
-The live schema probe is intentionally expected to block `process-swing` and `mass-assign` while
-their operation-table contract is absent. Do not bypass that result.
+For a current mass-open target, the live schema probe intentionally blocks while any operation
+object or required ACL is absent. An exact pre-#922 rollback target may pass the legacy profile on a
+schema without operation objects, but still fails when any dependency actually imported by that
+legacy source is missing. Do not bypass either result.

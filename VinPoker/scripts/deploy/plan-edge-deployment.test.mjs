@@ -11,6 +11,16 @@ import { buildComponentDiffs, buildDeploymentPlan, isFrontendPath, renderPlanSum
 const manifest = loadDeploymentManifest();
 const TARGET = "a".repeat(40);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const MASS_OPEN_SELECTION = {
+  profile: "dealer_mass_open_v1",
+  sourceFingerprint: `sha256:${"a".repeat(64)}`,
+  evidence: { fillOpenOperationImport: ["VinPoker/supabase/functions/_shared/fillOpenOperation.ts"] },
+};
+const LEGACY_SELECTION = {
+  profile: "dealer_swing_legacy",
+  sourceFingerprint: `sha256:${"b".repeat(64)}`,
+  evidence: { fillEmptyTablesImport: ["VinPoker/supabase/functions/_shared/fillEmptyTables.ts"] },
+};
 
 function diff({ frontend = false, changed = [], shared = [], missing = [] } = {}) {
   const functions = {};
@@ -35,7 +45,13 @@ function diff({ frontend = false, changed = [], shared = [], missing = [] } = {}
 }
 
 function plan(options) {
-  return buildDeploymentPlan({ event: "workflow_dispatch", manifest, targetSha: TARGET, ...options });
+  return buildDeploymentPlan({
+    event: "workflow_dispatch",
+    manifest,
+    targetSha: TARGET,
+    contractSelection: MASS_OPEN_SELECTION,
+    ...options,
+  });
 }
 
 test("manual frontend-only rejects a process-swing or mass-assign hitchhike", () => {
@@ -66,6 +82,8 @@ test("pre-approval summary includes full diff, JWT, contracts and frontend reaso
   assert.match(summary, /no-verify/);
   assert.match(summary, /Contracts/);
   assert.match(summary, /critical_dependencies_selected/);
+  assert.match(summary, /dealer_mass_open_v1/);
+  assert.match(summary, /fillOpenOperationImport/);
 });
 
 test("shared source diff requires every critical consumer before frontend", () => {
@@ -79,7 +97,13 @@ test("shared source diff requires every critical consumer before frontend", () =
 test("push never deploys Edge and holds frontend with a missing receipt", () => {
   const componentDiffs = diff({ frontend: true });
   componentDiffs.frontend.baselineSha = null;
-  const result = buildDeploymentPlan({ event: "push", componentDiffs, manifest, targetSha: TARGET });
+  const result = buildDeploymentPlan({
+    event: "push",
+    componentDiffs,
+    manifest,
+    targetSha: TARGET,
+    contractSelection: MASS_OPEN_SELECTION,
+  });
   assert.deepEqual(result.noncriticalFunctions, []);
   assert.deepEqual(result.criticalFunctions, []);
   assert.equal(result.frontend, false);
@@ -183,7 +207,9 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
     deployFrontend: true,
     manifest,
     targetSha: "1fdc210d4ae1689091e0ad874c559592b0ecd690",
+    contractSelection: LEGACY_SELECTION,
   });
   assert.equal(result.frontend, true);
   assert.deepEqual(result.criticalFunctions, ["checkout-dealer", "mass-assign", "process-swing"]);
+  assert.equal(result.contractProfile, "dealer_swing_legacy");
 });

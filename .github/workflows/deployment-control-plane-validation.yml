@@ -1,0 +1,41 @@
+name: Validate deployment control plane
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "VinPoker/scripts/deploy/**"
+      - "VinPoker/docs/dealer-swing/CONTROL_PLANE_RUNBOOK.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Pinned actionlint on exact source revision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact revision under validation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download and verify actionlint 1.7.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/actionlint_1.7.7_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz"
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  $archive" \
+            | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" actionlint
+
+      - name: Validate exact workflow revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 \
+            | xargs -0 "${RUNNER_TEMP}/actionlint"

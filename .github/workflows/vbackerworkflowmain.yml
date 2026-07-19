@@ -57,6 +57,8 @@ jobs:
       frontend_held: ${{ steps.plan.outputs.frontend_held }}
       frontend_reason: ${{ steps.plan.outputs.frontend_reason }}
       shared_changed: ${{ steps.plan.outputs.shared_changed }}
+      contract_profile: ${{ steps.plan.outputs.contract_profile }}
+      contract_source_fingerprint: ${{ steps.plan.outputs.contract_source_fingerprint }}
       target_sha: ${{ steps.plan.outputs.target_sha }}
     steps:
       - name: Checkout reviewed control-plane tooling
@@ -297,6 +299,7 @@ jobs:
           node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
           --schema "${RUNNER_TEMP}/live-schema.sql"
           --targets "$TARGETS"
+          --target-root "${GITHUB_WORKSPACE}/target-source"
 
       - name: Probe frontend live contracts
         if: needs.plan.outputs.frontend == 'true'
@@ -304,6 +307,7 @@ jobs:
           node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
           --schema "${RUNNER_TEMP}/live-schema.sql"
           --targets frontend
+          --target-root "${GITHUB_WORKSPACE}/target-source"
 
       - name: Publish pre-approval evidence
         shell: bash
@@ -311,12 +315,16 @@ jobs:
           TARGETS: ${{ needs.plan.outputs.critical_functions }}
           FRONTEND: ${{ needs.plan.outputs.frontend }}
           FRONTEND_REASON: ${{ needs.plan.outputs.frontend_reason }}
+          CONTRACT_PROFILE: ${{ needs.plan.outputs.contract_profile }}
+          CONTRACT_SOURCE_FINGERPRINT: ${{ needs.plan.outputs.contract_source_fingerprint }}
         run: |
           {
             echo "## Pre-approval result"
             echo ""
             echo "- Control-plane tooling SHA: \`${GITHUB_SHA}\`"
             echo "- Deployment target SHA: \`${TARGET_SHA}\`"
+            echo "- Target contract profile: \`$CONTRACT_PROFILE\`"
+            echo "- Contract source fingerprint: \`$CONTRACT_SOURCE_FINGERPRINT\`"
             echo "- Target source quality: PASS"
             echo "- Live contract probe: PASS"
             echo "- Selected critical Edge: \`$TARGETS\`"
@@ -387,7 +395,8 @@ jobs:
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
           node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
             --schema "${RUNNER_TEMP}/live-schema.sql" \
-            --targets "${{ matrix.function }}"
+            --targets "${{ matrix.function }}" \
+            --target-root "${GITHUB_WORKSPACE}/target-source"
         working-directory: target-source/VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
@@ -462,7 +471,8 @@ jobs:
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
           node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
             --schema "${RUNNER_TEMP}/live-schema.sql" \
-            --targets frontend
+            --targets frontend \
+            --target-root "${GITHUB_WORKSPACE}/target-source"
         working-directory: target-source/VinPoker
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}

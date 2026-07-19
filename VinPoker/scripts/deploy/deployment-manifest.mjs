@@ -18,7 +18,7 @@ export function loadDeploymentManifest(path = DEFAULT_MANIFEST_PATH) {
 }
 
 export function validateDeploymentManifest(manifest, repositoryRoot) {
-  if (manifest?.schemaVersion !== 2) throw new Error("deployment manifest schemaVersion must be 2");
+  if (manifest?.schemaVersion !== 3) throw new Error("deployment manifest schemaVersion must be 3");
   if (typeof manifest.criticalEnvironment !== "string" || !manifest.criticalEnvironment) {
     throw new Error("deployment manifest must name a criticalEnvironment");
   }
@@ -30,6 +30,24 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
   }
   if (!manifest.functions || typeof manifest.functions !== "object") {
     throw new Error("deployment manifest functions must be an object");
+  }
+  for (const profileName of ["dealer_swing_legacy", "dealer_mass_open_v1"]) {
+    const profile = manifest.contractProfiles?.[profileName];
+    if (!profile || profile.deriveImportedGraphDependencies !== true) {
+      throw new Error(`target-aware contract profile ${profileName} must derive imported graph dependencies`);
+    }
+    if (!Array.isArray(profile.frontend?.additionalContracts)) {
+      throw new Error(`target-aware contract profile ${profileName} must declare frontend additions`);
+    }
+    for (const functionName of REQUIRED_CRITICAL_POSTURE.keys()) {
+      if (!Array.isArray(profile.functions?.[functionName]?.additionalContracts)) {
+        throw new Error(`target-aware contract profile ${profileName} must declare ${functionName} additions`);
+      }
+    }
+  }
+  if (manifest.contractProfiles.dealer_swing_legacy.extends !== null
+      || manifest.contractProfiles.dealer_mass_open_v1.extends !== "dealer_swing_legacy") {
+    throw new Error("contract profile inheritance must be legacy -> dealer_mass_open_v1");
   }
 
   for (const [name, expectedVerifyJwt] of REQUIRED_CRITICAL_POSTURE) {
@@ -70,7 +88,136 @@ export function validateDeploymentManifest(manifest, repositoryRoot) {
     }
   }
 
+  const legacyProfile = resolveContractProfile(manifest, "dealer_swing_legacy");
+  const massOpenProfile = resolveContractProfile(manifest, "dealer_mass_open_v1");
+  const durableNames = [
+    "dealer_mass_open_rollout",
+    "dealer_open_operations",
+    "dealer_open_operation_targets",
+    "dealer_open_operation_id",
+    "opened_at",
+    "get_dealer_mass_open_rollout",
+    "get_dealer_open_operation",
+    "operator_open_dealer_tables",
+    "_refresh_dealer_open_operation",
+  ];
+  if (durableNames.some((name) => JSON.stringify(legacyProfile).includes(name))) {
+    throw new Error("dealer_swing_legacy must not require durable mass-open objects");
+  }
+  const requireContract = (contracts, predicate, label) => {
+    if (!contracts.some(predicate)) throw new Error(`dealer_mass_open_v1 is missing ${label}`);
+  };
+  for (const component of ["frontend", "process-swing", "mass-assign"]) {
+    const contracts = component === "frontend" ? massOpenProfile.frontend : massOpenProfile.functions[component];
+    for (const relation of [
+      "public.dealer_mass_open_rollout",
+      "public.dealer_open_operations",
+      "public.dealer_open_operation_targets",
+    ]) {
+      requireContract(contracts, (item) => item.type === "relation" && item.name === relation, `${component} ${relation}`);
+    }
+    for (const column of ["opened_at", "dealer_open_operation_id"]) {
+      requireContract(
+        contracts,
+        (item) => item.type === "column" && item.relation === "public.game_tables" && item.name === column,
+        `${component} public.game_tables.${column}`,
+      );
+    }
+    requireContract(
+      contracts,
+      (item) => item.type === "function"
+        && item.name === "public._refresh_dealer_open_operation"
+        && item.allowOtherOverloads === false
+        && item.acl?.service_role === true
+        && item.acl?.authenticated === false
+        && item.acl?.anon === false,
+      `${component} internal refresh helper ACL`,
+    );
+  }
+  requireContract(
+    massOpenProfile.functions["checkout-dealer"],
+    (item) => item.type === "relation" && item.name === "public.dealer_mass_open_rollout",
+    "checkout-dealer rollout relation",
+  );
+  for (const functionName of [
+    "public.get_dealer_mass_open_rollout",
+    "public.get_dealer_open_operation",
+    "public.operator_open_dealer_tables",
+  ]) {
+    requireContract(
+      massOpenProfile.frontend,
+      (item) => item.type === "function"
+        && item.name === functionName
+        && item.allowOtherOverloads === false
+        && item.acl?.authenticated === true
+        && item.acl?.anon === false
+        && Array.isArray(item.argumentTypes),
+      `frontend exact signature/ACL for ${functionName}`,
+    );
+  }
+
   return manifest;
+}
+
+function contractIdentity(contract) {
+  if (contract.type === "relation") return `relation:${contract.name}`;
+  if (contract.type === "column") return `column:${contract.relation}.${contract.name}`;
+  if (contract.type === "function") {
+    return `function:${contract.name}:${contract.arguments ? contract.arguments.join(",") : "*"}`;
+  }
+  return `unsupported:${JSON.stringify(contract)}`;
+}
+
+export function mergeContracts(...groups) {
+  const merged = [];
+  for (const contract of groups.flat()) {
+    if (contract.type === "function" && contract.arguments) {
+      for (let index = merged.length - 1; index >= 0; index -= 1) {
+        if (merged[index].type === "function"
+            && merged[index].name === contract.name
+            && !merged[index].arguments) merged.splice(index, 1);
+      }
+    }
+    if (contract.type === "function" && !contract.arguments
+        && merged.some((item) => item.type === "function" && item.name === contract.name && item.arguments)) {
+      continue;
+    }
+    const identity = contractIdentity(contract);
+    const existing = merged.findIndex((item) => contractIdentity(item) === identity);
+    if (existing === -1) merged.push(contract);
+    else merged[existing] = { ...merged[existing], ...contract };
+  }
+  return merged;
+}
+
+export function resolveContractProfile(manifest, profileName) {
+  const profile = manifest.contractProfiles?.[profileName];
+  if (!profile) throw new Error(`unknown target contract profile: ${profileName}`);
+  const chain = [];
+  const seen = new Set();
+  let cursor = profile;
+  while (cursor) {
+    if (seen.has(cursor)) throw new Error(`contract profile inheritance cycle at ${profileName}`);
+    seen.add(cursor);
+    chain.unshift(cursor);
+    cursor = cursor.extends ? manifest.contractProfiles[cursor.extends] : null;
+  }
+  const functions = {};
+  for (const [name, config] of Object.entries(manifest.functions)) {
+    functions[name] = mergeContracts(
+      config.contracts,
+      ...chain.map((item) => item.functions?.[name]?.additionalContracts ?? []),
+    );
+  }
+  return {
+    name: profileName,
+    frontend: mergeContracts(
+      manifest.frontend.contracts,
+      ...chain.map((item) => item.frontend.additionalContracts),
+    ),
+    functions,
+    deriveImportedGraphDependencies: chain.every((item) => item.deriveImportedGraphDependencies),
+  };
 }
 
 export function parseTargetList(rawTargets) {

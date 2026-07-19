@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "criticalEnvironment": "dealer-swing-production-critical",
   "frontend": {
     "receiptEnvironment": "receipt-vinpoker-frontend",
@@ -13,18 +13,113 @@
     "contracts": [
       { "type": "relation", "name": "public.clubs" },
       { "type": "relation", "name": "public.club_members" },
-      { "type": "relation", "name": "public.club_settings" },
-      { "type": "relation", "name": "public.dealer_open_operations" },
-      { "type": "relation", "name": "public.dealer_open_operation_targets" },
-      { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
-      { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
-      {
-        "type": "function",
-        "name": "public.operator_open_dealer_tables",
-        "arguments": ["p_request_id", "p_expected_club_id", "p_shift_id", "p_table_ids", "p_table_type"]
-      },
-      { "type": "function", "name": "public._refresh_dealer_open_operation", "arguments": ["p_operation_id"] }
+      { "type": "relation", "name": "public.club_settings" }
     ]
+  },
+  "contractProfiles": {
+    "dealer_swing_legacy": {
+      "description": "Dealer Swing source before durable mass-open operations.",
+      "deriveImportedGraphDependencies": true,
+      "extends": null,
+      "frontend": { "additionalContracts": [] },
+      "functions": {
+        "process-swing": { "additionalContracts": [] },
+        "mass-assign": { "additionalContracts": [] },
+        "checkout-dealer": { "additionalContracts": [] }
+      }
+    },
+    "dealer_mass_open_v1": {
+      "description": "Dealer Swing source with durable open-operation continuation.",
+      "deriveImportedGraphDependencies": true,
+      "extends": "dealer_swing_legacy",
+      "frontend": {
+        "additionalContracts": [
+          { "type": "relation", "name": "public.dealer_mass_open_rollout", "dependencyKind": "transitive_server" },
+          { "type": "relation", "name": "public.dealer_open_operations", "dependencyKind": "transitive_server" },
+          { "type": "relation", "name": "public.dealer_open_operation_targets", "dependencyKind": "transitive_server" },
+          { "type": "column", "relation": "public.game_tables", "name": "opened_at", "dependencyKind": "transitive_server" },
+          { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id", "dependencyKind": "transitive_server" },
+          {
+            "type": "function",
+            "name": "public.get_dealer_mass_open_rollout",
+            "arguments": ["p_expected_club_id"],
+            "argumentTypes": ["uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false, "service_role": true },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public.get_dealer_open_operation",
+            "arguments": ["p_operation_id", "p_expected_club_id"],
+            "argumentTypes": ["uuid", "uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false, "service_role": true },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public.operator_open_dealer_tables",
+            "arguments": ["p_request_id", "p_expected_club_id", "p_shift_id", "p_table_ids", "p_table_type"],
+            "argumentTypes": ["uuid", "uuid", "uuid", "uuid[]", "text"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public._refresh_dealer_open_operation",
+            "arguments": ["p_operation_id"],
+            "argumentTypes": ["uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": false, "anon": false, "service_role": true },
+            "dependencyKind": "transitive_server"
+          }
+        ]
+      },
+      "functions": {
+        "process-swing": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" },
+            { "type": "relation", "name": "public.dealer_open_operations", "dependencyKind": "transitive_operation" },
+            { "type": "relation", "name": "public.dealer_open_operation_targets", "dependencyKind": "transitive_operation" },
+            { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
+            { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
+            {
+              "type": "function",
+              "name": "public._refresh_dealer_open_operation",
+              "arguments": ["p_operation_id"],
+              "argumentTypes": ["uuid"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "transitive_operation"
+            }
+          ]
+        },
+        "mass-assign": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" },
+            { "type": "relation", "name": "public.dealer_open_operations" },
+            { "type": "relation", "name": "public.dealer_open_operation_targets" },
+            { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
+            { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
+            {
+              "type": "function",
+              "name": "public._refresh_dealer_open_operation",
+              "arguments": ["p_operation_id"],
+              "argumentTypes": ["uuid"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true }
+            }
+          ]
+        },
+        "checkout-dealer": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" }
+          ]
+        }
+      }
+    }
   },
   "functions": {
     "process-swing": {
@@ -44,10 +139,6 @@
         { "type": "relation", "name": "public.dealer_assignments" },
         { "type": "relation", "name": "public.dealer_attendance" },
         { "type": "relation", "name": "public.game_tables" },
-        { "type": "relation", "name": "public.dealer_open_operations" },
-        { "type": "relation", "name": "public.dealer_open_operation_targets" },
-        { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
-        { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
         {
           "type": "function",
           "name": "public.try_acquire_club_lock_fenced",
@@ -75,8 +166,7 @@
           ]
         },
         { "type": "function", "name": "public.perform_swing" },
-        { "type": "function", "name": "public.get_process_swing_due_club_ids", "arguments": [] },
-        { "type": "function", "name": "public._refresh_dealer_open_operation", "arguments": ["p_operation_id"] }
+        { "type": "function", "name": "public.get_process_swing_due_club_ids", "arguments": [] }
       ]
     },
     "mass-assign": {
@@ -94,16 +184,11 @@
       },
       "contracts": [
         { "type": "relation", "name": "public.game_tables" },
-        { "type": "relation", "name": "public.dealer_open_operations" },
-        { "type": "relation", "name": "public.dealer_open_operation_targets" },
-        { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
-        { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
         {
           "type": "function",
           "name": "public.is_club_dealer_control",
           "arguments": ["_user_id", "_club_id"]
         },
-        { "type": "function", "name": "public._refresh_dealer_open_operation", "arguments": ["p_operation_id"] },
         {
           "type": "function",
           "name": "public.assign_dealer_to_table",
