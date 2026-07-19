@@ -262,6 +262,7 @@ $$;
 \ir ../../supabase/migrations/20261240000000_floor_production_hardening.sql
 \ir ../../supabase/migrations/20261241000000_floor_clock_start_atomic.sql
 \ir ../../supabase/migrations/20261242000000_floor_operator_scope.sql
+\ir ../../supabase/migrations/20270104000001_floor_chip_cas_rpc.sql
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', false);
 
@@ -423,6 +424,92 @@ SELECT public.floor_test_assert(
   NOT has_function_privilege('anon', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.get_my_floor_operator_scope()'::regprocedure, 'EXECUTE'),
   'operator-scope RPC revokes anon and grants authenticated'
+);
+
+INSERT INTO public.tournament_entries (
+  id, tournament_id, player_id, entry_no, status, current_stack, table_id, seat_id, seat_number
+) VALUES (
+  '00000000-0000-0000-0000-000000000403',
+  '00000000-0000-0000-0000-000000000100',
+  '00000000-0000-0000-0000-000000000503',
+  1,
+  'seated',
+  100,
+  '00000000-0000-0000-0000-000000000201',
+  '00000000-0000-0000-0000-000000000603',
+  4
+);
+INSERT INTO public.tournament_seats (
+  id, tournament_id, player_id, entry_number, table_id, seat_number,
+  chip_count, is_active, player_name, entry_id, status
+) VALUES (
+  '00000000-0000-0000-0000-000000000603',
+  '00000000-0000-0000-0000-000000000100',
+  '00000000-0000-0000-0000-000000000503',
+  1,
+  '00000000-0000-0000-0000-000000000301',
+  4,
+  100,
+  true,
+  'Chip CAS Player',
+  '00000000-0000-0000-0000-000000000403',
+  'active'
+);
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000003', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_update_tournament_seat_chip(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000603',
+    100,
+    125
+  )->>'ok')::boolean,
+  'floor membership can perform the first chip CAS write'
+);
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_update_tournament_seat_chip(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000603',
+    100,
+    150
+  )->>'error') = 'stale_seat_state',
+  'stale chip CAS is rejected after the first write'
+);
+RESET ROLE;
+SELECT public.floor_test_assert(
+  (SELECT chip_count = 125
+   FROM public.tournament_seats
+   WHERE id = '00000000-0000-0000-0000-000000000603'),
+  'stale chip CAS leaves the committed chip count unchanged'
+);
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000099', false);
+SET ROLE authenticated;
+SELECT public.floor_test_assert(
+  (public.floor_update_tournament_seat_chip(
+    '00000000-0000-0000-0000-000000000100',
+    '00000000-0000-0000-0000-000000000603',
+    125,
+    150
+  )->>'error') = 'actor_not_allowed',
+  'cross-club actor cannot update chip count'
+);
+RESET ROLE;
+SELECT public.floor_test_assert(
+  (SELECT chip_count = 125
+   FROM public.tournament_seats
+   WHERE id = '00000000-0000-0000-0000-000000000603'),
+  'cross-club denial does not change the seat'
+);
+
+SELECT public.floor_test_assert(
+  NOT has_function_privilege('anon', 'public.floor_update_tournament_seat_chip(uuid,uuid,integer,integer)'::regprocedure, 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.floor_update_tournament_seat_chip(uuid,uuid,integer,integer)'::regprocedure, 'EXECUTE'),
+  'chip CAS RPC denies anon and grants authenticated'
 );
 
 SELECT 'floor disposable DB integration passed' AS result;
