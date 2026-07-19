@@ -247,39 +247,6 @@ async function moneySafetyPreflight(admin, ledger) {
   return counts;
 }
 
-async function readCanaryAuthUsers(admin, allowedRunIds) {
-  const allowed = new Map(allowedRunIds.map((runId) => [runId.toLowerCase(), { runId, actors: [] }]));
-  const emailPattern = /^(codex_floor_canary_[0-9]{14}_[a-f0-9]{8})-(owner|cashier|floor|cross)@floor-canary\.invalid$/;
-  let page = 1;
-  let fetched;
-  do {
-    fetched = await admin.auth.admin.listUsers({ page, perPage: 100 });
-    if (fetched.error || !fetched.data?.users) {
-      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=list_auth_users page=${page} ${safeAuthErrorDetail(fetched.error)}`);
-      fail("cleanup_scope_auth_users");
-    }
-    for (const user of fetched.data.users) {
-      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
-      if (!email.startsWith("codex_floor_canary_")) continue;
-      const match = email.match(emailPattern);
-      const group = match ? allowed.get(match[1]) : null;
-      if (!match || !group || !UUID_RE.test(user.id)) fail("CLEANUP_SCOPE_UNEXPECTED:auth_user");
-      group.actors.push({ id: user.id, label: match[2] });
-    }
-    page += 1;
-  } while (fetched.data.users.length === 100);
-
-  const result = new Map();
-  for (const { runId, actors } of allowed.values()) {
-    const ids = [...new Set(actors.map((actor) => actor.id))];
-    const labels = new Set(actors.map((actor) => actor.label));
-    if (![0, 4].includes(ids.length) || (ids.length === 4 && labels.size !== 4)) fail("CLEANUP_SCOPE_UNEXPECTED:auth_actor_set");
-    result.set(runId, ids);
-    console.log(`FLOOR_CANARY CLEANUP_AUTH_SCOPE run_hash=${actorHash(runId)} users=${ids.length} ids_hash=${hashIds(ids)}`);
-  }
-  return result;
-}
-
 async function validateExactAuthUserIds(admin, runId, ids) {
   if (![0, 4].includes(ids.length) || ids.some((id) => !UUID_RE.test(id))) fail("cleanup_scope_actor_count");
   const emailPattern = new RegExp(`^${runId.toLowerCase()}-(owner|cashier|floor|cross)@floor-canary\\.invalid$`);
@@ -310,7 +277,7 @@ async function verifyExactAuthUsersDeleted(admin, ids) {
   }
 }
 
-async function buildCleanupLedger(admin, scope, discoveredAuthUserIds) {
+async function buildCleanupLedger(admin, scope) {
   const clubIds = scope.clubs.map((club) => club.id);
   const tournaments = await admin.from("tournaments").select("id,club_id").in("club_id", clubIds);
   if (tournaments.error || !Array.isArray(tournaments.data)) fail("cleanup_scope_tournaments");
@@ -333,8 +300,8 @@ async function buildCleanupLedger(admin, scope, discoveredAuthUserIds) {
   ].filter((id) => typeof id === "string"));
   const referencedUserIds = [...userIds];
   if (![0, 4].includes(referencedUserIds.length)) fail("CLEANUP_SCOPE_UNEXPECTED:referenced_actor_set");
-  if (referencedUserIds.some((id) => !discoveredAuthUserIds.includes(id))) fail("CLEANUP_SCOPE_UNEXPECTED:actor_reference_mismatch");
-  const authUsers = await validateExactAuthUserIds(admin, scope.runId, discoveredAuthUserIds);
+  const authUsers = await validateExactAuthUserIds(admin, scope.runId, referencedUserIds);
+  console.log(`FLOOR_CANARY CLEANUP_AUTH_SCOPE run_hash=${actorHash(scope.runId)} users=${authUsers.length} source=exact_references ids_hash=${hashIds(authUsers)}`);
   for (const userId of authUsers) userIds.add(userId);
 
   const ledger = {
@@ -876,10 +843,9 @@ async function cleanupExactLedger(admin, ledger) {
 
 async function runCleanupCanary(admin) {
   const scopes = await discoverCleanupScope(admin);
-  const authUsersByRun = await readCanaryAuthUsers(admin, scopes.map((scope) => scope.runId));
   const ledgers = [];
   for (const scope of scopes) {
-    const ledger = await buildCleanupLedger(admin, scope, authUsersByRun.get(scope.runId) ?? []);
+    const ledger = await buildCleanupLedger(admin, scope);
     await moneySafetyPreflight(admin, ledger);
     ledgers.push(ledger);
   }
@@ -893,8 +859,6 @@ async function runCleanupCanary(admin) {
   let remainingUsers = 0;
   try {
     await verifyExactAuthUsersDeleted(admin, exactAuthUserIds);
-    const remainingByRun = await readCanaryAuthUsers(admin, scopes.map((scope) => scope.runId));
-    remainingUsers = [...remainingByRun.values()].reduce((count, ids) => count + ids.length, 0);
   } catch (error) {
     remainingUsers = 1;
     console.log(`FLOOR_CANARY CLEANUP_REMAINING_AUTH detail=${error instanceof Error ? error.message : "unknown"}`);

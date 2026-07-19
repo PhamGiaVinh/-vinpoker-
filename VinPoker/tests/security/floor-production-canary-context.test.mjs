@@ -97,7 +97,7 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 2/);
   assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
   assert.match(canarySource, /auth\.admin\.getUserById\(id\)/);
-  assert.match(canarySource, /auth\.admin\.listUsers\(\{ page, perPage: 100 \}\)/);
+  assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);
   assert.doesNotMatch(canarySource, /delete\(\)[\s\S]{0,120}\.like\(/);
   assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
 });
