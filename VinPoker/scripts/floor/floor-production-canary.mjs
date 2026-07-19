@@ -29,6 +29,7 @@ const CLEANUP_TOTAL_CLUB_COUNT = 4;
 const CLEANUP_SCOPE_PREFIX = "CODEX_FLOOR_CANARY_";
 const CLEANUP_GAME_TABLE_BATCH_SIZE = 50;
 const CLEANUP_MAX_BATCH_ATTEMPTS = 2;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CLEANUP_CHILD_SCOPES = [
   { table: "dealer_assignments", column: "table_id", source: "gameTableIds", constraint: "dealer_assignments_table_id_fkey", indexed: true },
@@ -156,7 +157,7 @@ function cleanupScopeError(detail = "") {
 
 async function readCleanupCandidates(admin) {
   const response = await admin.from("clubs")
-    .select("id,name,region")
+    .select("id,name,region,owner_id")
     .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
     .limit(1000);
   if (response.error || !Array.isArray(response.data)) {
@@ -171,11 +172,11 @@ async function discoverCleanupScope(admin) {
   const parsed = [];
   for (const row of rows) {
     const match = typeof row.name === "string" ? row.name.match(CLEANUP_SCENARIO_RE) : null;
-    if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || typeof row.id !== "string") {
+    if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || !UUID_RE.test(row.id) || !UUID_RE.test(row.owner_id)) {
       console.log("FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row");
       cleanupScopeError("invalid_row");
     }
-    parsed.push({ id: row.id, runId: match[1], scenario: match[2] });
+    parsed.push({ id: row.id, ownerId: row.owner_id, runId: match[1], scenario: match[2] });
   }
 
   const groups = new Map();
@@ -245,26 +246,35 @@ async function moneySafetyPreflight(admin, ledger) {
   return counts;
 }
 
-async function listAuthUserIds(admin, runId = null) {
-  const ids = [];
-  let page = 1;
-  let fetched;
-  const emailPattern = runId
-    ? new RegExp(`^${runId.toLowerCase()}-(owner|cashier|floor|cross)@floor-canary\\.invalid$`)
-    : /^codex_floor_canary_[0-9]{14}_[a-f0-9]{8}-(owner|cashier|floor|cross)@floor-canary\.invalid$/;
-  do {
-    fetched = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-    if (fetched.error || !fetched.data?.users) {
-      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=list_auth_users ${safeAuthErrorDetail(fetched.error)}`);
-      fail("cleanup_scope_auth_users");
+async function loadExactAuthUserIds(admin, runId, candidateIds) {
+  const ids = [...new Set(candidateIds)];
+  if (ids.length !== 4 || ids.some((id) => !UUID_RE.test(id))) fail("cleanup_scope_actor_count");
+  const emailPattern = new RegExp(`^${runId.toLowerCase()}-(owner|cashier|floor|cross)@floor-canary\\.invalid$`);
+  const labels = new Set();
+  for (const id of ids) {
+    const fetched = await admin.auth.admin.getUserById(id);
+    if (fetched.error || !fetched.data?.user) {
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=get_auth_user id_hash=${actorHash(id)} ${safeAuthErrorDetail(fetched.error)}`);
+      fail("cleanup_scope_auth_user");
     }
-    for (const user of fetched.data.users) {
-      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
-      if (emailPattern.test(email)) ids.push(user.id);
+    const email = typeof fetched.data.user.email === "string" ? fetched.data.user.email.toLowerCase() : "";
+    const match = email.match(emailPattern);
+    if (!match || fetched.data.user.id !== id) fail("cleanup_scope_auth_identity_mismatch");
+    labels.add(match[1]);
+  }
+  if (labels.size !== 4) fail("cleanup_scope_actor_labels");
+  return ids;
+}
+
+async function verifyExactAuthUsersDeleted(admin, ids) {
+  for (const id of ids) {
+    const fetched = await admin.auth.admin.getUserById(id);
+    if (fetched.error) {
+      if (fetched.error.status === 404 || fetched.error.code === "user_not_found") continue;
+      throw new Error(`verify_auth_user:${actorHash(id)}:${safeAuthErrorDetail(fetched.error)}`);
     }
-    page += 1;
-  } while (fetched.data.users.length === 1000);
-  return [...new Set(ids)];
+    if (fetched.data?.user) throw new Error(`verify_auth_user:remaining=1:id_hash=${actorHash(id)}`);
+  }
 }
 
 async function buildCleanupLedger(admin, scope) {
@@ -284,10 +294,11 @@ async function buildCleanupLedger(admin, scope) {
   const floorMemberships = await admin.from("club_floors").select("club_id,user_id").in("club_id", clubIds);
   if (cashierMemberships.error || floorMemberships.error) fail("cleanup_scope_memberships");
   const userIds = new Set([
+    ...scope.clubs.map((club) => club.ownerId),
     ...cashierMemberships.data.map((row) => row.user_id),
     ...floorMemberships.data.map((row) => row.user_id),
   ].filter((id) => typeof id === "string"));
-  const authUsers = await listAuthUserIds(admin, scope.runId);
+  const authUsers = await loadExactAuthUserIds(admin, scope.runId, [...userIds]);
   for (const userId of authUsers) userIds.add(userId);
 
   const ledger = {
@@ -813,8 +824,7 @@ async function cleanupExactLedger(admin, ledger) {
   await attempt("verify_floor_memberships", () => verifyByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "verify_floor_memberships"));
   await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", ledger.clubIds, "verify_clubs"));
   await attempt("verify_auth_users", async () => {
-    const remaining = await listAuthUserIds(admin, ledger.runId);
-    if (remaining.length !== 0) throw new Error(`verify_auth_users:remaining=${remaining.length}:ids_hash=${hashIds(remaining)}`);
+    await verifyExactAuthUsersDeleted(admin, ledger.authUserIds);
   });
   await attempt("verify_money_rows", () => moneySafetyPreflight(admin, ledger));
   if (failures.length > 0) {
@@ -842,9 +852,16 @@ async function runCleanupCanary(admin) {
     for (const [table, count] of Object.entries(deleted)) totals[table] = (totals[table] ?? 0) + count;
   }
   const remainingClubs = await readCleanupCandidates(admin);
-  const remainingUsers = await listAuthUserIds(admin);
-  if (remainingClubs.length !== 0 || remainingUsers.length !== 0) {
-    console.log(`FLOOR_CANARY CLEANUP_REMAINING clubs=${remainingClubs.length} users=${remainingUsers.length} ids_hash=${hashIds([...remainingClubs.map((row) => row.id), ...remainingUsers])}`);
+  const exactAuthUserIds = ledgers.flatMap((ledger) => ledger.authUserIds);
+  let remainingUsers = 0;
+  try {
+    await verifyExactAuthUsersDeleted(admin, exactAuthUserIds);
+  } catch (error) {
+    remainingUsers = 1;
+    console.log(`FLOOR_CANARY CLEANUP_REMAINING_AUTH detail=${error instanceof Error ? error.message : "unknown"}`);
+  }
+  if (remainingClubs.length !== 0 || remainingUsers !== 0) {
+    console.log(`FLOOR_CANARY CLEANUP_REMAINING clubs=${remainingClubs.length} users=${remainingUsers} ids_hash=${hashIds(remainingClubs.map((row) => row.id))}`);
     fail("FLOOR CANARY CLEANUP FAIL - REMAINING_ROWS");
   }
   for (const [table, count] of Object.entries(totals)) console.log(`FLOOR_CANARY CLEANUP_TOTAL object=${table} count=${count}`);

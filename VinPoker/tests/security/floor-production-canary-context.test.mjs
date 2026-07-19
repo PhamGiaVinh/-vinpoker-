@@ -66,10 +66,10 @@ function cleanupDiscoveryAdmin(rows) {
 }
 
 const cleanupRows = [
-  { id: "club-a1", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_ACCESS", region: "TEST" },
-  { id: "club-a2", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_CROSS_CLUB", region: "TEST" },
-  { id: "club-b1", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_ACCESS", region: "TEST" },
-  { id: "club-b2", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_CROSS_CLUB", region: "TEST" },
+  { id: "10000000-0000-4000-8000-000000000001", owner_id: "20000000-0000-4000-8000-000000000001", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_ACCESS", region: "TEST" },
+  { id: "10000000-0000-4000-8000-000000000002", owner_id: "20000000-0000-4000-8000-000000000002", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_CROSS_CLUB", region: "TEST" },
+  { id: "10000000-0000-4000-8000-000000000003", owner_id: "20000000-0000-4000-8000-000000000003", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_ACCESS", region: "TEST" },
+  { id: "10000000-0000-4000-8000-000000000004", owner_id: "20000000-0000-4000-8000-000000000004", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_CROSS_CLUB", region: "TEST" },
 ];
 
 test("cleanup discovery accepts exactly two strict run groups with two TEST clubs each", async () => {
@@ -81,7 +81,7 @@ test("cleanup discovery accepts exactly two strict run groups with two TEST club
 test("cleanup discovery rejects unexpected run counts, suffixes, regions, and club counts", async () => {
   for (const rows of [
     cleanupRows.slice(0, 2),
-    [...cleanupRows, { id: "club-c1", name: "CODEX_FLOOR_CANARY_20990101140000_cccccccc_ACCESS", region: "TEST" }],
+    [...cleanupRows, { id: "10000000-0000-4000-8000-000000000005", owner_id: "20000000-0000-4000-8000-000000000005", name: "CODEX_FLOOR_CANARY_20990101140000_cccccccc_ACCESS", region: "TEST" }],
     cleanupRows.map((row, index) => index === 0 ? { ...row, region: "VN" } : row),
     cleanupRows.map((row, index) => index === 0 ? { ...row, name: `${row.name}_UNKNOWN` } : row),
     cleanupRows.slice(0, 3),
@@ -94,6 +94,8 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.match(canarySource, /CLEANUP_GAME_TABLE_BATCH_SIZE = 50/);
   assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 2/);
   assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
+  assert.match(canarySource, /auth\.admin\.getUserById\(id\)/);
+  assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);
   assert.doesNotMatch(canarySource, /delete\(\)[\s\S]{0,120}\.like\(/);
   assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
 });
