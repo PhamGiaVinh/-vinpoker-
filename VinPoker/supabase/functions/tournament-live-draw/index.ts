@@ -260,17 +260,35 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const { data: changed, error: updateError } = await supabase
-        .from("tournament_seats")
-        .update({ chip_count: nextChip })
-        .eq("id", existing.id)
-        .eq("tournament_id", tournamentId)
-        .eq("is_active", true)
-        .eq("chip_count", expectedChip)
-        .select("id")
-        .maybeSingle();
-      if (updateError) throw updateError;
-      if (!changed) return response({ error: "stale_seat_state" }, 409);
+      const { data: chipData, error: chipError } = await supabase.rpc(
+        "floor_update_tournament_seat_chip",
+        {
+          p_tournament_id: tournamentId,
+          p_seat_id: existing.id,
+          p_expected_chip_count: expectedChip,
+          p_chip_count: nextChip,
+        },
+      );
+      if (chipError) throw chipError;
+      if (!isRecord(chipData) || chipData.ok !== true) {
+        const chipCode = isRecord(chipData) &&
+            typeof chipData.error === "string"
+          ? chipData.error
+          : "chip_update_failed";
+        const conflictCodes = new Set([
+          "stale_seat_state",
+          "seat_not_active",
+          "seat_not_found",
+          "seat_entry_mismatch",
+        ]);
+        if (chipCode === "actor_not_allowed" || chipCode === "unauthorized") {
+          return response({ error: chipCode }, 403);
+        }
+        return response(
+          { error: chipCode },
+          conflictCodes.has(chipCode) ? 409 : 400,
+        );
+      }
       updated += 1;
     }
 

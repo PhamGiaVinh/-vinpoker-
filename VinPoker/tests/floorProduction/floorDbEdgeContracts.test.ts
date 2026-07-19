@@ -6,6 +6,8 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const migration = read("supabase/migrations/20261240000000_floor_production_hardening.sql");
 const clockMigration = read("supabase/migrations/20261241000000_floor_clock_start_atomic.sql");
 const operatorScopeMigration = read("supabase/migrations/20261242000000_floor_operator_scope.sql");
+const cleanupIndexMigration = read("supabase/migrations/20270104000000_floor_cleanup_rotation_schedule_index.sql");
+const chipCasMigration = read("supabase/migrations/20270104000001_floor_chip_cas_rpc.sql");
 const drawEdge = read("supabase/functions/tournament-live-draw/index.ts");
 const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
@@ -130,5 +132,29 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(clockEdge).toMatch(/supabase\.rpc\(\s*"floor_start_tournament_clock"/);
     expect(clockEdge).toContain("stale_clock_state");
     expect(clockEdge).toContain('error: "clock_operation_failed"');
+  });
+
+  it("keeps the applied cleanup index as a standalone idempotent source contract", () => {
+    expect(cleanupIndexMigration).toContain("CREATE INDEX CONCURRENTLY IF NOT EXISTS");
+    expect(cleanupIndexMigration).toContain("idx_dealer_rotation_schedule_table_id");
+    expect(cleanupIndexMigration).toContain("ON public.dealer_rotation_schedule (table_id)");
+    expect(cleanupIndexMigration).not.toMatch(/\bBEGIN\b\s*;/i);
+    expect(cleanupIndexMigration).not.toMatch(/\bCOMMIT\b\s*;/i);
+  });
+
+  it("routes Floor chip CAS through one caller-bound, column-narrow RPC", () => {
+    expect(chipCasMigration).toContain("CREATE OR REPLACE FUNCTION public.floor_update_tournament_seat_chip");
+    expect(chipCasMigration).toContain("v_actor UUID := auth.uid()");
+    expect(chipCasMigration).toContain("SECURITY DEFINER");
+    expect(chipCasMigration).toContain("SET search_path = public");
+    expect(chipCasMigration).toContain("FROM public.club_floors cf");
+    expect(chipCasMigration).toContain("FOR UPDATE");
+    expect(chipCasMigration).toContain("AND chip_count = p_expected_chip_count");
+    expect(chipCasMigration).toMatch(/UPDATE public\.tournament_seats\s+SET chip_count = p_chip_count/);
+    expect(chipCasMigration).not.toMatch(/CREATE POLICY[\s\S]*tournament_seats/i);
+    expect(chipCasMigration).toContain("REVOKE ALL ON FUNCTION public.floor_update_tournament_seat_chip");
+    expect(chipCasMigration).not.toMatch(/TO authenticated, service_role;/);
+    expect(drawEdge).toMatch(/supabase\.rpc\(\s*"floor_update_tournament_seat_chip"/);
+    expect(drawEdge).not.toMatch(/\.from\("tournament_seats"\)\s*\.update\(\{ chip_count:/);
   });
 });
