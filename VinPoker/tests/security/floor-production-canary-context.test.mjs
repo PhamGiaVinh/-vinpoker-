@@ -4,8 +4,11 @@ import test from "node:test";
 
 import {
   createRunId,
+  discoverCleanupScope,
   requireProductionCanaryContext,
 } from "../../scripts/floor/floor-production-canary.mjs";
+
+const canarySource = readFileSync(new URL("../../scripts/floor/floor-production-canary.mjs", import.meta.url), "utf8");
 
 const valid = {
   FLOOR_CANARY_ENV: "production",
@@ -42,12 +45,57 @@ test("fails closed for an unknown canary mode", () => {
 });
 
 test("cleanup mode branches before provisioning or browser execution", () => {
-  const source = readFileSync(new URL("../../scripts/floor/floor-production-canary.mjs", import.meta.url), "utf8");
-  const cleanupBranch = source.indexOf('if (context.mode === "cleanup")');
+  const cleanupBranch = canarySource.indexOf('if (context.mode === "cleanup")');
   assert.notEqual(cleanupBranch, -1);
-  const cleanupBody = source.slice(cleanupBranch, source.indexOf("const runId", cleanupBranch));
+  const cleanupBody = canarySource.slice(cleanupBranch, canarySource.indexOf("const runId", cleanupBranch));
   assert.match(cleanupBody, /await runCleanupCanary\(admin\)/);
-  assert.doesNotMatch(cleanupBody, /createActor|createFixture|runApiCanary|runBrowserManifest|invokeFunction/);
+  assert.doesNotMatch(cleanupBody, /createUser|createActor|createFixture|createCrossClub|runApiCanary|runBrowserManifest|invokeFunction|chromium/);
+});
+
+function cleanupDiscoveryAdmin(rows) {
+  return {
+    from(table) {
+      assert.equal(table, "clubs");
+      return {
+        select() { return this; },
+        like() { return this; },
+        limit() { return Promise.resolve({ data: rows, error: null }); },
+      };
+    },
+  };
+}
+
+const cleanupRows = [
+  { id: "club-a1", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_ACCESS", region: "TEST" },
+  { id: "club-a2", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_CROSS_CLUB", region: "TEST" },
+  { id: "club-b1", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_ACCESS", region: "TEST" },
+  { id: "club-b2", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_CROSS_CLUB", region: "TEST" },
+];
+
+test("cleanup discovery accepts exactly two strict run groups with two TEST clubs each", async () => {
+  const scopes = await discoverCleanupScope(cleanupDiscoveryAdmin(cleanupRows));
+  assert.equal(scopes.length, 2);
+  assert.deepEqual(scopes.map((scope) => scope.clubs.length), [2, 2]);
+});
+
+test("cleanup discovery rejects unexpected run counts, suffixes, regions, and club counts", async () => {
+  for (const rows of [
+    cleanupRows.slice(0, 2),
+    [...cleanupRows, { id: "club-c1", name: "CODEX_FLOOR_CANARY_20990101140000_cccccccc_ACCESS", region: "TEST" }],
+    cleanupRows.map((row, index) => index === 0 ? { ...row, region: "VN" } : row),
+    cleanupRows.map((row, index) => index === 0 ? { ...row, name: `${row.name}_UNKNOWN` } : row),
+    cleanupRows.slice(0, 3),
+  ]) {
+    await assert.rejects(discoverCleanupScope(cleanupDiscoveryAdmin(rows)), /CLEANUP_SCOPE_UNEXPECTED/);
+  }
+});
+
+test("cleanup implementation remains exact-ID only and bounded", () => {
+  assert.match(canarySource, /CLEANUP_GAME_TABLE_BATCH_SIZE = 50/);
+  assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 2/);
+  assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
+  assert.doesNotMatch(canarySource, /delete\(\)[\s\S]{0,120}\.like\(/);
+  assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
 });
 
 test("workflow has fail-closed run, cleanup, and hold modes", () => {

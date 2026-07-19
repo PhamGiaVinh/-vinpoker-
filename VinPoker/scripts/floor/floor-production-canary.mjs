@@ -20,10 +20,31 @@ const SCENARIOS = [
   "PAYOUT_CLOSE",
   "CONCURRENCY",
 ];
-const CLEANUP_SCENARIO_RE = new RegExp(`^CODEX_FLOOR_CANARY_([0-9]{14}_[a-f0-9]{8})_(${[...SCENARIOS, "CROSS_CLUB"].join("|")})$`);
+const CLEANUP_RUN_ID_RE = /^CODEX_FLOOR_CANARY_[0-9]{14}_[a-f0-9]{8}$/;
+const CLEANUP_SCENARIO_RE = new RegExp(`^(CODEX_FLOOR_CANARY_[0-9]{14}_[a-f0-9]{8})_(${[...SCENARIOS, "CROSS_CLUB"].join("|")})$`);
 const CLEANUP_SCENARIOS = new Set(["ACCESS", "SETUP_CLOCK", "TABLE_LIFECYCLE", "CLOSE_ORPHAN", "REDRAW", "CHIP_CAS", "BUST_RESTORE", "PAYOUT_CLOSE", "CONCURRENCY", "CROSS_CLUB"]);
-const CLEANUP_CLUB_COUNT = 4;
+const CLEANUP_RUN_GROUP_COUNT = 2;
+const CLEANUP_CLUBS_PER_RUN = 2;
+const CLEANUP_TOTAL_CLUB_COUNT = 4;
 const CLEANUP_SCOPE_PREFIX = "CODEX_FLOOR_CANARY_";
+const CLEANUP_GAME_TABLE_BATCH_SIZE = 50;
+const CLEANUP_MAX_BATCH_ATTEMPTS = 2;
+
+const CLEANUP_CHILD_SCOPES = [
+  { table: "dealer_assignments", column: "table_id", source: "gameTableIds", constraint: "dealer_assignments_table_id_fkey", indexed: true },
+  { table: "dealer_attendance", column: "pre_assigned_table_id", source: "gameTableIds", constraint: "dealer_attendance_pre_assigned_table_id_fkey", indexed: false },
+  { table: "dealer_incidents", column: "table_id", source: "gameTableIds", constraint: "dealer_incidents_table_id_fkey", indexed: false },
+  { table: "swing_audit_logs", column: "table_id", source: "gameTableIds", constraint: "swing_audit_logs_table_id_fkey", indexed: false },
+  { table: "tournament_hands", column: "table_id", source: "gameTableIds", constraint: "tournament_hands_table_id_fkey", indexed: false },
+  { table: "seat_draw_receipts", column: "table_id", source: "gameTableIds", constraint: "seat_draw_receipts_table_id_fkey", indexed: false },
+  { table: "seat_assignment_history", column: "to_table_id", source: "gameTableIds", constraint: "seat_assignment_history_to_table_id_fkey", indexed: false },
+  { table: "dealer_rotation_schedule", column: "table_id", source: "gameTableIds", constraint: "dealer_rotation_schedule_table_id_fkey", indexed: false },
+  { table: "dealer_table_profiles", column: "table_id", source: "gameTableIds", constraint: "dealer_table_profiles_table_id_fkey", indexed: true },
+  { table: "dealer_override_claims", column: "table_id", source: "gameTableIds", constraint: "dealer_override_claims_table_id_fkey", indexed: false },
+  { table: "tournament_chip_counts", column: "tournament_id", source: "tournamentIds", constraint: "tournament_chip_counts_tournament_id_fkey", indexed: true },
+  { table: "tournament_eliminations", column: "tournament_id", source: "tournamentIds", constraint: "tournament_eliminations_tournament_id_fkey", indexed: true },
+  { table: "tournament_state_transitions", column: "tournament_id", source: "tournamentIds", constraint: "tournament_state_transitions_tournament_id_fkey", indexed: true },
+];
 
 // These columns are verified in the repository migrations. A missing table or
 // column is a hard stop: cleanup must never guess at money-related schema.
@@ -40,9 +61,12 @@ const MONEY_SCOPES = [
   { table: "escrow_funding_proofs", column: "deal_id", bucket: "staking" },
   { table: "tournament_payout_runs", column: "tournament_id", bucket: "payout" },
   { table: "tournament_prizes", column: "tournament_id", bucket: "payout" },
+  { table: "tournament_prize_payments", column: "tournament_id", bucket: "payout" },
+  { table: "tournament_registrations", column: "tournament_id", bucket: "registration" },
   { table: "payout_recipients", column: "deal_id", bucket: "payout" },
   { table: "payout_templates", column: "club_id", bucket: "payout" },
   { table: "fnb_orders", column: "club_id", bucket: "fnb" },
+  { table: "fnb_cashier_shifts", column: "club_id", bucket: "fnb" },
   { table: "dealer_payroll", column: "club_id", bucket: "payroll" },
   { table: "payroll_periods", column: "club_id", bucket: "payroll" },
   { table: "payroll_audit_log", column: "club_id", bucket: "payroll" },
@@ -127,69 +151,69 @@ function hashIds(ids) {
 
 function cleanupScopeError(detail = "") {
   const suffix = detail ? `:${detail}` : "";
-  fail(`CLEANUP_SCOPE_AMBIGUOUS${suffix}`);
+  fail(`CLEANUP_SCOPE_UNEXPECTED${suffix}`);
+}
+
+async function readCleanupCandidates(admin) {
+  const response = await admin.from("clubs")
+    .select("id,name,region")
+    .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
+    .limit(1000);
+  if (response.error || !Array.isArray(response.data)) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=discover_clubs ${safeDbErrorDetail(response.error)}`);
+    fail("cleanup_scope_discovery");
+  }
+  return response.data;
 }
 
 async function discoverCleanupScope(admin) {
-  const discovered = await admin.from("clubs")
-    .select("id,name,region")
-    .eq("region", "TEST")
-    .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
-    .limit(1000);
-  if (discovered.error || !Array.isArray(discovered.data)) {
-    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=discover_clubs ${safeDbErrorDetail(discovered.error)}`);
-    fail("cleanup_scope_discovery");
-  }
-
-  // A second read-only prefix scan catches a prefixed row in the wrong region
-  // instead of silently ignoring it during the TEST-scoped discovery.
-  const allPrefixed = await admin.from("clubs")
-    .select("id,name,region")
-    .like("name", `${CLEANUP_SCOPE_PREFIX}%`)
-    .limit(1000);
-  if (allPrefixed.error || !Array.isArray(allPrefixed.data)) {
-    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=discover_all_prefixed ${safeDbErrorDetail(allPrefixed.error)}`);
-    fail("cleanup_scope_discovery");
-  }
-
-  const rows = allPrefixed.data;
+  const rows = await readCleanupCandidates(admin);
   const parsed = [];
   for (const row of rows) {
     const match = typeof row.name === "string" ? row.name.match(CLEANUP_SCENARIO_RE) : null;
-    if (!match || row.region !== "TEST" || typeof row.id !== "string") {
+    if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || typeof row.id !== "string") {
       console.log("FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row");
       cleanupScopeError("invalid_row");
     }
-    parsed.push({ id: row.id, runKey: match[1], scenario: match[2] });
+    parsed.push({ id: row.id, runId: match[1], scenario: match[2] });
   }
 
   const groups = new Map();
   for (const row of parsed) {
-    const group = groups.get(row.runKey) ?? [];
+    const group = groups.get(row.runId) ?? [];
     group.push(row);
-    groups.set(row.runKey, group);
+    groups.set(row.runId, group);
   }
-  for (const [runKey, group] of groups) {
-    console.log(`FLOOR_CANARY CLEANUP_SCOPE run_hash=${actorHash(runKey)} clubs=${group.length}`);
+  for (const [runId, group] of groups) {
+    console.log(`FLOOR_CANARY CLEANUP_SCOPE run_hash=${actorHash(runId)} clubs=${group.length}`);
   }
-  if (groups.size !== 1) cleanupScopeError("run_count");
-  const [runKey, group] = groups.entries().next().value ?? [];
-  if (!runKey || group.length !== CLEANUP_CLUB_COUNT) cleanupScopeError("club_count");
-  const scenarios = new Set(group.map((row) => row.scenario));
-  if (scenarios.size !== CLEANUP_SCENARIOS.size || [...CLEANUP_SCENARIOS].some((scenario) => !scenarios.has(scenario))) {
-    cleanupScopeError("scenario_set");
+  if (groups.size !== CLEANUP_RUN_GROUP_COUNT || parsed.length !== CLEANUP_TOTAL_CLUB_COUNT) cleanupScopeError("run_count");
+  const scopes = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([runId, clubs]) => {
+    if (clubs.length !== CLEANUP_CLUBS_PER_RUN) cleanupScopeError("club_count");
+    const scenarios = new Set(clubs.map((row) => row.scenario));
+    if (scenarios.size !== CLEANUP_CLUBS_PER_RUN) cleanupScopeError("scenario_set");
+    return { runId, clubs };
+  });
+  if (scopes.length !== CLEANUP_RUN_GROUP_COUNT) {
+    cleanupScopeError("run_count");
   }
-  return { runKey, clubs: group };
+  return scopes;
 }
 
 async function idsByColumn(admin, table, column, values, code) {
   if (values.length === 0) return [];
-  const response = await admin.from(table).select("id").in(column, values);
-  if (response.error || !Array.isArray(response.data)) {
-    console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=${code} ${safeDbErrorDetail(response.error)}`);
-    fail(code);
+  const ids = [];
+  const uniqueValues = [...new Set(values)];
+  for (let offset = 0; offset < uniqueValues.length; offset += CLEANUP_GAME_TABLE_BATCH_SIZE) {
+    const batch = uniqueValues.slice(offset, offset + CLEANUP_GAME_TABLE_BATCH_SIZE);
+    const response = await admin.from(table).select("id").in(column, batch);
+    if (response.error || !Array.isArray(response.data)) {
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=${code} ${safeDbErrorDetail(response.error)}`);
+      fail(code);
+    }
+    ids.push(...response.data.map((row) => row.id).filter((id) => typeof id === "string"));
   }
-  return response.data.map((row) => row.id).filter((id) => typeof id === "string");
+  return [...new Set(ids)];
 }
 
 async function countByColumn(admin, table, column, values, code) {
@@ -221,14 +245,31 @@ async function moneySafetyPreflight(admin, ledger) {
   return counts;
 }
 
+async function listAuthUserIds(admin, runId = null) {
+  const ids = [];
+  let page = 1;
+  let fetched;
+  const emailPattern = runId
+    ? new RegExp(`^${runId.toLowerCase()}-(owner|cashier|floor|cross)@floor-canary\\.invalid$`)
+    : /^codex_floor_canary_[0-9]{14}_[a-f0-9]{8}-(owner|cashier|floor|cross)@floor-canary\.invalid$/;
+  do {
+    fetched = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (fetched.error || !fetched.data?.users) fail("cleanup_scope_auth_users");
+    for (const user of fetched.data.users) {
+      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
+      if (emailPattern.test(email)) ids.push(user.id);
+    }
+    page += 1;
+  } while (fetched.data.users.length === 1000);
+  return [...new Set(ids)];
+}
+
 async function buildCleanupLedger(admin, scope) {
   const clubIds = scope.clubs.map((club) => club.id);
   const tournaments = await admin.from("tournaments").select("id,club_id").in("club_id", clubIds);
   if (tournaments.error || !Array.isArray(tournaments.data)) fail("cleanup_scope_tournaments");
   const tournamentIds = tournaments.data.map((row) => row.id).filter((id) => typeof id === "string");
-  const tournamentTables = await admin.from("tournament_tables").select("id").in("tournament_id", tournamentIds);
-  if (tournamentTables.error || !Array.isArray(tournamentTables.data)) fail("cleanup_scope_tournament_tables");
-  const tournamentTableIds = tournamentTables.data.map((row) => row.id).filter((id) => typeof id === "string");
+  const tournamentTableIds = await idsByColumn(admin, "tournament_tables", "tournament_id", tournamentIds, "cleanup_scope_tournament_tables");
   const levels = await idsByColumn(admin, "tournament_levels", "tournament_id", tournamentIds, "cleanup_scope_levels");
   const entries = await idsByColumn(admin, "tournament_entries", "tournament_id", tournamentIds, "cleanup_scope_entries");
   const seats = await idsByColumn(admin, "tournament_seats", "tournament_id", tournamentIds, "cleanup_scope_seats");
@@ -243,25 +284,11 @@ async function buildCleanupLedger(admin, scope) {
     ...cashierMemberships.data.map((row) => row.user_id),
     ...floorMemberships.data.map((row) => row.user_id),
   ].filter((id) => typeof id === "string"));
-  const authUsers = [];
-  let page = 1;
-  let fetched;
-  const runIdPrefix = `${CLEANUP_SCOPE_PREFIX}${scope.runKey}`.toLowerCase();
-  do {
-    fetched = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-    if (fetched.error || !fetched.data?.users) fail("cleanup_scope_auth_users");
-    for (const user of fetched.data.users) {
-      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
-      if (email.startsWith(`${runIdPrefix}-`) && email.endsWith("@floor-canary.invalid")) {
-        authUsers.push(user.id);
-        userIds.add(user.id);
-      }
-    }
-    page += 1;
-  } while (fetched.data.users.length === 1000);
+  const authUsers = await listAuthUserIds(admin, scope.runId);
+  for (const userId of authUsers) userIds.add(userId);
 
   const ledger = {
-    runKey: scope.runKey,
+    runId: scope.runId,
     clubIds,
     tournamentIds,
     tournamentTableIds,
@@ -275,8 +302,16 @@ async function buildCleanupLedger(admin, scope) {
     authUserIds: [...new Set(authUsers)],
     userIds: [...userIds],
     stakingDealIds: await idsByColumn(admin, "staking_deals", "club_id", clubIds, "cleanup_scope_staking_deals"),
+    childRows: {},
   };
-  console.log(`FLOOR_CANARY CLEANUP_LEDGER run_hash=${actorHash(scope.runKey)} clubs=${clubIds.length} tournaments=${tournamentIds.length} game_tables=${gameTableIds.length} users=${ledger.authUserIds.length} ids_hash=${hashIds([...clubIds, ...gameTableIds])}`);
+  for (const child of CLEANUP_CHILD_SCOPES) {
+    const values = ledger[child.source];
+    const ids = await idsByColumn(admin, child.table, child.column, values, `cleanup_scope_${child.table}_${child.column}`);
+    const existing = ledger.childRows[child.table] ?? [];
+    ledger.childRows[child.table] = [...new Set([...existing, ...ids])];
+    console.log(`FLOOR_CANARY CLEANUP_FK child=${child.table} constraint=${child.constraint} column=${child.column} indexed=${child.indexed} count=${ids.length} ids_hash=${hashIds(ids)}`);
+  }
+  console.log(`FLOOR_CANARY CLEANUP_LEDGER run_hash=${actorHash(scope.runId)} clubs=${clubIds.length} tournaments=${tournamentIds.length} game_tables=${gameTableIds.length} users=${ledger.authUserIds.length} ids_hash=${hashIds([...clubIds, ...gameTableIds])}`);
   return ledger;
 }
 
@@ -667,11 +702,67 @@ async function verifyByColumnExact(client, table, column, values, code) {
   if ((remaining.count ?? 0) !== 0) throw new Error(`${code}:remaining=${remaining.count}`);
 }
 
+async function remainingExactIds(client, table, ids, code) {
+  if (ids.length === 0) return [];
+  const response = await client.from(table).select("id").in("id", ids);
+  if (response.error || !Array.isArray(response.data)) throw new Error(`${code}:${safeDbErrorDetail(response.error)}`);
+  return response.data.map((row) => row.id).filter((id) => typeof id === "string");
+}
+
+async function deleteBatchOnce(client, table, ids, code) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await client.from(table).delete().in("id", ids).select("id").abortSignal(controller.signal);
+    if (response.error || !Array.isArray(response.data)) throw new Error(`${code}:${safeDbErrorDetail(response.error)}`);
+    const deletedIds = response.data.map((row) => row.id).filter((id) => typeof id === "string");
+    if (deletedIds.length > ids.length || deletedIds.some((id) => !ids.includes(id))) throw new Error(`${code}:affected_scope_mismatch`);
+    return deletedIds;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function deleteExactBatches(client, table, ids, code) {
+  const queue = [];
+  const uniqueIds = [...new Set(ids)];
+  for (let offset = 0; offset < uniqueIds.length; offset += CLEANUP_GAME_TABLE_BATCH_SIZE) {
+    queue.push({ ids: uniqueIds.slice(offset, offset + CLEANUP_GAME_TABLE_BATCH_SIZE), attempt: 1 });
+  }
+  let deletedCount = 0;
+  while (queue.length > 0) {
+    const batch = queue.shift();
+    try {
+      const deleted = await deleteBatchOnce(client, table, batch.ids, code);
+      const remaining = await remainingExactIds(client, table, batch.ids, `${code}_verify_batch`);
+      if (remaining.length !== 0) throw new Error(`${code}:remaining=${remaining.length}`);
+      deletedCount += deleted.length;
+      console.log(`FLOOR_CANARY CLEANUP_BATCH table=${table} count=${batch.ids.length} ids_hash=${hashIds(batch.ids)} attempt=${batch.attempt}`);
+    } catch (error) {
+      const remaining = await remainingExactIds(client, table, batch.ids, `${code}_requery_after_error`);
+      deletedCount += batch.ids.length - remaining.length;
+      if (remaining.length === 0) continue;
+      console.log(`FLOOR_CANARY CLEANUP_BATCH_RETRY table=${table} remaining=${remaining.length} ids_hash=${hashIds(remaining)} attempt=${batch.attempt}`);
+      if (batch.attempt >= CLEANUP_MAX_BATCH_ATTEMPTS) {
+        const detail = error instanceof Error ? error.message : "unknown";
+        throw new Error(`${code}:bounded_retries_exhausted:${detail}`);
+      }
+      const smallerSize = Math.max(1, Math.ceil(remaining.length / 2));
+      for (let offset = 0; offset < remaining.length; offset += smallerSize) {
+        queue.unshift({ ids: remaining.slice(offset, offset + smallerSize), attempt: batch.attempt + 1 });
+      }
+    }
+  }
+  return deletedCount;
+}
+
 async function cleanupExactLedger(admin, ledger) {
   const failures = [];
+  const deletedCounts = {};
   const attempt = async (name, action) => {
     try {
-      await action();
+      const deleted = await action();
+      if (Number.isInteger(deleted)) deletedCounts[name] = (deletedCounts[name] ?? 0) + deleted;
     } catch (error) {
       const detail = error instanceof Error ? error.message : "unknown";
       failures.push(`${name}:${detail}`);
@@ -679,30 +770,35 @@ async function cleanupExactLedger(admin, ledger) {
     }
   };
 
-  // Child-to-parent order is derived from the Floor/live tracker and seat
-  // assignment migrations. Every predicate is an exact owned-ID set.
-  for (const table of ["tournament_hands", "tournament_chip_counts", "tournament_eliminations", "tournament_state_transitions", "tournament_prizes"]) {
-    await attempt(table, () => deleteByColumnExact(admin, table, "tournament_id", ledger.tournamentIds, `cleanup_${table}`));
+  // Child-to-parent order is derived from the checked-in FK inventory. Every
+  // mutation uses exact IDs captured in this run group's in-memory ledger.
+  for (const [table, ids] of Object.entries(ledger.childRows)) {
+    await attempt(table, async () => {
+      await deleteExact(admin, table, ids, `cleanup_${table}`);
+      return ids.length;
+    });
   }
-  await attempt("seats", () => deleteExact(admin, "tournament_seats", ledger.seats, "cleanup_seats"));
-  await attempt("entries", () => deleteExact(admin, "tournament_entries", ledger.entries, "cleanup_entries"));
-  await attempt("levels", () => deleteExact(admin, "tournament_levels", ledger.levels, "cleanup_levels"));
-  await attempt("tournament_tables", () => deleteExact(admin, "tournament_tables", ledger.tournamentTableIds, "cleanup_tournament_tables"));
-  await attempt("tournaments", () => deleteExact(admin, "tournaments", ledger.tournamentIds, "cleanup_tournaments"));
-  await attempt("swing_config_audit", () => deleteExact(admin, "swing_config_audit", ledger.auditRows, "cleanup_swing_config_audit"));
-  await attempt("cashier_memberships", () => deleteByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "cleanup_cashier_memberships"));
-  await attempt("floor_memberships", () => deleteByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "cleanup_floor_memberships"));
-  // This is one exact-ID request for the trigger-created pool rows, not one
-  // full-table request per row and never a prefix delete.
-  await attempt("game_tables", () => deleteExact(admin, "game_tables", ledger.gameTableIds, "cleanup_game_tables"));
-  await attempt("clubs", () => deleteExact(admin, "clubs", ledger.clubIds, "cleanup_clubs"));
+  await attempt("seats", async () => { await deleteExact(admin, "tournament_seats", ledger.seats, "cleanup_seats"); return ledger.seats.length; });
+  await attempt("entries", async () => { await deleteExact(admin, "tournament_entries", ledger.entries, "cleanup_entries"); return ledger.entries.length; });
+  await attempt("tournament_tables", async () => { await deleteExact(admin, "tournament_tables", ledger.tournamentTableIds, "cleanup_tournament_tables"); return ledger.tournamentTableIds.length; });
+  await attempt("levels", async () => { await deleteExact(admin, "tournament_levels", ledger.levels, "cleanup_levels"); return ledger.levels.length; });
+  await attempt("tournaments", async () => { await deleteExact(admin, "tournaments", ledger.tournamentIds, "cleanup_tournaments"); return ledger.tournamentIds.length; });
+  await attempt("cashier_memberships", async () => { await deleteByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "cleanup_cashier_memberships"); return ledger.cashierMemberships.length; });
+  await attempt("floor_memberships", async () => { await deleteByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "cleanup_floor_memberships"); return ledger.floorMemberships.length; });
+  await attempt("swing_config_audit", async () => { await deleteExact(admin, "swing_config_audit", ledger.auditRows, "cleanup_swing_config_audit"); return ledger.auditRows.length; });
+  await attempt("game_tables", () => deleteExactBatches(admin, "game_tables", ledger.gameTableIds, "cleanup_game_tables"));
+  await attempt("clubs", async () => { await deleteExact(admin, "clubs", ledger.clubIds, "cleanup_clubs"); return ledger.clubIds.length; });
   for (const [index, userId] of ledger.authUserIds.entries()) {
     await attempt(`auth_user_${index}`, async () => {
       const deleted = await admin.auth.admin.deleteUser(userId);
       if (deleted.error) throw new Error(safeAuthErrorDetail(deleted.error));
+      return 1;
     });
   }
 
+  for (const [table, ids] of Object.entries(ledger.childRows)) {
+    await attempt(`verify_${table}`, () => verifyExactRows(admin, table, ids, `verify_${table}`));
+  }
   await attempt("verify_seats", () => verifyExactRows(admin, "tournament_seats", ledger.seats, "verify_seats"));
   await attempt("verify_entries", () => verifyExactRows(admin, "tournament_entries", ledger.entries, "verify_entries"));
   await attempt("verify_levels", () => verifyExactRows(admin, "tournament_levels", ledger.levels, "verify_levels"));
@@ -713,19 +809,43 @@ async function cleanupExactLedger(admin, ledger) {
   await attempt("verify_cashier_memberships", () => verifyByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "verify_cashier_memberships"));
   await attempt("verify_floor_memberships", () => verifyByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "verify_floor_memberships"));
   await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", ledger.clubIds, "verify_clubs"));
+  await attempt("verify_auth_users", async () => {
+    const remaining = await listAuthUserIds(admin, ledger.runId);
+    if (remaining.length !== 0) throw new Error(`verify_auth_users:remaining=${remaining.length}:ids_hash=${hashIds(remaining)}`);
+  });
   await attempt("verify_money_rows", () => moneySafetyPreflight(admin, ledger));
   if (failures.length > 0) {
-    console.log(`FLOOR CANARY CLEANUP FAIL — CLEANUP_INCOMPLETE failures=${failures.length}`);
-    fail(`FLOOR CANARY CLEANUP FAIL — CLEANUP_INCOMPLETE:${failures.join(",")}`);
+    console.log(`FLOOR CANARY CLEANUP FAIL - REMAINING_ROWS failures=${failures.length}`);
+    fail(`FLOOR CANARY CLEANUP FAIL - REMAINING_ROWS:${failures.join(",")}`);
   }
-  console.log(`FLOOR CANARY CLEANUP PASS run_hash=${actorHash(ledger.runKey)} users=${ledger.authUserIds.length} clubs=${ledger.clubIds.length} tournaments=${ledger.tournamentIds.length} game_tables=${ledger.gameTableIds.length}`);
+  for (const [table, count] of Object.entries(deletedCounts)) {
+    console.log(`FLOOR_CANARY CLEANUP_DELETED run_hash=${actorHash(ledger.runId)} object=${table} count=${count}`);
+  }
+  console.log(`FLOOR_CANARY CLEANUP_GROUP_PASS run_hash=${actorHash(ledger.runId)} users=${ledger.authUserIds.length} clubs=${ledger.clubIds.length} tournaments=${ledger.tournamentIds.length} game_tables=${ledger.gameTableIds.length}`);
+  return deletedCounts;
 }
 
 async function runCleanupCanary(admin) {
-  const scope = await discoverCleanupScope(admin);
-  const ledger = await buildCleanupLedger(admin, scope);
-  await moneySafetyPreflight(admin, ledger);
-  await cleanupExactLedger(admin, ledger);
+  const scopes = await discoverCleanupScope(admin);
+  const ledgers = [];
+  for (const scope of scopes) {
+    const ledger = await buildCleanupLedger(admin, scope);
+    await moneySafetyPreflight(admin, ledger);
+    ledgers.push(ledger);
+  }
+  const totals = {};
+  for (const ledger of ledgers) {
+    const deleted = await cleanupExactLedger(admin, ledger);
+    for (const [table, count] of Object.entries(deleted)) totals[table] = (totals[table] ?? 0) + count;
+  }
+  const remainingClubs = await readCleanupCandidates(admin);
+  const remainingUsers = await listAuthUserIds(admin);
+  if (remainingClubs.length !== 0 || remainingUsers.length !== 0) {
+    console.log(`FLOOR_CANARY CLEANUP_REMAINING clubs=${remainingClubs.length} users=${remainingUsers.length} ids_hash=${hashIds([...remainingClubs.map((row) => row.id), ...remainingUsers])}`);
+    fail("FLOOR CANARY CLEANUP FAIL - REMAINING_ROWS");
+  }
+  for (const [table, count] of Object.entries(totals)) console.log(`FLOOR_CANARY CLEANUP_TOTAL object=${table} count=${count}`);
+  console.log(`FLOOR CANARY CLEANUP PASS groups=${ledgers.length} clubs_remaining=0 users_remaining=0`);
 }
 
 export { createRunId, requireProductionCanaryContext, discoverCleanupScope, runCleanupCanary };
