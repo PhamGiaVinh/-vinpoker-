@@ -9,7 +9,7 @@ const CONFIRMATION = "APPLY_FLOOR_CHIP_CAS_RPC";
 const MIGRATION =
   "supabase/migrations/20270104000001_floor_chip_cas_rpc.sql";
 const EXPECTED_SHA256 =
-  "50dc9187ac2ab4da229a57e1b251cc59bf4d96952a805aa2b464b9e2a5b17a6e";
+  "69517eb279e25bb4485665af18eaa04166572a6a2004b56523b8aaa1fb6bdaa6";
 const FUNCTION_NAME = "floor_update_tournament_seat_chip";
 const ROLLBACK_SQL = `
 begin;
@@ -37,7 +37,8 @@ function executableSql(sql) {
 }
 
 function validateMigration(sql) {
-  const sha = createHash("sha256").update(sql).digest("hex");
+  const canonicalSql = sql.replace(/\r\n?/g, "\n");
+  const sha = createHash("sha256").update(canonicalSql).digest("hex");
   if (sha !== EXPECTED_SHA256) fail("migration_sha256_mismatch");
   const executable = executableSql(sql);
   for (const required of [
