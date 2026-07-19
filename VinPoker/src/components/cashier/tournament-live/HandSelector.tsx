@@ -8,10 +8,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, History } from "lucide-react";
 import type { ReplayHand } from "@/lib/tracker-poker/replayEngine";
 import { fetchHandPlayerDisplay, handPlayersHasSnapshot } from "@/lib/tracker-poker/handPlayerNames";
-import type { ReplayTarget, ReplayTargetState } from "./viewer-hub/replayTarget";
+import { replayTargetForHand, type ReplayTarget, type ReplayTargetState } from "./viewer-hub/replayTarget";
 
 interface HandRow {
   id: string;
+  table_id: string | null;
   hand_number: number;
   created_at: string;
   community_cards: string[] | null;
@@ -31,6 +32,8 @@ interface HandSelectorProps {
   replayTarget?: ReplayTarget | null;
   /** Parent resolution protects table selection; selector renders its exact state. */
   replayTargetState?: ReplayTargetState;
+  /** Replace a deep-linked target before loading a different hand. */
+  onSelectReplayTarget?: (target: ReplayTarget) => void;
 }
 
 export function HandSelector({
@@ -41,6 +44,7 @@ export function HandSelector({
   onSelectHand,
   replayTarget = null,
   replayTargetState = { kind: "idle" },
+  onSelectReplayTarget,
 }: HandSelectorProps) {
   const [hands, setHands] = useState<HandRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -75,6 +79,7 @@ export function HandSelector({
         .filter((h: any) => h.status !== "in_progress")
         .map((h: any) => ({
           id: h.id,
+          table_id: h.table_id,
           hand_number: h.hand_number,
           created_at: h.created_at,
           community_cards: h.community_cards,
@@ -181,7 +186,7 @@ export function HandSelector({
       void (async () => {
         const { data, error } = await supabase
           .from("tournament_hands")
-          .select("id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided")
+          .select("id, table_id, hand_number, created_at, community_cards, button_seat, pot_size, status, is_voided")
           .eq("tournament_id", tournamentId)
           .eq("id", replayTargetState.handId)
           .eq("is_voided", false)
@@ -219,7 +224,12 @@ export function HandSelector({
         disabled={loadingList || !!listError || hands.length === 0}
         onChange={(e) => {
           const row = hands.find((h) => h.id === e.target.value);
-          if (row) void loadHand(row);
+          if (!row) return;
+          if (replayTarget && onSelectReplayTarget) {
+            onSelectReplayTarget(replayTargetForHand(row));
+            return;
+          }
+          void loadHand(row);
         }}
       >
         {loadingList && <option value="">Đang tải...</option>}

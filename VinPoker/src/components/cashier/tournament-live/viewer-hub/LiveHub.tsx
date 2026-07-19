@@ -33,7 +33,7 @@ import type { ReplayTarget } from "./replayTarget";
 
 type Orientation = "landscape" | "portrait";
 type Watch = { kind: "live"; tableId: string } | { kind: "replay"; target: ReplayTarget } | null;
-type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayTarget?: ReplayTarget | null; initialReplayHandNumber?: number | null };
+type ViewerProps = { orientationOverride?: Orientation; spectator?: boolean; selectedTableIdOverride?: string | null; initialReplayTarget?: ReplayTarget | null; initialReplayHandNumber?: number | null; onReplayTargetChange?: (target: ReplayTarget) => void };
 
 export interface LiveHubProps {
   tournamentId: string;
@@ -58,6 +58,7 @@ export interface LiveHubProps {
   initialReplayHandNumber?: number | null;
   /** Hand-feed "Xem ván" → open the canonical replay target. */
   onViewHand?: (target: ReplayTarget) => void;
+  onReplayTargetChange?: (target: ReplayTarget) => void;
   /** Hand-feed "Chia sẻ" → share the canonical replay target. */
   onShareHand?: (target: ReplayTarget) => void;
   /** URL-backed tab state for the new focus shell. */
@@ -76,7 +77,7 @@ export interface LiveHubProps {
 export function LiveHub({
   tournamentId, title, clubName, clubId, subtitle, prizePool, playersRemaining, currentLevel,
   guarantee, buyIn, startingStack,
-  onShare, initialReplayTarget = null, initialReplayHandNumber = null, onViewHand, onShareHand,
+  onShare, initialReplayTarget = null, initialReplayHandNumber = null, onViewHand, onReplayTargetChange, onShareHand,
   activeTab = "updates", onTabChange, editorialPosts = [], focusedPostId = null, onSharePost,
   onCloseHand, children,
 }: LiveHubProps) {
@@ -142,7 +143,7 @@ export function LiveHub({
 
   // ── Legacy stacked layout (flag OFF) — byte-identical to before ────────────────
   if (!FEATURES.liveEventTabs) {
-    const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayTarget: requestedReplayTarget, initialReplayHandNumber });
+    const viewer = cloneViewer({ selectedTableIdOverride: selectedTableId, initialReplayTarget: requestedReplayTarget, initialReplayHandNumber, onReplayTargetChange });
     return (
       <div className="space-y-3 sm:space-y-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
         <LiveHubHeader title={title} clubName={clubName} clubId={clubId} subtitle={subtitle} liveTableCount={liveTableCount} guarantee={guarantee} buyIn={buyIn} startingStack={startingStack} lastUpdated={lastUpdated} onShare={onShare} />
@@ -184,6 +185,7 @@ export function LiveHub({
               // Preserve callers still using the number-only replay contract.
               initialReplayHandNumber: watch.target.handId ? null : watch.target.handNumber,
               selectedTableIdOverride: null,
+              onReplayTargetChange,
             }
           : { initialReplayTarget: null, initialReplayHandNumber: null, selectedTableIdOverride: watch.tableId },
       )

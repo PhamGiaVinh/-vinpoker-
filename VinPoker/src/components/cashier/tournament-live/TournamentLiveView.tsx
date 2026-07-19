@@ -84,6 +84,7 @@ export function TournamentLiveView({
   selectedTableIdOverride = null,
   initialReplayTarget = null,
   initialReplayHandNumber = null,
+  onReplayTargetChange,
 }: {
   tournamentId: string;
   /** Presentational only: force the felt orientation (set by the viewer hub's
@@ -103,6 +104,7 @@ export function TournamentLiveView({
   initialReplayTarget?: ReplayTarget | null;
   /** Deprecated compatibility prop for callers that still provide `?hand=N`. */
   initialReplayHandNumber?: number | null;
+  onReplayTargetChange?: (target: ReplayTarget) => void;
 }) {
   const { t } = useTranslation();
   const { isStaffOps, isClubAdmin } = useAuth();
@@ -1452,6 +1454,7 @@ export function TournamentLiveView({
             selectedHandId={replayHandId}
             replayTarget={requestedReplayTarget}
             replayTargetState={replayTargetState}
+            onSelectReplayTarget={onReplayTargetChange}
             onLoadStart={(id) => {
               setReplayHandId(id);
               setReplayHand(null);
