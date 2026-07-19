@@ -9,7 +9,7 @@ import { TournamentLiveView } from "@/components/cashier/tournament-live/Tournam
 import { LiveHub } from "@/components/cashier/tournament-live/viewer-hub/LiveHub";
 import { defaultViewerTab, parseViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerUrlState";
 import type { ViewerTab } from "@/components/cashier/tournament-live/viewer-hub/viewerTypes";
-import { parseReplayTarget, type ReplayTarget } from "@/components/cashier/tournament-live/viewer-hub/replayTarget";
+import { parseReplayTarget, replaceReplayTargetParams, type ReplayTarget } from "@/components/cashier/tournament-live/viewer-hub/replayTarget";
 import { FEATURES } from "@/lib/featureFlags";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -97,6 +97,20 @@ const TournamentLiveTracker = () => {
         { replace: false },
       );
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [setSearchParams],
+  );
+
+  const handleReplayTargetChange = useCallback(
+    (target: ReplayTarget) => {
+      setSearchParams(
+        (prev) => {
+          const p = replaceReplayTargetParams(prev, target);
+          if (FEATURES.liveViewerRPTShell) p.set("tab", "hands");
+          return p;
+        },
+        { replace: false },
+      );
     },
     [setSearchParams],
   );
@@ -219,6 +233,7 @@ const TournamentLiveTracker = () => {
         onShare={handleShare}
         initialReplayTarget={replayTarget}
         onViewHand={handleViewHand}
+        onReplayTargetChange={handleReplayTargetChange}
         onShareHand={handleShareHand}
         activeTab={activeTab}
         onTabChange={handleTabChange}

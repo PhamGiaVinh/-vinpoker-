@@ -47,6 +47,21 @@ export function toCanonicalReplayTarget(target: ReplayTarget): URLSearchParams {
   return params;
 }
 
+export function replaceReplayTargetParams(current: URLSearchParams, target: ReplayTarget): URLSearchParams {
+  const params = new URLSearchParams(current);
+  params.delete("post");
+  params.delete("hand");
+  params.delete("handId");
+  params.delete("tableId");
+  const canonical = toCanonicalReplayTarget(target);
+  canonical.forEach((value, key) => params.set(key, value));
+  return params;
+}
+
+export function replayTargetForHand(hand: Pick<ReplayCandidate, "id" | "table_id" | "hand_number">): ReplayTarget {
+  return { handId: hand.id, tableId: hand.table_id, handNumber: hand.hand_number };
+}
+
 export function replayTargetLabel(target: ReplayTarget): string {
   return target.handNumber != null ? `Hand #${target.handNumber}` : "Hand";
 }

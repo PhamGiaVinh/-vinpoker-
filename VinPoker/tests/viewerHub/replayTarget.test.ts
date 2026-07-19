@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   parseReplayTarget,
+  replaceReplayTargetParams,
+  replayTargetForHand,
   resolveReplayCandidates,
   toCanonicalReplayTarget,
   type ReplayCandidate,
@@ -67,5 +69,21 @@ describe("stable replay target", () => {
     expect(toCanonicalReplayTarget({ handId: oldHand8.id, tableId: oldHand8.table_id, handNumber: 8 }).toString()).toBe(
       `handId=${oldHand8.id}&tableId=${oldHand8.table_id}`,
     );
+  });
+
+  it("converts a selected hand into a UUID-backed target", () => {
+    expect(replayTargetForHand(oldHand8)).toEqual({
+      handId: oldHand8.id,
+      tableId: oldHand8.table_id,
+      handNumber: oldHand8.hand_number,
+    });
+  });
+
+  it("replaces the old URL target without preserving a legacy hand or post", () => {
+    const next = replaceReplayTargetParams(
+      new URLSearchParams(`tab=hands&handId=${oldHand1.id}&tableId=${oldHand1.table_id}&hand=1&post=story-1`),
+      replayTargetForHand(oldHand8),
+    );
+    expect(next.toString()).toBe(`tab=hands&handId=${oldHand8.id}&tableId=${oldHand8.table_id}`);
   });
 });
