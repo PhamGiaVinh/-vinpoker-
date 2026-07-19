@@ -72,7 +72,7 @@ select
   ), '') as invalid_index_names,
   (select count(*)::int
    from pg_index i join pg_class ic on ic.oid = i.indexrelid join pg_am am on am.oid = ic.relam
-   where i.indrelid = table_oid and i.indisvalid and i.indisready and am.amname = 'btree'
+   where i.indrelid = table_oid and i.indisvalid and i.indisready and i.indpred is null and am.amname = 'btree'
      and pg_get_indexdef(i.indexrelid, 1, true) = 'table_id') as valid_leading_count,
   (select count(*)::int from pg_index i join pg_class ic on ic.oid = i.indexrelid
    where i.indrelid = table_oid and ic.relname = '${INDEX_NAME}') as target_count,

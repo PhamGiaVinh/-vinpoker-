@@ -20,6 +20,7 @@ test("runner is project-bound, allowlisted, and never edits the migration ledger
   assert.match(runner, /PRODUCTION_REF = "orlesggcjamwuknxwcpk"/);
   assert.match(runner, /CONFIRMATION = "CREATE_FLOOR_CLEANUP_INDEX"/);
   assert.match(runner, /migration_not_exact_allowlist/);
+  assert.match(runner, /i\.indpred is null and am\.amname = 'btree'/);
   assert.match(runner, /database\/query/);
   assert.match(runner, /DROP INDEX CONCURRENTLY IF EXISTS public\.\$\{INDEX_NAME\}/);
   assert.doesNotMatch(runner, /console\.(log|error)\([^\n]*accessToken/);
