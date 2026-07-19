@@ -172,8 +172,9 @@ async function discoverCleanupScope(admin) {
   const parsed = [];
   for (const row of rows) {
     const match = typeof row.name === "string" ? row.name.match(CLEANUP_SCENARIO_RE) : null;
-    if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || !UUID_RE.test(row.id) || !UUID_RE.test(row.owner_id)) {
-      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row name_ok=${Boolean(match)} region_ok=${row.region === "TEST"} club_id_ok=${UUID_RE.test(row.id)} owner_id_ok=${UUID_RE.test(row.owner_id)}`);
+    const ownerIdOk = row.owner_id === null || UUID_RE.test(row.owner_id);
+    if (!match || !CLEANUP_RUN_ID_RE.test(match[1]) || !CLEANUP_SCENARIOS.has(match[2]) || row.region !== "TEST" || !UUID_RE.test(row.id) || !ownerIdOk) {
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL invalid_prefixed_row name_ok=${Boolean(match)} region_ok=${row.region === "TEST"} club_id_ok=${UUID_RE.test(row.id)} owner_id_ok=${ownerIdOk}`);
       cleanupScopeError("invalid_row");
     }
     parsed.push({ id: row.id, ownerId: row.owner_id, runId: match[1], scenario: match[2] });
@@ -246,9 +247,41 @@ async function moneySafetyPreflight(admin, ledger) {
   return counts;
 }
 
-async function loadExactAuthUserIds(admin, runId, candidateIds) {
-  const ids = [...new Set(candidateIds)];
-  if (ids.length !== 4 || ids.some((id) => !UUID_RE.test(id))) fail("cleanup_scope_actor_count");
+async function readCanaryAuthUsers(admin, allowedRunIds) {
+  const allowed = new Map(allowedRunIds.map((runId) => [runId.toLowerCase(), { runId, actors: [] }]));
+  const emailPattern = /^(codex_floor_canary_[0-9]{14}_[a-f0-9]{8})-(owner|cashier|floor|cross)@floor-canary\.invalid$/;
+  let page = 1;
+  let fetched;
+  do {
+    fetched = await admin.auth.admin.listUsers({ page, perPage: 100 });
+    if (fetched.error || !fetched.data?.users) {
+      console.log(`FLOOR_CANARY CLEANUP_SCOPE_FAIL op=list_auth_users page=${page} ${safeAuthErrorDetail(fetched.error)}`);
+      fail("cleanup_scope_auth_users");
+    }
+    for (const user of fetched.data.users) {
+      const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
+      if (!email.startsWith("codex_floor_canary_")) continue;
+      const match = email.match(emailPattern);
+      const group = match ? allowed.get(match[1]) : null;
+      if (!match || !group || !UUID_RE.test(user.id)) fail("CLEANUP_SCOPE_UNEXPECTED:auth_user");
+      group.actors.push({ id: user.id, label: match[2] });
+    }
+    page += 1;
+  } while (fetched.data.users.length === 100);
+
+  const result = new Map();
+  for (const { runId, actors } of allowed.values()) {
+    const ids = [...new Set(actors.map((actor) => actor.id))];
+    const labels = new Set(actors.map((actor) => actor.label));
+    if (![0, 4].includes(ids.length) || (ids.length === 4 && labels.size !== 4)) fail("CLEANUP_SCOPE_UNEXPECTED:auth_actor_set");
+    result.set(runId, ids);
+    console.log(`FLOOR_CANARY CLEANUP_AUTH_SCOPE run_hash=${actorHash(runId)} users=${ids.length} ids_hash=${hashIds(ids)}`);
+  }
+  return result;
+}
+
+async function validateExactAuthUserIds(admin, runId, ids) {
+  if (![0, 4].includes(ids.length) || ids.some((id) => !UUID_RE.test(id))) fail("cleanup_scope_actor_count");
   const emailPattern = new RegExp(`^${runId.toLowerCase()}-(owner|cashier|floor|cross)@floor-canary\\.invalid$`);
   const labels = new Set();
   for (const id of ids) {
@@ -262,7 +295,7 @@ async function loadExactAuthUserIds(admin, runId, candidateIds) {
     if (!match || fetched.data.user.id !== id) fail("cleanup_scope_auth_identity_mismatch");
     labels.add(match[1]);
   }
-  if (labels.size !== 4) fail("cleanup_scope_actor_labels");
+  if (ids.length === 4 && labels.size !== 4) fail("cleanup_scope_actor_labels");
   return ids;
 }
 
@@ -277,7 +310,7 @@ async function verifyExactAuthUsersDeleted(admin, ids) {
   }
 }
 
-async function buildCleanupLedger(admin, scope) {
+async function buildCleanupLedger(admin, scope, discoveredAuthUserIds) {
   const clubIds = scope.clubs.map((club) => club.id);
   const tournaments = await admin.from("tournaments").select("id,club_id").in("club_id", clubIds);
   if (tournaments.error || !Array.isArray(tournaments.data)) fail("cleanup_scope_tournaments");
@@ -298,7 +331,10 @@ async function buildCleanupLedger(admin, scope) {
     ...cashierMemberships.data.map((row) => row.user_id),
     ...floorMemberships.data.map((row) => row.user_id),
   ].filter((id) => typeof id === "string"));
-  const authUsers = await loadExactAuthUserIds(admin, scope.runId, [...userIds]);
+  const referencedUserIds = [...userIds];
+  if (![0, 4].includes(referencedUserIds.length)) fail("CLEANUP_SCOPE_UNEXPECTED:referenced_actor_set");
+  if (referencedUserIds.some((id) => !discoveredAuthUserIds.includes(id))) fail("CLEANUP_SCOPE_UNEXPECTED:actor_reference_mismatch");
+  const authUsers = await validateExactAuthUserIds(admin, scope.runId, discoveredAuthUserIds);
   for (const userId of authUsers) userIds.add(userId);
 
   const ledger = {
@@ -840,9 +876,10 @@ async function cleanupExactLedger(admin, ledger) {
 
 async function runCleanupCanary(admin) {
   const scopes = await discoverCleanupScope(admin);
+  const authUsersByRun = await readCanaryAuthUsers(admin, scopes.map((scope) => scope.runId));
   const ledgers = [];
   for (const scope of scopes) {
-    const ledger = await buildCleanupLedger(admin, scope);
+    const ledger = await buildCleanupLedger(admin, scope, authUsersByRun.get(scope.runId) ?? []);
     await moneySafetyPreflight(admin, ledger);
     ledgers.push(ledger);
   }
@@ -856,6 +893,8 @@ async function runCleanupCanary(admin) {
   let remainingUsers = 0;
   try {
     await verifyExactAuthUsersDeleted(admin, exactAuthUserIds);
+    const remainingByRun = await readCanaryAuthUsers(admin, scopes.map((scope) => scope.runId));
+    remainingUsers = [...remainingByRun.values()].reduce((count, ids) => count + ids.length, 0);
   } catch (error) {
     remainingUsers = 1;
     console.log(`FLOOR_CANARY CLEANUP_REMAINING_AUTH detail=${error instanceof Error ? error.message : "unknown"}`);

@@ -76,6 +76,8 @@ test("cleanup discovery accepts exactly two strict run groups with two TEST club
   const scopes = await discoverCleanupScope(cleanupDiscoveryAdmin(cleanupRows));
   assert.equal(scopes.length, 2);
   assert.deepEqual(scopes.map((scope) => scope.clubs.length), [2, 2]);
+  const deletedActorScopes = await discoverCleanupScope(cleanupDiscoveryAdmin(cleanupRows.map((row) => ({ ...row, owner_id: null }))));
+  assert.equal(deletedActorScopes.length, 2);
 });
 
 test("cleanup discovery rejects unexpected run counts, suffixes, regions, and club counts", async () => {
@@ -95,7 +97,7 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.match(canarySource, /CLEANUP_MAX_BATCH_ATTEMPTS = 2/);
   assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
   assert.match(canarySource, /auth\.admin\.getUserById\(id\)/);
-  assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);
+  assert.match(canarySource, /auth\.admin\.listUsers\(\{ page, perPage: 100 \}\)/);
   assert.doesNotMatch(canarySource, /delete\(\)[\s\S]{0,120}\.like\(/);
   assert.doesNotMatch(canarySource, /truncate|session_replication_role|schema_migrations/i);
 });
