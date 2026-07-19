@@ -29,6 +29,7 @@ test("runner is project-bound, allowlisted, and never edits the migration ledger
 test("workflow cannot re-enter the one-time index phase", () => {
   assert.match(workflow, /environment: floor-production-canary/);
   assert.doesNotMatch(workflow, /controlled production canary runner \[index\]/);
+  assert.doesNotMatch(workflow, /^\s+- index$/m);
   assert.doesNotMatch(workflow, /SUPABASE_ACCESS_TOKEN/);
   assert.doesNotMatch(workflow, /apply-floor-cleanup-index/);
 });
