@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -74,9 +75,30 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  assignedThisRun,
+  edgeErrorStatus,
+  errorMessage,
+  isCurrentMassOpenRequest,
+  operationOutcome,
+  readOpenOperationProgress,
+  resolveMassOpenGate,
+  shouldContinueOpenOperation,
+  type MassOpenGate,
+  type OpenOperationProgress,
+} from "@/lib/dealerMassOpen";
 
 type ClubRow = { id: string; name: string };
 type Tour = { id: string; club_id: string; tour_name: string; start_time: string; end_time: string; tour_tier?: string };
+type DealerMassOpenRpcError = { code?: string; message: string };
+type DealerMassOpenRpcResult<T> = Promise<{ data: T | null; error: DealerMassOpenRpcError | null }>;
+const dealerMassOpenRpc = <T,>(name: string, args: Record<string, unknown>) => (
+  supabase.rpc as unknown as (
+    rpcName: string,
+    rpcArgs: Record<string, unknown>,
+  ) => DealerMassOpenRpcResult<T>
+)(name, args);
+
 function useTours(clubIds: string[]) {
   const [data, setData] = useState<Tour[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -191,6 +213,7 @@ const DIAG_LABELS: Record<string, string> = {
 
 export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds: string[]; clubs: ClubRow[]; onOpenPayroll?: () => void }) {
   const [clubFilter, setClubFilter] = useState<string | null>(clubIds.length === 1 ? clubIds[0] : null);
+  const activeClubId = clubFilter ?? (clubIds.length === 1 ? clubIds[0] : null);
   const filteredClubIds = useMemo(() => {
     const ids = clubFilter ? [clubFilter] : clubIds;
     return [...ids].sort();
@@ -270,6 +293,10 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [swingAllBusy, setSwingAllBusy] = useState(false);
   const [swingingTableId, setSwingingTableId] = useState<string | null>(null);
   const [massAssignBusy, setMassAssignBusy] = useState(false);
+  const [massOpenGate, setMassOpenGate] = useState<MassOpenGate>("checking");
+  const [openOperationProgress, setOpenOperationProgress] = useState<OpenOperationProgress | null>(null);
+  const rolloutRequestRef = useRef(0);
+  const openOperationRequestRef = useRef(0);
   const [autoSwingEnabled, setAutoSwingEnabled] = useState(false);
   const [activeView, setActiveView] = useState<"roster" | "tables" | "dealers" | "payroll">("tables");
   const [modalTable, setModalTable] = useState<string | null>(null);
@@ -297,6 +324,36 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
   const [poolSearch, setPoolSearch] = useState("");
   const [selectedPoolTableIds, setSelectedPoolTableIds] = useState<string[]>([]);
   const [newTableType, setNewTableType] = useState("tournament");
+
+  useEffect(() => {
+    const request = ++rolloutRequestRef.current;
+    let cancelled = false;
+    ++openOperationRequestRef.current;
+    setOpenOperationProgress(null);
+    setSelectedPoolTableIds([]);
+    setCreateTableOpen(false);
+
+    if (!activeClubId) {
+      setMassOpenGate("disabled");
+      return;
+    }
+
+    const loadRollout = async () => {
+      const { data, error } = await dealerMassOpenRpc<{ allowed?: boolean }>("get_dealer_mass_open_rollout", {
+        p_expected_club_id: activeClubId,
+      });
+      if (cancelled || !isCurrentMassOpenRequest(request, rolloutRequestRef.current)) return;
+      setMassOpenGate(resolveMassOpenGate(data, error));
+    };
+
+    setMassOpenGate("checking");
+    void loadRollout();
+    const poll = window.setInterval(loadRollout, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+    };
+  }, [activeClubId]);
 
   // Telegram config state
   const [telegramOpen, setTelegramOpen] = useState(false);
@@ -570,16 +627,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
     if (!cid) { toast.error("Vui lòng chọn CLB"); return 0; }
     setMassAssignBusy(true);
     try {
-      // Fill in BOUNDED PASSES (2026-07-09 bugfix): each mass-assign call is now
-      // wall-clock-budgeted server-side (fillEmptyTables stops cleanly at ~20s), so a big
-      // "mở 50 bàn" burst can't time out mid-loop and strand tables. Re-invoke until a pass
-      // assigns nothing more (all filled, or the rest need the per-minute cron), capped at 8
-      // passes to avoid any loop. Each pass uses a FRESH idempotency key so it runs a new
-      // fill over the still-empty tables (fillEmptyTables only touches empty tables → no
-      // double-assign); the key still dedupes an accidental retry of the SAME pass.
+      // Legacy fallback remains progress-bounded: each pass must assign at least
+      // one new table, and one operator action can cover at most 50 tables.
       let total = 0;
-      for (let pass = 0; pass < 8; pass++) {
-        const { data, error } = await supabase.functions.invoke("mass-assign", {
+      while (total < 50) {
+        const { data, error } = await supabase.functions.invoke<unknown>("mass-assign", {
           body: { club_id: cid, shift_id: selectedTour ?? undefined, idempotency_key: crypto.randomUUID() },
         });
         if (error) {
@@ -591,10 +643,11 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
           break; // keep whatever earlier passes committed
         }
         const n = (data as any)?.assigned ?? 0;
+        if (n <= 0) break;
         total += n;
-        if (n === 0) break; // nothing more to fill this pass → done
       }
-      toast.success(`Đã gán ${total} bàn trống`);
+      if (total > 0) toast.success(`Đã gán dealer cho ${total} bàn`);
+      else toast.warning("Chưa gán thêm bàn nào. Hệ thống sẽ thử lại khi có dealer phù hợp.");
       await Promise.all([
         refetchAssignments(),
         refetchDealers(),
@@ -607,6 +660,191 @@ export default function SwingPanel({ clubIds, clubs, onOpenPayroll }: { clubIds:
       setMassAssignBusy(false);
     }
   };
+
+  const continueOpenOperation = async (
+    operationId: string,
+    cid: string,
+    initial: OpenOperationProgress,
+    request: number,
+  ): Promise<OpenOperationProgress> => {
+    let current = initial;
+    setMassAssignBusy(true);
+    try {
+      while (current.remaining > 0 && current.status === "waiting_for_dealer") {
+        const { data, error } = await supabase.functions.invoke("mass-assign", {
+          body: {
+            club_id: cid,
+            shift_id: selectedTour ?? undefined,
+            operation_id: operationId,
+          },
+        });
+        if (!isCurrentMassOpenRequest(request, openOperationRequestRef.current)) return current;
+        if (error) {
+          const status = edgeErrorStatus(error);
+          if (status === 423) {
+            setMassOpenGate("disabled");
+            toast.warning("Mở bàn loạt đang tắt. Các bàn chưa có dealer sẽ không được gán tiếp.");
+          } else {
+            toast.error("Chưa thể tiếp tục gán dealer. Cron sẽ thử lại cho operation này.");
+          }
+          return current;
+        }
+
+        const next = readOpenOperationProgress(data, operationId, current);
+        setOpenOperationProgress(next);
+
+        const newlyAssigned = assignedThisRun(data);
+        if (!shouldContinueOpenOperation(current, next, newlyAssigned)) return next;
+        current = next;
+      }
+      return current;
+    } finally {
+      setMassAssignBusy(false);
+    }
+  };
+
+  const openSelectedTables = async () => {
+    const cid = activeClubId;
+    if (!cid) {
+      toast.error("Hãy chọn một CLB trước khi mở bàn.");
+      return;
+    }
+    if (massOpenGate === "checking") {
+      toast.info("Đang kiểm tra quyền mở bàn. Vui lòng thử lại sau ít giây.");
+      return;
+    }
+    if (massOpenGate === "disabled") {
+      toast.warning("Mở bàn loạt đang tắt cho CLB này.");
+      return;
+    }
+
+    setProcessing("create_table");
+    const request = ++openOperationRequestRef.current;
+    try {
+      if (massOpenGate === "legacy") {
+        let success = 0;
+        let fail = 0;
+        for (const tableId of selectedPoolTableIds) {
+          await supabase.rpc("release_dealer_from_table", { p_table_id: tableId });
+          const { error } = await supabase.from("game_tables").update({
+            shift_id: selectedTour ?? null,
+            status: "active",
+            table_type: newTableType,
+          }).eq("id", tableId);
+          if (error) fail++;
+          else success++;
+        }
+        if (fail > 0) toast.warning(`Đã mở ${success} bàn; ${fail} bàn chưa mở được.`);
+        else toast.success(`Đã mở ${success} bàn.`);
+        if (success > 0) await massAssign();
+        setCreateTableOpen(false);
+        return;
+      }
+
+      const operationId = crypto.randomUUID();
+      const { data, error } = await dealerMassOpenRpc<unknown>("operator_open_dealer_tables", {
+        p_request_id: operationId,
+        p_expected_club_id: cid,
+        p_shift_id: selectedTour ?? null,
+        p_table_ids: selectedPoolTableIds,
+        p_table_type: newTableType,
+      });
+      if (!isCurrentMassOpenRequest(request, openOperationRequestRef.current)) return;
+      if (error) {
+        toast.error(`Chưa mở được bàn: ${error.message}`);
+        return;
+      }
+      const rpcOutcome = operationOutcome(data);
+      if (rpcOutcome.outcome === "rollout_disabled") {
+        setMassOpenGate("disabled");
+        toast.warning("Mở bàn loạt vừa được tắt. Không có bàn nào được mở.");
+        return;
+      }
+      if (!["completed", "waiting_for_dealer"].includes(rpcOutcome.outcome)) {
+        const reason = rpcOutcome.reason === "table_in_open_operation"
+          ? "Một số bàn đang thuộc operation mở bàn khác. Hãy chờ operation đó hoàn tất."
+          : "Trạng thái bàn đã thay đổi. Hãy tải lại danh sách rồi chọn lại.";
+        toast.warning(reason);
+        return;
+      }
+
+      let progress = readOpenOperationProgress(data, operationId, {
+        requested: selectedPoolTableIds.length,
+        assigned: 0,
+        remaining: selectedPoolTableIds.length,
+        status: rpcOutcome.outcome,
+      });
+      setOpenOperationProgress(progress);
+      if (progress.remaining > 0) {
+        progress = await continueOpenOperation(operationId, cid, progress, request);
+      }
+      if (!isCurrentMassOpenRequest(request, openOperationRequestRef.current)) return;
+
+      if (progress.remaining === 0) {
+        toast.success(`Đã mở và gán dealer ${progress.assigned}/${progress.requested} bàn.`);
+      } else {
+        toast.warning(
+          `Đã có dealer ${progress.assigned}/${progress.requested} bàn. `
+          + `${progress.remaining} bàn còn lại đang chờ dealer; cron sẽ tiếp tục tự gán.`,
+        );
+      }
+      setSelectedPoolTableIds([]);
+    } catch (error: unknown) {
+      toast.error(errorMessage(error) || "Chưa thể mở bàn.");
+    } finally {
+      if (request === openOperationRequestRef.current) setProcessing(null);
+      await Promise.all([
+        refetchTables(),
+        refetchAvailableTables(),
+        refetchPoolTables(),
+        refetchAssignments(),
+        refetchDealers(),
+      ]);
+    }
+  };
+
+  const trackedOperationId = openOperationProgress?.operationId ?? null;
+  const trackedOperationRemaining = openOperationProgress?.remaining ?? 0;
+  useEffect(() => {
+    if (!trackedOperationId
+        || trackedOperationRemaining === 0
+        || !activeClubId
+        || massOpenGate !== "enabled") return;
+
+    let cancelled = false;
+    const operationId = trackedOperationId;
+    const poll = async () => {
+      const { data, error } = await dealerMassOpenRpc<unknown>("get_dealer_open_operation", {
+        p_operation_id: operationId,
+        p_expected_club_id: activeClubId,
+      });
+      if (cancelled || error) return;
+      const next = readOpenOperationProgress(data, operationId, {
+        requested: 0,
+        assigned: 0,
+        remaining: trackedOperationRemaining,
+        status: "waiting_for_dealer",
+      });
+      setOpenOperationProgress(next);
+      if (next.remaining === 0) {
+        await Promise.all([refetchTables(), refetchAssignments(), refetchDealers()]);
+      }
+    };
+
+    const timer = window.setInterval(poll, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    trackedOperationId,
+    trackedOperationRemaining,
+    activeClubId,
+    massOpenGate,
+    refetchAssignments,
+    refetchDealers,
+    refetchTables,
+  ]);
 
   // Open assignment modal for a table
   const openAssignModal = async (tableId: string) => {
@@ -2201,6 +2439,16 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
       <Dialog open={createTableOpen} onOpenChange={(o) => { setCreateTableOpen(o); if (!o) { setPoolSearch(""); setSelectedPoolTableIds([]); setNewTableType("tournament"); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Thêm bàn từ pool</DialogTitle></DialogHeader>
+          {massOpenGate === "checking" && (
+            <div className="text-xs text-muted-foreground border border-border px-2.5 py-2">
+              Đang kiểm tra quyền mở bàn cho CLB này...
+            </div>
+          )}
+          {massOpenGate === "disabled" && (
+            <div className="text-xs text-warning border border-warning/30 bg-warning/5 px-2.5 py-2">
+              Mở bàn loạt đang tắt cho CLB này. Không có bàn nào được thay đổi.
+            </div>
+          )}
           {/* Scope clarity: All → global table; a tour selected → scoped to that tour. */}
           <div className={[
             "text-xs px-2.5 py-1.5 rounded border",
@@ -2235,7 +2483,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                       || String(a.table_name).localeCompare(String(b.table_name), "vi"));
                   return filtered.map((t) => {
                     const isAssigned = t.status === "active" && tableAssignmentMap[t.id];
-                    const isSelectable = !isAssigned;
+                    const isSelectable = massOpenGate === "enabled" || !isAssigned;
                     return (
                       <label key={t.id}
                         className={`flex items-center justify-between p-2 text-xs border ${isSelectable ? "cursor-pointer" : "opacity-50"} ${selectedPoolTableIds.includes(t.id) ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted/20"}`}>
@@ -2272,7 +2520,7 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                     const excluded = ["11", "12", "13", "21", "A25"];
                     const selectable = (poolTables ?? [])
                       .filter((t) => !excluded.includes(t.table_name) && (!poolSearch || t.table_name.toLowerCase().includes(poolSearch.toLowerCase())))
-                      .filter((t) => !(t.status === "active" && tableAssignmentMap[t.id]));
+                      .filter((t) => massOpenGate === "enabled" || !(t.status === "active" && tableAssignmentMap[t.id]));
                     setSelectedPoolTableIds(selectable.map((t: any) => t.id));
                   }}>
                   Chọn tất cả
@@ -2292,40 +2540,48 @@ onSendToBreak={(attId) => setBreakDurationOpen(attId)}
                 </SelectContent>
               </Select>
             </div>
+            {openOperationProgress && (
+              <div className="space-y-2 border-t border-border pt-3" aria-live="polite">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium">
+                    Đã có dealer {openOperationProgress.assigned}/{openOperationProgress.requested} bàn
+                  </span>
+                  <span className="text-muted-foreground">
+                    Còn {openOperationProgress.remaining}
+                  </span>
+                </div>
+                <Progress
+                  value={openOperationProgress.requested > 0
+                    ? openOperationProgress.assigned / openOperationProgress.requested * 100
+                    : 0}
+                  className="h-2"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {openOperationProgress.remaining === 0
+                    ? "Tất cả bàn đã có dealer."
+                    : "Các bàn còn lại đang chờ dealer. Cron sẽ tiếp tục tự gán dù bạn đóng cửa sổ này."}
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateTableOpen(false)}>Huỷ</Button>
-            <Button disabled={!selectedPoolTableIds.length || processing === "create_table"}
-              onClick={async () => {
-                setProcessing("create_table");
-                let success = 0, fail = 0;
-                for (const tableId of selectedPoolTableIds) {
-                  // Clean up stale dealer assignments (atomic RPC — checks for other active assignments)
-                  await supabase.rpc("release_dealer_from_table", { p_table_id: tableId });
-                  const { error } = await supabase.from("game_tables").update({
-                    shift_id: selectedTour ?? null,
-                    status: "active",
-                    table_type: newTableType,
-                  }).eq("id", tableId);
-                  if (error) { fail++; } else { success++; }
-                }
-                setProcessing(null);
-                if (fail > 0) toast.warning(`Thêm bàn: ${success} thành công, ${fail} thất bại`);
-                else toast.success(`Đã thêm ${success} bàn vào tour`);
-                setCreateTableOpen(false);
-                setPoolSearch("");
-                setSelectedPoolTableIds([]);
-                setNewTableType("tournament");
-                refetchTables();
-                refetchAvailableTables();
-                refetchPoolTables();
-                if (success > 0) {
-                  const assigned = await massAssign();
-                  if (assigned > 0) toast.success(`Đã tự động gán dealer cho ${assigned} bàn`);
-                }
-              }}>
-              {processing === "create_table" ? <Loader2 className="w-3 h-3 animate-spin" /> : "Xác nhận"}
+            <Button variant="outline" onClick={() => setCreateTableOpen(false)}>
+              {openOperationProgress ? "Đóng" : "Huỷ"}
             </Button>
+            {selectedPoolTableIds.length > 0 && (
+              <Button
+                disabled={
+                  processing === "create_table"
+                  || massOpenGate === "checking"
+                  || massOpenGate === "disabled"
+                }
+                onClick={openSelectedTables}
+              >
+                {processing === "create_table"
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Đang mở bàn...</>
+                  : `Mở ${selectedPoolTableIds.length} bàn`}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
