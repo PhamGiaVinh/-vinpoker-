@@ -97,6 +97,7 @@ test("cleanup implementation remains exact-ID only and bounded", () => {
   assert.match(canarySource, /deleteExactBatches\(admin, "game_tables", ledger\.gameTableIds/);
   assert.match(canarySource, /deleteExactAuthUser[\s\S]{0,120}attempt <= 3/);
   assert.match(canarySource, /cleanup_tournaments[\s\S]{0,500}cleanup_generated_audit/);
+  assert.match(canarySource, /cleanup_scope_audit_logs[\s\S]{0,250}cleanup_audit_logs/);
   assert.match(canarySource, /table: "dealer_rotation_schedule"[\s\S]{0,180}indexed: true/);
   assert.match(canarySource, /auth\.admin\.getUserById\(id\)/);
   assert.doesNotMatch(canarySource, /auth\.admin\.listUsers/);

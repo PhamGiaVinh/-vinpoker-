@@ -799,6 +799,12 @@ async function cleanupExactLedger(admin, ledger) {
   await attempt("cashier_memberships", async () => { await deleteByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "cleanup_cashier_memberships"); return ledger.cashierMemberships.length; });
   await attempt("floor_memberships", async () => { await deleteByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "cleanup_floor_memberships"); return ledger.floorMemberships.length; });
   await attempt("game_tables", () => deleteExactBatches(admin, "game_tables", ledger.gameTableIds, "cleanup_game_tables"));
+  await attempt("audit_logs", async () => {
+    const auditLogIds = await idsByColumn(admin, "audit_logs", "club_id", ledger.clubIds, "cleanup_scope_audit_logs");
+    ledger.auditLogIds = auditLogIds;
+    await deleteExact(admin, "audit_logs", auditLogIds, "cleanup_audit_logs");
+    return auditLogIds.length;
+  });
   await attempt("clubs", async () => { await deleteExact(admin, "clubs", ledger.clubIds, "cleanup_clubs"); return ledger.clubIds.length; });
   for (const [index, userId] of ledger.authUserIds.entries()) {
     await attempt(`auth_user_${index}`, async () => {
@@ -817,6 +823,7 @@ async function cleanupExactLedger(admin, ledger) {
   await attempt("verify_tournaments", () => verifyExactRows(admin, "tournaments", ledger.tournamentIds, "verify_tournaments"));
   await attempt("verify_game_tables", () => verifyExactRows(admin, "game_tables", ledger.gameTableIds, "verify_game_tables"));
   await attempt("verify_audit_rows", () => verifyExactRows(admin, "swing_config_audit", ledger.auditRows, "verify_audit_rows"));
+  await attempt("verify_audit_logs", () => verifyExactRows(admin, "audit_logs", ledger.auditLogIds ?? [], "verify_audit_logs"));
   await attempt("verify_cashier_memberships", () => verifyByColumnExact(admin, "club_cashiers", "club_id", ledger.clubIds, "verify_cashier_memberships"));
   await attempt("verify_floor_memberships", () => verifyByColumnExact(admin, "club_floors", "club_id", ledger.clubIds, "verify_floor_memberships"));
   await attempt("verify_clubs", () => verifyExactRows(admin, "clubs", ledger.clubIds, "verify_clubs"));
