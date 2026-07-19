@@ -111,8 +111,9 @@ test("workflow orders exact apply before exact draw deploy and rollback", () => 
   const sourceVerify = workflow.indexOf("Verify deployed draw exact source hash");
   const edgeSmoke = workflow.indexOf("Run targeted Edge chip CAS canary");
   const rollback = workflow.indexOf("Roll back draw consumer after rollout failure");
+  const rollbackFailure = workflow.indexOf("Mark rollout failed after rollback");
   assert.ok(guards > 0 && guards < apply && apply < rpcSmoke && rpcSmoke < backup && backup < deploy);
-  assert.ok(deploy < sourceVerify && sourceVerify < edgeSmoke && edgeSmoke < rollback);
+  assert.ok(deploy < sourceVerify && sourceVerify < edgeSmoke && edgeSmoke < rollback && rollback < rollbackFailure);
   assert.match(workflow, /supabase functions deploy tournament-live-draw/);
   assert.match(workflow, /--no-verify-jwt/);
   assert.match(workflow, /supabase functions download tournament-live-draw/);
@@ -121,6 +122,7 @@ test("workflow orders exact apply before exact draw deploy and rollback", () => 
   assert.match(workflow, /test "\$deployed_hash" = "\$expected_hash"/);
   assert.match(workflow, /test "\$verified_hash" = "\$FLOOR_DRAW_ROLLBACK_HASH"/);
   assert.match(workflow, /always\(\)/);
+  assert.match(workflow, /FLOOR CHIP CAS ROLLOUT FAIL rollback_required=true/);
   assert.match(workflow, /supabase\/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1/);
   assert.match(workflow, /version: 2\.105\.0/);
   assert.doesNotMatch(workflow, /supabase db push|--include-all/);
@@ -144,6 +146,13 @@ test("workflow binds rollout to Draft PR 912 and scopes credentials to smoke ste
   ]) {
     assert.ok(byName.get(name)?.env?.SUPABASE_ANON_KEY);
     assert.ok(byName.get(name)?.env?.SUPABASE_SERVICE_ROLE_KEY);
+  }
+  for (const name of [
+    "Run direct RPC behavior smoke before Edge deploy",
+    "Run targeted Edge chip CAS canary and exact cleanup",
+  ]) {
+    assert.match(String(byName.get(name)?.if), /pull_request\.number == 912/);
+    assert.match(String(byName.get(name)?.if), /\[rollout\]/);
   }
   for (const name of [
     "Install Supabase CLI for exact draw deployment",

@@ -88,7 +88,8 @@ jobs:
           FLOOR_CHIP_CAS_CONFIRM: APPLY_FLOOR_CHIP_CAS_RPC
         run: node scripts/floor/apply-floor-chip-cas-rpc.mjs
       - name: Run direct RPC behavior smoke before Edge deploy
-        if: env.FLOOR_CANARY_MODE == 'rollout'
+        if: >-
+          github.event_name == 'pull_request' && github.event.pull_request.number == 912 && github.event.pull_request.title == 'test(floor): controlled production canary runner [rollout]'
         working-directory: VinPoker
         env:
           FLOOR_CANARY_MODE: run
@@ -169,7 +170,8 @@ jobs:
           echo "FLOOR_CHIP_CAS_EDGE SOURCE_PASS exact_head_source=true source_hash=$deployed_hash upload=false"
       - name: Run targeted Edge chip CAS canary and exact cleanup
         id: edge_smoke
-        if: env.FLOOR_CANARY_MODE == 'rollout'
+        if: >-
+          github.event_name == 'pull_request' && github.event.pull_request.number == 912 && github.event.pull_request.title == 'test(floor): controlled production canary runner [rollout]'
         timeout-minutes: 8
         working-directory: VinPoker
         env:
@@ -208,6 +210,11 @@ jobs:
           verified_hash="$(find supabase/functions/tournament-live-draw -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
           test "$verified_hash" = "$FLOOR_DRAW_ROLLBACK_HASH"
           echo "FLOOR_CHIP_CAS_EDGE ROLLBACK_SOURCE_VERIFIED source_hash=$verified_hash upload=false"
+      - name: Mark rollout failed after rollback
+        if: ${{ always() && steps.edge_backup.outcome == 'success' && steps.edge_deploy.outcome != 'skipped' && (steps.edge_deploy.outcome != 'success' || steps.edge_metadata.outcome != 'success' || steps.edge_source.outcome != 'success' || steps.edge_smoke.outcome != 'success') }}
+        run: |
+          echo "FLOOR CHIP CAS ROLLOUT FAIL rollback_required=true"
+          exit 1
       - name: Validate canary context and execute isolated API matrix
         if: env.FLOOR_CANARY_MODE != 'rollout'
         working-directory: VinPoker
