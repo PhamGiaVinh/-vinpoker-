@@ -48,6 +48,7 @@ import {
 } from "../_shared/preAssignState.ts";
 import { SWING_POLICY } from "../_shared/swingPolicy.ts";
 import { parseRequestedClubIds } from "./requestScope.ts";
+import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2402,6 +2403,32 @@ if (tier2Count > 0) {
           } | null;
         };
 
+        const releasePass3Lock = async (locked: any, reason: string) => {
+          if (dryRun || !(locked as any).__locked) return true;
+
+          let query = admin
+            .from("dealer_assignments")
+            .update({ swing_in_progress: false })
+            .eq("id", locked.id)
+            .eq("swing_in_progress", true)
+            .eq("version", (locked as any).__lockedVersion ?? locked.version);
+
+          if (locked.last_swing_attempted_at) {
+            query = query.eq("last_swing_attempted_at", locked.last_swing_attempted_at);
+          }
+
+          const { data, error } = await query
+            .select("id")
+            .maybeSingle();
+          if (error || !data) {
+            console.warn(`[Pass 3] lock release CAS lost for ${locked.id} (${reason})`, error?.message ?? "no row");
+            return false;
+          }
+
+          (locked as any).__locked = false;
+          return true;
+        };
+
         const runReplacementFallback = async (
           fallbackAssignment: any,
           fallbackTableName: string,
@@ -2822,18 +2849,39 @@ if (tier2Count > 0) {
 
           if (assignment.pre_assigned_attendance_id) {
             // ── Pre-assigned swing path ───────────────────────────────────
-            const { data: preflightAtt } = await admin
+            const { data: preflightRaw, error: preflightError } = await admin
               .from("dealer_attendance")
-              .select("current_state, status, full_name, last_released_at")
+              .select("current_state, status, last_released_at, dealers(full_name)")
               .eq("id", assignment.pre_assigned_attendance_id)
               .maybeSingle();
-            const preflightInvalid = !preflightAtt
-              || preflightAtt.current_state === "checked_out"
-              || preflightAtt.current_state === "on_break"
-              || preflightAtt.status === "checked_out";
+            const preflight = assessPreAssignPreflight(
+              preflightRaw as any,
+              preflightError,
+              EXECUTE_MIN_REST_MINUTES,
+            );
+
+            if (preflight.kind === "query_error") {
+              await logPass3Diagnostic(
+                "preflight_query_error",
+                assignment,
+                {
+                  message: `Preflight query failed for ${tableName}`,
+                  level: "ERROR",
+                  error: preflight.error,
+                  action: "keep_outgoing_ot_retry_next_tick",
+                },
+                { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
+              );
+              await releasePass3Lock(assignment, "preflight_query_error");
+              metrics.failed++;
+              continue;
+            }
+
+            const preflightAtt = preflight.attendance;
+            const preflightInvalid = preflight.kind === "invalid";
             if (preflightInvalid) {
               await logPass3Diagnostic(
-                "preflight_invalid_pre_assign",
+                "invalid_preassign",
                 assignment,
                 {
                   message: `Preflight invalid for ${tableName}`,
@@ -2844,42 +2892,89 @@ if (tier2Count > 0) {
                 },
                 { pre_assigned_attendance_id: assignment.pre_assigned_attendance_id },
               );
-            }
-            // Stale pre-assign guard: incoming dealer is no longer in pre_assigned state.
-            // preflightInvalid already handles checked_out/on_break; this catches "available"
-            // (dealer cleanly released since this tick's query ran). Without this guard,
-            // the RPC fires anyway and returns race_lost with no fallback triggered.
-            if (preflightAtt?.current_state === "available") {
-              console.warn("[process-swing][pass3][guard-stale-preassign]", {
-                club_id: cid,
-                table_id: assignment.table_id,
-                table_name: tableName,
-                assignment_id: assignment.id,
-                incoming_dealer_id: assignment.pre_assigned_attendance_id,
-                incoming_dealer_name: preflightAtt.full_name,
-                current_state: preflightAtt.current_state,
-                attendance_status: preflightAtt.status,
-                pre_assign_status: preAssignStatus,
-                reason: "dealer_released_to_available",
-              });
+
+              const lockedVersion = (assignment as any).__lockedVersion ?? assignment.version;
+              const { data: cleared, error: clearError } = await admin
+                .from("dealer_assignments")
+                .update({
+                  pre_assigned_attendance_id: null,
+                  pre_assigned_at: null,
+                  is_emergency_pre_assign: false,
+                  swing_in_progress: false,
+                })
+                .eq("id", assignment.id)
+                .eq("version", lockedVersion)
+                .eq("swing_in_progress", true)
+                .eq("pre_assigned_attendance_id", assignment.pre_assigned_attendance_id)
+                .select("id, version, status, swing_processed_at, overtime_started_at")
+                .maybeSingle();
+
+              if (clearError || !cleared) {
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Invalid pre-assign cleanup race lost for ${tableName}`,
+                    level: "WARNING",
+                    outcome: "race_lost",
+                    error: clearError?.message ?? null,
+                  },
+                );
+                metrics.skipped++;
+                continue;
+              }
+              (assignment as any).__locked = false;
+
+              await admin
+                .from("dealer_attendance")
+                .update({
+                  current_state: "available",
+                  pre_assigned_table_id: null,
+                  pre_assigned_at: null,
+                })
+                .eq("id", assignment.pre_assigned_attendance_id)
+                .eq("current_state", "pre_assigned")
+                .eq("pre_assigned_table_id", assignment.table_id);
+
               if (scheduleDriven) {
-                // Dead lock at execution time: cancel the slot, clear the
-                // stale pre-assign, and re-plan + re-lock THIS tick.
-                // The table never sits stuck waiting for zombie cleanup.
                 const staleExcludes = new Set([
                   ...cycleExcludedIds,
                   assignment.attendance_id,
                   assignment.pre_assigned_attendance_id,
                 ]);
                 const replan = await replanSingleTable(
-                  admin, passRCtx, assignment.id, staleExcludes, "preflight_stale_lock",
+                  admin, passRCtx, assignment.id, staleExcludes, "invalid_preassign",
                 );
-                console.log(`[Pass 3] ${tableName}: stale lock re-planned — ${replan.detail}`);
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Invalid pre-assign replan for ${tableName}`,
+                    level: replan.relocked ? "INFO" : "WARNING",
+                    outcome: replan.relocked ? "relocked" : "no_replacement",
+                    detail: replan.detail,
+                  },
+                );
                 if (replan.relocked) metrics.success++;
                 else metrics.skipped++;
-                continue;
+              } else {
+                await runReplacementFallback(
+                  assignment,
+                  tableName,
+                  outgoingDealer,
+                  "invalid_preassign",
+                  cleared,
+                );
+                await logPass3Diagnostic(
+                  "replan_outcome",
+                  assignment,
+                  {
+                    message: `Legacy replacement attempted for ${tableName}`,
+                    level: "INFO",
+                    outcome: "fallback_attempted",
+                  },
+                );
               }
-              metrics.skipped++;
               continue;
             }
 
@@ -2890,9 +2985,9 @@ if (tier2Count > 0) {
             // keep the current dealer on OT (Pass R already stamped it) and alert.
             // The pre-assign lock is left intact so a later tick swings once the
             // incoming dealer is rested. No force-release, no auto-pick, no bypass.
-            const incomingRestMin = preflightAtt?.last_released_at
-              ? (Date.now() - new Date(preflightAtt.last_released_at).getTime()) / 60_000
-              : Infinity; // never released this shift → fully rested
+            const incomingRestMin = preflight.kind === "rest_blocked" || preflight.kind === "ready"
+              ? preflight.restMinutes
+              : Number.POSITIVE_INFINITY;
             if (incomingRestMin < EXECUTE_MIN_REST_MINUTES) {
               console.warn("[process-swing][pass3][rest-revalidation-block]", {
                 club_id: cid,
@@ -3109,13 +3204,20 @@ if (tier2Count > 0) {
                 if (incomingId) {
                   const { data, error } = await admin
                     .from("dealer_attendance")
-                    .select("current_state, status, full_name")
+                    .select("current_state, status, dealers(full_name)")
                     .eq("id", incomingId)
                     .single();
                   if (error || !data) {
                     isNoShow = true;
                   } else {
-                    incomingAtt = data;
+                    const dealer = Array.isArray((data as any).dealers)
+                      ? (data as any).dealers[0]
+                      : (data as any).dealers;
+                    incomingAtt = {
+                      current_state: (data as any).current_state,
+                      status: (data as any).status,
+                      full_name: dealer?.full_name ?? "Unknown",
+                    };
                     // PATCH J: a dealer who cleanly released to 'available' between the
                     // preflight check and the RPC is a BENIGN race, not a no-show — do
                     // not blame them. Fall through to the normal race_lost fallback
@@ -3997,11 +4099,7 @@ if (tier2Count > 0) {
             // would permanently skip this assignment.
             if (!dryRun && (assignment as any).__locked) {
               try {
-                await admin
-                  .from("dealer_assignments")
-                  .update({ swing_in_progress: false })
-                  .eq("id", assignment.id);
-                (assignment as any).__locked = false;
+                await releasePass3Lock(assignment, "pass3_finally");
               } catch (resetErr: any) {
                 console.error(
                   `[Pass 3] ⚠️ Failed to reset swing_in_progress for ${assignment.id}:`,

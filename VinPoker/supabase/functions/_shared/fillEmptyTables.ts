@@ -39,6 +39,8 @@ interface GameTableRow {
   table_type: string | null;
   shift_id: string | null;
   current_blind_level: number | null;
+  opened_at: string | null;
+  dealer_open_operation_id: string | null;
 }
 
 interface ActiveAssignmentRow {
@@ -62,6 +64,22 @@ interface AssignTableRpcResult {
 
 interface AssignTableRpcError {
   message: string;
+}
+
+export function isRunningDealerSessionTable(
+  table: Pick<GameTableRow, "id" | "shift_id" | "opened_at" | "dealer_open_operation_id">,
+  liveTournamentTableIds: { has(tableId: string): boolean },
+  shiftId: string | undefined,
+  durableMarkerAllowed = false,
+  nowMs = Date.now(),
+): boolean {
+  const markerIsCurrent = durableMarkerAllowed
+    && table.dealer_open_operation_id != null
+    && table.opened_at != null
+    && new Date(table.opened_at).getTime() >= nowMs - 24 * 60 * 60 * 1000;
+  return liveTournamentTableIds.has(table.id)
+    || (shiftId != null && table.shift_id === shiftId)
+    || markerIsCurrent;
 }
 
 // ─── fillEmptyTables ──────────────────────────────────────────────────────────
@@ -88,7 +106,7 @@ export async function fillEmptyTables(
   // Step 1: Fetch active tables for this club
   const { data: tables, error: tableErr } = (await admin
     .from("game_tables")
-    .select("id, table_name, table_type, shift_id, current_blind_level")
+    .select("id, table_name, table_type, shift_id, current_blind_level, opened_at, dealer_open_operation_id")
     .eq("club_id", clubId)
     .eq("status", "active")) as unknown as {
       data: GameTableRow[] | null;
@@ -171,8 +189,20 @@ export async function fillEmptyTables(
   // from tournaments WHERE status='live') OR the current active shift. Manual callers
   // (mass-assign / assign-dealer, availableOnly=false) are UNAFFECTED — the operator
   // explicitly chose that table.
-  const isRunningSessionTable = (t: { id: string; shift_id: string | null }) =>
-    tournamentConfig.has(t.id) || (shiftId != null && t.shift_id === shiftId);
+  let durableMarkerAllowed = false;
+  if (availableOnly && activeTables.some((table) => table.dealer_open_operation_id != null)) {
+    const { data: rollout } = await admin
+      .from("dealer_mass_open_rollout")
+      .select("enabled, all_clubs_enabled, allowed_club_ids")
+      .eq("id", true)
+      .maybeSingle();
+    durableMarkerAllowed = rollout?.enabled === true
+      && (rollout?.all_clubs_enabled === true
+        || (rollout?.allowed_club_ids ?? []).includes(clubId));
+  }
+
+  const isRunningSessionTable = (t: GameTableRow) =>
+    isRunningDealerSessionTable(t, tournamentConfig, shiftId, durableMarkerAllowed);
   const notAssigned = scopedTables.filter((t: { id: string }) => !assignedTableIds.has(t.id));
   const skippedNonSession = availableOnly ? notAssigned.filter((t) => !isRunningSessionTable(t)) : [];
   const emptyTables = (availableOnly ? notAssigned.filter(isRunningSessionTable) : notAssigned)
