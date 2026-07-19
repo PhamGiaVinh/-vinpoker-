@@ -95,18 +95,18 @@ export function MenuManager({ clubId, clubName }: { clubId: string; clubName: st
                       </div>
                       <div className="min-w-0">
                         <div className="truncate font-medium">{m.name}</div>
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        <div className="mt-0.5 text-xs text-muted-foreground">
                           {m.image_url ? "Ảnh đang hiển thị" : "Chưa có ảnh"}
                         </div>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{catName(m.category_id)}</TableCell>
-                  <TableCell className="text-right font-mono">{formatVND(m.price_vnd)}</TableCell>
+                  <TableCell className="fnb-number text-right">{formatVND(m.price_vnd)}</TableCell>
                   <TableCell className="text-center">
                     {m.is_active
-                      ? <Badge variant="outline" className="text-[10px] border-success/40 text-success">Đang bán</Badge>
-                      : <Badge variant="outline" className="text-[10px] text-muted-foreground">Tắt</Badge>}
+                      ? <Badge variant="outline" className="border-success/40 text-xs text-success">Đang bán</Badge>
+                      : <Badge variant="outline" className="text-xs text-muted-foreground">Tắt</Badge>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button size="sm" variant="ghost" onClick={() => { setEditing(m); setOpen(true); }}>
@@ -233,7 +233,7 @@ function MenuItemDialog({
             <div>
               <Label htmlFor="mi-price">Giá bán (₫) *</Label>
               <Input id="mi-price" type="number" value={price} onChange={(e) => setPrice(e.target.value)}
-                className="bg-card border-border text-foreground text-right font-mono" />
+                className="fnb-number bg-card border-border text-right text-foreground" />
             </div>
           </div>
           <div>
