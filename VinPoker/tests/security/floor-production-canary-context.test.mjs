@@ -116,6 +116,8 @@ test("scenario fixtures share one owned TEST club and finally uses an exact reco
   assert.match(canarySource, /createFixture\(admin, runId, scenario, primaryClubId, owned\)/);
   assert.match(canarySource, /await buildCleanupLedger\(admin, \{ runId, clubs \}, userIds\)/);
   assert.match(canarySource, /finally \{[\s\S]{0,120}await cleanupCurrentRun\(admin, runId, owned\)/);
+  assert.match(canarySource, /edge_draw_chip_cas_write[\s\S]{0,120}safeEdgeResultDetail\(updated\)/);
+  assert.match(canarySource, /return `status=\$\{response\.status\} error_hash=\$\{errorHash\}`/);
 });
 
 test("workflow has fail-closed run, cleanup, and hold modes", () => {
