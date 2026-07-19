@@ -68,25 +68,23 @@ function cleanupDiscoveryAdmin(rows) {
 const cleanupRows = [
   { id: "10000000-0000-4000-8000-000000000001", owner_id: "20000000-0000-4000-8000-000000000001", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_ACCESS", region: "TEST" },
   { id: "10000000-0000-4000-8000-000000000002", owner_id: "20000000-0000-4000-8000-000000000002", name: "CODEX_FLOOR_CANARY_20990101120000_aaaaaaaa_CROSS_CLUB", region: "TEST" },
-  { id: "10000000-0000-4000-8000-000000000003", owner_id: "20000000-0000-4000-8000-000000000003", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_ACCESS", region: "TEST" },
-  { id: "10000000-0000-4000-8000-000000000004", owner_id: "20000000-0000-4000-8000-000000000004", name: "CODEX_FLOOR_CANARY_20990101130000_bbbbbbbb_CROSS_CLUB", region: "TEST" },
 ];
 
-test("cleanup discovery accepts exactly two strict run groups with two TEST clubs each", async () => {
+test("cleanup discovery accepts exactly one strict failed run group with two TEST clubs", async () => {
   const scopes = await discoverCleanupScope(cleanupDiscoveryAdmin(cleanupRows));
-  assert.equal(scopes.length, 2);
-  assert.deepEqual(scopes.map((scope) => scope.clubs.length), [2, 2]);
+  assert.equal(scopes.length, 1);
+  assert.deepEqual(scopes.map((scope) => scope.clubs.length), [2]);
   const deletedActorScopes = await discoverCleanupScope(cleanupDiscoveryAdmin(cleanupRows.map((row) => ({ ...row, owner_id: null }))));
-  assert.equal(deletedActorScopes.length, 2);
+  assert.equal(deletedActorScopes.length, 1);
 });
 
 test("cleanup discovery rejects unexpected run counts, suffixes, regions, and club counts", async () => {
   for (const rows of [
-    cleanupRows.slice(0, 2),
-    [...cleanupRows, { id: "10000000-0000-4000-8000-000000000005", owner_id: "20000000-0000-4000-8000-000000000005", name: "CODEX_FLOOR_CANARY_20990101140000_cccccccc_ACCESS", region: "TEST" }],
+    [],
+    [...cleanupRows, { id: "10000000-0000-4000-8000-000000000003", owner_id: "20000000-0000-4000-8000-000000000003", name: "CODEX_FLOOR_CANARY_20990101140000_cccccccc_ACCESS", region: "TEST" }],
     cleanupRows.map((row, index) => index === 0 ? { ...row, region: "VN" } : row),
     cleanupRows.map((row, index) => index === 0 ? { ...row, name: `${row.name}_UNKNOWN` } : row),
-    cleanupRows.slice(0, 3),
+    cleanupRows.slice(0, 1),
   ]) {
     await assert.rejects(discoverCleanupScope(cleanupDiscoveryAdmin(rows)), /CLEANUP_SCOPE_UNEXPECTED/);
   }
