@@ -39,11 +39,13 @@ async function assertNoRootError(
   route: string,
   role: FloorAuditRole,
   viewport: ConcreteFloorAuditViewport,
+  runtimeErrors: string[],
 ) {
   const rootErrorDetail = page.locator('[role="alert"] pre').first();
   if (await rootErrorDetail.count() === 0) return;
   const detail = safeRootErrorDetail(await rootErrorDetail.innerText());
-  throw new Error(["floor_root_error", "route=" + route, "role=" + role, "viewport=" + viewport, "detail=" + (detail || "unavailable")].join(" "));
+  const runtimeDetail = runtimeErrors.at(-1) ?? "";
+  throw new Error(["floor_root_error", "route=" + route, "role=" + role, "viewport=" + viewport, "detail=" + (detail || runtimeDetail || "unavailable")].join(" "));
 }
 
 function configuredAssignments(): RouteAssignment[] {
@@ -102,8 +104,13 @@ for (const viewport of floorAuditViewports) {
 
       try {
         const page = await context.newPage();
+        const runtimeErrors: string[] = [];
+        page.on("pageerror", (error) => runtimeErrors.push(safeRootErrorDetail(error.message)));
+        page.on("console", (message) => {
+          if (message.type() === "error") runtimeErrors.push(safeRootErrorDetail(message.text()));
+        });
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "networkidle" });
-        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport);
+        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
         if (assignment.ownedTournamentName) {
           const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
           await expect(ownedTournament).toBeVisible();
