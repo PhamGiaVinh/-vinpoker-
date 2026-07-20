@@ -1896,25 +1896,38 @@ async function navigateAuthenticatedOps(page, baseUrl) {
   return false;
 }
 
-async function resolveCashierRouteAccess(page, baseUrl, expectedAccess) {
+async function resolveCashierRouteAccess(page, baseUrl, expectedAccess, roleLabel) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto(`${baseUrl}/ops/cashier`, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const allowedControl = page.getByRole("button", { name: "Hàng chờ", exact: true });
     const deniedGuard = page.getByText("Không có quyền Cashier", { exact: true });
+    const scopeError = page.getByText("Không tải được phạm vi Cashier", { exact: true });
+    const clubUnassigned = page.getByText("Chưa được phân công CLB", { exact: true });
+    const dataError = page.getByText("Không tải được", { exact: true });
+    const opsDenied = page.getByText("Bạn chưa có quyền Vận hành", { exact: true });
     for (let poll = 1; poll <= 30; poll += 1) {
-      if (!browserIsOnAuthRoute(page) && await allowedControl.isVisible()) {
-        if (expectedAccess) return true;
-        break;
-      }
-      if (!browserIsOnAuthRoute(page) && await deniedGuard.isVisible()) {
-        if (!expectedAccess) return true;
-        break;
+      let outcome = null;
+      if (browserIsOnAuthRoute(page)) outcome = "auth";
+      else if (await allowedControl.isVisible()) outcome = "allowed";
+      else if (await deniedGuard.isVisible()) outcome = "cashier_denied";
+      else if (await scopeError.isVisible()) outcome = "scope_error";
+      else if (await clubUnassigned.isVisible()) outcome = "club_unassigned";
+      else if (await dataError.isVisible()) outcome = "data_error";
+      else if (await opsDenied.isVisible()) outcome = "ops_denied";
+
+      if (outcome) {
+        console.log(`FLOOR_CANARY BROWSER_CASHIER_ROUTE role=${roleLabel} outcome=${outcome}`);
+        return {
+          passed: expectedAccess ? outcome === "allowed" : outcome === "cashier_denied",
+          outcome,
+        };
       }
       await page.waitForTimeout(500);
     }
     if (attempt < 3) await page.waitForTimeout(attempt * 500);
   }
-  return false;
+  console.log(`FLOOR_CANARY BROWSER_CASHIER_ROUTE role=${roleLabel} outcome=unresolved`);
+  return { passed: false, outcome: "unresolved" };
 }
 
 async function runBrowserManifest(admin, actors, fixtures) {
@@ -1949,7 +1962,8 @@ async function runBrowserManifest(admin, actors, fixtures) {
         const opsAuthenticated = await navigateAuthenticatedOps(page, baseUrl);
         result(`browser_ops_authenticated_${actor.label}`, opsAuthenticated);
         if (actor.label === "floor") {
-          result("browser_floor_cashier_direct_url_requires_guard", await resolveCashierRouteAccess(page, baseUrl, false));
+          const cashierRoute = await resolveCashierRouteAccess(page, baseUrl, false, actor.label);
+          result("browser_floor_cashier_direct_url_requires_guard", cashierRoute.passed);
         }
         if (actor.label === "cross") {
           result("browser_cross_actor_owns_only_test_cross_club", !page.url().endsWith("/auth"));
@@ -1961,9 +1975,10 @@ async function runBrowserManifest(admin, actors, fixtures) {
           );
         }
         if (actor.label === "owner" || actor.label === "cashier") {
+          const cashierRoute = await resolveCashierRouteAccess(page, baseUrl, true, actor.label);
           result(
             `browser_cashier_route_allowed_${actor.label}`,
-            await resolveCashierRouteAccess(page, baseUrl, true),
+            cashierRoute.passed,
           );
         }
         await page.goto(`${baseUrl}/ops/tournaments`, { waitUntil: "networkidle" });
