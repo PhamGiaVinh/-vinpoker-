@@ -1385,6 +1385,17 @@ function expectedBlockedBrowserRequestReason(request) {
   return null;
 }
 
+function safeBlockedBrowserRequestDetail(reason, request) {
+  const method = /^[A-Z]{1,12}$/.test(request.method.toUpperCase())
+    ? request.method.toUpperCase()
+    : "UNKNOWN";
+  const pathname = new URL(request.url).pathname;
+  const safePath = /^\/[A-Za-z0-9_./-]{0,159}$/.test(pathname)
+    ? pathname
+    : `hash:${createHash("sha256").update(pathname).digest("hex").slice(0, 12)}`;
+  return `reason=${reason} method=${method} path=${safePath}`;
+}
+
 function payoutBrowserRequestBlockReason(request, policy) {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
@@ -1567,7 +1578,7 @@ async function installChipCasEgressGuard(browserContext, policy) {
     }
     const reason = chipCasBrowserRequestBlockReason(requestSummary, policy);
     if (reason) {
-      blocked.push(reason);
+      blocked.push(safeBlockedBrowserRequestDetail(reason, requestSummary));
       await route.abort("blockedbyclient");
       return;
     }
@@ -1595,7 +1606,7 @@ async function installPayoutEgressGuard(browserContext, policy) {
     }
     const reason = payoutBrowserRequestBlockReason(requestSummary, policy);
     if (reason) {
-      blocked.push(reason);
+      blocked.push(safeBlockedBrowserRequestDetail(reason, requestSummary));
       await route.abort("blockedbyclient");
       return;
     }
@@ -1764,7 +1775,12 @@ async function runBrowserChipCasConcurrency(browser, baseUrl, stateDirectory, ad
         && graph.rows.length === 2
         && Number(other?.chip_count) === Number(fixture.seats[1].chip_count),
     );
-    result("browser_chip_cas_forbidden_egress_zero", blocked.flatMap((guard) => guard.blocked).length === 0);
+    const forbiddenEgress = blocked.flatMap((guard) => guard.blocked);
+    result(
+      "browser_chip_cas_forbidden_egress_zero",
+      forbiddenEgress.length === 0,
+      [...new Set(forbiddenEgress)].join(","),
+    );
     result(
       "browser_chip_cas_known_non_audit_egress_blocked",
       blocked.flatMap((guard) => guard.expectedBlocked).every((reason) => reason.startsWith("expected_blocked_")),

@@ -418,6 +418,17 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
 });
 
+test("blocked browser evidence contains only reason, method, and pathname", () => {
+  const safeDetail = canarySource.slice(
+    canarySource.indexOf("function safeBlockedBrowserRequestDetail"),
+    canarySource.indexOf("function payoutBrowserRequestBlockReason"),
+  );
+  assert.match(safeDetail, /reason=\$\{reason\} method=\$\{method\} path=\$\{safePath\}/);
+  assert.match(safeDetail, /new URL\(request\.url\)\.pathname/);
+  assert.doesNotMatch(safeDetail, /searchParams|\.search\b|\.href\b|request\.body|headers/);
+  assert.match(canarySource, /\[\.\.\.new Set\(forbiddenEgress\)\]\.join\(","\)/);
+});
+
 test("browser chip concurrency selects only the exact run-owned table", () => {
   const chipDialog = canarySource.slice(
     canarySource.indexOf("async function openOwnedChipDialog"),
