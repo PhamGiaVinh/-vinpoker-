@@ -426,6 +426,17 @@ test("browser actor login retries a bounded authenticated route before storage s
   assert.match(browserManifest, /result\(`browser_ops_authenticated_\$\{actor\.label\}`, opsAuthenticated\)/);
 });
 
+test("cashier browser assertions wait for an allowed or denied UI outcome", () => {
+  const browserManifest = canarySource.slice(canarySource.indexOf("async function resolveCashierRouteAccess"));
+  assert.match(browserManifest, /async function resolveCashierRouteAccess\(page, baseUrl, expectedAccess\)/);
+  assert.match(browserManifest, /attempt <= 3/);
+  assert.match(browserManifest, /poll <= 30/);
+  assert.match(browserManifest, /name: "Hàng chờ", exact: true/);
+  assert.match(browserManifest, /getByText\("Không có quyền Cashier", \{ exact: true \}\)/);
+  assert.match(browserManifest, /resolveCashierRouteAccess\(page, baseUrl, false\)/);
+  assert.match(browserManifest, /resolveCashierRouteAccess\(page, baseUrl, true\)/);
+});
+
 test("workflow has fail-closed run, cleanup, and hold modes", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/floor-production-canary.yml", import.meta.url), "utf8");
   assert.match(workflow, /type: choice/);

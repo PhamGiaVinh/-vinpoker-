@@ -1896,6 +1896,27 @@ async function navigateAuthenticatedOps(page, baseUrl) {
   return false;
 }
 
+async function resolveCashierRouteAccess(page, baseUrl, expectedAccess) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.goto(`${baseUrl}/ops/cashier`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const allowedControl = page.getByRole("button", { name: "Hàng chờ", exact: true });
+    const deniedGuard = page.getByText("Không có quyền Cashier", { exact: true });
+    for (let poll = 1; poll <= 30; poll += 1) {
+      if (!browserIsOnAuthRoute(page) && await allowedControl.isVisible()) {
+        if (expectedAccess) return true;
+        break;
+      }
+      if (!browserIsOnAuthRoute(page) && await deniedGuard.isVisible()) {
+        if (!expectedAccess) return true;
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+    if (attempt < 3) await page.waitForTimeout(attempt * 500);
+  }
+  return false;
+}
+
 async function runBrowserManifest(admin, actors, fixtures) {
   if (process.env.FLOOR_CANARY_RUN_BROWSER !== "true") {
     fail("browser_audit_required_for_run_mode");
@@ -1928,9 +1949,7 @@ async function runBrowserManifest(admin, actors, fixtures) {
         const opsAuthenticated = await navigateAuthenticatedOps(page, baseUrl);
         result(`browser_ops_authenticated_${actor.label}`, opsAuthenticated);
         if (actor.label === "floor") {
-          await page.goto(`${baseUrl}/ops/cashier`, { waitUntil: "networkidle" });
-          const deniedGuard = page.getByText("Không có quyền Cashier", { exact: true });
-          result("browser_floor_cashier_direct_url_requires_guard", await deniedGuard.count() === 1);
+          result("browser_floor_cashier_direct_url_requires_guard", await resolveCashierRouteAccess(page, baseUrl, false));
         }
         if (actor.label === "cross") {
           result("browser_cross_actor_owns_only_test_cross_club", !page.url().endsWith("/auth"));
@@ -1942,10 +1961,9 @@ async function runBrowserManifest(admin, actors, fixtures) {
           );
         }
         if (actor.label === "owner" || actor.label === "cashier") {
-          await page.goto(`${baseUrl}/ops/cashier`, { waitUntil: "networkidle" });
           result(
             `browser_cashier_route_allowed_${actor.label}`,
-            !page.url().endsWith("/auth") && await page.getByText("Không có quyền Cashier", { exact: true }).count() === 0,
+            await resolveCashierRouteAccess(page, baseUrl, true),
           );
         }
         await page.goto(`${baseUrl}/ops/tournaments`, { waitUntil: "networkidle" });
