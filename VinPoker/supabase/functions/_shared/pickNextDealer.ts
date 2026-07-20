@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
+import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,8 +125,28 @@ export interface PickDiagnostics {
 export interface BuildCandidatesResult {
   candidates: DealerCandidate[];
   avgBreakRatio: number | null;
+  status: "ok" | "dependency_unavailable" | "query_failed";
+  errorCode?: string;
   /** Present on the normal path; omitted on the early no-dealer/error returns. */
   diag?: PickDiagnostics;
+}
+
+export interface PickNextDealerResult {
+  candidate: DealerCandidate | null;
+  status: BuildCandidatesResult["status"];
+  errorCode?: string;
+}
+
+interface CandidateQueryError {
+  code?: string | null;
+  message?: string | null;
+}
+
+function candidateQueryFailure(error: unknown, stage: string): BuildCandidatesResult {
+  const { status } = classifyPostgrestError(error);
+  const errorCode = `candidate_${stage}_${status}`;
+  console.error(`[pickNextDealer] ${errorCode}`);
+  return { candidates: [], avgBreakRatio: null, status, errorCode };
 }
 
 export type SupabaseAdmin = any;
@@ -270,15 +291,19 @@ export async function buildDealerCandidates(
   const minInterSwingRestMinutes = Math.max(0, rawMinInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes);
 
   // Step 1: Get active dealer IDs for this club
-  const { data: clubDealers } = (await admin
+  const { data: clubDealers, error: clubDealersError } = (await admin
     .from("dealers")
     .select("id")
     .eq("club_id", clubId)
     .eq("status", "active")
-    .is("deleted_at", null)) as unknown as { data: DealerIdRow[] | null };  // Patch 5b A6: exclude soft-deleted dealers
+    .is("deleted_at", null)) as unknown as {
+      data: DealerIdRow[] | null;
+      error: CandidateQueryError | null;
+    };  // Patch 5b A6: exclude soft-deleted dealers
+  if (clubDealersError) return candidateQueryFailure(clubDealersError, "club_dealers");
   const dealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
   // Step 1 edge case: no dealers → return empty with null avgBreakRatio
-  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null };
+  if (dealerIds.length === 0) return { candidates: [], avgBreakRatio: null, status: "ok" };
 
   // Patch 5b — feature/final pool gate (app_settings-gated; INERT when kill-switch off).
   // When the gate is active (kill-switch ON + currentTableId is feature/final), restrict the
@@ -287,14 +312,19 @@ export async function buildDealerCandidates(
   // accrual preserved). Shared helper mirrors the SQL trigger/_assert + WRAPPER self-pick so the
   // picker and DB enforcement never disagree. Gated on app_settings, NOT on FEATURES (UI-only).
   {
-    const poolIds = currentTableId ? await getFeatureTablePoolIds(admin, currentTableId) : null;
+    let poolIds: Set<string> | null;
+    try {
+      poolIds = currentTableId ? await getFeatureTablePoolIds(admin, currentTableId) : null;
+    } catch (error) {
+      return candidateQueryFailure(error, "feature_pool");
+    }
     if (poolIds) { // non-null = gate active (kill-switch on + special table)
       const restricted = dealerIds.filter((id) => poolIds.has(id));
       if (restricted.length === 0) {
         // Special table with no eligible pool dealer → no candidate. The caller's existing
         // null→no_dealer path keeps the seat (OT) — a CLEAN shortage, never a trigger-rollback.
         console.warn(`[pickNextDealer] feature/final table ${currentTableId}: pool empty/none eligible → clean shortage (no candidate)`);
-        return { candidates: [], avgBreakRatio: null };
+        return { candidates: [], avgBreakRatio: null, status: "ok" };
       }
       dealerIds.length = 0;
       dealerIds.push(...restricted); // restrict candidate set to the pool (mutate in place; Step 2 reads dealerIds)
@@ -323,7 +353,7 @@ export async function buildDealerCandidates(
           `[pickNextDealer] Reserved-dealer lookup failed — failing safe (no candidates) for table=${currentTableId}:`,
           reservedErr instanceof Error ? reservedErr.message : reservedErr
         );
-        return { candidates: [], avgBreakRatio: null };
+        return candidateQueryFailure(reservedErr, "reserved_dealers");
       }
     }
     // else: currentTableId is undefined — this is a GLOBAL/shared candidate build (e.g.
@@ -374,14 +404,11 @@ export async function buildDealerCandidates(
     .in("dealer_id", dealerIds)
     .or(`current_state.eq.available,current_state.eq.on_break`)) as unknown as {
       data: AttendancePoolRow[] | null;
-      error: { message: string } | null;
+      error: CandidateQueryError | null;
     };
 
   // Step 2 edge case: query error or empty rows
-  if (error) {
-    console.error("[pickNextDealer] query error:", error.message);
-    return { candidates: [], avgBreakRatio: null };
-  }
+  if (error) return candidateQueryFailure(error, "attendance_pool");
 
   const rowsByDealer = new Map<string, AttendancePoolRow>();
   let duplicateDealerRows = 0;
@@ -543,7 +570,7 @@ export async function buildDealerCandidates(
         .not("pool_entered_at", "is", null)
         .gt("pool_entered_at", poolCutoff)) as unknown as {
           data: RestingDealerRow[] | null;
-          error: { message: string } | null;
+          error: CandidateQueryError | null;
         };
       if (poolErr) {
         // Fail-SAFE (P2 hardening, audit 2026-07-02): this used to just log and continue,
@@ -552,7 +579,7 @@ export async function buildDealerCandidates(
         // picked. Mirror Step 2's error handling above: bail with no candidates rather than
         // proceed on data this guard couldn't verify.
         console.error(`[pickNextDealer] Pool cooldown query error — failing safe (no candidates): ${poolErr.message}`);
-        return { candidates: [], avgBreakRatio: null };
+        return candidateQueryFailure(poolErr, "pool_cooldown");
       }
       if (poolDealers && poolDealers.length > 0) {
         for (const pd of poolDealers) {
@@ -566,7 +593,7 @@ export async function buildDealerCandidates(
     } catch (poolCatchErr) {
       // Same fail-safe as above — an exception here must not silently skip the exclusion.
       console.error(`[pickNextDealer] Pool cooldown exception — failing safe (no candidates):`, poolCatchErr);
-      return { candidates: [], avgBreakRatio: null };
+      return candidateQueryFailure(poolCatchErr, "pool_cooldown");
     }
   }
 
@@ -1103,7 +1130,7 @@ export async function buildDealerCandidates(
   }
 
   candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  return { candidates, avgBreakRatio, diag };
+  return { candidates, avgBreakRatio, diag, status: "ok" };
 }
 
 // ─── pickNextDealer ───────────────────────────────────────────────────────────
@@ -1115,6 +1142,19 @@ export async function pickNextDealer(
 ): Promise<DealerCandidate | null> {
   const { candidates } = await buildDealerCandidates(admin, clubId, options);
   return candidates[0] ?? null;
+}
+
+export async function pickNextDealerWithStatus(
+  admin: SupabaseAdmin,
+  clubId: string,
+  options: PickDealerOptions = {},
+): Promise<PickNextDealerResult> {
+  const result = await buildDealerCandidates(admin, clubId, options);
+  return {
+    candidate: result.candidates[0] ?? null,
+    status: result.status,
+    ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+  };
 }
 
 // ─── pickTopDealers ───────────────────────────────────────────────────────────

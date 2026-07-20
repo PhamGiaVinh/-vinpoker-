@@ -1,4 +1,4 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   fillOpenOperation,
   rankOpenOperationCandidates,
@@ -70,7 +70,11 @@ Deno.test("rankOpenOperationCandidates applies pool exclusivity and UUID tie-bre
   assertEquals(normalRanked.map((item) => item.dealer_id), [second.dealer_id]);
 });
 
-async function exerciseBatch(total: number, candidateCount: number) {
+async function exerciseBatch(
+  total: number,
+  candidateCount: number,
+  candidateStatus: "ok" | "dependency_unavailable" | "query_failed" = "ok",
+) {
   const operationId = "40000000-0000-4000-8000-000000000001";
   const clubId = "50000000-0000-4000-8000-000000000001";
   const candidates = Array.from(
@@ -156,7 +160,12 @@ async function exerciseBatch(total: number, candidateCount: number) {
     candidateBuilder: async (_admin, _clubId, options) => {
       snapshotBuilds++;
       snapshotAvailableOnly = options?.availableOnly === true;
-      return { candidates, avgBreakRatio: null };
+      return {
+        candidates: candidateStatus === "ok" ? candidates : [],
+        avgBreakRatio: null,
+        status: candidateStatus,
+        ...(candidateStatus === "ok" ? {} : { errorCode: `candidate_${candidateStatus}` }),
+      };
     },
     poolBuilder: async () => new Map(),
     reservedBuilder: async () => new Set(),
@@ -194,4 +203,12 @@ Deno.test("fillOpenOperation leaves a 25-of-30 batch waiting for continuation", 
   assertEquals(result.operation_status, "waiting_for_dealer");
   assertEquals(result.outcomes.filter((outcome) => outcome.code === "assigned").length, 25);
   assertEquals(result.outcomes.filter((outcome) => outcome.code === "no_eligible_dealer").length, 5);
+});
+
+Deno.test("fillOpenOperation fails explicitly when the canonical snapshot is unavailable", async () => {
+  await assertRejects(
+    () => exerciseBatch(30, 30, "dependency_unavailable"),
+    Error,
+    "OPEN_OPERATION_DEPENDENCY_UNAVAILABLE:candidate_snapshot",
+  );
 });

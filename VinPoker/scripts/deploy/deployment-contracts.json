@@ -80,6 +80,26 @@
       "functions": {
         "process-swing": {
           "additionalContracts": [
+            { "type": "relation", "name": "public.process_swing_dispatch_runs", "dependencyKind": "transitive_server" },
+            { "type": "relation", "name": "public.process_swing_dispatch_events", "dependencyKind": "transitive_server" },
+            {
+              "type": "function",
+              "name": "public.claim_process_swing_dispatch",
+              "arguments": ["p_run_id", "p_request_id", "p_club_id"],
+              "argumentTypes": ["uuid", "uuid", "uuid"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "direct_edge"
+            },
+            {
+              "type": "function",
+              "name": "public.finish_process_swing_dispatch",
+              "arguments": ["p_run_id", "p_request_id", "p_club_id", "p_business_state", "p_error_code", "p_diagnostics"],
+              "argumentTypes": ["uuid", "uuid", "uuid", "text", "text", "jsonb"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "direct_edge"
+            },
             { "type": "relation", "name": "public.dealer_mass_open_rollout" },
             { "type": "relation", "name": "public.dealer_open_operations", "dependencyKind": "transitive_operation" },
             { "type": "relation", "name": "public.dealer_open_operation_targets", "dependencyKind": "transitive_operation" },

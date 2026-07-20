@@ -83,7 +83,10 @@ function parseAcl(schemaSql, knownSignatures) {
   const bySignature = new Map([...knownSignatures].map((key) => [key, aclState()]));
   const aclPattern = /(GRANT|REVOKE)\s+(?:ALL(?:\s+PRIVILEGES)?|EXECUTE)\s+ON\s+FUNCTION\s+([^\s(]+)\s*\((.*?)\)\s+(?:TO|FROM)\s+([^;]+);/gis;
   for (const match of schemaSql.matchAll(aclPattern)) {
-    const key = signatureKey(match[2], splitArguments(match[3]));
+    // pg_dump includes argument names in ACL signatures, while hand-authored
+    // GRANT/REVOKE statements commonly contain types only. Normalize both.
+    const argumentTypes = splitArguments(match[3]).map((argument) => argumentParts(argument).type);
+    const key = signatureKey(match[2], argumentTypes);
     const state = bySignature.get(key) ?? aclState();
     const roles = match[4].split(",").map(normalizeIdentifier);
     for (const role of roles) {

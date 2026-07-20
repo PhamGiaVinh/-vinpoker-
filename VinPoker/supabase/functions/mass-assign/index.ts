@@ -4,6 +4,11 @@ import { formatMassAssignMessage, sendTelegramNotification, getClubTelegramChatI
 import { idempotentResponse } from "../_shared/idempotency.ts";
 import { authenticateUser } from "../_shared/staking-common.ts";
 import { fillOpenOperation } from "../_shared/fillOpenOperation.ts";
+import {
+  legacyFillFailureContract,
+  operationFailureContract,
+  queryFailureContract,
+} from "./failureContract.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,12 +40,16 @@ Deno.serve(async (req) => {
     // to a plain run until the B1.1 RPCs are applied (zero regression).
     const runMassAssign = async () => {
     // ── Compute swing duration (batch-consistent) ──────────────────────────
-    const { data: swingConfig } = await admin
+    const { data: swingConfig, error: swingConfigError } = await admin
       .from("swing_config")
       .select("*")
       .eq("club_id", club_id)
       .eq("table_type", "tournament")
       .maybeSingle();
+    if (swingConfigError) {
+      const failure = queryFailureContract(swingConfigError, "swing_config");
+      return jsonResponse(failure.body, failure.httpStatus);
+    }
 
     const durResult = await computeSwingDuration(admin, club_id, {
       swing_duration_minutes: swingConfig?.swing_duration_minutes ?? 45,
@@ -66,11 +75,8 @@ Deno.serve(async (req) => {
         });
       } catch (error) {
         const code = error instanceof Error ? error.message : String(error);
-        const blocked = code === "MASS_OPEN_ROLLOUT_DISABLED";
-        return jsonResponse(
-          { error: code, operation_status: blocked ? "rollout_disabled" : "failed" },
-          blocked ? 423 : 409,
-        );
+        const failure = operationFailureContract(code);
+        return jsonResponse(failure.body, failure.httpStatus);
       }
       assignments = operationResult.assignments;
     } else {
@@ -79,6 +85,8 @@ Deno.serve(async (req) => {
         admin, club_id, shift_id ?? null, botToken,
         undefined, swingDueAt
       );
+      const legacyFailure = legacyFillFailureContract(legacyResult);
+      if (legacyFailure) return jsonResponse(legacyFailure.body, legacyFailure.httpStatus);
       assignments = legacyResult.assignments;
     }
 
