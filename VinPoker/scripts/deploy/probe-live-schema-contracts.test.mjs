@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { loadDeploymentManifest, mergeContracts } from "./deployment-manifest.mjs";
 import { buildComponentDiffs, buildDeploymentPlan } from "./plan-edge-deployment.mjs";
 import {
+  catalogInventory,
   contractsForTargets,
   findMissingContracts,
   schemaInventory,
@@ -19,6 +20,10 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".
 const manifest = loadDeploymentManifest();
 const PRE_922_SHA = "1fdc210d4ae1689091e0ad874c559592b0ecd690";
 const CRITICAL_TARGETS = "process-swing,mass-assign,checkout-dealer";
+const productionMetricsViewFixture = readFileSync(
+  resolve(repositoryRoot, "VinPoker/scripts/deploy/fixtures/dealer_shift_metrics-production-view.sql"),
+  "utf8",
+);
 
 const baseSchema = `
 CREATE TABLE public.game_tables (
@@ -113,6 +118,65 @@ test("schema inventory extracts relation, typed signature and argument names", (
     argumentTypes: ["uuid", "uuid"],
     key: "public.is_club_dealer_control(uuid,uuid)",
   }]);
+});
+
+test("SQL fallback recognizes the sanitized production CREATE OR REPLACE VIEW excerpt", () => {
+  const inventory = schemaInventory(productionMetricsViewFixture.replace(/\n/g, "\r\n"));
+  assert.equal(inventory.relations.has("public.dealer_shift_metrics"), true);
+  assert.equal(inventory.relationKinds.get("public.dealer_shift_metrics"), "v");
+});
+
+test("SQL fallback supports view options without treating comments or malformed DDL as live relations", () => {
+  const schema = [
+    "-- CREATE OR REPLACE VIEW public.dealer_shift_metrics AS SELECT 1;",
+    "CREATE OR REPLACE VIEW public.dealer_shift_metrics WITH (security_barrier=true) AS SELECT 1 AS attendance_id;",
+    "CREATE VIEW audit.dealer_shift_metrics AS SELECT 1;",
+    "CREATE OR REPLACE VIEW public.incomplete_metrics AS;",
+    "CREATE VIEW \"Public\".\"Dealer_Shift_Metrics\" AS SELECT 1;",
+    "CREATE MATERIALIZED VIEW public.materialized_metrics AS SELECT 1;",
+    "CREATE FOREIGN TABLE public.external_metrics (id uuid) SERVER fake_server;",
+  ].join("\n");
+  const inventory = schemaInventory(schema);
+  assert.equal(inventory.relations.has("public.dealer_shift_metrics"), true);
+  assert.equal(inventory.relationKinds.get("public.dealer_shift_metrics"), "v");
+  assert.equal(inventory.relations.has("audit.dealer_shift_metrics"), true);
+  assert.equal(inventory.relations.has("public.incomplete_metrics"), false);
+  assert.equal(inventory.relations.has("Public.Dealer_Shift_Metrics"), true);
+  assert.equal(inventory.relations.has("public.materialized_metrics"), true);
+  assert.equal(inventory.relationKinds.get("public.materialized_metrics"), "m");
+  assert.equal(inventory.relations.has("public.external_metrics"), true);
+  assert.equal(inventory.relationKinds.get("public.external_metrics"), "f");
+});
+
+test("catalog inventory is canonical and preserves relation kind, ordered columns and execute ACL", () => {
+  const catalog = {
+    schemaVersion: 1,
+    relations: [{
+      schema: "public",
+      name: "game_tables",
+      relkind: "r",
+      columns: [
+        { ordinal: 2, name: "opened_at", type: "timestamp with time zone" },
+        { ordinal: 1, name: "id", type: "uuid" },
+      ],
+    }],
+    functions: [{
+      schema: "public",
+      name: "get_dealer_mass_open_rollout",
+      arguments: [{ ordinal: 1, name: "p_expected_club_id", type: "uuid" }],
+      executeAcl: { public: false, anon: false, authenticated: true, service_role: true },
+    }],
+  };
+  const inventory = catalogInventory(catalog);
+  assert.equal(inventory.source, "catalog");
+  assert.equal(inventory.relationBodies.get("public.game_tables").startsWith("id uuid"), true);
+  assert.deepEqual(findMissingContracts(inventory, [{
+    type: "function",
+    name: "public.get_dealer_mass_open_rollout",
+    arguments: ["p_expected_club_id"],
+    argumentTypes: ["uuid"],
+    acl: { anon: false, authenticated: true, service_role: true },
+  }]), []);
 });
 
 test("probe accepts matching typed contracts", () => {

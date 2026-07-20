@@ -285,8 +285,23 @@ jobs:
         run: |
           supabase link --project-ref "${SUPABASE_PROJECT_REF}"
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            --output "${RUNNER_TEMP}/live-schema-catalog.json"
         working-directory: target-source/VinPoker
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Verify selected Edge credential scope
+        if: needs.plan.outputs.critical_functions != '[]'
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/verify-component-credential-scope.mjs
+          --selected-functions '${{ join(fromJSON(needs.plan.outputs.critical_functions), ',') }}'
+          --deploy-frontend false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -297,7 +312,7 @@ jobs:
           TARGETS: ${{ needs.plan.outputs.critical_functions }}
         run: >-
           node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
-          --schema "${RUNNER_TEMP}/live-schema.sql"
+          --catalog "${RUNNER_TEMP}/live-schema-catalog.json"
           --targets "$TARGETS"
           --target-root "${GITHUB_WORKSPACE}/target-source"
 
@@ -305,7 +320,7 @@ jobs:
         if: needs.plan.outputs.frontend == 'true'
         run: >-
           node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
-          --schema "${RUNNER_TEMP}/live-schema.sql"
+          --catalog "${RUNNER_TEMP}/live-schema-catalog.json"
           --targets frontend
           --target-root "${GITHUB_WORKSPACE}/target-source"
 
@@ -393,8 +408,11 @@ jobs:
           set -euo pipefail
           supabase link --project-ref "${SUPABASE_PROJECT_REF}"
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs" \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            --output "${RUNNER_TEMP}/live-schema-catalog.json"
           node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
-            --schema "${RUNNER_TEMP}/live-schema.sql" \
+            --catalog "${RUNNER_TEMP}/live-schema-catalog.json" \
             --targets "${{ matrix.function }}" \
             --target-root "${GITHUB_WORKSPACE}/target-source"
         working-directory: target-source/VinPoker
@@ -469,8 +487,11 @@ jobs:
           set -euo pipefail
           supabase link --project-ref "${SUPABASE_PROJECT_REF}"
           supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/capture-live-schema-contract-catalog.mjs" \
+            --project-ref "${SUPABASE_PROJECT_REF}" \
+            --output "${RUNNER_TEMP}/live-schema-catalog.json"
           node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
-            --schema "${RUNNER_TEMP}/live-schema.sql" \
+            --catalog "${RUNNER_TEMP}/live-schema-catalog.json" \
             --targets frontend \
             --target-root "${GITHUB_WORKSPACE}/target-source"
         working-directory: target-source/VinPoker
@@ -478,6 +499,19 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Verify frontend scoped credentials
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/verify-component-credential-scope.mjs
+          --selected-functions ''
+          --deploy-frontend true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
 
       - name: Build exact frontend source
         run: npm run build
