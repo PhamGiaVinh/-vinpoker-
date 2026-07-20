@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 3,
+  "criticalEnvironment": "dealer-swing-production-critical",
+  "frontend": {
+    "receiptEnvironment": "receipt-vinpoker-frontend",
+    "quality": {
+      "vitest": [
+        "src/components/ops/dealer-swing/DealerPhoneCompletionStates.test.tsx",
+        "src/hooks/useDealerSwingPhoneRollout.test.tsx",
+        "src/components/cashier/dealer-swing/__tests__/swingTableStatus.test.ts"
+      ]
+    },
+    "contracts": [
+      { "type": "relation", "name": "public.clubs" },
+      { "type": "relation", "name": "public.club_members" },
+      { "type": "relation", "name": "public.club_settings" }
+    ]
+  },
+  "contractProfiles": {
+    "dealer_swing_legacy": {
+      "description": "Dealer Swing source before durable mass-open operations.",
+      "deriveImportedGraphDependencies": true,
+      "extends": null,
+      "frontend": { "additionalContracts": [] },
+      "functions": {
+        "process-swing": { "additionalContracts": [] },
+        "mass-assign": { "additionalContracts": [] },
+        "checkout-dealer": { "additionalContracts": [] }
+      }
+    },
+    "dealer_mass_open_v1": {
+      "description": "Dealer Swing source with durable open-operation continuation.",
+      "deriveImportedGraphDependencies": true,
+      "extends": "dealer_swing_legacy",
+      "frontend": {
+        "additionalContracts": [
+          { "type": "relation", "name": "public.dealer_mass_open_rollout", "dependencyKind": "transitive_server" },
+          { "type": "relation", "name": "public.dealer_open_operations", "dependencyKind": "transitive_server" },
+          { "type": "relation", "name": "public.dealer_open_operation_targets", "dependencyKind": "transitive_server" },
+          { "type": "column", "relation": "public.game_tables", "name": "opened_at", "dependencyKind": "transitive_server" },
+          { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id", "dependencyKind": "transitive_server" },
+          {
+            "type": "function",
+            "name": "public.get_dealer_mass_open_rollout",
+            "arguments": ["p_expected_club_id"],
+            "argumentTypes": ["uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false, "service_role": true },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public.get_dealer_open_operation",
+            "arguments": ["p_operation_id", "p_expected_club_id"],
+            "argumentTypes": ["uuid", "uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false, "service_role": true },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public.operator_open_dealer_tables",
+            "arguments": ["p_request_id", "p_expected_club_id", "p_shift_id", "p_table_ids", "p_table_type"],
+            "argumentTypes": ["uuid", "uuid", "uuid", "uuid[]", "text"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": true, "anon": false },
+            "dependencyKind": "direct_frontend"
+          },
+          {
+            "type": "function",
+            "name": "public._refresh_dealer_open_operation",
+            "arguments": ["p_operation_id"],
+            "argumentTypes": ["uuid"],
+            "allowOtherOverloads": false,
+            "acl": { "authenticated": false, "anon": false, "service_role": true },
+            "dependencyKind": "transitive_server"
+          }
+        ]
+      },
+      "functions": {
+        "process-swing": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" },
+            { "type": "relation", "name": "public.dealer_open_operations", "dependencyKind": "transitive_operation" },
+            { "type": "relation", "name": "public.dealer_open_operation_targets", "dependencyKind": "transitive_operation" },
+            { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
+            { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
+            {
+              "type": "function",
+              "name": "public._refresh_dealer_open_operation",
+              "arguments": ["p_operation_id"],
+              "argumentTypes": ["uuid"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true },
+              "dependencyKind": "transitive_operation"
+            }
+          ]
+        },
+        "mass-assign": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" },
+            { "type": "relation", "name": "public.dealer_open_operations" },
+            { "type": "relation", "name": "public.dealer_open_operation_targets" },
+            { "type": "column", "relation": "public.game_tables", "name": "opened_at" },
+            { "type": "column", "relation": "public.game_tables", "name": "dealer_open_operation_id" },
+            {
+              "type": "function",
+              "name": "public._refresh_dealer_open_operation",
+              "arguments": ["p_operation_id"],
+              "argumentTypes": ["uuid"],
+              "allowOtherOverloads": false,
+              "acl": { "authenticated": false, "anon": false, "service_role": true }
+            }
+          ]
+        },
+        "checkout-dealer": {
+          "additionalContracts": [
+            { "type": "relation", "name": "public.dealer_mass_open_rollout" }
+          ]
+        }
+      }
+    }
+  },
+  "functions": {
+    "process-swing": {
+      "path": "VinPoker/supabase/functions/process-swing",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "receiptEnvironment": "receipt-vinpoker-edge-process-swing",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/process-swing/requestScope.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/rotationSolver.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_assignments" },
+        { "type": "relation", "name": "public.dealer_attendance" },
+        { "type": "relation", "name": "public.game_tables" },
+        {
+          "type": "function",
+          "name": "public.try_acquire_club_lock_fenced",
+          "arguments": ["p_club_id", "p_timeout_seconds", "p_owner_id"]
+        },
+        {
+          "type": "function",
+          "name": "public.release_club_lock_if_owner",
+          "arguments": ["p_club_id", "p_lock_token"]
+        },
+        {
+          "type": "function",
+          "name": "public.assign_dealer_to_table",
+          "arguments": [
+            "p_attendance_id",
+            "p_table_id",
+            "p_assigned_at",
+            "p_swing_due_at",
+            "p_club_id",
+            "p_idempotency_key",
+            "p_force_replace",
+            "p_override",
+            "p_override_reason",
+            "p_actor"
+          ]
+        },
+        { "type": "function", "name": "public.perform_swing" },
+        { "type": "function", "name": "public.get_process_swing_due_club_ids", "arguments": [] }
+      ]
+    },
+    "mass-assign": {
+      "path": "VinPoker/supabase/functions/mass-assign",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-mass-assign",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/_shared/__tests__/bulkOpenStagger.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts",
+          "VinPoker/supabase/functions/_shared/__tests__/pickNextDealer.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.game_tables" },
+        {
+          "type": "function",
+          "name": "public.is_club_dealer_control",
+          "arguments": ["_user_id", "_club_id"]
+        },
+        {
+          "type": "function",
+          "name": "public.assign_dealer_to_table",
+          "arguments": [
+            "p_attendance_id",
+            "p_table_id",
+            "p_assigned_at",
+            "p_swing_due_at",
+            "p_club_id",
+            "p_idempotency_key",
+            "p_force_replace",
+            "p_override",
+            "p_override_reason",
+            "p_actor"
+          ]
+        }
+      ]
+    },
+    "checkout-dealer": {
+      "path": "VinPoker/supabase/functions/checkout-dealer",
+      "critical": true,
+      "autoDeployOnPush": false,
+      "verifyJwt": true,
+      "receiptEnvironment": "receipt-vinpoker-edge-checkout-dealer",
+      "quality": {
+        "denoTests": [
+          "VinPoker/supabase/functions/_shared/__tests__/lockTimeout.test.ts"
+        ]
+      },
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_attendance" },
+        { "type": "relation", "name": "public.dealer_assignments" },
+        { "type": "relation", "name": "public.dealer_breaks" },
+        { "type": "relation", "name": "public.game_tables" },
+        {
+          "type": "function",
+          "name": "public.is_club_dealer_control",
+          "arguments": ["_user_id", "_club_id"]
+        },
+        {
+          "type": "function",
+          "name": "public.transition_dealer_state",
+          "arguments": ["p_attendance_id", "p_new_state", "p_reason"]
+        },
+        {
+          "type": "function",
+          "name": "public.assign_dealer_to_table",
+          "arguments": [
+            "p_attendance_id",
+            "p_table_id",
+            "p_assigned_at",
+            "p_swing_due_at",
+            "p_club_id",
+            "p_idempotency_key",
+            "p_force_replace",
+            "p_override",
+            "p_override_reason",
+            "p_actor"
+          ]
+        }
+      ]
+    },
+    "assign-dealer": {
+      "path": "VinPoker/supabase/functions/assign-dealer",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.game_tables" },
+        { "type": "relation", "name": "public.dealer_assignments" },
+        { "type": "function", "name": "public.assign_dealer_to_table" }
+      ]
+    },
+    "close-table": {
+      "path": "VinPoker/supabase/functions/close-table",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.game_tables" },
+        { "type": "relation", "name": "public.dealer_assignments" },
+        { "type": "function", "name": "public.transition_dealer_state" }
+      ]
+    },
+    "swing-metrics": {
+      "path": "VinPoker/supabase/functions/swing-metrics",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "function", "name": "public.get_swing_metrics" }
+      ]
+    },
+    "telegram-bot": {
+      "path": "VinPoker/supabase/functions/telegram-bot",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.dealers" },
+        { "type": "relation", "name": "public.dealer_attendance" },
+        { "type": "function", "name": "public.transition_dealer_state" }
+      ]
+    },
+    "send-shift-schedule": {
+      "path": "VinPoker/supabase/functions/send-shift-schedule",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.club_settings" },
+        { "type": "relation", "name": "public.dealers" },
+        { "type": "function", "name": "public.is_club_dealer_control" }
+      ]
+    },
+    "td-ai-assistant": {
+      "path": "VinPoker/supabase/functions/td-ai-assistant",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.user_roles" }
+      ]
+    },
+    "online-poker-action": {
+      "path": "VinPoker/supabase/functions/online-poker-action",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.online_poker_tables" },
+        { "type": "relation", "name": "public.online_poker_seats" },
+        { "type": "function", "name": "public.op_submit_action" }
+      ]
+    },
+    "online-poker-table-runner": {
+      "path": "VinPoker/supabase/functions/online-poker-table-runner",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.online_poker_config" },
+        { "type": "function", "name": "public.op_start_hand" }
+      ]
+    },
+    "online-poker-timeout-sweep": {
+      "path": "VinPoker/supabase/functions/online-poker-timeout-sweep",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "function", "name": "public.op_timeout_sweep" },
+        { "type": "function", "name": "public.op_submit_action" }
+      ]
+    },
+    "manage-break": {
+      "path": "VinPoker/supabase/functions/manage-break",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": true,
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_breaks" },
+        { "type": "relation", "name": "public.dealer_attendance" },
+        { "type": "function", "name": "public.transition_dealer_state" }
+      ]
+    },
+    "dealer-code-login": {
+      "path": "VinPoker/supabase/functions/dealer-code-login",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_login_codes" }
+      ]
+    },
+    "send-shift-reminders": {
+      "path": "VinPoker/supabase/functions/send-shift-reminders",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "relation", "name": "public.dealer_shift_assignments" },
+        { "type": "relation", "name": "public.dealer_shift_notifications" }
+      ]
+    },
+    "parse-dealer-list": {
+      "path": "VinPoker/supabase/functions/parse-dealer-list",
+      "critical": false,
+      "autoDeployOnPush": false,
+      "verifyJwt": false,
+      "contracts": [
+        { "type": "function", "name": "public.is_club_dealer_control" },
+        { "type": "function", "name": "public.is_club_admin" }
+      ]
+    }
+  }
+}

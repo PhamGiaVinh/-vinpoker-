@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const workflow = readFileSync(resolve(root, ".github/workflows/vbackerworkflowmain.yml"), "utf8");
+const validationWorkflow = readFileSync(
+  resolve(root, ".github/workflows/deployment-control-plane-validation.yml"),
+  "utf8",
+);
+
+test("frontend cannot run after a required critical deployment failure", () => {
+  assert.match(workflow, /needs\.plan\.outputs\.critical_functions == '\[\]' \|\| needs\.deploy-critical-edge\.result == 'success'/);
+  assert.match(workflow, /needs\.target-preflight\.result == 'success'/);
+});
+
+test("control-plane tooling and target source use separate checkouts", () => {
+  assert.match(workflow, /path: control-plane/);
+  assert.match(workflow, /path: target-source/);
+  assert.doesNotMatch(workflow, /target-source\/VinPoker\/scripts\/deploy/);
+});
+
+test("receipts are written only after their corresponding deployment step", () => {
+  const edgeDeploy = workflow.indexOf("Deploy only this exact target function");
+  const edgeReceipt = workflow.indexOf("Record receipt only after successful Edge deploy");
+  const frontendDeploy = workflow.indexOf("Deploy prebuilt bundle to Vercel");
+  const frontendReceipt = workflow.indexOf("Record receipt only after successful frontend deploy");
+  assert.equal(edgeDeploy > -1 && edgeReceipt > edgeDeploy, true);
+  assert.equal(frontendDeploy > -1 && frontendReceipt > frontendDeploy, true);
+});
+
+test("shared workflow has no automatic Edge deployment path", () => {
+  assert.doesNotMatch(workflow, /deploy-noncritical-edge:/);
+  assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/);
+});
+
+test("every live probe derives its profile from the exact target checkout", () => {
+  const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
+  assert.equal(probes.length, 4);
+  for (const probe of probes) assert.match(probe[1], /--target-root/);
+  assert.doesNotMatch(workflow, /inputs\.contract_profile|CONTRACT_PROFILE_OVERRIDE|--profile\b/i);
+  assert.match(workflow, /contract_profile: \$\{\{ steps\.plan\.outputs\.contract_profile \}\}/);
+});
+
+test("pinned actionlint validation is read-only and uses no production secret", () => {
+  assert.match(validationWorkflow, /pull_request:/);
+  assert.match(validationWorkflow, /contents: read/);
+  assert.match(validationWorkflow, /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/);
+  assert.match(validationWorkflow, /actionlint_1\.7\.7_linux_amd64\.tar\.gz/);
+  assert.match(validationWorkflow, /023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757/);
+  assert.match(validationWorkflow, /sha256sum --check --strict/);
+  assert.match(validationWorkflow, /\.github\/workflows\/vbackerworkflowmain\.yml/);
+  assert.match(validationWorkflow, /\.github\/workflows\/deployment-control-plane-validation\.yml/);
+  assert.doesNotMatch(validationWorkflow, /find \.github\/workflows/);
+  assert.doesNotMatch(validationWorkflow, /\bsecrets\./);
+  assert.doesNotMatch(validationWorkflow, /supabase\s+(?:functions\s+deploy|db\s+(?:push|reset))/i);
+  assert.doesNotMatch(validationWorkflow, /vercel\s+(?:deploy|--prod)/i);
+});

@@ -1,7 +1,4 @@
-name: Deploy to Production
-
-# Workflow consolidated into user's first self-created workflow file.
-# Triggers: push to main, or manual dispatch from main via Actions tab.
+name: Deploy reviewed production source
 
 on:
   push:
@@ -9,166 +6,504 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      deploy_db:
-        description: "Run Supabase db push"
+      commit_sha:
+        description: "Exact 40-character commit SHA already reachable from main"
         required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
+        type: string
+      deploy_process_swing:
+        description: "Deploy critical Edge function process-swing"
+        required: true
+        default: false
+        type: boolean
+      deploy_mass_assign:
+        description: "Deploy critical Edge function mass-assign"
+        required: true
+        default: false
+        type: boolean
+      deploy_checkout_dealer:
+        description: "Deploy critical Edge function checkout-dealer"
+        required: true
+        default: false
+        type: boolean
+      deploy_frontend:
+        description: "Deploy the reviewed frontend source at commit_sha"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: production-source
+  cancel-in-progress: false
+
+env:
+  CRITICAL_ENVIRONMENT: dealer-swing-production-critical
+  TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_sha || github.sha }}
 
 jobs:
-  deploy:
-    if: github.ref == 'refs/heads/main'
+  plan:
+    name: Durable receipt plan for exact SHA
+    runs-on: ubuntu-latest
+    outputs:
+      critical_functions: ${{ steps.plan.outputs.critical_functions }}
+      noncritical_functions: ${{ steps.plan.outputs.noncritical_functions }}
+      critical_changed: ${{ steps.plan.outputs.critical_changed }}
+      required_critical_for_frontend: ${{ steps.plan.outputs.required_critical_for_frontend }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      frontend_held: ${{ steps.plan.outputs.frontend_held }}
+      frontend_reason: ${{ steps.plan.outputs.frontend_reason }}
+      shared_changed: ${{ steps.plan.outputs.shared_changed }}
+      contract_profile: ${{ steps.plan.outputs.contract_profile }}
+      contract_source_fingerprint: ${{ steps.plan.outputs.contract_source_fingerprint }}
+      target_sha: ${{ steps.plan.outputs.target_sha }}
+    steps:
+      - name: Checkout reviewed control-plane tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact deployment target
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_SHA }}
+          path: target-source
+
+      - name: Verify target belongs to main
+        shell: bash
+        working-directory: target-source
+        run: |
+          set -euo pipefail
+          sha="${TARGET_SHA}"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "commit_sha must be exactly 40 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+          fi
+          git fetch --no-tags origin main
+          git cat-file -e "${sha}^{commit}"
+          git merge-base --is-ancestor "$sha" origin/main
+          test "$(git rev-parse "$sha")" = "$sha"
+
+      - name: Load last successful per-component receipts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs fetch
+          --repository "${GITHUB_REPOSITORY}"
+          --output "${RUNNER_TEMP}/deployment-baselines.json"
+
+      - name: Build full receipt-to-target deployment plan
+        id: plan
+        shell: bash
+        env:
+          DEPLOY_PROCESS_SWING: ${{ inputs.deploy_process_swing || false }}
+          DEPLOY_MASS_ASSIGN: ${{ inputs.deploy_mass_assign || false }}
+          DEPLOY_CHECKOUT_DEALER: ${{ inputs.deploy_checkout_dealer || false }}
+          DEPLOY_FRONTEND: ${{ inputs.deploy_frontend || false }}
+        run: |
+          set -euo pipefail
+          selected=()
+          [[ "$DEPLOY_PROCESS_SWING" == "true" ]] && selected+=("process-swing")
+          [[ "$DEPLOY_MASS_ASSIGN" == "true" ]] && selected+=("mass-assign")
+          [[ "$DEPLOY_CHECKOUT_DEALER" == "true" ]] && selected+=("checkout-dealer")
+          selected_csv="$(IFS=,; echo "${selected[*]-}")"
+          node control-plane/VinPoker/scripts/deploy/plan-edge-deployment.mjs \
+            --event "${{ github.event_name }}" \
+            --repository "${GITHUB_WORKSPACE}/target-source" \
+            --sha "$TARGET_SHA" \
+            --baselines "${RUNNER_TEMP}/deployment-baselines.json" \
+            --selected "$selected_csv" \
+            --deploy-frontend "$DEPLOY_FRONTEND" \
+            --github-output "$GITHUB_OUTPUT" \
+            --plan-json "${RUNNER_TEMP}/deployment-plan.json" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve auditable plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-plan-${{ steps.plan.outputs.target_sha }}
+          path: ${{ runner.temp }}/deployment-plan.json
+          retention-days: 90
+
+  control-plane-quality:
+    name: Validate reviewed control-plane tooling
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout reviewed control-plane tooling
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          path: control-plane
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: ./VinPoker/package-lock.json
+          cache-dependency-path: control-plane/VinPoker/package-lock.json
 
-      - name: Install dependencies
+      - name: Setup Deno for rollback-candidate tests
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.8.0
+
+      - name: Install control-plane dependencies
         run: npm ci --ignore-scripts
-        working-directory: ./VinPoker
+        working-directory: control-plane/VinPoker
 
-      - name: Type check
-        run: npm run lint
-        continue-on-error: true
-        working-directory: ./VinPoker
-
-      - name: Install Supabase CLI
-        run: npm install -g supabase
-
-      - name: Link Supabase project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-        working-directory: ./VinPoker
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
-
-      - name: Database migration deployment is manual-gated
-        if: github.event_name != 'workflow_dispatch' || inputs.deploy_db != 'true'
-        run: echo "Skipping Supabase db push. Use workflow_dispatch deploy_db=true after migration review."
-
-      # ⚠️ deploy_db=true applies ALL pending migrations at once (db push --include-all).
-      # As of 2026-06-12 this is NOT SAFE: pending chain 20260801→20260813 must not be
-      # replayed (perform_swing overload bomb in 20260812000000, da.dealers bug in
-      # 20260804000000). See VinPoker/PENDING_MIGRATION_AUDIT_20260612.md. Do not enable
-      # until migration reconciliation is complete and the owner explicitly approves.
-      # The legacy "Repair migration history" step (revert+reapply of live-applied
-      # versions) was removed 2026-06-12 — never reintroduce it.
-      - name: Deploy database migrations
-        if: github.event_name == 'workflow_dispatch' && inputs.deploy_db == 'true'
-        run: supabase db push --linked --include-all
-        continue-on-error: true
-        working-directory: ./VinPoker
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-
-      - name: Deploy Edge Functions
+      - name: Test and validate deployment tooling
         run: |
-          deploy_func() {
-            local name=$1
-            local attempt=1
-            while [ $attempt -le 3 ]; do
-              echo "=== Deploying $name (attempt $attempt/3) ==="
-              supabase functions deploy "$name" --no-verify-jwt && return 0
-              echo "=== $name attempt $attempt failed ==="
-              attempt=$((attempt + 1))
-              [ $attempt -le 3 ] && sleep 10
-            done
-            return 1
-          }
-          # JWT-verified variant: deploy WITHOUT --no-verify-jwt so the API gateway
-          # enforces the JWT. Required for functions that decode the JWT WITHOUT
-          # verifying its signature and then trust `sub` (e.g. checkout-dealer);
-          # deploying those with --no-verify-jwt would let a forged token pass.
-          deploy_func_verify() {
-            local name=$1
-            local attempt=1
-            while [ $attempt -le 3 ]; do
-              echo "=== Deploying $name (verify_jwt, attempt $attempt/3) ==="
-              supabase functions deploy "$name" && return 0
-              echo "=== $name attempt $attempt failed ==="
-              attempt=$((attempt + 1))
-              [ $attempt -le 3 ] && sleep 10
-            done
-            return 1
-          }
-          deploy_func process-swing
-          result1=$?
-          deploy_func assign-dealer
-          result2=$?
-          deploy_func close-table
-          result3=$?
-          deploy_func swing-metrics
-          result4=$?
-          deploy_func telegram-bot
-          result5=$?
-          deploy_func send-shift-schedule
-          result6=$?
-          deploy_func td-ai-assistant
-          result7=$?
-          deploy_func online-poker-action
-          result8=$?
-          deploy_func online-poker-table-runner
-          result9=$?
-          deploy_func online-poker-timeout-sweep
-          result10=$?
-          # checkout-dealer was missing from this list, so PR #302's operator-panel
-          # checkout fix (release ALL active assignments, not just 'assigned') never
-          # auto-deployed. Added here — verify_jwt MUST stay on (see deploy_func_verify).
-          deploy_func_verify checkout-dealer
-          result11=$?
-          # B1.2 — mass-assign + manage-break carry idempotency_key now but were never in this
-          # list, so B1's edge wiring never deployed. deploy_func_verify (gateway enforces the JWT):
-          # mass-assign decodes + trusts the JWT `sub` (forgeable under --no-verify-jwt, same class
-          # as checkout-dealer); manage-break has no caller-auth, so requiring a valid JWT is the safe
-          # posture (the frontend already calls both with an authenticated JWT).
-          deploy_func_verify mass-assign
-          result12=$?
-          deploy_func_verify manage-break
-          result13=$?
-          # dealer-code-login: pre-auth endpoint (dealer not signed in) — trusts NO JWT, validates a
-          # one-time /code login code itself, so it deploys WITHOUT verify_jwt (the code is the credential).
-          deploy_func dealer-code-login
-          result14=$?
-          # send-shift-reminders: cron-invoked (Bearer secret, no user JWT) — same
-          # posture as send-shift-schedule, deploys WITHOUT verify_jwt.
-          deploy_func send-shift-reminders
-          result15=$?
-          # parse-dealer-list: enforces auth INSIDE (getUser + is_club_dealer_control),
-          # same posture as send-shift-schedule → deploys WITHOUT verify_jwt.
-          deploy_func parse-dealer-list
-          result16=$?
-          [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && [ $result6 -eq 0 ] && [ $result7 -eq 0 ] && [ $result8 -eq 0 ] && [ $result9 -eq 0 ] && [ $result10 -eq 0 ] && [ $result11 -eq 0 ] && [ $result12 -eq 0 ] && [ $result13 -eq 0 ] && [ $result14 -eq 0 ] && [ $result15 -eq 0 ] && [ $result16 -eq 0 ] && echo "=== All functions deployed ===" && exit 0
-          echo "=== Some functions failed ===" && exit 1
-        working-directory: ./VinPoker
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          node --test scripts/deploy/*.test.mjs
+          node scripts/deploy/validate-control-plane.mjs
+          npm run check:credential-context
+          npx eslint scripts/deploy/*.mjs
+        working-directory: control-plane/VinPoker
 
-      - name: Deploy to Vercel
+  target-preflight:
+    name: Target source quality and live contracts
+    if: needs.plan.outputs.critical_functions != '[]' || needs.plan.outputs.frontend == 'true'
+    needs:
+      - plan
+      - control-plane-quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reviewed control-plane tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact deployment target
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.plan.outputs.target_sha }}
+          path: target-source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: target-source/VinPoker/package-lock.json
+
+      - name: Setup Deno
+        if: needs.plan.outputs.critical_functions != '[]'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.8.0
+
+      - name: Verify exact target function trees, imports and secret posture
+        if: needs.plan.outputs.critical_functions != '[]'
+        env:
+          TARGETS: ${{ needs.plan.outputs.critical_functions }}
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/verify-target-source.mjs
+          --target-root "${GITHUB_WORKSPACE}/target-source"
+          --targets "$TARGETS"
+          --report "${RUNNER_TEMP}/target-source-quality.json"
+
+      - name: Deno check exact target entrypoints
+        if: needs.plan.outputs.critical_functions != '[]'
+        shell: bash
+        env:
+          TARGETS: ${{ needs.plan.outputs.critical_functions }}
         run: |
-          npm install -g vercel@latest
-          vercel pull --yes --environment=production --token ${{ secrets.VERCELTOKEN }}
-          cp -f .vercel/.env.production.local VinPoker/.env.production.local
-          cd VinPoker
-          npm install --ignore-scripts
-          npm run build
-          mkdir -p ../.vercel/output/static
-          cp -r dist/. ../.vercel/output/static/
-          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > ../.vercel/output/config.json
-          cd ..
-          vercel deploy --prebuilt --prod --yes --token ${{ secrets.VERCELTOKEN }}
-        # VITE env vars MUST be set here (process env > .env.production.local).
-        # Vercel project env vars are sometimes missing after DB password changes.
-        # The anon/publishable key is public (exposed in client bundle anyway).
+          set -euo pipefail
+          while IFS= read -r entrypoint; do
+            deno check "target-source/${entrypoint}"
+          done < <(jq -r --argjson targets "$TARGETS" '
+            .functions | to_entries[]
+            | select(.key as $name | $targets | index($name))
+            | .value.path + "/index.ts"
+          ' control-plane/VinPoker/scripts/deploy/deployment-contracts.json)
+
+      - name: Run current policy and target Deno tests
+        if: needs.plan.outputs.critical_functions != '[]'
+        shell: bash
+        env:
+          TARGETS: ${{ needs.plan.outputs.critical_functions }}
+          TARGET_REPO_ROOT: ${{ github.workspace }}/target-source
+          TARGET_FUNCTIONS: ${{ needs.plan.outputs.critical_functions }}
+          CONTROL_PLANE_MANIFEST: ${{ github.workspace }}/control-plane/VinPoker/scripts/deploy/deployment-contracts.json
+        run: |
+          set -euo pipefail
+          deno test --allow-env --allow-read --allow-net \
+            control-plane/VinPoker/scripts/deploy/target-source-policy.test.ts
+          mapfile -t tests < <(jq -r --argjson targets "$TARGETS" '
+            [.functions | to_entries[]
+             | select(.key as $name | $targets | index($name))
+             | .value.quality.denoTests[]] | unique[]
+          ' control-plane/VinPoker/scripts/deploy/deployment-contracts.json)
+          deno test --allow-env --allow-net --allow-read "${tests[@]/#/target-source/}"
+
+      - name: Run target static Dealer Swing hardening checks when present
+        if: needs.plan.outputs.critical_functions != '[]'
+        shell: bash
+        working-directory: target-source/VinPoker
+        run: |
+          set -euo pipefail
+          script="scripts/verify_dealer_swing_critical_hardening.mjs"
+          if [[ -f "$script" ]]; then
+            node "$script"
+          fi
+
+      - name: Install exact frontend dependencies
+        if: needs.plan.outputs.frontend == 'true'
+        run: npm ci --ignore-scripts
+        working-directory: target-source/VinPoker
+
+      - name: Build and test exact frontend target
+        if: needs.plan.outputs.frontend == 'true'
+        shell: bash
+        working-directory: target-source/VinPoker
         env:
           VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          npm run build
+          mapfile -t tests < <(jq -r '.frontend.quality.vitest[]' \
+            "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/deployment-contracts.json")
+          npx vitest run "${tests[@]}"
+
+      - name: Install pinned Supabase CLI
+        run: npm install --global supabase@2.101.0
+
+      - name: Link project and dump live public schema read-only
+        run: |
+          supabase link --project-ref "${SUPABASE_PROJECT_REF}"
+          supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+        working-directory: target-source/VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Probe selected Edge live contracts
+        if: needs.plan.outputs.critical_functions != '[]'
+        env:
+          TARGETS: ${{ needs.plan.outputs.critical_functions }}
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
+          --schema "${RUNNER_TEMP}/live-schema.sql"
+          --targets "$TARGETS"
+          --target-root "${GITHUB_WORKSPACE}/target-source"
+
+      - name: Probe frontend live contracts
+        if: needs.plan.outputs.frontend == 'true'
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs
+          --schema "${RUNNER_TEMP}/live-schema.sql"
+          --targets frontend
+          --target-root "${GITHUB_WORKSPACE}/target-source"
+
+      - name: Publish pre-approval evidence
+        shell: bash
+        env:
+          TARGETS: ${{ needs.plan.outputs.critical_functions }}
+          FRONTEND: ${{ needs.plan.outputs.frontend }}
+          FRONTEND_REASON: ${{ needs.plan.outputs.frontend_reason }}
+          CONTRACT_PROFILE: ${{ needs.plan.outputs.contract_profile }}
+          CONTRACT_SOURCE_FINGERPRINT: ${{ needs.plan.outputs.contract_source_fingerprint }}
+        run: |
+          {
+            echo "## Pre-approval result"
+            echo ""
+            echo "- Control-plane tooling SHA: \`${GITHUB_SHA}\`"
+            echo "- Deployment target SHA: \`${TARGET_SHA}\`"
+            echo "- Target contract profile: \`$CONTRACT_PROFILE\`"
+            echo "- Contract source fingerprint: \`$CONTRACT_SOURCE_FINGERPRINT\`"
+            echo "- Target source quality: PASS"
+            echo "- Live contract probe: PASS"
+            echo "- Selected critical Edge: \`$TARGETS\`"
+            echo "- Frontend selected: \`$FRONTEND\` (\`$FRONTEND_REASON\`)"
+            echo "- No production mutation has run before this point."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  validate-critical-environment:
+    name: Require protected critical environment
+    if: github.event_name == 'workflow_dispatch' && needs.plan.outputs.critical_functions != '[]'
+    needs:
+      - plan
+      - target-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed unless required reviewers are configured
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/${CRITICAL_ENVIRONMENT}")"
+          jq -e '
+            .protection_rules
+            | any(.type == "required_reviewers" and ((.reviewers // []) | length > 0))
+          ' <<<"$environment_json" >/dev/null
+
+  deploy-critical-edge:
+    name: Deploy critical Edge ${{ matrix.function }}
+    if: github.event_name == 'workflow_dispatch' && needs.plan.outputs.critical_functions != '[]'
+    needs:
+      - plan
+      - target-preflight
+      - validate-critical-environment
+    strategy:
+      fail-fast: false
+      matrix:
+        function: ${{ fromJSON(needs.plan.outputs.critical_functions) }}
+    runs-on: ubuntu-latest
+    environment:
+      name: dealer-swing-production-critical
+    steps:
+      - name: Checkout reviewed control-plane tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact deployment target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.target_sha }}
+          path: target-source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pinned Supabase CLI
+        run: npm install --global supabase@2.101.0
+
+      - name: Link project and re-probe live contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "${SUPABASE_PROJECT_REF}"
+          supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
+            --schema "${RUNNER_TEMP}/live-schema.sql" \
+            --targets "${{ matrix.function }}" \
+            --target-root "${GITHUB_WORKSPACE}/target-source"
+        working-directory: target-source/VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy only this exact target function
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/deploy-selected-edge-functions.mjs
+          --targets "${{ matrix.function }}"
+          --target-root "${GITHUB_WORKSPACE}/target-source"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+
+      - name: Record receipt only after successful Edge deploy
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs record
+          --repository "${GITHUB_REPOSITORY}"
+          --component "${{ matrix.function }}"
+          --sha "${{ needs.plan.outputs.target_sha }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  deploy-frontend:
+    name: Deploy exact reviewed frontend
+    if: >-
+      always() &&
+      needs.plan.outputs.frontend == 'true' &&
+      needs.control-plane-quality.result == 'success' &&
+      needs.target-preflight.result == 'success' &&
+      (needs.plan.outputs.critical_functions == '[]' || needs.deploy-critical-edge.result == 'success')
+    needs:
+      - plan
+      - control-plane-quality
+      - target-preflight
+      - deploy-critical-edge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reviewed control-plane tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-plane
+
+      - name: Checkout exact deployment target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.target_sha }}
+          path: target-source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: target-source/VinPoker/package-lock.json
+
+      - name: Install exact target dependencies
+        run: npm ci --ignore-scripts
+        working-directory: target-source/VinPoker
+
+      - name: Install deployment CLIs
+        run: |
+          npm install --global supabase@2.101.0
+          npm install --global vercel@latest
+
+      - name: Re-probe frontend live contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "${SUPABASE_PROJECT_REF}"
+          supabase db dump --linked --schema public --file "${RUNNER_TEMP}/live-schema.sql"
+          node "${GITHUB_WORKSPACE}/control-plane/VinPoker/scripts/deploy/probe-live-schema-contracts.mjs" \
+            --schema "${RUNNER_TEMP}/live-schema.sql" \
+            --targets frontend \
+            --target-root "${GITHUB_WORKSPACE}/target-source"
+        working-directory: target-source/VinPoker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASEACCESSTOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Build exact frontend source
+        run: npm run build
+        working-directory: target-source/VinPoker
+        env:
+          VITE_SUPABASE_URL: "https://orlesggcjamwuknxwcpk.supabase.co"
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Deploy prebuilt bundle to Vercel
+        shell: bash
+        working-directory: target-source
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCELTOKEN }}
+        run: |
+          set -euo pipefail
+          vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+          mkdir -p .vercel/output/static
+          cp -r VinPoker/dist/. .vercel/output/static/
+          printf '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/(.*)","dest":"/index.html"}]}' > .vercel/output/config.json
+          vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Record receipt only after successful frontend deploy
+        run: >-
+          node control-plane/VinPoker/scripts/deploy/deployment-receipts.mjs record
+          --repository "${GITHUB_REPOSITORY}"
+          --component frontend
+          --sha "${{ needs.plan.outputs.target_sha }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
