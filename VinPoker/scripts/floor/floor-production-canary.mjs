@@ -1689,7 +1689,10 @@ async function openOwnedChipDialog(page, baseUrl, fixture, seat) {
   await seatButton.waitFor({ state: "visible", timeout: 15_000 });
   await seatButton.click();
   console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=owned_seat_selected");
-  await page.getByRole("button", { name: "Sửa chip", exact: true }).click();
+  const editChipButton = page.getByRole("button", { name: /^Sửa chip(?:\s|$)/u }).first();
+  await editChipButton.waitFor({ state: "visible", timeout: 15_000 });
+  await editChipButton.click({ timeout: 15_000 });
+  console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=edit_chip_selected");
   const dialog = page.getByRole("dialog", { name: new RegExp(`Sửa chip.*${escapeRegex(seat.player_name)}`, "u") });
   await dialog.waitFor({ state: "visible", timeout: 15_000 });
   console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=chip_dialog_ready");

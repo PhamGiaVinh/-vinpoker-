@@ -426,6 +426,9 @@ test("browser chip concurrency selects only the exact run-owned table", () => {
   assert.match(chipDialog, /fixture\.tableName\.startsWith\(`\$\{fixture\.runId\}_\$\{fixture\.scenario\}_`\)/);
   assert.match(chipDialog, /escapeRegex\(fixture\.tableName\)/);
   assert.match(chipDialog, /browser_chip_table_ownership_invalid/);
+  assert.match(chipDialog, /name: \/\^Sửa chip\(\?:\\s\|\$\)\/u/);
+  assert.match(chipDialog, /editChipButton\.waitFor\(\{ state: "visible", timeout: 15_000 \}\)/);
+  assert.doesNotMatch(chipDialog, /name: "Sửa chip", exact: true/);
   assert.doesNotMatch(chipDialog, /\^Bàn 1/);
 });
 
