@@ -29,4 +29,11 @@ Deno.test("invalid multi-club scopes fail closed", () => {
   assertThrows(() => parseRequestedClubIds(CLUB_A), TypeError);
   assertThrows(() => parseRequestedClubIds(["not-a-uuid"]), TypeError);
   assertThrows(() => parseRequestedClubIds([CLUB_A, null]), TypeError);
+  assertThrows(
+    () => parseRequestedClubIds(Array.from(
+      { length: 11 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    )),
+    RangeError,
+  );
 });

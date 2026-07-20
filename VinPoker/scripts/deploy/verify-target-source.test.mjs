@@ -68,13 +68,16 @@ test("pre-922 rollback source is inspectable even though it has no control-plane
       manifest,
     });
     assert.deepEqual(Object.keys(report.functions).sort(), ["checkout-dealer", "mass-assign", "process-swing"]);
-    execFileSync("deno", ["check", join(source, report.functions["process-swing"].entrypoint)], {
+    // The current control-plane owns the quality command. Do not let an old
+    // target's workspace-level Deno config require a node_modules tree that is
+    // intentionally absent from the exact git archive under review.
+    execFileSync("deno", ["check", "--no-config", join(source, report.functions["process-swing"].entrypoint)], {
       stdio: "pipe",
       timeout: 180_000,
     });
     const tests = [...new Set(Object.values(report.functions).flatMap((item) => item.denoTests))]
       .map((path) => join(source, path));
-    execFileSync("deno", ["test", "--allow-env", "--allow-net", "--allow-read", ...tests], {
+    execFileSync("deno", ["test", "--no-config", "--allow-env", "--allow-net", "--allow-read", ...tests], {
       stdio: "pipe",
       timeout: 180_000,
     });

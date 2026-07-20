@@ -7,6 +7,7 @@ import {
   computeNextSwingAt,
   fillEmptyTables,
   getTableIdsForClub,
+  type FillResult,
 } from "../_shared/dealer-utils.ts";
 import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
 import { getFeatureTablePoolIds } from "../_shared/featureTableGate.ts"; // Patch 5b: feature/final pool gate
@@ -48,6 +49,11 @@ import {
 } from "../_shared/preAssignState.ts";
 import { SWING_POLICY } from "../_shared/swingPolicy.ts";
 import { parseRequestedClubIds } from "./requestScope.ts";
+import {
+  assessEmptyFillOutcome,
+  parseProcessSwingDispatchContext,
+  type ProcessSwingDispatchContext,
+} from "./dispatchContext.ts";
 import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
 
 const corsHeaders = {
@@ -613,11 +619,33 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  let dispatchAdmin: any = null;
+  let dispatchContext: ProcessSwingDispatchContext | null = null;
+  let dispatchFinalState: "completed" | "partial" | "locked" | "dependency_unavailable" | "business_failed" = "completed";
+  let dispatchErrorCode: string | null = null;
+  const markDispatchOutcome = (
+    state: typeof dispatchFinalState,
+    errorCode: string | null,
+  ) => {
+    const priority: Record<typeof dispatchFinalState, number> = {
+      completed: 0,
+      locked: 1,
+      partial: 2,
+      business_failed: 3,
+      dependency_unavailable: 4,
+    };
+    if (priority[state] >= priority[dispatchFinalState]) {
+      dispatchFinalState = state;
+      dispatchErrorCode = errorCode;
+    }
+  };
+
   try {
     const admin: any = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    dispatchAdmin = admin;
 
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) {
@@ -674,6 +702,71 @@ Deno.serve(async (req: Request) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    try {
+      dispatchContext = parseProcessSwingDispatchContext(body);
+    } catch (err) {
+      return new Response(JSON.stringify({
+        error: "invalid_dispatch_context",
+        detail: err instanceof Error ? err.message : "Invalid dispatch context",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (dispatchContext) {
+      if (!authResult.internal) {
+        return new Response(JSON.stringify({ error: "dispatch_context_requires_internal_auth" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: claim, error: claimError } = await admin.rpc(
+        "claim_process_swing_dispatch",
+        {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+        },
+      );
+      if (claimError) {
+        dispatchFinalState = "dependency_unavailable";
+        dispatchErrorCode = "dispatch_claim_unavailable";
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "dependency_unavailable",
+          error_code: dispatchErrorCode,
+        }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const claimOutcome = String(claim?.outcome ?? "invalid_claim_response");
+      if (claimOutcome === "duplicate") {
+        return new Response(JSON.stringify({
+          ok: true,
+          status: "duplicate",
+          business_state: claim?.business_state ?? null,
+          run_id: dispatchContext.runId,
+          request_id: dispatchContext.requestId,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (claimOutcome !== "claimed") {
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "business_failed",
+          error_code: `dispatch_${claimOutcome}`,
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const startTime = Date.now();
@@ -746,12 +839,14 @@ Deno.serve(async (req: Request) => {
 
         if (lockErr) {
           console.error(`[process-swing] \u274C Lock RPC failed for ${cid}:`, lockErr.message);
+          markDispatchOutcome("business_failed", "club_lock_query_failed");
           clubsSkippedError++;
           continue;
         }
 
         if (!lockResult || typeof lockResult !== "object" || !("acquired" in lockResult)) {
           console.error(`[process-swing] \u274C Invalid lock result for ${cid}:`, JSON.stringify(lockResult));
+          markDispatchOutcome("business_failed", "club_lock_invalid_response");
           clubsSkippedError++;
           continue;
         }
@@ -759,6 +854,7 @@ Deno.serve(async (req: Request) => {
         const acquired = (lockResult as LockAcquisitionResult).acquired === true;
         if (!acquired) {
           console.log(`[process-swing] \U0001F512 Club ${cid} locked by another instance`);
+          markDispatchOutcome("locked", "club_lock_held");
           clubsSkippedLocked++;
           continue;
         }
@@ -767,6 +863,7 @@ Deno.serve(async (req: Request) => {
         lockAcquired = true;
       } catch (err) {
         console.error(`[process-swing] \u274C Lock acquisition exception for ${cid}:`, err);
+        markDispatchOutcome("business_failed", "club_lock_exception");
         clubsSkippedError++;
         continue;
       }
@@ -778,6 +875,7 @@ Deno.serve(async (req: Request) => {
           clubCfg = getClubConfig(allClubConfigs, cid);
         } catch (err) {
           console.error(`[process-swing] \u274C Failed to get config for club ${cid}:`, err);
+          markDispatchOutcome("business_failed", "club_config_failed");
           clubsSkippedError++;
           continue;
         }
@@ -798,6 +896,7 @@ Deno.serve(async (req: Request) => {
           clubTableIds = await getTableIdsForClub(admin, cid);
         } catch (err) {
           console.error(`[process-swing] \u274C getTableIdsForClub failed for club ${cid}:`, err);
+          markDispatchOutcome("business_failed", "club_tables_failed");
           clubsSkippedError++;
           continue;
         }
@@ -1465,7 +1564,14 @@ Deno.serve(async (req: Request) => {
         // ── PASS 1 — Auto-fill empty tables ───────────────────────────────
         // RUNS FIRST (before pre-assign) so tables with NO dealer get priority.
         // Pre-assign only targets tables that ALREADY have a dealer due to swing soon.
-        let fillResult = { assignments: [] as Array<{table_id:string;table_name:string;attendance_id:string;full_name:string}>, assignedAttendanceIds: new Set<string>() };
+        let fillResult: FillResult = {
+          status: "ok",
+          error_code: null,
+          assignments: [],
+          assignedAttendanceIds: new Set<string>(),
+          diagnostics: [],
+        };
+        let fillAssessment = assessEmptyFillOutcome("ok", null);
         // Auto-fill empty ACTIVE tables. Gated: legacy global flag (OFF) OR the
         // Step-1 per-club opt-in (owner policy 2026-06-15, default OFF). Manual
         // "Gán" / "Gán loạt" buttons (assign-dealer / mass-assign) call
@@ -1480,6 +1586,22 @@ Deno.serve(async (req: Request) => {
             clubCfg.min_inter_swing_rest_minutes,
             autoStaffThisClub, // availableOnly — only on the per-club Step-1 path
           );
+          fillAssessment = assessEmptyFillOutcome(
+            fillResult.status,
+            fillResult.error_code,
+          );
+          if (fillResult.status !== "ok") {
+            markDispatchOutcome(
+              fillAssessment.dispatchState,
+              fillAssessment.dispatchErrorCode,
+            );
+            console.error("[process-swing] empty_fill_degraded", JSON.stringify({
+              club_id: cid,
+              status: fillResult.status,
+              error_code: fillResult.error_code,
+              diagnostics: fillResult.diagnostics,
+            }));
+          }
           for (const aid of fillResult.assignedAttendanceIds) cycleExcludedIds.add(aid);
           // Pass 1 swing_in intentionally NOT enqueued here:
           // formatMassAssignMessage already sends "Mở Bàn (N bàn)" batch.
@@ -4124,7 +4246,7 @@ if (tier2Count > 0) {
         }
 
         // ── SHORTAGE ESCALATION ──────────────────────────────────────────
-        if (!dryRun && metrics.total > 0 && metrics.failed === 0) {
+        if (!dryRun && fillAssessment.shortageAlertsAllowed && metrics.total > 0 && metrics.failed === 0) {
           const noDealerRatio = metrics.no_dealer / metrics.total;
           if (noDealerRatio > 0.5 && metrics.no_dealer >= 3) {
             console.warn(
@@ -4169,7 +4291,9 @@ if (tier2Count > 0) {
           .eq("status", "assigned")
           .in("table_id", clubTableIds);
 
-        if ((totalActiveCount ?? 0) > 0 && (nonOtInClub ?? 0) === 0) {
+        if (fillAssessment.shortageAlertsAllowed
+            && (totalActiveCount ?? 0) > 0
+            && (nonOtInClub ?? 0) === 0) {
           const chatId = await getClubTelegramChatId(admin, cid);
           if (botToken && chatId) {
             await sendTelegramNotification(
@@ -4210,6 +4334,7 @@ if (tier2Count > 0) {
           // B2.2b: graceful abort \u2014 another runner reclaimed the lease. NOT an error.
           console.warn(`[process-swing] club ${cid}: ${err.message} \u2014 remaining passes aborted, releasing.`);
         } else {
+          markDispatchOutcome("business_failed", "club_processing_exception");
           clubsSkippedError++;
           console.error(
             `[process-swing] \u274C Unhandled error for club ${cid}:`,
@@ -4287,9 +4412,48 @@ if (tier2Count > 0) {
       timestamp: new Date().toISOString(),
     }));
 
+    if (dispatchContext) {
+      const { data: finishResult, error: finishError } = await admin.rpc(
+        "finish_process_swing_dispatch",
+        {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+          p_business_state: dispatchFinalState,
+          p_error_code: dispatchErrorCode,
+          p_diagnostics: {
+            execution_time_ms: totalExecutionMs,
+            processed: clubsProcessed,
+            skipped_locked: clubsSkippedLocked,
+            skipped_error: clubsSkippedError,
+          },
+        },
+      );
+      const finishOutcome = String(finishResult?.outcome ?? "invalid_finish_response");
+      if (finishError || !["recorded", "idempotent_replay"].includes(finishOutcome)) {
+        console.error("[process-swing] dispatch_finalize_failed", JSON.stringify({
+          run_id: dispatchContext.runId,
+          request_id: dispatchContext.requestId,
+          outcome: finishOutcome,
+        }));
+        return new Response(JSON.stringify({
+          ok: false,
+          status: "dependency_unavailable",
+          error_code: "dispatch_finalize_unavailable",
+        }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return new Response(
       JSON.stringify({
         ok: true,
+        status: dispatchContext ? dispatchFinalState : "completed",
+        error_code: dispatchContext ? dispatchErrorCode : null,
+        run_id: dispatchContext?.runId ?? null,
+        request_id: dispatchContext?.requestId ?? null,
         execution_time_ms: totalExecutionMs,
         metrics: metricsPerClub,
         dry_run: dryRun,
@@ -4298,6 +4462,21 @@ if (tier2Count > 0) {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (dispatchAdmin && dispatchContext) {
+      try {
+        await dispatchAdmin.rpc("finish_process_swing_dispatch", {
+          p_run_id: dispatchContext.runId,
+          p_request_id: dispatchContext.requestId,
+          p_club_id: dispatchContext.clubId,
+          p_business_state: "business_failed",
+          p_error_code: "unhandled_process_swing_error",
+          p_diagnostics: null,
+        });
+      } catch {
+        // Best effort only: the response remains non-2xx and retry is fenced by
+        // claim_process_swing_dispatch.
+      }
+    }
     return new Response(
       JSON.stringify({ error: "Internal error", detail: msg }),
       {

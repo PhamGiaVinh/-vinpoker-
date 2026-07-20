@@ -1,5 +1,6 @@
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_INTERNAL_CLUB_BATCH = 10;
 
 /**
  * Parse the optional multi-club scope sent by the internal cron caller.
@@ -18,6 +19,9 @@ export function parseRequestedClubIds(value: unknown): string[] | undefined {
       throw new TypeError("club_ids must contain only UUID strings");
     }
     unique.add(item.toLowerCase());
+  }
+  if (unique.size > MAX_INTERNAL_CLUB_BATCH) {
+    throw new RangeError(`club_ids supports at most ${MAX_INTERNAL_CLUB_BATCH} clubs`);
   }
   return [...unique];
 }

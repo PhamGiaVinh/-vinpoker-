@@ -14,13 +14,15 @@
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { pickNextDealer, type DealerCandidate } from "./pickNextDealer.ts";
+import { pickNextDealerWithStatus, type DealerCandidate } from "./pickNextDealer.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 import { OPEN_TABLE_GRACE_MINUTES, bulkOpenStaggerMs } from "./openTableGrace.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface FillResult {
+  status: "ok" | "degraded" | "dependency_unavailable" | "query_failed";
+  error_code: string | null;
   assignments: Array<{
     table_id: string;
     table_name: string;
@@ -29,6 +31,11 @@ export interface FillResult {
     telegram_username?: string | null;
   }>;
   assignedAttendanceIds: Set<string>;
+  diagnostics: Array<{
+    stage: string;
+    code: string;
+    table_id?: string;
+  }>;
 }
 
 export type SupabaseAdmin = any;
@@ -64,6 +71,42 @@ interface AssignTableRpcResult {
 
 interface AssignTableRpcError {
   message: string;
+  code?: string | null;
+}
+
+type FillFailureStatus = Extract<FillResult["status"], "dependency_unavailable" | "query_failed">;
+
+function classifyFillError(error: unknown): FillFailureStatus {
+  const value = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : {};
+  const code = String(value.code ?? "").toUpperCase();
+  const message = String(value.message ?? error ?? "").toLowerCase();
+  if (["42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204"].includes(code)
+      || /schema cache|does not exist|could not find the (table|column|function|relationship)/.test(message)) {
+    return "dependency_unavailable";
+  }
+  return "query_failed";
+}
+
+function markFillFailure(
+  result: FillResult,
+  status: FillResult["status"],
+  stage: string,
+  code: string,
+  tableId?: string,
+): void {
+  const priority: Record<FillResult["status"], number> = {
+    ok: 0,
+    degraded: 1,
+    query_failed: 2,
+    dependency_unavailable: 3,
+  };
+  if (priority[status] >= priority[result.status]) {
+    result.status = status;
+    result.error_code = code;
+  }
+  result.diagnostics.push({ stage, code, ...(tableId ? { table_id: tableId } : {}) });
 }
 
 export function isRunningDealerSessionTable(
@@ -99,8 +142,11 @@ export async function fillEmptyTables(
   availableOnly = false,
 ): Promise<FillResult> {
   const result: FillResult = {
+    status: "ok",
+    error_code: null,
     assignments: [],
     assignedAttendanceIds: new Set(),
+    diagnostics: [],
   };
 
   // Step 1: Fetch active tables for this club
@@ -112,7 +158,11 @@ export async function fillEmptyTables(
       data: GameTableRow[] | null;
       error: { message: string } | null;
     };
-  if (tableErr || !tables) return result;
+  if (tableErr || !tables) {
+    const status = classifyFillError(tableErr ?? new Error("empty table query response"));
+    markFillFailure(result, status, "active_tables", `active_tables_${status}`);
+    return result;
+  }
 
   const activeTables = tables ?? [];
   const shiftScopedTables = shiftId
@@ -134,17 +184,27 @@ export async function fillEmptyTables(
     );
   }
 
+  if (scopedTables.length === 0) return result;
+
   // Step 2: Find tables with existing active assignments.
   // 'reserved' = a Step-2 empty-table reservation holds this table for a
   // soon-free dealer → treat it as NOT empty so Step-1 fill doesn't double-staff.
-  const { data: activeAssignments } = (await admin
+  const { data: activeAssignments, error: activeAssignmentsError } = (await admin
     .from("dealer_assignments")
     .select("table_id")
     .in("status", ["assigned", "pre_assigned", "reserved"])
     .in(
       "table_id",
       scopedTables.map((t: { id: string }) => t.id)
-    )) as unknown as { data: ActiveAssignmentRow[] | null };
+    )) as unknown as {
+      data: ActiveAssignmentRow[] | null;
+      error: AssignTableRpcError | null;
+    };
+  if (activeAssignmentsError) {
+    const status = classifyFillError(activeAssignmentsError);
+    markFillFailure(result, status, "active_assignments", `active_assignments_${status}`);
+    return result;
+  }
 
   const assignedTableIds = new Set(
     (activeAssignments ?? []).flatMap((a) => a.table_id ? [a.table_id] : [])
@@ -163,9 +223,17 @@ export async function fillEmptyTables(
       .eq("club_id", clubId)
       .eq("scope_type", "table"),
   ])) as [
-    { data: TournamentRow[] | null },
-    { data: TableOverrideRow[] | null },
+    { data: TournamentRow[] | null; error: AssignTableRpcError | null },
+    { data: TableOverrideRow[] | null; error: AssignTableRpcError | null },
   ];
+
+  if (tournamentsResult.error || tableOverridesResult.error) {
+    const stage = tournamentsResult.error ? "live_tournaments" : "table_overrides";
+    const error = tournamentsResult.error ?? tableOverridesResult.error;
+    const status = classifyFillError(error);
+    markFillFailure(result, status, stage, `${stage}_${status}`);
+    return result;
+  }
 
   const tournamentConfig = new Map<string, number>();
   for (const trn of tournamentsResult.data ?? []) {
@@ -191,11 +259,16 @@ export async function fillEmptyTables(
   // explicitly chose that table.
   let durableMarkerAllowed = false;
   if (availableOnly && activeTables.some((table) => table.dealer_open_operation_id != null)) {
-    const { data: rollout } = await admin
+    const { data: rollout, error: rolloutError } = await admin
       .from("dealer_mass_open_rollout")
       .select("enabled, all_clubs_enabled, allowed_club_ids")
       .eq("id", true)
       .maybeSingle();
+    if (rolloutError) {
+      const status = classifyFillError(rolloutError);
+      markFillFailure(result, status, "mass_open_rollout", `mass_open_rollout_${status}`);
+      return result;
+    }
     durableMarkerAllowed = rollout?.enabled === true
       && (rollout?.all_clubs_enabled === true
         || (rollout?.allowed_club_ids ?? []).includes(clubId));
@@ -242,6 +315,7 @@ export async function fillEmptyTables(
   const fillDeadline = Date.now() + 20_000;
   for (const [index, table] of emptyTables.entries()) {
     if (Date.now() > fillDeadline) {
+      markFillFailure(result, "degraded", "budget", "fill_budget_exceeded");
       slog("empty_table_fill_budget_exceeded", {
         assigned_so_far: result.assignments.length,
         remaining_tables: emptyTables.length - index,
@@ -290,12 +364,25 @@ export async function fillEmptyTables(
         ...result.assignedAttendanceIds,
       ]);
 
-      const dealer: DealerCandidate | null = await pickNextDealer(admin, clubId, {
+      const pickResult = await pickNextDealerWithStatus(admin, clubId, {
         currentTableId: table.id,
         excludeAttendanceIds: excludeSet,
         minInterSwingRestMinutes: minInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes,
         availableOnly,
       });
+
+      if (pickResult.status !== "ok") {
+        markFillFailure(
+          result,
+          pickResult.status,
+          "candidate_snapshot",
+          pickResult.errorCode ?? `candidate_snapshot_${pickResult.status}`,
+          table.id,
+        );
+        return result;
+      }
+
+      const dealer: DealerCandidate | null = pickResult.candidate;
 
       if (!dealer) break;
 
@@ -334,6 +421,7 @@ export async function fillEmptyTables(
       );
 
       if (rpcErr) {
+        markFillFailure(result, "degraded", "assign_rpc", "assign_rpc_conflict", table.id);
         console.warn(
           `[fillEmptyTables] assign conflict attempt ${attempt + 1} for table ${table.id}:`,
           rpcErr.message
@@ -403,6 +491,7 @@ export async function fillEmptyTables(
 
       // Unknown result → treat as conflict
       console.warn(`[fillEmptyTables] Unknown RPC outcome '${outcome}' for table ${table.id}, dealer ${dealer.id}`);
+      markFillFailure(result, "degraded", "assign_rpc", "assign_unknown_outcome", table.id);
       localExclude.add(dealer.id);
     }
 
@@ -417,6 +506,8 @@ export async function fillEmptyTables(
       });
     }
     } catch (e) {
+      const status = classifyFillError(e);
+      markFillFailure(result, status, "table_fill", `table_fill_${status}`, table.id);
       console.warn(`[fillEmptyTables] table ${table.id} errored, skipping:`, e instanceof Error ? e.message : String(e));
       slog("empty_table_fill_error", {
         table_id: table.id,

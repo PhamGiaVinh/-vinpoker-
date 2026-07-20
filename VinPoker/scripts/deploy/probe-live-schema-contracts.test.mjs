@@ -179,6 +179,24 @@ test("operation ACL requires authenticated access, anon denial, service helper a
   );
 });
 
+test("ACL probe accepts pg_dump signatures that include argument names", () => {
+  const contract = {
+    type: "function",
+    name: "public._refresh_dealer_open_operation",
+    arguments: ["p_operation_id"],
+    argumentTypes: ["uuid"],
+    allowOtherOverloads: false,
+    acl: { authenticated: false, anon: false, service_role: true },
+  };
+  const schema = `
+CREATE FUNCTION public._refresh_dealer_open_operation(p_operation_id uuid) RETURNS jsonb
+  LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
+REVOKE ALL ON FUNCTION public._refresh_dealer_open_operation(p_operation_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION public._refresh_dealer_open_operation(p_operation_id uuid) TO service_role;
+`;
+  assert.deepEqual(findMissingContracts(schema, [contract]), []);
+});
+
 test("current target fails without operation objects and passes with the full mass-open-v1 contract", () => {
   const current = allContracts(repositoryRoot);
   assert.equal(current.selection.profile, "dealer_mass_open_v1");

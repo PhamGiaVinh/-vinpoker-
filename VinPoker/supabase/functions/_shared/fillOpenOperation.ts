@@ -71,6 +71,21 @@ interface FillOpenOperationOptions {
   reservedBuilder?: typeof getReservedDealerIds;
 }
 
+function operationFailure(error: unknown, stage: string): Error {
+  const value = error && typeof error === "object"
+    ? error as { code?: string | null; message?: string | null }
+    : {};
+  const code = String(value.code ?? "").toUpperCase();
+  const message = String(value.message ?? error ?? "").toLowerCase();
+  const dependencyUnavailable = [
+    "42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204",
+  ].includes(code)
+    || /schema cache|does not exist|could not find the (table|column|function|relationship)/.test(message);
+  return new Error(
+    `${dependencyUnavailable ? "OPEN_OPERATION_DEPENDENCY_UNAVAILABLE" : "OPEN_OPERATION_QUERY_FAILED"}:${stage}`,
+  );
+}
+
 function tableTierBonus(candidate: DealerCandidate, tier: OpenOperationTable["tour_tier"]): number {
   if (tier === "HIGH") {
     if (candidate.tier === "A") return SWING_POLICY.scoring.tierBonusHighA;
@@ -142,7 +157,11 @@ export async function fillOpenOperation(
   const reservedBuilder = options.reservedBuilder ?? getReservedDealerIds;
   const deadline = Date.now() + Math.min(Math.max(options.deadlineMs ?? 45_000, 1_000), 50_000);
 
-  await admin.rpc("_refresh_dealer_open_operation", { p_operation_id: operationId });
+  const { error: initialRefreshError } = await admin.rpc(
+    "_refresh_dealer_open_operation",
+    { p_operation_id: operationId },
+  );
+  if (initialRefreshError) throw operationFailure(initialRefreshError, "initial_refresh");
 
   const { data: operation, error: operationError } = await admin
     .from("dealer_open_operations")
@@ -150,7 +169,8 @@ export async function fillOpenOperation(
     .eq("id", operationId)
     .maybeSingle();
   if (operationError || !operation) {
-    throw new Error(`OPEN_OPERATION_NOT_FOUND:${operationError?.message ?? operationId}`);
+    if (operationError) throw operationFailure(operationError, "operation");
+    throw new Error("OPEN_OPERATION_NOT_FOUND");
   }
 
   const op = operation as OpenOperationRow;
@@ -165,7 +185,8 @@ export async function fillOpenOperation(
     .select("enabled, all_clubs_enabled, allowed_club_ids")
     .eq("id", true)
     .maybeSingle();
-  if (rolloutError || !rollout) throw new Error("MASS_OPEN_ROLLOUT_UNAVAILABLE");
+  if (rolloutError) throw operationFailure(rolloutError, "rollout");
+  if (!rollout) throw new Error("MASS_OPEN_ROLLOUT_UNAVAILABLE");
   const allowed = rollout.enabled === true
     && (rollout.all_clubs_enabled === true || (rollout.allowed_club_ids ?? []).includes(op.club_id));
   if (!allowed) throw new Error("MASS_OPEN_ROLLOUT_DISABLED");
@@ -193,7 +214,7 @@ export async function fillOpenOperation(
     .eq("operation_id", operationId)
     .eq("target_state", "pending")
     .order("table_id", { ascending: true });
-  if (targetError) throw new Error(`OPEN_OPERATION_TARGET_QUERY_FAILED:${targetError.message}`);
+  if (targetError) throw operationFailure(targetError, "targets");
 
   const targets = (targetRows ?? []) as OpenTargetRow[];
   if (targets.length === 0) {
@@ -221,16 +242,30 @@ export async function fillOpenOperation(
 
   // All expensive eligibility queries are built once. Feature/final pools are
   // fetched in one batch, then every table is ranked from this immutable snapshot.
-  const [snapshotResult, featurePools, reservedDealerIds] = await Promise.all([
-    candidateBuilder(admin, op.club_id, {
-      includeScoreBreakdown: true,
-      minInterSwingRestMinutes:
-        options.minInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes,
-      availableOnly: true,
-    }),
-    poolBuilder(admin, tables.map((table) => table.id)),
-    reservedBuilder(admin),
-  ]);
+  let snapshotResult: Awaited<ReturnType<typeof buildDealerCandidates>>;
+  let featurePools: Awaited<ReturnType<typeof getFeatureTablePoolsByTable>>;
+  let reservedDealerIds: Awaited<ReturnType<typeof getReservedDealerIds>>;
+  try {
+    [snapshotResult, featurePools, reservedDealerIds] = await Promise.all([
+      candidateBuilder(admin, op.club_id, {
+        includeScoreBreakdown: true,
+        minInterSwingRestMinutes:
+          options.minInterSwingRestMinutes ?? SWING_POLICY.rest.minInterSwingRestMinutes,
+        availableOnly: true,
+      }),
+      poolBuilder(admin, tables.map((table) => table.id)),
+      reservedBuilder(admin),
+    ]);
+  } catch (error) {
+    throw operationFailure(error, "candidate_snapshot");
+  }
+  if (snapshotResult.status !== "ok") {
+    throw new Error(
+      `${snapshotResult.status === "dependency_unavailable"
+        ? "OPEN_OPERATION_DEPENDENCY_UNAVAILABLE"
+        : "OPEN_OPERATION_QUERY_FAILED"}:candidate_snapshot`,
+    );
+  }
   const snapshot = snapshotResult.candidates;
   const usedAttendanceIds = new Set<string>();
   const assignments: OpenOperationAssignment[] = [];
@@ -273,6 +308,8 @@ export async function fillOpenOperation(
       });
 
       if (error) {
+        const classified = operationFailure(error, "assign_dealer_to_table");
+        if (classified.message.startsWith("OPEN_OPERATION_DEPENDENCY_UNAVAILABLE")) throw classified;
         finalCode = "conflict";
         continue;
       }
@@ -310,17 +347,19 @@ export async function fillOpenOperation(
     { p_operation_id: operationId },
   );
   if (refreshError || !summary) {
-    throw new Error(`OPEN_OPERATION_REFRESH_FAILED:${refreshError?.message ?? "empty response"}`);
+    if (refreshError) throw operationFailure(refreshError, "final_refresh");
+    throw new Error("OPEN_OPERATION_QUERY_FAILED:empty_refresh");
   }
 
   for (const outcome of outcomes) {
     if (outcome.code === "assigned" || outcome.code === "already_occupied") continue;
-    await admin
+    const { error: outcomeError } = await admin
       .from("dealer_open_operation_targets")
       .update({ outcome_code: outcome.code, updated_at: new Date().toISOString() })
       .eq("operation_id", operationId)
       .eq("table_id", outcome.table_id)
       .eq("target_state", "pending");
+    if (outcomeError) throw operationFailure(outcomeError, "target_outcome");
   }
 
   return {
