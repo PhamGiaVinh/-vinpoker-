@@ -25,6 +25,27 @@ function normalise(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("vi-VN");
 }
 
+function safeRootErrorDetail(value: string) {
+  return value
+    .replace(/\b(?:https?|wss?):\/\/[^\s)]+/giu, "[url-redacted]")
+    .replace(/\b(?:authorization|bearer|token|apikey|api[_-]?key|password)\b(?:\s*[:=]\s*|\s+)(?:bearer\s+)?\S+/giu, "[secret-redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+async function assertNoRootError(
+  page: import("@playwright/test").Page,
+  route: string,
+  role: FloorAuditRole,
+  viewport: ConcreteFloorAuditViewport,
+) {
+  const rootErrorDetail = page.locator('[role="alert"] pre').first();
+  if (await rootErrorDetail.count() === 0) return;
+  const detail = safeRootErrorDetail(await rootErrorDetail.innerText());
+  throw new Error(["floor_root_error", "route=" + route, "role=" + role, "viewport=" + viewport, "detail=" + (detail || "unavailable")].join(" "));
+}
+
 function configuredAssignments(): RouteAssignment[] {
   const raw = process.env.FLOOR_UAT_ROUTE_ASSIGNMENTS;
   if (!raw) return [];
@@ -82,6 +103,7 @@ for (const viewport of floorAuditViewports) {
       try {
         const page = await context.newPage();
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "networkidle" });
+        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport);
         if (assignment.ownedTournamentName) {
           const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
           await expect(ownedTournament).toBeVisible();
