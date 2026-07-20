@@ -1,4 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  clockControlErrorStatus,
+  isPostStartClockAction,
+  isTerminalTournamentStatus,
+  parseClockDelta,
+  readExpectedControlRevision,
+  readLegacyControlRevision,
+} from "./controlPolicy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,9 +72,7 @@ Deno.serve(async (req) => {
   try {
     const { data: tournament, error: tournamentError } = await supabase
       .from("tournaments")
-      .select(
-        "id,club_id,status,current_level,clock_started_at,clock_paused_at,pause_accumulated",
-      )
+      .select("id,club_id,status")
       .eq("id", tournamentId)
       .maybeSingle();
     if (tournamentError || !tournament) {
@@ -87,161 +93,74 @@ Deno.serve(async (req) => {
     if (!permittedClubIds.has(tournament.club_id)) {
       return response({ error: "Actor not allowed" }, 403);
     }
-    if (
-      tournament.status === "completed" || tournament.status === "cancelled"
-    ) {
+    if (isTerminalTournamentStatus(tournament.status)) {
       return response({ error: "Tournament is not open" }, 409);
     }
 
-    const updateOne = async (
-      patch: JsonRecord,
-      expected?: { column: string; value: unknown },
-    ) => {
-      let query = supabase.from("tournaments").update(patch).eq(
-        "id",
-        tournamentId,
-      );
-      if (expected) {
-        query = expected.value === null
-          ? query.is(expected.column, null)
-          : query.eq(expected.column, expected.value);
+    if (action === "start") {
+      const startResult = await supabase.rpc("floor_start_tournament_clock", {
+        p_tournament_id: tournamentId,
+      });
+      if (startResult.error) throw startResult.error;
+      if (!isRecord(startResult.data) || startResult.data.ok !== true) {
+        const code = isRecord(startResult.data) &&
+            typeof startResult.data.error === "string"
+          ? startResult.data.error
+          : "clock_start_failed";
+        return response({ error: code }, clockControlErrorStatus(code));
       }
-      const { data, error } = await query.select("id").maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error("stale_clock_state");
-    };
-
-    switch (action) {
-      case "start": {
-        const startResult = await supabase.rpc("floor_start_tournament_clock", {
+    } else {
+      if (!isPostStartClockAction(action)) {
+        return response({ error: "invalid_action" }, 400);
+      }
+      let expectedControlRevision = readExpectedControlRevision(body);
+      if (
+        !expectedControlRevision &&
+        Object.prototype.hasOwnProperty.call(body, "expected_control_revision")
+      ) {
+        return response({ error: "expected_control_revision_required" }, 400);
+      }
+      if (!expectedControlRevision) {
+        const legacyClockResult = await supabase.rpc("get_tournament_clock", {
           p_tournament_id: tournamentId,
         });
-        if (startResult.error) throw startResult.error;
-        if (!isRecord(startResult.data) || startResult.data.ok !== true) {
-          const code = isRecord(startResult.data) &&
-              typeof startResult.data.error === "string"
-            ? startResult.data.error
-            : "clock_start_failed";
-          const status = code === "unauthorized" || code === "actor_not_allowed"
-            ? 403
-            : 409;
-          return response({ error: code }, status);
-        }
-        break;
-      }
-
-      case "pause": {
-        if (!tournament.clock_started_at) {
-          return response({ error: "Clock not started" }, 409);
-        }
-        if (!tournament.clock_paused_at) {
-          await updateOne({ clock_paused_at: new Date().toISOString() }, {
-            column: "clock_paused_at",
-            value: null,
-          });
-        }
-        break;
-      }
-
-      case "resume": {
-        if (!tournament.clock_started_at) {
-          return response({ error: "Clock not started" }, 409);
-        }
-        if (tournament.clock_paused_at) {
-          const pausedDuration = Math.floor(
-            (Date.now() - new Date(tournament.clock_paused_at).getTime()) /
-              1000,
-          );
-          const pauseAccumulated = (tournament.pause_accumulated ?? 0) +
-            Math.max(0, pausedDuration);
-          await updateOne(
-            { clock_paused_at: null, pause_accumulated: pauseAccumulated },
-            { column: "clock_paused_at", value: tournament.clock_paused_at },
-          );
-        }
-        break;
-      }
-
-      case "next_level":
-      case "previous_level": {
-        const current = tournament.current_level ?? 1;
-        const direction = action === "next_level" ? 1 : -1;
-        const target = current + direction;
-        if (target < 1) {
-          return response({ error: "Already at the first level" }, 400);
-        }
-        const { data: targetLevel, error: levelError } = await supabase
-          .from("tournament_levels")
-          .select("level_number")
-          .eq("tournament_id", tournamentId)
-          .eq("level_number", target)
-          .maybeSingle();
-        if (levelError) throw levelError;
-        if (!targetLevel) {
-          return response({ error: "Target level does not exist" }, 409);
-        }
-        await updateOne({ current_level: target }, {
-          column: "current_level",
-          value: tournament.current_level,
-        });
-        break;
-      }
-
-      case "adjust_time": {
-        const delta = typeof body.delta_seconds === "number"
-          ? body.delta_seconds
-          : typeof body.delta_minutes === "number"
-          ? body.delta_minutes * 60
-          : Number.NaN;
-        if (!Number.isSafeInteger(delta)) {
-          return response({ error: "Delta must be an integer" }, 400);
-        }
-        if (Math.abs(delta) > 24 * 60 * 60) {
-          return response({ error: "Delta too large" }, 400);
-        }
-        if (!tournament.clock_started_at) {
-          return response({ error: "Clock not started" }, 409);
-        }
-
-        const { data: clockNow, error: clockError } = await supabase.rpc(
-          "get_tournament_clock",
-          {
-            p_tournament_id: tournamentId,
-          },
+        if (legacyClockResult.error) throw legacyClockResult.error;
+        expectedControlRevision = readLegacyControlRevision(
+          action,
+          body,
+          legacyClockResult.data,
         );
-        if (clockError) throw clockError;
-        const clock = isRecord(clockNow) ? clockNow : null;
-        const currentLevel = clock && isRecord(clock.current_level)
-          ? clock.current_level
-          : null;
-        const durationMinutes = currentLevel?.duration_minutes;
-        const remainingSeconds = clock?.remaining_seconds;
-        if (
-          typeof durationMinutes !== "number" ||
-          typeof remainingSeconds !== "number"
-        ) {
-          return response({ error: "No current level to adjust" }, 409);
+        if (!expectedControlRevision) {
+          return response({ error: "legacy_client_revision_required" }, 400);
         }
-
-        const levelDuration = durationMinutes * 60;
-        const targetRemaining = Math.max(
-          0,
-          Math.min(levelDuration, remainingSeconds + delta),
-        );
-        const effectiveDelta = targetRemaining - remainingSeconds;
-        const startedAt = new Date(
-          new Date(tournament.clock_started_at).getTime() +
-            effectiveDelta * 1000,
-        ).toISOString();
-        await updateOne(
-          { clock_started_at: startedAt },
-          { column: "clock_started_at", value: tournament.clock_started_at },
-        );
-        break;
       }
 
-      default:
-        return response({ error: "Invalid action" }, 400);
+      let deltaSeconds: number | null = null;
+      if (action === "adjust_time") {
+        const parsedDelta = parseClockDelta(body);
+        if (!parsedDelta.ok) {
+          return response({ error: parsedDelta.error }, 400);
+        }
+        deltaSeconds = parsedDelta.value;
+      }
+
+      const controlResult = await supabase.rpc(
+        "floor_control_tournament_clock",
+        {
+          p_tournament_id: tournamentId,
+          p_action: action,
+          p_delta_seconds: deltaSeconds,
+          p_expected_control_revision: expectedControlRevision,
+        },
+      );
+      if (controlResult.error) throw controlResult.error;
+      if (!isRecord(controlResult.data) || controlResult.data.ok !== true) {
+        const code = isRecord(controlResult.data) &&
+            typeof controlResult.data.error === "string"
+          ? controlResult.data.error
+          : "clock_control_failed";
+        return response({ error: code }, clockControlErrorStatus(code));
+      }
     }
 
     const clockResult = await supabase.rpc("get_tournament_clock", {
@@ -250,9 +169,6 @@ Deno.serve(async (req) => {
     if (clockResult.error) throw clockResult.error;
     return response({ status: "success", clock: clockResult.data });
   } catch (error) {
-    if (error instanceof Error && error.message === "stale_clock_state") {
-      return response({ error: "stale_clock_state" }, 409);
-    }
     console.error("tournament-live-clock failed");
     return response({ error: "clock_operation_failed" }, 500);
   }

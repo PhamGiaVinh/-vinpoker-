@@ -62,3 +62,21 @@ test("rollback receipt may move one component to an older exact SHA", async () =
   assert.equal(requests[0].ref, SHA_OLD);
   assert.equal(requests[0].environment, "receipt-vinpoker-edge-process-swing");
 });
+
+test("Floor clock writes its own component receipt", async () => {
+  const requests = [];
+  const fetchImpl = async (_url, options) => {
+    requests.push(options.body ? JSON.parse(options.body) : null);
+    return { ok: true, status: 201, json: async () => ({ id: 99 }) };
+  };
+  await recordSuccessfulReceipt({
+    repository: "owner/repo",
+    token: "test-only-token",
+    component: "tournament-live-clock",
+    targetSha: SHA_NEW,
+    manifest: loadDeploymentManifest(),
+    fetchImpl,
+  });
+  assert.equal(requests[0].ref, SHA_NEW);
+  assert.equal(requests[0].environment, "receipt-vinpoker-edge-tournament-live-clock");
+});

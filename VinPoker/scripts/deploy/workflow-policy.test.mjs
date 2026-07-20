@@ -36,6 +36,20 @@ test("shared workflow has no automatic Edge deployment path", () => {
   assert.doesNotMatch(workflow, /supabase\s+functions\s+deploy/);
 });
 
+test("Floor clock deploy remains an explicit protected critical selection", () => {
+  const criticalJob = workflow.slice(
+    workflow.indexOf("deploy-critical-edge:"),
+    workflow.indexOf("deploy-frontend:"),
+  );
+  assert.match(workflow, /deploy_tournament_live_clock:/);
+  assert.match(workflow, /selected\+=\("tournament-live-clock"\)/);
+  assert.match(workflow, /validate-critical-environment:/);
+  assert.match(
+    criticalJob,
+    /needs:\s*\n\s*- plan\s*\n\s*- target-preflight\s*\n\s*- validate-critical-environment/,
+  );
+});
+
 test("every live probe derives its profile from the exact target checkout", () => {
   const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
   assert.equal(probes.length, 4);

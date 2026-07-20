@@ -53,6 +53,39 @@ test("target config cannot weaken current JWT posture", () => {
   }
 });
 
+test("Floor clock target includes its policy seam and keeps JWT verification", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-clock-target-"));
+  try {
+    put(
+      root,
+      "VinPoker/supabase/functions/tournament-live-clock/index.ts",
+      'import "./controlPolicy.ts";\n',
+    );
+    put(
+      root,
+      "VinPoker/supabase/functions/tournament-live-clock/controlPolicy.ts",
+      "export const ok = true;\n",
+    );
+    for (const path of manifest.functions["tournament-live-clock"].quality.denoTests) {
+      put(root, path, "Deno.test('ok', () => {});\n");
+    }
+    const report = inspectTargetSource({
+      targetRoot: root,
+      targets: ["tournament-live-clock"],
+      manifest,
+    });
+    assert.equal(report.functions["tournament-live-clock"].verifyJwt, true);
+    assert.equal(
+      report.functions["tournament-live-clock"].importedFiles.includes(
+        "VinPoker/supabase/functions/tournament-live-clock/controlPolicy.ts",
+      ),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("pre-922 rollback source is inspectable even though it has no control-plane directory", () => {
   const root = mkdtempSync(join(tmpdir(), "vinpoker-pre922-"));
   const archive = join(root, "source.tar");

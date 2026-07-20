@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Play, Pause, SkipForward, SkipBack, Minus, Plus, RefreshCw, Timer } from "lucide-react";
+import {
+  canUseTournamentClockPostStartControls,
+  getTournamentClockPrimaryAction,
+} from "@/lib/tournament/clockControlState";
 
 interface ClockData {
   tournament_id: string;
@@ -31,7 +35,8 @@ interface ClockData {
     duration_minutes: number;
     is_break: boolean;
   } | null;
-  clock_paused_at?: string | null;
+  message?: string | null;
+  control_revision: string;
 }
 
 export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: string; refreshTrigger?: number }) {
@@ -56,28 +61,44 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
 
   useEffect(() => { loadClock(); }, [loadClock, refreshTrigger]);
 
-  const handleClockAction = useCallback(async (action: string, extra?: any) => {
+  const handleClockAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
+    const expectedControlRevision = action === "start" ? null : clock?.control_revision;
+    if (action !== "start" && !expectedControlRevision) {
+      toast.error(t("tournamentLive.clock.refresh"));
+      await loadClock();
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("tournament-live-clock", {
-        body: { tournament_id: tournamentId, action, ...extra },
+        body: {
+          tournament_id: tournamentId,
+          action,
+          ...extra,
+          ...(expectedControlRevision
+            ? { expected_control_revision: expectedControlRevision }
+            : {}),
+        },
       });
-      if (error || data?.error) { toast.error(data?.error || error?.message); return; }
+      if (error || data?.error) {
+        toast.error(data?.error || error?.message);
+        await loadClock();
+        return;
+      }
       toast.success("OK");
-      loadClock();
-    } catch (e: any) {
-      toast.error(e.message || t("tournamentLive.clock.refresh"));
+      await loadClock();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t("tournamentLive.clock.refresh"));
     } finally {
       setLoading(false);
     }
-  }, [tournamentId, loadClock, t]);
+  }, [clock?.control_revision, tournamentId, loadClock, t]);
 
   const advanceToNextLevel = useCallback(async () => {
     if (!clock?.next_level || advancingRef.current) return;
     advancingRef.current = true;
     try {
-      const nextLevel = clock.current_level ? clock.current_level.level_number + 1 : 1;
-      await handleClockAction("next_level", { current_level: nextLevel });
+      await handleClockAction("next_level");
     } finally {
       advancingRef.current = false;
     }
@@ -110,6 +131,10 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
   };
 
   const isLowTime = localRemaining <= 30 && localRemaining > 0 && isRunning;
+  const primaryClockAction = clock ? getTournamentClockPrimaryAction(clock) : null;
+  const canUsePostStartControls = clock
+    ? canUseTournamentClockPostStartControls(clock)
+    : false;
 
   return (
     <Card className="p-4 space-y-4">
@@ -140,16 +165,17 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
             </div>
             {/* Floor toolbar — large touch controls */}
             <div className="flex items-center gap-2 flex-wrap">
-              {!clock.is_running ? (
+              {primaryClockAction === "start" && (
                 <Button size="lg" className="h-12 px-5 text-base" onClick={() => handleClockAction("start")} disabled={loading}>
                   <Play className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.start")}
                 </Button>
-              ) : (
+              )}
+              {primaryClockAction === "pause" && (
                 <Button size="lg" variant="outline" className="h-12 px-5 text-base" onClick={() => handleClockAction("pause")} disabled={loading}>
                   <Pause className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.pause")}
                 </Button>
               )}
-              {clock.clock_paused_at && (
+              {primaryClockAction === "resume" && (
                 <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("resume")} disabled={loading}>
                   <Play className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.resume")}
                 </Button>
@@ -159,11 +185,11 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
                 variant="outline"
                 className="h-12 px-4 text-base"
                 onClick={() => handleClockAction("previous_level")}
-                disabled={loading || (clock.current_level?.level_number ?? 1) <= 1}
+                disabled={loading || !canUsePostStartControls || (clock.current_level?.level_number ?? 1) <= 1}
               >
                 <SkipBack className="w-5 h-5 mr-1.5" /> Về level trước
               </Button>
-              <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("next_level", { current_level: (clock.current_level?.level_number ?? 0) + 1 })} disabled={loading}>
+              <Button size="lg" variant="outline" className="h-12 px-4 text-base" onClick={() => handleClockAction("next_level")} disabled={loading || !canUsePostStartControls || !clock.next_level}>
                 <SkipForward className="w-5 h-5 mr-1.5" /> {t("tournamentLive.clock.nextLevel")}
               </Button>
             </div>
@@ -178,7 +204,7 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
               variant="outline"
               className="h-11 px-3 text-sm"
               onClick={() => handleClockAction("adjust_time", { delta_seconds: -60 })}
-              disabled={loading || !clock.current_level}
+              disabled={loading || !canUsePostStartControls}
             >
               <Minus className="w-4 h-4 mr-1" /> 1 phút
             </Button>
@@ -187,7 +213,7 @@ export function ClockPanel({ tournamentId, refreshTrigger }: { tournamentId: str
               variant="outline"
               className="h-11 px-3 text-sm"
               onClick={() => handleClockAction("adjust_time", { delta_seconds: 60 })}
-              disabled={loading || !clock.current_level}
+              disabled={loading || !canUsePostStartControls}
             >
               <Plus className="w-4 h-4 mr-1" /> 1 phút
             </Button>

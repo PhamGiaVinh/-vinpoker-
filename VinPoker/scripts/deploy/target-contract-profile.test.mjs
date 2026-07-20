@@ -61,6 +61,7 @@ test("current reviewed target derives dealer_mass_open_v1 from exact imported so
   assert.match(selection.sourceFingerprint, /^sha256:[0-9a-f]{64}$/);
   assert.equal(selection.evidence.fillOpenOperationImport.length > 0, true);
   assert.equal(selection.evidence.frontendOperationRpc.length > 0, true);
+  assert.equal(selection.requirements.floorClockRevisionV1, true);
 });
 
 test("pre-922 exact target derives dealer_swing_legacy", () => {
@@ -70,8 +71,26 @@ test("pre-922 exact target derives dealer_swing_legacy", () => {
     assert.equal(selection.profile, LEGACY_PROFILE);
     assert.equal(selection.evidence.fillOpenOperationImport.length, 0);
     assert.equal(selection.evidence.operationRelations.length, 0);
+    assert.equal(selection.requirements.floorClockRevisionV1, false);
   } finally {
     rmSync(extracted.root, { recursive: true, force: true });
+  }
+});
+
+test("partial Floor clock revision markers fail closed", () => {
+  const root = makeLegacyTarget();
+  try {
+    put(
+      root,
+      "VinPoker/src/components/cashier/tournament-live/ClockPanel.tsx",
+      "const request = { expected_control_revision: clock.control_revision };\n",
+    );
+    assert.throws(
+      () => selectTargetContractProfile({ targetRoot: root }),
+      (error) => error.code === "UNKNOWN_TARGET_CONTRACT_PROFILE",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

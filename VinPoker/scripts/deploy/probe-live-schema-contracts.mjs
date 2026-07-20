@@ -5,7 +5,7 @@ import {
   loadDeploymentManifest,
   mergeContracts,
   parseTargetList,
-  resolveContractProfile,
+  resolveTargetContracts,
 } from "./deployment-manifest.mjs";
 import { selectTargetContractProfile } from "./target-contract-profile.mjs";
 import { inspectImportGraph } from "./verify-target-source.mjs";
@@ -546,7 +546,7 @@ export function sourceContractsForFrontend({ targetRoot }) {
 
 export function contractsForTargets({ manifest, rawTargets, targetRoot }) {
   const selection = selectTargetContractProfile({ targetRoot });
-  const resolved = resolveContractProfile(manifest, selection.profile);
+  const resolved = resolveTargetContracts(manifest, selection);
   if (rawTargets === "frontend") {
     return {
       selection,

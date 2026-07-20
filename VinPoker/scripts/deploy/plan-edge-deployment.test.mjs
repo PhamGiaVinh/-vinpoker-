@@ -15,22 +15,47 @@ const MASS_OPEN_SELECTION = {
   profile: "dealer_mass_open_v1",
   sourceFingerprint: `sha256:${"a".repeat(64)}`,
   evidence: { fillOpenOperationImport: ["VinPoker/supabase/functions/_shared/fillOpenOperation.ts"] },
+  requirements: { floorClockRevisionV1: false },
 };
 const LEGACY_SELECTION = {
   profile: "dealer_swing_legacy",
   sourceFingerprint: `sha256:${"b".repeat(64)}`,
   evidence: { fillEmptyTablesImport: ["VinPoker/supabase/functions/_shared/fillEmptyTables.ts"] },
+  requirements: { floorClockRevisionV1: false },
+};
+const FLOOR_CLOCK_REVISION_SELECTION = {
+  ...MASS_OPEN_SELECTION,
+  requirements: { floorClockRevisionV1: true },
 };
 
-function diff({ frontend = false, changed = [], shared = [], missing = [] } = {}) {
+function diff({
+  frontend = false,
+  changed = [],
+  shared = [],
+  missing = [],
+  retainedClockCompatibility = true,
+} = {}) {
   const functions = {};
-  for (const name of Object.keys(manifest.functions)) {
+  for (const [name, config] of Object.entries(manifest.functions)) {
+    const missingReceipt = missing.includes(name);
+    const gate = config.retainedFrontendCompatibility;
     functions[name] = {
-      baselineSha: missing.includes(name) ? null : "1".repeat(40),
-      baselineSource: missing.includes(name) ? "missing" : "github_deployment_receipt",
-      changed: changed.includes(name) || shared.includes(name) || missing.includes(name),
+      baselineSha: missingReceipt ? null : "1".repeat(40),
+      baselineSource: missingReceipt ? "missing" : "github_deployment_receipt",
+      changed: changed.includes(name) || shared.includes(name) || missingReceipt,
       directFiles: changed.includes(name) ? [`${manifest.functions[name].path}/index.ts`] : [],
       sharedFiles: shared.includes(name) ? ["VinPoker/supabase/functions/_shared/shared.ts"] : [],
+      retainedCompatibility: gate ? {
+        requirement: gate.requirement,
+        whenTargetRequirement: gate.whenTargetRequirement,
+        satisfied: !missingReceipt && retainedClockCompatibility,
+        evidenceFiles: !missingReceipt && retainedClockCompatibility
+          ? gate.files.map((file) => file.path)
+          : [],
+        missingEvidenceFiles: !missingReceipt && retainedClockCompatibility
+          ? []
+          : gate.files.map((file) => file.path),
+      } : null,
     };
   }
   return {
@@ -69,6 +94,70 @@ test("frontend plus every required critical function is accepted", () => {
   });
   assert.equal(result.frontend, true);
   assert.deepEqual(result.requiredForFrontend, ["mass-assign", "process-swing"]);
+});
+
+test("clock source and frontend cannot deploy until the critical clock function is selected", () => {
+  const componentDiffs = diff({ frontend: true, changed: ["tournament-live-clock"] });
+  assert.throws(() => plan({
+    componentDiffs,
+    deployFrontend: true,
+    contractSelection: FLOOR_CLOCK_REVISION_SELECTION,
+  }), /tournament-live-clock/);
+
+  const result = plan({
+    componentDiffs,
+    selected: ["tournament-live-clock"],
+    deployFrontend: true,
+    contractSelection: FLOOR_CLOCK_REVISION_SELECTION,
+  });
+  assert.equal(result.frontend, true);
+  assert.deepEqual(result.requiredForFrontend, ["tournament-live-clock"]);
+  assert.deepEqual(result.criticalFunctions, ["tournament-live-clock"]);
+});
+
+test("legacy frontend fails closed without a compatible retained clock receipt", () => {
+  const componentDiffs = diff({ frontend: true, retainedClockCompatibility: false });
+  assert.throws(() => plan({
+    componentDiffs,
+    deployFrontend: true,
+    contractSelection: LEGACY_SELECTION,
+  }), /retained deployed compatibility evidence.*tournament-live-clock/);
+
+  const pushResult = buildDeploymentPlan({
+    event: "push",
+    componentDiffs,
+    manifest,
+    targetSha: TARGET,
+    contractSelection: LEGACY_SELECTION,
+  });
+  assert.equal(pushResult.frontend, false);
+  assert.equal(pushResult.frontendReason, "retained_compatibility_missing");
+  assert.deepEqual(pushResult.missingRetainedForFrontend, ["tournament-live-clock"]);
+
+  assert.throws(() => plan({
+    componentDiffs: diff({ frontend: true, missing: ["tournament-live-clock"] }),
+    deployFrontend: true,
+    contractSelection: LEGACY_SELECTION,
+  }), /retained deployed compatibility evidence.*tournament-live-clock/);
+});
+
+test("legacy frontend retains the compatible clock Edge and rejects deploying its historical source", () => {
+  const componentDiffs = diff({ frontend: true, changed: ["tournament-live-clock"] });
+  const result = plan({
+    componentDiffs,
+    deployFrontend: true,
+    contractSelection: LEGACY_SELECTION,
+  });
+  assert.equal(result.frontend, true);
+  assert.deepEqual(result.retainedForFrontend, ["tournament-live-clock"]);
+  assert.deepEqual(result.criticalFunctions, []);
+
+  assert.throws(() => plan({
+    componentDiffs,
+    selected: ["tournament-live-clock"],
+    deployFrontend: true,
+    contractSelection: LEGACY_SELECTION,
+  }), /must retain the compatible deployed Edge receipt/);
 });
 
 test("pre-approval summary includes full diff, JWT, contracts and frontend reason", () => {
@@ -168,6 +257,69 @@ test("full receipt-to-target diff catches a change hidden behind a later commit"
   }
 });
 
+test("retained compatibility is derived from exact receipt source, not historical target source", () => {
+  const root = mkdtempSync(join(tmpdir(), "vinpoker-retained-clock-"));
+  const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const put = (path, content) => {
+    const full = join(root, path);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  };
+  try {
+    runGit("init", "-b", "main");
+    runGit("config", "user.email", "control-plane@example.invalid");
+    runGit("config", "user.name", "Control Plane Test");
+    put("VinPoker/src/App.tsx", "receipt frontend");
+    put(
+      "VinPoker/supabase/functions/tournament-live-clock/index.ts",
+      "readLegacyControlRevision(request); floor_control_tournament_clock",
+    );
+    put(
+      "VinPoker/supabase/functions/tournament-live-clock/controlPolicy.ts",
+      "export function readLegacyControlRevision() {}",
+    );
+    runGit("add", "."); runGit("commit", "-m", "compatible deployed receipt");
+    const receipt = runGit("rev-parse", "HEAD");
+
+    put("VinPoker/src/App.tsx", "historical frontend target");
+    put("VinPoker/supabase/functions/tournament-live-clock/index.ts", "legacy clock source");
+    put("VinPoker/supabase/functions/tournament-live-clock/controlPolicy.ts", "legacy policy source");
+    runGit("add", "."); runGit("commit", "-m", "historical target fixture");
+    const target = runGit("rev-parse", "HEAD");
+    const baselines = {
+      frontend: { sha: receipt, source: "github_deployment_receipt" },
+      functions: Object.fromEntries(Object.keys(manifest.functions).map((name) => [name, {
+        sha: receipt,
+        source: "github_deployment_receipt",
+      }])),
+    };
+    const componentDiffs = buildComponentDiffs({
+      repositoryRoot: root,
+      targetSha: target,
+      baselines,
+      manifest,
+      mainRef: "main",
+    });
+    assert.equal(componentDiffs.functions["tournament-live-clock"].retainedCompatibility.satisfied, true);
+    assert.deepEqual(
+      componentDiffs.functions["tournament-live-clock"].retainedCompatibility.evidenceFiles,
+      manifest.functions["tournament-live-clock"].retainedFrontendCompatibility.files.map((file) => file.path),
+    );
+    const result = buildDeploymentPlan({
+      event: "workflow_dispatch",
+      componentDiffs,
+      deployFrontend: true,
+      manifest,
+      targetSha: target,
+      contractSelection: LEGACY_SELECTION,
+    });
+    assert.equal(result.frontend, true);
+    assert.deepEqual(result.retainedForFrontend, ["tournament-live-clock"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("target commit outside main is rejected", () => {
   const root = mkdtempSync(join(tmpdir(), "vinpoker-main-"));
   const runGit = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
@@ -200,6 +352,24 @@ test("pre-922 rollback target can be planned with current control-plane", () => 
     baselines,
     manifest,
   });
+  assert.equal(diffs.functions["tournament-live-clock"].retainedCompatibility.satisfied, false);
+  assert.throws(() => buildDeploymentPlan({
+    event: "workflow_dispatch",
+    componentDiffs: diffs,
+    selected: ["process-swing", "mass-assign", "checkout-dealer"],
+    deployFrontend: true,
+    manifest,
+    targetSha: "1fdc210d4ae1689091e0ad874c559592b0ecd690",
+    contractSelection: LEGACY_SELECTION,
+  }), /retained deployed compatibility evidence/);
+
+  diffs.functions["tournament-live-clock"].retainedCompatibility = {
+    ...diffs.functions["tournament-live-clock"].retainedCompatibility,
+    satisfied: true,
+    evidenceFiles: manifest.functions["tournament-live-clock"].retainedFrontendCompatibility.files
+      .map((file) => file.path),
+    missingEvidenceFiles: [],
+  };
   const result = buildDeploymentPlan({
     event: "workflow_dispatch",
     componentDiffs: diffs,

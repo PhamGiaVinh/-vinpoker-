@@ -261,9 +261,49 @@ GRANT ALL ON FUNCTION public._refresh_dealer_open_operation(p_operation_id uuid)
   assert.deepEqual(findMissingContracts(schema, [contract]), []);
 });
 
+test("Floor clock requires the exact revision-token RPC signature and runtime ACL", () => {
+  const { contracts } = contractsForTargets({
+    manifest,
+    rawTargets: "tournament-live-clock",
+    targetRoot: repositoryRoot,
+  });
+  const clockControl = contracts.find(
+    (contract) => contract.type === "function" &&
+      contract.name === "public.floor_control_tournament_clock",
+  );
+  assert.deepEqual(clockControl.arguments, [
+    "p_tournament_id",
+    "p_action",
+    "p_delta_seconds",
+    "p_expected_control_revision",
+  ]);
+  assert.deepEqual(clockControl.argumentTypes, ["uuid", "text", "integer", "text"]);
+  assert.deepEqual(findMissingContracts(schemaForContracts(contracts), contracts), []);
+
+  const oldSignature = schemaForContracts(contracts).replace(
+    "p_expected_control_revision text",
+    "p_expected_current_level integer",
+  );
+  assert.equal(
+    findMissingContracts(oldSignature, contracts).some((item) =>
+      item.startsWith("function:public.floor_control_tournament_clock")
+    ),
+    true,
+  );
+});
+
 test("current target fails without operation objects and passes with the full mass-open-v1 contract", () => {
   const current = allContracts(repositoryRoot);
   assert.equal(current.selection.profile, "dealer_mass_open_v1");
+  assert.equal(current.selection.requirements.floorClockRevisionV1, true);
+  assert.equal(
+    current.contracts.some((contract) =>
+      contract.type === "function" &&
+      contract.name === "public.floor_control_tournament_clock" &&
+      contract.argumentTypes?.join(",") === "uuid,text,integer,text"
+    ),
+    true,
+  );
   const omitted = new Set([
     "public.dealer_mass_open_rollout",
     "public.dealer_open_operations",
@@ -288,9 +328,26 @@ test("pre-922 rollback source passes without operation objects and fails when a 
   try {
     const legacy = allContracts(extracted.targetRoot);
     assert.equal(legacy.selection.profile, "dealer_swing_legacy");
+    assert.equal(legacy.selection.requirements.floorClockRevisionV1, false);
     const legacySchema = schemaForContracts(legacy.contracts);
     assert.doesNotMatch(legacySchema, /dealer_open_operations|dealer_open_operation_targets|dealer_mass_open_rollout/);
+    assert.match(legacySchema, /floor_control_tournament_clock/);
+    assert.equal(
+      legacy.contracts.some((contract) =>
+        contract.type === "function" &&
+        contract.name === "public.floor_control_tournament_clock" &&
+        contract.argumentTypes?.join(",") === "uuid,text,integer,text"
+      ),
+      true,
+    );
     assert.deepEqual(findMissingContracts(legacySchema, legacy.contracts), []);
+    assert.equal(
+      findMissingContracts(
+        schemaForContracts(legacy.contracts, { omit: new Set(["public.floor_control_tournament_clock"]) }),
+        legacy.contracts,
+      ).some((item) => item.startsWith("function:public.floor_control_tournament_clock")),
+      true,
+    );
 
     const missingAttendance = findMissingContracts(
       schemaForContracts(legacy.contracts, { omit: new Set(["public.dealer_attendance"]) }),
@@ -327,6 +384,17 @@ test("pre-922 rollback runs planning, source quality and target-aware contract p
       baselines,
       manifest,
     });
+    assert.equal(
+      componentDiffs.functions["tournament-live-clock"].retainedCompatibility.satisfied,
+      false,
+    );
+    componentDiffs.functions["tournament-live-clock"].retainedCompatibility = {
+      ...componentDiffs.functions["tournament-live-clock"].retainedCompatibility,
+      satisfied: true,
+      evidenceFiles: manifest.functions["tournament-live-clock"].retainedFrontendCompatibility.files
+        .map((file) => file.path),
+      missingEvidenceFiles: [],
+    };
     const plan = buildDeploymentPlan({
       event: "workflow_dispatch",
       componentDiffs,

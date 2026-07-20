@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadDeploymentManifest, resolveContractProfile } from "./deployment-manifest.mjs";
+import { loadDeploymentManifest, resolveTargetContracts } from "./deployment-manifest.mjs";
 import { selectTargetContractProfile } from "./target-contract-profile.mjs";
 
 const SHARED_PREFIXES = [
@@ -69,6 +69,38 @@ function diffFiles(repositoryRoot, baselineSha, targetSha, paths) {
   return output ? output.split(/\r?\n/).map(normalizePath).filter(Boolean).sort() : [];
 }
 
+function sourceAtCommit(repositoryRoot, sha, path) {
+  try {
+    return execFileSync(
+      "git",
+      ["-C", repositoryRoot, "show", `${sha}:${normalizePath(path)}`],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+  } catch {
+    return null;
+  }
+}
+
+function inspectRetainedCompatibility(repositoryRoot, receiptSha, gate) {
+  const evidenceFiles = [];
+  const missingEvidenceFiles = [];
+  for (const file of gate.files) {
+    const source = receiptSha ? sourceAtCommit(repositoryRoot, receiptSha, file.path) : null;
+    if (source !== null && file.contains.every((marker) => source.includes(marker))) {
+      evidenceFiles.push(file.path);
+    } else {
+      missingEvidenceFiles.push(file.path);
+    }
+  }
+  return {
+    requirement: gate.requirement,
+    whenTargetRequirement: gate.whenTargetRequirement,
+    satisfied: Boolean(receiptSha) && missingEvidenceFiles.length === 0,
+    evidenceFiles,
+    missingEvidenceFiles,
+  };
+}
+
 export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, manifest, mainRef = "origin/main" }) {
   verifyCommitOnMain(repositoryRoot, targetSha, mainRef);
   const result = { frontend: null, functions: {} };
@@ -99,6 +131,9 @@ export function buildComponentDiffs({ repositoryRoot, targetSha, baselines, mani
       changed: receipt?.sha ? directFiles.length > 0 || sharedFiles.length > 0 : true,
       directFiles,
       sharedFiles,
+      retainedCompatibility: config.retainedFrontendCompatibility
+        ? inspectRetainedCompatibility(repositoryRoot, receipt?.sha ?? null, config.retainedFrontendCompatibility)
+        : null,
     };
   }
   return result;
@@ -117,7 +152,9 @@ export function buildDeploymentPlan({
   if (!contractSelection?.profile
       || !/^sha256:[0-9a-f]{64}$/.test(contractSelection.sourceFingerprint ?? "")
       || !contractSelection.evidence
-      || typeof contractSelection.evidence !== "object") {
+      || typeof contractSelection.evidence !== "object"
+      || !contractSelection.requirements
+      || typeof contractSelection.requirements !== "object") {
     throw new Error("target source contract profile evidence is required");
   }
   const uniqueSelected = [...new Set(selected.filter(Boolean))].sort();
@@ -127,14 +164,26 @@ export function buildDeploymentPlan({
     .filter(([name, config]) => config.critical && componentDiffs.functions[name]?.changed)
     .map(([name]) => name)
     .sort();
-  const requiredForFrontend = [...criticalChanged];
+  const requiredForFrontend = criticalChanged.filter((name) => {
+    const requirement = manifest.functions[name].frontendRequirement;
+    return !requirement || contractSelection.requirements[requirement] === true;
+  });
+  const retainedForFrontend = Object.entries(manifest.functions)
+    .filter(([, config]) => config.retainedFrontendCompatibility
+      && contractSelection.requirements[config.retainedFrontendCompatibility.whenTargetRequirement] !== true)
+    .map(([name]) => name)
+    .sort();
+  const missingRetainedForFrontend = retainedForFrontend
+    .filter((name) => componentDiffs.functions[name]?.retainedCompatibility?.satisfied !== true);
   const sharedChanged = criticalChanged.some((name) => componentDiffs.functions[name].sharedFiles.length > 0)
     || Object.values(componentDiffs.functions).some((diff) => diff.sharedFiles.length > 0);
 
   if (event === "push") {
     const frontendChanged = componentDiffs.frontend.changed;
     const frontendHeld = frontendChanged
-      && (!componentDiffs.frontend.baselineSha || requiredForFrontend.length > 0);
+      && (!componentDiffs.frontend.baselineSha
+        || missingRetainedForFrontend.length > 0
+        || requiredForFrontend.length > 0);
     return enrichPlan({
       targetSha,
       event,
@@ -143,12 +192,18 @@ export function buildDeploymentPlan({
       criticalFunctions: [],
       criticalChanged,
       requiredForFrontend,
+      retainedForFrontend,
+      missingRetainedForFrontend,
       frontend: frontendChanged && !frontendHeld,
       frontendHeld,
       frontendReason: !frontendChanged
         ? "frontend_unchanged_from_receipt"
         : frontendHeld
-          ? (!componentDiffs.frontend.baselineSha ? "frontend_receipt_missing" : "critical_dependencies_held")
+          ? !componentDiffs.frontend.baselineSha
+            ? "frontend_receipt_missing"
+            : missingRetainedForFrontend.length > 0
+              ? "retained_compatibility_missing"
+              : "critical_dependencies_held"
           : "frontend_diff_verified",
       sharedChanged,
       contractSelection,
@@ -163,10 +218,22 @@ export function buildDeploymentPlan({
     }
   }
 
+  const incompatibleHistoricalSelections = uniqueSelected.filter((name) => retainedForFrontend.includes(name));
+  if (incompatibleHistoricalSelections.length > 0) {
+    throw new Error(
+      `historical target must retain the compatible deployed Edge receipt instead of deploying: ${incompatibleHistoricalSelections.join(", ")}`,
+    );
+  }
+
   if (deployFrontend && !componentDiffs.frontend.changed) {
     throw new Error("frontend deployment was selected but frontend is unchanged from its last successful deployment receipt");
   }
   if (deployFrontend) {
+    if (missingRetainedForFrontend.length > 0) {
+      throw new Error(
+        `frontend requires retained deployed compatibility evidence before this historical target: ${missingRetainedForFrontend.join(", ")}`,
+      );
+    }
     const missing = requiredForFrontend.filter((name) => !uniqueSelected.includes(name));
     if (missing.length > 0) {
       throw new Error(`frontend requires all changed critical functions to deploy first: ${missing.join(", ")}`);
@@ -184,6 +251,8 @@ export function buildDeploymentPlan({
     criticalFunctions: uniqueSelected,
     criticalChanged,
     requiredForFrontend,
+    retainedForFrontend,
+    missingRetainedForFrontend,
     frontend: deployFrontend,
     frontendHeld: false,
     frontendReason: deployFrontend ? "critical_dependencies_selected" : "not_selected",
@@ -193,7 +262,7 @@ export function buildDeploymentPlan({
 }
 
 function enrichPlan(plan) {
-  const resolvedContracts = resolveContractProfile(plan.manifest, plan.contractSelection.profile);
+  const resolvedContracts = resolveTargetContracts(plan.manifest, plan.contractSelection);
   const functions = Object.fromEntries(Object.entries(plan.componentDiffs.functions).map(([name, diff]) => [name, {
     ...diff,
     selected: plan.criticalFunctions.includes(name),
@@ -209,6 +278,8 @@ function enrichPlan(plan) {
     noncriticalFunctions: [],
     criticalChanged: plan.criticalChanged,
     requiredForFrontend: plan.requiredForFrontend,
+    retainedForFrontend: plan.retainedForFrontend,
+    missingRetainedForFrontend: plan.missingRetainedForFrontend,
     frontend: plan.frontend,
     frontendHeld: plan.frontendHeld,
     frontendReason: plan.frontendReason,
@@ -216,6 +287,7 @@ function enrichPlan(plan) {
     contractProfile: plan.contractSelection.profile,
     contractSourceFingerprint: plan.contractSelection.sourceFingerprint,
     contractProfileEvidence: plan.contractSelection.evidence,
+    targetRequirements: plan.contractSelection.requirements,
     components: {
       frontend: {
         ...plan.componentDiffs.frontend,
@@ -259,11 +331,16 @@ export function renderPlanSummary(plan) {
     `- Target SHA: \`${plan.targetSha}\``,
     `- Target contract profile: \`${plan.contractProfile}\``,
     `- Contract source fingerprint: \`${plan.contractSourceFingerprint}\``,
+    `- Target requirements: \`${Object.entries(plan.targetRequirements)
+      .map(([name, enabled]) => `${name}=${enabled}`)
+      .join(",")}\``,
     `- Event: \`${plan.event}\``,
     `- Frontend baseline: \`${plan.components.frontend.baselineSha ?? "MISSING"}\``,
     `- Frontend diff files: \`${plan.components.frontend.files.length}\``,
     `- Frontend decision: \`${plan.frontend ? "selected" : plan.frontendHeld ? "held" : "not selected"}\` (\`${plan.frontendReason}\`)`,
     `- Required critical Edge before frontend: \`${plan.requiredForFrontend.join(",") || "none"}\``,
+    `- Required retained Edge compatibility: \`${plan.retainedForFrontend.join(",") || "none"}\``,
+    `- Missing retained compatibility evidence: \`${plan.missingRetainedForFrontend.join(",") || "none"}\``,
     `- Shared source changed: \`${plan.sharedChanged}\``,
     `- Profile evidence: \`${Object.entries(plan.contractProfileEvidence)
       .filter(([, files]) => files.length > 0)
@@ -290,12 +367,15 @@ function writeOutputs(path, plan) {
     `noncritical_functions=[]`,
     `critical_changed=${JSON.stringify(plan.criticalChanged)}`,
     `required_critical_for_frontend=${JSON.stringify(plan.requiredForFrontend)}`,
+    `retained_for_frontend=${JSON.stringify(plan.retainedForFrontend)}`,
+    `missing_retained_for_frontend=${JSON.stringify(plan.missingRetainedForFrontend)}`,
     `frontend=${String(plan.frontend)}`,
     `frontend_held=${String(plan.frontendHeld)}`,
     `frontend_reason=${plan.frontendReason}`,
     `shared_changed=${String(plan.sharedChanged)}`,
     `contract_profile=${plan.contractProfile}`,
     `contract_source_fingerprint=${plan.contractSourceFingerprint}`,
+    `target_requirements=${JSON.stringify(plan.targetRequirements)}`,
     `target_sha=${plan.targetSha}`,
   ];
   appendFileSync(path, `${lines.join("\n")}\n`, "utf8");

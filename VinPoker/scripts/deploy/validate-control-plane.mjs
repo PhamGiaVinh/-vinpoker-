@@ -95,9 +95,12 @@ for (const snippet of [
   if (!validationWorkflow.includes(snippet)) throw new Error(`pinned actionlint validation is missing: ${snippet}`);
 }
 
-for (const name of ["process-swing", "mass-assign", "checkout-dealer"]) {
+for (const [name] of Object.entries(manifest.functions).filter(([, item]) => item.critical)) {
   const inputName = `deploy_${name.replaceAll("-", "_")}:`;
   if (!workflow.includes(inputName)) throw new Error(`workflow is missing manual input ${inputName}`);
+  if (!workflow.includes(`selected+=("${name}")`)) {
+    throw new Error(`workflow manual input is not wired to deployment selection for ${name}`);
+  }
 }
 
 for (const [name, config] of Object.entries(manifest.functions)) {
