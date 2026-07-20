@@ -416,15 +416,20 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
 });
 
-test("browser actor login retries a bounded authenticated route before storage state is written", () => {
+test("browser actor login waits for the sign-in navigation before testing an authenticated route", () => {
   const browserManifest = canarySource.slice(canarySource.indexOf("function browserIsOnAuthRoute"));
+  assert.match(browserManifest, /async function waitForSignInNavigation\(page\)/);
+  assert.match(browserManifest, /page\.waitForURL\(\(url\) => new URL\(url\)\.pathname === "\/"/);
   assert.match(browserManifest, /async function navigateAuthenticatedOps\(page, baseUrl\)/);
   assert.match(browserManifest, /attempt <= 3/);
   assert.match(browserManifest, /poll <= 30/);
   assert.match(browserManifest, /name: "App chính", exact: true/);
   assert.match(browserManifest, /waitForTimeout\(attempt \* 500\)/);
   assert.doesNotMatch(browserManifest, /if \(!browserIsOnAuthRoute\(page\)\) return true/);
-  assert.match(browserManifest, /const opsAuthenticated = await navigateAuthenticatedOps\(page, baseUrl\)/);
+  assert.match(browserManifest, /const signInNavigation = waitForSignInNavigation\(page\)/);
+  assert.match(browserManifest, /const signInSucceeded = await signInNavigation/);
+  assert.match(browserManifest, /result\(`browser_signin_navigation_\$\{actor\.label\}`, signInSucceeded\)/);
+  assert.match(browserManifest, /const opsAuthenticated = signInSucceeded && await navigateAuthenticatedOps\(page, baseUrl\)/);
   assert.match(browserManifest, /result\(`browser_ops_authenticated_\$\{actor\.label\}`, opsAuthenticated\)/);
 });
 

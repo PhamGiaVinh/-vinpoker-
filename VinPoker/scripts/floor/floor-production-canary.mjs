@@ -1887,6 +1887,15 @@ function browserIsOnAuthRoute(page) {
   return new URL(page.url()).pathname === "/auth";
 }
 
+async function waitForSignInNavigation(page) {
+  try {
+    await page.waitForURL((url) => new URL(url).pathname === "/", { timeout: 15_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function navigateAuthenticatedOps(page, baseUrl) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto(`${baseUrl}/ops`, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -1963,8 +1972,11 @@ async function runBrowserManifest(admin, actors, fixtures) {
         await passwordInput.fill(actor.password);
         const signIn = page.getByRole("button", { name: "Sign In" });
         result(`browser_login_button_${actor.label}`, await signIn.count() === 1);
+        const signInNavigation = waitForSignInNavigation(page);
         await signIn.click();
-        const opsAuthenticated = await navigateAuthenticatedOps(page, baseUrl);
+        const signInSucceeded = await signInNavigation;
+        result(`browser_signin_navigation_${actor.label}`, signInSucceeded);
+        const opsAuthenticated = signInSucceeded && await navigateAuthenticatedOps(page, baseUrl);
         result(`browser_ops_authenticated_${actor.label}`, opsAuthenticated);
         if (actor.label === "floor") {
           const cashierRoute = await resolveCashierRouteAccess(page, baseUrl, false, actor.label);
