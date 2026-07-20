@@ -14,6 +14,18 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
 - Durable mass-open stays dark by default: `enabled=false`, `all_clubs_enabled=false`, and an empty allowlist.
 - Existing assignments remain untouched. Do not reset the 19 staffed incident tables.
 
+## Component-scoped credentials
+
+This wave deploys database compatibility and two Edge functions only. Its credential
+scope is `GitHub=IN_SCOPE`, `Supabase=IN_SCOPE`, `Vercel=NOT_IN_SCOPE`, and
+`frontend deploy=false`. `VERCELTOKEN` remains inside the conditional
+`deploy-frontend` job; it is not a prerequisite for this DB/Edge rollout.
+
+The control plane validates credential presence per selected component without
+printing a value. An Edge-only selection never receives or requires a Vercel
+credential. A later frontend deployment requires Vercel separately and fails
+before its Vercel command when missing.
+
 ## G0 prerequisites
 
 1. PR-ControlPlane #923 is merged and its production workflow revision is active.
@@ -26,11 +38,16 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
    - current process-swing cron jobs;
    - fenced club-lock functions;
    - `swing_run_metrics` runtime percentiles.
-6. Inspect the existing `public.dealer_shift_metrics` relation before scheduling
-   this migration. Stop for owner review when it already exists and either its
-   relation kind is not a view, its ordered public columns differ from the
-   reviewed contract, or `pg_get_viewdef` differs from the captured reviewed
-   definition. Capture that evidence read-only. Do not use `DROP ... CASCADE`
+6. Capture a normalized read-only catalog through
+   `capture-live-schema-contract-catalog.mjs`. It records relation kind, ordered
+   columns/types, owner, view definition, ACL, functions/signatures/ACL, and
+   catalog-declared dependents. The deployment probe consumes this catalog; the
+   raw `supabase db dump` parser is offline fallback/evidence only.
+7. Inspect the existing `public.dealer_shift_metrics` relation before scheduling
+   this migration. The known compatible pre-state is a plain view with the same
+   24 ordered columns/types as `20270104000003`; a permissive read ACL is
+   expected before that migration. Stop for owner review when relation kind,
+   ordered shape, or catalog definition differs. Do not use `DROP ... CASCADE`
    as a recovery action.
 
 ## Controlled DB apply
@@ -40,7 +57,7 @@ Owner approval is required for this production mutation.
 1. Verify migration inventory and confirm `20270104000002` and `20270104000003` are absent and unique.
 2. Verify historical `20270102000002` and `20270102000003` remain unapplied. Do not mark them applied and do not replay them.
    Also verify `20261223000000` remains unapplied; the forward migration supersedes only its missing function definition and ACL.
-3. Run the #923 current-target contract probe before apply; it must fail on the missing operation/dispatch contract. This is the expected negative control.
+3. Run the #923 current-target contract probe against the read-only catalog before apply; it must fail on the missing operation/dispatch contract. This is the expected negative control.
 4. Apply only the exact reviewed files in order: first
    `20270104000002_dealer_swing_contract_drift.sql`, then
    `20270104000003_dealer_shift_metrics_contract.sql`. Do not use `db push --include-all`.
@@ -112,10 +129,19 @@ Production canary and alert wording are outside PR-Drift. They require later own
 
 ## Local evidence required in PR
 
-- Current production public-schema dump restored to clean PostgreSQL 16 and PostgreSQL 17 disposable databases, with minimum pg_net/Vault/cron stubs.
+- Current production public-schema dump restored to clean PostgreSQL 16 and PostgreSQL 17 disposable databases, with minimum auth/pg_net/Vault/cron stubs. PG16 may remove only its unsupported `MAINTAIN` privilege from the local disposable input; the original dump is not changed and PG17 runs exact bytes.
 - Forward migration apply and reapply pass on both versions.
 - SQL assertions cover signatures, ACL, RLS, default-OFF rollout, bounded dispatch, missing secret, transport/business separation, claim replay, and cross-club scope.
 - Concurrent same-club ticks create no duplicate club/request run; same-run claims yield one `claimed` and one `duplicate`; different clubs claim independently.
+- `scripts/deploy/test-dealer-swing-drift-disposable.ps1` runs restore, apply/reapply, SQL suites, catalog probes, and the exact legacy rollback target on each PostgreSQL version.
 - Deno tests/checks, target-aware contract tests, Node/Vitest/build, migration inventory, diff audit, and secret grep pass.
+
+## Rollback evidence
+
+The verified legacy source is `1fdc210d4ae1689091e0ad874c559592b0ecd690`.
+It is valid only after the ordered forward migrations are live: additive
+operation/dispatch objects remain in place during an Edge-only rollback. The
+control plane must still verify its exact source SHA/profile and run the legacy
+catalog probe before any rollback deployment.
 
 Local/source evidence is not proof that DB, Edge, cron, frontend, or flags are live.

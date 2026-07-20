@@ -44,6 +44,16 @@ test("every live probe derives its profile from the exact target checkout", () =
   assert.match(workflow, /contract_profile: \$\{\{ steps\.plan\.outputs\.contract_profile \}\}/);
 });
 
+test("live contract approval uses the read-only catalog instead of parsing a raw SQL dump", () => {
+  assert.match(workflow, /capture-live-schema-contract-catalog\.mjs/);
+  const probes = [...workflow.matchAll(/probe-live-schema-contracts\.mjs([\s\S]{0,300})/g)];
+  assert.equal(probes.length, 4);
+  for (const probe of probes) assert.match(probe[1], /--catalog/);
+  const targetPreflight = workflow.slice(workflow.indexOf("target-preflight:"), workflow.indexOf("validate-critical-environment:"));
+  assert.doesNotMatch(targetPreflight, /VERCEL_TOKEN|VERCELTOKEN/);
+  assert.match(workflow, /deploy-frontend:[\s\S]*Verify frontend scoped credentials[\s\S]*VERCEL_TOKEN/);
+});
+
 test("pinned actionlint validation is read-only and uses no production secret", () => {
   assert.match(validationWorkflow, /pull_request:/);
   assert.match(validationWorkflow, /contents: read/);
