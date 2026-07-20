@@ -10,6 +10,8 @@ import {
 
 type ConcreteFloorAuditViewport = Exclude<FloorAuditViewport, "all">;
 
+const interactiveControlSelector = 'button, input[type="submit"], [role="button"], [role="combobox"], [role="tab"]';
+
 type RouteAssignment = {
   route: string;
   manifestRoute?: string;
@@ -116,6 +118,12 @@ for (const viewport of floorAuditViewports) {
         // The route-specific assertions below remain the readiness and correctness gate.
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
         await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
+        const controls = page.locator(interactiveControlSelector);
+        await expect(
+          controls.first(),
+          `${assignment.role} ${assignment.manifestRoute ?? assignment.route} must render an interactive control before coverage discovery`,
+        ).toBeVisible({ timeout: 30_000 });
+        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
         if (assignment.ownedTournamentName) {
           const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
           await expect(ownedTournament).toBeVisible();
@@ -125,7 +133,6 @@ for (const viewport of floorAuditViewports) {
         if (assignment.tabName) {
           await page.getByRole("tab", { name: assignment.tabName, exact: true }).click();
         }
-        const controls = page.locator('button, input[type="submit"], [role="button"], [role="combobox"], [role="tab"]');
         const manifestRoute = assignment.manifestRoute ?? assignment.route;
         const manifest = entriesForViewport(viewport).filter((entry) => entry.route === manifestRoute && entry.role === assignment.role);
         const unclassified: string[] = [];
