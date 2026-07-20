@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { floorAuditViewports, floorButtonCoverageManifest } from "../../e2e/floor-button-coverage.manifest";
+
+const coverageSpec = readFileSync(resolve(process.cwd(), "e2e/floor-button-coverage.spec.ts"), "utf8");
 
 const requiredControls = [
   "Tạo giải", "Sửa giải", "Mở giải", "Đồng hồ", "Mở bàn", "Thêm người", "Sửa chip",
@@ -72,5 +76,11 @@ describe("Floor button coverage manifest", () => {
     for (const entry of floorButtonCoverageManifest.filter((candidate) => candidate.labelPattern)) {
       expect(() => new RegExp(entry.labelPattern, "iu"), entry.id).not.toThrow();
     }
+  });
+
+  it("waits for a visible control instead of the responsive shell's hidden first control", () => {
+    expect(coverageSpec).toContain("controls.filter({ visible: true })");
+    expect(coverageSpec).toContain("visibleControls.first()");
+    expect(coverageSpec).not.toContain("controls.first(),");
   });
 });

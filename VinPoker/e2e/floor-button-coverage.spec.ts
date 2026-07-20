@@ -119,8 +119,12 @@ for (const viewport of floorAuditViewports) {
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
         await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
         const controls = page.locator(interactiveControlSelector);
+        // The app shell keeps a responsive menu button in the DOM with `md:hidden`.
+        // Waiting on `controls.first()` therefore blocks every tablet/desktop audit
+        // even when later Floor controls are visible and ready for discovery.
+        const visibleControls = controls.filter({ visible: true });
         await expect(
-          controls.first(),
+          visibleControls.first(),
           `${assignment.role} ${assignment.manifestRoute ?? assignment.route} must render an interactive control before coverage discovery`,
         ).toBeVisible({ timeout: 30_000 });
         await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
