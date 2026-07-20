@@ -9,6 +9,7 @@ import WebSocket from "ws";
 const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
 const CANARY_BROWSER_LOCALE = "vi-VN";
+const CANARY_SIGN_IN_LABEL = "Đăng nhập";
 const CANARY_MODES = new Set(["run", "cleanup", "hold"]);
 const SCENARIOS = [
   "ACCESS",
@@ -1975,7 +1976,7 @@ async function runBrowserManifest(admin, actors, fixtures) {
         result(`browser_login_password_input_${actor.label}`, await passwordInput.count() === 1);
         await emailInput.fill(actor.email);
         await passwordInput.fill(actor.password);
-        const signIn = page.getByRole("button", { name: "Sign In" });
+        const signIn = page.getByRole("button", { name: CANARY_SIGN_IN_LABEL, exact: true });
         result(`browser_login_button_${actor.label}`, await signIn.count() === 1);
         const signInNavigation = waitForSignInNavigation(page);
         await signIn.click();

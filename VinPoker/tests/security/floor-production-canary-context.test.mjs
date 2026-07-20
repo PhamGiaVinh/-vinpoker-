@@ -418,10 +418,13 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
 
 test("production canary pins Vietnamese locale for every browser context", () => {
   assert.match(canarySource, /const CANARY_BROWSER_LOCALE = "vi-VN"/);
+  assert.match(canarySource, /const CANARY_SIGN_IN_LABEL = "Đăng nhập"/);
   const newContextCount = (canarySource.match(/browser\.newContext\(/g) ?? []).length;
   const pinnedLocaleCount = (canarySource.match(/locale: CANARY_BROWSER_LOCALE/g) ?? []).length;
   assert.ok(newContextCount > 0);
   assert.equal(pinnedLocaleCount, newContextCount);
+  assert.match(canarySource, /getByRole\("button", \{ name: CANARY_SIGN_IN_LABEL, exact: true \}\)/);
+  assert.doesNotMatch(canarySource, /getByRole\("button", \{ name: "Sign In"/);
 });
 
 test("browser actor login waits for the sign-in navigation before testing an authenticated route", () => {
