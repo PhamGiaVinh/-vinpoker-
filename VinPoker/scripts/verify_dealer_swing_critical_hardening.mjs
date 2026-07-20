@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { inspectProcessSwingLeaseSafetyContract } from "./deploy/process-swing-lease-safety-contract.mjs";
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -53,11 +54,7 @@ requireText(
   "PROCESS_SWING_INTERNAL_SECRET",
   "process-swing has an internal scheduler credential path",
 );
-requireText(
-  "supabase/functions/process-swing/index.ts",
-  "aborting before mutation",
-  "process-swing fails closed when the lease heartbeat errors",
-);
+checks.push(...inspectProcessSwingLeaseSafetyContract(root));
 
 const migration = "supabase/migrations/20261235000000_dealer_payroll_actor_binding.sql";
 requireText(migration, "auth.uid()", "payroll wrappers bind actor to auth.uid()");
