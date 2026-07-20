@@ -1368,10 +1368,11 @@ function isExactPayoutPreviewBody(body, tournamentId) {
   return isFiniteNumber(body.itm_percent) && body.itm_percent > 0 && body.itm_percent <= 1;
 }
 
-function expectedBlockedBrowserRequestReason(request) {
+function expectedBlockedBrowserRequestReason(request, policy = null) {
   const url = new URL(request.url);
   const method = request.method.toUpperCase();
   const supabaseOrigin = `https://${PRODUCTION_REF}.supabase.co`;
+  const actorId = policy?.actorId ?? policy?.ownerId ?? null;
   if (
     method === "POST"
     && url.origin === supabaseOrigin
@@ -1382,6 +1383,22 @@ function expectedBlockedBrowserRequestReason(request) {
     && url.origin === "https://cdn.onesignal.com"
     && url.pathname === "/sdks/web/v16/OneSignalSDK.page.js"
   ) return "expected_blocked_push_bootstrap";
+  if (
+    actorId
+    && method === "PATCH"
+    && url.origin === supabaseOrigin
+    && url.pathname === "/rest/v1/profiles"
+    && JSON.stringify([...url.searchParams.keys()].sort()) === JSON.stringify(["user_id"])
+    && url.searchParams.get("user_id") === `eq.${actorId}`
+    && exactObjectKeys(request.body, ["onesignal_external_user_id"])
+    && request.body.onesignal_external_user_id === actorId
+  ) return "expected_blocked_profile_push_link";
+  if (
+    method === "POST"
+    && url.origin === supabaseOrigin
+    && url.pathname === "/functions/v1/send-welcome-email"
+    && (request.body == null || exactObjectKeys(request.body, []))
+  ) return "expected_blocked_welcome_email";
   return null;
 }
 
@@ -1570,7 +1587,7 @@ async function installChipCasEgressGuard(browserContext, policy) {
       method: request.method(),
       body: safeRequestJson(request),
     };
-    const expectedReason = expectedBlockedBrowserRequestReason(requestSummary);
+    const expectedReason = expectedBlockedBrowserRequestReason(requestSummary, policy);
     if (expectedReason) {
       expectedBlocked.push(expectedReason);
       await route.abort("blockedbyclient");
@@ -1598,7 +1615,7 @@ async function installPayoutEgressGuard(browserContext, policy) {
       method: request.method(),
       body: safeRequestJson(request),
     };
-    const expectedReason = expectedBlockedBrowserRequestReason(requestSummary);
+    const expectedReason = expectedBlockedBrowserRequestReason(requestSummary, policy);
     if (expectedReason) {
       expectedBlocked.push(expectedReason);
       await route.abort("blockedbyclient");

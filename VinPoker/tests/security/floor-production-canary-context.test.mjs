@@ -336,7 +336,9 @@ test("browser chip CAS policy permits only one exact owned stale-snapshot race",
 });
 
 test("browser guards block known startup telemetry and push without allowing arbitrary egress", () => {
-  const request = (url, method) => ({ url, method, body: null });
+  const actorId = "30000000-0000-4000-8000-000000000001";
+  const policy = { actorId };
+  const request = (url, method, body = null) => ({ url, method, body });
   assert.equal(expectedBlockedBrowserRequestReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/report-vitals",
     "POST",
@@ -345,6 +347,26 @@ test("browser guards block known startup telemetry and push without allowing arb
     "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js",
     "GET",
   )), "expected_blocked_push_bootstrap");
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/profiles?user_id=eq.${actorId}`,
+    "PATCH",
+    { onesignal_external_user_id: actorId },
+  ), policy), "expected_blocked_profile_push_link");
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-welcome-email",
+    "POST",
+    {},
+  ), policy), "expected_blocked_welcome_email");
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    `https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/profiles?user_id=eq.${actorId}`,
+    "PATCH",
+    { is_verified: true },
+  ), policy), null);
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-welcome-email",
+    "POST",
+    { recipient: actorId },
+  ), policy), null);
   assert.equal(expectedBlockedBrowserRequestReason(request(
     "https://bank.example.test/pay",
     "POST",
