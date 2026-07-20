@@ -428,7 +428,7 @@ test("workflow has fail-closed run, cleanup, and hold modes", () => {
   assert.match(workflow, /pull_request\.base\.ref == 'main'/);
   assert.match(workflow, /if: env\.FLOOR_CANARY_MODE == 'run'/);
   assert.match(workflow, /FLOOR_CANARY_MODE:/);
-  assert.match(workflow, /FLOOR_CANARY_BROWSER_ACTIONS_READY: "false"/);
+  assert.match(workflow, /FLOOR_CANARY_BROWSER_ACTIONS_READY: "true"/);
   assert.doesNotMatch(workflow, /SUPABASE_ACCESS_TOKEN|SUPABASEACCESSTOKEN/);
   assert.doesNotMatch(workflow, /supabase functions deploy|database\/query/);
 });

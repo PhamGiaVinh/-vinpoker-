@@ -39,7 +39,7 @@ jobs:
       FLOOR_CANARY_PREFIX: CODEX_FLOOR_CANARY_
       FLOOR_CANARY_MODE: "${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.pull_request.title == 'test(floor): controlled production canary runner [cleanup]' && 'cleanup' || 'run') }}"
       FLOOR_CANARY_RUN_BROWSER: "${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'run' || github.event_name == 'pull_request' && github.event.pull_request.title == 'test(floor): controlled production canary runner [run]' }}"
-      FLOOR_CANARY_BROWSER_ACTIONS_READY: "false"
+      FLOOR_CANARY_BROWSER_ACTIONS_READY: "true"
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
     steps:
