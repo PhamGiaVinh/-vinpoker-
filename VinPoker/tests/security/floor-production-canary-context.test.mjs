@@ -136,6 +136,8 @@ test("scenario fixtures share one owned TEST club and finally uses an exact reco
   assert.doesNotMatch(fixtureBody, /from\("clubs"\)\.insert/);
   assert.match(canarySource, /const primaryClubId = await createPrimaryClub/);
   assert.match(canarySource, /createFixture\(admin, runId, scenario, primaryClubId, owned\)/);
+  assert.match(canarySource, /const tableName = `\$\{runId\}_\$\{scenario\}_T1`/);
+  assert.equal((canarySource.match(/table_name: tableName/g) ?? []).length, 2);
   assert.match(canarySource, /await buildCleanupLedger\(admin, \{ runId, clubs \}, userIds\)/);
   assert.match(canarySource, /finally \{[\s\S]{0,200}await cleanupCurrentRun\(admin, context\.anonKey, context\.url, runId, owned\)/);
   assert.match(canarySource, /edge_draw_chip_cas_owner_write/);
@@ -414,6 +416,17 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.match(childEnvironment, /FLOOR_UAT_STORAGE_STATE_DIR/);
   assert.doesNotMatch(childEnvironment, /\.\.\.process\.env/);
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
+});
+
+test("browser chip concurrency selects only the exact run-owned table", () => {
+  const chipDialog = canarySource.slice(
+    canarySource.indexOf("async function openOwnedChipDialog"),
+    canarySource.indexOf("async function runBrowserChipCasConcurrency"),
+  );
+  assert.match(chipDialog, /fixture\.tableName\.startsWith\(`\$\{fixture\.runId\}_\$\{fixture\.scenario\}_`\)/);
+  assert.match(chipDialog, /escapeRegex\(fixture\.tableName\)/);
+  assert.match(chipDialog, /browser_chip_table_ownership_invalid/);
+  assert.doesNotMatch(chipDialog, /\^Bàn 1/);
 });
 
 test("production canary pins Vietnamese locale for every browser context", () => {

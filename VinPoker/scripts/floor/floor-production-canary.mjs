@@ -530,6 +530,7 @@ async function createPrimaryClub(admin, actors, runId, owned) {
 async function createFixture(admin, runId, scenario, clubId, owned) {
   const tournamentId = randomUUID();
   const tournamentName = `${runId}_${scenario}`;
+  const tableName = `${runId}_${scenario}_T1`;
   owned.tournaments.push(tournamentId);
   const tournament = await single(admin.from("tournaments").insert({
     id: tournamentId,
@@ -558,7 +559,7 @@ async function createFixture(admin, runId, scenario, clubId, owned) {
   const gameTable = await single(admin.from("game_tables").insert({
     id: gameTableId,
     club_id: clubId,
-    table_name: `${runId}_${scenario}_T1`,
+    table_name: tableName,
     table_type: "tournament",
     status: "active",
     current_blind_level: 1,
@@ -571,6 +572,7 @@ async function createFixture(admin, runId, scenario, clubId, owned) {
     tournament_id: tournament.id,
     table_id: gameTable.id,
     table_number: 1,
+    table_name: tableName,
     max_seats: 9,
     status: "active",
   }).select("id"), `create_fixture_tournament_table_${scenario}`);
@@ -618,6 +620,7 @@ async function createFixture(admin, runId, scenario, clubId, owned) {
     clubId,
     tournamentId: tournament.id,
     tournamentName,
+    tableName,
     gameTableId: gameTable.id,
     tournamentTableId: tournamentTable.id,
     entries: entryFixtures,
@@ -1672,17 +1675,24 @@ async function runFloorRoleAndViewportMatrix(browser, baseUrl, stateDirectory, a
 
 async function openOwnedChipDialog(page, baseUrl, fixture, seat) {
   await selectOwnedFloorTournament(page, baseUrl, fixture);
-  const tableButton = page.getByTitle(/^Bàn 1 ·/u).first();
+  if (!fixture.tableName.startsWith(`${fixture.runId}_${fixture.scenario}_`)) {
+    fail("browser_chip_table_ownership_invalid");
+  }
+  console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=owned_tournament_selected");
+  const tableButton = page.getByTitle(new RegExp(`^${escapeRegex(fixture.tableName)} ·`, "u")).first();
   await tableButton.waitFor({ state: "visible", timeout: 15_000 });
   await tableButton.click();
+  console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=owned_table_selected");
   const seatButton = page.getByRole("button", {
     name: new RegExp(escapeRegex(seat.player_name), "u"),
   }).first();
   await seatButton.waitFor({ state: "visible", timeout: 15_000 });
   await seatButton.click();
+  console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=owned_seat_selected");
   await page.getByRole("button", { name: "Sửa chip", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: new RegExp(`Sửa chip.*${escapeRegex(seat.player_name)}`, "u") });
   await dialog.waitFor({ state: "visible", timeout: 15_000 });
+  console.log("FLOOR_CANARY BROWSER_CHIP_PHASE phase=chip_dialog_ready");
   return dialog;
 }
 
