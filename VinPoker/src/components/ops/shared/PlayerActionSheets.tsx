@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { User, ArrowRightLeft, Coins, Receipt, UserMinus, Loader2 } from "lucide-react";
+import { User, ArrowRightLeft, Coins, Receipt, UserMinus, Loader2, Printer } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog,
