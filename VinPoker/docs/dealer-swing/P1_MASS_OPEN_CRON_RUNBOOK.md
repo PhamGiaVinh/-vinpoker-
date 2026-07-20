@@ -7,7 +7,10 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
 - PR-Drift is source-only. Its author does not apply a migration, deploy Edge, merge, enable a flag, or mutate live data.
 - Never apply historical migrations `20270102000002_process_swing_cron_dispatch_observer.sql` or `20270102000003_dealer_open_operations.sql` to production.
 - Do not replay `20261223000000_end_breaks_on_demand.sql`; live inventory shows it is also absent, so the exact canonical helper definition is included in the forward migration.
-- The only approved DB artifact is the forward migration `20270104000002_dealer_swing_contract_drift.sql` after owner review.
+- Do not replay `20260701000010_end_expired_breaks.sql`; the metrics view is restored by the reviewed forward contract migration without replaying historical break behavior.
+- The only approved DB artifacts are the ordered forward migrations
+  `20270104000002_dealer_swing_contract_drift.sql` then
+  `20270104000003_dealer_shift_metrics_contract.sql`, after owner review.
 - Durable mass-open stays dark by default: `enabled=false`, `all_clubs_enabled=false`, and an empty allowlist.
 - Existing assignments remain untouched. Do not reset the 19 staffed incident tables.
 
@@ -23,18 +26,39 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
    - current process-swing cron jobs;
    - fenced club-lock functions;
    - `swing_run_metrics` runtime percentiles.
+6. Inspect the existing `public.dealer_shift_metrics` relation before scheduling
+   this migration. Stop for owner review when it already exists and either its
+   relation kind is not a view, its ordered public columns differ from the
+   reviewed contract, or `pg_get_viewdef` differs from the captured reviewed
+   definition. Capture that evidence read-only. Do not use `DROP ... CASCADE`
+   as a recovery action.
 
 ## Controlled DB apply
 
 Owner approval is required for this production mutation.
 
-1. Verify migration inventory and confirm `20270104000002` is absent and unique.
+1. Verify migration inventory and confirm `20270104000002` and `20270104000003` are absent and unique.
 2. Verify historical `20270102000002` and `20270102000003` remain unapplied. Do not mark them applied and do not replay them.
    Also verify `20261223000000` remains unapplied; the forward migration supersedes only its missing function definition and ACL.
 3. Run the #923 current-target contract probe before apply; it must fail on the missing operation/dispatch contract. This is the expected negative control.
-4. Apply only the exact reviewed file `20270104000002_dealer_swing_contract_drift.sql` in the controlled owner window. Do not use `db push --include-all`.
-5. Run the same target-aware contract probe again. It must pass before any Edge deployment is allowed.
-6. Verify the forward migration did not execute business work. It may replace cron definitions and schedule the dispatcher/observer jobs, but it must not invoke `process-swing` inside the migration transaction.
+4. Apply only the exact reviewed files in order: first
+   `20270104000002_dealer_swing_contract_drift.sql`, then
+   `20270104000003_dealer_shift_metrics_contract.sql`. Do not use `db push --include-all`.
+5. Confirm the committed migration's `NOTIFY pgrst, 'reload schema'` has been
+   processed before using REST clients. Wait for the normal schema-cache reload
+   window and record the confirmation from the platform logs/status; do not
+   treat a SQL commit alone as REST-schema evidence.
+6. With a service-role REST client, read an actual existing row (or an approved
+   TEST fixture) selecting exactly `attendance_id, minutes_since_rest,
+   total_assignments, total_break_minutes, total_worked_minutes` from
+   `dealer_shift_metrics`. The response must not contain `PGRST200`,
+   `PGRST202`, or `PGRST204`.
+7. Verify anon and authenticated REST callers are denied for the same relation.
+   Do not put a service token in shell history, source, logs, or this runbook.
+8. Only after steps 5-7 pass, run the metrics SQL contract suite and the
+   target-aware positive contract probe. Both must pass before any Edge
+   deployment is allowed.
+9. Verify neither forward migration executed business work. The first may replace cron definitions and schedule the dispatcher/observer jobs, but it must not invoke `process-swing` inside the migration transaction.
 
 Post-apply checks:
 

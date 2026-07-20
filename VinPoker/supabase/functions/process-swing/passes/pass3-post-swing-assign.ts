@@ -1,5 +1,6 @@
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
+import { isCandidateSnapshotFailure } from "../../_shared/pickNextDealer.ts";
 import { sendPreAssignTelegramWithFallback } from "../../_shared/preAssignTelegram.ts";
 
 // PATCH E — reversible kill switch.
@@ -135,6 +136,7 @@ export async function postSwingPreAssign(
 
     return { assigned: true, dealerName: nextDealer.full_name };
   } catch (err) {
+    if (isCandidateSnapshotFailure(err)) throw err;
     console.error(
       `[Post-swing] ❌ Unexpected error for assignment ${newAssignmentId}:`,
       err instanceof Error ? err.stack : String(err)

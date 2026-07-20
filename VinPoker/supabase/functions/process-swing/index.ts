@@ -9,7 +9,10 @@ import {
   getTableIdsForClub,
   type FillResult,
 } from "../_shared/dealer-utils.ts";
-import { buildDealerCandidates } from "../_shared/pickNextDealer.ts";
+import {
+  buildDealerCandidates,
+  isCandidateSnapshotFailure,
+} from "../_shared/pickNextDealer.ts";
 import { getFeatureTablePoolIds } from "../_shared/featureTableGate.ts"; // Patch 5b: feature/final pool gate
 import { scaleLockTimeoutSeconds } from "../_shared/lockTimeout.ts";
 import {
@@ -58,6 +61,7 @@ import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
 import {
   assessAllTablesOtAlert,
   assessAvailableDealerCount,
+  assessCandidateSnapshotFailure,
   assessCoreQueryFailure,
   assessDealerInventory,
   assessLockOwnershipLoss,
@@ -1644,6 +1648,19 @@ Deno.serve(async (req: Request) => {
               minInterSwingRestMinutes: clubCfg.min_inter_swing_rest_minutes,
               swingDurationMinutes: (clubCfg as any).swing_duration_minutes ?? undefined,
             });
+            if (s2.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "passS2_candidate_snapshot",
+                  s2.candidateStatus,
+                  s2.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[passS2] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             if (s2.executed || s2.reserved || s2.cancelled) {
               console.log(`[passS2] club=${cid} executed=${s2.executed} reserved=${s2.reserved} cancelled=${s2.cancelled}`);
             }
@@ -2258,6 +2275,19 @@ if (tier2Count > 0) {
         if (scheduleDriven && !dryRun) {
           try {
             const passRResult = await passRRotationPlanner(admin, passRCtx);
+            if (passRResult.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "passR_candidate_snapshot",
+                  passRResult.candidateStatus,
+                  passRResult.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass R] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             metrics.total += passRResult.locked;
             metrics.success += passRResult.locked;
             if (passRResult.errors.length > 0) {
@@ -2267,6 +2297,15 @@ if (tier2Count > 0) {
               );
             }
           } catch (err: any) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("passR_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass R] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(`[Pass R] ❌ Unhandled error:`, err?.message ?? err);
           }
         }
@@ -2282,6 +2321,19 @@ if (tier2Count > 0) {
               cycleExcludedIds,
               clubId: cid,
             });
+            if (p15Result.candidateStatus) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure(
+                  "pass15_candidate_snapshot",
+                  p15Result.candidateStatus,
+                  p15Result.candidateErrorCode,
+                ),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 1.5] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.log(
               `[Pass 1.5] ${p15Result.assigned} assigned, ` +
               `${p15Result.unassigned} unassigned` +
@@ -2294,6 +2346,15 @@ if (tier2Count > 0) {
               );
             }
           } catch (err: any) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("pass15_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 1.5] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(`[Pass 1.5] ❌ Error:`, err.message);
           }
         }
@@ -2323,6 +2384,15 @@ if (tier2Count > 0) {
               pass2Options,
             );
           } catch (err) {
+            if (isCandidateSnapshotFailure(err)) {
+              recordDispatchSafetyOutcome(
+                cid,
+                assessCandidateSnapshotFailure("pass2_candidate_snapshot", err.status, err.errorCode),
+              );
+              clubsSkippedError++;
+              console.warn(`[Pass 2] candidate snapshot unavailable for club ${cid}; remaining passes aborted.`);
+              continue;
+            }
             console.error(
               `[Pass 2] ❌ Unhandled error for club ${cid}:`,
               err instanceof Error ? err.stack : err
@@ -4192,6 +4262,7 @@ if (tier2Count > 0) {
             }
           }
           } catch (swingErr: any) {
+            if (isCandidateSnapshotFailure(swingErr)) throw swingErr;
             metrics.failed++;
             console.error(
               `[Pass 3] ❌ Swing failed for assignment ${assignment.id} (table ${assignment.table_id}):`,
@@ -4372,7 +4443,14 @@ if (tier2Count > 0) {
         clubsProcessed++; // Track successful club processing
 
       } catch (err) {
-        if (err instanceof LockOwnershipLost) {
+        if (isCandidateSnapshotFailure(err)) {
+          recordDispatchSafetyOutcome(
+            cid,
+            assessCandidateSnapshotFailure("candidate_snapshot", err.status, err.errorCode),
+          );
+          clubsSkippedError++;
+          console.warn(`[process-swing] club ${cid}: candidate snapshot unavailable; remaining passes aborted, releasing.`);
+        } else if (err instanceof LockOwnershipLost) {
           const ownershipOutcome = assessLockOwnershipLoss(err);
           recordDispatchSafetyOutcome(cid, ownershipOutcome);
           if (err.reason === "lease_reclaimed") {

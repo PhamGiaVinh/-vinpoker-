@@ -131,6 +131,32 @@ export interface BuildCandidatesResult {
   diag?: PickDiagnostics;
 }
 
+export type CandidateSnapshotStatus = Exclude<BuildCandidatesResult["status"], "ok">;
+
+/** A query/dependency failure is never equivalent to a valid empty dealer pool. */
+export class CandidateSnapshotFailure extends Error {
+  override readonly name = "CandidateSnapshotFailure";
+
+  constructor(
+    readonly status: CandidateSnapshotStatus,
+    readonly errorCode: string,
+  ) {
+    super(errorCode);
+  }
+}
+
+export function isCandidateSnapshotFailure(error: unknown): error is CandidateSnapshotFailure {
+  return error instanceof CandidateSnapshotFailure;
+}
+
+function requireCandidateSnapshot(result: BuildCandidatesResult): BuildCandidatesResult {
+  if (result.status === "ok") return result;
+  throw new CandidateSnapshotFailure(
+    result.status,
+    result.errorCode ?? `candidate_snapshot_${result.status}`,
+  );
+}
+
 export interface PickNextDealerResult {
   candidate: DealerCandidate | null;
   status: BuildCandidatesResult["status"];
@@ -435,10 +461,14 @@ export async function buildDealerCandidates(
   // Step 3: Query dealer_shift_metrics separately
   const attendanceIds = rows.map((r) => r.id);
   const nowMs = Date.now();
-  const { data: metricsRows } = (await admin
+  const { data: metricsRows, error: metricsError } = (await admin
     .from("dealer_shift_metrics")
     .select("attendance_id, minutes_since_rest, total_assignments, total_break_minutes, total_worked_minutes")
-    .in("attendance_id", attendanceIds)) as unknown as { data: AssignmentMetricRow[] | null };
+    .in("attendance_id", attendanceIds)) as unknown as {
+      data: AssignmentMetricRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (metricsError) return candidateQueryFailure(metricsError, "shift_metrics");
   const metricsMap = new Map(
     (metricsRows ?? []).map((m) => [m.attendance_id, m])
   );
@@ -754,10 +784,14 @@ export async function buildDealerCandidates(
   // null = insufficient data → skip break equity penalty entirely
   let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
   if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
-    const { data: allMetricsRaw } = (await admin
+    const { data: allMetricsRaw, error: allMetricsError } = (await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
-      .eq("club_id", clubId)) as unknown as { data: ClubMetricRow[] | null };
+      .eq("club_id", clubId)) as unknown as {
+        data: ClubMetricRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (allMetricsError) return candidateQueryFailure(allMetricsError, "club_shift_metrics");
     const totalW = (allMetricsRaw ?? []).reduce(
       (s: number, m) => s + (m.total_worked_minutes ?? 0), 0
     );
@@ -1140,7 +1174,9 @@ export async function pickNextDealer(
   clubId: string,
   options: PickDealerOptions = {}
 ): Promise<DealerCandidate | null> {
-  const { candidates } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return candidates[0] ?? null;
 }
 
@@ -1165,7 +1201,9 @@ export async function pickTopDealers(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<DealerCandidate[]> {
-  const { candidates } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return candidates.slice(0, topN);
 }
 
@@ -1179,7 +1217,9 @@ export async function pickTopDealersWithDiagnostics(
   topN: number,
   options: Omit<PickDealerOptions, "returnTopN"> = {}
 ): Promise<{ candidates: DealerCandidate[]; diag?: PickDiagnostics; avgBreakRatio: number | null }> {
-  const { candidates, avgBreakRatio, diag } = await buildDealerCandidates(admin, clubId, options);
+  const { candidates, avgBreakRatio, diag } = requireCandidateSnapshot(
+    await buildDealerCandidates(admin, clubId, options),
+  );
   return { candidates: candidates.slice(0, topN), diag, avgBreakRatio };
 }
 
@@ -1196,6 +1236,13 @@ export interface RotationSupplyEntry extends DealerCandidate {
   eligible_at_ms: number;
 }
 
+export type RotationSupplyResult = {
+  supply: RotationSupplyEntry[];
+  avgBreakRatio: number | null;
+  status: BuildCandidatesResult["status"];
+  errorCode?: string;
+};
+
 export async function buildRotationSupply(
   admin: SupabaseAdmin,
   clubId: string,
@@ -1205,7 +1252,7 @@ export async function buildRotationSupply(
     clubBreakDurationMinutes?: number;
     requiredGameTypes?: string[];
   } = {}
-): Promise<{ supply: RotationSupplyEntry[]; avgBreakRatio: number | null }> {
+): Promise<RotationSupplyResult> {
   // Plan-time eligibility floor MUST match the execute-time gate
   // (SWING_POLICY.rest.executeMinRestFloorMinutes), else the planner locks a dealer
   // who cannot pass the execute rest gate → the table stays stuck on OT while rested
@@ -1216,7 +1263,7 @@ export async function buildRotationSupply(
   );
   const poolCooldownMs = 60_000;
 
-  const { candidates, avgBreakRatio } = await buildDealerCandidates(admin, clubId, {
+  const candidateResult = await buildDealerCandidates(admin, clubId, {
     excludeAttendanceIds: options.excludeAttendanceIds,
     clubBreakDurationMinutes: options.clubBreakDurationMinutes ?? 20,
     minInterSwingRestMinutes: restMinutes,
@@ -1230,12 +1277,23 @@ export async function buildRotationSupply(
     ).toISOString(),
   });
 
-  if (candidates.length === 0) return { supply: [], avgBreakRatio };
+  if (candidateResult.status !== "ok") {
+    return {
+      supply: [],
+      avgBreakRatio: candidateResult.avgBreakRatio,
+      status: candidateResult.status,
+      ...(candidateResult.errorCode ? { errorCode: candidateResult.errorCode } : {}),
+    };
+  }
+
+  const { candidates, avgBreakRatio } = candidateResult;
+
+  if (candidates.length === 0) return { supply: [], avgBreakRatio, status: "ok" };
 
   const attendanceIds = candidates.map((c) => c.id);
 
   // Latest released session per candidate → prev session length + rest anchor.
-  const { data: releasedRows } = await admin
+  const { data: releasedRows, error: releasedRowsError } = await admin
     .from("dealer_assignments")
     .select("attendance_id, assigned_at, released_at")
     .in("attendance_id", attendanceIds)
@@ -1244,6 +1302,15 @@ export async function buildRotationSupply(
     // Global ordering means a prolific dealer's rows could crowd others out;
     // ~25 sessions/dealer/day is well above any real shift.
     .limit(Math.min(1000, attendanceIds.length * 25));
+  if (releasedRowsError) {
+    const failure = classifyPostgrestError(releasedRowsError);
+    return {
+      supply: [],
+      avgBreakRatio,
+      status: failure.status,
+      errorCode: `rotation_supply_released_sessions_${failure.status}`,
+    };
+  }
 
   const lastSession = new Map<string, { assignedAtMs: number; releasedAtMs: number }>();
   for (const row of (releasedRows ?? []) as Array<{ attendance_id: string; assigned_at: string | null; released_at: string }>) {
@@ -1254,10 +1321,19 @@ export async function buildRotationSupply(
     });
   }
 
-  const { data: poolRows } = await admin
+  const { data: poolRows, error: poolRowsError } = await admin
     .from("dealer_attendance")
     .select("id, pool_entered_at")
     .in("id", attendanceIds);
+  if (poolRowsError) {
+    const failure = classifyPostgrestError(poolRowsError);
+    return {
+      supply: [],
+      avgBreakRatio,
+      status: failure.status,
+      errorCode: `rotation_supply_pool_timestamps_${failure.status}`,
+    };
+  }
 
   const poolEnteredAt = new Map<string, number>();
   for (const row of (poolRows ?? []) as Array<{ id: string; pool_entered_at: string | null }>) {
@@ -1278,7 +1354,7 @@ export async function buildRotationSupply(
     };
   });
 
-  return { supply, avgBreakRatio };
+  return { supply, avgBreakRatio, status: "ok" };
 }
 
 // ─── buildScoreLabel ──────────────────────────────────────────────────────────
