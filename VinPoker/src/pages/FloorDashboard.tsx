@@ -18,7 +18,10 @@ export default function FloorDashboard() {
   const { t } = useTranslation();
   const { user, loading, isAdmin } = useAuth();
   const nav = useNavigate();
-  const { clubs, clubIds, dealerClubIds } = useOperatorClubs();
+  const { clubs, operatorClubIds, dealerClubIds } = useOperatorClubs();
+  // Capability IDs come from the caller-bound scope RPC. `clubs` is display
+  // metadata and can be RLS-filtered, so it must never decide Floor access.
+  const scopedIds = Array.from(new Set([...operatorClubIds, ...dealerClubIds]));
 
   useEffect(() => {
     if (loading) return;
@@ -31,9 +34,9 @@ export default function FloorDashboard() {
   if (clubs === null) {
     return <div className="container mx-auto p-6"><Skeleton className="h-96 rounded-xl" /></div>;
   }
-  // Floor access = assigned floor operators (dealerClubIds), club owners/cashiers
-  // (clubIds, so owners keep tournament control after it moved off Club Admin), or admins.
-  if (dealerClubIds.length === 0 && clubIds.length === 0 && !isAdmin) {
+  // Floor access = caller-bound owner/cashier/floor scope plus dealer assignments.
+  // Do not gate this on the optional club-name lookup above.
+  if (scopedIds.length === 0 && !isAdmin) {
     return (
       <div className="container mx-auto p-6">
         <Card className="p-8 text-center space-y-3">
@@ -47,7 +50,9 @@ export default function FloorDashboard() {
     );
   }
 
-  const scopedIds = dealerClubIds.length > 0 ? dealerClubIds : clubIds;
+  const scopedClubLabel = clubs.length === scopedIds.length
+    ? (clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`)
+    : scopedIds.length > 0 ? `${scopedIds.length} CLB được phân quyền` : "Toàn quyền (Admin)";
 
   return (
     <div className="container mx-auto p-3 md:p-6">
@@ -57,7 +62,7 @@ export default function FloorDashboard() {
           <LayoutGrid className="w-3.5 h-3.5" /> FLOOR
         </div>
         <div className="text-sm text-muted-foreground">
-          {clubs.length === 0 ? "Toàn quyền (Admin)" : clubs.length === 1 ? clubs[0].name : `${clubs.length} CLB`}
+          {scopedClubLabel}
         </div>
       </div>
       <TournamentLivePanel mode="floor" clubIds={scopedIds} clubs={clubs} />
