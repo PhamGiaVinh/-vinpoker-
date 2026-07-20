@@ -64,6 +64,7 @@ import {
   assessShortageNotifySetting,
   ensureLockOwnership,
   LockOwnershipLost,
+  mergeDispatchOutcome,
   type DispatchSafetyOutcome,
   type ProcessSwingDispatchState,
 } from "./executionSafety.ts";
@@ -605,17 +606,12 @@ Deno.serve(async (req: Request) => {
     state: ProcessSwingDispatchState,
     errorCode: string | null,
   ) => {
-    const priority: Record<ProcessSwingDispatchState, number> = {
-      completed: 0,
-      locked: 1,
-      partial: 2,
-      business_failed: 3,
-      dependency_unavailable: 4,
-    };
-    if (priority[state] >= priority[dispatchFinalState]) {
-      dispatchFinalState = state;
-      dispatchErrorCode = errorCode;
-    }
+    const merged = mergeDispatchOutcome(
+      { state: dispatchFinalState, errorCode: dispatchErrorCode },
+      { state, errorCode },
+    );
+    dispatchFinalState = merged.state;
+    dispatchErrorCode = merged.errorCode;
   };
   const recordDispatchSafetyOutcome = (
     clubId: string,

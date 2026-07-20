@@ -8,6 +8,7 @@ import {
   assessShortageNotifySetting,
   ensureLockOwnership,
   LockOwnershipLost,
+  mergeDispatchOutcome,
 } from "./executionSafety.ts";
 
 const CLUB_ID = "22222222-2222-2222-2222-222222222222";
@@ -59,6 +60,16 @@ Deno.test("a failed lease ownership RPC check fails closed before later mutation
       dispatchErrorCode: "club_lock_ownership_check_failed",
       diagnostic: { stage: "club_lock_ownership", code: "LEASE_CHECK_FAILED" },
     },
+  );
+});
+
+Deno.test("a reclaimed lease retains its error code when an earlier fill already made the run partial", () => {
+  assertEquals(
+    mergeDispatchOutcome(
+      { state: "partial", errorCode: "candidate_query_failed" },
+      { state: "locked", errorCode: "club_lock_ownership_lost" },
+    ),
+    { state: "partial", errorCode: "club_lock_ownership_lost" },
   );
 });
 

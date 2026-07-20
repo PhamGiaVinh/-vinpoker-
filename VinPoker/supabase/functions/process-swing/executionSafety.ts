@@ -53,6 +53,34 @@ export interface DispatchSafetyOutcome {
   };
 }
 
+export interface DispatchOutcomeState {
+  state: ProcessSwingDispatchState;
+  errorCode: string | null;
+}
+
+const DISPATCH_STATE_PRIORITY: Record<ProcessSwingDispatchState, number> = {
+  completed: 0,
+  locked: 1,
+  partial: 2,
+  business_failed: 3,
+  dependency_unavailable: 4,
+};
+
+export function mergeDispatchOutcome(
+  current: DispatchOutcomeState,
+  next: DispatchOutcomeState,
+): DispatchOutcomeState {
+  if (DISPATCH_STATE_PRIORITY[next.state] >= DISPATCH_STATE_PRIORITY[current.state]) {
+    return next;
+  }
+  // A reclaimed lease can follow an already-degraded fill. Preserve the stronger
+  // partial state while making the lost ownership visible in the primary code.
+  if (current.state === "partial" && next.errorCode === "club_lock_ownership_lost") {
+    return { state: current.state, errorCode: next.errorCode };
+  }
+  return current;
+}
+
 export function assessLockOwnershipLoss(
   failure: LockOwnershipLost,
 ): DispatchSafetyOutcome {
