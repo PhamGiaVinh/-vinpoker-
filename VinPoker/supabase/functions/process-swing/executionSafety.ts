@@ -114,6 +114,25 @@ export function assessCoreQueryFailure(
   };
 }
 
+/** Maps a typed candidate snapshot failure without parsing an error message. */
+export function assessCandidateSnapshotFailure(
+  stage: string,
+  status: "dependency_unavailable" | "query_failed",
+  errorCode?: string,
+): DispatchSafetyOutcome {
+  const code = errorCode ?? `candidate_snapshot_${status}`;
+  return {
+    dispatchState: status === "dependency_unavailable"
+      ? "dependency_unavailable"
+      : "partial",
+    dispatchErrorCode: code,
+    diagnostic: {
+      stage,
+      code,
+    },
+  };
+}
+
 export type DealerInventoryAssessment =
   | { dealerIds: string[]; failure: null }
   | { dealerIds: []; failure: DispatchSafetyOutcome };

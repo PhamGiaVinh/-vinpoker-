@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   assessAllTablesOtAlert,
   assessAvailableDealerCount,
+  assessCandidateSnapshotFailure,
   assessCoreQueryFailure,
   assessDealerInventory,
   assessLockOwnershipLoss,
@@ -88,6 +89,35 @@ Deno.test("inventory and availability query failures never become an empty or ze
       dispatchState: "partial",
       dispatchErrorCode: "available_dealer_count_query_failed",
       diagnostic: { stage: "available_dealer_count", code: "XX000" },
+    },
+  );
+});
+
+Deno.test("candidate snapshot failures preserve dependency versus query dispatch state", () => {
+  assertEquals(
+    assessCandidateSnapshotFailure(
+      "pass15_candidate_snapshot",
+      "dependency_unavailable",
+      "candidate_assignment_metrics_dependency_unavailable",
+    ),
+    {
+      dispatchState: "dependency_unavailable",
+      dispatchErrorCode: "candidate_assignment_metrics_dependency_unavailable",
+      diagnostic: {
+        stage: "pass15_candidate_snapshot",
+        code: "candidate_assignment_metrics_dependency_unavailable",
+      },
+    },
+  );
+  assertEquals(
+    assessCandidateSnapshotFailure("pass15_candidate_snapshot", "query_failed"),
+    {
+      dispatchState: "partial",
+      dispatchErrorCode: "candidate_snapshot_query_failed",
+      diagnostic: {
+        stage: "pass15_candidate_snapshot",
+        code: "candidate_snapshot_query_failed",
+      },
     },
   );
 });

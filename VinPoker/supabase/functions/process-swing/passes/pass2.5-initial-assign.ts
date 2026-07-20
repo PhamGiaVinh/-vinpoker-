@@ -13,6 +13,7 @@
 
 import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealer } from "../../_shared/dealer-utils.ts";
+import { isCandidateSnapshotFailure } from "../../_shared/pickNextDealer.ts";
 
 interface Pass25Result {
   assigned_count: number;
@@ -189,6 +190,7 @@ export async function pass25InitialAssign(
           }
         }
       } catch (error: any) {
+        if (isCandidateSnapshotFailure(error)) throw error;
         result.errors.push({
           assignment_id: assignment.id,
           table_name: (assignment as any).game_tables?.table_name ?? "??",
@@ -211,6 +213,7 @@ export async function pass25InitialAssign(
 
     return result;
   } catch (error: any) {
+    if (isCandidateSnapshotFailure(error)) throw error;
     console.error("[Pass 2.5] ❌ Fatal error:", error.message);
     return result;
   }

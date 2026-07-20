@@ -88,4 +88,8 @@ REVOKE ALL ON TABLE public.dealer_shift_metrics FROM PUBLIC;
 REVOKE ALL ON TABLE public.dealer_shift_metrics FROM anon, authenticated;
 GRANT SELECT ON TABLE public.dealer_shift_metrics TO service_role;
 
+-- The view is consumed through PostgREST by Edge functions. Reload its schema
+-- cache before the migration transaction commits; this never performs business work.
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;

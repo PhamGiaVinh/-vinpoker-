@@ -26,6 +26,12 @@ This CRITICAL/RED change remains **NOT_READY** until every production gate has c
    - current process-swing cron jobs;
    - fenced club-lock functions;
    - `swing_run_metrics` runtime percentiles.
+6. Inspect the existing `public.dealer_shift_metrics` relation before scheduling
+   this migration. Stop for owner review when it already exists and either its
+   relation kind is not a view, its ordered public columns differ from the
+   reviewed contract, or `pg_get_viewdef` differs from the captured reviewed
+   definition. Capture that evidence read-only. Do not use `DROP ... CASCADE`
+   as a recovery action.
 
 ## Controlled DB apply
 
@@ -38,8 +44,21 @@ Owner approval is required for this production mutation.
 4. Apply only the exact reviewed files in order: first
    `20270104000002_dealer_swing_contract_drift.sql`, then
    `20270104000003_dealer_shift_metrics_contract.sql`. Do not use `db push --include-all`.
-5. Run the metrics SQL contract suite and the same target-aware contract probe again. Both must pass before any Edge deployment is allowed.
-6. Verify neither forward migration executed business work. The first may replace cron definitions and schedule the dispatcher/observer jobs, but it must not invoke `process-swing` inside the migration transaction.
+5. Confirm the committed migration's `NOTIFY pgrst, 'reload schema'` has been
+   processed before using REST clients. Wait for the normal schema-cache reload
+   window and record the confirmation from the platform logs/status; do not
+   treat a SQL commit alone as REST-schema evidence.
+6. With a service-role REST client, read an actual existing row (or an approved
+   TEST fixture) selecting exactly `attendance_id, minutes_since_rest,
+   total_assignments, total_break_minutes, total_worked_minutes` from
+   `dealer_shift_metrics`. The response must not contain `PGRST200`,
+   `PGRST202`, or `PGRST204`.
+7. Verify anon and authenticated REST callers are denied for the same relation.
+   Do not put a service token in shell history, source, logs, or this runbook.
+8. Only after steps 5-7 pass, run the metrics SQL contract suite and the
+   target-aware positive contract probe. Both must pass before any Edge
+   deployment is allowed.
+9. Verify neither forward migration executed business work. The first may replace cron definitions and schedule the dispatcher/observer jobs, but it must not invoke `process-swing` inside the migration transaction.
 
 Post-apply checks:
 
