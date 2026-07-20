@@ -1570,6 +1570,53 @@ function chipCasBrowserRequestBlockReason(request, policy) {
   return "unexpected_mutation";
 }
 
+function clockBrowserRequestBlockReason(request, policy) {
+  const url = new URL(request.url);
+  const method = request.method.toUpperCase();
+  const baseOrigin = new URL(policy.baseUrl).origin;
+  const supabaseOrigin = `https://${PRODUCTION_REF}.supabase.co`;
+  const staticReadOrigins = new Set(["https://fonts.googleapis.com", "https://fonts.gstatic.com"]);
+  if (staticReadOrigins.has(url.origin) && ["GET", "HEAD", "OPTIONS"].includes(method)) return null;
+  if (url.origin !== baseOrigin && url.origin !== supabaseOrigin) return "external_origin";
+  if (["GET", "HEAD", "OPTIONS"].includes(method)) return null;
+  if (url.origin !== supabaseOrigin) return "unexpected_mutation";
+
+  const path = url.pathname;
+  const body = request.body;
+  if (
+    method === "POST"
+    && path === "/rest/v1/rpc/get_my_floor_operator_scope"
+    && (body == null || exactObjectKeys(body, []))
+  ) return null;
+  if (
+    method === "POST"
+    && path === "/rest/v1/rpc/dealer_control_club_ids"
+    && exactObjectKeys(body, ["_user_id"])
+    && body._user_id === policy.actorId
+  ) return null;
+  if (
+    method === "POST"
+    && path === "/rest/v1/rpc/get_tournament_clock"
+    && exactObjectKeys(body, ["p_tournament_id"])
+    && body.p_tournament_id === policy.fixture.tournamentId
+  ) return null;
+  if (method === "POST" && path === "/functions/v1/tournament-live-clock") {
+    if (
+      exactObjectKeys(body, ["tournament_id", "action"])
+      && body.tournament_id === policy.fixture.tournamentId
+      && ["start", "pause", "resume"].includes(body.action)
+    ) return null;
+    if (
+      policy.fixture.scenario === "SETUP_CLOCK"
+      && exactObjectKeys(body, ["tournament_id", "action", "current_level"])
+      && body.tournament_id === policy.fixture.tournamentId
+      && body.action === "next_level"
+      && body.current_level === 2
+    ) return null;
+  }
+  return "unexpected_mutation";
+}
+
 async function installExactSupabaseWebSocketGuard(browserContext, blocked) {
   await browserContext.routeWebSocket(/.*/u, async (webSocketRoute) => {
     if (new URL(webSocketRoute.url()).hostname !== `${PRODUCTION_REF}.supabase.co`) {
@@ -1637,6 +1684,188 @@ async function installPayoutEgressGuard(browserContext, policy) {
   });
   await installExactSupabaseWebSocketGuard(browserContext, blocked);
   return { blocked, expectedBlocked };
+}
+
+async function installClockEgressGuard(browserContext, policy) {
+  const blocked = [];
+  const expectedBlocked = [];
+  await browserContext.route("**/*", async (route) => {
+    const request = route.request();
+    const requestSummary = {
+      url: request.url(),
+      method: request.method(),
+      body: safeRequestJson(request),
+      bodyPresent: request.postData() !== null,
+    };
+    const expectedReason = expectedBlockedBrowserRequestReason(requestSummary, policy);
+    if (expectedReason) {
+      expectedBlocked.push(expectedReason);
+      await route.abort("blockedbyclient");
+      return;
+    }
+    const reason = clockBrowserRequestBlockReason(requestSummary, policy);
+    if (reason) {
+      blocked.push(safeBlockedBrowserRequestDetail(reason, requestSummary));
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.continue();
+  });
+  await installExactSupabaseWebSocketGuard(browserContext, blocked);
+  return { blocked, expectedBlocked };
+}
+
+async function waitForVisibleClockControl(page, labels) {
+  for (let poll = 1; poll <= 30; poll += 1) {
+    for (const label of labels) {
+      const control = page.getByRole("button", { name: label, exact: true });
+      if (await control.isVisible()) return label;
+    }
+    await page.waitForTimeout(500);
+  }
+  return null;
+}
+
+async function clickClockAction(page, label) {
+  const responsePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/functions/v1/tournament-live-clock"
+  ));
+  await page.getByRole("button", { name: label, exact: true }).click();
+  return responsePromise;
+}
+
+async function runBrowserClockActions(browser, baseUrl, stateDirectory, admin, actors, fixtures) {
+  const setup = fixtures.get("SETUP_CLOCK");
+  const access = fixtures.get("ACCESS");
+  if (!setup || !access) fail("browser_clock_required_scenarios_missing");
+  const observations = [];
+  const guards = [];
+  for (const fixture of [setup, access]) {
+    if (!fixture.runId.startsWith(CLEANUP_SCOPE_PREFIX) || !["SETUP_CLOCK", "ACCESS"].includes(fixture.scenario)) {
+      fail("browser_clock_fixture_ownership_invalid");
+    }
+    const context = await browser.newContext({
+      storageState: join(stateDirectory, "floor.json"),
+      locale: CANARY_BROWSER_LOCALE,
+      viewport: { width: 390, height: 844 },
+      serviceWorkers: "block",
+    });
+    const guard = await installClockEgressGuard(context, {
+      baseUrl,
+      fixture,
+      actorId: actors.floor.id,
+    });
+    guards.push(guard);
+    try {
+      const page = await context.newPage();
+      await page.goto(`${baseUrl}/ops/tournaments/${fixture.tournamentId}?tab=status`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      const initialControl = await waitForVisibleClockControl(page, ["Bắt đầu", "Tạm dừng"]);
+      let startStatus = null;
+      if (initialControl === "Bắt đầu") {
+        const startResponse = await clickClockAction(page, "Bắt đầu");
+        startStatus = startResponse.status();
+      }
+      const runningControl = await waitForVisibleClockControl(page, ["Tạm dừng"]);
+      const beforePause = await single(
+        admin.from("tournaments")
+          .select("id,status,current_level,clock_started_at,clock_paused_at,pause_accumulated")
+          .eq("id", fixture.tournamentId),
+        `browser_clock_before_pause_${fixture.scenario}`,
+      );
+      const pauseResponse = runningControl === "Tạm dừng"
+        ? await clickClockAction(page, "Tạm dừng")
+        : null;
+      const visibleAfterPause = await waitForVisibleClockControl(page, ["Tiếp tục", "Bắt đầu"]);
+      const afterPause = await single(
+        admin.from("tournaments")
+          .select("id,status,current_level,clock_started_at,clock_paused_at,pause_accumulated")
+          .eq("id", fixture.tournamentId),
+        `browser_clock_after_pause_${fixture.scenario}`,
+      );
+      let resumeStatus = null;
+      let startRetryStatus = null;
+      let nextLevelStatus = null;
+      let afterResume = null;
+      if (visibleAfterPause === "Tiếp tục") {
+        const resumeResponse = await clickClockAction(page, "Tiếp tục");
+        resumeStatus = resumeResponse.status();
+        await waitForVisibleClockControl(page, ["Tạm dừng"]);
+        if (fixture.scenario === "SETUP_CLOCK") {
+          const nextLevelResponse = await clickClockAction(page, "Level tiếp");
+          nextLevelStatus = nextLevelResponse.status();
+        }
+        afterResume = await single(
+          admin.from("tournaments")
+            .select("id,status,current_level,clock_started_at,clock_paused_at,pause_accumulated")
+            .eq("id", fixture.tournamentId),
+          `browser_clock_after_resume_${fixture.scenario}`,
+        );
+      } else if (visibleAfterPause === "Bắt đầu") {
+        const retryResponse = await clickClockAction(page, "Bắt đầu");
+        startRetryStatus = retryResponse.status();
+      }
+      const pauseDbInvariant = pauseResponse?.status() === 200
+        && typeof beforePause.clock_started_at === "string"
+        && afterPause.clock_started_at === beforePause.clock_started_at
+        && typeof afterPause.clock_paused_at === "string"
+        && afterPause.current_level === beforePause.current_level
+        && afterPause.status === "live";
+      const resumeDbInvariant = visibleAfterPause !== "Tiếp tục" || (
+        resumeStatus === 200
+        && afterResume?.clock_started_at === beforePause.clock_started_at
+        && afterResume?.clock_paused_at === null
+        && afterResume?.status === "live"
+        && afterResume?.current_level === (fixture.scenario === "SETUP_CLOCK" ? 2 : beforePause.current_level)
+      );
+      console.log(
+        `FLOOR_CANARY CLOCK_RESUME_OBSERVATION scenario=${fixture.scenario}`
+        + ` initial=${initialControl ?? "missing"}`
+        + ` after_pause=${visibleAfterPause ?? "missing"}`
+        + ` pause_status=${pauseResponse?.status() ?? "missing"}`
+        + ` resume_status=${resumeStatus ?? "missing"}`
+        + ` start_retry_status=${startRetryStatus ?? "none"}`,
+      );
+      observations.push({
+        scenario: fixture.scenario,
+        startStatus,
+        pauseStatus: pauseResponse?.status() ?? null,
+        visibleAfterPause,
+        resumeStatus,
+        startRetryStatus,
+        nextLevelStatus,
+        pauseDbInvariant,
+        resumeDbInvariant,
+      });
+    } finally {
+      await context.close();
+    }
+  }
+  const unexpectedEgress = guards.flatMap((guard) => guard.blocked);
+  result("browser_clock_forbidden_egress_zero", unexpectedEgress.length === 0, [...new Set(unexpectedEgress)].join(","));
+  result(
+    "browser_clock_known_non_audit_egress_blocked",
+    guards.flatMap((guard) => guard.expectedBlocked).every((reason) => reason.startsWith("expected_blocked_")),
+  );
+  result("browser_clock_start_and_pause", observations.every((entry) => (
+    (entry.scenario !== "ACCESS" || entry.startStatus === 200)
+    && entry.pauseStatus === 200
+    && entry.pauseDbInvariant
+  )));
+  result(
+    "browser_clock_broken_start_retry_reproduced_twice",
+    observations.filter((entry) => entry.visibleAfterPause !== "Tiếp tục")
+      .every((entry) => entry.startRetryStatus === 409),
+  );
+  result("browser_clock_pause_resume_controls", observations.every((entry) => (
+    entry.visibleAfterPause === "Tiếp tục"
+    && entry.resumeStatus === 200
+    && entry.resumeDbInvariant
+    && (entry.scenario !== "SETUP_CLOCK" || entry.nextLevelStatus === 200)
+  )));
 }
 
 async function runFloorRoleAndViewportMatrix(browser, baseUrl, stateDirectory, actors, fixture) {
@@ -2013,10 +2242,11 @@ async function runBrowserManifest(admin, actors, fixtures) {
   const browser = await chromium.launch({ headless: true });
   try {
     const access = fixtures.get("ACCESS");
+    const setupClock = fixtures.get("SETUP_CLOCK");
     const lifecycle = fixtures.get("TABLE_LIFECYCLE");
     const payoutClose = fixtures.get("PAYOUT_CLOSE");
     const concurrency = fixtures.get("CONCURRENCY");
-    if (!access || !lifecycle || !payoutClose || !concurrency) fail("browser_required_scenarios_missing");
+    if (!access || !setupClock || !lifecycle || !payoutClose || !concurrency) fail("browser_required_scenarios_missing");
     for (const actor of [actors.owner, actors.cashier, actors.floor, actors.cross]) {
       const context = await browser.newContext({ locale: CANARY_BROWSER_LOCALE });
       try {
@@ -2083,6 +2313,8 @@ async function runBrowserManifest(admin, actors, fixtures) {
     } finally {
       await anonymousContext.close();
     }
+
+    await runBrowserClockActions(browser, baseUrl, stateDirectory, admin, actors, fixtures);
 
     const routeAssignments = JSON.stringify([
       { route: "/ops/tournaments", role: "owner" },
@@ -2414,6 +2646,7 @@ async function runCleanupCanary(admin) {
 
 export {
   chipCasBrowserRequestBlockReason,
+  clockBrowserRequestBlockReason,
   createRunId,
   deleteExactAuthUsersBestEffort,
   discoverCleanupScope,

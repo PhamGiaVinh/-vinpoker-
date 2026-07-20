@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   chipCasBrowserRequestBlockReason,
+  clockBrowserRequestBlockReason,
   createRunId,
   deleteExactAuthUsersBestEffort,
   discoverCleanupScope,
@@ -454,6 +455,49 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.match(childEnvironment, /FLOOR_UAT_STORAGE_STATE_DIR/);
   assert.doesNotMatch(childEnvironment, /\.\.\.process\.env/);
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
+});
+
+test("browser clock policy permits only exact owned clock controls", () => {
+  const actorId = "30000000-0000-4000-8000-000000000001";
+  const tournamentId = "40000000-0000-4000-8000-000000000001";
+  const policy = {
+    baseUrl: "https://vinpoker.vercel.app",
+    actorId,
+    fixture: { tournamentId, scenario: "SETUP_CLOCK" },
+  };
+  const request = (url, method, body = null) => ({ url, method, body });
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/rest/v1/rpc/get_tournament_clock",
+    "POST",
+    { p_tournament_id: tournamentId },
+  ), policy), null);
+  for (const action of ["start", "pause", "resume"]) {
+    assert.equal(clockBrowserRequestBlockReason(request(
+      "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+      "POST",
+      { tournament_id: tournamentId, action },
+    ), policy), null);
+  }
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    { tournament_id: tournamentId, action: "next_level", current_level: 2 },
+  ), policy), null);
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    { tournament_id: "40000000-0000-4000-8000-000000000002", action: "pause" },
+  ), policy), "unexpected_mutation");
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/tournament-live-clock",
+    "POST",
+    { tournament_id: tournamentId, action: "adjust_time", delta_seconds: -60 },
+  ), policy), "unexpected_mutation");
+  assert.equal(clockBrowserRequestBlockReason(request(
+    "https://bank.example.test/pay",
+    "POST",
+    {},
+  ), policy), "external_origin");
 });
 
 test("blocked browser evidence contains only reason, method, and pathname", () => {
