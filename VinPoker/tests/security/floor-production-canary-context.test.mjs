@@ -338,7 +338,12 @@ test("browser chip CAS policy permits only one exact owned stale-snapshot race",
 test("browser guards block known startup telemetry and push without allowing arbitrary egress", () => {
   const actorId = "30000000-0000-4000-8000-000000000001";
   const policy = { actorId };
-  const request = (url, method, body = null) => ({ url, method, body });
+  const request = (url, method, body = null, bodyPresent = body != null) => ({
+    url,
+    method,
+    body,
+    bodyPresent,
+  });
   assert.equal(expectedBlockedBrowserRequestReason(request(
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/report-vitals",
     "POST",
@@ -366,6 +371,17 @@ test("browser guards block known startup telemetry and push without allowing arb
     "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-welcome-email",
     "POST",
     { recipient: actorId },
+  ), policy), null);
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-welcome-email?recipient=unexpected",
+    "POST",
+    {},
+  ), policy), null);
+  assert.equal(expectedBlockedBrowserRequestReason(request(
+    "https://orlesggcjamwuknxwcpk.supabase.co/functions/v1/send-welcome-email",
+    "POST",
+    null,
+    true,
   ), policy), null);
   assert.equal(expectedBlockedBrowserRequestReason(request(
     "https://bank.example.test/pay",

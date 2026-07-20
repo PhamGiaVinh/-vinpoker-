@@ -1397,7 +1397,11 @@ function expectedBlockedBrowserRequestReason(request, policy = null) {
     method === "POST"
     && url.origin === supabaseOrigin
     && url.pathname === "/functions/v1/send-welcome-email"
-    && (request.body == null || exactObjectKeys(request.body, []))
+    && [...url.searchParams.keys()].length === 0
+    && (
+      (request.bodyPresent === false && request.body == null)
+      || exactObjectKeys(request.body, [])
+    )
   ) return "expected_blocked_welcome_email";
   return null;
 }
@@ -1586,6 +1590,7 @@ async function installChipCasEgressGuard(browserContext, policy) {
       url: request.url(),
       method: request.method(),
       body: safeRequestJson(request),
+      bodyPresent: request.postData() !== null,
     };
     const expectedReason = expectedBlockedBrowserRequestReason(requestSummary, policy);
     if (expectedReason) {
@@ -1614,6 +1619,7 @@ async function installPayoutEgressGuard(browserContext, policy) {
       url: request.url(),
       method: request.method(),
       body: safeRequestJson(request),
+      bodyPresent: request.postData() !== null,
     };
     const expectedReason = expectedBlockedBrowserRequestReason(requestSummary, policy);
     if (expectedReason) {
