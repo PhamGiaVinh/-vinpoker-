@@ -435,10 +435,14 @@ export async function buildDealerCandidates(
   // Step 3: Query dealer_shift_metrics separately
   const attendanceIds = rows.map((r) => r.id);
   const nowMs = Date.now();
-  const { data: metricsRows } = (await admin
+  const { data: metricsRows, error: metricsError } = (await admin
     .from("dealer_shift_metrics")
     .select("attendance_id, minutes_since_rest, total_assignments, total_break_minutes, total_worked_minutes")
-    .in("attendance_id", attendanceIds)) as unknown as { data: AssignmentMetricRow[] | null };
+    .in("attendance_id", attendanceIds)) as unknown as {
+      data: AssignmentMetricRow[] | null;
+      error: CandidateQueryError | null;
+    };
+  if (metricsError) return candidateQueryFailure(metricsError, "shift_metrics");
   const metricsMap = new Map(
     (metricsRows ?? []).map((m) => [m.attendance_id, m])
   );
@@ -754,10 +758,14 @@ export async function buildDealerCandidates(
   // null = insufficient data → skip break equity penalty entirely
   let avgBreakRatio: number | null = clubAvgBreakRatio ?? null;
   if (includeScoreBreakdown && avgBreakRatio === null && clubId) {
-    const { data: allMetricsRaw } = (await admin
+    const { data: allMetricsRaw, error: allMetricsError } = (await admin
       .from("dealer_shift_metrics")
       .select("total_worked_minutes, total_break_minutes")
-      .eq("club_id", clubId)) as unknown as { data: ClubMetricRow[] | null };
+      .eq("club_id", clubId)) as unknown as {
+        data: ClubMetricRow[] | null;
+        error: CandidateQueryError | null;
+      };
+    if (allMetricsError) return candidateQueryFailure(allMetricsError, "club_shift_metrics");
     const totalW = (allMetricsRaw ?? []).reduce(
       (s: number, m) => s + (m.total_worked_minutes ?? 0), 0
     );
