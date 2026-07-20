@@ -1890,7 +1890,12 @@ function browserIsOnAuthRoute(page) {
 async function navigateAuthenticatedOps(page, baseUrl) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto(`${baseUrl}/ops`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    if (!browserIsOnAuthRoute(page)) return true;
+    const appHome = page.getByRole("button", { name: "App chính", exact: true });
+    for (let poll = 1; poll <= 30; poll += 1) {
+      if (await appHome.isVisible()) return true;
+      if (browserIsOnAuthRoute(page)) break;
+      await page.waitForTimeout(500);
+    }
     if (attempt < 3) await page.waitForTimeout(attempt * 500);
   }
   return false;

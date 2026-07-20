@@ -420,8 +420,10 @@ test("browser actor login retries a bounded authenticated route before storage s
   const browserManifest = canarySource.slice(canarySource.indexOf("function browserIsOnAuthRoute"));
   assert.match(browserManifest, /async function navigateAuthenticatedOps\(page, baseUrl\)/);
   assert.match(browserManifest, /attempt <= 3/);
+  assert.match(browserManifest, /poll <= 30/);
+  assert.match(browserManifest, /name: "App chính", exact: true/);
   assert.match(browserManifest, /waitForTimeout\(attempt \* 500\)/);
-  assert.doesNotMatch(browserManifest, /waitForTimeout\(700\)/);
+  assert.doesNotMatch(browserManifest, /if \(!browserIsOnAuthRoute\(page\)\) return true/);
   assert.match(browserManifest, /const opsAuthenticated = await navigateAuthenticatedOps\(page, baseUrl\)/);
   assert.match(browserManifest, /result\(`browser_ops_authenticated_\$\{actor\.label\}`, opsAuthenticated\)/);
 });
