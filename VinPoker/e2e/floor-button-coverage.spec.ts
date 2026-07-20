@@ -87,8 +87,8 @@ function storageStatePath(role: FloorAuditRole) {
 for (const viewport of floorAuditViewports) {
   test(`Floor button manifest covers every enabled control at ${viewport}`, async ({ browser, baseURL }) => {
     // Each viewport visits seven authenticated/public routes against the canary target.
-    // Keep the audit bounded, but allow the complete control inventory to finish.
-    test.setTimeout(180_000);
+    // Keep the audit bounded, while allowing the complete control inventory to finish.
+    test.setTimeout(120_000);
     test.skip(process.env.FLOOR_UAT_RUN_BROWSER !== "true", "Preview browser audit is explicitly enabled only after safe context validation.");
     const assignments = configuredAssignments();
     expect(assignments.length).toBeGreaterThan(0);
@@ -112,7 +112,9 @@ for (const viewport of floorAuditViewports) {
         page.on("console", (message) => {
           if (message.type() === "error") runtimeErrors.push(safeRootErrorDetail(message.text()));
         });
-        await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "networkidle" });
+        // /floor owns a realtime connection, so it cannot be expected to reach networkidle.
+        // The route-specific assertions below remain the readiness and correctness gate.
+        await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
         await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
         if (assignment.ownedTournamentName) {
           const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
