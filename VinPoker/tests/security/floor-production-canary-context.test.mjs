@@ -416,6 +416,16 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
 });
 
+test("browser actor login retries a bounded authenticated route before storage state is written", () => {
+  const browserManifest = canarySource.slice(canarySource.indexOf("function browserIsOnAuthRoute"));
+  assert.match(browserManifest, /async function navigateAuthenticatedOps\(page, baseUrl\)/);
+  assert.match(browserManifest, /attempt <= 3/);
+  assert.match(browserManifest, /waitForTimeout\(attempt \* 500\)/);
+  assert.doesNotMatch(browserManifest, /waitForTimeout\(700\)/);
+  assert.match(browserManifest, /const opsAuthenticated = await navigateAuthenticatedOps\(page, baseUrl\)/);
+  assert.match(browserManifest, /result\(`browser_ops_authenticated_\$\{actor\.label\}`, opsAuthenticated\)/);
+});
+
 test("workflow has fail-closed run, cleanup, and hold modes", () => {
   const workflow = readFileSync(new URL("../../../.github/workflows/floor-production-canary.yml", import.meta.url), "utf8");
   assert.match(workflow, /type: choice/);

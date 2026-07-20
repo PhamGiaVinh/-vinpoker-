@@ -1883,6 +1883,19 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
   }
 }
 
+function browserIsOnAuthRoute(page) {
+  return new URL(page.url()).pathname === "/auth";
+}
+
+async function navigateAuthenticatedOps(page, baseUrl) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.goto(`${baseUrl}/ops`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    if (!browserIsOnAuthRoute(page)) return true;
+    if (attempt < 3) await page.waitForTimeout(attempt * 500);
+  }
+  return false;
+}
+
 async function runBrowserManifest(admin, actors, fixtures) {
   if (process.env.FLOOR_CANARY_RUN_BROWSER !== "true") {
     fail("browser_audit_required_for_run_mode");
@@ -1912,9 +1925,8 @@ async function runBrowserManifest(admin, actors, fixtures) {
         const signIn = page.getByRole("button", { name: "Sign In" });
         result(`browser_login_button_${actor.label}`, await signIn.count() === 1);
         await signIn.click();
-        await page.waitForTimeout(700);
-        await page.goto(`${baseUrl}/ops`, { waitUntil: "networkidle" });
-        result(`browser_ops_authenticated_${actor.label}`, !page.url().endsWith("/auth"));
+        const opsAuthenticated = await navigateAuthenticatedOps(page, baseUrl);
+        result(`browser_ops_authenticated_${actor.label}`, opsAuthenticated);
         if (actor.label === "floor") {
           await page.goto(`${baseUrl}/ops/cashier`, { waitUntil: "networkidle" });
           const deniedGuard = page.getByText("Không có quyền Cashier", { exact: true });
