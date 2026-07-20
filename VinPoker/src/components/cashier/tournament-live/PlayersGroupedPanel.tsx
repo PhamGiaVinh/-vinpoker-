@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +33,23 @@ interface EntryRow {
   current_stack: number;
   seat_number: number | null;
   finished_place: number | null;
+  status: string;
+}
+
+interface TournamentEntryResult {
+  id: string;
+  player_id: string;
+  player_name?: string | null;
+  current_stack: number | null;
+  seat_number: number | null;
+  finished_place: number | null;
+  status: string;
+}
+
+function responseError(data: unknown): string | null {
+  return data && typeof data === "object" && "error" in data && typeof data.error === "string"
+    ? data.error
+    : null;
 }
 
 type GroupKey = "playing" | "waiting" | "bust";
@@ -52,7 +68,6 @@ export function PlayersGroupedPanel({
   tournament: Tournament;
   refreshTrigger: number;
 }) {
-  const { user } = useAuth();
   const tid = tournament.id;
   const [seats, setSeats] = useState<SeatRow[] | null>(null);
   const [entries, setEntries] = useState<EntryRow[]>([]);
@@ -72,14 +87,16 @@ export function PlayersGroupedPanel({
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!user) { setCanMove(false); return; }
-      const { data: ids } = await supabase.rpc("cashier_club_ids", { _user_id: user.id });
+      const { data: scope, error } = await supabase.rpc("get_my_floor_operator_scope");
       if (!alive) return;
-      const allowed = (ids ?? []).map((r: any) => (typeof r === "string" ? r : r.cashier_club_ids ?? r));
-      setCanMove(allowed.includes(tournament.club_id));
+      if (error) { setCanMove(false); return; }
+      setCanMove((scope ?? []).some((row) => (
+        row.club_id === tournament.club_id
+        && (row.can_owner || row.can_cashier || row.can_floor)
+      )));
     })();
     return () => { alive = false; };
-  }, [user, tournament.club_id]);
+  }, [tournament.club_id]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +114,7 @@ export function PlayersGroupedPanel({
       const m: Record<string, string> = {};
       for (const r of (linksRes.data ?? []) as { id: string; entry_id: string | null }[]) if (r.entry_id) m[r.id] = r.entry_id;
       setEntryBySeat(m);
-      const allEntries = (entriesRes.data ?? []) as any[];
+      const allEntries = (entriesRes.data ?? []) as TournamentEntryResult[];
       setEntries(allEntries.map((e) => ({
         id: e.id,
         player_id: e.player_id,
@@ -106,7 +123,7 @@ export function PlayersGroupedPanel({
         seat_number: e.seat_number ?? null,
         finished_place: e.finished_place ?? null,
         status: e.status,
-      } as EntryRow & { status: string })));
+      })));
     } finally {
       setLoading(false);
     }
@@ -115,11 +132,11 @@ export function PlayersGroupedPanel({
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
   const waiting = useMemo(
-    () => (entries as (EntryRow & { status?: string })[]).filter((e) => e.status === "registered"),
+    () => entries.filter((e) => e.status === "registered"),
     [entries],
   );
   const bust = useMemo(
-    () => (entries as (EntryRow & { status?: string })[])
+    () => entries
       .filter((e) => e.status === "busted")
       .sort((a, b) => (a.finished_place ?? 1e9) - (b.finished_place ?? 1e9)),
     [entries],
@@ -127,11 +144,14 @@ export function PlayersGroupedPanel({
 
   const counts = { playing: seats?.length ?? 0, waiting: waiting.length, bust: bust.length };
 
-  const filterText = (s: string) => !query || s.toLowerCase().includes(query.toLowerCase());
+  const filterText = useCallback(
+    (s: string) => !query || s.toLowerCase().includes(query.toLowerCase()),
+    [query],
+  );
 
   const visiblePlaying = useMemo(
     () => (seats ?? []).filter((s) => filterText(s.player_name || s.player_id) || filterText(s.table_name)),
-    [seats, query],
+    [seats, filterText],
   );
 
   const bustSeat = async (target: SeatRow | null) => {
@@ -154,13 +174,14 @@ export function PlayersGroupedPanel({
           }],
         },
       });
-      if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+      const edgeError = responseError(data);
+      if (error || edgeError) { toast.error(edgeError || error?.message); return; }
       toast.success(`Đã loại ${target.player_name || "người chơi"}`);
       setSelected(null);
       setInfoTarget(null);
       load();
-    } catch (e: any) {
-      toast.error(e.message || "Lỗi");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Lỗi");
     } finally {
       setBusting(false);
     }

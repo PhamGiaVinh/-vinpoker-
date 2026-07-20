@@ -13,6 +13,9 @@ const clockEdge = read("supabase/functions/tournament-live-clock/index.ts");
 const operatorClubsHook = read("src/hooks/useOperatorClubs.ts");
 const opsShell = read("src/components/ops/OpsShell.tsx");
 const cashierAccess = read("src/components/ops/OpsCashierAccess.tsx");
+const floorTableMap = read("src/components/cashier/tournament-live/FloorTableMapPanel.tsx");
+const playersGrouped = read("src/components/cashier/tournament-live/PlayersGroupedPanel.tsx");
+const editChipsDialog = read("src/components/cashier/tournament-live/EditChipsDialog.tsx");
 
 function body(name: string, next?: string) {
   const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
@@ -114,6 +117,13 @@ describe("Floor V2 DB and Edge contracts", () => {
     expect(operatorClubsHook).not.toContain('supabase.rpc("floor_club_ids"');
     expect(opsShell).toContain("hasOpsAccess");
     expect(cashierAccess).toContain("hasCashierAccess");
+    expect(floorTableMap).toContain('supabase.rpc("get_my_floor_operator_scope")');
+    expect(floorTableMap).toContain("row.can_owner || row.can_cashier || row.can_floor");
+    expect(floorTableMap).not.toContain('supabase.rpc("cashier_club_ids"');
+    expect(floorTableMap).toContain("supabase.rpc.bind(supabase)");
+    expect(playersGrouped).toContain('supabase.rpc("get_my_floor_operator_scope")');
+    expect(playersGrouped).toContain("row.can_owner || row.can_cashier || row.can_floor");
+    expect(playersGrouped).not.toContain('supabase.rpc("cashier_club_ids"');
 
     for (const edge of [drawEdge, clockEdge]) {
       expect(edge).toContain("supabase.auth.getUser()");
@@ -127,6 +137,7 @@ describe("Floor V2 DB and Edge contracts", () => {
     }
     expect(drawEdge).toContain("body.seats.length !== 1");
     expect(drawEdge).toContain("expected_chip_count");
+    expect(editChipsDialog).toContain("expected_chip_count: seat.chip_count");
     expect(drawEdge).toMatch(/supabase\.rpc\(\s*"floor_bust_player"/);
     expect(drawEdge).toContain('error: "draw_operation_failed"');
     expect(clockEdge).toMatch(/supabase\.rpc\(\s*"floor_start_tournament_clock"/);
