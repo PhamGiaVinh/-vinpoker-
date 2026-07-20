@@ -108,6 +108,7 @@ for (const viewport of floorAuditViewports) {
       if (assignment.viewports && !assignment.viewports.includes(viewport)) continue;
       const context = await browser.newContext({
         ...(assignment.role === "anonymous" ? {} : { storageState: storageStatePath(assignment.role) }),
+        locale: "vi-VN",
         viewport: viewport === "mobile-360x800" ? { width: 360, height: 800 }
           : viewport === "mobile-390x844" ? { width: 390, height: 844 }
             : viewport === "tablet-portrait" ? { width: 768, height: 1024 }

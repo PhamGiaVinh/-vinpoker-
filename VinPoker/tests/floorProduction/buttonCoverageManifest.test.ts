@@ -91,4 +91,8 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain('"owned_tournament_selected"');
     expect(coverageSpec).toContain('"tab_selected"');
   });
+
+  it("pins the browser audit to the locale used by manifest labels", () => {
+    expect(coverageSpec).toContain('locale: "vi-VN"');
+  });
 });

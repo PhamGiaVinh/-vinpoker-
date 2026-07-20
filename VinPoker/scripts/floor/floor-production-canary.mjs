@@ -8,6 +8,7 @@ import WebSocket from "ws";
 
 const PRODUCTION_REF = "orlesggcjamwuknxwcpk";
 const REQUIRED_CONFIRMATION = "RUN_FLOOR_PRODUCTION_CANARY";
+const CANARY_BROWSER_LOCALE = "vi-VN";
 const CANARY_MODES = new Set(["run", "cleanup", "hold"]);
 const SCENARIOS = [
   "ACCESS",
@@ -1620,6 +1621,7 @@ async function runFloorRoleAndViewportMatrix(browser, baseUrl, stateDirectory, a
     for (const viewport of viewports) {
       const browserContext = await browser.newContext({
         ...(role.actor ? { storageState: join(stateDirectory, `${role.label}.json`) } : {}),
+        locale: CANARY_BROWSER_LOCALE,
         viewport: viewport.viewport,
       });
       try {
@@ -1708,6 +1710,7 @@ async function runBrowserChipCasConcurrency(browser, baseUrl, stateDirectory, ad
     for (let index = 0; index < 2; index += 1) {
       const context = await browser.newContext({
         storageState: join(stateDirectory, "floor.json"),
+        locale: CANARY_BROWSER_LOCALE,
         viewport: { width: 1280, height: 900 },
         serviceWorkers: "block",
       });
@@ -1765,6 +1768,7 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
 
   const tabletContext = await browser.newContext({
     storageState: join(stateDirectory, "owner.json"),
+    locale: CANARY_BROWSER_LOCALE,
     viewport: { width: 1024, height: 768 },
     serviceWorkers: "block",
   });
@@ -1853,6 +1857,7 @@ async function runPayoutAndCloseBrowserFlow(browser, baseUrl, stateDirectory, ac
 
   const desktopContext = await browser.newContext({
     storageState: join(stateDirectory, "owner.json"),
+    locale: CANARY_BROWSER_LOCALE,
     viewport: { width: 1280, height: 900 },
     serviceWorkers: "block",
   });
@@ -1960,7 +1965,7 @@ async function runBrowserManifest(admin, actors, fixtures) {
     const concurrency = fixtures.get("CONCURRENCY");
     if (!access || !lifecycle || !payoutClose || !concurrency) fail("browser_required_scenarios_missing");
     for (const actor of [actors.owner, actors.cashier, actors.floor, actors.cross]) {
-      const context = await browser.newContext();
+      const context = await browser.newContext({ locale: CANARY_BROWSER_LOCALE });
       try {
         const page = await context.newPage();
         await page.goto(`${baseUrl}/auth`, { waitUntil: "networkidle" });
@@ -2013,7 +2018,7 @@ async function runBrowserManifest(admin, actors, fixtures) {
       }
     }
 
-    const anonymousContext = await browser.newContext();
+    const anonymousContext = await browser.newContext({ locale: CANARY_BROWSER_LOCALE });
     try {
       const anonymousPage = await anonymousContext.newPage();
       await anonymousPage.goto(`${baseUrl}/ops`, { waitUntil: "networkidle" });

@@ -416,6 +416,14 @@ test("Playwright child receives only an allowlisted non-secret environment", () 
   assert.doesNotMatch(childEnvironment, /SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY)/);
 });
 
+test("production canary pins Vietnamese locale for every browser context", () => {
+  assert.match(canarySource, /const CANARY_BROWSER_LOCALE = "vi-VN"/);
+  const newContextCount = (canarySource.match(/browser\.newContext\(/g) ?? []).length;
+  const pinnedLocaleCount = (canarySource.match(/locale: CANARY_BROWSER_LOCALE/g) ?? []).length;
+  assert.ok(newContextCount > 0);
+  assert.equal(pinnedLocaleCount, newContextCount);
+});
+
 test("browser actor login waits for the sign-in navigation before testing an authenticated route", () => {
   const browserManifest = canarySource.slice(canarySource.indexOf("function browserIsOnAuthRoute"));
   assert.match(browserManifest, /async function waitForSignInNavigation\(page\)/);
