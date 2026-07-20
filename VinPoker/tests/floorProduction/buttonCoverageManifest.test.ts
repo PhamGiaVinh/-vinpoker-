@@ -95,4 +95,20 @@ describe("Floor button coverage manifest", () => {
   it("pins the browser audit to the locale used by manifest labels", () => {
     expect(coverageSpec).toContain('locale: "vi-VN"');
   });
+
+  it("classifies every enabled desktop shell control discovered on Floor", () => {
+    for (const id of [
+      "floor-shell-language",
+      "floor-shell-notifications",
+      "floor-shell-support",
+      "floor-shell-operations",
+      "floor-shell-qr",
+      "floor-shell-sign-out",
+      "floor-shell-theme",
+      "floor-owned-tournament",
+      "floor-shell-install-app",
+    ]) {
+      expect(floorButtonCoverageManifest).toContainEqual(expect.objectContaining({ id, route: "/floor", role: "owner" }));
+    }
+  });
 });
