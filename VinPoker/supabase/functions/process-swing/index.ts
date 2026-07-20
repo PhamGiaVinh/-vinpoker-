@@ -55,6 +55,18 @@ import {
   type ProcessSwingDispatchContext,
 } from "./dispatchContext.ts";
 import { assessPreAssignPreflight } from "./preAssignPreflight.ts";
+import {
+  assessAllTablesOtAlert,
+  assessAvailableDealerCount,
+  assessCoreQueryFailure,
+  assessDealerInventory,
+  assessLockOwnershipLoss,
+  assessShortageNotifySetting,
+  ensureLockOwnership,
+  LockOwnershipLost,
+  type DispatchSafetyOutcome,
+  type ProcessSwingDispatchState,
+} from "./executionSafety.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -518,41 +530,6 @@ async function bulkClearDealerPreAssignedFields(
   return success;
 }
 
-// ─── B2.2b lock fencing — ownership guard ───────────────────────────────────
-// Thrown when this run no longer holds the club lock (lease expired → reclaimed by
-// another runner). Caught per-club → graceful abort of remaining passes + release.
-class LockOwnershipLost extends Error {
-  constructor(clubId: string) {
-    super(`lock ownership lost for club ${clubId}`);
-    this.name = "LockOwnershipLost";
-  }
-}
-
-// Heartbeat-extend the club lease (B2.2b). Throws LockOwnershipLost if we no longer own
-// it (token mismatch / lease already expired = reclaimed). Transient RPC errors are logged
-// but NON-fatal (keep working with the lease we hold). lockToken null → no-op (legacy path).
-async function ensureLockOwnership(
-  admin: any,
-  clubId: string,
-  lockToken: string | null,
-  leaseSeconds: number,
-): Promise<void> {
-  if (!lockToken) return;
-  const { data, error } = await admin.rpc("extend_club_lock_lease", {
-    p_club_id: clubId,
-    p_lock_token: lockToken,
-    p_timeout_seconds: leaseSeconds,
-  });
-  if (error) {
-    console.error(`[process-swing] extend_club_lock_lease failed club=${clubId}; aborting before mutation:`, error.message);
-    throw new LockOwnershipLost(clubId);
-  }
-  if (data !== true) {
-    console.warn(`[process-swing] \U0001F512 lock ownership LOST club=${clubId} — lease reclaimed; aborting remaining passes`);
-    throw new LockOwnershipLost(clubId);
-  }
-}
-
 type ProcessSwingAuth = { internal: boolean; uid: string | null };
 
 async function authenticateProcessSwingRequest(
@@ -621,13 +598,14 @@ Deno.serve(async (req: Request) => {
 
   let dispatchAdmin: any = null;
   let dispatchContext: ProcessSwingDispatchContext | null = null;
-  let dispatchFinalState: "completed" | "partial" | "locked" | "dependency_unavailable" | "business_failed" = "completed";
+  let dispatchFinalState: ProcessSwingDispatchState = "completed";
   let dispatchErrorCode: string | null = null;
+  const dispatchDiagnostics: Array<{ club_id: string; stage: string; code: string }> = [];
   const markDispatchOutcome = (
-    state: typeof dispatchFinalState,
+    state: ProcessSwingDispatchState,
     errorCode: string | null,
   ) => {
-    const priority: Record<typeof dispatchFinalState, number> = {
+    const priority: Record<ProcessSwingDispatchState, number> = {
       completed: 0,
       locked: 1,
       partial: 2,
@@ -638,6 +616,13 @@ Deno.serve(async (req: Request) => {
       dispatchFinalState = state;
       dispatchErrorCode = errorCode;
     }
+  };
+  const recordDispatchSafetyOutcome = (
+    clubId: string,
+    outcome: DispatchSafetyOutcome,
+  ) => {
+    markDispatchOutcome(outcome.dispatchState, outcome.dispatchErrorCode);
+    dispatchDiagnostics.push({ club_id: clubId, ...outcome.diagnostic });
   };
 
   try {
@@ -968,16 +953,26 @@ Deno.serve(async (req: Request) => {
         console.log(`[process-swing] Club ${cid}: querying dealers...`);
         let cidDealerIds: string[];
         try {
-          const { data: clubDealers } = await admin
+          const { data: clubDealers, error: clubDealersError } = await admin
             .from("dealers")
             .select("id")
             .eq("club_id", cid);
-          cidDealerIds = (clubDealers ?? []).map((d: { id: string }) => d.id);
+          const inventory = assessDealerInventory(clubDealers, clubDealersError);
+          if (inventory.failure) {
+            recordDispatchSafetyOutcome(
+              cid,
+              inventory.failure,
+            );
+            clubsSkippedError++;
+            continue;
+          }
+          cidDealerIds = inventory.dealerIds;
         } catch (err) {
-          console.error(
-            `[process-swing] ❌ Dealer query failed for club ${cid}:`,
-            err instanceof Error ? err.stack : err
+          recordDispatchSafetyOutcome(
+            cid,
+            assessCoreQueryFailure("dealer_inventory", err),
           );
+          clubsSkippedError++;
           continue;
         }
 
@@ -989,13 +984,31 @@ Deno.serve(async (req: Request) => {
         // ── PASS 0b — Query available dealer count for break deadlock guard ──
         let availableDealerCount: number | undefined;
         if (!dryRun) {
-          const { count } = await admin
-            .from("dealer_attendance")
-            .select("id", { head: true, count: "exact" })
-            .in("dealer_id", cidDealerIds)
-            .eq("current_state", "available")
-            .eq("status", "checked_in");
-          availableDealerCount = count ?? 0;
+          try {
+            const { count, error: availableCountError } = await admin
+              .from("dealer_attendance")
+              .select("id", { head: true, count: "exact" })
+              .in("dealer_id", cidDealerIds)
+              .eq("current_state", "available")
+              .eq("status", "checked_in");
+            const availability = assessAvailableDealerCount(count, availableCountError);
+            if (availability.failure) {
+              recordDispatchSafetyOutcome(
+                cid,
+                availability.failure,
+              );
+              clubsSkippedError++;
+              continue;
+            }
+            availableDealerCount = availability.count;
+          } catch (err) {
+            recordDispatchSafetyOutcome(
+              cid,
+              assessCoreQueryFailure("available_dealer_count", err),
+            );
+            clubsSkippedError++;
+            continue;
+          }
         }
 
         mark("pass0c");
@@ -4245,6 +4258,25 @@ if (tier2Count > 0) {
           }
         }
 
+        let shortageNotifyDecision: ReturnType<typeof assessShortageNotifySetting> | null = null;
+        const resolveShortageNotifyDecision = async () => {
+          if (shortageNotifyDecision) return shortageNotifyDecision;
+          try {
+            const { data: settingsRow, error: settingsError } = await admin
+              .from("club_settings")
+              .select("shortage_notify_telegram")
+              .eq("club_id", cid)
+              .maybeSingle();
+            shortageNotifyDecision = assessShortageNotifySetting(settingsRow as any, settingsError);
+          } catch (error) {
+            shortageNotifyDecision = assessShortageNotifySetting(null, error);
+          }
+          if (shortageNotifyDecision.failure) {
+            recordDispatchSafetyOutcome(cid, shortageNotifyDecision.failure);
+          }
+          return shortageNotifyDecision;
+        };
+
         // ── SHORTAGE ESCALATION ──────────────────────────────────────────
         if (!dryRun && fillAssessment.shortageAlertsAllowed && metrics.total > 0 && metrics.failed === 0) {
           const noDealerRatio = metrics.no_dealer / metrics.total;
@@ -4254,13 +4286,7 @@ if (tier2Count > 0) {
               `(${(noDealerRatio * 100).toFixed(1)}%)`
             );
 
-            const { data: settingsRow } = await admin
-              .from("club_settings")
-              .select("shortage_notify_telegram")
-              .eq("club_id", cid)
-              .maybeSingle();
-
-            const notifyTelegram = (settingsRow as any)?.shortage_notify_telegram ?? true;
+            const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
 
             if (notifyTelegram) {
               const chatId = await getClubTelegramChatId(admin, cid);
@@ -4278,29 +4304,49 @@ if (tier2Count > 0) {
         // Query total active assignments for this club (not just Pass 3 window).
         // If NO active assignment is free of OT, the entire pool is stuck.
         // Note: clubTableIds is cached at the start of club processing
-        const { count: totalActiveCount } = await admin
-          .from("dealer_assignments")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "assigned")
-          .in("table_id", clubTableIds);
+        let allTablesOtAssessment: ReturnType<typeof assessAllTablesOtAlert>;
+        try {
+          const [totalActiveResult, nonOvertimeResult] = await Promise.all([
+            admin
+              .from("dealer_assignments")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "assigned")
+              .in("table_id", clubTableIds),
+            admin
+              .from("dealer_assignments")
+              .select("id", { count: "exact", head: true })
+              .is("overtime_started_at", null)
+              .eq("status", "assigned")
+              .in("table_id", clubTableIds),
+          ]);
+          allTablesOtAssessment = assessAllTablesOtAlert(
+            fillAssessment.shortageAlertsAllowed,
+            { count: totalActiveResult.count, error: totalActiveResult.error },
+            { count: nonOvertimeResult.count, error: nonOvertimeResult.error },
+          );
+        } catch (error) {
+          allTablesOtAssessment = {
+            shouldSend: false,
+            failure: assessCoreQueryFailure("all_tables_ot_snapshot", error),
+          };
+        }
 
-        const { count: nonOtInClub } = await admin
-          .from("dealer_assignments")
-          .select("id", { count: "exact", head: true })
-          .is("overtime_started_at", null)
-          .eq("status", "assigned")
-          .in("table_id", clubTableIds);
-
-        if (fillAssessment.shortageAlertsAllowed
-            && (totalActiveCount ?? 0) > 0
-            && (nonOtInClub ?? 0) === 0) {
-          const chatId = await getClubTelegramChatId(admin, cid);
-          if (botToken && chatId) {
-            await sendTelegramNotification(
-              botToken, chatId,
-              `🚨 *TOÀN BỘ ${totalActiveCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
-              {}
-            );
+        if (!allTablesOtAssessment.shouldSend && allTablesOtAssessment.failure) {
+          recordDispatchSafetyOutcome(cid, allTablesOtAssessment.failure);
+        }
+        if (allTablesOtAssessment.shouldSend) {
+          const { notify: notifyTelegram } = await resolveShortageNotifyDecision();
+          if (!notifyTelegram) {
+            console.warn(`[process-swing] all-tables-OT alert suppressed by shortage notification setting for ${cid}`);
+          } else {
+            const chatId = await getClubTelegramChatId(admin, cid);
+            if (botToken && chatId) {
+              await sendTelegramNotification(
+                botToken, chatId,
+                `🚨 *TOÀN BỘ ${allTablesOtAssessment.totalActiveCount} BÀN ĐANG OT* — Pool dealer rỗng hoàn toàn.\nCần check-in thêm dealer hoặc đóng bớt bàn ngay!`,
+                {}
+              );
+            }
           }
         }
 
@@ -4331,8 +4377,16 @@ if (tier2Count > 0) {
 
       } catch (err) {
         if (err instanceof LockOwnershipLost) {
-          // B2.2b: graceful abort \u2014 another runner reclaimed the lease. NOT an error.
-          console.warn(`[process-swing] club ${cid}: ${err.message} \u2014 remaining passes aborted, releasing.`);
+          const ownershipOutcome = assessLockOwnershipLoss(err);
+          recordDispatchSafetyOutcome(cid, ownershipOutcome);
+          if (err.reason === "lease_reclaimed") {
+            clubsSkippedLocked++;
+          } else {
+            clubsSkippedError++;
+          }
+          console.warn(
+            `[process-swing] club ${cid}: ${ownershipOutcome.dispatchErrorCode}; remaining passes aborted, releasing.`,
+          );
         } else {
           markDispatchOutcome("business_failed", "club_processing_exception");
           clubsSkippedError++;
@@ -4408,6 +4462,7 @@ if (tier2Count > 0) {
       processed: clubsProcessed,
       skipped_locked: clubsSkippedLocked,
       skipped_error: clubsSkippedError,
+      diagnostics: dispatchDiagnostics,
       execution_time_ms: totalExecutionMs,
       timestamp: new Date().toISOString(),
     }));
@@ -4426,6 +4481,7 @@ if (tier2Count > 0) {
             processed: clubsProcessed,
             skipped_locked: clubsSkippedLocked,
             skipped_error: clubsSkippedError,
+            dispatch_diagnostics: dispatchDiagnostics,
           },
         },
       );
@@ -4456,6 +4512,7 @@ if (tier2Count > 0) {
         request_id: dispatchContext?.requestId ?? null,
         execution_time_ms: totalExecutionMs,
         metrics: metricsPerClub,
+        diagnostics: dispatchDiagnostics,
         dry_run: dryRun,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

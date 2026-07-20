@@ -1,4 +1,5 @@
 import type { FillResult } from "../_shared/fillEmptyTables.ts";
+import { classifyPostgrestError } from "../_shared/postgrestError.ts";
 
 export interface MassAssignFailureContract {
   httpStatus: number;
@@ -9,16 +10,7 @@ export function queryFailureContract(
   error: unknown,
   stage: string,
 ): MassAssignFailureContract {
-  const value = error && typeof error === "object"
-    ? error as { code?: string | null; message?: string | null }
-    : {};
-  const code = String(value.code ?? "").toUpperCase();
-  const message = String(value.message ?? error ?? "").toLowerCase();
-  const dependencyUnavailable = [
-    "42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204",
-  ].includes(code)
-    || /schema cache|does not exist|could not find the (table|column|function|relationship)/.test(message);
-  const status = dependencyUnavailable ? "dependency_unavailable" : "query_failed";
+  const { status } = classifyPostgrestError(error);
   return {
     httpStatus: 503,
     body: {

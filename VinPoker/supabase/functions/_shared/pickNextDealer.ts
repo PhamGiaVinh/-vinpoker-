@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getFeatureTablePoolIds, getReservedDealerIds } from "./featureTableGate.ts"; // Patch 5b/5d: feature/final pool gate + reserved exclusivity
+import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -141,19 +142,8 @@ interface CandidateQueryError {
   message?: string | null;
 }
 
-function classifyCandidateQueryError(error: unknown): BuildCandidatesResult["status"] {
-  const value = error && typeof error === "object" ? error as CandidateQueryError : {};
-  const code = String(value.code ?? "").toUpperCase();
-  const message = String(value.message ?? error ?? "").toLowerCase();
-  if (["42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204"].includes(code)
-      || /schema cache|does not exist|could not find the (table|column|function|relationship)/.test(message)) {
-    return "dependency_unavailable";
-  }
-  return "query_failed";
-}
-
 function candidateQueryFailure(error: unknown, stage: string): BuildCandidatesResult {
-  const status = classifyCandidateQueryError(error);
+  const { status } = classifyPostgrestError(error);
   const errorCode = `candidate_${stage}_${status}`;
   console.error(`[pickNextDealer] ${errorCode}`);
   return { candidates: [], avgBreakRatio: null, status, errorCode };

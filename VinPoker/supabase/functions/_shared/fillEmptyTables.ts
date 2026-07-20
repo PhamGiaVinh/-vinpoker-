@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickNextDealerWithStatus, type DealerCandidate } from "./pickNextDealer.ts";
+import { classifyPostgrestError } from "./postgrestError.ts";
 import { SWING_POLICY } from "./swingPolicy.ts";
 import { OPEN_TABLE_GRACE_MINUTES, bulkOpenStaggerMs } from "./openTableGrace.ts";
 
@@ -77,16 +78,7 @@ interface AssignTableRpcError {
 type FillFailureStatus = Extract<FillResult["status"], "dependency_unavailable" | "query_failed">;
 
 function classifyFillError(error: unknown): FillFailureStatus {
-  const value = error && typeof error === "object"
-    ? error as { code?: string | null; message?: string | null }
-    : {};
-  const code = String(value.code ?? "").toUpperCase();
-  const message = String(value.message ?? error ?? "").toLowerCase();
-  if (["42P01", "42703", "42883", "PGRST200", "PGRST202", "PGRST204"].includes(code)
-      || /schema cache|does not exist|could not find the (table|column|function|relationship)/.test(message)) {
-    return "dependency_unavailable";
-  }
-  return "query_failed";
+  return classifyPostgrestError(error).status;
 }
 
 function markFillFailure(
