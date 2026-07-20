@@ -86,6 +86,9 @@ function storageStatePath(role: FloorAuditRole) {
 
 for (const viewport of floorAuditViewports) {
   test(`Floor button manifest covers every enabled control at ${viewport}`, async ({ browser, baseURL }) => {
+    // Each viewport visits seven authenticated/public routes against the canary target.
+    // Keep the audit bounded, but allow the complete control inventory to finish.
+    test.setTimeout(180_000);
     test.skip(process.env.FLOOR_UAT_RUN_BROWSER !== "true", "Preview browser audit is explicitly enabled only after safe context validation.");
     const assignments = configuredAssignments();
     expect(assignments.length).toBeGreaterThan(0);
