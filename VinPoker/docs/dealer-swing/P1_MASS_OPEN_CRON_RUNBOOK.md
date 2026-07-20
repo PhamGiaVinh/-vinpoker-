@@ -1,73 +1,97 @@
-# Dealer Swing P1 Mass-Open and Cron Runbook
+# Dealer Swing P1 Drift Runbook
 
 ## Release status
 
-This CRITICAL/RED change remains **NOT_READY** until every production gate below has current evidence.
+This CRITICAL/RED change remains **NOT_READY** until every production gate has current evidence.
 
-- Source-only PR: no migration apply, Edge/frontend deploy, merge, or flag enable is performed by the PR author.
-- Runtime rollout starts with `enabled=false`, `all_clubs_enabled=false`, and an empty club allowlist.
-- The only TEST club approved for the first canary is HSOP: `22222222-2222-2222-2222-222222222222`.
-- Existing assignments are preserved. Do not reset the 19 staffed tables from the incident.
+- PR-Drift is source-only. Its author does not apply a migration, deploy Edge, merge, enable a flag, or mutate live data.
+- Never apply historical migrations `20270102000002_process_swing_cron_dispatch_observer.sql` or `20270102000003_dealer_open_operations.sql` to production.
+- Do not replay `20261223000000_end_breaks_on_demand.sql`; live inventory shows it is also absent, so the exact canonical helper definition is included in the forward migration.
+- The only approved DB artifact is the forward migration `20270104000002_dealer_swing_contract_drift.sql` after owner review.
+- Durable mass-open stays dark by default: `enabled=false`, `all_clubs_enabled=false`, and an empty allowlist.
+- Existing assignments remain untouched. Do not reset the 19 staffed incident tables.
 
-## Controlled migration window
+## G0 prerequisites
 
-Owner approval is required for each production mutation.
+1. PR-ControlPlane #923 is merged and its production workflow revision is active.
+2. Critical Edge deploy remains manual, exact-SHA, function-selective, and protected by the target-aware schema probe.
+3. Record the exact reviewed commit SHA and selected contract profile. Current PR-Drift source must resolve to `dealer_mass_open_v1`; an unknown profile stops the release.
+4. Confirm no unrelated migration, Edge function, or frontend artifact is included.
+5. Take read-only pre-apply definitions and ACL evidence for:
+   - `get_process_swing_due_club_ids()`;
+   - `run_process_swing_cron()`;
+   - current process-swing cron jobs;
+   - fenced club-lock functions;
+   - `swing_run_metrics` runtime percentiles.
 
-1. Verify the live migration ledger and confirm both timestamps are absent:
-   - `20270102000002_process_swing_cron_dispatch_observer.sql`
-   - `20270102000003_dealer_open_operations.sql`
-2. Apply the cron dispatch/observer migration first.
-3. Confirm `process-swing` and `process-swing-observer` are separate one-minute jobs.
-4. Confirm dispatch creates a new `process_swing_cron_runs.request_id` each minute even if observer collection times out.
-5. Apply the durable operation migration.
-6. Verify `operator_open_dealer_tables` and `get_dealer_open_operation` signatures, owners, and grants. `anon` must not execute either RPC.
-7. Verify the runtime rollout row is still OFF with an empty allowlist.
-8. Verify closing a TEST table clears `opened_at` and `dealer_open_operation_id`.
+## Controlled DB apply
 
-The new `process-swing` source reads the operation marker columns, so migration `20270102000003` must be live before deploying that Edge bundle.
+Owner approval is required for this production mutation.
 
-## Dark deploy
+1. Verify migration inventory and confirm `20270104000002` is absent and unique.
+2. Verify historical `20270102000002` and `20270102000003` remain unapplied. Do not mark them applied and do not replay them.
+   Also verify `20261223000000` remains unapplied; the forward migration supersedes only its missing function definition and ACL.
+3. Run the #923 current-target contract probe before apply; it must fail on the missing operation/dispatch contract. This is the expected negative control.
+4. Apply only the exact reviewed file `20270104000002_dealer_swing_contract_drift.sql` in the controlled owner window. Do not use `db push --include-all`.
+5. Run the same target-aware contract probe again. It must pass before any Edge deployment is allowed.
+6. Verify the forward migration did not execute business work. It may replace cron definitions and schedule the dispatcher/observer jobs, but it must not invoke `process-swing` inside the migration transaction.
 
-1. Deploy the reviewed `mass-assign` and `process-swing` Edge bundle only after both migrations are verified live.
-2. Deploy the exact reviewed frontend bundle while the runtime master remains OFF.
-3. Confirm the add-table confirmation is disabled for the TEST club and a direct guarded RPC returns `rollout_disabled` without writes.
-4. Confirm legacy `mass-assign` callers still receive the prior response contract.
-5. Confirm normal cron dispatch remains healthy for at least five consecutive ticks before enabling a canary.
+Post-apply checks:
 
-## HSOP canary
+- `get_process_swing_due_club_ids()` retains the live work filter.
+- `run_process_swing_cron()` contains no `net._http_response` read and no 8-second timeout.
+- `process-swing` and `process-swing-observer` are distinct one-minute jobs.
+- Dispatcher timeout is 55 seconds; observer deadline is timeout plus 30 seconds.
+- Dispatcher sends one correlated body per club: `club_id`, `run_id`, `request_id`, `tick_at`.
+- At most ten due clubs are selected per tick and older/not-yet-dispatched clubs are not starved.
+- Transport status and business status are stored separately.
+- Claim/finalize RPCs are service-role-only; anon/authenticated cannot execute them.
+- Operation RPC signatures have no ambiguous overloads and retain reviewed ACLs.
+- Operation/dispatch tables have RLS enabled and no direct anon/authenticated access.
+- Runtime rollout remains OFF with an empty allowlist.
 
-Owner approval is required before changing the runtime gate.
+## Dark Edge deploy
 
-1. Set the runtime master ON and allowlist only HSOP. Keep `all_clubs_enabled=false`.
-2. Select the exact 30 incident tables. The 19 tables already holding a dealer must remain untouched and count as complete.
-3. Start one mass-open operation and verify progress reports `assigned/requested` from server state.
-4. If eligible dealers are insufficient, verify the operation remains `waiting_for_dealer`; close the browser and confirm cron continues it.
-5. Add an eligible TEST dealer and verify a later cron tick fills one pending target without assigning any dealer or table twice.
-6. Close one pending TEST table through the standard close workflow and verify its marker is removed immediately.
-7. Confirm a marker older than 24 hours is not eligible for auto-fill.
+Owner approval is required for each deploy action.
 
-Monitor the canary for at least 15 minutes and through one real continuation tick:
+1. Use the PR-ControlPlane manual workflow with the exact reviewed commit SHA.
+2. Deploy only `process-swing` first. Preserve its existing `verify_jwt=false` posture and internal-secret authentication.
+3. Confirm a correlated TEST request is claimed once; replay returns `duplicate` and does not rerun business logic.
+4. Confirm an empty-table dependency failure is recorded as `dependency_unavailable` or `partial`, while later rotation passes still execute.
+5. Confirm degraded availability does not trigger shortage/pool-empty Telegram from this tick.
+6. Deploy only `mass-assign` after the live operation contract passes. Preserve `verify_jwt=true`.
+7. Confirm missing schema/query dependencies return non-2xx or an explicit failed outcome, never `success=true` with empty assignments.
+8. Keep durable mass-open rollout OFF. This PR does not enable HSOP or any other club.
 
-- operation status, requested, assigned, and remaining;
-- assignment conflict outcomes and CAS retries;
-- duplicate active dealer/table assignments;
-- cron dispatch cadence independent of observer failures;
-- `preflight_query_error`, `invalid_preassign`, and `replan_outcome` diagnostics;
-- Telegram and audit records correlated to the operation, without duplicate assignment notifications.
+## Dark monitoring
 
-## Emergency disable
+Observe at least five normal dispatcher ticks before any later canary decision:
 
-1. Set `dealer_mass_open_rollout.enabled=false`. This is the immediate server-side write stop and does not depend on a frontend deployment.
-2. Refresh the client and confirm mass-open confirmation is disabled.
-3. Preserve operation, target, assignment, audit, cron, and Edge evidence for investigation.
-4. The observer job may be unscheduled independently if it causes load. Do not stop the business dispatch job merely because response observation is unhealthy.
-5. Do not delete operation rows or reset existing assignments during incident response.
+- one run/request correlation per dispatched club;
+- no duplicate business execution during overlapping cron ticks;
+- observer timeout does not block the next dispatcher tick;
+- HTTP timeout changes transport state only;
+- Edge completion can record business completion after transport timeout;
+- a failure for one club does not prevent unrelated clubs from dispatching;
+- structured diagnostics contain no credential, Authorization header, or raw secret;
+- rotation metrics continue when empty-table fill is degraded.
 
-Any missing live signature, grant, default-OFF gate, dispatch cadence, TEST-club result, or 15-minute monitoring evidence keeps rollout **NOT_READY**.
+Production canary and alert wording are outside PR-Drift. They require later owner-gated PRs in sequence.
 
-## Local validation snapshot
+## Emergency containment
 
-- Final source inventory: 526 migration files on `origin/main`, 528 on this branch, and 26 pre-existing timestamp collision groups; both new timestamps are unique.
-- The current production schema dump restored cleanly to the matching Supabase PostgreSQL 17 image; both migrations and their second apply passed.
-- PostgreSQL 16 compatibility used the same current application schema. PG17-only `MAINTAIN` grants were omitted, and `pg_net`/Vault were represented by the minimum test stubs because Supabase publishes no PostgreSQL 16 image. Both migrations, second apply, SQL suites, and inverse lock-order concurrency passed.
-- This local evidence is not proof that migrations, Edge code, frontend code, or flags are live.
+1. Keep `dealer_mass_open_rollout.enabled=false`; this is the immediate mass-open write stop.
+2. If the new Edge bundle is faulty, use PR-ControlPlane to deploy only the affected function from an exact verified artifact/SHA. Do not infer a rollback target from an Edge version number.
+3. If observer load is unhealthy, unschedule only `process-swing-observer`. Do not stop business dispatch solely because transport observation is degraded.
+4. If dispatcher behavior is unhealthy, restore the exact pre-apply `run_process_swing_cron()` definition and cron schedule captured in G0. Do not restore an 8-second timeout or a response scan inside the dispatcher.
+5. Keep additive operation/dispatch history for evidence. Do not delete operation rows, dispatch rows, assignments, or audit records during incident response.
+
+## Local evidence required in PR
+
+- Current production public-schema dump restored to clean PostgreSQL 16 and PostgreSQL 17 disposable databases, with minimum pg_net/Vault/cron stubs.
+- Forward migration apply and reapply pass on both versions.
+- SQL assertions cover signatures, ACL, RLS, default-OFF rollout, bounded dispatch, missing secret, transport/business separation, claim replay, and cross-club scope.
+- Concurrent same-club ticks create no duplicate club/request run; same-run claims yield one `claimed` and one `duplicate`; different clubs claim independently.
+- Deno tests/checks, target-aware contract tests, Node/Vitest/build, migration inventory, diff audit, and secret grep pass.
+
+Local/source evidence is not proof that DB, Edge, cron, frontend, or flags are live.
