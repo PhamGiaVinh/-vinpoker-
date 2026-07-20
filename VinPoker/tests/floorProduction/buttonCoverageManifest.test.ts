@@ -83,4 +83,12 @@ describe("Floor button coverage manifest", () => {
     expect(coverageSpec).toContain("visibleControls.first()");
     expect(coverageSpec).not.toContain("controls.first(),");
   });
+
+  it("snapshots realtime controls atomically and preserves the original assertion", () => {
+    expect(coverageSpec).toContain("controls.evaluateAll");
+    expect(coverageSpec).not.toContain("index < await controls.count()");
+    expect(coverageSpec).toContain("context.close().catch(() => undefined)");
+    expect(coverageSpec).toContain('"owned_tournament_selected"');
+    expect(coverageSpec).toContain('"tab_selected"');
+  });
 });

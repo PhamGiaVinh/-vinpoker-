@@ -27,6 +27,15 @@ function normalise(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("vi-VN");
 }
 
+function logAuditPhase(
+  route: string,
+  role: FloorAuditRole,
+  viewport: ConcreteFloorAuditViewport,
+  phase: string,
+) {
+  console.log(JSON.stringify({ route, role, viewport, auditType: "control-audit-phase", phase, status: "NAVIGATION_ONLY" }));
+}
+
 function safeRootErrorDetail(value: string) {
   return value
     .replace(/\b(?:https?|wss?):\/\/[^\s)]+/giu, "[url-redacted]")
@@ -116,8 +125,10 @@ for (const viewport of floorAuditViewports) {
         });
         // /floor owns a realtime connection, so it cannot be expected to reach networkidle.
         // The route-specific assertions below remain the readiness and correctness gate.
+        const manifestRoute = assignment.manifestRoute ?? assignment.route;
+        logAuditPhase(manifestRoute, assignment.role, viewport, "navigate_start");
         await page.goto(new URL(assignment.route, baseURL).toString(), { waitUntil: "domcontentloaded", timeout: 30_000 });
-        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
+        await assertNoRootError(page, manifestRoute, assignment.role, viewport, runtimeErrors);
         const controls = page.locator(interactiveControlSelector);
         // The app shell keeps a responsive menu button in the DOM with `md:hidden`.
         // Waiting on `controls.first()` therefore blocks every tablet/desktop audit
@@ -127,38 +138,63 @@ for (const viewport of floorAuditViewports) {
           visibleControls.first(),
           `${assignment.role} ${assignment.manifestRoute ?? assignment.route} must render an interactive control before coverage discovery`,
         ).toBeVisible({ timeout: 30_000 });
-        await assertNoRootError(page, assignment.manifestRoute ?? assignment.route, assignment.role, viewport, runtimeErrors);
+        await assertNoRootError(page, manifestRoute, assignment.role, viewport, runtimeErrors);
+        logAuditPhase(manifestRoute, assignment.role, viewport, "route_ready");
         if (assignment.ownedTournamentName) {
-          const ownedTournament = page.getByRole("button", { name: assignment.ownedTournamentName, exact: true }).first();
-          await expect(ownedTournament).toBeVisible();
-          await ownedTournament.click();
-          await expect(page.getByRole("button", { name: "Tất cả giải", exact: true })).toBeVisible();
+          logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_wait");
+          const ownedTournament = page
+            .getByRole("button", { name: assignment.ownedTournamentName, exact: true })
+            .filter({ visible: true })
+            .first();
+          await expect(ownedTournament).toBeVisible({ timeout: 15_000 });
+          await ownedTournament.click({ timeout: 15_000 });
+          await expect(
+            page.getByRole("button", { name: "Tất cả giải", exact: true }).filter({ visible: true }).first(),
+          ).toBeVisible({ timeout: 15_000 });
+          logAuditPhase(manifestRoute, assignment.role, viewport, "owned_tournament_selected");
         }
         if (assignment.tabName) {
-          await page.getByRole("tab", { name: assignment.tabName, exact: true }).click();
+          await page.getByRole("tab", { name: assignment.tabName, exact: true })
+            .filter({ visible: true })
+            .first()
+            .click({ timeout: 15_000 });
+          logAuditPhase(manifestRoute, assignment.role, viewport, "tab_selected");
         }
-        const manifestRoute = assignment.manifestRoute ?? assignment.route;
         const manifest = entriesForViewport(viewport).filter((entry) => entry.route === manifestRoute && entry.role === assignment.role);
         const unclassified: string[] = [];
         const stateMismatches: string[] = [];
-        let visibleCount = 0;
-        let enabledCount = 0;
         const matchedManifestIds = new Set<string>();
-
-        for (let index = 0; index < await controls.count(); index += 1) {
-          const control = controls.nth(index);
-          if (!await control.isVisible()) continue;
-          visibleCount += 1;
-          const enabled = await control.isEnabled() && await control.getAttribute("aria-disabled") !== "true";
-          if (enabled) enabledCount += 1;
-          const label = normalise(
-            (await control.getAttribute("data-testid"))
-              ?? (await control.getAttribute("aria-label"))
-              ?? (await control.getAttribute("title"))
-              ?? (await control.innerText())
-              ?? (await control.getAttribute("value"))
+        // Snapshot the realtime page in one browser evaluation. Repeated locator reads
+        // can chase detached controls while clock/realtime updates keep re-rendering.
+        const observedControls = await controls.evaluateAll((nodes) => nodes.flatMap((node) => {
+          const element = node as HTMLElement;
+          const style = window.getComputedStyle(element);
+          const bounds = element.getBoundingClientRect();
+          const visible = style.display !== "none"
+            && style.visibility !== "hidden"
+            && style.opacity !== "0"
+            && bounds.width > 0
+            && bounds.height > 0;
+          if (!visible) return [];
+          const nativeDisabled = element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+            ? element.disabled
+            : false;
+          return [{
+            label: element.getAttribute("data-testid")
+              ?? element.getAttribute("aria-label")
+              ?? element.getAttribute("title")
+              ?? element.innerText
+              ?? element.getAttribute("value")
               ?? "",
-          );
+            enabled: !nativeDisabled && element.getAttribute("aria-disabled") !== "true",
+          }];
+        }));
+        const visibleCount = observedControls.length;
+        const enabledCount = observedControls.filter((control) => control.enabled).length;
+
+        for (const control of observedControls) {
+          const { enabled } = control;
+          const label = normalise(control.label);
           const observed = label || "<unlabelled-enabled-control>";
           const known = manifest.find((entry) => {
             const expected = normalise(entry.testId ?? entry.label);
@@ -189,7 +225,9 @@ for (const viewport of floorAuditViewports) {
         expect(unclassified, `${assignment.role} ${manifestRoute} has enabled controls without a manifest entry`).toEqual([]);
         expect(stateMismatches, `${assignment.role} ${manifestRoute} has manifest state mismatches`).toEqual([]);
       } finally {
-        await context.close();
+        // Preserve the original timeout/assertion instead of replacing it with a
+        // secondary "Test ended" error from Playwright's already-closed context.
+        await context.close().catch(() => undefined);
       }
     }
   });
